@@ -14,7 +14,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
@@ -379,7 +379,7 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
 }
 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. */
-const TAB_INBOX_PAGES: Record<ConversationTab, string> = { goals: "log", directive: "directive", memory: "memory", settings: "settings" };
+const TAB_INBOX_PAGES = { goals: "log", directive: "directive", memory: "memory", settings: "settings" } as const;
 
 const TAB_TITLES: Record<ConversationTab, ObjectiveMessageKey> = {
   goals: "objectives.commodore.tabs.log",
@@ -441,4 +441,10 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     },
   })),
   defaultTab: TAB_IDS.goals,
+  onLeaveDesktop: ({ params, tabId }) => {
+    const target = readParams(params);
+    if (!target || target.readOnly) return;
+    const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
+    openCommodoreMobile(tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
+  },
 };

@@ -16,11 +16,13 @@ import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settin
 import { closeConversationSurface, getConversationSurface, openConversationSurface } from "../features/workspace/client/conversation/conversation-surface-store.js";
 import { closeTheaterInbox, readTheaterInboxState } from "../features/workspace/client/theater-inbox/store.js";
 import { getViewedTheaterId } from "../core/client/src/integration/viewed-theater.js";
+import { setViewModePreference } from "../core/client/src/integration/view-mode-store.js";
+import { getMobileDestination, registerMobileDestinationEntries, setMobileDestination } from "../core/client/src/chrome/mobile/mobile-store.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
 // 파일을 읽으려는 요청이 대화를 닫거나 설정 포커스 요청을 남기지 않는지도 같은 경계에서 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
@@ -71,6 +73,18 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     host.consoleState.viewTheater!("a");
     expect(readTheaterInboxState()).toMatchObject({ theaterId: "a", address: { sectionId: "console:settings", pageId: "system-prompt" } });
     expect(readTheaterInboxState()?.focusRequest).not.toBeNull();
+
+    // 데스크톱 착지 검사만으로는 폰 화면이 주소로 primary 를 다시 열 때 요청을 잃는 결함을 잡지 못한다.
+    const destinationPane = { ...pane, id: "destination-pane", role: "primary" as const };
+    const destinationHost = createHostCapabilities(undefined, { railBindings: [{ entry: { id: "destination", title: "Destination", icon: null, panes: [destinationPane.id], mobile: { destination: { order: 0 } } }, panes: [destinationPane] }] });
+    // 모바일 틀이 아직 목적지 목록을 등록하지 않은 배치 전환 순간에도 선언만으로 화면에 착지한다.
+    setViewModePreference("mobile");
+    destinationHost.rail.open("destination", { theaterId: "b", page: "details" });
+    const address = getMobileDestination();
+    expect(address).toMatchObject({ kind: "plugin", entryId: "destination", params: { theaterId: "b", page: "details" } });
+    if (address.kind !== "plugin") throw new Error("destination not opened");
+    destinationHost.rail.open(address.entryId, address.params);
+    expect(getPaneStoreSnapshot().rail.find((instance) => instance.paneId === destinationPane.id)?.params).toMatchObject({ theaterId: "b", page: "details" });
   } finally { unbind(); }
 });
 

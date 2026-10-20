@@ -38,7 +38,7 @@
 
 /* 글자 탭(S-02 .ttabs). */
 /* 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다. */
-.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 18px; padding: 0 16px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 18px; margin-top: -1px; padding: 1px 16px 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
 .objectives-cm-tabs::-webkit-scrollbar { display: none; }
 /* black 은 색 잉크가 아니라 마스크의 불투명도다 — 넘친 쪽 끝만 옅어진다. */
 .objectives-cm-tabs.is-scroll { -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); }
@@ -63,7 +63,7 @@
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat.is-center { padding-top: calc(8px + var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
 .objectives-cm .objectives-cm-tabs button { flex: none; padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
-/* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 18 안이라 겹치지 않는다. */
+/* 두 글자 탭의 손가락 칸을 ::after 로 좌우 9·위 1 넓힌다. 줄의 위 여유 1px 와 음수 margin 이 시각 위치를 지키며 세로 44px 를 스크롤 안에 둔다. 좌우 칸은 간격 18 경계에서 맞닿는다. */
 .objectives-cm .objectives-cm-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
 
 /*

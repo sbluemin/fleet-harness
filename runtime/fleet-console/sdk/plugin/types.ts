@@ -389,6 +389,8 @@ export interface ConversationSurfaceDescriptor {
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
   readonly defaultTab?: string;
+  /** 데스크톱 배치를 떠나 표면을 걷기 직전 한 번 부른다. tabId 는 활성 오른쪽 패널 id 이며, 없으면 null 이다. 폰 착지는 플러그인이 정한다. */
+  readonly onLeaveDesktop?: (context: { readonly params: Readonly<Record<string, unknown>>; readonly tabId: string | null }) => void;
   /**
    * 이 대화가 대신하는 Theater 와 그 Theater Inbox 섹션(플러그인 자기 섹션 id). 대화 중심 화면은 Inbox 시트 대신 오른쪽 패널에
    * Theater 를 세우는데, 이 대화가 가운데 칸에 선 동안 그 섹션 자리에는 이 대화의 탭이 선다(섹션 이름 아래, Theater 설정 곁).

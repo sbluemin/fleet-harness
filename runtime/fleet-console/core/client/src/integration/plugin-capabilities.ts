@@ -130,7 +130,13 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
       if (getViewModeSnapshot().effective === "mobile") {
         const owner = bindings.find((binding) => binding.panes.some((pane) => pane.id === target.paneId));
         if (owner?.panes.find((pane) => pane.id === target.paneId)?.mounts.includes("rail")) {
-          revealRailPanel(owner.entry.id);
+          // 배치 전환 중에는 모바일 틀이 목적지 목록을 등록하기 전일 수 있다. 선언으로 화면을 열고, 마운트가 다시 읽을 params 도 함께 싣는다.
+          if (owner.entry.mobile?.destination) {
+            setMobileTool(null);
+            openRailPanel(owner.entry.id);
+            setMobileDestination({ kind: "plugin", entryId: owner.entry.id, ...(target.params ? { params: target.params } : {}) });
+            navigateConsoleRoute("/operations");
+          } else revealRailPanel(owner.entry.id);
           openPane({ paneId: target.paneId, params: target.params, mount: "rail" });
           return true;
         }
