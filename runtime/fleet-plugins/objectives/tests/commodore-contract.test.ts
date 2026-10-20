@@ -273,6 +273,10 @@ describe("commodore fleet-memory", () => {
     expect(h.store.memory.list("t1").map((item) => item.ref)).toEqual([saved.ref]);
     expect(() => h.store.memory.save("t1", { ...entry, branch: "lessons", topic: "planted", slug: "planted" })).toThrow("invalid_ref");
     expect(fs.readdirSync(outside)).toEqual(["planted.md"]);
+    // 갈래 자체가 밖을 가리키면 그 아래 주제 디렉터리도 만들지 않는다.
+    fs.symlinkSync(outside, path.join(root, "crew"), "dir");
+    expect(() => h.store.memory.save("t1", { ...entry, branch: "crew", topic: "lineups", slug: "x" })).toThrow("invalid_ref");
+    expect(fs.readdirSync(outside)).toEqual(["planted.md"]);
 
     // 필드 없는 갱신은 다시 확인한 것 — 검증 시각만 오른다. 삭제는 빈 주제를 걷고 인덱스를 비운다.
     clock = 5_000;

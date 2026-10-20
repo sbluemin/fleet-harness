@@ -181,18 +181,30 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     return found;
   };
 
-  /** 항목을 쓰고 인덱스를 다시 만든다 — 쓸 자리의 갈래·주제 디렉터리가 밖을 가리키는 링크면 거절한다. */
+  /**
+   * 쓰기 전에 기억 폴더·갈래·주제 자리 중 이미 있는 것이 링크면 거절한다 — mkdir 이 링크를 따라 밖에 디렉터리를 만들기 전에 막는다.
+   * 만든 뒤에도 실경로 담김을 한 번 더 본다.
+   */
+  const prepareDir = (root: string, dirs: readonly string[]) => {
+    for (const dir of [root, ...dirs]) {
+      try { if (fs.lstatSync(dir).isSymbolicLink()) throw new ObjectiveStoreError("invalid_ref"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    fs.mkdirSync(dirs.at(-1) ?? root, { recursive: true, mode: 0o700 });
+    for (const dir of dirs) if (!contained(root, dir)) throw new ObjectiveStoreError("invalid_ref");
+  };
+
+  /** 항목을 쓰고 인덱스를 다시 만든다. */
   const write = (theaterId: string, entry: MemoryEntry) => {
-    const { root, file } = fileOf(theaterId, entry.ref);
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    if (!contained(root, path.dirname(file))) throw new ObjectiveStoreError("invalid_ref");
+    const { root, branch, topic, file } = fileOf(theaterId, entry.ref);
+    prepareDir(root, [path.join(root, branch), path.join(root, branch, topic)]);
     options.writeFile(file, serializeEntry(entry));
     rebuildIndex(theaterId);
   };
 
   const rebuildIndex = (theaterId: string) => {
     const root = rootFor(theaterId);
-    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    prepareDir(root, []);
     options.writeFile(path.join(root, INDEX_FILE), renderIndex(list(theaterId)));
   };
 
