@@ -10,7 +10,8 @@ import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_
 import { refuse, text } from "../views.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
-import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, MEMORY_STALE_MS, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
+import { MEMORY_STALE_MS } from "./memory-stale.js";
+import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
 
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.

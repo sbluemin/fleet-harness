@@ -12,6 +12,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
@@ -21,13 +22,13 @@ type T = Translate<ObjectiveMessageKey>;
 
 /**
  * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 목표(행위 곁 칸)·지시·정보·
- * 설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
+ * 기억·설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
  * (`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이
  * 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { goals: "commodore-goals", directive: "commodore-directive", intel: "commodore-intel", settings: "commodore-settings" } as const;
+const TAB_IDS = { goals: "commodore-goals", directive: "commodore-directive", intel: "commodore-intel", memory: "commodore-memory", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
@@ -366,6 +367,7 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
       {tab === "directive" ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => inbox?.open({ theaterId, sectionId: THEATER_SETTINGS_SECTION, pageId: THEATER_SYSTEM_PROMPT_PAGE, focus: "editor-end" })} onFail={fail} onClear={clear} /> : null}
       {tab === "intel" ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} /> : null}
+      {tab === "memory" ? <CommodoreMemory t={t} theaterId={theaterId} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
     </div>
@@ -373,12 +375,13 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
 }
 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. */
-const TAB_INBOX_PAGES: Record<ConversationTab, string> = { goals: "log", directive: "directive", intel: "intel", settings: "settings" };
+const TAB_INBOX_PAGES: Record<ConversationTab, string> = { goals: "log", directive: "directive", intel: "intel", memory: "memory", settings: "settings" };
 
 const TAB_TITLES: Record<ConversationTab, ObjectiveMessageKey> = {
   goals: "objectives.commodore.conversation.goals",
   directive: "objectives.commodore.tabs.directive",
   intel: "objectives.commodore.tabs.intel",
+  memory: "objectives.commodore.tabs.memory",
   settings: "objectives.commodore.tabs.settings",
 };
 
