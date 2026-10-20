@@ -228,7 +228,7 @@ export interface ObjectiveStore {
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
   move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
-  complete(objectiveId: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
+  complete(objectiveId: string, by?: ObjectiveActor): Objective;
   reopen(objectiveId: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
   /** 완료 복원은 의도만 먼저 쓰고, 호스트가 복원한 뒤 회차를 시작한다. */
   extend(objectiveId: string, context: string, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): Objective;
@@ -328,7 +328,7 @@ export interface ObjectiveStore {
   /** 사람이 open 후보를 버린다 — 제목·요약과 시각만 흔적으로 남는다(멱등). */
   followupDiscard(objectiveId: string, candidateId: string, by?: ObjectiveActor): Objective;
   /** 고른 후보의 rev 를 검증하고 완료·배치·후보 잠금을 한 번에 쓴다. 같은 배치는 그대로 돌려준다. */
-  completeWithFollowups(objectiveId: string, selection: FollowupSelection, operationIntent?: StoredObjective["operationIntent"], by?: ObjectiveActor): { readonly objective: Objective; readonly fresh: boolean };
+  completeWithFollowups(objectiveId: string, selection: FollowupSelection, by?: ObjectiveActor): { readonly objective: Objective; readonly fresh: boolean };
   /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
   followupSettle(objectiveId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly operationId?: string; readonly error?: string; readonly attempted?: boolean }): Objective;
   /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
@@ -465,6 +465,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       if (parsed.stoppedAt !== undefined && (typeof parsed.stoppedAt !== "number" || !Number.isFinite(parsed.stoppedAt) || parsed.stoppedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.addedBy !== undefined && typeof parsed.addedBy !== "string" && (parsed.addedBy?.kind !== "commodore" || !objectiveActorSchema.safeParse(parsed.addedBy).success)) throw new ObjectiveStoreError("invalid_stored_actor");
+      // "archive"는 완료가 보관하던 옛 버전이 디스크에 남긴 의도다 — 로드는 받아 주고, 적용 없이 승인만 한다(launch.applyOperationIntent).
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
@@ -1454,12 +1455,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
-    complete: (objectiveId, operationIntent, by = "human") => update(objectiveId, (stored) => {
+    complete: (objectiveId, by = "human") => update(objectiveId, (stored) => {
       if (stored.done) return stored;
       // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
       // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
       if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
-      return { ...action(withoutDecisionRequest(stored), by, "complete"), done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent };
+      return { ...action(withoutDecisionRequest(stored), by, "complete"), done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent: undefined };
     }),
     reopen: (objectiveId, operationIntent, by = "human") => update(objectiveId, (stored) => (stored.done ? { ...action(stored, by, "reopen"), done: undefined, operationIntent } : stored)),
     extend: (objectiveId, context, operationIntent, by = "human") => update(objectiveId, (stored) => {
@@ -1991,7 +1992,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...action(stored, by, "followup-discarded", { targetId: candidateId }), followups };
     }),
 
-    completeWithFollowups(objectiveId, selection, operationIntent, by = "human") {
+    completeWithFollowups(objectiveId, selection, by = "human") {
       let fresh = false;
       const objective = update(objectiveId, (stored) => {
         const batches = stored.followupBatches ?? [];
@@ -2018,7 +2019,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         fresh = true;
         return foldBatches({
           ...action(action(withoutDecisionRequest(stored), by, "complete"), by, "followup-selected", { targetId: selection.batchId }),
-          done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent,
+          done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent: undefined,
           followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
           followupBatches: [...batches, { id: selection.batchId, at: now(), by, launch: selection.launch, items }],
         });

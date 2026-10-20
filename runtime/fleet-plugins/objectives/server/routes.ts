@@ -144,8 +144,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
-    // 완료하면 지휘관 Operation 이 보관되어 /state 에서 빠진다 — 폰 홈의 「끝남」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
-    { name: "finished", method: "POST", summary: "Read the completed objectives of a Theater whose Commander Operation is archived, most recent first (the phone home's Done section).", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.all().filter((item) => item.theaterId === theaterId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
+    // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 홈의 「끝남」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
+    { name: "finished", method: "POST", summary: "Read the completed objectives of a Theater that a person archived (completion itself does not archive), most recent first (the phone home's Done section).", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.all().filter((item) => item.theaterId === theaterId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표 레코드만 만든다 — 같은 ID의 지휘관 Operation은 첫 「구상」·「시작」 때 선다.
@@ -170,7 +170,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     // 실행 중인 옛 페이지도 이 경로를 쓴다. 기동 목표는 반복해도 purge하지 않는다.
     { name: "objective/remove", method: "POST", summary: "Compatibility alias: archive an existing Commander Operation, or permanently delete an objective with no Operation.", handler: json(objectiveRef, ({ objectiveId }) => launch.archive(objectiveId)) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
-    { name: "objective/complete", method: "POST", summary: "Complete an objective using the Core Operation lifecycle, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), actions.complete) },
+    { name: "objective/complete", method: "POST", summary: "Complete an objective (its Commander Operation stays where it is; archiving is a separate action), or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), actions.complete) },
     { name: "objective/extend", method: "POST", summary: "Extend a completed or review-ready objective in place: restore its Commander when archived, preserve the previous hand-off, and open a new planning round with criterion proposals.", handler: json(objectiveRef.extend({ context: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), actions.extend) },
     // 사람의 넘기기 — 지휘관이 넘기지 않은 인계 대기를 회고 없이 검토 대기로. 사람이 넘겼다는 사실이 인계 기록에 남는다.
     { name: "objective/hand-off", method: "POST", summary: "Hand an objective awaiting hand-off to review without a retrospective; the record says the person handed it off.", handler: json(objectiveRef, actions.handOff) },
@@ -205,12 +205,12 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       }), actions.message) },
     { name: "conversation/broadcast", method: "POST", summary: "Send the person's words to the live Commander and members concurrently, without waking dormant sessions.", handler: json(objectiveRef.extend({ text: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), ({ objectiveId, text }) => launch.broadcast(objectiveId, text)) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), actions.steer) },
-    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette, then completed ones whose Commander Operation is archived.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
+    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette: open ones first, then completed ones, archived or not.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
       const matches = (candidate: Objective) => !candidate.removed && candidate.title.toLowerCase().includes(needle);
-      // 끝나지 않은 목표가 먼저, 그다음 완료로 지휘관이 보관된 목표(`/finished` 와 같은 범위) — 보관을 유지한 채 완료 화면에서 범위를 넓힌다.
+      // 끝나지 않은 목표가 먼저, 그다음 보관 여부와 무관한 완료 목표 — 완료는 보관하지 않으므로 아직 보관하지 않은 완료도 찾아 보관할 수 있어야 한다.
       const open = store.list(theaterId).filter((candidate) => !candidate.done && matches(candidate));
-      const done = store.all().filter((candidate) => candidate.theaterId === theaterId && candidate.archived === true && !!candidate.done && candidate.recorded !== false && matches(candidate)).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
+      const done = store.all().filter((candidate) => candidate.theaterId === theaterId && !!candidate.done && candidate.recorded !== false && matches(candidate)).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
       const hits = [...open, ...done].slice(0, limit ?? 20);
       return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId, ...(candidate.done ? { done: true } : {}) })) };
     }) },

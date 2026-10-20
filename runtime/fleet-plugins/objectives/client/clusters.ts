@@ -202,9 +202,13 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Opera
   };
 }
 
-/** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
+/**
+ * 사이드바 줄 — 정리한(removed) 목표만 빼고 선다. 완료는 보관하지 않으므로 완료한 목표도 사람이 보관하기 전까지 「완료」 글리프 줄로
+ * 제자리에 남는다(서버가 완료 목표의 이름·그룹 편집을 거절하므로 그 둘은 싣지 않는다). 보관은 아래 archive 규칙 그대로다.
+ */
 function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now()): OperationClusterRow | null {
-  if (objective.removed || objective.done) return null;
+  if (objective.removed) return null;
+  const done = !!objective.done;
   const provenance = provenanceOf(objective, board, now);
   const mark = commodoreMarkOf(objective, board);
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
@@ -215,7 +219,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     order,
     fold,
     // 「시작 전」은 세션이 없는 목표에만 — Operation 이 서 있으면 개시 전이라도 호스트가 칩과 같은 활동 상태로 그린다.
-    ...(review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
+    ...(done ? { glyph: "done" as const } : review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
     ...(objective.today || overdue ? { today: true } : {}),
     ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
     ...decisionZoneOf(objective, board),
@@ -226,8 +230,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...rowNotes(objective, board, stalled),
     ...(selected ? { selected: true } : {}),
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
-    moveToGroup: (groupId: string | null) => moveObjective(objective, groupId),
-    rename: (title: string) => renameObjective(objective, title),
+    ...(done ? {} : { moveToGroup: (groupId: string | null) => moveObjective(objective, groupId), rename: (title: string) => renameObjective(objective, title) }),
     // Operation 이 아직 없는 목표도 우클릭 「보관」으로 보관함에 보낸다 — 뿌리가 선 줄은 호스트가 그 Operation 을 보관한다.
     ...(objective.hasOperation ? {} : { archive: () => archiveObjective(objective) }),
   };
@@ -271,7 +274,7 @@ function moveObjective(objective: Objective, groupId: string | null): void {
   if (api && groupId !== objective.groupId) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { groupId } }).catch(() => undefined);
 }
 
-export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null, showing: string | null = null): OperationCluster[] {
+export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null): OperationCluster[] {
   const out: OperationCluster[] = [];
   const stalled = new Set(stalledObjectives(objectives, observe, now));
   const orderIn = new Map<string, number>();
@@ -298,9 +301,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       { state: (operationId) => shownActivity(activity.get(operationId) ?? "closed"), roster }, boardOf(objective.theaterId).active);
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
+      // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
-      // 완료한 목표(지휘관 보관)는 줄이 없다 — 가운데 칸의 완료 화면이 그 목표를 보는 동안만 입력창(범위 넓히기)이 읽을 대화로 선다.
-      else if (objective.done && showing === objective.id) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, avatarOperationId: commander, members: [], conversation });
       continue;
     }
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
@@ -466,7 +468,7 @@ export const objectivesClusterSource: OperationClusterSource = {
     // 보관된 완료 목표는 살아 있는 목록에 없다 — 완료 화면이 보는 동안만 읽어 둔 끝난 목표로 그 입력창의 대화(범위 넓히기)를 세운다.
     const archivedShown = showing && !live.some((objective) => objective.id === showing) ? findFinishedObjective(showing) : null;
     const next = [
-      ...clustersOf(live, activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster, showing),
+      ...clustersOf(live, activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster),
       ...(archivedShown?.done ? [doneStandInCluster(archivedShown, roster, commodoreBoardOf)] : []),
     ];
     const nextSignature = signature(next);
