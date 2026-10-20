@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.247.0] - 2026-10-20
+
+### fleet-console
+
+#### Changed
+- 사람이 완료하든 사령관이 완료하든 목표는 더 이상 자동으로 보관되지 않습니다. 직접 보관하기 전까지 완료 표시로 목표와 대화 목록에 남습니다.
+
 ## [1.246.0] - 2026-10-19
 
 ### fleet-console

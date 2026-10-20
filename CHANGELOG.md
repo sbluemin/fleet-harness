@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.247.0] - 2026-10-20
+
+### fleet-console
+
+#### Changed
+- Completing an objective, whether you or the Commodore completes it, no longer archives it: it stays in your objectives and conversations marked as done until you archive it yourself.
+
 ## [1.246.0] - 2026-10-19
 
 ### fleet-console
