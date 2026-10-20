@@ -19,7 +19,7 @@ import { TheaterAvatar } from "../../../../../features/workspace/client/theater-
 import { useRailEntries } from "../pane/pane-registry.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
-import { MobileHomeSections } from "./mobile-home-sections.js";
+import { isFinishedConversation, MobileHomeSections } from "./mobile-home-sections.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { openMobilePluginDestination, pushMobileSheet, setMobileDestination } from "./mobile-store.js";
@@ -28,7 +28,7 @@ const MAX_ATTENTION_ROWS = 3;
 
 /**
  * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 바로가기 칩 줄, 지금 Theater의 정체(대표 자리), 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행,
- * 맨 끝에 「시작 전 N」(펼침)·「끝남 N」(접힘) 접기(`MobileHomeSections`).
+ * 맨 끝에 「시작 전 N」(펼침)·「끝남 N」(접힘) 접기(`MobileHomeSections`). 완료 목표의 대화(묶음 줄이 「완료」)는 「대화」 대신 「끝남」에 든다.
  * 행 하나는 지휘관 묶음 하나다. 행을 누르면 그 Operation 화면이 홈 자리에 서고, 뒤로가 이 목록으로 돌아온다.
  * 목록은 고른 Theater 범위이고(전환은 머리의 Theater 알약), 모든 Theater를 가로지르는 것은 검색뿐이다.
  */
@@ -53,6 +53,8 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   const byId = useMemo(() => new Map(inTheater.map((conversation) => [conversation.operation.id, conversation])), [inTheater]);
   const attentionOperationIds = new Set(attention.flatMap((row) => row.kind === "operation" ? [row.operation.id] : []));
   const rest = inTheater.filter((conversation) => !attentionOperationIds.has(conversation.operation.id));
+  const finished = rest.filter((conversation) => isFinishedConversation(clusterIndex, conversation.operation.id));
+  const live = rest.filter((conversation) => !isFinishedConversation(clusterIndex, conversation.operation.id));
 
   const open = (conversation: MobileConversation) => { setMobileDestination({ kind: "home" }); focusOperation(conversation.operation.id); };
   // 머리는 목록 위에 떠 있다 — 목록이 그 높이(`--m-screen-head`)만큼 위를 비운다.
@@ -113,15 +115,16 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
           </>
         ) : null}
         <div className="mobile-conv-section"><span>{t("mobile.list.section")}</span></div>
-        {rest.length === 0 && attention.length === 0 ? (
+        {live.length === 0 && attention.length === 0 && finished.length === 0 ? (
           <div className="mobile-conv-empty">
             <p>{t("mobile.list.empty")}</p>
             <button type="button" className="mobile-pill" onClick={openMobileNewSession}><MobileIcon name="plus" size={18} />{t("mobile.list.newConversation")}</button>
           </div>
-        ) : rest.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : rest.map((conversation) => (
+        ) : live.length === 0 && attention.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noActive")}</p>
+          : live.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : live.map((conversation) => (
           <ConversationRow key={conversation.operation.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />
         ))}
-        <MobileHomeSections theaterId={getViewedTheaterId()} />
+        <MobileHomeSections theaterId={getViewedTheaterId()} finishedConversations={finished} onOpenConversation={open} />
       </div>
     </section>
   );
