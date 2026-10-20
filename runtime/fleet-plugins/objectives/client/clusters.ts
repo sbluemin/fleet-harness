@@ -220,8 +220,8 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     fold,
     // 「시작 전」은 세션이 없는 목표에만 — Operation 이 서 있으면 개시 전이라도 호스트가 칩과 같은 활동 상태로 그린다.
     ...(done ? { glyph: "done" as const } : review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
-    ...(objective.today || overdue ? { today: true } : {}),
-    ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
+    // 완료한 목표는 「오늘」 구역에 올리지 않는다 — 완료 전 Today·기한 표시는 보관 전까지 줄을 긴급 구역으로 승격시켜 끝난 일을 오늘 일로 보인다.
+    ...(done ? {} : { ...(objective.today || overdue ? { today: true } : {}), ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}) }),
     ...decisionZoneOf(objective, board),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
