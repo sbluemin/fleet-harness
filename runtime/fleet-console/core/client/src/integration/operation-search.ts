@@ -6,6 +6,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { LocalizedText } from "@fleet-console/sdk/i18n";
 import type { PaneSearchProvider, PaneSearchResult } from "@fleet-console/sdk/pane";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
 
 import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../features/execution/client/components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
@@ -21,6 +22,8 @@ export interface OperationSearchEntry {
   readonly operationId: string;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
+  /** 사령관 별칭 — 사이드바처럼 묶음 머리는 별칭을 앞세우고, 검색은 별칭과 원래 이름 둘 다로 맞는다. */
+  readonly theaterAlias?: string;
   /** Shell 판별용 Operation 종류 — 팔레트의 이름 왼쪽 마크가 사이드바와 같은 분기를 탄다. */
   readonly type: string;
   readonly operationName: string;
@@ -65,7 +68,34 @@ export interface OperationSearchGroup {
   readonly archived?: boolean;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
+  readonly theaterAlias?: string;
+  /** 그 Theater 의 Inbox 섹션 행(사령관 등) — 묶음의 Operation 행보다 먼저 선다. */
+  readonly sections: readonly TheaterSectionSearchEntry[];
   readonly entries: readonly OperationSearchEntry[];
+}
+
+/**
+ * Theater Inbox 섹션(플러그인이 `theaterInboxSections` 로 등록한 것, 예: 사령관)을 팔레트 행으로 세운 것.
+ * 새 SDK 계약 없이 섹션 서술자만으로 만든다 — 노출 조건은 섹션의 `available`, 착지는 그 섹션의 첫 칸이다.
+ */
+export interface TheaterSectionSearchEntry {
+  /** `${sectionId}@${theaterId}` */
+  readonly key: string;
+  readonly theaterId: string;
+  readonly theaterLabel: string;
+  readonly theaterAlias?: string;
+  /** 정준 id(`objectives:commodore`) */
+  readonly sectionId: string;
+  /** 서술자의 첫 칸 id */
+  readonly pageId: string;
+  /** 표시 언어의 섹션 제목 */
+  readonly title: string;
+  /** 두 언어의 섹션 제목 — 명령 모드의 별칭 라벨 재료 */
+  readonly titles: { readonly ko: string; readonly en: string };
+  /** 섹션 상태 한 줄(`read().scope`) */
+  readonly caption: string;
+  readonly searchText: string;
+  readonly icon: ReactNode;
 }
 
 export interface RailSearchGroup {
@@ -219,7 +249,15 @@ export function orderOperationSearchEntries(
     .map(({ entry }) => entry);
 }
 
-export function groupOperationSearchEntries(entries: readonly OperationSearchEntry[]): readonly OperationSearchGroup[] {
+/**
+ * 섹션 행은 같은 Theater 의 보관 아닌 묶음 맨 앞에 붙는다. 그 묶음이 없으면 새 묶음을 세운다 — 보고 있는
+ * Theater 면 맨 앞, 아니면 마지막 활성 묶음 뒤(보관 묶음 앞)다.
+ */
+export function groupOperationSearchEntries(
+  entries: readonly OperationSearchEntry[],
+  viewedTheaterId: string | null = null,
+  sectionEntries: readonly TheaterSectionSearchEntry[] = [],
+): readonly OperationSearchGroup[] {
   const groups: OperationSearchGroup[] = [];
   const groupIndexes = new Map<string, number>();
   for (const entry of entries) {
@@ -231,9 +269,97 @@ export function groupOperationSearchEntries(entries: readonly OperationSearchEnt
       continue;
     }
     groupIndexes.set(key, groups.length);
-    groups.push({ theaterId: entry.theaterId, theaterLabel: entry.theaterLabel, entries: [entry], archived: entry.archived });
+    groups.push({
+      theaterId: entry.theaterId,
+      theaterLabel: entry.theaterLabel,
+      ...(entry.theaterAlias ? { theaterAlias: entry.theaterAlias } : {}),
+      sections: [],
+      entries: [entry],
+      archived: entry.archived,
+    });
+  }
+  for (const section of sectionEntries) {
+    const index = groups.findIndex((group) => !group.archived && group.theaterId === section.theaterId);
+    const existing = index === -1 ? undefined : groups[index];
+    if (existing) {
+      groups[index] = { ...existing, sections: [...existing.sections, section] };
+      continue;
+    }
+    const created: OperationSearchGroup = {
+      theaterId: section.theaterId,
+      theaterLabel: section.theaterLabel,
+      ...(section.theaterAlias ? { theaterAlias: section.theaterAlias } : {}),
+      sections: [section],
+      entries: [],
+    };
+    if (section.theaterId === viewedTheaterId) {
+      groups.unshift(created);
+      continue;
+    }
+    const firstArchived = groups.findIndex((group) => group.archived === true);
+    groups.splice(firstArchived === -1 ? groups.length : firstArchived, 0, created);
   }
   return groups;
+}
+
+/**
+ * Theater × Inbox 섹션마다 `available` 이고 칸이 있을 때만 행을 만든다. 한 섹션의 실패가 팔레트를 비우지 않도록
+ * 호출마다 감싼다(Theater 머리 기여와 같은 규칙).
+ */
+export function buildTheaterSectionSearchEntries(
+  theaters: readonly TheaterInfo[],
+  sections: readonly TheaterInboxSectionDescriptor[],
+  language: ConsoleLocale,
+): readonly TheaterSectionSearchEntry[] {
+  const rows: TheaterSectionSearchEntry[] = [];
+  for (const theater of theaters) {
+    const summary = { id: theater.id, label: theater.label, ...(theater.alias ? { alias: theater.alias } : {}) };
+    for (const section of sections) {
+      try {
+        const page = section.pages[0];
+        if (!page) continue;
+        const status = section.read(summary, language);
+        if (status.availability !== "available") continue;
+        const titles = { ko: section.title("ko"), en: section.title("en") };
+        rows.push({
+          key: `${section.id}@${theater.id}`,
+          theaterId: theater.id,
+          theaterLabel: theater.label,
+          ...(theater.alias ? { theaterAlias: theater.alias } : {}),
+          sectionId: section.id,
+          pageId: page.id,
+          title: section.title(language),
+          titles,
+          caption: status.scope,
+          // 표시 언어와 무관하게 두 언어 제목·별칭·원래 이름 어느 것으로도 찾아진다.
+          searchText: [titles.ko, titles.en, theater.alias, theater.label].filter(Boolean).join(" "),
+          icon: section.icon({ theater: summary }),
+        });
+      } catch {
+        continue;
+      }
+    }
+  }
+  return rows;
+}
+
+/** 빈 질의는 보고 있는 Theater 의 행만, 질의가 있으면 모든 Theater 를 Operation 행과 같은 정렬 키로 거른다. */
+export function filterTheaterSectionSearchEntries(
+  entries: readonly TheaterSectionSearchEntry[],
+  query: string,
+  viewedTheaterId: string | null,
+): readonly TheaterSectionSearchEntry[] {
+  if (searchTokens(query).length === 0) return entries.filter((entry) => entry.theaterId === viewedTheaterId);
+  return entries
+    .flatMap((entry, originalIndex) => {
+      const match = fuzzyMatchPaletteLabel(entry.searchText, query);
+      return match ? [{ entry, match, originalIndex }] : [];
+    })
+    .sort((left, right) =>
+      right.match.exactTokens - left.match.exactTokens
+      || right.match.score - left.match.score
+      || left.originalIndex - right.originalIndex)
+    .map(({ entry }) => entry);
 }
 
 
@@ -246,6 +372,7 @@ function toOperationSearchEntry(
     operationId: operation.id,
     theaterId: operation.theaterId,
     theaterLabel: theater?.label ?? operation.theaterId,
+    ...(theater?.alias ? { theaterAlias: theater.alias } : {}),
     type: operation.type,
     operationName: operation.title,
     pluginId: operation.pluginId,
@@ -256,5 +383,5 @@ function toOperationSearchEntry(
 }
 
 function operationSearchText(entry: OperationSearchEntry): string {
-  return [entry.operationName, entry.theaterLabel, entry.pluginId].join(" ");
+  return [entry.operationName, entry.theaterAlias, entry.theaterLabel, entry.pluginId].filter(Boolean).join(" ");
 }
