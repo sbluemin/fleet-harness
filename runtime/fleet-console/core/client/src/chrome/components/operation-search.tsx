@@ -1,5 +1,7 @@
 import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
+import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
+import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -107,6 +109,7 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
+  const registry = usePluginRegistry();
   const language = useConsoleLocale();
   const desktopView = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
@@ -392,7 +395,9 @@ export function OperationSearch({
         // Theater 전환은 대화 화면으로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
         closeConversationSurface();
-        openTheaterInbox({ theaterId: action.theaterId, sectionId: "console:settings", pageId: "system-prompt" });
+        // 사이드바 Theater 머리처럼 누르는 순간 기여의 첫 칸을 읽고, 없으면 폰에서도 시스템 프롬프트로 간다.
+        const landing = resolveTheaterInboxLanding(registry.theaterContributions, action.theaterId);
+        openTheaterInbox({ theaterId: action.theaterId, ...(landing ?? { sectionId: "console:settings", pageId: "system-prompt" }) });
         navigate("/operations");
         break;
       }
