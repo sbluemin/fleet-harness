@@ -945,7 +945,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private fun isAllowedLocalMainFrame(uri: Uri, gateway: LoopbackGateway): Boolean {
     if (!isLocalOrigin(uri, gateway) || uri.encodedUserInfo != null || uri.fragment != null) return false
     val path = uri.path.orEmpty()
-    return path == "/console" || path == "/console/"
+    return path == "/console" || path.startsWith("/console/")
   }
 
   private fun isLocalOrigin(uri: Uri, gateway: LoopbackGateway): Boolean = uri.scheme == "https" &&
