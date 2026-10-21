@@ -1,5 +1,5 @@
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
@@ -10,7 +10,8 @@ import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type Com
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
  *
  * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`·
- * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
+ * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + 호스트가 이 Theater 루트에 묶어 준 지식 도구
+ * (`fleet-codex` 의 Wiki 도구 — Operation 이 받는 것과 같은 이름·같은 Theater 판정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
  * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
  *
@@ -42,6 +43,8 @@ export interface CommodoreSessionOptions {
   readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly PluginMcpTool[];
+  /** 호스트가 이 Theater 루트에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindTheater`) — 서버 이름 그대로 도구 그룹이 된다. */
+  readonly knowledgeTools?: readonly PluginMcpServerTools[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
@@ -206,7 +209,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       tools: {
         builtins: ["WebSearch", "WebFetch"],
         browser: { scopeId: `commodore:${options.theaterId}` },
-        custom: [{ name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : [])],
+        custom: [
+          { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
+          ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : []),
+          ...(options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP)
+            .map((group) => ({ name: group.name, tools: group.tools.map(observed) })),
+        ],
       },
       onEvent,
     });

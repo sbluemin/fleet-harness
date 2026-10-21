@@ -1,4 +1,4 @@
-import type { ComposerQuoteAttachResult, ComposerQuoteKind, ComposerQuoteTarget } from "@fleet-console/sdk/composer/quotes";
+import type { ComposerQuoteAttachResult, ComposerQuoteKind } from "@fleet-console/sdk/composer/quotes";
 import type { ComposerQuoteTargetOption } from "@fleet-console/sdk/plugin";
 
 import { getT, resolveActiveLocale } from "../i18n/index.js";
@@ -11,6 +11,9 @@ import { escapeAttribute, escapeHtml } from "./utils.js";
  * Codex 는 댓글을 모아 두지 않는다 — 「댓글」·「질문」을 누르는 즉시 받는 쪽 컴포저 초안에 칩이 서고, 사람은 그 지휘관·사령관의
  * 채팅에서 지시를 써서 보낸다. 붙이기는 보내기가 아니다. 받는 쪽 목록과 붙이기는 호스트 능력(`composer.quoteTargets`·
  * `attachQuote`)이 중개한다. 지휘관이 고친 내용은 Wiki 패치로 와서 이 문서 머리의 「검토 대기 패치」로 이어진다.
+ *
+ * 받는 곳은 사람이 고르지 않는다 — 매번 지금 열린 대화(지휘관이든 사령관이든 호스트가 `current` 로 알린 곳)이고, 그 대화가 받을 수
+ * 없으면 사령관, 그다음 첫 지휘관이다. 알약은 그 이름을 조작할 수 없는 「→ 이름」으로만 보인다. 받을 곳이 없으면 안내만 선다.
  */
 
 export interface QuoteSelectionController { destroy(): void; }
@@ -26,13 +29,6 @@ export interface MountQuoteSelectionOptions {
 }
 
 interface Selection { readonly quote: string; readonly top: number; readonly left: number }
-
-// Theater 별로 마지막으로 고른 붙일 곳 — 문서를 옮겨 다녀도 같은 지휘관에게 이어 붙인다(플러그인 번들 안 페이지 메모리).
-const chosenTargets = new Map<string, string>();
-
-function targetKey(target: ComposerQuoteTarget): string {
-  return target.kind === "operation" ? `op:${target.operationId}` : `plugin:${target.pluginId}:${target.targetId}`;
-}
 
 function t() {
   return getT(resolveActiveLocale());
@@ -57,10 +53,8 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
   options.article.append(anchor, toast);
 
   let selection: Selection | null = null;
-  let menuOpen = false;
   let disposed = false;
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
-  const theaterKey = options.theaterId ?? "";
   const composer = () => hostCapabilities.bound()?.composer ?? null;
 
   const targets = (): readonly ComposerQuoteTargetOption[] => {
@@ -68,11 +62,9 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
     return composer()?.quoteTargets?.(options.theaterId) ?? [];
   };
 
-  /** 고른 곳이 아직 있으면 그곳, 없으면 지금 보는 대화, 그도 없으면 사령관, 그다음 첫 지휘관. */
+  /** 지금 열린 대화(지휘관·사령관), 그 대화가 받을 수 없으면 사령관, 그다음 첫 지휘관. */
   const resolveTarget = (list: readonly ComposerQuoteTargetOption[]): ComposerQuoteTargetOption | null => {
-    const chosen = chosenTargets.get(theaterKey);
-    return list.find((option) => targetKey(option.target) === chosen)
-      ?? list.find((option) => option.current)
+    return list.find((option) => option.current)
       ?? list.find((option) => option.group === "commodore")
       ?? list[0]
       ?? null;
@@ -97,25 +89,13 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
       anchor.innerHTML = `<div class="codex-quote-pill is-empty" ${at} role="note">${escapeHtml(tr("codex.quote.noTarget"))}</div>`;
       return;
     }
-    const menu = menuOpen ? `<div class="codex-quote-menu" role="menu" aria-label="${escapeAttribute(tr("codex.quote.targetMenu"))}">
-      ${(["commodore", "commander"] as const).map((group) => {
-        const rows = list.filter((option) => option.group === group);
-        if (rows.length === 0) return "";
-        return `<span class="codex-quote-menu-head">${escapeHtml(tr(group === "commodore" ? "codex.quote.groupCommodore" : "codex.quote.groupCommander"))}</span>${rows.map((option) => `
-          <button type="button" role="menuitemradio" aria-checked="${targetKey(option.target) === targetKey(target.target)}" data-quote-target="${escapeAttribute(targetKey(option.target))}">
-            <span class="codex-quote-menu-name">${escapeHtml(option.label)}</span>${option.current ? `<span class="codex-quote-menu-note">${escapeHtml(tr("codex.quote.current"))}</span>` : ""}
-          </button>`).join("")}`;
-      }).join("")}
-    </div>` : "";
     anchor.innerHTML = `<div class="codex-quote-pill" ${at} role="group" aria-label="${escapeAttribute(tr("codex.quote.pillAria", { name: targetName(target) }))}">
       <button type="button" data-quote-kind="comment">${ICON_COMMENT}<span>${escapeHtml(tr("codex.quote.comment"))}</span></button>
       <span class="codex-quote-sep" aria-hidden="true"></span>
       <button type="button" data-quote-kind="question">${ICON_QUESTION}<span>${escapeHtml(tr("codex.quote.question"))}</span></button>
-      <button type="button" class="codex-quote-to" data-quote-menu aria-haspopup="menu" aria-expanded="${menuOpen}" title="${escapeAttribute(`${tr("codex.quote.targetMenu")} · ${targetName(target)}`)}"><span class="codex-quote-to-name">→ ${escapeHtml(targetName(target))}</span><span aria-hidden="true" class="codex-quote-chev">▾</span></button>
-      ${menu}
+      <span class="codex-quote-to" title="${escapeAttribute(targetName(target))}">→ ${escapeHtml(targetName(target))}</span>
     </div>`;
     placePill();
-    if (menuOpen) anchor.querySelector<HTMLButtonElement>('.codex-quote-menu [aria-checked="true"]')?.focus({ preventScroll: true });
   };
 
   /** 알약 중심을 선택 아래에 두되, 실제 폭의 절반만큼 안쪽으로 당겨 문서 좌우 경계 안에 둔다. */
@@ -129,7 +109,6 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
 
   const clearSelection = () => {
     selection = null;
-    menuOpen = false;
     render();
   };
 
@@ -173,7 +152,6 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
       top: rect.bottom - host.top + 8,
       left: Math.min(Math.max(rect.left + rect.width / 2 - host.left, 0), Math.max(host.width, 0)),
     };
-    menuOpen = false;
     render();
   };
 
@@ -187,25 +165,16 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
   const onClick = (event: MouseEvent) => {
     if (!(event.target instanceof Element) || !anchor.contains(event.target)) return;
     const kind = event.target.closest<HTMLElement>("[data-quote-kind]")?.dataset.quoteKind;
-    if (kind === "comment" || kind === "question") { attach(kind); return; }
-    if (event.target.closest("[data-quote-menu]")) { menuOpen = !menuOpen; render(); return; }
-    const picked = event.target.closest<HTMLElement>("[data-quote-target]")?.dataset.quoteTarget;
-    if (picked) {
-      chosenTargets.set(theaterKey, picked);
-      menuOpen = false;
-      render();
-      anchor.querySelector<HTMLButtonElement>("[data-quote-menu]")?.focus({ preventScroll: true });
-    }
+    if (kind === "comment" || kind === "question") attach(kind);
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Escape" || !selection) return;
     event.stopPropagation();
-    if (menuOpen) { menuOpen = false; render(); anchor.querySelector<HTMLButtonElement>("[data-quote-menu]")?.focus({ preventScroll: true }); return; }
     clearSelection();
   };
 
-  // 받는 쪽 목록이 바뀌면(지휘관이 생기거나 사령관이 꺼짐) 떠 있는 알약을 다시 그린다.
+  // 받는 쪽 목록이나 지금 열린 대화가 바뀌면(지휘관이 생김·사령관이 꺼짐·다른 대화를 엶) 떠 있는 알약의 「→ 이름」을 다시 그린다.
   const unsubscribeTargets = composer()?.subscribeQuoteTargets?.(() => { if (selection) render(); }) ?? (() => undefined);
   options.article.addEventListener("mouseup", onMouseUp);
   options.article.addEventListener("mousedown", onMouseDown);

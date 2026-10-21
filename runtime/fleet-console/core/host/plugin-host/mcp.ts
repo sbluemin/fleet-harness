@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import { inputIssues, type AdmiralMcpSession, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type AdmiralMcpSession, type ConsoleCaller, type PluginAdmiralMcpRegistration, type PluginMcpServerTools, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 export interface PluginAdmiralMcpHostOptions {
@@ -22,12 +22,18 @@ const unscopedLabel = (label: string | undefined): string | null => {
 
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
 export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options: PluginAdmiralMcpHostOptions = {}) {
-  type Registration = { manager: ReturnType<typeof createExecutorSessionManager>; stop(): Promise<void> };
+  type ToolRunner = { readonly tool: PluginMcpTool; readonly run: (args: unknown, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> };
+  type Registration = {
+    manager: ReturnType<typeof createExecutorSessionManager>;
+    stop(): Promise<void>;
+    /** Theater 루트에 묶어 내줄 수 있는 서버면 그 도구 — 실행은 서빙 경로와 같은 검증을 지난다. 아니면 null. */
+    theaterTools: readonly ToolRunner[] | null;
+  };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
   let disposed = false;
   return {
-    register(pluginId: string, tools: readonly PluginMcpTool[]): () => void {
+    register(pluginId: string, tools: readonly PluginMcpTool[], registration: PluginAdmiralMcpRegistration = {}): () => void {
       if (disposed) throw new Error("Plugin MCP host is disposed");
       const name = `fleet-${pluginId}`;
       if (!/^[a-z0-9][a-z0-9-]*$/.test(pluginId) || name === "fleet-console-use" || name === "fleet-core" || name === "fleet-ai-gateway" || name === "fleet-computer-use") throw new Error("Invalid plugin MCP name");
@@ -36,35 +42,55 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
       const registry = createMcpToolRegistry();
       const snapshotStore = createMcpToolSnapshotStore();
       const controller = new AbortController();
+      const runners: ToolRunner[] = [];
       for (const tool of tools) {
         if (!/^[a-zA-Z0-9_-]+$/.test(tool.name)) throw new Error("Invalid plugin MCP tool name");
         const schema = z.fromJSONSchema(tool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+        // 서빙 경로와 Theater 묶음 경로가 같은 선검사(내려간 서버·인자 검증)를 지난다. 호출자·cwd 는 부르는 쪽이 정한다.
+        const run = async (args: unknown, context: Parameters<PluginMcpTool["execute"]>[1]) => {
+          if (controller.signal.aborted) return { content: [{ type: "text", text: "Plugin MCP is unavailable" }], isError: true };
+          const parsed = schema.safeParse(args);
+          if (!parsed.success) return { content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: inputIssues(parsed.error.issues) }) }], isError: true };
+          return tool.execute(parsed.data, { ...context, signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
+        };
+        runners.push({ tool, run });
         registry.registerAgentTool({
           id: tool.name, tag: tool.name, title: tool.name, description: tool.description,
           promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], parameters: tool.inputSchema,
           execute: async (args, context) => {
-            if (controller.signal.aborted) return { content: [{ type: "text", text: "Plugin MCP is unavailable" }], isError: true };
-            const parsed = schema.safeParse(args);
-            if (!parsed.success) return { content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: inputIssues(parsed.error.issues) }) }], isError: true };
             const label = unscopedLabel(context.sessionLabel);
             const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
-            return tool.execute(parsed.data, { ...context, ...(caller ? { caller } : {}), signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
+            return run(args, { ...context, ...(caller ? { caller } : {}) });
           },
         });
       }
       const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
-      const registration: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); } };
-      registrations.set(name, registration);
+      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, theaterTools: registration.theaterScoped ? runners : null };
+      registrations.set(name, entry);
       return () => {
-        if (registrations.get(name) !== registration) return;
+        if (registrations.get(name) !== entry) return;
         registrations.delete(name);
         controller.abort();
         manager.cleanup();
-        const closing = registration.stop();
+        const closing = entry.stop();
         retiring.add(closing);
         void closing.then(() => retiring.delete(closing), () => {});
       };
+    },
+    /**
+     * `theaterScoped` 서버들의 도구를 작업 디렉터리 하나(호스트가 정한 Theater 루트)에 묶는다. 부르는 쪽이 넘긴 cwd 는 버리고
+     * 이 루트로 부른다 — 모델이나 세션 자리가 다른 Theater 를 고를 수 없다. 호출자는 싣지 않는다(fail-closed).
+     */
+    bindTheater(root: string): PluginMcpServerTools[] {
+      if (disposed) return [];
+      return [...registrations].flatMap(([name, entry]) => entry.theaterTools ? [{
+        name,
+        tools: entry.theaterTools.map(({ tool, run }): PluginMcpTool => ({
+          name: tool.name, description: tool.description, inputSchema: tool.inputSchema,
+          execute: (args, context) => run(args, { cwd: root, ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}), ...(context.signal ? { signal: context.signal } : {}) }),
+        })),
+      }] : []);
     },
     connect(): AdmiralMcpSession {
       const prefix = randomUUID();

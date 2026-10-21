@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { AgentHost, AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
-import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { ConsoleOperationObservation, PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
@@ -64,6 +64,8 @@ export interface CommodoreSupervisorDeps {
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader, hasPersonMessage: CommodorePersonMessageReader) => readonly PluginMcpTool[];
+  /** 호스트가 이 Theater 루트에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
+  readonly knowledgeTools?: (theaterId: string) => readonly PluginMcpServerTools[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
   /** 정체가 구성원이 일하는 동안의 지휘관 휴식이면 그 사실을 지휘관에게 보낸다 — 사령관을 깨우는 같은 순간에 한 번. */
   readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
@@ -361,6 +363,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner), () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0).map((tool) => selfAttributed(runner, tool)), now,
+      ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.theaterId) } : {}),
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),

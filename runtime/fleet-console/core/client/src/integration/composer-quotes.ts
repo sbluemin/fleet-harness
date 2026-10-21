@@ -29,14 +29,21 @@ function chatCommanders(theaterId: string) {
     && operation.payload.chatMode === true);
 }
 
+/**
+ * 이 Theater 에서 인용을 받을 수 있는 곳. `current` 는 하나만 선다 — 플러그인 대상이 자기 대화가 지금 열려 있다고 알리면(사령관
+ * 대화) 그 대상이고, 아니면 가운데 칸의 Operation(지휘관)이다.
+ */
 export function composerQuoteTargets(theaterId: string): readonly ComposerQuoteTargetOption[] {
   const options: ComposerQuoteTargetOption[] = [];
+  let pluginCurrent = false;
   for (const [pluginId, receiver] of receivers) {
     for (const target of receiver.targets(theaterId)) {
-      options.push({ target: { kind: "plugin", pluginId, targetId: target.targetId }, label: target.label, group: "commodore" });
+      const current = target.current === true && !pluginCurrent;
+      if (current) pluginCurrent = true;
+      options.push({ target: { kind: "plugin", pluginId, targetId: target.targetId }, label: target.label, group: "commodore", ...(current ? { current: true } : {}) });
     }
   }
-  const subject = getConversationSubject()?.id ?? getState().activeOperationId;
+  const subject = pluginCurrent ? null : getConversationSubject()?.id ?? getState().activeOperationId;
   for (const operation of chatCommanders(theaterId)) {
     options.push({ target: { kind: "operation", operationId: operation.id }, label: operation.title, group: "commander", ...(operation.id === subject ? { current: true } : {}) });
   }

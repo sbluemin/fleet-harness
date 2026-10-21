@@ -375,7 +375,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly host: FleetPluginHostCapabilities;
-  readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0]) => () => void;
+  readonly registerAdmiralMcp: (pluginId: string, tools: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[0], options?: Parameters<FleetPluginHostCapabilities["admiralMcp"]["register"]>[1]) => () => void;
   /** 플러그인 id 를 호스트가 묶는다 — 플러그인은 다른 플러그인의 이름으로 Console Use 도구를 실을 수 없다. */
   readonly contributeConsoleUse?: (pluginId: string, tools: Parameters<NonNullable<FleetPluginHostCapabilities["consoleUse"]["contribute"]>>[0]) => () => void;
   /** The host binds the plugin id: a plugin cannot start a child in another plugin's name. */
@@ -526,7 +526,8 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
       ...(deps.spawnOwnedProcess ? { processes: { spawnOwned: (request: FleetPluginOwnedSpawnRequest) => deps.spawnOwnedProcess!(plugin.manifest.id, request) } } : {}),
       admiralMcp: {
         connect: () => deps.host.admiralMcp.connect(),
-        register: (tools) => deps.registerAdmiralMcp(plugin.manifest.id, tools),
+        register: (tools, options) => deps.registerAdmiralMcp(plugin.manifest.id, tools, options),
+        ...(deps.host.admiralMcp.bindTheater ? { bindTheater: deps.host.admiralMcp.bindTheater } : {}),
       },
       consoleUse: {
         ...deps.host.consoleUse,
@@ -631,8 +632,9 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities, 
         },
       } } : {}),
       admiralMcp: {
-        register: (tools) => {
-          const unregister = track(host.admiralMcp.register(tools));
+        ...(host.admiralMcp.bindTheater ? { bindTheater: host.admiralMcp.bindTheater } : {}),
+        register: (tools, options) => {
+          const unregister = track(host.admiralMcp.register(tools, options));
           trackCleanup(unregister);
           return unregister;
         },

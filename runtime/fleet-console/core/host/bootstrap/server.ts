@@ -982,6 +982,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     admiralMcp: {
       connect: () => pluginMcp.connect(),
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
+      // 루트는 등록된 Theater 의 실경로다 — 부르는 플러그인이 경로를 건네지 않으므로 다른 Theater·임의 경로로 묶을 수 없다.
+      bindTheater: (theaterId) => {
+        const root = theaters.get(theaterId)?.realpath;
+        return root ? pluginMcp.bindTheater(root) : [];
+      },
     },
     operations: {
       describe: operationArchive.describe,
@@ -1181,7 +1186,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     routes: routeRegistry,
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
-    registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
+    registerAdmiralMcp: (pluginId, tools, options) => pluginMcp.register(pluginId, tools, options),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
     spawnOwnedProcess: (pluginId, request) => {

@@ -3,8 +3,9 @@ import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { attachQuoteToCommodoreComposer } from "./commodore-inbox-section.js";
+import { isCommodoreConversationOpen, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { commodoreMongleState } from "./commodore-header.js";
-import { commodoreAlias, commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore, useCommodore } from "./commodore-state.js";
+import { commodoreAlias, commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 
@@ -58,12 +59,24 @@ export async function messageCommodoreMention(targetId: string, text: string): P
 }
 
 /**
- * 인용을 받을 수 있는 이 Theater 의 사령관 — 호스트의 「붙일 곳」 메뉴(Codex 문서의 선택 알약)에 선다. 새 세션 '@' 덱과 같은 조건
- * (실험 기능과 이 Theater 의 자율 운영이 모두 켜짐)일 때만 낸다. 이름은 덱과 같다(별칭이 있으면 별칭).
+ * 인용을 받을 수 있는 이 Theater 의 사령관 — 호스트가 Codex 문서의 선택 알약이 붙일 곳을 정할 때 읽는다. 새 세션 '@' 덱과 같은 조건
+ * (실험 기능과 이 Theater 의 자율 운영이 모두 켜짐)일 때만 낸다. 이름은 덱과 같다(별칭이 있으면 별칭). 가운데 칸에 이 사령관 대화가
+ * 서 있으면 `current` 로 알려 지금 열린 대화로 붙게 한다.
  */
-export function commodoreQuoteTargets(theaterId: string): readonly { readonly targetId: string; readonly label: string }[] {
+export function commodoreQuoteTargets(theaterId: string): readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[] {
   if (!commodoreTheaterIds().includes(theaterId) || !commodoreBoardOf(theaterId).active) return [];
-  return [{ targetId: `${TARGET_PREFIX}${theaterId}`, label: commodoreAlias(theaterId) ?? (commodoreTheaterLabel(theaterId) || theaterId) }];
+  return [{
+    targetId: `${TARGET_PREFIX}${theaterId}`,
+    label: commodoreAlias(theaterId) ?? (commodoreTheaterLabel(theaterId) || theaterId),
+    ...(isCommodoreConversationOpen(theaterId) ? { current: true } : {}),
+  }];
+}
+
+/** 받을 곳의 바뀜 — 사령관 상태(켜짐·별칭)와 가운데 칸에 선 대화가 바뀌면 깨운다. */
+export function subscribeCommodoreQuoteTargets(listener: () => void): () => void {
+  const offCommodore = subscribeCommodore(listener);
+  const offConversation = subscribeCommodoreConversationActive(listener);
+  return () => { offCommodore(); offConversation(); };
 }
 
 /** 붙이기 — 사령관 입력창(데스크톱·폰이 같은 초안)에 칩을 세운다. 보내지 않는다. */

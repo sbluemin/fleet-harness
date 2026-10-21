@@ -2935,7 +2935,7 @@ button.chip:focus-visible {
 }
 
 /* ─── 인용 붙이기 — 문서에서 고른 문장을 지휘관·사령관 입력창에 칩으로 (Quiet Line) ─────────────
-   선택 아래에 「댓글 | 질문 → 붙일 곳 ▾」 알약 하나가 선다. 면을 겹치지 않고 헤어라인 하나로 서며, brass는 선택 강조와
+   선택 아래에 「댓글 | 질문 → 받는 곳」 알약 하나가 선다. 받는 곳은 지금 열린 대화로 정해지며 고르는 단추가 아니다. 면을 겹치지 않고 헤어라인 하나로 서며, brass는 선택 강조와
    초점·hover(위치 채널)에만 쓴다. 색은 토큰만, 크기는 호스트 사다리(--t-*, --radius-*, --space-*)만 쓴다. */
 .codex-quote-host { position: relative; }
 .codex-quote-host .markdown-body ::selection { background: color-mix(in oklch, var(--brass) 22%, transparent); }
@@ -2971,50 +2971,14 @@ button.chip:focus-visible {
   font: inherit;
   font-weight: var(--weight-medium);
   cursor: pointer;
+  flex: none;
 }
 .codex-quote-pill > button svg { width: 14px; height: 14px; flex: none; color: var(--text-tertiary); }
 .codex-quote-pill > button:hover { background: var(--control-hover-fill); }
 .codex-quote-pill > button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.codex-quote-pill > .codex-quote-to { flex: 1 1 auto; min-width: 0; color: var(--text-secondary); font-weight: var(--weight-regular); padding-inline: 8px 10px; }
-.codex-quote-to-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.codex-quote-pill > button:not(.codex-quote-to) { flex: none; }
-.codex-quote-chev { margin-left: 4px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.codex-quote-to { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 4px 10px 4px 8px; color: var(--text-secondary); }
 .codex-quote-sep { width: 1px; height: 16px; background: var(--hairline-strong); }
-.codex-quote-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  /* 알약과 같은 폭으로 펼친다 — 알약은 이미 문서 안에 맞춰져 있으므로 메뉴도 경계를 넘지 않는다. 긴 이름은 말줄임이다. */
-  left: 0;
-  right: 0;
-  z-index: 6;
-  display: grid;
-  gap: 2px;
-  padding: 6px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: 0 12px 28px oklch(0% 0 0 / 28%);
-}
-.codex-quote-menu-head { padding: 6px 10px 2px; font-size: var(--t-xs); color: var(--text-tertiary); }
-.codex-quote-menu > button {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 7px 10px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.codex-quote-menu > button:hover,
-.codex-quote-menu > button[aria-checked="true"] { background: var(--control-hover-fill); }
-.codex-quote-menu > button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.codex-quote-menu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.codex-quote-menu-note { flex: none; }
-.codex-quote-menu-note { margin-left: auto; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 라이트는 어두운 반전 토스트다. 다크에서 반전하면 흰 면이 되므로 Console 토스트(.app-toast)와 같은 떠 있는 면(popover)을 쓴다. */
 .codex-quote-toast {
   position: sticky;
   bottom: var(--space-4);
@@ -3028,6 +2992,13 @@ button.chip:focus-visible {
   color: var(--surface-panel);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
+}
+:root:not([data-theme="light"]) .codex-quote-toast {
+  padding: 6px 13px;
+  border: 1px solid var(--popover-rim);
+  background: var(--popover-face);
+  color: var(--text-primary);
+  box-shadow: var(--popover-shadow);
 }
 @keyframes codex-quote-rise { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .codex-quote-pill { animation: none; } }

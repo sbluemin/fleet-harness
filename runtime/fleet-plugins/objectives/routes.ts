@@ -159,6 +159,8 @@ export default definePlugin({
       },
       subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
       boardTools: (theaterId, readAttachments, hasPersonMessage) => createCommodoreBoardTools(ctx, store, launch, theaterId, readAttachments, hasPersonMessage),
+      // Theater 지식(Codex Wiki) — 호스트가 그 Theater 루트에 묶어 준 MCP 도구만 받는다. 어느 플러그인의 것인지는 호스트가 안다.
+      ...(ctx.host.admiralMcp.bindTheater ? { knowledgeTools: (theaterId) => ctx.host.admiralMcp.bindTheater!(theaterId) } : {}),
       ...(ctx.host.consoleControl ? { observe: (operationId) => launch.observeBoard(operationId) } : {}),
       notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
       emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),
