@@ -99,8 +99,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const relay = useRelayConversation();
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
-  // 폰 배치에서 진행 줄과 입력창은 대화 위에 떠 있는 독 하나다 — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다.
-  // 데스크톱의 독 감싸개는 상자가 없어(display: contents) 높이가 0이고, 자리도 예전 그대로다.
+  // 진행 줄과 입력창은 대화 위에 떠 있는 독 하나다(데스크톱·폰 배치 모두) — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다.
   const chatRef = React.useRef<HTMLDivElement | null>(null);
   const dockRef = React.useRef<HTMLDivElement | null>(null);
   useChromeHeightProperty(dockRef, chatRef, "--m-dock-h");
@@ -108,9 +107,12 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   // 바닥을 따라가는 동안은 브라우저 scroll anchoring 을 끈다 — 보이던 줄(방금 보낸 말 등)이 재정렬로 목록 위쪽으로 옮겨 가면
   // anchoring 이 그 줄을 따라 scrollTop 을 끌어올리고, 그 scroll 사건을 사람이 위로 올린 것으로 읽어 따라가기가 풀린다.
   // 위로 올려 읽는 중에는 anchoring 이 읽던 자리를 지키므로 켜 둔다.
+  // 같은 판정이 대화 칸의 `data-reading` 도 단다 — 위로 읽는 동안 데스크톱 독의 진행·요약 줄이 캡슐 뒤로 비켜난다(group-chat.css).
+  // 판정은 스크롤마다 서므로 렌더를 돌리지 않고 속성만 고친다.
   const setFollowing = React.useCallback((log: HTMLElement, following: boolean) => {
     nearBottomRef.current = following;
     log.style.overflowAnchor = following ? "none" : "";
+    chatRef.current?.toggleAttribute("data-reading", !following);
   }, []);
   const programmaticTop = React.useRef<number | null>(null);
   // 사람이 이 기록을 스크롤한 마지막 입력 시각 — 그 직후의 scroll 사건은 사람의 뜻으로 읽는다.

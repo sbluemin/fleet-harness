@@ -20,7 +20,11 @@
   scrollbar-gutter: stable both-edges;
   /* 열은 가운데 칸을 채운다(Fit) — 좌우 여백만 칸 폭을 따라 넓어진다. */
   /* 위쪽은 대화 중심 화면의 투명 맨 위 줄(--conversation-overlay-top) 몫까지 비운다 — 첫 말이 pill 에 가리지 않고, 스크롤하면 그 밑으로 흘러 올라간다. */
-  padding: calc(var(--space-4) + var(--conversation-overlay-top, 0px)) clamp(var(--space-4), 4cqi, 48px) var(--space-2);
+  /* 아래로는 독(진행 줄·요약 줄·입력 캡슐) 뒤까지 흐른다 — 대화가 잰 독 높이(--m-dock-h)만큼 상자를 아래로 늘리고 같은 몫을 안쪽 여백으로
+     되돌려, 맨 아래에서 마지막 말은 지금처럼 독 위에 서고 위로 읽는 동안에는 본문이 캡슐 바로 뒤까지 이어진다. */
+  margin-bottom: calc(-1 * var(--m-dock-h, 0px));
+  padding: calc(var(--space-4) + var(--conversation-overlay-top, 0px)) clamp(var(--space-4), 4cqi, 48px) calc(var(--space-2) + var(--m-dock-h, 0px));
+  scroll-padding-bottom: var(--m-dock-h, 0px);
 }
 
 .group-chat-column {
@@ -495,8 +499,48 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 .group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
-/* 진행 줄과 입력창의 감싸개 — 데스크톱에서는 상자 없이 둘이 예전처럼 대화 칸의 흐름에 선다. 폰 배치의 떠 있는 독은 아래 「폰 배치」 구역이 세운다. */
-.group-chat-dock { display: contents; }
+/* 진행 줄과 입력창의 감싸개 — 기록 위에 떠 있는 독이다(기록은 그 뒤까지 흐른다, 위 .group-chat-log). 폰 배치의 바탕·페이드는 아래 「폰 배치」
+   구역이 다시 세운다. */
+.group-chat-dock { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; }
+/* 데스크톱 독은 면도 경계선도 없다 — 캡슐 아래 여백과 캡슐 아래쪽 절반만 바탕색으로 받치고 캡슐 윗변에서 투명해져, 캡슐 옆으로 지나가는
+   본문만 캡슐 높이에서 옅어진다. 캡슐 위로는 띠가 없다. 독의 빈 자리(캡슐 둘레·숨은 줄 자리)는 눌림·휠을 뒤의 기록으로 흘려보내고, 독 안의
+   실제 부품(진행 줄·요약·캡슐·덱·메뉴)만 받는다. 독 바탕은 대화 바탕(--conversation-surface)과 같은 토큰이라 라이트·다크가 함께 맞는다. */
+:root:not([data-view-mode="mobile"]) .group-chat-dock {
+  --group-chat-dock-face: var(--conversation-surface, var(--canvas-abyss));
+  background: linear-gradient(to top, var(--group-chat-dock-face) calc(var(--space-4) + 24px), color-mix(in oklch, var(--group-chat-dock-face) 0%, transparent) calc(var(--space-4) + 48px));
+  pointer-events: none;
+}
+:root:not([data-view-mode="mobile"]) .group-chat-dock > * { pointer-events: none; }
+:root:not([data-view-mode="mobile"]) .group-chat-dock > * > * { pointer-events: auto; }
+/* 캡슐은 독 안에서 진행·요약 줄보다 한 층 위다 — 위로 읽는 동안 그 줄이 캡슐 뒤로 내려가 숨는다. */
+:root:not([data-view-mode="mobile"]) .group-chat-dock .fc-composer-capsule { position: relative; z-index: 1; }
+/* 캡슐 바로 위 한 줄(진행 줄·제안 칩·쿼터 요약). 맨 아래를 따라가는 동안은 제자리에 서고, 따라가기를 풀고 위로 읽는 동안(.group-chat[data-reading],
+   대화가 따라가기 판정과 함께 단다)에는 캡슐 뒤로 내려가 비켜난다 — 본문이 캡슐까지 막힘없이 이어진다. 맨 아래로 돌아오면 다시 선다.
+   키보드로 그 줄의 단추에 들어오면(:focus-within) 숨은 채 초점을 받지 않게 다시 선다. 따라가는 중에 줄 뒤를 지나가는 본문(바닥 근처)은
+   아래에서 위로 옅어지는 바탕이 받쳐 줄 글자가 읽힌다. */
+:root:not([data-view-mode="mobile"]) .group-chat-dock .group-composer-top,
+:root:not([data-view-mode="mobile"]) .group-chat-dock > .conversation-composer-top,
+:root:not([data-view-mode="mobile"]) .group-chat-dock > .group-chat-working {
+  background: linear-gradient(to top, var(--group-chat-dock-face) 55%, color-mix(in oklch, var(--group-chat-dock-face) 0%, transparent));
+  transition: transform var(--duration-base) var(--ease-glide), opacity var(--duration-fast) var(--ease-glide);
+}
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock .group-composer-top:not(:focus-within),
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .conversation-composer-top:not(:focus-within),
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .group-chat-working:not(:focus-within) {
+  transform: translateY(100%);
+  opacity: 0;
+}
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock .group-composer-top:not(:focus-within),
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock .group-composer-top:not(:focus-within) *,
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .conversation-composer-top:not(:focus-within),
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .conversation-composer-top:not(:focus-within) *,
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .group-chat-working:not(:focus-within),
+:root:not([data-view-mode="mobile"]) .group-chat[data-reading] .group-chat-dock > .group-chat-working:not(:focus-within) * { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-view-mode="mobile"]) .group-chat-dock .group-composer-top,
+  :root:not([data-view-mode="mobile"]) .group-chat-dock > .conversation-composer-top,
+  :root:not([data-view-mode="mobile"]) .group-chat-dock > .group-chat-working { transition: none; }
+}
 
 /* 진행 줄 — 입력창 바로 위 왼쪽. 입력 캡슐과 같은 좌우 여백을 써서 칸 폭이 어떻든 왼쪽 끝이 캡슐 왼쪽에 맞는다.
    일하는 이가 없어도 32px 표식 줄의 높이를 지켜 입력창이 뛰지 않게 한다. */
