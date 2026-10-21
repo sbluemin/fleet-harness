@@ -59,7 +59,7 @@ import {
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
-import { openRailPanel } from "../rail/rail-store.js";
+import { presentRailPanel } from "../rail/rail-store.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { toggleTheaterStatusAxis } from "../../../../../features/workspace/client/sidebar/group-collapse-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
@@ -375,7 +375,7 @@ export function OperationSearch({
       // 여기서 갈라 주지 않으면 팔레트로 고른 결과가 아무 데도 착지하지 않는다.
       const surfaceId = railPanels.find((panel) => panel.id === panelId)?.surfaceId;
       if (surfaceId) openExpandedSurface({ surfaceId });
-      else openRailPanel(panelId);
+      else presentRailPanel(panelId);
     }
     closeOperationSearch();
     if (panelId === "global-shell") {
@@ -451,7 +451,7 @@ export function OperationSearch({
         // rail·사이드바는 operations 페이지에만 마운트되므로 다른 경로에서는 먼저 이동한다.
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (action.surfaceId) openExpandedSurface({ surfaceId: action.surfaceId });
-        else openRailPanel(action.panelId);
+        else presentRailPanel(action.panelId);
             break;
       }
       case "switch-theme": {

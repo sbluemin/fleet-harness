@@ -9,7 +9,8 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { conversationSurfaceInboxSectionId, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { registerConversationOperationTab, useConversationOperationTabPanels } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { closeRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { mayAutoOpenConversationRail } from "../conversation/conversation-rail-memory.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "../conversation/conversation-surface-store.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { ConversationPanelFrame } from "../conversation/conversation-panel-frame.js";
@@ -140,6 +141,9 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     // 대화의 탭(목표·구성원)·Inbox 칸이었으면 대화의 탭을 연다.
     const kept = keptToolPanel(getRailStoreSnapshot().activePanelId, railRef.current, section.descriptor.omitsRailEntries);
     let inCenter = section.id === centerSectionId;
+    // 대화의 기본 탭으로 가는 진입(사이드바 Theater 머리·팔레트 Theater 전환이 착지하는 사령관 기록)은 대화를 세우는 자동 열림이다 —
+    // 사람이 그 대화에서 사이드바를 닫아 두었으면 열지 않는다. 그 밖의 칸(지시·기억·Theater 설정 등)을 고른 진입은 사람이 그 칸을
+    // 보려는 것이라 연다.
     if (!inCenter && section.descriptor.openConversation) {
       try { inCenter = section.descriptor.openConversation({ theater, pageId: page.id }); } catch { inCenter = false; }
     }
@@ -154,10 +158,15 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
         return;
       }
       tabId = surfaceTabId;
+      if (surfaceTabId === surface?.defaultTab) {
+        opened.current = true;
+        if (!kept && surface !== null && mayAutoOpenConversationRail(surface.id)) openRailPanel(tabId);
+        return;
+      }
     }
     opened.current = true;
     if (inCenter && kept) return;
-    openRailPanel(tabId);
+    presentRailPanel(tabId);
     // 요청 하나에 한 번 — 섹션 상태가 바뀌어도 다시 열지 않는다(로딩이 풀릴 때만 다시 돈다).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request, states[sections.findIndex((section) => section.id === open.address.sectionId)]?.availability]);

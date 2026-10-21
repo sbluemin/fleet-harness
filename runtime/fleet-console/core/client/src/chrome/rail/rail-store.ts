@@ -29,6 +29,7 @@ const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
+const personListeners = new Set<(open: boolean) => void>();
 let store: RailStore = {
   activePanelId: readStoredActivePanelId(),
   panelExtraWidth: 0,
@@ -108,16 +109,52 @@ export function isRailPanelOpen(id: string): boolean {
 export function toggleRailPanel(id: string): void {
   if (toolHost?.owns(id)) { toolHost.toggle(id); return; }
   if (store.activePanelId === id) {
-    deactivateRailPanel();
+    dismissActiveRailPanel();
     return;
   }
   activateRailPanel(id);
+  notifyPersonToggle(true);
 }
 
 /** Ensure-open(팔레트·플러그인 capability): 그 패널이 활성임을 보장한다. 절대 닫지 않는다. */
 export function openRailPanel(id: string): void {
   if (toolHost?.owns(id)) { toolHost.open(id); return; }
   activateRailPanel(id);
+}
+
+/**
+ * 사람이 오른쪽 사이드바를 닫는다(닫기 단추·머리 pill·켜진 아이콘 다시 누름·바깥 누름) — 닫힘은 `closeRailPanel` 과 같고, 닫힌 뒤
+ * `subscribeRailPanelPersonToggle` 구독자에게 알린다. 대화 전환 cleanup·플러그인 capability 같은 호스트의 닫힘은 `closeRailPanel` 이라 알리지 않는다.
+ */
+export function dismissRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.close(id); return; }
+  if (store.activePanelId !== id) return;
+  dismissActiveRailPanel();
+}
+
+/**
+ * 사람이 고른 패널을 연다(머리 pill·아이콘·팔레트·탭 클릭·특정 칸으로 가는 링크) — 열림은 `openRailPanel` 과 같고, 열린 뒤
+ * `subscribeRailPanelPersonToggle` 구독자에게 알린다. 대화·Theater 가 서며 기본 탭을 여는 자동 열림은 `openRailPanel` 이라 알리지 않는다.
+ */
+export function presentRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.open(id); return; }
+  activateRailPanel(id);
+  notifyPersonToggle(true);
+}
+
+/** 사람이 오른쪽 사이드바를 열거나(`presentRailPanel`·아이콘) 닫을 때만(`dismissRailPanel`) 부른다. 돌려준 함수로 푼다. */
+export function subscribeRailPanelPersonToggle(listener: (open: boolean) => void): () => void {
+  personListeners.add(listener);
+  return () => { personListeners.delete(listener); };
+}
+
+function notifyPersonToggle(open: boolean): void {
+  for (const listener of [...personListeners]) listener(open);
+}
+
+function dismissActiveRailPanel(): void {
+  deactivateRailPanel();
+  notifyPersonToggle(false);
 }
 
 export function closeRailPanel(id: string): void {

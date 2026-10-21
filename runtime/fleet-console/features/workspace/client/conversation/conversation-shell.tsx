@@ -18,7 +18,8 @@ import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/cl
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
@@ -117,19 +118,19 @@ function useToggleDetails(operationConversation: boolean): () => void {
   return useCallback(() => {
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null) {
-      closeRailPanel(active);
+      dismissRailPanel(active);
       return;
     }
     const lead = operationConversation ? firstConversationTab(bindings) : null;
     if (lead) {
-      openRailPanel(lead.entry.id);
+      presentRailPanel(lead.entry.id);
       return;
     }
     // 도구(파일·Codex·스킬 등)는 오른쪽 사이드바가 아니라 대화 옆 도구 칸에 열린다 — 사이드바가 여는 것은 대상의 탭과 대화 탭(목표)뿐이다.
     const panes = bindings.filter((binding) => binding.panes.length > 0 && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && binding.entry.visible?.() !== false && !isWorkbenchToolBinding(binding));
     const last = readLastPanel();
     const target = panes.find((binding) => binding.entry.id === last) ?? panes.find((binding) => binding.core) ?? panes[0];
-    if (target) openRailPanel(target.entry.id);
+    if (target) presentRailPanel(target.entry.id);
   }, [bindings, operationConversation]);
 }
 
@@ -377,7 +378,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {/* 맨 위 줄 — Grok 세부 정보처럼 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
       <div className="conversation-panel-toolbar">
         <span className="conversation-panel-toolbar-spacer" aria-hidden="true" />
-        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) closeRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
+        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) dismissRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
       </div>
@@ -1171,8 +1172,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, []);
+  // 사람이 이 대화에서 사이드바를 여닫은 것을 기억한다 — 위 cleanup 의 닫힘과 아래 기본 탭 열림은 사람의 것이 아니라 남지 않는다.
+  useConversationRailMemory(descriptor.id, descriptor.defaultTab !== undefined);
   // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Operation 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
-  // 탭을 연다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은 그대로 둔다.
+  // 탭을 연다 — 다만 패널이 닫혀 있고 사람이 이 대화에서 닫아 둔 것이면 열지 않는다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은
+  // 그대로 둔다.
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
@@ -1183,9 +1187,9 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
-    } else if (active !== null) return;
+    } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id)) return;
     openRailPanel(descriptor.defaultTab);
-  }, [descriptor.defaultTab, selection.nonce]);
+  }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Operation 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
