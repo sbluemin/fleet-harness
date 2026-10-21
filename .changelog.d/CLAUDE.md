@@ -34,7 +34,7 @@ A change experienced in multiple runtimes may have a complete note for each dist
 
 ## Fragment identity and format
 
-- One new fragment per branch. Obtain its name with `node scripts/compile-changelog-fragments.mjs --name-for-branch`; declare that branch in `branch:` frontmatter. A branch rename changes both together.
+- One new fragment per branch. Obtain its filename with `node scripts/compile-changelog-fragments.mjs --name-for-branch`, which prints the branch as a lowercase slug plus `.md` (`feat/example-feature` → `feat-example-feature.md`). `branch:` frontmatter holds the git branch name itself, not that filename; the compiler derives the filename from it again and fails on a mismatch. A branch rename changes both together.
 - Authorized direct `canary` work appends to `canary.md`, without frontmatter. Never overwrite another change.
 - Preserve base fragments by default. Amend pending notes when folding in an unreleased correction or when the user explicitly requests editorial cleanup. Preserve their filenames and branch identity. Each amended base fragment requires the `changelog-amend` PR label and a `Changelog-Amend: <file-name>.md` PR-body line. Do not rename a base fragment. Delete a branch fragment (never `canary.md`) only when the PR withdraws the unreleased feature it describes, with the same label and a `Changelog-Remove: <file-name>.md` PR-body line.
 - Use runtime headings and `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes` sections. New bullets have no package tag.
@@ -42,7 +42,7 @@ A change experienced in multiple runtimes may have a complete note for each dist
 
 ```md
 ---
-branch: example-feature
+branch: feat/example-feature
 ---
 
 ### fleet-console
