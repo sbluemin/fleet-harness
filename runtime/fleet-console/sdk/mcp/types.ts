@@ -147,15 +147,35 @@ export interface PluginMcpTool {
   }): Promise<unknown>;
 }
 
+export interface PluginAdmiralMcpRegistration {
+  /**
+   * 이 서버의 도구가 닿는 곳은 `context.cwd` 가 가리키는 Theater 뿐이다(인자로 다른 루트를 고를 수 없다) — 그래서 호스트가
+   * Operation 이 아닌 Theater 단위 세션(사령관)에게도 그 Theater 루트에 묶어 내줄 수 있다(`bindTheater`). 아니면 생략한다.
+   */
+  readonly theaterScoped?: boolean;
+}
+
+/** `bindTheater` 가 내주는 서버 하나 — `tools.custom` 의 그룹으로 그대로 싣는다. 이름은 Operation 세션이 보는 서버 이름(`fleet-{pluginId}`)이다. */
+export interface PluginMcpServerTools {
+  readonly name: string;
+  readonly tools: readonly PluginMcpTool[];
+}
+
 export interface PluginAdmiralMcpHost {
   /**
    * 호출 플러그인의 id로 fleet-{pluginId} 서버를 등록한다. 다른 플러그인의 이름은 지정할 수 없다. 이 서버는 Console Use
    * 토글과 무관하게 모든 Operation 세션에 실린다 — 호출자에 따른 권한은 도구가 `context.caller` 로 스스로 가른다.
    * 화면 제스처는 없다(제스처는 Console Use 도구의 것이다).
    */
-  register(tools: readonly PluginMcpTool[]): () => void;
+  register(tools: readonly PluginMcpTool[], options?: PluginAdmiralMcpRegistration): () => void;
   /** 등록 순서와 무관하게 세션을 만들 때 활성 플러그인의 MCP를 연결한다. */
   connect(): AdmiralMcpSession;
+  /**
+   * `theaterScoped` 로 등록된 서버들의 도구를 그 Theater 루트에 묶어 돌려준다 — Operation 이 그 루트에서 받는 것과 같은 도구·같은
+   * Theater 판정이다. 루트는 호스트가 등록된 Theater 에서 정하고, 호출의 `context.cwd` 는 무시한다. 호출자(`caller`)는 없다.
+   * 모르는 Theater 면 빈 목록. 서버가 내려간 뒤의 호출은 오류로 돌아온다. 구버전 호스트에는 없다.
+   */
+  bindTheater?(theaterId: string): readonly PluginMcpServerTools[];
 }
 
 export interface ConsoleUseMcpHost {

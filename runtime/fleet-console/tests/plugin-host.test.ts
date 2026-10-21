@@ -82,7 +82,7 @@ afterEach(() => {
 
 describe("plugin host", () => {
 
-  it("binds plugin MCP names, isolates sessions, and resolves the caller Operation through registration and teardown", async () => {
+  it("binds plugin MCP names, isolates sessions, resolves the caller Operation, and pins Theater-bound tools to their root through registration and teardown", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
     tempDirs.push(dir);
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
@@ -98,12 +98,12 @@ describe("plugin host", () => {
     const cleanups: Array<() => void | Promise<void>> = [];
     const host = createFleetPluginHost({
       cwd: dir, homeDir: "/missing", routes: new RouteRegistry(), upgrades: new UpgradeRegistry(),
-      registerAdmiralMcp: (id, tools) => mcp.register(id, tools),
+      registerAdmiralMcp: (id, tools, options) => mcp.register(id, tools, options),
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
         ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: { text: { type: "string", maxLength: 50 } } },
           execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], isError: false }),
-        }]);
+        }], { theaterScoped: true });
       } }),
     });
     try {
@@ -125,6 +125,12 @@ describe("plugin host", () => {
       expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1" }] } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-" }] } });
+      // Theater 묶음(사령관 세션) — 세션 자리가 넘긴 cwd 는 버리고 묶은 루트로만, 호출자 없이 부른다. 인자 선검사는 서빙 경로와 같다.
+      const [bound] = mcp.bindTheater("/theater-a");
+      expect(bound?.name).toBe("fleet-demo");
+      const boundProject = bound!.tools[0]!;
+      expect(await boundProject.execute({}, { cwd: "/theater-b" })).toMatchObject({ content: [{ text: "/theater-a|-" }] });
+      expect(await boundProject.execute({ text: "x".repeat(51) }, { cwd: "/theater-a" })).toMatchObject({ isError: true });
       // 플러그인에 닿기 전 선검사도 필드·한도를 알려야 한다. 입력 원문과 검증기 메시지는 싣지 않는다.
       const oversized = "private-answer-".repeat(4);
       const rejected = (await call(one.token, { text: oversized })).body.result;
@@ -135,6 +141,8 @@ describe("plugin host", () => {
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       for (const cleanup of cleanups) await cleanup();
       expect((await second.getEndpoint()).servers).toEqual([]);
+      expect(mcp.bindTheater("/theater-a")).toEqual([]);
+      expect(await boundProject.execute({}, { cwd: "/theater-a" })).toMatchObject({ isError: true, content: [{ text: "Plugin MCP is unavailable" }] });
     } finally {
       first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose(); await transport.dispose();
       await new Promise<void>((resolve) => { listener.close(() => resolve()); listener.closeAllConnections(); });

@@ -42,7 +42,9 @@ export default definePlugin({
         ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
     });
 
-    ctx.host.admiralMcp.register(createCodexMcpTools(wikiWorkspaceResolver));
+    // Wiki 도구가 닿는 곳은 호출의 cwd 가 가리키는 Theater 지식 루트뿐이다 — 그래서 Theater 범위로 등록해, 호스트가 사령관 세션에도
+    // 그 Theater 루트에 묶어 내줄 수 있게 한다(`bindTheater`). Operation 세션에는 지금처럼 `fleet-codex` 로 실린다.
+    ctx.host.admiralMcp.register(createCodexMcpTools(wikiWorkspaceResolver), { theaterScoped: true });
 
     /**
      * 진행 중인 등록의 꼬리. 이벤트 처리는 비동기라 요청이 그것을 앞지를 수 있으므로,
