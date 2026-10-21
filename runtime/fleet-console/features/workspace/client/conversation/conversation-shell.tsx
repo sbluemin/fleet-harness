@@ -337,7 +337,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       const hidden: OverflowTab[] = [];
       for (const group of row.children) {
         if (!(group instanceof HTMLElement)) continue;
-        const items = [...group.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
+        const items = [...group.querySelectorAll<HTMLElement>(".right-rail-ico")];
         if (items.every((item) => item.getBoundingClientRect().right - rowLeft <= row.clientWidth)) continue;
         const limit = row.clientWidth;
         let cut = false;
@@ -971,7 +971,7 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
         const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
         stage.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
       };
-      const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
+      const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
       tools.dataset.more = "hidden";
       reserve();
@@ -1006,8 +1006,8 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
       // 모든 도구를 세운 뒤, 이름이 제 폭을 지킬 때까지 오른쪽 끝부터 걷는다.
       const next: HiddenTool[] = [];
       if (!fits(pill, title)) {
-        // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지. 남은 줄이 구분선으로 끝나면 그것도 걷는다
-        // (구분선은 두 범위 사이에서만 뜻이 있다). 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.
+        // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지.
+        // 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.
         tools.dataset.more = "shown";
         for (let index = items.length - 1; index >= 0; index -= 1) {
           const item = items[index]!;
@@ -1015,8 +1015,6 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
           if (item instanceof HTMLButtonElement && item.id.startsWith("rail-tab-")) {
             next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled, element: item });
           }
-          const previous = items[index - 1];
-          if (previous?.classList.contains("right-rail-divider")) { previous.setAttribute("data-overflow", "true"); index -= 1; }
           reserve();
           if (fits(pill, title)) break;
         }
