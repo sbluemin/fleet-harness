@@ -9,6 +9,9 @@
 //   fail_set_model   if present, set_model answers with an error
 //   release          a chat message containing "SLOW" keeps its turn open until this file appears (max 120 s)
 //   wake             optional JSON with wake options (kind: "peer"|"task", taskId, silenceMs, thinking, first, retry, error: "synthetic"|"result-only")
+//   ask              one-shot ExitPlanMode approval hold on the next turn, or while initialized and idle
+//   ask-<sessionId>  same hold, scoped to this launch's --session-id/--resume (use with a shared directory)
+//                    empty file or JSON {sessionId?: string}; mismatched targets leave the file untouched
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
@@ -68,7 +71,9 @@ log({
   // A prompt can itself start with "--", so keep only tokens shaped like a bare option name.
   flags: args.map((value) => value.split("=")[0]).filter((name) => /^--[a-z][a-z0-9-]*$/.test(name)).slice(0, 80),
 });
+let abortAsk = () => {};
 const exit = (reason) => {
+  abortAsk(reason);
   log({ event: "exit", reason });
   process.exit(0);
 };
@@ -98,8 +103,42 @@ if (!sdk) {
   let turnOpen = false;
   let stdinEnded = false;
   const queue = [];
+  let pendingAsk = null;
+  const takeAsk = () => {
+    // A launch may not consume another Operation's request in a shared control directory.
+    for (const name of [`ask-${sessionId}`, "ask"]) {
+      const file = join(dir, name);
+      try {
+        const raw = readFileSync(file, "utf8").trim();
+        const options = raw ? JSON.parse(raw) : {};
+        if (options.sessionId !== undefined && options.sessionId !== sessionId) continue;
+        unlinkSync(file);
+        return true;
+      } catch (error) {
+        if (error.code !== "ENOENT") log({ event: "ask-file-error", sessionId, file: name, error: String(error?.message ?? error) });
+      }
+    }
+    return false;
+  };
+  abortAsk = (reason) => {
+    if (!pendingAsk) return;
+    const { requestId, toolUseId, resolve } = pendingAsk;
+    pendingAsk = null;
+    log({ event: "ask-aborted", sessionId, requestId, toolUseId, reason });
+    resolve(true);
+  };
+  const holdForAnswer = (turnModel, usage) => {
+    const toolUseId = `toolu_${randomUUID().replace(/-/g, "")}`;
+    const requestId = `ask-${randomUUID()}`;
+    const input = { plan: "Fake plan: wait for the person's approval." };
+    const answered = new Promise((resolve) => { pendingAsk = { requestId, toolUseId, resolve }; });
+    out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [{ type: "tool_use", id: toolUseId, name: "ExitPlanMode", input }], stop_reason: "tool_use", stop_sequence: null, usage }, ...envelope() });
+    log({ event: "ask-emit", sessionId, requestId, toolUseId });
+    out({ type: "control_request", request_id: requestId, request: { subtype: "can_use_tool", tool_name: "ExitPlanMode", input, tool_use_id: toolUseId, permission_suggestions: [] } });
+    return answered;
+  };
 
-  const runTurn = async (text) => {
+  const runTurn = async (text, ask = takeAsk()) => {
     turnOpen = true;
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, chars: text.length });
@@ -111,7 +150,10 @@ if (!sdk) {
     const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 8 };
     out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
     out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: null }, usage }, ...envelope() });
-    if (text.includes("SLOW")) {
+    let interrupted = false;
+    if (ask) {
+      interrupted = await holdForAnswer(turnModel, usage);
+    } else if (text.includes("SLOW")) {
       const release = join(dir, "release");
       const deadline = Date.now() + 120_000;
       while (!existsSync(release) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
@@ -121,10 +163,10 @@ if (!sdk) {
     } else {
       await new Promise((r) => setTimeout(r, 150));
     }
-    const reply = `fake reply from model=${turnModel}`;
+    const reply = interrupted ? "fake turn interrupted" : `fake reply from model=${turnModel}`;
     out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [{ type: "text", text: reply }], stop_reason: "end_turn", stop_sequence: null, usage }, ...envelope() });
     out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: reply, stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
-    log({ event: "turn-end", model: turnModel, contextTokens: tokens });
+    log({ event: "turn-end", model: turnModel, contextTokens: tokens, ...(interrupted ? { interrupted: true } : {}) });
     turnOpen = false;
     const next = queue.shift();
     if (next !== undefined) void runTurn(next);
@@ -208,6 +250,10 @@ if (!sdk) {
 
   const wakePollingTimer = setInterval(() => {
     if (turnOpen) return;
+    if (inited && takeAsk()) {
+      void runTurn("", true);
+      return;
+    }
     const wakeFile = join(dir, "wake");
     if (existsSync(wakeFile)) {
       try {
@@ -235,6 +281,16 @@ if (!sdk) {
       } catch {
         continue;
       }
+      if (message.type === "control_response") {
+        if (pendingAsk && message.response?.request_id === pendingAsk.requestId) {
+          const { requestId, toolUseId, resolve } = pendingAsk;
+          pendingAsk = null;
+          const answer = message.response?.response;
+          log({ event: "ask-answered", sessionId, requestId, toolUseId, behavior: answer?.behavior ?? message.response?.subtype ?? null, hasMessage: typeof answer?.message === "string" && answer.message.length > 0 });
+          resolve(false);
+        }
+        continue;
+      }
       if (message.type === "control_request") {
         const req = message.request ?? {};
         const id = message.request_id;
@@ -248,6 +304,9 @@ if (!sdk) {
             model = req.model ?? "default";
             respond(id, {});
           }
+        } else if (req.subtype === "interrupt") {
+          abortAsk("interrupt");
+          respond(id, {});
         } else if (req.subtype === "get_context_usage") {
           const total = ctx();
           respond(id, { totalTokens: total, maxTokens: capacity(), rawMaxTokens: capacity(), percentage: Math.round((total / capacity()) * 100), model, isAutoCompactEnabled: false, categories: [{ name: "Messages", tokens: total, color: "x" }], memoryFiles: [], mcpTools: [], gridRows: [] });
@@ -266,6 +325,7 @@ if (!sdk) {
   });
   process.stdin.on("end", () => {
     stdinEnded = true;
+    abortAsk("stdin-end");
     if (!turnOpen) exit("stdin-end");
   });
 }
