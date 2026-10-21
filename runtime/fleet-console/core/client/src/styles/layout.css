@@ -248,6 +248,13 @@
 
 .update-outcome-dismiss:hover { color: var(--text-primary); }
 
+/* Windows Desktop — 셸이 캡션 버튼(최소화·최대화·닫기)을 창 오른쪽 위에 겹쳐 세운다. 이 줄은 창 맨 위에 서므로 그 폭만큼
+   오른쪽을 비워 닫기(×)가 캡션 버튼 밑에 깔리지 않게 한다. 폭 식은 conversation.css 의 --conversation-caption-width 와 같다
+   (env 실측과 46 DIP × 3 계약 중 큰 쪽). */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
+  padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1)));
+}
+
 .update-outcome-dismiss:focus-visible {
   color: var(--text-primary);
   outline: 1px solid var(--brass);
