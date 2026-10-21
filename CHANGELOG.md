@@ -5,6 +5,10 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.250.0] - 2026-10-21
+
+Release v1.250.0
+
 ## [1.249.1] - 2026-10-21
 
 ### fleet-console
