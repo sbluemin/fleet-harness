@@ -448,7 +448,6 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
     () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
     [openSurfaces],
   );
-  const divider = <div className="right-rail-divider" role="separator" aria-orientation="vertical" />;
   const coreTabs = paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && (coreFilter?.(binding.entry.id) ?? true));
 
   return (
@@ -462,9 +461,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
           ))}
         </div>
       )}
-      {scope === "all" && text && coreTabs.length > 0 && runsByScope.theater.length + runsByScope.fleet.length > 0 ? divider : null}
       {scope === "core" ? null : renderRuns(runsByScope.theater)}
-      {scope !== "core" && runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
       {scope === "core" ? null : renderRuns(runsByScope.fleet)}
       {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 대화 독의
           호스트 메뉴 맨 끝(settings-button.tsx)에 선다. */}

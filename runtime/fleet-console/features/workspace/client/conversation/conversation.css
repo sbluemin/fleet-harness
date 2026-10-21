@@ -386,8 +386,6 @@
   right: -6px;
 }
 
-.conversation-pill-tools .right-rail-divider { height: 14px; margin: 0 var(--space-1); }
-
 .conversation-pill-tools-more-wrap {
   position: relative;
   display: inline-flex;

@@ -226,14 +226,6 @@
    rim-strong 테두리·아래 brass 선). 톱니가 탭이 아니라는 사실은 role/aria가 이미
    말하고 있고, 시각 표식까지 갈라놓으면 같은 줄의 켜짐이 두 문법으로 읽힌다. */
 
-.right-rail-divider {
-  flex: none;
-  width: 1px;
-  height: 14px;
-  margin: 0 var(--space-1);
-  background: var(--surface-rim-strong);
-}
-
 /* ── 레일 패널 리사이즈 핸들 ────────────────────────────────────── */
 .right-rail-resize-handle {
   position: absolute;

@@ -1464,7 +1464,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
     // Doctrine: the gear is not a work tool — governing the console and choosing a work tool are
     // different kinds of act — so it stands last in the conversation dock's host menu, not in the
-    // plugin tool run. Tools group by scope (Theater-scoped first, Fleet-scoped after a divider),
+    // plugin tool run. Tools group by scope (Theater-scoped first, Fleet-scoped after them),
     // each scope in plugin composition order. The gear is the settings surface's one door: it opens
     // the settings modal and never appears as a tab.
     const settingsButtonSource = source("chrome/toolbar/settings-button.tsx");
@@ -1473,7 +1473,6 @@ describe("Instrument core design contract", () => {
     expect(settingsButtonSource).toContain('id="rail-settings-toggle"');
     expect(rightRail).toContain('binding.entry.scope ?? "theater"');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
-    expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
     // Doctrine: the gear carries an explicit glyph size. An SVG with only a viewBox fills its
     // button (30px inside the 32px control), which is how it first shipped oversized; plugin
     // icons bring their own sizes but this core-drawn glyph has to state one here.
