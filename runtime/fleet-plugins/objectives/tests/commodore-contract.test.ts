@@ -361,11 +361,11 @@ describe("commodore session", () => {
 
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
     const options = stub.created[0]!;
-    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation" });
+    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation", sessionName: "commodore-fleet-harness-t1" });
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], browser: { scopeId: "commodore:t1" } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents"], browser: { scopeId: "commodore:t1" } });
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);

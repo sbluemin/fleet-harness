@@ -163,6 +163,56 @@ describe("Console-owned plugin Agent", () => {
     await restarted.dispose();
   });
 
+  it("shares only opted-in peer registries while preserving isolated history and safe forget", async () => {
+    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-peers-")); roots.push(dataRoot);
+    const homes: string[] = []; const requests: Record<string, unknown>[] = [];
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, persistRoot: () => dataRoot,
+      createSdk: async ({ home }) => {
+        const configDir = (home as { configDir: string }).configDir; homes.push(configDir); await fs.mkdir(configDir, { recursive: true });
+        return { configDir, dispose: async () => undefined, openSession: async (request: Record<string, unknown>) => {
+          requests.push(request); let close!: () => void; let sent!: () => void;
+          const closed = new Promise<void>((resolve) => { close = resolve; }); const input = new Promise<void>((resolve) => { sent = resolve; });
+          return { send: sent, close, async *[Symbol.asyncIterator]() { await input; yield { type: "result", is_error: false }; await closed; } };
+        } } as unknown as ClaudeGatewaySdk;
+      },
+    });
+    try {
+      // 이미 쓰던 대화: 등록부가 생기기 전의 projects 와 로컬 등록부를 남긴다.
+      const a = { key: "commodore:a" }; const old = await host.createSession({ ...options, persist: a }); await old.send("first");
+      const firstHome = homes[0]!;
+      const history = path.join(firstHome, "projects", "-cwd", `${requests[0]!.sessionId}.jsonl`);
+      await fs.mkdir(path.dirname(history), { recursive: true }); await fs.writeFile(history, "history\n");
+      await fs.mkdir(path.join(firstHome, "sessions")); await fs.writeFile(path.join(firstHome, "sessions", "stale.json"), "old registry");
+      await old.dispose();
+      const tools = { builtins: ["SendMessage", "ListAgents"] as const };
+      const first = await host.createSession({ ...options, persist: a, sessionName: "commodore-a", tools });
+      expect(first.resumed).toBe(true); await first.send("after upgrade");
+      expect(requests.at(-1)).toMatchObject({ sessionName: "commodore-a", tools: ["SendMessage", "ListAgents"], allowedTools: ["SendMessage", "ListAgents"], permissionMode: "dontAsk", resume: requests[0]!.sessionId });
+      const second = await host.createSession({ ...options, persist: { key: "commodore:b" }, sessionName: "commodore-b", tools });
+      const secondHome = homes.at(-1)!;
+      const plain = await host.createSession({ ...options, persist: { key: "plain" } }); const plainHome = homes.at(-1)!; await plain.send("ordinary");
+      expect(requests.at(-1)).toMatchObject({ tools: [], allowedTools: [] }); expect(requests.at(-1)).not.toHaveProperty("sessionName");
+      expect(firstHome).not.toBe(secondHome);
+      expect(await fs.realpath(path.join(firstHome, "sessions"))).toBe(await fs.realpath(path.join(secondHome, "sessions")));
+      await expect(fs.lstat(path.join(plainHome, "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await fs.readFile(history, "utf8")).toBe("history\n");
+      const backup = (await fs.readdir(firstHome)).find((entry) => entry.startsWith("sessions.isolated-"))!;
+      expect(await fs.readFile(path.join(firstHome, backup, "stale.json"), "utf8")).toBe("old registry");
+      await fs.writeFile(path.join(secondHome, "sessions", "peer.json"), "peer remains");
+      await host.forget!(a.key);
+      expect(await fs.readFile(path.join(secondHome, "sessions", "peer.json"), "utf8")).toBe("peer remains");
+      const shared = await fs.realpath(path.join(secondHome, "sessions"));
+      await second.dispose(); await host.createSession({ ...options, persist: { key: "commodore:b" } });
+      expect((await fs.lstat(path.join(secondHome, "sessions"))).isSymbolicLink()).toBe(false);
+      expect(await fs.readFile(path.join(shared, "peer.json"), "utf8")).toBe("peer remains");
+      // 모르는 목적지를 가리키는 기존 링크는 덮거나 따라가 공유 등록부로 삼지 않는다.
+      await plain.dispose(); const outside = path.join(dataRoot, "outside"); await fs.mkdir(outside);
+      await fs.symlink(outside, path.join(plainHome, "sessions"), process.platform === "win32" ? "junction" : "dir");
+      await expect(host.createSession({ ...options, persist: { key: "plain" }, tools })).rejects.toThrow("agent_peer_registry_conflict");
+      expect(await fs.realpath(path.join(plainHome, "sessions"))).toBe(await fs.realpath(outside));
+    } finally { await host.dispose(); }
+  });
+
   it("rejects unavailable gateways and rolls back SDK creation racing host disposal", async () => {
     let root!: string; const unavailable = createPluginAgentHost({ baseUrl: () => null, consoleUse });
     await expect(unavailable.createSession(options)).rejects.toThrow("agent_gateway_unavailable");

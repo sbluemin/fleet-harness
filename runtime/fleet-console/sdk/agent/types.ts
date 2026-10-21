@@ -58,6 +58,8 @@ export interface AgentSessionOptions {
   readonly model: string;
   readonly effort?: AgentEffort;
   readonly systemPrompt: string;
+  /** 발견 목록과 SendMessage 주소에 쓰는 표시 이름. 생략하면 실행기가 작업 폴더 이름으로 정한다. */
+  readonly sessionName?: string;
   readonly continuation: "conversation" | "oneshot";
   readonly settlement: "result" | "result-required";
   readonly timeoutMs?: number;
@@ -81,7 +83,8 @@ export interface AgentSessionOptions {
   readonly persist?: { readonly key: string };
   /** 플러그인 실행은 파일·셸·하위 Agent를 기본 제공하지 않는다. */
   readonly tools?: {
-    readonly builtins?: readonly ("WebSearch" | "WebFetch")[];
+    /** 메시징 도구를 고른 persist 세션은 같은 플러그인의 발견 등록부만 공유한다. 대화 홈·기록은 계속 분리된다. */
+    readonly builtins?: readonly ("WebSearch" | "WebFetch" | "SendMessage" | "ListAgents")[];
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
     /** 플릿 브라우저. 플러그인 안의 화면 좌표만 지정하며, 탭 소유자는 Console이 발급한다. */
