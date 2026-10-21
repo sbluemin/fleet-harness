@@ -497,7 +497,10 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
   const placeholder = !actions ? t("group.composer.unavailable")
     : seated?.context ? local(seated.context.placeholder)
       : board?.actionsOnly ? t("group.board.placeholder")
-        : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t(phone ? "group.composer.placeholderMobile" : "group.composer.placeholder"));
+        : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) })
+          // 지휘관에게만 말하는 입력창(완료한 목표)은 구성원을 고르라고 권하지 않는다.
+          : commanderOnly ? t("group.composer.placeholderTo", { name: commander?.name ?? t("group.commander") })
+            : t(phone ? "group.composer.placeholderMobile" : "group.composer.placeholder"));
   const chips = board ? board.suggestions : [];
   const note = board?.note ?? null;
   const showHint = !!board?.hint && chips.length > 0;
