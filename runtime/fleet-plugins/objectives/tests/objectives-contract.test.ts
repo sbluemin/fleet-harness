@@ -309,7 +309,7 @@ const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000
 
 describe("Objectives contract", () => {
   // Core의 두 파일 복구 시험으로는 목표 파일의 done와 미완료 요청 사이 틈을 검증할 수 없다.
-  it("keeps a completed objective active until a person archives it, and retains its record until public purge", async () => {
+  it("keeps a completed objective active until a person archives it, lets the person talk to its Commander without reopening it, and retains its record until public purge", async () => {
     const h = harness();
     h.add("completion-recovery", { payload: { session: { harness: "claude-code", sessionName: "existing-session" } } });
     h.store.adopt("completion-recovery", { note: "retain this record" });
@@ -348,9 +348,15 @@ describe("Objectives contract", () => {
     expect(reloaded.list("t1").some((entry) => entry.id === "completion-recovery")).toBe(false);
     expect(reloaded.all().some((entry) => entry.id === "completion-recovery")).toBe(true);
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(true);
-    await h.operationsHost.access("completion-recovery");
-    launch.operationChanged("completion-recovery");
-    expect(reloaded.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false }));
+    // 완료 뒤 지휘관과의 대화 — 보관된 지휘관을 휴면으로 되살려 전하고 레코드(완료·확장 회차·보드)는 그대로다. 구성원은 받지 않는다.
+    reloaded.setStopped("completion-recovery", true);
+    const closed = h.savedObjective("completion-recovery");
+    await expect(launch.message("completion-recovery", "any-member", "member?")).rejects.toThrow("objective_done");
+    await launch.message("completion-recovery", null, "one more question");
+    expect(h.sent.at(-1)).toEqual({ operationId: "completion-recovery", text: "one more question" });
+    expect(h.archivedOperations.has("completion-recovery")).toBe(false);
+    expect(h.savedObjective("completion-recovery")).toEqual(closed);
+    expect(reloaded.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false, extensions: [] }));
     await launch.archive("completion-recovery");
     h.archivedOperations.delete("completion-recovery");
     launch.operationPurged("completion-recovery");

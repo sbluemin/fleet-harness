@@ -279,10 +279,14 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const awaitingMember = done ? undefined : objective.members.find((member) => member.sessionName !== null && activityOf(operations, member.id) === "awaiting");
   const memberMission = awaitingMember ? objective.missions.findIndex((mission) => !mission.done && mission.member === awaitingMember.id) : -1;
   const memberAwaiting = awaitingMember ? { operationId: awaitingMember.id, role: awaitingMember.role, mission: memberMission >= 0 ? memberMission + 1 : null } : null;
-  const recipients = [
-    { id: objective.id, role: t("objectives.graph.commander"), state: ownActivityOf(operations, objective.id) },
-    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, state: activityOf(operations, member.id) })),
-  ].filter((recipient) => recipient.state !== "closed");
+  // 완료한 목표는 지휘관에게만 — 구성원은 임무를 닫았다. 보관된 지휘관(closed)도 서버가 휴면으로 되살려 전하므로 휴면으로 보인다.
+  const commanderState = ownActivityOf(operations, objective.id);
+  const recipients = done
+    ? (objective.commander.started ? [{ id: objective.id, role: t("objectives.graph.commander"), state: commanderState === "closed" ? "ended" : commanderState }] : [])
+    : [
+      { id: objective.id, role: t("objectives.graph.commander"), state: commanderState },
+      ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, state: activityOf(operations, member.id) })),
+    ].filter((recipient) => recipient.state !== "closed");
   const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(operations, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";

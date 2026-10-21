@@ -9,7 +9,7 @@ import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinis
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
- * 완료해 지휘관이 보관된 목표도 같은 칸에 「완료」로 선다 — 입력창이 범위 넓히기로 고정되고, 보내면 서버가 지휘관을 복원한다.
+ * 완료해 지휘관이 보관된 목표도 같은 칸에 「완료」로 선다 — 입력창의 말은 지휘관에게 가고(범위 넓히기는 고르는 칩), 보내면 서버가 지휘관을 휴면으로 복원한다.
  * 칸이 서 있는 동안 호스트는 활성 Operation 을 비우므로 가운데 칸·오른쪽 패널 머리·사이드바 하이라이트가 모두 이 목표를 가리킨다.
  * 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
@@ -113,7 +113,7 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   const pending = useSyncExternalStore(subscribeObjectiveOrFinished, waiting, () => false);
   const failed = useSyncExternalStore(subscribeObjectiveOrFinished, failedNow, () => false);
   useEffect(() => { if (theaterId) refreshFinishedFor(objectiveId, theaterId); }, [objectiveId, theaterId]);
-  // 개시·범위 넓히기로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
+  // 개시·범위 넓히기·완료 뒤 메시지로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   // 읽는 중인지는 렌더 값이 아니라 지금 값으로 본다 — 바로 위 효과가 같은 커밋에서 다시 읽기를 시작했을 수 있다.
   useEffect(() => {
     if (live) focusOperation(objectiveId);
@@ -143,7 +143,7 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
           ? <p className="objectives-fresh-meta">{t("objectives.criteria.title")} · {t("objectives.criteria.count", { met, total: objective.criteria.length })}</p>
           : null}
       </div>
-      {/* 입력창은 호스트의 그룹 입력창이다 — 시작 전에는 구상·개시, 완료한 목표는 범위 넓히기만 받는다(보드 동작 계약). */}
+      {/* 입력창은 호스트의 그룹 입력창이다 — 시작 전에는 구상·개시, 완료한 목표는 지휘관에게 가는 말과 범위 넓히기 칩을 받는다(보드 동작 계약). */}
       {composer ? composer() : (
         <footer className="objectives-fresh-foot">
           <div className="objectives-fresh-composer" aria-disabled="true">{t("objectives.fresh.composer")}</div>
