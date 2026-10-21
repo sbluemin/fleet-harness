@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.249.1] - 2026-10-21
+
+### fleet-console
+
+#### Changed
+- 완료한 목표의 지휘관과 목표를 다시 열지 않고 이야기를 이어 갈 수 있으며, 범위 넓히기는 입력창 위에서 고르는 선택 칩이 됐습니다.
+
+#### Fixed
+- 사령관 대화에서 오른쪽 사이드바를 닫으면 다른 사령관으로 옮겨 가거나 새로고침해도 닫힌 채로 유지됩니다.
+
 ## [1.249.0] - 2026-10-20
 
 ### fleet-console

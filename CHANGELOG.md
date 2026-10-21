@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.249.1] - 2026-10-21
+
+### fleet-console
+
+#### Changed
+- You can keep talking with a completed objective's Commander without reopening it; extending the scope is now an optional chip above the message box.
+
+#### Fixed
+- The right sidebar stays closed when you close it in a Commodore conversation, even after moving to another Commodore or reloading.
+
 ## [1.249.0] - 2026-10-20
 
 ### fleet-console
