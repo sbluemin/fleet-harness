@@ -1402,18 +1402,13 @@ export function groupOperationsByStatus(
   }));
 }
 
-/** 그 Theater 에서 사람의 답을 기다리는 Operation 수 — 사령관 카드 요약과 대기 틱이 같은 셈을 쓴다. */
+/** 그 Theater 에서 사람의 답을 기다리는 Operation 수 — 사령관 카드 요약과 대기 틱은 미확인 도착의 섹션 승격을 세지 않는다. */
 function countAwaitingOperations(
   operations: readonly OperationNode[],
   operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
 ): number {
-  const idleArrivalIds = getIdleArrivalIds();
   return operations.filter((operation) =>
-    resolveOperationDisplayActivity({
-      activity: resolveOperationActivity(operation, operationRuntime),
-      operationId: operation.id,
-      idleArrivalIds,
-    }) === "awaiting").length;
+    resolveOperationActivity(operation, operationRuntime) === "awaiting").length;
 }
 
 function resolveEntryGroupMark(
