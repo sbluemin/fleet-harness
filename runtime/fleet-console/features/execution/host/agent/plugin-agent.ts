@@ -1,5 +1,5 @@
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -111,6 +111,11 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
       const env = stripConsoleInternalEnv(process.env);
       delete env.FLEET_CONSOLE_SESSION_ID;
       const executablePath = await deps.resolveExecutablePath?.();
+      // CLI 는 CONFIG_DIR/sessions 에서 peer 를 찾는다. 메시징에 옵트인한 대화끼리 등록부만 잇고,
+      // projects·설정·session.json 은 기존 자리에 둬 이어 받기와 홈 격리를 보존한다.
+      if (persistDir) {
+        await configurePeerRegistry(path.join(persistDir, "claude"), path.join(path.dirname(persistDir), "peer-sessions"), builtins.some((tool) => tool === "SendMessage" || tool === "ListAgents"));
+      }
       const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
@@ -121,6 +126,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     };
     const buildTurn = (): ClaudeExecutionTurn => ({
       model: options.model,
+      ...(options.sessionName === undefined ? {} : { sessionName: options.sessionName }),
       ...(options.effort ? { effort: options.effort } : {}),
       systemPrompt: { mode: "replace", text: options.systemPrompt },
       cwd,
@@ -355,6 +361,27 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
   return event;
 }
 
+/** 발견 등록부만 플러그인 내부에서 공유한다. 이전 로컬 등록부는 옮겨 보존하고, 알 수 없는 링크는 바꾸지 않는다. */
+async function configurePeerRegistry(configDir: string, shared: string, enabled: boolean): Promise<void> {
+  const registry = path.join(configDir, "sessions");
+  const existing = await fs.lstat(registry).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; return null; });
+  if (existing?.isSymbolicLink()) {
+    if ((await fs.lstat(shared)).isSymbolicLink()) throw new Error("agent_peer_registry_conflict");
+    if (await fs.realpath(registry) !== await fs.realpath(shared)) throw new Error("agent_peer_registry_conflict");
+    if (!enabled) { await fs.unlink(registry); await fs.mkdir(registry, { mode: 0o700 }); }
+    return;
+  }
+  if (!enabled) return;
+  await fs.mkdir(shared, { recursive: true, mode: 0o700 });
+  if ((await fs.lstat(shared)).isSymbolicLink()) throw new Error("agent_peer_registry_conflict");
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
+  if (existing) {
+    if (!existing.isDirectory()) throw new Error("agent_peer_registry_conflict");
+    await fs.rename(registry, `${registry}.isolated-${randomUUID()}`);
+  }
+  await fs.symlink(shared, registry, process.platform === "win32" ? "junction" : "dir");
+}
+
 function validateOptions(options: AgentSessionOptions): void {
   if (!options || typeof options.model !== "string" || !options.model.trim() || typeof options.systemPrompt !== "string") throw new Error("agent_options_invalid");
   if (!["conversation", "oneshot"].includes(options.continuation) || !["result", "result-required"].includes(options.settlement)) throw new Error("agent_policy_invalid");
@@ -364,7 +391,8 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
   if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
   if (options.persist !== undefined && (typeof options.persist?.key !== "string" || !PERSIST_KEY.test(options.persist.key) || options.continuation !== "conversation" || options.timeoutMs !== undefined)) throw new Error("agent_persist_invalid");
-  if (options.tools?.builtins?.some((tool) => tool !== "WebSearch" && tool !== "WebFetch")) throw new Error("agent_builtin_not_allowed");
+  if (options.sessionName !== undefined && (typeof options.sessionName !== "string" || !options.sessionName.trim() || options.sessionName.length > 160 || /[\r\n]/.test(options.sessionName))) throw new Error("agent_session_name_invalid");
+  if (options.tools?.builtins?.some((tool) => !["WebSearch", "WebFetch", "SendMessage", "ListAgents"].includes(tool))) throw new Error("agent_builtin_not_allowed");
   if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
   const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER]);
   for (const group of options.tools?.custom ?? []) {
