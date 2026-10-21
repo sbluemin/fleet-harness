@@ -2,14 +2,14 @@
   "expo": {
     "name": "Fleet",
     "slug": "fleet-mobile",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
     "android": {
       "package": "com.dotobokuri.fleet.mobile",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0D1B2A"
@@ -17,7 +17,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.dotobokuri.fleet.mobile",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "supportsTablet": true
     },
     "plugins": [

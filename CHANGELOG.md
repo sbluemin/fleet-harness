@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.251.0] - 2026-10-21
+
+### fleet-console
+
+#### Added
+- Let active Commodores discover and message one another across Theaters in the same Console.
+- The Commodore can now look up its own Theater's Codex wiki while it works, the same way commanders do.
+
+#### Changed
+- Tables in Codex wiki entries now share the compact, content-sized look of chat tables, with calmer headers and no striped rows.
+- Commodore and group conversations now scroll all the way to the message box, and the working status and quota line step aside while you read earlier messages.
+- A passage you attach from a Codex wiki page now goes to the Commodore or commander conversation you have open, without a recipient menu. With no such conversation open, it goes to the Commodore, then the first commander, and the selection bar names where it will land.
+
+#### Fixed
+- Agents can archive completed objectives through Console Use; the Commodore can do so only during a turn carrying your message. Completion records are preserved.
+- The notice after attaching a Codex passage no longer appears as a white box in the dark theme.
+
+### fleet-mobile
+
+#### Fixed
+- On Android, opening the app or reconnecting after the Console restarts no longer fails with "Fleet could not open that Console." on the first try.
+
 ## [1.250.0] - 2026-10-21
 
 Release v1.250.0
