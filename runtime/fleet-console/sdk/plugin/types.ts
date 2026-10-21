@@ -592,18 +592,22 @@ export interface ClientComposerCapability {
   receiveQuotes?(pluginId: string, receiver: ComposerQuoteReceiver): () => void;
 }
 
-/** 붙일 곳 메뉴의 한 줄. */
+/** 인용을 받을 수 있는 곳 하나. */
 export interface ComposerQuoteTargetOption {
   readonly target: ComposerQuoteTarget;
   readonly label: string;
   /** 「사령관」·「지휘관」처럼 줄을 묶는 이름. */
   readonly group: "commodore" | "commander";
-  /** 지금 화면에 선 대화면 true — 붙일 곳의 기본값이다. */
+  /**
+   * 지금 화면에 선 대화면 true — 붙일 곳의 기본값이다. 한 목록에 많아야 하나다: 플러그인 대상이 지금 열려 있다고 알리면
+   * 그 대상이 서고 Operation 은 서지 않는다.
+   */
   readonly current?: boolean;
 }
 
 export interface ComposerQuoteReceiver {
-  readonly targets: (theaterId: string) => readonly { readonly targetId: string; readonly label: string }[];
+  /** `current` 는 그 대상의 대화가 지금 화면에 서 있을 때만 true 로 싣는다(예: 가운데 칸에 연 사령관 대화). */
+  readonly targets: (theaterId: string) => readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[];
   readonly receive: (targetId: string, quote: ComposerQuote) => ComposerQuoteAttachResult;
   /** 대상 목록이 바뀌면 깨운다. */
   readonly subscribe?: (listener: () => void) => () => void;

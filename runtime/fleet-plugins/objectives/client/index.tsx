@@ -6,7 +6,7 @@ import { objectivesClusterSource } from "./clusters.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
-import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote } from "./commodore-mention.js";
+import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
@@ -151,8 +151,8 @@ const objectivesPlugin = definePlugin({
     const disposeFresh = connectFreshConversation(ctx.conversation);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
-    // Codex 문서에서 고른 문장(인용)을 사령관 입력창에 받는다 — 호스트가 「붙일 곳」 메뉴와 붙이기를 중개한다. 보내지는 않는다.
-    const disposeQuotes = ctx.composer.receiveQuotes?.("objectives", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreMentions }) ?? (() => undefined);
+    // Codex 문서에서 고른 문장(인용)을 사령관 입력창에 받는다 — 호스트가 붙일 곳(지금 열린 대화 우선)과 붙이기를 중개한다. 보내지는 않는다.
+    const disposeQuotes = ctx.composer.receiveQuotes?.("objectives", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets }) ?? (() => undefined);
     return () => { disposeQuotes(); disposeRoster(); disposeFresh(); disposeConversation(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,

@@ -69,6 +69,17 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
   return port?.subscribe(listener) ?? (() => {});
 }
 
+/**
+ * 가운데 칸에 그 Theater 의 사령관 대화(입력창이 있는 것)가 지금 서 있는가. 읽기 전용 기록은 입력창이 없어 치지 않는다.
+ * 호스트의 「붙일 곳」 판정(`ComposerQuoteReceiver.targets` 의 `current`)이 읽는다. 바뀜은 `subscribeCommodoreConversationActive` 가 깨운다.
+ */
+export function isCommodoreConversationOpen(theaterId: string): boolean {
+  const surface = port?.current();
+  if (!surface || surface.surfaceId !== COMMODORE_SURFACE_ID) return false;
+  const params = readParams(surface.params);
+  return params?.theaterId === theaterId && !params.readOnly;
+}
+
 /** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
 export function useCommodoreConversationActive(): boolean {
   return useSyncExternalStore(
