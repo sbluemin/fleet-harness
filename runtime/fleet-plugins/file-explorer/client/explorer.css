@@ -184,8 +184,6 @@
 .fexp-chip-dir {
   flex-shrink: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
 }
 
 .fexp-chip-name {
@@ -354,8 +352,7 @@
   overflow-x: auto;
   scrollbar-width: none;
   white-space: nowrap;
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-size: var(--t-sm);
 }
 
 .fexp-viewer-crumb::-webkit-scrollbar { display: none; }
@@ -461,15 +458,13 @@
 
 .fexp-search-result-path {
   color: var(--text-primary);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-size: var(--t-sm);
   white-space: nowrap;
 }
 
 .fexp-search-result-parent {
   color: var(--text-tertiary);
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-size: var(--t-sm);
   white-space: nowrap;
 }
 
@@ -819,8 +814,7 @@
 }
 
 .fexp-bin-name {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
+  font-size: var(--t-sm);
   color: var(--text-secondary);
   margin: 0;
 }
