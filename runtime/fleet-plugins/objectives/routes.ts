@@ -158,7 +158,7 @@ export default definePlugin({
         return latest?.payload.objectiveLanguage === "ko" ? "ko" : "en";
       },
       subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
-      boardTools: (theaterId, readAttachments) => createCommodoreBoardTools(ctx, store, launch, theaterId, readAttachments),
+      boardTools: (theaterId, readAttachments, hasPersonMessage) => createCommodoreBoardTools(ctx, store, launch, theaterId, readAttachments, hasPersonMessage),
       ...(ctx.host.consoleControl ? { observe: (operationId) => launch.observeBoard(operationId) } : {}),
       notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
       emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),

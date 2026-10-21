@@ -27,6 +27,8 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
 
 /** 감독자가 이번 턴에 전달한 메시지만 읽는다 — 모델 입력으로 메시지나 Theater를 고르지 않는다. */
 export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<PluginAttachmentHost["read"]>;
+/** 감독자가 현재 턴에 실제로 전달한 사람 메시지의 유무만 알려 준다. */
+export type CommodorePersonMessageReader = () => boolean;
 
 const ids = z.string().min(1).max(128);
 const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Commodore: preserve this turn's image IDs in the brief, not as text; copy now, or ask to resend. No paths.");
@@ -50,6 +52,7 @@ const sliceOffset = z.number().int().min(0).optional().describe("Slice offset: f
 /** 거절의 뜻은 거절 응답에 싣는다 — 도구 설명에 미리 싣지 않는다. */
 const HINTS: Readonly<Record<string, string>> = {
   own_objective: "An Operation cannot act on an objective it commands or belongs to.",
+  person_message_required: "Archive completed objectives only in a turn carrying a message from the person. Ask the person to request archiving; an autonomous turn cannot do this.",
   objective_working: "A session is working and the objective waits on nothing; judge it by its results on the board.",
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
   routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
@@ -60,7 +63,7 @@ const HINTS: Readonly<Record<string, string>> = {
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { theaterId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: archive Operations, delete unlaunched objectives. restore/purge: archived objective IDs.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: keep Operations or done objectives; delete unlaunched. Commodore: done needs a person message this turn.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
   description: "A Theater's Objectives: groups, list, inbox, fleet, history, archived, models; add/tidy. purge: archived only; irreversible after 10-second undo grace. Console restart cancels pending purges.",
@@ -133,12 +136,12 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
 }
 
 /** 호스트가 호출자를 넣지 않는 사령관 전용 도구. Theater는 모델 입력이 아니라 생성 때 고정한다. */
-export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader): readonly PluginMcpTool[] {
-  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, readAttachments);
+export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly PluginMcpTool[] {
+  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, readAttachments, hasPersonMessage);
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
-function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader): readonly PluginMcpTool[] {
+function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly PluginMcpTool[] {
   const { languageOf, sessions } = createBoardViews(ctx, store);
   const { rowView, historyView, detailRead } = createConsoleBoardViews(ctx, store);
   const modelCatalog = createModelCatalog(ctx);
@@ -223,12 +226,12 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             const refusals = targets.flatMap((found) => {
               const reason = caller.kind === "operation" && roleIn(found, caller) ? "own_objective"
                 : caller.kind === "operation" && found.theaterId !== theaterOfCaller(caller) ? "other_theater"
-                : found.done ? "objective_done" : null;
-              return reason ? [{ objectiveId: found.id, reason }] : [];
+                : found.done && caller.kind === "commodore" && !hasPersonMessage?.() ? "person_message_required" : null;
+              return reason ? [{ objectiveId: found.id, reason, ...(HINTS[reason] ? { hint: HINTS[reason] } : {}) }] : [];
             });
             if (refusals.length) return refuse("tidy_refused", { refusals });
             const archived: string[] = [], deleted: string[] = [];
-            for (const found of targets) { const result = await launch.archive(found.id); (result.deleted ? deleted : archived).push(found.id); }
+            for (const found of targets) { const result = await launch.archive(found.id, { restorable: Boolean(found.done) }); (result.deleted ? deleted : archived).push(found.id); }
             return text({ ok: true, removed: targets.map((found) => found.id), archived, deleted });
           }
           if (call.action === "merge") { const target = store.tidyMerge(call.into, call.from, actor(call.reason)); touched(call.from); return text({ ok: true, objectiveId: target.id, merged: call.from, criteria: target.criteria.length }); }

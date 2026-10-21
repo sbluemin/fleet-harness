@@ -7,7 +7,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, stallEpisode, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
-import type { CommodoreAttachmentReader } from "../console-tools.js";
+import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../console-tools.js";
 import { ObjectiveStoreError } from "../store.js";
 import { commodorePersistKey, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -63,7 +63,7 @@ export interface CommodoreSupervisorDeps {
   readonly language?: (theaterId: string) => "en" | "ko";
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
-  readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader) => readonly PluginMcpTool[];
+  readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader, hasPersonMessage: CommodorePersonMessageReader) => readonly PluginMcpTool[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
   /** 정체가 구성원이 일하는 동안의 지휘관 휴식이면 그 사실을 지휘관에게 보낸다 — 사령관을 깨우는 같은 순간에 한 번. */
   readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
@@ -360,7 +360,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
-      boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner)).map((tool) => selfAttributed(runner, tool)), now,
+      boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner), () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0).map((tool) => selfAttributed(runner, tool)), now,
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
@@ -368,7 +368,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const message = runner.hosted.get(id);
         if (!message) return;
         runner.hosted.delete(id);
-        if (state === "started") { record(runner, { kind: "delivered", seqs: [message.seq] }); return; }
+        if (state === "started") {
+          runner.turnMessages = [...runner.turnMessages, message];
+          record(runner, { kind: "delivered", seqs: [message.seq] }); return;
+        }
         // 모델에 닿지 못했다 — 받은 순서대로 대기열에 돌려놓는다. 끄는 중이면 stop() 이 「전달되지 않음」으로 남긴다.
         const at = runner.messages.findIndex((queued) => queued.seq > message.seq);
         runner.messages.splice(at < 0 ? runner.messages.length : at, 0, message);
