@@ -278,7 +278,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
       <div ref={dockRef} className="group-chat-dock">
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
           {inlineWorking ? <ComposerTopEntries leading={workingLine} /> : workingLine}
-          {composer}
+          {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
+          {composer ? <div className="group-chat-dock-composer">{composer}</div> : null}
         </>}
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillOperationId={pillOperationId} />

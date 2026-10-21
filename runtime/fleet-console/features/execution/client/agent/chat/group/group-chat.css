@@ -511,7 +511,12 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
   pointer-events: none;
 }
 :root:not([data-view-mode="mobile"]) .group-chat-dock > * { pointer-events: none; }
-:root:not([data-view-mode="mobile"]) .group-chat-dock > * > * { pointer-events: auto; }
+:root:not([data-view-mode="mobile"]) .group-chat-dock > :not(.group-chat-dock-composer) > * { pointer-events: auto; }
+/* 플러그인 입력 자리(`composer` prop)의 슬롯 — 상자가 없어 배치는 그대로다. 그 안의 루트가 감싸개(사령관 footer 등)면 빈 여백은 통과시키고
+   자식만 받는다. 루트가 곧 컨트롤(단추·입력·링크·역할을 단 요소)이거나 자식 없는 잎이면 루트 자체가 받는다 — 단추 하나만 넘긴 돌아가기 자리도 눌린다. */
+.group-chat-dock-composer { display: contents; }
+:root:not([data-view-mode="mobile"]) .group-chat-dock-composer > * > *,
+:root:not([data-view-mode="mobile"]) .group-chat-dock-composer > :is(button, a, input, textarea, select, label, summary, details, [role], [tabindex], [contenteditable], :not(:has(*))) { pointer-events: auto; }
 /* 캡슐은 독 안에서 진행·요약 줄보다 한 층 위다 — 위로 읽는 동안 그 줄이 캡슐 뒤로 내려가 숨는다. */
 :root:not([data-view-mode="mobile"]) .group-chat-dock .fc-composer-capsule { position: relative; z-index: 1; }
 /* 캡슐 바로 위 한 줄(진행 줄·제안 칩·쿼터 요약). 맨 아래를 따라가는 동안은 제자리에 서고, 따라가기를 풀고 위로 읽는 동안(.group-chat[data-reading],
