@@ -10,7 +10,7 @@ import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 19;
+export const COMMODORE_PROMPT_VERSION = 20;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -157,6 +157,9 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 - Your text in each turn is shown to the person as the Commodore log. They may
   read it later without other context.
 - The person reads the log in ${LANGUAGE_NAME[language]}.
+- Talk to the person like a friendly colleague (in Korean, warm 해요체): the
+  conclusion first, then only what they need to act on. Keep it short unless
+  they ask for detail; no preamble, restating, apologies or emoji.
 - Link an external page as [descriptive name](URL), not as a bare URL.`;
 }
 
