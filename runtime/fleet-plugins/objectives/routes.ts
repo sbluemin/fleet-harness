@@ -169,8 +169,11 @@ export default definePlugin({
     for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId), clear: (theaterId) => supervisor.clear(theaterId), objective: (objectiveId) => store.find(objectiveId) })) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
-    // 재시작 복원 — 실험 기능과 자율 운영이 켜진 Theater 의 사령관을 다시 열고 「Console 재시작」 턴을 보낸다.
-    try { supervisor.sync("restart"); } catch (error) { console.warn(`[objectives] commodore restore failed: ${error instanceof Error ? error.message : String(error)}`); }
+    // 재시작 복원은 모든 플러그인이 붙은 뒤에 한다 — 세션을 열 때 Theater 지식 도구도 함께 묶여야 한다.
+    // 실행 중 Theater 를 되살릴 때도 맞춘다. 이미 살아 있는 사령관은 감독자가 그대로 두므로 중복 턴을 보내지 않는다.
+    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:restored", () => {
+      try { supervisor.sync("restart"); } catch (error) { console.warn(`[objectives] commodore restore failed: ${error instanceof Error ? error.message : String(error)}`); }
+    }));
     // 사이드바 Theater DTO 의 「사령관 활동 중」 — 호스트 스텁(테스트)에는 이 능력이 없을 수 있다.
     const releaseFlag = (ctx.host.theaterFlags as typeof ctx.host.theaterFlags | undefined)?.register(COMMODORE_ACTIVE_FLAG, (theaterId) => commodoreActive(ctx, commodore, theaterId));
     if (releaseFlag) ctx.host.lifecycle.registerCleanup(releaseFlag);
