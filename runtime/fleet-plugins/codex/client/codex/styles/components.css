@@ -3223,6 +3223,55 @@ button.chip:focus-visible {
 
 .document { font-family: var(--font-content); --font-size-body: var(--font-content-size); --font-size-code: var(--font-code-size); }
 
+/* 표 — 채팅 표(chat.css 의 `:is(.agent-chat, .group-chat) .markdown-body table`)와 같은 문법이다. 공용 표(전폭·바깥 테두리·
+   금색 대문자 머리칸·줄무늬·12/16 여백)를 위키 본문(.document — 엔트리·스키마·제안 diff·충돌 비교 패널)에서만 걷어 낸다.
+   파일 탐색기·목표 등 다른 공용 마크다운 표는 그대로다. 폭은 내용에 맞추고(넘치면 공용 규칙대로 표 상자 안에서 가로로 흐른다),
+   면은 중립 면 하나, 바깥 테두리 없이 칸 사이 세로 헤어라인과 그보다 옅은 가로 줄만 남는다. 머리칸은 본문과 같은 크기·주 잉크에
+   굵기 한 단으로만 갈린다 — brass 는 위치 채널이라 머리칸이 빌리지 않는다. 글자는 본문(--font-content-size)의 13/14, 줄높이 1.5,
+   칸 여백 0.5em 1em 이다. */
+.document .markdown-body table {
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  background: var(--control-rest);
+  font-size: calc(var(--font-content-size) * 0.928571);
+  line-height: 1.5;
+}
+
+.document .markdown-body table :is(th, td) {
+  padding: 0.5em 1em;
+  border-bottom: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
+}
+
+.document .markdown-body table :is(th, td) + :is(th, td) {
+  border-left: 1px solid var(--hairline);
+}
+
+.document .markdown-body table th {
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.document .markdown-body table tr:nth-child(even) td { background: none; }
+
+/* 좁은 자리에서는 공용 표의 좁은 자리 계약(좌우 여백 한 단 축소)을 지킨다 — 위의 1em 여백이 특정성으로 그 계약을 덮지 않게
+   같은 조건으로 되돌린다. */
+@container (max-width: 480px) {
+  .document .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+@media (max-width: 480px) {
+  .document .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+/* 폰의 표 글자는 채팅과 같이 모바일 사다리의 메타 단이다. */
+:root[data-view-mode="mobile"] .document .markdown-body table { font-size: var(--m-fs-meta); }
+
 /* ── 폰 배치 — 위키 항목 머리를 엄지 문법으로 ──
    데스크톱 규칙은 그대로 두고 `:root[data-view-mode="mobile"]` 아래에서만 바꾼다. 원칙은 두 가지다:
    글자는 폰 글자 사다리의 small(12px) 아래로 내려가지 않고, 누르는 것은 손가락 칸이 44 이상이다. 보이는 모양은 되도록 유지하고
