@@ -19,7 +19,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { dismissRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { dismissRailPanel, openRailPanel, presentRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   PANE_WIDTH_CLASS_PX,
@@ -697,7 +697,7 @@ export function openConversationTab(entry: RailEntryDescriptor, context: RailToo
   entry.conversationTabs?.select(tabId, theaterId);
   if (isActive) return;
   if (entry.activate) entry.activate(context);
-  else openRailPanel(entry.id);
+  else presentRailPanel(entry.id);
 }
 
 /**
