@@ -187,13 +187,18 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const local = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, language ?? "en");
 
-  // 보드 동작 — 고정된 동작(완료한 목표)이 있으면 늘 그 동작이 앉는다. 앉힌 동작이 제안에서 사라지면(상태가 바뀜) 걷는다.
+  // 보드 동작 — 앉힌 동작이 제안에서 사라지면(상태가 바뀜) 걷는다.
   const board = actions?.board ?? null;
   const offered = React.useMemo(() => (board ? [...board.suggestions, ...(board.more ?? [])] : []), [board]);
-  const seated: GroupBoardAction | null = board?.fixed ?? (mode !== null ? offered.find((action) => action.id === mode && action.context) ?? null : null);
+  const seated: GroupBoardAction | null = mode !== null ? offered.find((action) => action.id === mode && action.context) ?? null : null;
   React.useEffect(() => {
-    if (mode !== null && !board?.fixed && !offered.some((action) => action.id === mode && action.context)) draft.update({ mode: null });
-  }, [board, offered, mode, draft]);
+    if (mode !== null && !offered.some((action) => action.id === mode && action.context)) draft.update({ mode: null });
+  }, [offered, mode, draft]);
+  // 지휘관에게만 말할 수 있게 되면(목표 완료) 앞서 고른 구성원·「모두」를 걷는다 — 사령관은 목표 밖이라 남는다.
+  const commanderOnly = !!board?.commanderOnly;
+  React.useEffect(() => {
+    if (commanderOnly && (target?.kind === "member" || target?.kind === "all")) draft.update({ target: null });
+  }, [commanderOnly, target, draft]);
   // 두 번 누름 — 칩 id 또는 압축 행. 다른 일을 하면 풀린다.
   const [armed, setArmed] = React.useState<string | null>(null);
   const armTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -231,11 +236,11 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
     const q = query.toLocaleLowerCase();
     const hit = (...labels: string[]) => q.length === 0 || labels.some((label) => label.toLocaleLowerCase().includes(q));
     return [
-      ...members.filter((speaker) => hit(speaker.name)).map((speaker): Candidate => ({ kind: "member", speaker })),
-      ...(hit(t("group.mention.everyone"), "all", "everyone") ? [{ kind: "all" } as const] : []),
+      ...(commanderOnly ? [] : members.filter((speaker) => hit(speaker.name)).map((speaker): Candidate => ({ kind: "member", speaker }))),
+      ...(!commanderOnly && hit(t("group.mention.everyone"), "all", "everyone") ? [{ kind: "all" } as const] : []),
       ...(hit(t("group.commodore"), "commodore") ? [{ kind: "commodore" } as const] : []),
     ];
-  }, [query, members, t]);
+  }, [query, members, t, commanderOnly]);
   // 동작 칩이 앉아 있는 동안(그리고 동작만 받는 입력창에서는) 받는 이는 지휘관이다 — @ 목록을 열지 않는다.
   const popOpen = !popDismissed && candidates.length > 0 && seated === null && !board?.actionsOnly;
   const index = Math.min(popIndex, Math.max(0, candidates.length - 1));
@@ -481,7 +486,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
         dismiss: () => setPopDismissed(true),
       })) return;
     }
-    if (event.key === "Backspace" && text.length === 0 && seated && !board?.fixed) { draft.update({ mode: null }); return; }
+    if (event.key === "Backspace" && text.length === 0 && seated) { draft.update({ mode: null }); return; }
     if (event.key === "Backspace" && text.length === 0 && target && !seated) { setTarget(null); return; }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -493,13 +498,13 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
     : seated?.context ? local(seated.context.placeholder)
       : board?.actionsOnly ? t("group.board.placeholder")
         : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t(phone ? "group.composer.placeholderMobile" : "group.composer.placeholder"));
-  const chips = board && !board.fixed ? board.suggestions : [];
+  const chips = board ? board.suggestions : [];
   const note = board?.note ?? null;
-  const showHint = !!board?.hint && (chips.length > 0 || !!board.fixed);
+  const showHint = !!board?.hint && chips.length > 0;
   const suggest = note !== null || chips.length > 0 || showHint;
   const chipClass = (action: GroupBoardAction) => `group-composer-action${action.emphasis === "primary" ? " is-primary" : action.emphasis === "review" ? " is-review" : ""}${armed === action.id ? " is-armed" : ""}`;
   const panel = board?.renderPanel ? board.renderPanel({ language: language === "ko" ? "ko" : "en", layout: phone ? "mobile" : "desktop", settle: settlePanel }) : null;
-  const more = board && !board.fixed ? board.more ?? [] : [];
+  const more = board ? board.more ?? [] : [];
 
   return (
     <div ref={wrapRef} className="group-composer-wrap">
@@ -649,7 +654,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
           <span className="group-composer-chip is-action">
             {BOARD_GLYPHS[seated.glyph]}
             <span>{local(seated.label)}</span>
-            {board?.fixed ? null : <button type="button" className="group-composer-chip-x" aria-label={t("group.board.release", { label: local(seated.label) })} onClick={() => { draft.update({ mode: null }); inputRef.current?.focus(); }}>×</button>}
+            <button type="button" className="group-composer-chip-x" aria-label={t("group.board.release", { label: local(seated.label) })} onClick={() => { draft.update({ mode: null }); inputRef.current?.focus(); }}>×</button>
           </span>
         ) : board?.actionsOnly ? (
           <MentionChip label={commander?.name ?? t("group.commander")} />

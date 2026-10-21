@@ -138,8 +138,10 @@ export function bandChoices(props: ChooseInput & { readonly commanderExists: boo
   const followupCandidates = openFollowups(objective);
   const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(objective) && followupCandidates.length > 0;
   // 「메시지」 — 깨어난 지휘관이 있으면 어느 상태에서든 고른다. 결정 대기·후속 후보·잠긴 동작은 제 할 일이 먼저다.
-  const messageable = !!primary && !objective.done && objective.commander.started && props.commanderExists && props.recipientCount > 0
-    && primary !== "decide" && primary !== "decideMember" && !gated && !followupAvailable;
+  // 완료한 목표는 한 번 섰던 지휘관과 늘 이야기할 수 있다 — 보관됐어도 서버가 휴면으로 되살려 전하고, 완료는 그대로다.
+  const messageable = objective.done ? objective.commander.started
+    : !!primary && objective.commander.started && props.commanderExists && props.recipientCount > 0
+      && primary !== "decide" && primary !== "decideMember" && !gated && !followupAvailable;
   const alts: readonly IntentKey[] = messageable ? [...stateAlts, "message"] : stateAlts;
   return { primary, alts, gated, followupCandidates, followupAvailable };
 }
@@ -290,18 +292,21 @@ export function objectiveBoardActions(objective: Objective): GroupBoardActions {
   const keys = choices.primary && CHIP.has(choices.primary) ? [choices.primary, ...choices.alts.filter((key) => CHIP.has(key))] : choices.alts.filter((key) => CHIP.has(key));
   const done = objective.done;
   // 제안 줄은 칩 1~2개 — 같은 상태에서 함께 성립하는 셋째부터는 ＋ 메뉴의 보드 행으로 선다(사다리의 결과를 버리지 않는다).
-  const offered = done ? [] : keys.map((key, index) => actionOf(objective, key, index === 0 && key === choices.primary, live));
+  // 완료한 목표의 범위 넓히기는 고를 수 있는 칩일 뿐이다 — 기본 전송은 지휘관에게 가는 메시지이므로 강조하지 않는다.
+  const offered = keys.map((key, index) => actionOf(objective, key, !done && index === 0 && key === choices.primary, live));
   const suggestions = offered.slice(0, 2);
   const more = offered.slice(2);
-  const hintKey = choices.primary ? HINTS[choices.primary] : undefined;
+  const hintKey = done ? (choices.alts.includes("message") ? "objectives.extend.doneDesc" : undefined) : choices.primary ? HINTS[choices.primary] : undefined;
   const compactSessions = new Set([objectiveId, ...objective.members.filter((member) => member.sessionName !== null).map((member) => member.id)]).size;
   const note = noteOf(objective, choices, live);
   return {
     suggestions,
     ...(more.length ? { more } : {}),
-    ...(done ? { fixed: actionOf(objective, "extend", true, live), hint: localized((t) => t("objectives.extend.doneDesc")) } : hintKey && suggestions.length ? { hint: localized((t) => t(hintKey)) } : {}),
-    // 지휘관이 서기 전에는 평범한 메시지가 갈 곳이 없다 — 구상·개시에 덧붙일 말만 받는다.
-    ...(!done && !objective.commander.started && live.commander === "closed" ? { actionsOnly: true } : {}),
+    ...(hintKey && suggestions.length ? { hint: localized((t) => t(hintKey)) } : {}),
+    // 완료한 목표의 평범한 메시지는 지휘관에게만 — 구성원은 임무를 닫았다(서버도 objective_done 으로 거절한다).
+    ...(done ? { commanderOnly: true } : {}),
+    // 지휘관이 서기 전에는 평범한 메시지가 갈 곳이 없다 — 구상·개시(완료한 목표면 범위 넓히기)에 덧붙일 말만 받는다.
+    ...(!objective.commander.started && (done || live.commander === "closed") ? { actionsOnly: true } : {}),
     ...(note ? { note } : {}),
     ...(live.commander !== "closed" ? { compact: { sessions: compactSessions, run: () => runCompact(objectiveId) } } : {}),
     run: (actionId, context) => runAction(objectiveId, actionId as IntentKey, context),

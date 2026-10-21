@@ -1685,13 +1685,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     message: (objectiveId, memberId, text, options, attachmentIds) => orderedOperationRequest(objectiveId, async () => {
       // 개시·구상이 지휘관을 띄우거나 구성원을 모으는 중이다 — 그 사이의 말은 어느 세션에 닿을지 정해지지 않았다.
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
-      const current = editableObjective(objectiveId);
+      // 완료한 목표에도 지휘관과는 이야기할 수 있다 — 완료·확장 회차·보드는 그대로 둔다. 구성원은 임무를 닫았으므로 받지 않는다.
+      const messageable = (): Objective => (memberId === null ? objective(objectiveId) : editableObjective(objectiveId));
+      // 옛 정리(removed) 레코드는 「복원」처럼 먼저 보관으로 옮긴다.
+      if (memberId === null && objective(objectiveId).done && objective(objectiveId).removed) await migrateRemoval(objectiveId);
+      const current = messageable();
       const member = memberId === null ? null : current.members.find((candidate) => candidate.id === memberId);
       if (member === undefined) throw new ObjectiveStoreError("unknown_member");
       const target = member ? member.id : current.id;
       if (!referenceNode(target)) throw new ObjectiveStoreError("unknown_operation");
+      // 보관된 완료 목표의 지휘관은 「복원」처럼 휴면으로 되살린 뒤 전한다 — 완료는 남는다.
+      const wasArchived = current.archived;
       await accessOperation(target);
-      editableObjective(objectiveId);
+      if (wasArchived) { store.refresh(objectiveId); service.followupTargetChanged(objectiveId); }
+      messageable();
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
       const humanInput = (options?.actor ?? "human") === "human" ? { id: randomUUID(), ...(member ? { targetOperationId: member.id } : {}) } : undefined;
       const attached = humanInput && attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {};
@@ -1703,7 +1710,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (actor === "human") personPrompts.add(member.id);
         else if ((store.memberDispatch(member.id)?.at ?? -1) < quietNow()) store.recordDispatch(member.id, quietNow());
       }
-      store.setStopped(objectiveId, false);
+      // 멈춤 표시는 보고 기대의 축이다 — 완료한 목표는 보고를 기다리지 않으므로 그 레코드를 고치지 않는다.
+      if (!store.find(objectiveId)?.done) store.setStopped(objectiveId, false);
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };
       const notice = memberMessageTurn(current, member.role, text, languageOf(options), options?.actor, attached.attachmentIds?.length ?? 0);

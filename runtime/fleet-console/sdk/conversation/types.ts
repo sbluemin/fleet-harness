@@ -249,8 +249,11 @@ export interface GroupBoardActions {
   readonly suggestions: readonly GroupBoardAction[];
   /** 제안 줄(칩 1~2개)에 싣지 못한 같은 상태의 나머지 동작 — ＋ 메뉴의 보드 행으로 선다. 칩과 같은 규칙으로 앉거나 실행된다. */
   readonly more?: readonly GroupBoardAction[];
-  /** 입력창이 이 동작으로 고정된다(완료한 목표의 범위 넓히기) — 칩을 풀 수 없고 받는 이를 고를 수 없다. */
-  readonly fixed?: GroupBoardAction;
+  /**
+   * 평범한 메시지는 지휘관에게만 간다(완료한 목표) — @ 목록에 구성원·「모두」가 서지 않고, 앞서 고른 그런 받는 이는 걷힌다.
+   * 목표 밖의 사령관은 그대로 고른다. 동작 칩은 제안 줄의 규칙 그대로다.
+   */
+  readonly commanderOnly?: boolean;
   /** 평범한 메시지가 갈 곳이 없다(지휘관이 서기 전) — 동작 칩을 고른 말만 보낸다. */
   readonly actionsOnly?: boolean;
   /**

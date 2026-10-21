@@ -301,7 +301,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       { state: (operationId) => shownActivity(activity.get(operationId) ?? "closed"), roster }, boardOf(objective.theaterId).active);
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
-      // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
+      // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
       continue;
     }
@@ -398,8 +398,9 @@ const profileSignature = (profile: ConversationMemberProfile | undefined) => (pr
   profile.notes?.map((note) => [resolveText(note.text), note.title ?? "", note.tone ?? ""]) ?? []] : null);
 // 보드 동작의 글도 함수다 — 칩·안내·자리표시를 영어로 풀어 비교한다(상태 사다리가 바뀌면 글이나 칩이 바뀐다).
 const boardSignature = (board: GroupBoardActions | undefined) => (board ? [
-  [...board.suggestions, ...(board.fixed ? [board.fixed] : [])].map((action) => [action.id, resolveText(action.label), action.detail ? resolveText(action.detail) : "", action.context ? resolveText(action.context.placeholder) : "", action.unavailable ? resolveText(action.unavailable) : ""]),
+  board.suggestions.map((action) => [action.id, resolveText(action.label), action.detail ? resolveText(action.detail) : "", action.context ? resolveText(action.context.placeholder) : "", action.unavailable ? resolveText(action.unavailable) : ""]),
   board.note ? [resolveText(board.note.text), board.note.reveal ? resolveText(board.note.reveal.label) : ""] : null, board.hint ? resolveText(board.hint) : "",
+  board.commanderOnly === true, board.actionsOnly === true,
 ] : null);
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
@@ -421,7 +422,7 @@ let cachedInputs: readonly unknown[] = [];
 
 /**
  * 보관된 완료 목표의 대화 서술자 — 줄·뿌리 없이 대화(명부·보드 동작)만 싣는다. 지휘관 Operation 이 보관돼 활동이 없으므로 명부는 모두 닫힌
- * 것으로 센다. 가운데 칸의 완료 화면 입력창이 이 서술자의 보드 동작(범위 넓히기)을 읽는다.
+ * 것으로 센다. 가운데 칸의 완료 화면 입력창이 이 서술자의 보드 동작(지휘관에게만 가는 메시지·범위 넓히기 칩)을 읽는다.
  */
 function doneStandInCluster(objective: Objective, roster: ModelRoster | null, boardOf: (theaterId: string) => CommodoreBoard): OperationCluster {
   const open = () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); };
@@ -465,7 +466,7 @@ export const objectivesClusterSource: OperationClusterSource = {
     const observations = new Map(listedOperationSummaries().map((summary) => [summary.id, observationOf(summary)]));
     const showing = freshConversationObjectiveId();
     const live = theaterStates.flatMap((state) => state.objectives);
-    // 보관된 완료 목표는 살아 있는 목록에 없다 — 완료 화면이 보는 동안만 읽어 둔 끝난 목표로 그 입력창의 대화(범위 넓히기)를 세운다.
+    // 보관된 완료 목표는 살아 있는 목록에 없다 — 완료 화면이 보는 동안만 읽어 둔 끝난 목표로 그 입력창의 대화(지휘관과의 메시지·범위 넓히기)를 세운다.
     const archivedShown = showing && !live.some((objective) => objective.id === showing) ? findFinishedObjective(showing) : null;
     const next = [
       ...clustersOf(live, activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster),
