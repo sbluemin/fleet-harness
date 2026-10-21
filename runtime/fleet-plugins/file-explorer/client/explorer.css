@@ -593,8 +593,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
 }
 
 .fexp-tree-error-retry {
