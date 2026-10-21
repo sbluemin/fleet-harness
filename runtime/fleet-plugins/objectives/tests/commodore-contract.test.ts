@@ -732,16 +732,20 @@ describe("commodore supervisor", () => {
         },
         forget: async (key) => { kept.delete(key); forgotten.push(key); },
       };
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+      let hasPersonMessage: (() => boolean) | undefined;
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, emit: () => undefined });
       let supervisor = make();
       supervisor.sync("autonomy");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.sent).toHaveLength(1);
+      expect(hasPersonMessage!()).toBe(false);
       // 턴 중의 말 — 다음 턴을 기다리지 않고 도는 턴에 건넨다. 그 턴이 집으면 「전달됨」이 남고 다음 턴은 서지 않는다.
       const read = h.store.transcriptAppend("t1", { kind: "message", text: "Use Muse Spark for new commanders." });
       expect(sessions[0]!.steered).toEqual([{ text: expect.stringContaining("Use Muse Spark for new commanders."), id: `m${read.seq}` }]);
+      expect(hasPersonMessage!()).toBe(false);
       sessions[0]!.emit({ kind: "input-started", id: `m${read.seq}` });
+      expect(hasPersonMessage!()).toBe(true);
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
       // 집히지 못한 말은 대기열로 돌아와 다음 턴에 실린다 — 잃지 않는다.
       const unread = h.store.transcriptAppend("t1", { kind: "message", text: "And check the roster." });
@@ -751,8 +755,10 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(2);
       expect(sessions[0]!.sent[1]).toContain("And check the roster.");
       expect(sessions[0]!.sent[1]).not.toContain("Use Muse Spark");
+      expect(hasPersonMessage!()).toBe(true);
       sessions[0]!.finish();
       await vi.advanceTimersByTimeAsync(10);
+      expect(hasPersonMessage!()).toBe(false);
 
       // Console 재시작 — 같은 대화를 이어 받는다. 재시작만으로는 깨우지 않고 「이어 받음」 줄만 남는다.
       await supervisor.dispose();
