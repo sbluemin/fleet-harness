@@ -54,6 +54,6 @@ export type {
   ClaudeExecutionTurn,
 } from "./execution-loop.js";
 export { readClaudeSessionTitle } from "./session-info.js";
-export { readVendorSupportedModels as readClaudeSupportedModels } from "./vendor-sdk.js";
+export { claudeRuntimePackages, readVendorSupportedModels as readClaudeSupportedModels } from "./vendor-sdk.js";
 
 export type { ClaudeModelPolicy, ClaudeModelResolution, ClaudeSupportedModel, ReadClaudeSupportedModelsOptions } from "./contracts.js";

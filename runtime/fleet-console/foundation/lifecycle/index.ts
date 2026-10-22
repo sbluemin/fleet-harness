@@ -1,3 +1,4 @@
+export { terminateSessionHost, connectSessionUpdateKeeper, connectSessionRpc, readSessionHostManifest, type SessionRpcPeer } from "./session-host/index.js";
 export { pruneConsoleExitRecords, readConsoleEnding, readConsoleExitRecord, writeConsoleExitRecord, type ConsoleEndingEvidence, type ConsoleEndingOutcome } from "./exit-record.js";
 export { createConsoleHealthClient, toConsoleHealthEvidence, type ConsoleHealthAnswer, type ConsoleHealthDeps, type ConsoleHealthTarget, type ConsoleProbeOptions, type ConsoleProbeResult } from "./health.js";
 export { deliverConsoleStop, requestConsoleStop, type ConsoleStopRequestLock, type DeliverConsoleStopInput, type RequestConsoleStopOptions, type RequestConsoleStopResult } from "./stop-request.js";

@@ -53,6 +53,11 @@ export interface VendorSessionInput {
  */
 const VENDOR_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 
+/** 실행 generation을 보존하는 호스트에 vendor 이름 대신 불투명한 런타임 의존 목록을 준다. */
+export function claudeRuntimePackages(): readonly string[] {
+  return [VENDOR_PACKAGE];
+}
+
 /** musl 동적 로더의 절대 경로. vendor의 실패 메시지가 지목하는 바로 그 파일이다. */
 const MUSL_LOADERS: Readonly<Record<string, string>> = {
   x64: "/lib/ld-musl-x86_64.so.1",

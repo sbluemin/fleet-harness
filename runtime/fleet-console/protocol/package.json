@@ -44,6 +44,11 @@
       "import": "./lifecycle/wait.ts",
       "default": "./lifecycle/wait.ts"
     },
+    "./session-host": {
+      "types": "./session-host/index.ts",
+      "import": "./session-host/index.ts",
+      "default": "./session-host/index.ts"
+    },
     "./release": {
       "types": "./release/index.ts",
       "import": "./release/index.ts",

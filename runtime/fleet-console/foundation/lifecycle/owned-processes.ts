@@ -53,8 +53,8 @@ export interface ProcessGroupContainment {
 }
 
 /**
- * Windows containment, injected by the Console host (`console-lifecycle.ts` only). `contain` never throws: a failed
- * create or assign returns null, and that child stays in libuv's job instead of being registered.
+ * Windows containment, injected by a runtime's composition (Console, session broker, or runner). A failed create or
+ * assign returns null; the caller chooses whether libuv fallback is acceptable or the launch must be refused.
  */
 export interface ProcessContainmentPort {
   contain(pid: number): ProcessGroupContainment | null;

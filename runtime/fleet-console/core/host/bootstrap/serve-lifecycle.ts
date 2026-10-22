@@ -14,6 +14,8 @@ export interface ConsoleServeLifecycleHooks {
   readonly onLockAcquired?: (instance: ConsoleServeLockInstance) => void;
   /** Runs once, synchronously, on the first accepted stop request — before any cleanup. The serve arms its deadline here. */
   readonly onStopRequested?: (reason: ConsoleStopReason) => void;
+  /** Every request, including a later explicit stop overriding update preservation. */
+  readonly onEveryStopRequested?: (reason: ConsoleStopReason) => void;
   /** The single shutdown failed. Every stop request still settles. */
   readonly onShutdownFailed?: (error: unknown) => void;
   /**
@@ -90,6 +92,7 @@ export function createConsoleServeLifecycle(hooks: ConsoleServeLifecycleHooks = 
       shutdown = run;
     },
     requestStop(reason) {
+      hooks.onEveryStopRequested?.(reason);
       if (stopping) return stopping;
       if (state === "binding" || state === "starting" || state === "ready") state = "stopping";
       hooks.onStopRequested?.(reason);

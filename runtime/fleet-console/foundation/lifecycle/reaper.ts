@@ -33,7 +33,8 @@ export type ReaperMessage =
   | { readonly hello: { readonly consolePid: number; readonly lockFile: string; readonly lockStartedAt: number } }
   | { readonly add: OwnedProcessGroup }
   | { readonly leaderExited: { readonly pgid: number; readonly at: number } }
-  | { readonly remove: { readonly pgid: number } };
+  | { readonly remove: { readonly pgid: number } }
+  | { readonly drain: true };
 
 export interface ReaperIo {
   /** The Console's end of the pipe: one JSON message per line; its end means the Console is gone. */
@@ -73,6 +74,7 @@ export function runReaper(io: ReaperIo): void {
       const group = groups.get(message.leaderExited.pgid);
       if (group) groups.set(group.pgid, { ...group, leaderExitedAt: message.leaderExited.at });
     } else if ("remove" in message) groups.delete(message.remove.pgid);
+    else if ("drain" in message) void drain("owner requested drain", false);
   };
 
   io.input.setEncoding?.("utf8");
@@ -92,7 +94,7 @@ export function runReaper(io: ReaperIo): void {
     if (hello && !isPidAlive(hello.consolePid)) void drain("console gone");
   }, REAPER_LIVENESS_INTERVAL_MS);
 
-  async function drain(reason: string): Promise<void> {
+  async function drain(reason: string, recordEnding = true): Promise<void> {
     if (draining) return;
     draining = true;
     clearInterval(liveness);
@@ -105,8 +107,8 @@ export function runReaper(io: ReaperIo): void {
       if (!hello) return;
       // The pipe ends as the Console dies; its pid can linger a moment until its parent reaps it.
       const gone = now() + CONSOLE_GONE_WAIT_MS;
-      while (isPidAlive(hello.consolePid) && now() < gone) await delay(STOP_POLL_MS);
-      recordExternalEnding(hello);
+      while (recordEnding && isPidAlive(hello.consolePid) && now() < gone) await delay(STOP_POLL_MS);
+      if (recordEnding) recordExternalEnding(hello);
       if (process.platform === "win32") return;
       const proven = await proveGroups([...groups.values()], endedAt, FIRST_PROOF_READS);
       if (proven.length === 0) return;

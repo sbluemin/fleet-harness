@@ -29,6 +29,7 @@ import {
 } from "@fleet-console/protocol/lifecycle";
 
 export { CONSOLE_LIFECYCLE_CONTRACT_VERSION, CONSOLE_START_POLL_MS, CONSOLE_START_TIMEOUT_MS };
+export { connectSessionUpdateKeeper } from "@fleet-console/lifecycle/session-host";
 
 /** The Console instance the update replaces: the lock it published, as that Console handed it to the worker. */
 export interface UpdatedConsole {

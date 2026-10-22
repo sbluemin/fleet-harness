@@ -122,6 +122,7 @@ export interface ConsoleServerDeps {
    * its own, so every agent CLI still starts in a registered group of its own.
    */
   readonly ownedProcesses?: OwnedProcessRegistry;
+  readonly sessionHost?: import("./session-host-owner.js").ConsoleSessionHostOwner;
 }
 
 export interface ConsoleServer {
@@ -522,7 +523,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ?? (process.env.FLEET_DATA_DIR === undefined ? consoleSlotOverride : undefined)
     ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
-  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir, failureLogName: CONSOLE_FAILURE_LOG_FILE });
+  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir, failureLogName: CONSOLE_FAILURE_LOG_FILE, sessionHost: deps.sessionHost });
   const recordFailure = createConsoleFailureLog(durablePaths.dir);
   // Every long-lived child this instance starts on purpose (agent CLIs, the Computer Use broker) leads a group registered here.
   const ownedProcesses = deps.ownedProcesses ?? createOwnedProcessRegistry();
@@ -2192,6 +2193,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // The single shutdown and a failed start each run this once and release the lock at its end; nothing else releases it.
     if (consoleResourcesDisposed) return;
     consoleResourcesDisposed = true;
+    await deps.sessionHost?.settleStop();
     // 원격 리스너를 남겨 두면 콘솔이 내려간 뒤에도 포트가 열려 있는 것처럼 보인다.
     const closingRemote = remoteServer;
     remoteServer = null;
@@ -2775,6 +2777,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
       lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
       lifecycle.lockAcquired(lockHandle.payload);
+      await deps.sessionHost?.start(lockHandle.payload);
       // Earlier instances' exit records are pruned only by the lock owner, after it took the lock (I3).
       pruneConsoleExitRecords(lockPaths.lockFile);
       activeLockFile = lockPaths.lockFile;

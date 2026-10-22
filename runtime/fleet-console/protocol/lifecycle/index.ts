@@ -45,7 +45,10 @@ export const CONSOLE_LIFECYCLE_WIRE = 1;
  * The revision of the update worker's lifecycle runtime (the bundle an accepted update copies beside its worker). The
  * worker loads a copy only when its bytes and this revision match what the Console that wrote the worker expected.
  */
-export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 2;
+export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 3;
+
+// Shells consume these additive local-session contracts without changing the Console health wire.
+export { SESSION_HOST_WIRE, SESSION_KEEPER_HEARTBEAT_MS, SESSION_KEEPER_LOSS_MS, SESSION_UPDATE_MAX_MS, type SessionUpdateRef, type SessionOwner, type SessionHostManifest } from "../session-host/index.js";
 
 // ---------- Time budgets ----------
 // Every wait and escalation in Console, CLI, Desktop, and the update worker is derived from these (./budgets.ts, kept

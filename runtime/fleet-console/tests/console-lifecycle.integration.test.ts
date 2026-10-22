@@ -18,6 +18,8 @@ import { describeReplacedLockAuthor, HEALTH_PROBE_TIMEOUT_MS, PROCESS_START_MARG
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
+import { SessionHostClient, stopSlotSessionHost } from "../features/execution/host/session-host/client.js";
+import { connectSessionUpdateKeeper, connectSessionRpc } from "@fleet-console/lifecycle/session-host";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
@@ -36,6 +38,118 @@ afterEach(async () => {
   }
   CHILD_PIDS.clear();
   for (const dir of TEMP_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+describe("Console session-host lifecycle integration", () => {
+  // The old representative suite only proved child death. This boundary must also prove same-child update continuity.
+  it("keeps SDK and PTY execution through an authenticated update, rejects duplicate input, then stops the whole host", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-handoff-")); TEMP_DIRS.push(root);
+    const home = path.join(root, "home"); fs.mkdirSync(home); const fake = path.join(root, "fake"); fs.mkdirSync(fake);
+    const env = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_DIR: fake };
+    const lockFile = path.join(root, "console.lock");
+    const lock = createConsoleLock();
+    let held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
+    let client: SessionHostClient | null = null;
+    let keeper: { close(): void } | null = null;
+    try {
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      const first = client;
+      const unauthenticated = await connectSessionRpc(client.manifest.socket);
+      try {
+        await expect(unauthenticated.call("hello", { wire: 1, role: "control", hostId: client.manifest.hostId, capability: "not-a-capability" })).rejects.toThrow("session_host_auth_failed");
+        await expect(unauthenticated.call("terminate-all")).rejects.toThrow("session_host_auth_required");
+      } finally { unauthenticated.close(); }
+      let toolCalls = 0;
+      client.bindBusiness(() => ({ content: [{ type: "text", text: `call-${++toolCalls}` }] }));
+      const executablePath = fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url));
+      const sdk = await client.open({ kind: "sdk", sessionKey: "chat", generation: client.generation, launchFingerprint: { schema: 1, digest: "fixture" }, sdk: { baseUrl: "http://127.0.0.1:1", models: ["opus"], executablePath, env, home: { kind: "isolated" } }, request: { model: "opus", cwd: root, permissionMode: "dontAsk" }, embeddedTools: [{ name: "fleet-fixture", port: "fixture-tools", tools: [{ name: "effect", description: "Fixture effect", inputSchema: { type: "object", properties: {} } }] }] });
+      const [mcp] = sdk.runtime.mcpServers as { name: string; url: string; headers: { name: string; value: string }[] }[];
+      const callTool = async () => {
+        const response = await fetch(mcp!.url, { method: "POST", headers: { "content-type": "application/json", Authorization: mcp!.headers[0]!.value }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "effect", arguments: {} } }) });
+        expect(response.status).toBe(200); return await response.json();
+      };
+      expect(await callTool()).toMatchObject({ result: { content: [{ text: "call-1" }] } });
+      const terminal = await client.open({ kind: "pty", sessionKey: "terminal", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data', b => process.stdout.write(b)); setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
+      const send = { sessionKey: "chat", commandId: "send-one", sequence: 1, kind: "send", body: { input: "SLOW" } };
+      await client.command(send);
+      await vi.waitFor(() => expect(fs.readFileSync(path.join(fake, "log.jsonl"), "utf8")).toContain('"event":"turn-start"'), { timeout: 10_000 });
+      let finishMutation!: (value: unknown) => void;
+      client.bindBusiness(() => new Promise((resolve) => { finishMutation = resolve; }));
+      const mutation = callTool();
+      await vi.waitFor(() => expect(finishMutation).toBeTypeOf("function"));
+      await expect(client.prepareUpdate("unsafe-update")).rejects.toThrow("session_business_not_drained");
+      finishMutation({ content: [{ type: "text", text: "drained" }] });
+      expect(await mutation).toMatchObject({ result: { content: [{ text: "drained" }] } });
+      client.bindBusiness(() => ({ $sessionHostDeferred: true, turnId: "turn-one", permissionEpoch: 7, expiresAt: Date.now() + 60_000, presentation: { kind: "approval" } }));
+      const pendingTool = callTool();
+      let pendingRequestId = "";
+      await vi.waitFor(async () => {
+        const snap = await client!.listSessions();
+        const pending = snap.sessions.find((s) => s.sessionKey === "chat")!.runtime.pendingBusiness as { requestId: string; deferred?: unknown }[];
+        expect(pending[0]?.deferred).toBeTruthy(); pendingRequestId = pending[0]!.requestId;
+      });
+      const before = await client.listSessions();
+      const ref = await client.prepareUpdate("update-one");
+      expect(JSON.stringify(ref)).not.toContain(client.manifest.capability);
+      keeper = await connectSessionUpdateKeeper(ref); await client.commitUpdate("update-one");
+      client.closeObserver(); held.release();
+      const duringGap = callTool();
+      held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 2, endpoint: "http://127.0.0.1:2/", version: "successor" });
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      client.bindBusiness(() => ({ content: [{ type: "text", text: `successor-${++toolCalls}` }] }));
+      const after = await client.listSessions();
+      await expect(client.answerBusiness(pendingRequestId, 8, {})).rejects.toThrow("session_permission_stale");
+      await client.answerBusiness(pendingRequestId, 7, { content: [{ type: "text", text: "approved-after-update" }] });
+      expect(await pendingTool).toMatchObject({ result: { content: [{ text: "approved-after-update" }] } });
+      expect(await duringGap).toMatchObject({ result: { content: [{ text: "successor-2" }] } });
+      expect(await callTool()).toMatchObject({ result: { content: [{ text: "successor-3" }] } });
+      expect(after.hostId).toBe(before.hostId); expect(after.epoch).toBeGreaterThan(before.epoch);
+      expect(after.sessions.find((s) => s.sessionKey === "chat")?.runtime.pid).toBe(sdk.runtime.pid);
+      expect(after.sessions.find((s) => s.sessionKey === "terminal")?.runtime.pid).toBe(terminal.runtime.pid);
+      expect(after.sessions.find((s) => s.sessionKey === "chat")?.launchFingerprint).toEqual({ schema: 1, digest: "fixture" });
+      expect(after.sessions.find((s) => s.sessionKey === "chat")?.lastCommandSequence).toBe(1);
+      await client.command(send);
+      await expect(client.command({ ...send, body: { input: "different" } })).rejects.toThrow("session_command_id_conflict");
+      await expect(first.command({ ...send, commandId: "stale", sequence: 2 })).rejects.toThrow();
+      fs.writeFileSync(path.join(fake, "release"), "go");
+      await vi.waitFor(async () => expect((await client!.readEvents("chat", 0)).events.some((e) => e.kind === "sdk-message" && (e.data as { type?: string }).type === "result")).toBe(true), { timeout: 10_000 });
+      const launches = fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string });
+      expect(launches.filter((e) => e.event === "launch")).toHaveLength(1);
+      expect(launches.filter((e) => e.event === "turn-start")).toHaveLength(1);
+      await client.command({ sessionKey: "terminal", commandId: "write-one", sequence: 1, kind: "write", body: { data: "continued\n" } });
+      await vi.waitFor(async () => expect((await client!.readEvents("terminal", 0)).events.some((e) => e.kind === "pty-data" && String(e.data).includes("continued"))).toBe(true));
+      keeper.close();
+      const stoppingGap = await client.prepareUpdate("update-stop-gap"); keeper = await connectSessionUpdateKeeper(stoppingGap); await client.commitUpdate("update-stop-gap");
+      client.closeObserver(); held.release();
+      expect(fs.existsSync(lockFile)).toBe(false);
+      await stopSlotSessionHost(root);
+      for (const pid of [before.sessions[0]?.runtime.pid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
+    } finally { keeper?.close(); client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
+  }, 60_000);
+
+  it("ends an unapproved observer loss instead of leaving a headless session orphan", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-crash-")); TEMP_DIRS.push(root);
+    const held = await createConsoleLock().acquireLock({ dir: root, lockFile: path.join(root, "console.lock"), pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
+    const ownedTmp = path.join(root, "long-owned-temporary-namespace-".repeat(3)); fs.mkdirSync(ownedTmp);
+    const env = { PATH: process.env.PATH, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude"), TMPDIR: ownedTmp, TMP: ownedTmp, TEMP: ownedTmp };
+    let client: SessionHostClient | null = null;
+    try {
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      if (process.platform !== "win32") {
+        expect(client.manifest.socket).not.toContain(ownedTmp);
+        expect(fs.lstatSync(client.manifest.socket).isSocket()).toBe(true);
+        expect(fs.lstatSync(client.manifest.socket).mode & 0o777).toBe(0o600);
+        expect(fs.lstatSync(path.dirname(client.manifest.socket)).mode & 0o777).toBe(0o700);
+        const diagnostic = fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8");
+        expect(diagnostic).toContain("session_socket_namespace_relocated");
+        expect(diagnostic).not.toContain(client.manifest.capability);
+      }
+      const session = await client.open({ kind: "pty", sessionKey: "terminal", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
+      const pid = Number(session.runtime.pid); const hostPid = client.manifest.pid;
+      client.closeObserver();
+      await vi.waitFor(() => { expect(isRunning(pid)).toBe(false); expect(isRunning(hostPid)).toBe(false); }, { timeout: 15_000 });
+    } finally { client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
+  }, 45_000);
 });
 
 describe("Console daemon lifecycle integration", () => {

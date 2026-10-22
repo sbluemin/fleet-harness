@@ -73,6 +73,8 @@ import { readFleetCliRelease } from "../../../cli/release.js";
 import { createConsoleLock, isConsoleLockHeldError, describeReclaimResult, type ConsoleLockReclaimResult } from "./lock.js";
 import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServeLifecycle } from "./serve-lifecycle.js";
+import { ConsoleSessionHostOwner } from "./session-host-owner.js";
+import { stopSlotSessionHost } from "../../../features/execution/host/session-host/client.js";
 import { createConsoleServer } from "./server.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
@@ -357,7 +359,9 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Why this instance's shutdown runs: the first accepted stop request names it, and the exit record keeps it, so a
     // token-authenticated stop request reads apart from an OS signal.
     let stopReason: ConsoleStopReason | null = null;
+    const sessionHost = new ConsoleSessionHostOwner(createConsoleDataPaths({ env }).dir);
     const lifecycle = createConsoleServeLifecycle({
+      onEveryStopRequested: (reason) => sessionHost.requestStop(reason),
       // Only the lock owner starts a reaper, before any owned child exists (a lock loser starts nothing).
       onLockAcquired: (instance) => {
         reaper = startConsoleReaper({
@@ -444,7 +448,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now(), ...(stopReason === null ? {} : { stopReason }) });
       } catch (error) { recordFailure("exit_record_failed", error); }
     });
-    const server = createConsoleServer({ lifecycle, ownedProcesses });
+    const server = createConsoleServer({ lifecycle, ownedProcesses, sessionHost });
     // Signals are accepted before the lock is published; a stop requested during startup waits for it to settle.
     const onSignal = () => { void lifecycle.requestStop("signal").catch(() => { /* Recorded by onShutdownFailed. */ }); };
     process.on("SIGTERM", onSignal);
@@ -470,6 +474,8 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   }
 
   async function stop(): Promise<ConsoleStopResult> {
+    // A committed update can temporarily have no Console lock while its live host still owns sessions.
+    await stopSlotSessionHost(createConsoleDataPaths({ env }).dir);
     const payload = readTrustedLock();
     if (!payload) return { outcome: "not-running", killed: 0 };
     // 정체 증명(health 요청)보다 먼저 잰 벽시계 시각. 이보다 먼저 시작한 프로세스만 증명된 Console과 같은 프로세스일 수 있다.

@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./session-host": {
+      "types": "./session-host/index.ts",
+      "import": "./session-host/index.ts",
+      "default": "./session-host/index.ts"
+    },
     ".": {
       "types": "./index.ts",
       "import": "./index.ts",

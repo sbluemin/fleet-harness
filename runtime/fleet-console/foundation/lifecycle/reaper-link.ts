@@ -21,6 +21,8 @@ export interface ConsoleReaperLink {
   registered(group: OwnedProcessGroup): void;
   leaderExited(group: OwnedProcessGroup): void;
   removed(pgid: number): void;
+  /** Ends proven registered groups now, then waits for this watcher to exit. The owner must be stopping. */
+  drain(): Promise<void>;
 }
 
 /** A reaper that ends while its Console runs is replaced once; a second loss leaves the Console degraded. */
@@ -36,6 +38,7 @@ export function startConsoleReaper(input: ConsoleReaperInput): ConsoleReaperLink
   let child: ChildProcess | null = null;
   let restarts = 0;
   let degraded = false;
+  let draining = false;
 
   const degrade = (error: unknown): void => {
     if (degraded) return;
@@ -79,7 +82,7 @@ export function startConsoleReaper(input: ConsoleReaperInput): ConsoleReaperLink
       if (child === spawned) degrade(error);
     });
     spawned.once("exit", (code, signal) => {
-      if (child !== spawned) return;
+      if (child !== spawned || draining) return;
       if (restarts >= REAPER_RESTARTS) {
         degrade(new Error(`reaper exited (${code ?? signal}) and was not restarted again`));
         return;
@@ -99,5 +102,11 @@ export function startConsoleReaper(input: ConsoleReaperInput): ConsoleReaperLink
     registered: (group) => send({ add: group }),
     leaderExited: (group) => send({ leaderExited: { pgid: group.pgid, at: group.leaderExitedAt ?? Date.now() } }),
     removed: (pgid) => send({ remove: { pgid } }),
+    drain: () => new Promise<void>((resolve) => {
+      draining = true;
+      if (!child || child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once("exit", () => resolve());
+      send({ drain: true });
+    }),
   };
 }

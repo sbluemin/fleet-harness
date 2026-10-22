@@ -21,6 +21,7 @@ import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, CONSOLE_UPDATE_OUTCOME_TTL_MS, writeConsoleUpdateProgress } from "./update-progress.js";
 import { prepareUpdateWorker, type PreparedUpdateWorker, type UpdateWorkerChild } from "./update-worker-handoff.js";
+import type { SessionUpdateRef } from "@fleet-console/protocol/session-host";
 
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
@@ -54,6 +55,11 @@ export type ConsoleUpdateApplyStartResult = PreparedUpdateWorker;
 
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
+  readonly sessionHost?: {
+    prepareUpdate(updateId: string): Promise<SessionUpdateRef>;
+    commitUpdate(): Promise<void>;
+    cancelUpdate(): Promise<void>;
+  };
   /**
    * Name of the Console failure log in the data directory. A serve that does not take the lock records why there, and a
    * failed update points to it. Composition supplies it; without it the update only names the lock refusal.
@@ -82,6 +88,7 @@ export interface CreateConsoleUpdateApplyServiceDeps {
 
 export interface ConsoleUpdateWorkerScriptConfig {
   readonly runId: string;
+  readonly sessionHostUpdate?: SessionUpdateRef;
   readonly currentEndpoint: string;
   readonly currentLockToken: string;
   readonly currentLockStartedAt: number;
@@ -245,8 +252,11 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     }
     const lifecycleRuntimePath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${RUNTIME_FILE_SUFFIX}`);
     writeFile(lifecycleRuntimePath, runtime, { mode: TEMP_FILE_MODE });
+    const sessionHostUpdate = await deps.sessionHost?.prepareUpdate(runId);
+    try {
     const script = emitConsoleUpdateWorkerScript({
       runId,
+      ...(sessionHostUpdate ? { sessionHostUpdate } : {}),
       currentEndpoint: request.currentEndpoint,
       currentLockToken: request.currentLockToken,
       currentLockStartedAt: request.currentLockStartedAt,
@@ -273,7 +283,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
     const child = spawnWorker(execPath, [workerPath], withHidden({ detached: true, env: childEnv, stdio: ["ignore", "ignore", "ignore", "ipc"] }));
-    return prepareUpdateWorker(child, runId, () => {
+    const prepared = await prepareUpdateWorker(child, runId, () => {
       // worker는 prepare를 받기 전에는 쓰지 않는다. host의 starting이 실패 결론을 덮지 않는다.
       writeConsoleUpdateProgress(request.dataDir, {
         phase: "starting", startedAt, updatedAt: startedAt, targetVersion,
@@ -284,7 +294,17 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
         try { removeFile(file); } catch { /* 자신의 실행 파일만 최선 노력으로 정리한다. */ }
       }
       return recordFailure(request, startedAt, reason, stage);
-    }, deps.preflightTimeoutMs);
+    }, deps.preflightTimeoutMs).catch(async (error) => { await deps.sessionHost?.cancelUpdate(); throw error; });
+    void prepared.cancelled.then(() => deps.sessionHost?.cancelUpdate()).catch(() => {});
+    return {
+      ...prepared,
+      async commit() {
+        try { await prepared.commit(); await deps.sessionHost?.commitUpdate(); }
+        catch (error) { await deps.sessionHost?.cancelUpdate(); throw error; }
+      },
+      async abort() { try { await prepared.abort(); } finally { await deps.sessionHost?.cancelUpdate(); } },
+    };
+    } catch (error) { await deps.sessionHost?.cancelUpdate(); throw error; }
   }
 
   return { start, getFailure: () => now() - failedAt <= CONSOLE_UPDATE_OUTCOME_TTL_MS ? lastFailure : null };
@@ -318,6 +338,7 @@ let consoleStopped = false;
 // The Console's lifecycle runtime (docs/console-lifecycle-contract.md, "Update worker"): every judgment about the old and
 // the new Console comes from it. Null until loaded, and never loaded from bytes the Console did not hand over.
 let lifecycle = null;
+let sessionKeeper = null;
 // How the old Console ended, once known; carried on every later progress record.
 let oldConsoleOutcome = null;
 let failureStage = "preflight";
@@ -371,6 +392,7 @@ async function preflight() {
   const manager = await detectPackageManager();
   probeAbort.signal.throwIfAborted();
   ensureGlobalInstallWritable(manager);
+  if (config.sessionHostUpdate) sessionKeeper = await lifecycle.connectSessionUpdateKeeper(config.sessionHostUpdate);
   return manager;
 }
 
@@ -433,6 +455,7 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
+    sessionKeeper?.close();
     clearTimeout(controlTimer);
     probeAbort.abort();
     process.off("message", onControlMessage);
