@@ -231,17 +231,17 @@ it("delegates only host-classified Markdown links without trusting source metada
 });
 
 // OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
-// 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다.
+// 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답 단추는 사람의 클릭으로만 입력창 포트에 닿는다.
 describe("openui hydrator containment", () => {
   const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]);
   const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "data-openui-owned"]);
 
-  async function hydrated(markdown: string): Promise<HTMLElement[]> {
+  async function hydrated(markdown: string, options: { readonly streaming?: boolean; readonly reply?: (text: string) => void } = {}): Promise<HTMLElement[]> {
     const container = document.createElement("div");
-    container.innerHTML = renderMarkdown(markdown, { openui: true }).html;
+    container.innerHTML = renderMarkdown(markdown, { openui: true, ...(options.streaming ? { deferUnclosedMermaid: true } : {}) }).html;
     document.body.append(container);
     const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
-    installOpenUIHydrator(container);
+    installOpenUIHydrator(container, undefined, options.reply);
     const blocks = [...container.querySelectorAll<HTMLElement>(".openui-block")];
     await waitFor(() => blocks.every((block) => ["rendered", "fallback"].includes(block.dataset.openuiState ?? "")), 5000);
     return blocks;
@@ -299,5 +299,38 @@ describe("openui hydrator containment", () => {
     expect(blocks[0]!.querySelector("script")).toBeNull();
     // 켜지 않은 대화(구성원·일반 채팅)에서는 자리표시자조차 생기지 않는다.
     expect(renderMarkdown("```openui-lang\nroot = Card(\"x\", [])\n```").html).not.toContain("openui-block");
+  });
+
+  // 답 단추는 입력창을 채울 뿐이지만, 그 채움도 사람의 클릭으로만 일어나야 한다 — 그리기·스크립트 click·흐르는 중 블록은 포트에 닿지 않고,
+  // 명령(`/`)이나 상한을 넘는 문장은 단추가 되지 않는다. jsdom 은 사람의 클릭(isTrusted)을 만들 수 없으므로 양성 경로는 실앱 검증이 맡는다.
+  it("lets answer buttons reach the reply port only through a person's click on a finished block", async () => {
+    const reply = vi.fn();
+    const choices = 'c = Choices([Choice("A · 시안", "A로 가 주세요"), Choice("<b>B</b>", "<img src=x onerror=alert(1)>")])';
+    const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"), { reply });
+
+    expect(finished!.dataset.openuiState).toBe("rendered");
+    const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-choice")];
+    expect(buttons.map((button) => [button.textContent, button.getAttribute("data-openui-reply"), button.disabled])).toEqual([
+      ["A · 시안", "A로 가 주세요", false],
+      ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
+    ]);
+    expect(finished!.querySelector("b, img")).toBeNull();
+    buttons[0]!.click();
+    buttons[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(reply).not.toHaveBeenCalled();
+
+    // 입력창이 없는 자리(포트 없음)는 정적 칩, 흐르는 중인 블록은 잠긴다.
+    const [readOnly] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"));
+    expect([...readOnly!.querySelectorAll("button.openui-choice")].every((button) => button.getAttribute("aria-disabled") === "true")).toBe(true);
+    const [streaming] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices].join("\n"), { streaming: true, reply });
+    expect(streaming!.getAttribute("data-openui-final")).toBe("0");
+    expect([...streaming!.querySelectorAll<HTMLButtonElement>("button.openui-choice")].every((button) => button.disabled)).toBe(true);
+
+    const refused = await hydrated([
+      ["```openui-lang", 'root = Card("x", [Choices([Choice("명령", "/clear"), Choice("B", "B")])])', "```"].join("\n"),
+      ["```openui-lang", `root = Card("x", [Choices([Choice("긴 답", "${"가".repeat(201)}"), Choice("B", "B")])])`, "```"].join("\n"),
+    ].join("\n\n"));
+    expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback"]);
+    expect(reply).not.toHaveBeenCalled();
   });
 });

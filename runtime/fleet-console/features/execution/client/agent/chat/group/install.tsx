@@ -31,7 +31,7 @@ import { useGroupConversationActions, useGroupUseRequests } from "../group-write
 import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
-import { GroupComposer } from "./group-composer.js";
+import { GroupComposer, fillGroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
@@ -285,6 +285,10 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
+  // 답 단추(OpenUI)는 이 대화의 입력창을 채운다 — 입력창이 쓸 수 있는 대화(쓰기 계약이 선 대화)에서만.
+  const fillReply = React.useCallback((reply: string, speaker: ConversationSpeaker) => {
+    fillGroupComposer(root.id, reply, speaker.kind === "commodore" ? "commodore" : "commander");
+  }, [root.id]);
   const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
   return (
     <GroupConversation
@@ -296,6 +300,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       fold={fold}
       computerActor={computerActor}
       pillOperationId={root.id}
+      {...(actions ? { onOpenUIReply: fillReply } : {})}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare
           operationId={root.id}

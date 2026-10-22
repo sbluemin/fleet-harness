@@ -946,7 +946,7 @@ code.hljs {
 /* ===== OpenUI 블록 (사령관·지휘관 말풍선의 생성형 UI) =====
    하이드레이터(openui.ts)가 그린 칸은 채팅의 마크다운 표·코드 블록과 같은 가족이다 — 같은 중립 면(--control-rest),
    같은 반경(--radius-md), 바깥 테두리 없이 칸 사이 헤어라인, 머리 글자는 굵기 한 단으로만 갈린다.
-   신호 토큰은 상태 점에만 쓰고 brass·정체성 톤은 쓰지 않는다. 표의 칸 문법은 .markdown-body 안의 <table>이라
+   신호 토큰은 상태 점에만 쓰고 정체성 톤은 쓰지 않는다. brass 는 답 단추의 hover·초점(위치 채널)에만 쓴다. 표의 칸 문법은 .markdown-body 안의 <table>이라
    채팅 표 규칙을 그대로 입고, 카드 안에서만 면·폭·가로 스크롤을 감싼 칸이 진다(일반 마크다운 표는 그대로). */
 .openui-block { min-width: 0; }
 /* 코드 블록은 폴백일 때만 보인다 — 그리는 중·그린 뒤에는 소유 칸이 그 자리를 진다. */
@@ -995,6 +995,38 @@ code.hljs {
    한 단 구체적인 선택자로 카드 안의 표만 덮는다. */
 .openui-table-frame { overflow-x: auto; }
 .markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
+
+/* 답 단추 — 그룹 입력창 위 제안 칩(.group-composer-action)과 같은 알약 문법을 같은 토큰으로 옮겼다(이 패키지는 기능 CSS 를 빌리지 않는다).
+   강조 변형은 없다 — 어느 답이 앞서는지는 사람이 정한다. 카드 마지막 줄에서 줄을 바꾸고, 좁으면 라벨이 말줄임한다. 누르면 입력창이 채워질
+   뿐이다(보내기는 사람의 Enter). 흐르는 중(disabled)과 입력창이 없는 자리(aria-disabled)는 같은 옅은 정적 칩이다. */
+.openui-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.openui-choice {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.openui-choice:hover:not(:disabled, [aria-disabled="true"]),
+.openui-choice:focus-visible { border-color: var(--brass); color: var(--brass-ink); outline: none; }
+.openui-choice:disabled,
+.openui-choice[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+/* 폰 — 손가락 높이. 모바일 Operation 본문([data-mobile-surface])과 폰 보기의 플러그인 화면(사령관) 모두. */
+:root[data-view-mode="mobile"] .openui-choice,
+[data-mobile-surface] .openui-choice { height: 36px; padding: 0 var(--space-3); }
 
 /* 좁은 카드(모바일 말풍선 등) — 칸을 한 줄에 억지로 등분하면 값이 눌리고 라벨이 조각나며, 줄바꿈 격자는 한 칸을 홀로 남긴다.
    그래서 지표를 단계·표와 같은 행 문법의 목록(라벨 왼쪽 · 값 오른쪽)으로 바꾼다 — 칸 수와 무관하게 모든 지표가 같은 모양으로 선다. */

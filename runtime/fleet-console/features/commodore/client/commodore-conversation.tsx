@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -9,7 +9,7 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
-import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings, fillCommodoreComposer } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
@@ -283,6 +283,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
   }, [run?.session, lastSession]);
 
+  // 답 단추는 아래 입력창을 채운다(보내지 않는다). 읽기 전용이면 입력창이 없으므로 넘기지 않는다 — 단추는 정적 칩이다.
+  const fillReply = useCallback((reply: string) => { fillCommodoreComposer(theaterId, reply); }, [theaterId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   const composer = (
     <footer className="objectives-commodore-foot">
@@ -337,6 +339,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             cards={readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
             composer={composer}
             composerTopEntries={!readOnly}
+            {...(readOnly ? {} : { onOpenUIReply: fillReply })}
           />
         ) : composer}
       </div>

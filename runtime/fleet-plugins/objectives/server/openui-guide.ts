@@ -8,8 +8,10 @@
 export const OPENUI_GUIDE = `# Visual blocks
 - When a status overview, metrics or a comparison reads better as a small UI, you may add one fenced \`openui-lang\` block to a reply. The Console draws it; elsewhere it stays code, so state its point in a sentence too.
 - One statement per line, \`root = Card(...)\` first, positional arguments, double-quoted strings. Only these render:
-  Card(title, children: (Stats | Steps | Bars | Table)[])
+  Card(title, children: (Stats | Steps | Bars | Table | Choices)[])
   Stats(items: Stat[]); Stat(label, value, note?, tone?: "good" | "warn" | "bad")
   Steps(items: Step[]); Step(label, state: "todo" | "running" | "waiting" | "done" | "blocked", note?)
   Bars(labels: string[], values: number[], unit?)
-  Table(columns: string[], rows: string[][])`;
+  Table(columns: string[], rows: string[][])
+  Choices(items: Choice[]); Choice(label, reply)   // one Choices per card with 2-4 items; label <= 40 chars; reply: one line <= 200 chars, not starting with / or @
+- A Choice only puts its reply in the person's composer; reply is sent only after the person confirms, as their own words. Offer choices only when you are waiting on the person.`;

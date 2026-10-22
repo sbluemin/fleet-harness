@@ -4,7 +4,7 @@ import { COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS } from "./attac
 import type { ComposerAttachmentNotice } from "./attachment-store.js";
 
 /**
- * 컴포저 첨부·「+」 메뉴의 문구 — 그룹 대화 입력창과 사령관 입력창이 한 벌을 쓴다.
+ * 컴포저 첨부·「+」 메뉴·답 채우기 안내의 문구 — 그룹 대화 입력창과 사령관 입력창(답 안내는 Operation 채팅 입력창도)이 한 벌을 쓴다.
  *
  * 같은 상한(`attachments.ts`)을 두 입력창이 서로 다른 말로 알리면 사람은 두 규칙이 있다고 읽는다. 그래서 문구도 상한과
  * 같은 자리에 둔다. 받는 이·보드처럼 표면마다 다른 말은 각 표면의 사전에 남는다.
@@ -27,6 +27,7 @@ const en = {
   "composer.attach.next": "Next image",
   "composer.attach.commodoreBudget": "Images sent to the Commodore must total 8 MiB or less. Remove an image or choose smaller ones.",
   "composer.notice.dismiss": "Dismiss",
+  "composer.reply.occupied": "You are already writing a message. Send or clear it, then pick the answer again.",
   "composer.quote.list": "Attached quotes",
   "composer.quote.comment": "Comment",
   "composer.quote.question": "Question",
@@ -61,6 +62,7 @@ const ko: Record<ComposerMessageKey, string> = {
   "composer.attach.next": "다음 이미지",
   "composer.attach.commodoreBudget": "사령관에게 보내는 이미지의 합계는 8 MiB 이하여야 합니다. 이미지를 빼거나 작은 파일로 바꿔 주세요.",
   "composer.notice.dismiss": "닫기",
+  "composer.reply.occupied": "쓰던 말이 있어 답을 넣지 않았습니다. 보내거나 지운 뒤 다시 고르세요.",
   "composer.quote.list": "붙인 인용",
   "composer.quote.comment": "댓글",
   "composer.quote.question": "질문",

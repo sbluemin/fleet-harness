@@ -4,6 +4,9 @@
  * 파싱은 `@openuidev/lang-core`가, 그리기는 이 파일의 화이트리스트 DOM 빌더가 맡는다. 업스트림 React 렌더러와 기본
  * 컴포넌트 묶음은 들이지 않는다. 빌더는 고정된 태그·클래스만 만들고, 모델이 준 문자열은 `textContent`로만, 숫자는
  * 0–100%로 고정한 폭으로만 들어간다 — innerHTML·href·src·이벤트 핸들러를 만드는 경로가 없다.
+ *
+ * 답 단추(Choices)도 같다. 빌더는 `button type=button` 과 보낼 문장(`data-openui-reply`)만 만들고, 처음에는 늘 잠가 둔다. 누를 수 있는지는
+ * 하이드레이터가 확정 여부와 그 자리의 포트로 정하고, 누르면 하는 일(입력창 채우기)도 하이드레이터가 포트로만 한다.
  */
 
 import { createLibrary, createParser, defineComponent, type ElementNode, type ParseResult } from "@openuidev/lang-core";
@@ -36,6 +39,11 @@ const MAX_COLUMNS = 8;
 const MAX_ROWS = 50;
 const MAX_TEXT = 200;
 const MAX_UNIT = 8;
+// 답 단추 — 카드당 한 묶음, 둘에서 넷. 보낼 문장은 사람 말 한 줄이라 자르지 않는다(잘린 문장은 다른 말이다): 넘치면 확정 때 폴백이다.
+const MIN_CHOICES = 2;
+const MAX_CHOICES = 4;
+const MAX_CHOICE_LABEL = 40;
+const MAX_REPLY = 200;
 
 const STATES: readonly OpenUIState[] = ["todo", "running", "waiting", "done", "blocked"];
 const TONES: readonly OpenUITone[] = ["good", "warn", "bad"];
@@ -81,14 +89,26 @@ const Table = defineComponent({
   props: z.object({ columns: z.array(z.string()), rows: z.array(z.array(text)) }),
   component: null,
 });
+const Choice = defineComponent({
+  name: "Choice",
+  description: "One answer the person can pick; reply is the sentence that becomes their words after they confirm.",
+  props: z.object({ label: z.string(), reply: z.string() }),
+  component: null,
+});
+const Choices = defineComponent({
+  name: "Choices",
+  description: "Two to four answers the person can pick.",
+  props: z.object({ items: z.array(Choice.ref) }),
+  component: null,
+});
 const Card = defineComponent({
   name: "Card",
   description: "Titled group of components.",
-  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref])) }),
+  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Choices.ref])) }),
   component: null,
 });
 
-const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table], root: "Card" });
+const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Choices, Choice], root: "Card" });
 
 /** 상한을 넘었거나 그릴 수 없는 노드 — 확정이면 폴백, 흐르는 중이면 지난 그림을 지킨다. */
 class Unrenderable extends Error {}
@@ -127,6 +147,8 @@ function acceptable(result: ParseResult): boolean {
 }
 
 class Builder {
+  private choicesDrawn = false;
+
   constructor(
     private readonly document: Document,
     private readonly labels: OpenUIRenderLabels,
@@ -155,6 +177,7 @@ class Builder {
       case "Steps": return this.steps(node);
       case "Bars": return this.bars(node);
       case "Table": return this.table(node);
+      case "Choices": return this.choices(node);
       default: return this.skip();
     }
   }
@@ -260,6 +283,33 @@ class Builder {
     return frame;
   }
 
+  /**
+   * 답 단추 — 사람이 고를 답. 단추는 잠긴 채 태어나고(`disabled`), 하이드레이터가 확정 블록이고 포트가 있는 자리에서만 연다.
+   * 라벨·문장이 상한을 넘거나 문장이 보낼 수 없는 꼴이면 그리지 않는다 — 확정이면 블록 전체가 코드 블록으로 돌아간다.
+   */
+  private choices(node: ElementNode): HTMLElement | null {
+    if (this.choicesDrawn) throw new Unrenderable();
+    this.choicesDrawn = true;
+    const items = list(this.props(node).items).map(elementNode).filter((item): item is ElementNode => item?.typeName === "Choice");
+    if (items.length > MAX_CHOICES || (this.final && items.length < MIN_CHOICES)) throw new Unrenderable();
+    const row = this.element("div", "openui-choices");
+    row.setAttribute("role", "group");
+    for (const item of items) {
+      const props = this.props(item);
+      if (typeof props.label !== "string" || typeof props.reply !== "string") { this.skip(); continue; }
+      const label = props.label.trim();
+      const reply = sendableReply(props.reply);
+      if (!label || label.length > MAX_CHOICE_LABEL || reply === null) throw new Unrenderable();
+      const button = this.element("button", "openui-choice", label);
+      button.type = "button";
+      button.disabled = true;
+      button.title = reply;
+      button.setAttribute("data-openui-reply", reply);
+      row.append(button);
+    }
+    return row.childElementCount ? row : null;
+  }
+
   private dot(state: OpenUIState, label: string): HTMLElement {
     const dot = this.element("span", `openui-dot is-${state}`);
     dot.setAttribute("role", "img");
@@ -302,6 +352,18 @@ function plain(value: unknown): string | null {
   const raw = typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : null;
   if (raw === null) return null;
   return raw.length > MAX_TEXT ? `${raw.slice(0, MAX_TEXT - 1)}…` : raw;
+}
+
+/**
+ * 사람 말로 보낼 수 있는 한 줄 — 앞뒤 공백만 걷고 그 밖에는 바꾸지 않는다. 줄바꿈·제어 문자, 상한 초과, 입력창의 명령(`/`)·받는 이
+ * 지정(`@`)으로 시작하는 문장은 받지 않는다: 단추가 Console 명령이나 다른 받는 이를 지어내지 못하게 한다.
+ */
+function sendableReply(value: string): string | null {
+  const reply = value.trim();
+  if (!reply || reply.length > MAX_REPLY) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\u2028\u2029]/u.test(reply)) return null;
+  return reply.startsWith("/") || reply.startsWith("@") ? null : reply;
 }
 
 function oneOf<T extends string>(value: unknown, options: readonly T[]): T | null {

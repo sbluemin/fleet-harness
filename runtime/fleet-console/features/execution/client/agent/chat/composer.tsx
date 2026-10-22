@@ -231,7 +231,7 @@ export function AgentChatComposer({
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const draftState = getComposerDraft(context.operationId);
-  const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
+  const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed, ultracodeIgnored, filled, occupied } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
   const setDraft = draftState.setText;
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
   /**
@@ -529,6 +529,21 @@ export function AgentChatComposer({
   // 모바일 독(impl-spec S-27): 좌표(모델·강도 알약)는 상자 안 아래 줄로 내려가고, 표시줄에는 알림과
   // 작업 선반만 남는다(없으면 표시줄 자체가 서지 않는다). 채팅 폭 글리프는 폰에서 뜻이 없어 서지 않는다.
   const mobileSurface = useMobileSurface();
+  // 답 단추(OpenUI)가 초안을 채우면 커서가 이 입력창 끝으로 온다 — 다음 할 일은 확인하고 Enter 다. 폰은 화면 키보드를 올리지 않는다(보내기
+  // 원이 이미 보인다). 쓰던 말이 있어 채우지 않았으면 안내 줄이 그렇게 말한다. 처음 서는 순간의 값은 지난 일이라 반응하지 않는다.
+  const fillSeen = React.useRef({ filled, occupied });
+  React.useEffect(() => {
+    const seen = fillSeen.current;
+    fillSeen.current = { filled, occupied };
+    if (occupied > seen.occupied) setConsoleNotice(ct("composer.reply.occupied"));
+    if (filled > seen.filled) {
+      setConsoleNotice(null);
+      if (mobileSurface) return;
+      const input = inputRef.current;
+      input?.focus({ preventScroll: true });
+      input?.setSelectionRange(input.value.length, input.value.length);
+    }
+  }, [filled, occupied, mobileSurface, ct]);
   const attachmentEntry = (
     <span className="agent-chat-composer-plus-root" ref={plusRootRef}>
       {menuOpen ? (

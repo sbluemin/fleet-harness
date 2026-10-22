@@ -89,11 +89,13 @@ export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>
  * 기록의 줄들 — 구분선과 턴. 담는 쪽의 흐름에 그대로 선다(기록 면은 자기 상자 안에, 원장 면은 로그 컬럼 안에). 구분선은 턴 사이를
  * 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다(Operation 채팅의 「이전 대화」 띠와 같은 자리).
  */
-export function TranscriptLines({ entries, language, openui = false }: {
+export function TranscriptLines({ entries, language, openui = false, onOpenUIReply }: {
   readonly entries: AgentChatTranscriptProps["entries"];
   readonly language: AgentChatTranscriptProps["language"];
   /** 답·흐르는 글의 OpenUI 펜스를 그린다 — 플러그인이 켠 기록(사령관 기록)만. 기본은 코드 블록이다. */
   readonly openui?: boolean;
+  /** OpenUI 답 단추가 고른 문장을 플러그인 입력창 초안으로 옮긴다. 주지 않으면(원장·입력 없는 기록) 단추는 정적 칩이다. */
+  readonly onOpenUIReply?: (reply: string) => void;
 }) {
   const segments = React.useMemo(() => segmentTranscript(entries), [entries]);
   const [openedTools, setOpenedTools] = React.useState<ReadonlySet<string>>(() => new Set());
@@ -135,6 +137,7 @@ export function TranscriptLines({ entries, language, openui = false }: {
                 onToggleTool={toggleTool}
                 onOpenTool={openTool}
                 openui={openui}
+                {...(onOpenUIReply ? { onOpenUIReply } : {})}
               />
             </div>
           );
@@ -144,14 +147,14 @@ export function TranscriptLines({ entries, language, openui = false }: {
   );
 }
 
-export function AgentChatTranscript({ entries, language, mobile = false, reveal = null, references, openui = false }: AgentChatTranscriptProps) {
+export function AgentChatTranscript({ entries, language, mobile = false, reveal = null, references, openui = false, onOpenUIReply }: AgentChatTranscriptProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   useTranscriptReveal(rootRef, reveal);
   return (
     <MobileSurfaceProvider mobile={mobile}>
       <ChatReferenceContext.Provider value={references ?? null}>
       <div ref={rootRef} className="agent-chat agent-chat-transcript" {...(mobile ? { "data-mobile-surface": "" } : {})}>
-        <TranscriptLines entries={entries} language={language} openui={openui} />
+        <TranscriptLines entries={entries} language={language} openui={openui} {...(onOpenUIReply ? { onOpenUIReply } : {})} />
       </div>
       </ChatReferenceContext.Provider>
     </MobileSurfaceProvider>

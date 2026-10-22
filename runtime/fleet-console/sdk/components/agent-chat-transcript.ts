@@ -85,6 +85,12 @@ export interface AgentChatTranscriptProps {
    * Commodore and Commanders. Off by default: the block stays a code block. A block that cannot be drawn stays a code block.
    */
   readonly openui?: boolean;
+  /**
+   * Where an answer button in a drawn block puts its sentence — the plugin's own composer for this record. Only fill a draft here;
+   * never send: the person reviews the sentence and sends it with their own Enter. Called only for a person's click on a finished
+   * block, never while drawing or reloading. Without it the buttons show as inert chips (a read-only record).
+   */
+  readonly onOpenUIReply?: (reply: string) => void;
 }
 
 /**
@@ -130,6 +136,11 @@ export interface AgentConversationProps {
   readonly composerTopEntries?: boolean;
   /** How the person's inline references (a message's `references`) open and look. */
   readonly references?: AgentChatReferenceHost;
+  /**
+   * Where an answer button in a Commodore or Commander bubble puts its sentence — the plugin's composer below this conversation. The
+   * same contract as `AgentChatTranscriptProps.onOpenUIReply`: fill a draft, never send. Omit it on read-only conversations.
+   */
+  readonly onOpenUIReply?: (reply: string) => void;
 }
 
 /**

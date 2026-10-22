@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
@@ -466,6 +466,8 @@ const FOLLOW_SLACK_PX = 48;
  */
 export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal, cards }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null; readonly cards?: React.ReactNode }) {
   const Transcript = commodoreTranscriptRenderer();
+  // 답 단추는 이 기록 아래 입력창(같은 Theater 의 사령관 초안)을 채운다 — 보내지 않는다.
+  const fillReply = useCallback((reply: string) => { fillCommodoreComposer(theaterId, reply); }, [theaterId]);
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
@@ -548,7 +550,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
         return (
           <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
             {line}
-            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openui />
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openui onOpenUIReply={fillReply} />
           </div>
         );
       }) : null}
@@ -749,8 +751,12 @@ interface CommodoreComposerDraft {
   readonly references: readonly CommodoreReference[];
   readonly textRevision: number;
   readonly sending: boolean;
-  /** 사령관만의 거절(합계 8 MiB). 그 밖 첨부 안내는 공유 스토어가 가진다. */
+  /** 입력창 위 안내 줄 — 사령관만의 거절(합계 8 MiB)과 답 단추를 받지 못한 까닭. 그 밖 첨부 안내는 공유 스토어가 가진다. */
   readonly budgetNotice: string | null;
+  /** 답 단추가 초안을 채운 횟수 — 오르면 입력창이 커서를 데려온다(폰은 화면 키보드를 올리지 않는다). */
+  readonly filled: number;
+  /** 쓰던 말이 있어 답 단추가 덮지 않은 횟수 — 오르면 안내 줄이 선다. */
+  readonly occupied: number;
 }
 
 /** 플러그인 내부 페이지 메모리 — Inbox 시트와 대화 화면은 Theater별 사령관 초안 하나를 읽는다. */
@@ -760,7 +766,7 @@ function createCommodoreDraft() {
     upload: (file) => uploadCommodoreAttachment(file),
     discard: (id) => discardCommodoreAttachment(id),
   });
-  let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, sending: false, budgetNotice: null };
+  let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, sending: false, budgetNotice: null, filled: 0, occupied: 0 };
   const listeners = new Set<() => void>();
   return {
     attachments,
@@ -778,6 +784,18 @@ function commodoreDraft(theaterId: string) {
   let draft = commodoreDrafts.get(theaterId);
   if (!draft) { draft = createCommodoreDraft(); commodoreDrafts.set(theaterId, draft); }
   return draft;
+}
+
+/**
+ * 사령관·지휘관 말의 답 단추(OpenUI)가 고른 문장을 이 Theater 사령관 입력창의 빈 초안에 넣는다. 보내지 않는다 — 발사는 언제나 사람의
+ * Enter 다. 쓰던 말이 있으면 덮지 않고 입력창이 안내 줄로 알린다.
+ */
+export function fillCommodoreComposer(theaterId: string, text: string): boolean {
+  const draft = commodoreDraft(theaterId);
+  const current = draft.read();
+  if (current.text.trim().length > 0) { draft.update({ occupied: current.occupied + 1 }); return false; }
+  draft.update({ text, references: [], textRevision: current.textRevision + 1, budgetNotice: null, filled: current.filled + 1 });
+  return true;
 }
 
 /** 호스트가 중개한 인용(Codex 문서에서 고른 문장)을 이 Theater 사령관 입력창의 초안에 칩으로 붙인다. 보내지 않는다. */
@@ -854,7 +872,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
 function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear }: CommodoreComposerProps) {
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
-  const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const { text, references, sending, budgetNotice, filled, occupied } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
   const quotes = useComposerQuotes(draft.quotes);
@@ -918,6 +936,15 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
     if (!phone) inputRef.current?.focus();
   };
   useEffect(() => subscribeCommodoreInbox(theaterId, () => takeInbox.current()), [theaterId]);
+  // 답 단추가 초안을 채우면 커서가 이 입력창으로 온다 — 다음 할 일은 확인하고 Enter 다(폰은 화면 키보드를 올리지 않는다). 채우지
+  // 못했으면 안내 줄이 그렇게 말한다. 처음 서는 순간의 값은 지난 일이라 반응하지 않는다.
+  const fillSeen = useRef({ filled, occupied });
+  useEffect(() => {
+    const seen = fillSeen.current;
+    fillSeen.current = { filled, occupied };
+    if (occupied > seen.occupied) setBudgetNotice(ct("composer.reply.occupied"));
+    if (filled > seen.filled && !phone) inputRef.current?.focus();
+  }, [filled, occupied, phone, ct]);
   // 다른 표면이 인용을 붙이면 커서가 이 입력창으로 온다(폰은 화면 키보드를 올리지 않는다). 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
   const quoteCount = useRef(quotes.length);
   useEffect(() => {

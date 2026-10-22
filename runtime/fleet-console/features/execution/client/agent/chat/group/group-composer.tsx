@@ -106,6 +106,10 @@ interface GroupComposerDraft {
   readonly mode: string | null;
   /** 플러그인 칸이 이어받은 동작과, 그 동작이 덧붙일 말로 가져간 초안의 판 — 칸이 끝내면 그 초안만 걷는다. */
   readonly held: BoardConsumed | null;
+  /** 답 단추가 초안을 채운 횟수 — 오르면 입력창이 커서를 데려온다(폰은 화면 키보드를 올리지 않는다). */
+  readonly filled: number;
+  /** 쓰던 말(또는 앉힌 동작)이 있어 답 단추가 덮지 않은 횟수 — 오르면 안내 줄이 선다. */
+  readonly occupied: number;
 }
 
 /** 보드 동작이 덧붙일 말로 가져간 초안 — 그 판(textRevision)이 그대로일 때만 보낸 뒤 걷는다. */
@@ -121,7 +125,7 @@ function createGroupDraft() {
     upload: (file) => uploadLaunchAttachment(file),
     discard: (id) => discardLaunchAttachment(id),
   });
-  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, busy: false, notice: null, mode: null, held: null };
+  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, busy: false, notice: null, mode: null, held: null, filled: 0, occupied: 0 };
   const listeners = new Set<() => void>();
   return {
     attachments,
@@ -139,13 +143,25 @@ function groupDraft(rootOperationId: string) {
   return draft;
 }
 
+/**
+ * 답 단추(OpenUI)가 고른 문장을 이 그룹 입력창의 빈 초안에 넣고, 받는 이를 그 말의 화자로 맞춘다(지휘관 말 → 지휘관, 사령관 말 → 사령관).
+ * 보내지 않는다 — 발사는 사람의 Enter 다. 쓰던 말이나 앉힌 보드 동작이 있으면 덮지 않고 입력창이 안내 줄로 알린다.
+ */
+export function fillGroupComposer(rootOperationId: string, text: string, to: "commander" | "commodore"): boolean {
+  const draft = groupDraft(rootOperationId);
+  const current = draft.read();
+  if (current.text.trim().length > 0 || current.mode !== null) { draft.update({ occupied: current.occupied + 1 }); return false; }
+  draft.update({ text, textRevision: current.textRevision + 1, target: to === "commodore" ? { kind: "commodore" } : null, notice: null, filled: current.filled + 1 });
+  return true;
+}
+
 export function GroupComposer({ rootOperationId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
   const draft = groupDraft(rootOperationId);
-  const { text, target, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const { text, target, busy, notice, mode, filled, occupied } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
   // 인용 칩은 지휘관 Operation 의 초안이 가진다 — 채팅 원장과 이 그룹 입력창이 같은 묶음을 읽어, 어느 화면으로 열어도 칩이 서 있다.
@@ -170,6 +186,19 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
     if (quotes.length > quoteCount.current) inputRef.current?.focus({ preventScroll: true });
     quoteCount.current = quotes.length;
   }, [quotes.length]);
+  // 답 단추가 초안을 채우면 커서가 입력창 끝으로 온다 — 다음 할 일은 확인하고 Enter 다(폰은 화면 키보드를 올리지 않는다). 채우지 못했으면
+  // 안내 줄이 그렇게 말한다. 처음 서는 순간의 값은 지난 일이라 반응하지 않는다.
+  const fillSeen = React.useRef({ filled, occupied });
+  React.useEffect(() => {
+    const seen = fillSeen.current;
+    fillSeen.current = { filled, occupied };
+    if (occupied > seen.occupied) setNotice({ tone: "info", text: ct("composer.reply.occupied") });
+    if (filled > seen.filled && !phone) {
+      const input = inputRef.current;
+      input?.focus({ preventScroll: true });
+      input?.setSelectionRange(input.value.length, input.value.length);
+    }
+  }, [filled, occupied, phone, ct]);
   // 수신함 — 대화 중심 화면에서는 이 입력창이 지휘관(루트)의 입력 자리다. Operation Browser 가 맡긴 주석·스크린샷을 주차된 원장 채팅
   // 대신 여기서 붙여넣기와 같은 길(업로드 → 칩)로 세운다. 보내지는 않는다.
   React.useEffect(() => claimComposerInbox(rootOperationId, (entry) => {

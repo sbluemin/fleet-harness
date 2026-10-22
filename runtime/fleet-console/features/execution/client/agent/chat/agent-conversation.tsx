@@ -13,7 +13,7 @@ import { ConversationTheaterContext, LedgerTargetContext, speakerKey, useLocaliz
  * 원장은 플러그인이 `openLedger` 를 줄 때만 선다 — 그때 명부의 발화자(Operation 이 없는 사령관도)가 그룹 대화와 같은 입구(말풍선 이름·
  * 진행 줄 표식과 낱말)로 그 원장을 연다. 플러그인 대화는 턴을 접지 않으므로 진행 칩이 없다.
  */
-export function AgentConversation({ entries, participants, working, language, theaterId, loading = false, empty, older = null, reveal = null, openBoardAction = null, openLedger = null, cards, composer, composerTopEntries = false, references }: AgentConversationProps) {
+export function AgentConversation({ entries, participants, working, language, theaterId, loading = false, empty, older = null, reveal = null, openBoardAction = null, openLedger = null, cards, composer, composerTopEntries = false, references, onOpenUIReply }: AgentConversationProps) {
   const snapshot = useLocalizedSnapshot(React.useMemo<ConversationLogSnapshot>(() => ({
     rootOperationId: null,
     entries,
@@ -45,6 +45,8 @@ export function AgentConversation({ entries, participants, working, language, th
       if (speaker) openLedger(speaker);
     };
   }, [openLedger, snapshot.participants]);
+  // 답 단추 — 플러그인 대화의 받는 이는 그 입력창 하나라 화자는 묻지 않는다.
+  const reply = React.useMemo(() => (onOpenUIReply ? (text: string) => onOpenUIReply(text) : undefined), [onOpenUIReply]);
   const conversation = (
     <GroupConversation
       snapshot={snapshot}
@@ -57,6 +59,7 @@ export function AgentConversation({ entries, participants, working, language, th
       cards={cards}
       composer={composer}
       composerTopEntries={composerTopEntries}
+      {...(reply ? { onOpenUIReply: reply } : {})}
     />
   );
   return (
