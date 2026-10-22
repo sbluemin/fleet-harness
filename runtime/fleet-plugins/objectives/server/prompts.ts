@@ -1,4 +1,4 @@
-import { OPENUI_GUIDE } from "./openui-guide.js";
+import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { memberFailureReason } from "./signals.js";
 import { MAX_CONTEXT, ownAnswer, type DecisionAnswer, type DecisionRequest, type ObjectiveActor, type ObjectiveEditKind, type Objective, type ObjectiveMember, type ObjectiveMemberFailure, type ObjectiveMemberUnreported } from "./types.js";
 

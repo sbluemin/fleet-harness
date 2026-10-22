@@ -36,6 +36,11 @@
       "types": "./openui.ts",
       "import": "./openui.ts",
       "default": "./openui.ts"
+    },
+    "./openui-guide": {
+      "types": "./openui-guide.ts",
+      "import": "./openui-guide.ts",
+      "default": "./openui-guide.ts"
     }
   },
   "dependencies": {
