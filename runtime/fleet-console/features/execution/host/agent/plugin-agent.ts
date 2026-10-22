@@ -392,7 +392,7 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
   if (options.persist !== undefined && (typeof options.persist?.key !== "string" || !PERSIST_KEY.test(options.persist.key) || options.continuation !== "conversation" || options.timeoutMs !== undefined)) throw new Error("agent_persist_invalid");
   if (options.sessionName !== undefined && (typeof options.sessionName !== "string" || !options.sessionName.trim() || options.sessionName.length > 160 || /[\r\n]/.test(options.sessionName))) throw new Error("agent_session_name_invalid");
-  if (options.tools?.builtins?.some((tool) => !["WebSearch", "WebFetch", "SendMessage", "ListAgents"].includes(tool))) throw new Error("agent_builtin_not_allowed");
+  if (options.tools?.builtins?.some((tool) => !["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"].includes(tool))) throw new Error("agent_builtin_not_allowed");
   if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
   const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER]);
   for (const group of options.tools?.custom ?? []) {

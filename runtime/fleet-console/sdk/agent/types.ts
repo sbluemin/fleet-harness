@@ -81,10 +81,10 @@ export interface AgentSessionOptions {
    * 남긴 대화를 버리려면 {@link AgentHost.forget}을 부른다. `key`는 `[A-Za-z0-9:_-]{1,128}`이다.
    */
   readonly persist?: { readonly key: string };
-  /** 플러그인 실행은 파일·셸·하위 Agent를 기본 제공하지 않는다. */
+  /** 내장 Read는 요청한 세션에만 실린다. 셸·하위 Agent는 제공하지 않는다. */
   readonly tools?: {
     /** 메시징 도구를 고른 persist 세션은 같은 플러그인의 발견 등록부만 공유한다. 대화 홈·기록은 계속 분리된다. */
-    readonly builtins?: readonly ("WebSearch" | "WebFetch" | "SendMessage" | "ListAgents")[];
+    readonly builtins?: readonly ("WebSearch" | "WebFetch" | "SendMessage" | "ListAgents" | "Read")[];
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
     /** 플릿 브라우저. 플러그인 안의 화면 좌표만 지정하며, 탭 소유자는 Console이 발급한다. */
