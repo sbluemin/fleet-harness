@@ -22,7 +22,6 @@ const MAX_TEXT = 200;
 const MAX_UNIT = 8;
 const STATES = ["todo", "running", "waiting", "done", "blocked"] as const;
 const TONES = ["good", "warn", "bad"] as const;
-const TONE_DOT: Record<OpenUITone, OpenUIState> = { good: "done", warn: "running", bad: "blocked" };
 
 // ---- 1. 등록 스키마 — 기존 모델 계약과 같은 Zod 객체(이름·키 순서 = 위치 인자). 바꾸지 않는다.
 const text = z.union([z.string(), z.number()]);
@@ -53,17 +52,27 @@ function plain(value: unknown): string | null {
 const oneOf = <T extends string>(value: unknown, options: readonly T[]): T | null =>
   typeof value === "string" && (options as readonly string[]).includes(value) ? (value as T) : null;
 
-function Dot({ state, label }: { state: OpenUIState; label: string }) {
-  return <span className={`openui-dot is-${state}`} role="img" aria-label={label} />;
-}
-// 블록 컨텍스트는 대문자 컴포넌트 안에서만 읽는다 — defineComponent 의 component 콜백은 React 가 컴포넌트로 보지 않아 훅 규칙에 걸린다.
-function ToneDot({ tone }: { tone: OpenUITone }) {
+const toneClass = (tone: OpenUITone | null) => tone ? ` is-${tone}` : "";
+// 블록 컨텍스트는 대문자 컴포넌트 안에서만 읽는다. tone은 보이는 색과 읽기 라벨, state는 보이는 글자 태그로 전한다.
+function ToneLabel({ tone, suffix = false }: { tone: OpenUITone; suffix?: boolean }) {
   const { labels } = useBlock();
-  return <Dot state={TONE_DOT[tone]} label={labels.tones[tone]} />;
+  return <span className="openui-sr">{suffix ? ` (${labels.tones[tone]})` : `${labels.tones[tone]}: `}</span>;
 }
-function StateDot({ state }: { state: OpenUIState }) {
+function StateTag({ state }: { state: OpenUIState }) {
   const { labels } = useBlock();
-  return <Dot state={state} label={labels.states[state]} />;
+  const tone = { todo: "", running: " is-warn", waiting: " is-wait", done: " is-good", blocked: " is-bad" }[state];
+  return <span className={`openui-tag${tone}`}>{labels.states[state]}</span>;
+}
+const StepIndex = React.createContext(0);
+function StepRow({ props }: { props: Record<string, unknown> }) {
+  const index = React.useContext(StepIndex);
+  const state = oneOf(props.state, STATES)!;
+  const note = plain(props.note);
+  return <div className={`openui-step is-${state}`} role="listitem">
+    <span className="openui-step-index" aria-hidden="true">{index}</span>
+    <span className="openui-step-body"><span className="openui-step-label">{plain(props.label)}</span>{note ? <span className="openui-step-note">{note}</span> : null}</span>
+    <StateTag state={state} />
+  </div>;
 }
 
 const statReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
@@ -83,9 +92,9 @@ const Stat = defineComponent({
     const t = oneOf(props.tone, TONES);
     const note = plain(props.note);
     return (
-      <div className="openui-stat">
-        <span className="openui-stat-label">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>
-        <span className="openui-stat-value">{plain(props.value)}</span>
+      <div className={`openui-stat openui-rule${toneClass(t)}`}>
+        <span className="openui-stat-label">{plain(props.label)}</span>
+        <span className="openui-stat-value">{t ? <ToneLabel tone={t} /> : null}{plain(props.value)}</span>
         {note ? <span className="openui-stat-note">{note}</span> : null}
       </div>
     );
@@ -97,24 +106,14 @@ const Stats = defineComponent({
   props: z.object({ items: z.array(Stat.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Stat") && statReady(item.props));
-    return items.length ? <div className="openui-stats openui-face" role="group">{renderNode(items)}</div> : null;
+    return items.length ? <div className="openui-stats" role="group">{renderNode(items)}</div> : null;
   },
 });
 const Step = defineComponent({
   name: "Step",
   description: "One work item and its state.",
   props: z.object({ label: z.string(), state: z.enum(STATES), note: text.optional() }),
-  component: ({ props }) => {
-    const state = oneOf(props.state, STATES)!;
-    const note = plain(props.note);
-    return (
-      <div className={`openui-step is-${state}`} role="listitem">
-        <StateDot state={state} />
-        <span className="openui-step-label">{plain(props.label)}</span>
-        {note ? <span className="openui-step-note">{note}</span> : null}
-      </div>
-    );
-  },
+  component: ({ props }) => <StepRow props={props} />,
 });
 const Steps = defineComponent({
   name: "Steps",
@@ -122,7 +121,7 @@ const Steps = defineComponent({
   props: z.object({ items: z.array(Step.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Step") && stepReady(item.props));
-    return items.length ? <div className="openui-steps openui-face" role="list">{renderNode(items)}</div> : null;
+    return items.length ? <div className="openui-steps" role="list">{items.map((item, i) => <StepIndex.Provider key={i} value={i + 1}>{renderNode(item)}</StepIndex.Provider>)}</div> : null;
   },
 });
 const Bars = defineComponent({
@@ -143,7 +142,7 @@ const Bars = defineComponent({
     const max = Math.max(...pairs.map((p) => p.value), unit === "%" ? 100 : 0);
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
     return (
-      <div className="openui-bars openui-face">
+      <div className="openui-bars">
         {pairs.map((p, i) => (
           <React.Fragment key={i}>
             <span className="openui-bar-label">{p.label}</span>
@@ -163,7 +162,7 @@ const Table = defineComponent({
     const columns = list(props.columns);
     if (!columns.length) return null;
     return (
-      <div className="openui-table-frame openui-face">
+      <div className="openui-table-frame openui-frame">
         <table className="openui-table">
           <thead><tr>{columns.map((c, i) => <th key={i}>{plain(c) ?? ""}</th>)}</tr></thead>
           <tbody>{list(props.rows).map((row, r) => <tr key={r}>{columns.map((_, i) => <td key={i}>{plain(list(row)[i]) ?? ""}</td>)}</tr>)}</tbody>
@@ -180,8 +179,8 @@ const Fact = defineComponent({
     const t = oneOf(props.tone, TONES);
     return (
       <div className="openui-fact" role="listitem">
-        <span className="openui-fact-label">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>
-        <span className="openui-fact-value">{plain(props.value)}</span>
+        <span className="openui-fact-label">{plain(props.label)}</span>
+        <span className={`openui-fact-value${toneClass(t)}`}>{t ? <ToneLabel tone={t} /> : null}{plain(props.value)}</span>
       </div>
     );
   },
@@ -192,7 +191,7 @@ const Facts = defineComponent({
   props: z.object({ items: z.array(Fact.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Fact") && factReady(item.props));
-    return items.length ? <div className="openui-facts openui-face" role="list">{renderNode(items)}</div> : null;
+    return items.length ? <div className="openui-facts openui-frame" role="list">{renderNode(items)}</div> : null;
   },
 });
 const Callout = defineComponent({
@@ -204,8 +203,8 @@ const Callout = defineComponent({
     if (!sentence) return null;
     const t = oneOf(props.tone, TONES);
     return (
-      <div className="openui-callout openui-face" role="note">
-        {t ? <ToneDot tone={t} /> : null}
+      <div className={`openui-callout openui-rule${toneClass(t)}`} role="note">
+        {t ? <ToneLabel tone={t} /> : null}
         <span className="openui-callout-text">{sentence}</span>
       </div>
     );
@@ -223,7 +222,7 @@ const Progress = defineComponent({
     const note = plain(props.note);
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
     return (
-      <div className="openui-bars openui-progress openui-face">
+      <div className="openui-bars openui-progress">
         <span className="openui-bar-label">{plain(props.label)}</span>
         <span className="openui-bar-track"><span className="openui-bar-fill" style={{ width: `${Math.min(100, Math.max(0, (done / total) * 100))}%` }} /></span>
         <span className="openui-bar-value">{`${format.format(done)}/${format.format(total)}`}</span>
@@ -238,10 +237,10 @@ function ChoiceButton({ label, reply, why, effect }: { label: string; reply: str
   const decision = React.useContext(DecisionLayout);
   const trigger = useTriggerAction();
   const key = React.useId();
-  return <button type="button" className={`${decision ? "openui-option" : "openui-choice"}${block.sent === key ? " is-selected" : ""}`} title={reply}
+  return <button type="button" className={decision ? "openui-option" : "openui-button"} title={reply} aria-pressed={block.sent === key ? true : undefined}
     disabled={!block.final || block.sent !== null} aria-disabled={block.final && !block.send ? true : undefined}
     onClick={(event) => block.activate(event, { type: "send", message: reply, max: 200 }, key, trigger)}>
-    {decision ? <><span className="openui-option-label">{label}</span>{why ? <span className="openui-option-why">{why}</span> : null}{effect ? <span className="openui-option-effect">{effect}</span> : null}</> : label}
+    {decision ? <><span className="openui-option-text"><span className="openui-option-label">{label}</span>{why ? <span className="openui-option-why">{why}</span> : null}{effect ? <span className="openui-option-effect">{effect}</span> : null}</span><span className="openui-option-mark" aria-hidden="true" /></> : label}
   </button>;
 }
 const Choice = defineComponent({
@@ -257,7 +256,7 @@ const Choices = defineComponent({
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Choice") && choiceReady(item.props));
     const decision = items.some((item) => isNode(item, "Choice") && (plain(item.props.why) || plain(item.props.effect)));
-    return items.length ? <DecisionLayout.Provider value={decision}><div className={decision ? "openui-decision openui-face" : "openui-choices"} role="group">{renderNode(items)}</div></DecisionLayout.Provider> : null;
+    return items.length ? <DecisionLayout.Provider value={decision}><div className={decision ? "openui-decision" : "openui-choices"} role="group">{renderNode(items)}</div></DecisionLayout.Provider> : null;
   },
 });
 
@@ -294,9 +293,9 @@ function ActionButton({ label, action }: { label: string; action: unknown }) {
   if (!safe) return null;
   const target = safe.type === "open" ? parseOpenUIOpenTarget(safe.url) : null;
   const tail = target?.kind === "https" ? target.hostname : target?.kind === "objective" ? `objective:${target.id.slice(0, 8)}` : target?.kind === "mission" ? `mission:${target.number}` : null;
-  const contents = <><span>{label}</span>{tail ? <span className="openui-button-target">{tail}</span> : null}</>;
-  if (target && !block.open?.accepts(target)) return <span className="openui-button is-inert" title={safe.type === "open" ? safe.url : undefined}>{contents}</span>;
-  return <button type="button" className={`openui-choice openui-button${block.sent === key ? " is-selected" : ""}`} title={safe.type === "open" ? safe.url : safe.message}
+  const contents = <><span>{label}</span>{tail ? <span className={`openui-button-tail${target?.kind === "https" ? "" : " is-internal"}`}>{tail}</span> : null}</>;
+  if (target && !block.open?.accepts(target)) return <span className="openui-inert is-inert" title={safe.type === "open" ? safe.url : undefined}>{contents}</span>;
+  return <button type="button" className="openui-button" aria-pressed={block.sent === key ? true : undefined} title={safe.type === "open" ? safe.url : safe.message}
     disabled={!block.final || (safe.type === "send" && block.sent !== null)} aria-disabled={safe.type === "send" && !block.send ? true : undefined}
     onClick={(event) => block.activate(event, safe, key, trigger)}>{contents}</button>;
 }
@@ -336,13 +335,13 @@ function FormFields({ props }: { props: Record<string, unknown> }) {
   const draft = composeDraft(String(props.template), values);
   const complete = fields.every((f) => !!values.get(String(f.props.name))?.trim());
   const update = (name: string, value: string) => setValues((current) => new Map(current).set(name, value));
-  return <div className="openui-form openui-face" role="group"><div className="openui-fields">{fields.map((field) => {
+  return <div className="openui-form" role="group">{fields.map((field) => {
     const name = String(field.props.name);
-    return <label className="openui-field" key={name}><span>{String(field.props.label)}</span>{field.typeName === "Input"
-      ? <input type="text" maxLength={80} autoComplete="off" spellCheck={false} disabled={disabled} value={values.get(name) ?? ""} onChange={(e) => update(name, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
-      : <select disabled={disabled} value={String(list(field.props.options).indexOf(values.get(name)))} onChange={(e) => { const option = list(field.props.options)[Number(e.currentTarget.value)]; if (typeof option === "string") update(name, option); }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>{list(field.props.options).map((option, i) => <option key={i} value={String(i)}>{String(option)}</option>)}</select>}</label>;
-  })}</div><button type="button" className={`openui-choice${block.sent === key ? " is-selected" : ""}`} title={String(props.template)} disabled={disabled || !complete || !draft}
-    onClick={(event) => { if (complete && draft) block.activate(event, { type: "send", message: draft, max: 480 }, key, trigger); }}>{String(props.submit)}</button></div>;
+    return <label className="openui-field" key={name}><span className="openui-field-label">{String(field.props.label)}</span>{field.typeName === "Input"
+      ? <input className="openui-input" type="text" maxLength={80} autoComplete="off" spellCheck={false} disabled={disabled} value={values.get(name) ?? ""} onChange={(e) => update(name, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
+      : <select className="openui-select" disabled={disabled} value={String(list(field.props.options).indexOf(values.get(name)))} onChange={(e) => { const option = list(field.props.options)[Number(e.currentTarget.value)]; if (typeof option === "string") update(name, option); }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>{list(field.props.options).map((option, i) => <option key={i} value={String(i)}>{String(option)}</option>)}</select>}</label>;
+  })}<div className="openui-form-actions"><button type="button" className="openui-button is-primary" aria-pressed={block.sent === key ? true : undefined} title={String(props.template)} disabled={disabled || !complete || !draft}
+    onClick={(event) => { if (complete && draft) block.activate(event, { type: "send", message: draft, max: 480 }, key, trigger); }}>{String(props.submit)}</button></div></div>;
 }
 const Form = defineComponent({
   name: "Form", description: "A few fields composing one message, sent only when clicked.",
@@ -360,10 +359,9 @@ const Moment = defineComponent({
   component: ({ props }) => {
     const state = oneOf(props.state, STATES);
     const note = plain(props.note);
-    return <div className={`openui-moment is-${state ?? "none"}`} role="listitem">
+    return <div className="openui-moment" role="listitem">
       <span className="openui-moment-time">{plain(props.time)}</span>
-      <span className="openui-moment-rail">{state ? <StateDot state={state} /> : <span className="openui-dot" aria-hidden="true" />}</span>
-      <span className="openui-moment-body"><span className="openui-moment-label">{plain(props.label)}</span>{note ? <span className="openui-moment-note">{note}</span> : null}</span>
+      <span className="openui-moment-line"><span className="openui-moment-label">{plain(props.label)}</span>{state ? <StateTag state={state} /> : null}{note ? <span className="openui-moment-note">{note}</span> : null}</span>
     </div>;
   },
 });
@@ -373,7 +371,7 @@ const Timeline = defineComponent({
   props: z.object({ items: z.array(Moment.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Moment") && momentReady(item.props));
-    return items.length ? <div className="openui-timeline openui-face" role="list">{renderNode(items)}</div> : null;
+    return items.length ? <div className="openui-timeline" role="list">{renderNode(items)}</div> : null;
   },
 });
 function DeltaRow({ props }: { props: Record<string, unknown> }) {
@@ -382,7 +380,7 @@ function DeltaRow({ props }: { props: Record<string, unknown> }) {
   return <div className="openui-delta" role="listitem">
     <span className="openui-delta-label">{plain(props.label)}</span>
     <span className="openui-delta-before"><span className="openui-delta-caption">{headings.before}</span><span className="openui-delta-value">{plain(props.before)}</span></span>
-    <span className="openui-delta-after"><span className="openui-delta-caption">{headings.after}</span><span className="openui-delta-value">{t ? <ToneDot tone={t} /> : null}{plain(props.after)}</span></span>
+    <span className={`openui-delta-after${toneClass(t)}`}><span className="openui-delta-caption">{headings.after}</span><span className="openui-delta-value">{t ? <ToneLabel tone={t} /> : null}{plain(props.after)}</span></span>
   </div>;
 }
 const Delta = defineComponent({
@@ -398,7 +396,7 @@ const Compare = defineComponent({
   component: ({ props, renderNode }) => {
     const before = plain(props.before), after = plain(props.after);
     const items = list(props.items).filter((item) => isNode(item, "Delta") && deltaReady(item.props));
-    return before && after && items.length ? <CompareHeadings.Provider value={{ before, after }}><div className="openui-compare openui-face" role="list">
+    return before && after && items.length ? <CompareHeadings.Provider value={{ before, after }}><div className="openui-compare openui-frame" role="list">
       <div className="openui-compare-head" aria-hidden="true"><span /><span>{before}</span><span>{after}</span></div>{renderNode(items)}
     </div></CompareHeadings.Provider> : null;
   },
@@ -409,7 +407,7 @@ const Tag = defineComponent({
   props: z.object({ label: z.string(), tone }),
   component: ({ props }) => {
     const t = oneOf(props.tone, TONES);
-    return <span className="openui-tag" role="listitem">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>;
+    return <span className={`openui-tag${toneClass(t)}`} role="listitem">{plain(props.label)}{t ? <ToneLabel tone={t} suffix /> : null}</span>;
   },
 });
 const Tags = defineComponent({
@@ -421,6 +419,28 @@ const Tags = defineComponent({
     return items.length ? <div className="openui-tags" role="list">{renderNode(items)}</div> : null;
   },
 });
+// 단조 3차 — 이웃 기울기의 부호가 다르면 접선을 0으로 두어 극값을 넘지 않는다. 좌표·제어점은 계산한 숫자뿐이다.
+function smoothSparkline(points: readonly (readonly [number, number])[]): string {
+  const n = points.length;
+  const dx: number[] = [], slopes: number[] = [], tangents: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1]![0] - points[i]![0];
+    slopes[i] = (points[i + 1]![1] - points[i]![1]) / dx[i]!;
+  }
+  tangents[0] = slopes[0]!;
+  tangents[n - 1] = slopes[n - 2]!;
+  for (let i = 1; i < n - 1; i++) {
+    const left = slopes[i - 1]!, right = slopes[i]!;
+    tangents[i] = left * right <= 0 ? 0 : 3 * (dx[i - 1]! + dx[i]!) / ((2 * dx[i]! + dx[i - 1]!) / left + (dx[i]! + 2 * dx[i - 1]!) / right);
+  }
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+  let d = `M${round2(points[0]![0])} ${round2(points[0]![1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x, y] = points[i]!, [nextX, nextY] = points[i + 1]!;
+    d += ` C${round2(x + dx[i]! / 3)} ${round2(y + tangents[i]! * dx[i]! / 3)} ${round2(nextX - dx[i]! / 3)} ${round2(nextY - tangents[i + 1]! * dx[i]! / 3)} ${round2(nextX)} ${round2(nextY)}`;
+  }
+  return d;
+}
 const Sparkline = defineComponent({
   name: "Sparkline",
   description: "One numeric trend, oldest first.",
@@ -429,13 +449,13 @@ const Sparkline = defineComponent({
     if (!sparkReady(props)) return null;
     const values = props.values as number[];
     const lo = Math.min(...values), hi = Math.max(...values);
-    const round2 = (v: number) => String(Math.round(v * 100) / 100);
-    const points = values.map((v, i) => `${round2(i / (values.length - 1) * 100)},${round2(hi === lo ? 10 : 2 + (1 - (v - lo) / (hi - lo)) * 16)}`).join(" ");
+    const round2 = (v: number) => Math.round(v * 100) / 100;
+    const points = values.map((v, i): readonly [number, number] => [round2(i / (values.length - 1) * 100), round2(hi === lo ? 10 : 2 + (1 - (v - lo) / (hi - lo)) * 16)]);
     const unit = typeof props.unit === "string" ? props.unit.slice(0, MAX_UNIT) : "";
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
     return <React.Fragment>
       <span className="openui-bar-label">{plain(props.label)}</span>
-      <svg className="openui-spark" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polyline points={points} fill="none" vectorEffect="non-scaling-stroke" /></svg>
+      <svg className="openui-spark" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d={smoothSparkline(points)} fill="none" vectorEffect="non-scaling-stroke" /></svg>
       <span className="openui-bar-value"><span className="openui-sr">{`${format.format(values[0]!)}${unit} → `}</span>{`${format.format(values[values.length - 1]!)}${unit}`}</span>
     </React.Fragment>;
   },
@@ -446,7 +466,7 @@ const Sparklines = defineComponent({
   props: z.object({ items: z.array(Sparkline.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Sparkline") && sparkReady(item.props));
-    return items.length ? <div className="openui-bars openui-sparklines openui-face">{renderNode(items)}</div> : null;
+    return items.length ? <div className="openui-bars openui-sparklines">{renderNode(items)}</div> : null;
   },
 });
 const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines", "Button", "Form"]);

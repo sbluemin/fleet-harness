@@ -4981,5 +4981,5 @@
 [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-name { color: var(--m-text-muted); font-weight: var(--weight-regular); }
 [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { background: var(--m-chip); }
 :root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { border-color: transparent; }
-/* OpenUI 면(지표·단계·표 칸)도 표와 같은 바탕 면으로 내린다 — 기본 면(--control-rest)은 폰에서 말풍선과 같은 --m-chip 이다. */
-[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body :is(table, :not(pre) > code, .openui-face) { background: var(--m-bg); }
+/* 말풍선 안 표·코드는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body :is(table, :not(pre) > code) { background: var(--m-bg); }

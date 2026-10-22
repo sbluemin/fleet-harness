@@ -234,8 +234,8 @@ it("delegates only host-classified Markdown links without trusting source metada
 // OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
 // 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답·열기 단추는 사람의 클릭으로만 전송·열기 포트에 닿는다.
 describe("openui hydrator containment", () => {
-  const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "svg", "polyline"]);
-  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "aria-hidden", "data-openui-owned", "viewBox", "preserveAspectRatio", "points", "fill", "vector-effect", "focusable"]);
+  const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "svg", "path"]);
+  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "aria-hidden", "data-openui-owned", "viewBox", "preserveAspectRatio", "d", "fill", "vector-effect", "focusable"]);
   const containers = new Set<HTMLElement>();
 
   afterEach(async () => {
@@ -307,15 +307,15 @@ describe("openui hydrator containment", () => {
     expect(staticBlock!.querySelector("script, img, a, iframe, style, b")).toBeNull();
     expect(staticBlock!.querySelectorAll("svg")).toHaveLength(1);
     expect(staticBlock!.querySelector("svg")?.classList.contains("openui-spark")).toBe(true);
-    expect(staticBlock!.querySelector("polyline")?.getAttribute("points")).toMatch(/^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
+    expect(staticBlock!.querySelector("path")?.getAttribute("d")).toMatch(/^M[\d.]+ [\d.]+( C(-?[\d.]+ ){5}-?[\d.]+)+$/);
     expect(staticBlock!.querySelector(".openui-moment-label")?.textContent).toBe("<script>x</script>");
     expect(staticBlock!.querySelector(".openui-delta-value")?.textContent).toBe("<iframe>");
-    expect(staticBlock!.querySelector(".openui-tag")?.textContent).toBe("<script>x</script>");
+    expect(staticBlock!.querySelector(".openui-tags .openui-tag")?.firstChild?.textContent).toBe("<script>x</script>");
     expect(view.querySelector(".openui-title")?.textContent).toBe("<img src=x onerror=alert(1)>");
     expect(view.querySelector(".openui-stat-label")?.textContent).toBe("<script>alert(1)</script>");
-    expect(view.querySelector(".openui-stat-value")?.textContent).toBe("javascript:alert(1)");
+    expect(view.querySelector(".openui-stat-value")?.lastChild?.textContent).toBe("javascript:alert(1)");
     expect(view.querySelector("td")?.textContent).toBe("<style>body{}</style>");
-    expect(view.querySelector(".openui-fact-value")?.textContent).toBe("<script>alert(2)</script>");
+    expect(view.querySelector(".openui-fact-value")?.lastChild?.textContent).toBe("<script>alert(2)</script>");
     expect(view.querySelector(".openui-callout-text")?.textContent).toBe("<a href=javascript:alert(2)>x</a>");
     expect(view.querySelector(".openui-progress-note")?.textContent).toBe("<iframe src=//evil.example>");
   });
@@ -355,7 +355,7 @@ describe("openui hydrator containment", () => {
     const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"), { reply });
 
     expect(finished!.dataset.openuiState).toBe("rendered");
-    const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-choice")];
+    const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-button")];
     expect(buttons.map((button) => [button.textContent, button.title, button.disabled])).toEqual([
       ["A · 시안", "A로 가 주세요", false],
       ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
@@ -367,10 +367,10 @@ describe("openui hydrator containment", () => {
 
     // 입력창이 없는 자리(포트 없음)는 정적 칩, 흐르는 중인 블록은 잠긴다.
     const [readOnly] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"));
-    expect([...readOnly!.querySelectorAll("button.openui-choice")].every((button) => button.getAttribute("aria-disabled") === "true")).toBe(true);
+    expect([...readOnly!.querySelectorAll("button.openui-button")].every((button) => button.getAttribute("aria-disabled") === "true")).toBe(true);
     const [streaming] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices].join("\n"), { streaming: true, reply });
     expect(streaming!.getAttribute("data-openui-final")).toBe("0");
-    expect([...streaming!.querySelectorAll<HTMLButtonElement>("button.openui-choice")].every((button) => button.disabled)).toBe(true);
+    expect([...streaming!.querySelectorAll<HTMLButtonElement>("button.openui-button")].every((button) => button.disabled)).toBe(true);
 
     const decision = 'root = Card("결정", [Choices([Choice("A", "A로 진행", "짧은 이유", "결과"), Choice("B", "B로 진행")])])';
     const [options] = await hydrated(["```openui-lang", decision, "```"].join("\n"), { reply });
@@ -388,14 +388,14 @@ describe("openui hydrator containment", () => {
 
     // 말 속 원시 HTML의 표식을 정제가 걷는다. 정제를 우회해 소유 칸 안에 들어온 위조 단추도 React 클릭 클로저가 없다.
     const source = encodeMermaidSource(['root = Card("다음", [c])', choices].join("\n"));
-    const forged = `<div class="openui-block" data-openui-source="${source}" data-openui-final="1" data-openui-state="rendered"><button class="openui-choice" data-openui-reply="/clear">X</button></div>`;
+    const forged = `<div class="openui-block" data-openui-source="${source}" data-openui-final="1" data-openui-state="rendered"><button class="openui-button" data-openui-reply="/clear">X</button></div>`;
     const sanitized = renderMarkdown(forged, { openui: true }).html;
     expect(sanitized).not.toContain("openui-block");
-    expect(sanitized).not.toContain("openui-choice");
+    expect(sanitized).not.toContain("openui-button");
     expect(sanitized).not.toContain("data-openui-reply");
     expect(renderMarkdown('<button class="openui-button">위조 열기</button>', { openui: true }).html).not.toContain("openui-button");
     const fake = document.createElement("button");
-    fake.className = "openui-choice";
+    fake.className = "openui-button";
     fake.title = "/clear";
     fake.textContent = "X";
     finished!.querySelector("[data-openui-owned]")!.append(fake);
@@ -417,7 +417,7 @@ describe("openui hydrator containment", () => {
     buttons.forEach((button) => button.click());
     expect(open.open).not.toHaveBeenCalled();
     const [inert] = await hydrated(["```openui-lang", source, "```"].join("\n"));
-    expect(inert!.querySelectorAll(".openui-button.is-inert")).toHaveLength(3);
+    expect(inert!.querySelectorAll(".openui-inert")).toHaveLength(3);
     expect(inert!.querySelector("[data-openui-owned] button")).toBeNull();
     const [streaming] = await hydrated(["```openui-lang", source].join("\n"), { streaming: true, open });
     expect([...streaming!.querySelectorAll<HTMLButtonElement>("[data-openui-owned] button")].every((button) => button.disabled)).toBe(true);

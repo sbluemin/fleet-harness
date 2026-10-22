@@ -944,201 +944,143 @@ code.hljs {
 }
 
 /* ===== OpenUI 블록 (사령관·지휘관 말풍선의 생성형 UI) =====
-   하이드레이터(openui.ts)가 그린 칸은 채팅의 마크다운 표·코드 블록과 같은 가족이다 — 같은 중립 면(--control-rest),
-   같은 반경(--radius-md), 바깥 테두리 없이 칸 사이 헤어라인, 머리 글자는 굵기 한 단으로만 갈린다.
-   신호 토큰은 상태 점에만 쓰고 정체성 톤은 쓰지 않는다. brass 는 답 단추의 hover·초점(위치 채널)에만 쓴다. 표의 칸 문법은 .markdown-body 안의 <table>이라
-   채팅 표 규칙을 그대로 입고, 카드 안에서만 면·폭·가로 스크롤을 감싼 칸이 진다(일반 마크다운 표는 그대로). */
+   공식 데모의 표 틀·왼쪽 선·글자 태그·사각 단추 문법을 Fleet 토큰으로 옮긴다. 채운 바탕 면과 상태 점은 두지 않는다.
+   tone은 선·값 잉크·태그 틴트에만, 상태는 보이는 태그에만 쓴다. 동작·전송 경계는 렌더러가 소유한다. */
 .openui-block { min-width: 0; }
-/* 코드 블록은 폴백일 때만 보인다 — 그리는 중·그린 뒤에는 소유 칸이 그 자리를 진다. */
 .openui-block:not([data-openui-state="fallback"]) > pre { display: none; }
 .openui-block > .code-block { margin: 0; }
 .openui-pending { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
 
-/* 폭은 내용이 아니라 한 단으로 정한다 — 짧은 문장 옆에서도 말풍선이 UI를 세로로 접지 않고, 좁은 자리에서는 말풍선 폭까지 줄어든다.
-   폭이 정해져 있으므로 카드가 스스로 크기 컨테이너가 된다 — 안쪽의 좁은 자리 판정(지표 목록 전환·표 칸 여백)은 카드 폭을 본다. */
-.openui { display: flex; flex-direction: column; gap: var(--space-2); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }
+.openui { display: flex; flex-direction: column; gap: var(--space-3); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }
 .openui-title { margin: 0; font-size: var(--font-content-size); font-weight: var(--weight-medium); color: var(--text-primary); }
-.openui-face { background: var(--control-rest); border-radius: var(--radius-md); }
+/* tone/state 잉크 — 점 대신 글자색·선색·틴트로. 의미는 함께 붙는 글자(상태 태그) 또는 읽기 라벨(.openui-sr)이 진다. */
+.openui .is-good { --tone: var(--positive); } .openui .is-warn { --tone: var(--warn); } .openui .is-bad { --tone: var(--coral); } .openui .is-wait { --tone: var(--aurora-ink); }
+/* 테두리 틀 — 데모 표 문법: 1px 헤어라인 · 반경 md · 면 없음 · 짝수 줄 2% 줄무늬 */
+.openui-frame { border: 1px solid var(--hairline); border-radius: var(--radius-md); overflow: hidden; }
+.openui-fact + .openui-fact { border-top: 1px solid var(--hairline); }
+.openui-facts > .openui-fact:nth-child(even) { background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+/* 왼쪽 선 문법 — 데모 Text item/KPI/Callout: 2px 선, 내용 0.9em 들여쓰기. 중립 선은 데모(본문 잉크)보다 한 단 은은한 --hairline-strong. */
+.openui-rule { border-left: 2px solid var(--tone, var(--hairline-strong)); padding-left: 0.9em; }
+/* 태그 — 데모 Tag item: 6px 반경 · 틴트 면 · 톤 잉크 글자. 중립은 --control-rest 면 + 본문 잉크. */
+.openui-tag { display: inline-flex; align-items: center; max-width: 100%; height: 24px; padding: 0 8px; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-primary); font-size: var(--t-sm); line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.openui-tag[class*="is-"] { background: color-mix(in oklch, var(--tone) 14%, transparent); color: var(--tone); }
+.openui-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
-/* 지표 — 한 면에 칸(최대 넷)을 한 줄로 등분한다. 칸 사이 헤어라인은 칸마다 왼쪽에 그어 면 가장자리에서 잘린다. */
-.openui-stats { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); overflow: hidden; }
-.openui-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0.7em 1.1em 0.75em; box-shadow: -1px 0 0 var(--hairline); }
-.openui-stat-label { display: inline-flex; align-items: center; gap: 6px; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
-.openui-stat-value { font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.25; letter-spacing: -0.01em; color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.openui-stat-note { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-
-/* 상태 점 — 신호 채널(상태만). Fleet 상태 어휘: 진행=warn, 사람 대기=aurora, 완료=positive, 막힘=coral, 대기열=빈 고리. */
-.openui-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--text-tertiary); }
-.openui-dot.is-running { background: var(--warn); }
-.openui-dot.is-waiting { background: var(--aurora); }
-.openui-dot.is-done { background: var(--positive); }
-.openui-dot.is-blocked { background: var(--coral); }
-.openui-dot.is-todo { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hairline-strong); }
-
-/* 단계 — 표의 행 문법(0.5em 1em, 옅은 가로 줄). 완료된 줄은 본문 한 단 아래 잉크로 물러난다. */
-.openui-steps { font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
-.openui-step { display: grid; grid-template-columns: 6px minmax(0, 1fr) minmax(0, max-content); align-items: center; column-gap: 0.75em; padding: 0.5em 1em; }
-.openui-step + .openui-step { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
-.openui-step-label { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+/* Stats — KPI 문법: 왼쪽 선 · 값(톤 잉크) 위 · 라벨 아래 */
+.openui-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 0.9em 1.2em; }
+.openui-stat { display: flex; flex-direction: column; min-width: 0; }
+.openui-stat-value { order: -1; font-size: var(--t-lg); font-weight: var(--weight-medium); line-height: 1.35; font-variant-numeric: tabular-nums; color: var(--tone, var(--text-primary)); }
+.openui-stat-label { overflow-wrap: anywhere; color: var(--text-secondary); font-size: calc(var(--font-content-size) * 0.928571); }
+.openui-stat-note { color: var(--text-tertiary); font-size: calc(var(--font-content-size) * 0.857143); }
+/* Facts — 표 문법(머리 없음) */
+.openui-facts { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-fact { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 1em; align-items: baseline; padding: 0.55em 0.85em; }
+.openui-fact-label { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.openui-fact-value { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; color: var(--tone, var(--text-primary)); }
+/* Callout — 왼쪽 선 한 줄 */
+.openui-callout { font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; color: var(--text-primary); }
+/* Steps — Lists 문법: 번호 칸 · 라벨/메모 · 상태 태그(글자) */
+.openui-steps { display: flex; flex-direction: column; gap: 0.55em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; }
+.openui-step { display: grid; grid-template-columns: 1.75em minmax(0, 1fr) auto; column-gap: 0.75em; align-items: center; }
+.openui-step-index { display: grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); font-size: calc(var(--font-content-size) * 0.857143); font-variant-numeric: tabular-nums; }
+.openui-step-body { display: flex; flex-direction: column; min-width: 0; }
+.openui-step-label, .openui-step-note, .openui-moment-label, .openui-moment-note, .openui-callout-text { overflow-wrap: anywhere; }
+.openui-step-label { color: var(--text-primary); }
+.openui-step-note { color: var(--text-tertiary); }
 .openui-step.is-done .openui-step-label { color: var(--text-secondary); }
-.openui-step-note { color: var(--text-tertiary); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-
-/* 막대 — 중립 계기 채움(--gauge-fill-neutral). 값은 오른쪽 숫자, 축·격자·범례 없음. 좁으면 이름 칸이 줄을 바꾼다. */
-.openui-bars { display: grid; grid-template-columns: minmax(3em, max-content) minmax(4em, 1fr) max-content; align-items: center; gap: 0.55em 0.9em; padding: 0.75em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.4; }
-.openui-bar-label { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.openui-bar-track { display: block; height: 6px; border-radius: var(--radius-pill); background: var(--control-rest); overflow: hidden; }
-.openui-bar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--gauge-fill-neutral); }
-.openui-bar-value { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-/* 진행률 — 막대 한 줄(이름 · 트랙 · done/total)을 그대로 입고, 메모만 다음 줄에 3단 잉크로 받친다. */
-.openui-progress-note { grid-column: 1 / -1; margin-top: -0.3em; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); overflow-wrap: anywhere; }
-
-/* 사실 — 라벨·값 상세(PR·커밋·검증). 단계의 행 문법에 막대 이름 칸(보조 잉크)을 얹었다. 목록 전체가 격자 하나라 값이 모든 행에서 같은 x 에 선다.
-   라벨 칸은 카드 폭의 40% 까지만 자라 좁은 카드에서도 값 칸이 남고, 긴 SHA·브랜치는 칸 안에서 줄을 바꾼다. */
-.openui-facts { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); column-gap: 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
-.openui-fact { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 0.5em 1em; }
-.openui-fact + .openui-fact { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
-.openui-fact-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.openui-fact-value { min-width: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-
-/* 강조 한 줄 — 면 하나에 점(톤이 있을 때)과 문장. 테두리·배경 틴트·왼쪽 띠 없음: 강조는 면과 점뿐이다. */
-.openui-callout { display: flex; align-items: center; gap: 0.75em; padding: 0.6em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; color: var(--text-primary); }
-.openui-callout-text { min-width: 0; overflow-wrap: anywhere; }
-
-/* 시각 흐름 — 표시용 시각은 파싱·정렬하지 않고, 한 격자의 레일이 다음 점까지 이어진다. */
-.openui-timeline { display: grid; grid-template-columns: max-content 6px minmax(0, 1fr); column-gap: 0.75em; padding: 0.55em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
-.openui-moment { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
-.openui-moment > * { padding-block: 0.35em; min-width: 0; }
-.openui-moment-time { color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.openui-moment-rail { display: flex; flex-direction: column; align-items: center; padding-block: 0; }
-.openui-moment-rail > .openui-dot { margin-top: calc(0.35em + 0.75em - 3px); }
-.openui-moment:not(:last-child) .openui-moment-rail::after { content: ""; flex: 1; width: 1px; margin-top: 4px; margin-bottom: calc(-0.35em - 0.75em + 3px + 4px); background: var(--hairline-strong); }
-.openui-moment-body { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75em; }
-.openui-moment-label { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
-.openui-moment.is-done .openui-moment-label { color: var(--text-secondary); }
-.openui-moment-note { flex: none; max-width: 45%; color: var(--text-tertiary); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-
-/* 비교 — 열 이름은 각 값에도 읽기 캡션으로 남고, 좁은 카드에서는 캡션이 보이는 세로 행이 된다. */
-.openui-compare { display: grid; grid-template-columns: fit-content(34%) minmax(0, 1fr) minmax(0, 1fr); column-gap: 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
-.openui-compare-head, .openui-delta { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 0.5em 1em; }
-.openui-compare-head { padding-block: 0.55em 0.35em; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
-.openui-delta + .openui-delta { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
-.openui-delta-label { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.openui-delta-before, .openui-delta-after { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.openui-delta-before { color: var(--text-secondary); }
-.openui-delta-after { color: var(--text-primary); }
-.openui-delta-after::before { content: "→" / ""; margin-left: -1.05em; width: 0.75em; color: var(--text-tertiary); }
-.openui-delta-caption, .openui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.openui-delta-value { min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
-
-/* 꼬리표 — 무테·채운 면·22px로 답 단추와 갈린다. 누르는 물건이 아니므로 폰에서도 커지지 않는다. */
-.openui-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.openui-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-secondary); font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
-
-/* 추세 — 막대의 행 문법, 중립 잉크 선 하나. 단일 계열의 마지막 값과 숨긴 처음 값을 함께 읽는다. */
-.openui-spark { display: block; width: 100%; height: 20px; overflow: visible; }
-.openui-spark polyline { stroke: var(--text-secondary); stroke-width: 1.5px; stroke-linejoin: round; stroke-linecap: round; }
-
-@container openui (max-width: 26em) {
-  .openui-timeline { grid-template-columns: 6px minmax(0, 1fr); }
-  .openui-moment { grid-template-columns: 6px minmax(0, 1fr); grid-template-areas: "rail time" "rail body"; column-gap: 0.75em; }
-  .openui-moment-time { grid-area: time; padding-bottom: 0; font-size: calc(var(--font-content-size) * 0.857143); }
-  .openui-moment-rail { grid-area: rail; }
-  .openui-moment-body { grid-area: body; padding-top: 0; flex-direction: column; gap: 0; }
-  .openui-moment-note { max-width: none; text-align: left; }
-  .openui-moment-rail > .openui-dot { margin-top: calc(0.35em + 0.65em - 3px); }
-  .openui-compare { display: block; }
-  .openui-compare-head { display: none; }
-  .openui-delta { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.75em; row-gap: 1px; }
-  .openui-delta-label { grid-column: 1 / -1; margin-bottom: 2px; }
-  .openui-delta-before, .openui-delta-after { display: contents; }
-  .openui-delta-after::before { content: none; }
-  .openui-delta-caption { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
-}
-
-/* 표 — 감싼 칸이 면·반경·가로 스크롤을 지고, 표는 카드 폭을 채운다(내용이 더 넓으면 칸 안에서 가로로 흐른다).
-   칸 여백·헤어라인·머리칸은 채팅 표 규칙 그대로다. 채팅 표 규칙(:is(.agent-chat, .group-chat) .markdown-body table)보다
-   한 단 구체적인 선택자로 카드 안의 표만 덮는다. */
+/* Table — 데모 표 */
 .openui-table-frame { overflow-x: auto; }
-.markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
-
-/* 답 단추 — 그룹 입력창 위 제안 칩(.group-composer-action)과 같은 알약 문법을 같은 토큰으로 옮겼다(이 패키지는 기능 CSS 를 빌리지 않는다).
-   강조 변형은 없다 — 어느 답이 앞서는지는 사람이 정한다. 카드 마지막 줄에서 줄을 바꾸고, 좁으면 라벨이 말줄임한다. 누르면 입력창이 채워질
-   뿐이다(보내기는 사람의 Enter). 흐르는 중(disabled)과 입력창이 없는 자리(aria-disabled)는 같은 옅은 정적 칩이다. */
-.openui-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
-.openui-choice {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 11px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  font: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  transition: border-color var(--duration-fast), background var(--duration-fast);
-}
-.openui-choice:hover:not(:disabled, [aria-disabled="true"]),
-.openui-choice:focus-visible { border-color: var(--brass); color: var(--brass-ink); }
-/* 키보드 초점은 hover 와 같은 테두리 위에 Console 공통 초점 링을 더 얹어 마우스가 스친 단추와 갈린다. 전역 :focus-visible 의 반경은 알약을 덮지 않는다. */
-.openui-choice:focus-visible { border-radius: var(--radius-pill); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
-.openui-choice:disabled,
-.openui-choice[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
-/* 결정 행·폼도 같은 답 단추 경계를 쓴다. 고른 표식은 전송된 한 단추에만 남는다. */
-.openui-decision { display: flex; flex-direction: column; overflow: hidden; }
-.openui-option { display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 100%; padding: 0.7em 1em; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.openui-option + .openui-option { border-top: 1px solid var(--hairline); }
-.openui-option-label { color: var(--text-primary); font-weight: var(--weight-medium); }
+.markdown-body .openui .openui-table { width: 100%; border-collapse: collapse; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.markdown-body .openui .openui-table th { text-align: left; font-weight: inherit; color: var(--text-tertiary); padding: 0.6em 0.85em; }
+.markdown-body .openui .openui-table td { padding: 0.6em 0.85em; border-top: 1px solid var(--hairline); }
+.markdown-body .openui .openui-table tbody tr:nth-child(even) td { background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+/* Bars·Progress·Sparklines — 차트는 틀 없이. 막대는 둥근 끝 8px, 선은 2px 매끈한 곡선 */
+.openui-bars { display: grid; grid-template-columns: minmax(3em, max-content) minmax(4em, 1fr) max-content; align-items: center; gap: 0.6em 0.9em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.4; }
+.openui-bar-label { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.openui-bar-track { display: block; height: 8px; border-radius: 4px; background: var(--control-rest); overflow: hidden; }
+.openui-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--gauge-fill-neutral); }
+.openui-bar-value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.openui-progress-note { grid-column: 1 / -1; margin-top: -0.35em; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
+.openui-spark { display: block; width: 100%; height: 22px; overflow: visible; }
+.openui-spark path { fill: none; stroke: var(--gauge-fill-neutral); stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; }
+/* Timeline — 왼쪽 선 하나에 시각(작은 3단)/사건(본문) 쌍. 상태는 태그 글자 */
+.openui-timeline { display: flex; flex-direction: column; gap: 0.65em; border-left: 2px solid var(--hairline-strong); padding-left: 0.9em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; }
+.openui-moment { display: flex; flex-direction: column; min-width: 0; }
+.openui-moment-time { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.openui-moment-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em 0.6em; }
+.openui-moment-note { color: var(--text-tertiary); }
+.openui-moment .openui-tag { height: 20px; padding: 0 6px; }
+/* Compare — 표 문법(머리 있음). 수정본 값만 톤 잉크 */
+.openui-compare { display: grid; grid-template-columns: fit-content(34%) minmax(0, 1fr) minmax(0, 1fr); font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-compare-head, .openui-delta { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 1em; align-items: baseline; padding: 0.55em 0.85em; }
+.openui-compare-head { color: var(--text-tertiary); }
+.openui-delta { border-top: 1px solid var(--hairline); }
+.openui-delta:nth-child(odd) { background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.openui-delta-label, .openui-delta-before { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.openui-delta-after { color: var(--tone, var(--text-primary)); min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.openui-delta-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* 단추 — Console .fc-btn 문법(반경 xs). 답·결정·폼 제출은 보낸다, 링크 단추는 연다 */
+.openui-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.openui-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: calc(var(--font-content-size) * 0.928571); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background var(--duration-fast), border-color var(--duration-fast); }
+.openui-button:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
+.openui-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.openui-button:disabled, .openui-button[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+.openui-button.is-primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
+.openui-button[aria-pressed="true"] { opacity: 1; border-color: var(--brass); background: var(--quiet-choice-fill); color: var(--brass-ink); }
+.openui-button[aria-pressed="true"]::before, .openui-option[aria-pressed="true"] .openui-option-mark::before { content: "✓" / ""; }
+.openui-button-tail { font-weight: var(--weight-regular); color: var(--text-tertiary); font-size: 0.92em; }
+.openui-button-tail::after { content: " ↗" / ""; }
+.openui-button-tail.is-internal::after { content: none; }
+.openui-inert { overflow-wrap: anywhere; display: inline-flex; gap: 6px; align-items: baseline; color: var(--text-secondary); font-size: calc(var(--font-content-size) * 0.928571); }
+:root[data-view-mode="mobile"] .openui-button, [data-mobile-surface] .openui-button { height: 40px; }
+/* 결정 행 — Lists "Clickable" 문법: 행 사이 헤어라인, 오른쪽 › , 누르면 보낸다 */
+.openui-decision { display: flex; flex-direction: column; }
+.openui-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 0.75em; width: 100%; padding: 0.6em 0.5em; margin: 0 -0.5em; border: 0; border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; text-align: left; color: var(--text-primary); cursor: pointer; }
+.openui-option + .openui-option { border-top: 1px solid var(--hairline); border-radius: 0; }
+.openui-option:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
+.openui-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.openui-option:disabled, .openui-option[aria-disabled="true"] { cursor: default; opacity: var(--control-disabled-opacity); }
+.openui-option[aria-pressed="true"] { opacity: 1; background: var(--quiet-choice-fill); color: var(--brass-ink); }
+.openui-option[aria-pressed="true"] .openui-option-label { color: var(--brass-ink); }
+.openui-option-text { display: flex; flex-direction: column; min-width: 0; }
+.openui-option-label { font-weight: var(--weight-medium); }
 .openui-option-why { color: var(--text-secondary); }
 .openui-option-effect { color: var(--text-tertiary); }
-.openui-option-effect::before { content: "→" / ""; margin-right: 0.5em; }
-.openui-option:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
-.openui-option:hover:not(:disabled, [aria-disabled="true"]) .openui-option-label { color: var(--brass-ink); }
-.openui-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-.openui-option:disabled, .openui-option[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
-.openui-choice.is-selected::after, .openui-option.is-selected .openui-option-label::after { content: "✓"; margin-left: 0.5em; }
-.openui-button { gap: 8px; }
-.openui-button-target { color: var(--text-tertiary); font-size: var(--t-sm); }
-.openui-button.is-inert { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.openui-form { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: 0.75em 1em; }
-.openui-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(12em, 100%), 1fr)); gap: var(--space-2); width: 100%; }
-.openui-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
-.openui-field :is(input, select) { min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--control-field); color: var(--text-primary); font: inherit; }
-.openui-field :is(input, select):focus-visible { border-color: var(--brass); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.openui-option-effect::before { content: "→ " / ""; }
+.openui-option-mark { color: var(--text-tertiary); }
+.openui-option-mark::before { content: "›" / ""; font-size: 1.2em; }
+.openui-option[aria-pressed="true"] .openui-option-mark { color: var(--brass-ink); }
 :root[data-view-mode="mobile"] .openui-option, [data-mobile-surface] .openui-option { min-height: 44px; }
-:root[data-view-mode="mobile"] .openui-fields, [data-mobile-surface] .openui-fields { grid-template-columns: minmax(0, 1fr); }
-:root[data-view-mode="mobile"] .openui-field :is(input, select), [data-mobile-surface] .openui-field :is(input, select) { height: 40px; font-size: 16px; }
-
-/* 폰 — 손가락 높이. 모바일 Operation 본문([data-mobile-surface])과 폰 보기의 플러그인 화면(사령관) 모두. */
-:root[data-view-mode="mobile"] .openui-choice,
-[data-mobile-surface] .openui-choice { height: 36px; padding: 0 var(--space-3); }
-/* 폰 — 할 일 고리는 폰 헤어라인(--m-hairline-strong)으로는 말풍선 위에서 거의 사라져 본문 3단 잉크로 한 단 진하게 긋는다. */
-:root[data-view-mode="mobile"] .openui-dot.is-todo,
-[data-mobile-surface] .openui-dot.is-todo { box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
-
-/* 좁은 카드(모바일 말풍선 등) — 칸을 한 줄에 억지로 등분하면 값이 눌리고 라벨이 조각나며, 줄바꿈 격자는 한 칸을 홀로 남긴다.
-   그래서 지표를 단계·표와 같은 행 문법의 목록(라벨 왼쪽 · 값 오른쪽)으로 바꾼다 — 칸 수와 무관하게 모든 지표가 같은 모양으로 선다. */
+/* 폼 — 데모 입력칸: 1px 테두리 · 반경 xs · 옅은 면 */
+.openui-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 0.75em 1em; }
+.openui-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.openui-field-label { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-secondary); }
+.openui-input, .openui-select { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--control-field); font: inherit; font-size: calc(var(--font-content-size) * 0.928571); color: var(--text-primary); }
+.openui-input:focus-visible, .openui-select:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.openui-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+/* iOS 입력 확대를 막는 16px 하한이며, 사람이 본문 글자를 더 크게 정했으면 그 선호를 보존한다. */
+:root[data-view-mode="mobile"] .openui-input, :root[data-view-mode="mobile"] .openui-select, [data-mobile-surface] .openui-input, [data-mobile-surface] .openui-select { height: 40px; font-size: max(16px, var(--font-content-size)); }
 @container openui (max-width: 26em) {
-  .openui-stats { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); }
-  .openui-stat {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "label value" "note value";
-    align-items: center;
-    column-gap: 0.75em;
-    row-gap: 0;
-    padding: 0.5em 1em;
-    box-shadow: none;
-  }
-  .openui-stat + .openui-stat { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
-  .openui-stat-label { grid-area: label; font-size: calc(var(--font-content-size) * 0.928571); color: var(--text-secondary); }
-  .openui-stat-value { grid-area: value; font-size: var(--t-lg); }
-  .openui-stat-note { grid-area: note; }
+  .openui-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .openui-step { grid-template-columns: 1.75em minmax(0, 1fr); row-gap: 0.25em; }
+  .openui-step > .openui-tag { grid-column: 2; justify-self: start; }
+  .openui-compare { display: block; }
+  .openui-compare-head { display: none; }
+  .openui-delta { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.75em; }
+  .openui-delta-label { grid-column: 1 / -1; color: var(--text-primary); }
+  .openui-delta-before, .openui-delta-after { display: contents; }
+  .openui-delta-caption { position: static; width: auto; height: auto; overflow: visible; clip-path: none; color: var(--text-tertiary); font-size: calc(var(--font-content-size) * 0.857143); }
+  .openui-form { grid-template-columns: minmax(0, 1fr); }
+  .openui-form-actions .openui-button { width: 100%; justify-content: center; }
 }
+
+/* 태그 warn 잉크는 밝은 테마에서도 작은 글자의 대비를 확보하도록 본문 잉크를 섞는다. 틴트 바탕은 원래 신호 토큰이다. */
+.openui-tag.is-warn { color: color-mix(in oklch, var(--tone) 75%, var(--text-primary)); }
+.openui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
+.markdown-body .openui .openui-table th { background: none; }
+/* 채팅의 일반 표는 세로 줄·폰 바탕 면을 쓴다. OpenUI에서는 바깥 틀과 데이터 행 가로 줄만 남긴다. */
+:is(.agent-chat, .group-chat) .markdown-body .openui table.openui-table,
+:root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body .openui table.openui-table,
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body .openui table.openui-table { border: 0; background: none; }
+.markdown-body .openui .openui-table :is(th, td), .markdown-body .openui .openui-table :is(th, td) + :is(th, td) { border-left: 0; border-bottom: 0; }
