@@ -787,6 +787,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const target = (continued && !tail) || !onOpenLedger ? null : ledgerOf(speaker, participants);
   const open = target ? () => onOpenLedger!(target) : undefined;
   const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
+  // 생성형 UI(OpenUI 펜스)는 사령관·지휘관의 말에서만 그린다 — 구성원의 말은 지금처럼 코드 블록이다.
+  const openui = speaker.kind === "commodore" || speaker.kind === "commander";
   // 표식은 묶음 꼬리(마지막으로 서는 말풍선) 옆에 선다 — 묶음 왼쪽 아래.
   const mark = !tail ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
   // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
@@ -822,7 +824,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
             {entry.text.trim().length === 0
               ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
-              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
+              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} />}
           </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}

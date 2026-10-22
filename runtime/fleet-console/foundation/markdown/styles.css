@@ -942,3 +942,51 @@ code.hljs {
     margin-left: 0;
   }
 }
+
+/* ===== OpenUI 블록 (사령관·지휘관 말풍선의 생성형 UI) =====
+   하이드레이터(openui.ts)가 그린 칸은 채팅의 마크다운 표·코드 블록과 같은 가족이다 — 같은 중립 면(--control-rest),
+   같은 반경(--radius-md), 바깥 테두리 없이 칸 사이 헤어라인, 머리 글자는 굵기 한 단으로만 갈린다.
+   신호 토큰은 상태 점에만 쓰고 brass·정체성 톤은 쓰지 않는다. 표는 따로 규칙을 두지 않는다 — .markdown-body 안의
+   <table>이라 채팅 표 규칙(면·헤어라인·넘치면 가로 스크롤)을 그대로 입는다. */
+.openui-block { min-width: 0; }
+/* 코드 블록은 폴백일 때만 보인다 — 그리는 중·그린 뒤에는 소유 칸이 그 자리를 진다. */
+.openui-block:not([data-openui-state="fallback"]) > pre { display: none; }
+.openui-block > .code-block { margin: 0; }
+.openui-pending { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
+
+/* 폭은 내용이 아니라 한 단으로 정한다 — 짧은 문장 옆에서도 말풍선이 UI를 세로로 접지 않고, 좁은 자리에서는 말풍선 폭까지 줄어든다. */
+.openui { display: flex; flex-direction: column; gap: var(--space-2); inline-size: 36em; max-inline-size: 100%; min-width: 0; }
+.openui-title { margin: 0; font-size: var(--font-content-size); font-weight: var(--weight-medium); color: var(--text-primary); }
+.openui-face { background: var(--control-rest); border-radius: var(--radius-md); }
+
+/* 지표 — 한 면에 칸을 나란히. 좁으면 칸이 다음 줄로 접히고, 칸 사이 헤어라인은 칸마다 왼쪽·위로 그어 면 가장자리에서 잘린다. */
+.openui-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5em), 1fr)); overflow: hidden; }
+.openui-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0.7em 1.1em 0.75em; box-shadow: -1px 0 0 var(--hairline), 0 -1px 0 var(--hairline); }
+.openui-stat-label { display: inline-flex; align-items: center; gap: 6px; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
+.openui-stat-value { font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.25; letter-spacing: -0.01em; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.openui-stat-note { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* 상태 점 — 신호 채널(상태만). Fleet 상태 어휘: 진행=warn, 사람 대기=aurora, 완료=positive, 막힘=coral, 대기열=빈 고리. */
+.openui-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--text-tertiary); }
+.openui-dot.is-running { background: var(--warn); }
+.openui-dot.is-waiting { background: var(--aurora); }
+.openui-dot.is-done { background: var(--positive); }
+.openui-dot.is-blocked { background: var(--coral); }
+.openui-dot.is-todo { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hairline-strong); }
+
+/* 단계 — 표의 행 문법(0.5em 1em, 옅은 가로 줄). 완료된 줄은 본문 한 단 아래 잉크로 물러난다. */
+.openui-steps { font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-step { display: grid; grid-template-columns: 6px minmax(0, 1fr) minmax(0, max-content); align-items: center; column-gap: 0.75em; padding: 0.5em 1em; }
+.openui-step + .openui-step { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
+.openui-step-label { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.openui-step.is-done .openui-step-label { color: var(--text-secondary); }
+.openui-step-note { color: var(--text-tertiary); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+
+/* 막대 — 중립 계기 채움(--gauge-fill-neutral). 값은 오른쪽 숫자, 축·격자·범례 없음. 좁으면 이름 칸이 줄을 바꾼다. */
+.openui-bars { display: grid; grid-template-columns: minmax(3em, max-content) minmax(4em, 1fr) max-content; align-items: center; gap: 0.55em 0.9em; padding: 0.75em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.4; }
+.openui-bar-label { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.openui-bar-track { display: block; height: 6px; border-radius: var(--radius-pill); background: var(--control-rest); overflow: hidden; }
+.openui-bar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--gauge-fill-neutral); }
+.openui-bar-value { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+.openui .openui-table { margin: 0; }

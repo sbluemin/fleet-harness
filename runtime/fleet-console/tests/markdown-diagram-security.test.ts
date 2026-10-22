@@ -229,3 +229,75 @@ it("delegates only host-classified Markdown links without trusting source metada
   expect(unclassified.querySelector("a")?.hasAttribute("href")).toBe(false);
   await Promise.resolve();
 });
+
+// OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
+// 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다.
+describe("openui hydrator containment", () => {
+  const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]);
+  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "data-openui-owned"]);
+
+  async function hydrated(markdown: string): Promise<HTMLElement[]> {
+    const container = document.createElement("div");
+    container.innerHTML = renderMarkdown(markdown, { openui: true }).html;
+    document.body.append(container);
+    const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
+    installOpenUIHydrator(container);
+    const blocks = [...container.querySelectorAll<HTMLElement>(".openui-block")];
+    await waitFor(() => blocks.every((block) => ["rendered", "fallback"].includes(block.dataset.openuiState ?? "")), 5000);
+    return blocks;
+  }
+
+  it("draws only whitelisted elements and keeps hostile strings as text", async () => {
+    const [block] = await hydrated([
+      "```openui-lang",
+      'root = Card("<img src=x onerror=alert(1)>", [kpi, steps, bars, tbl])',
+      'kpi = Stats([Stat("<script>alert(1)</script>", "javascript:alert(1)", null, "bad")])',
+      'steps = Steps([Step("<a href=javascript:alert(1)>x</a>", "blocked", "<svg onload=alert(1)>")])',
+      'bars = Bars(["<b>bold</b>"], [1e308], "<svg onload=alert(1)>")',
+      'tbl = Table(["<iframe src=//evil.example>"], [["<style>body{}</style>"]])',
+      "```",
+    ].join("\n"));
+
+    expect(block!.dataset.openuiState).toBe("rendered");
+    const view = block!.querySelector("[data-openui-owned]")!;
+    for (const element of view.querySelectorAll("*")) {
+      expect(ALLOWED_TAGS.has(element.tagName)).toBe(true);
+      for (const attribute of element.attributes) {
+        if (attribute.name === "style") {
+          // 막대 폭만 — 계산한 숫자 하나로 쓴다.
+          expect(element.className).toBe("openui-bar-fill");
+          expect(attribute.value).toMatch(/^width: \d+(\.\d+)?%;$/);
+          continue;
+        }
+        expect(ALLOWED_ATTRIBUTES.has(attribute.name)).toBe(true);
+      }
+    }
+    expect(block!.querySelector("script, img, a, iframe, svg, style, b")).toBeNull();
+    expect(view.querySelector(".openui-title")?.textContent).toBe("<img src=x onerror=alert(1)>");
+    expect(view.querySelector(".openui-stat-label")?.textContent).toBe("<script>alert(1)</script>");
+    expect(view.querySelector(".openui-stat-value")?.textContent).toBe("javascript:alert(1)");
+    expect(view.querySelector("td")?.textContent).toBe("<style>body{}</style>");
+  });
+
+  it("falls back to the sanitized code block for truncated or unknown programs", async () => {
+    const blocks = await hydrated([
+      "```openui-lang",
+      'root = Card("x", [Html("<script>alert(1)</script>")])',
+      "```",
+      "",
+      "```openui-lang",
+      'root = Card("x", [kpi])',
+      'kpi = Stats([Stat("목표", "3"), Stat("결정", ',
+    ].join("\n"));
+
+    expect(blocks).toHaveLength(2);
+    for (const block of blocks) {
+      expect(block.dataset.openuiState).toBe("fallback");
+      expect(block.querySelector("[data-openui-owned]")).toBeNull();
+      expect(block.querySelector("pre.code-block")).not.toBeNull();
+    }
+    expect(blocks[0]!.querySelector("script")).toBeNull();
+    // 켜지 않은 대화(구성원·일반 채팅)에서는 자리표시자조차 생기지 않는다.
+    expect(renderMarkdown("```openui-lang\nroot = Card(\"x\", [])\n```").html).not.toContain("openui-block");
+  });
+});

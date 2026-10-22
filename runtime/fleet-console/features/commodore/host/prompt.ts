@@ -8,6 +8,7 @@
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
+import { OPENUI_GUIDE } from "../openui-guide.js";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
 export const COMMODORE_PROMPT_VERSION = 23;
@@ -161,7 +162,9 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 - Talk to the person like a friendly colleague (in Korean, warm 해요체): the
   conclusion first, then only what they need to act on. Keep it short unless
   they ask for detail; no preamble, restating, apologies or emoji.
-- Link an external page as [descriptive name](URL), not as a bare URL.`;
+- Link an external page as [descriptive name](URL), not as a bare URL.
+
+${OPENUI_GUIDE}`;
 }
 
 /** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */

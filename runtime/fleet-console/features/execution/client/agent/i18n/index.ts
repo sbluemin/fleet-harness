@@ -1,5 +1,6 @@
 import { browserEn, browserKo } from "../../../../browser/client/i18n.js";
 import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
+import type { OpenUIHydratorLabels } from "@fleet-console/markdown/openui";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -106,6 +107,15 @@ export const terminalEn = {
   "terminal.markdown.diagram.fitAria": "Fit diagram to viewport",
   "terminal.markdown.diagram.reset": "Reset",
   "terminal.markdown.diagram.resetAria": "Reset diagram zoom",
+  "terminal.markdown.openui.pending": "Drawing…",
+  "terminal.markdown.openui.state.todo": "Queued",
+  "terminal.markdown.openui.state.running": "Running",
+  "terminal.markdown.openui.state.waiting": "Waiting on you",
+  "terminal.markdown.openui.state.done": "Done",
+  "terminal.markdown.openui.state.blocked": "Blocked",
+  "terminal.markdown.openui.tone.good": "Good",
+  "terminal.markdown.openui.tone.warn": "Caution",
+  "terminal.markdown.openui.tone.bad": "Problem",
   "terminal.dormant.status": "Ended",
   "terminal.dormant.resume": "Resume",
   "terminal.dormant.resuming": "Resuming…",
@@ -788,6 +798,15 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.markdown.diagram.fitAria": "뷰포트에 다이어그램 맞추기",
   "terminal.markdown.diagram.reset": "초기화",
   "terminal.markdown.diagram.resetAria": "다이어그램 확대/축소 초기화",
+  "terminal.markdown.openui.pending": "화면을 그리는 중…",
+  "terminal.markdown.openui.state.todo": "대기열",
+  "terminal.markdown.openui.state.running": "진행 중",
+  "terminal.markdown.openui.state.waiting": "사람 확인 대기",
+  "terminal.markdown.openui.state.done": "완료",
+  "terminal.markdown.openui.state.blocked": "막힘",
+  "terminal.markdown.openui.tone.good": "양호",
+  "terminal.markdown.openui.tone.warn": "주의",
+  "terminal.markdown.openui.tone.bad": "문제",
   "terminal.dormant.status": "종료됨",
   "terminal.dormant.resume": "재개",
   "terminal.dormant.resuming": "재개 중…",
@@ -1492,6 +1511,26 @@ export function diagramHydratorLabels(locale: ConsoleLocale | undefined): Diagra
     fitAria: t("terminal.markdown.diagram.fitAria"),
     reset: t("terminal.markdown.diagram.reset"),
     resetAria: t("terminal.markdown.diagram.resetAria"),
+  };
+}
+
+/** OpenUI 블록의 보조 글자와 상태 점 이름 — terminal 카탈로그에서 주입. */
+export function openUIHydratorLabels(locale: ConsoleLocale | undefined): OpenUIHydratorLabels {
+  const t = getT(locale);
+  return {
+    pending: t("terminal.markdown.openui.pending"),
+    states: {
+      todo: t("terminal.markdown.openui.state.todo"),
+      running: t("terminal.markdown.openui.state.running"),
+      waiting: t("terminal.markdown.openui.state.waiting"),
+      done: t("terminal.markdown.openui.state.done"),
+      blocked: t("terminal.markdown.openui.state.blocked"),
+    },
+    tones: {
+      good: t("terminal.markdown.openui.tone.good"),
+      warn: t("terminal.markdown.openui.tone.warn"),
+      bad: t("terminal.markdown.openui.tone.bad"),
+    },
   };
 }
 
