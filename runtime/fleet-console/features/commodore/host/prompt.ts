@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import { OPENUI_GUIDE } from "../openui-guide.js";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 24;
+export const COMMODORE_PROMPT_VERSION = 25;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
