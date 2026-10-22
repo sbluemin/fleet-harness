@@ -209,7 +209,7 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
-  /** `resumed` — 남아 있던 같은 대화를 이어 받아 열렸다(Console 재시작·자율 운영 재개 뒤). 요약도 재시작 깨움도 없다. */
+  /** `resumed`는 이전 버전 기록 읽기 호환용이다. 새 세션은 이 사건을 기록하지 않는다. */
   /** 열린 세션(`stopped` 가 아닌 줄)에는 그 세션이 실제로 도는 모델·강도가 실린다 — 설정값이 아니라 로스터 폴백까지 푼 좌표다. */
   | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "resumed" | "replaced" | "restarted" | "stopped"; readonly reason?: string; readonly model?: string; readonly effort?: string }
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
@@ -307,6 +307,8 @@ export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | 
 }
 
 export interface CommodoreStateView {
+  /** 보드 어댑터의 실행 가능 여부. 저장된 autonomy 스위치와 별개다. */
+  readonly boardReady: boolean;
   readonly commodoreId: string;
   readonly theaterIds: readonly string[];
   readonly state: CommodoreState;

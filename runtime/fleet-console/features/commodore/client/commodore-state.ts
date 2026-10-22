@@ -108,7 +108,7 @@ export function commodoreBoardOf(theaterId: string): { readonly active: boolean;
   if (!enabledSnapshot) return DISABLED_BOARD;
   const view = theaters.get(theaterId)?.view;
   const peek = peekTheater === theaterId;
-  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: view?.state.autonomy === true, peek };
+  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: false, peek };
   return { active: true, stalled: view.run.stalled ?? [], enabled: true, autonomy: true, peek };
 }
 const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false };
@@ -216,10 +216,14 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     }
     if (event.op === "state") {
       const autonomy = event.state.autonomy;
-      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.enabled && autonomy } }, false);
+      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && autonomy } }, false);
       return;
     }
-    if (event.op === "run") setTheater(theaterId, { view: { ...current.view, run: event.run } }, false);
+    if (event.op === "run") {
+      setTheater(theaterId, { view: { ...current.view, run: event.run, active: event.run.phase !== "off" && current.view.boardReady && current.view.enabled && current.view.state.autonomy } }, false);
+      // 어댑터 수명이 바뀐 경우 저장 상태 사건만으로는 준비 여부를 알 수 없다. 서버 view로 다시 수렴한다.
+      if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(theaterId, true);
+    }
   };
   const stream = createConversationStream<CommodoreEvent>({
     delta: (event) => event.op === "live" && event.live.kind === "text-delta" ? { key: event.commodoreId, text: event.live.text } : null,

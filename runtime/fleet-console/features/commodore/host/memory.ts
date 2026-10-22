@@ -72,7 +72,7 @@ export interface CommodoreMemory {
 }
 
 export interface CommodoreMemoryOptions {
-  /** Theater 의 사령관 폴더(`objectives/commodore`). 모르면 `theater_unavailable` 을 던진다. */
+  /** Console 데이터의 사령관 폴더(`commodore/<UUID>`). 모르면 `theater_unavailable` 을 던진다. */
   readonly dirFor: (commodoreId: string) => string;
   readonly now: () => number;
   readonly onChange: (commodoreId: string, change: MemoryChange, ref: string) => void;

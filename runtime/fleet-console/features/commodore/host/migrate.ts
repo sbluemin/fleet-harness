@@ -23,15 +23,12 @@ export interface CommodoreMigrationResult {
   readonly cleanedSessions: boolean;
   /** 알려진 실패 경로에는 빈 엔티티가 먼저 생기지 않아야 다음 기동이 이동을 재시도할 수 있다. */
   readonly blockedPaths: ReadonlySet<string>;
-  /** cwd를 모르는 원본이 있으면 새 발급만 보류한다. 기존·이동 완료 엔티티는 계속 쓴다. */
-  readonly blockedUnknown: boolean;
 }
 
 /** Console 슬롯 lock 아래, 플러그인·색인·선제 발급보다 먼저 실행한다. 입력 데이터 루트 밖은 탐색하거나 지우지 않는다. */
 export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult {
   const blockedPaths = new Set<string>();
   const issues = new Set<string>();
-  let blockedUnknown = false;
   let moved = 0;
   let resumed = 0;
   let cleanedSessions = false;
@@ -39,9 +36,9 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
     const key = `${location}:${code}`;
     if (!issues.has(key)) console.warn(`[commodore] migration ${location}: ${code}; data preserved`);
     issues.add(key);
-    if (theater) blockedPaths.add(theater); else blockedUnknown = true;
+    if (theater) blockedPaths.add(theater);
   };
-  const result = (): CommodoreMigrationResult => ({ moved, resumed, unresolved: issues.size, cleanedSessions, blockedPaths, blockedUnknown });
+  const result = (): CommodoreMigrationResult => ({ moved, resumed, unresolved: issues.size, cleanedSessions, blockedPaths });
   try {
     const root = fs.realpathSync.native(dataDir);
     const stat = (file: string): fs.Stats | null => {

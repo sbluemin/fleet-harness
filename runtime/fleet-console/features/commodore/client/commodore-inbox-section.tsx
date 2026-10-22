@@ -96,7 +96,7 @@ function cachedSectionState(state: TheaterInboxSectionState): TheaterInboxSectio
 function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): string {
   const view = readCommodore(theaterId).view;
   if (!view) return t("commodore.inbox.scope");
-  const on = view.state.autonomy === true;
+  const on = view.active;
   const run = view.run;
   return [
     on ? t("commodore.meta.autonomous") : t("commodore.meta.manual"),
@@ -182,7 +182,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
     setTrailPreferred(TRAIL_WIDTH_DEFAULT);
     writeTrailWidth(TRAIL_WIDTH_DEFAULT);
   };
-  const on = view?.state.autonomy === true;
+  const on = view?.active === true;
   const run = view?.run;
 
   // 입구가 맡긴 포커스 — 기록은 입력란(바로 말할 수 있게), 지시는 지시 입력란. 링크로 온 「입력 끝」은 커서를 글 끝에 둔다.
@@ -285,8 +285,8 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
-      <SettingsRow label={t("commodore.settings.autonomy")} hint={t("commodore.settings.autonomyHint")}>
-        <SettingsToggle checked={on} ariaLabel={t("commodore.switchAria")} onChange={(next) => act(() => setCommodoreAutonomy(theaterId, next))} />
+      <SettingsRow label={t("commodore.settings.autonomy")} hint={t(view.boardReady ? "commodore.settings.autonomyHint" : "commodore.failed.boardUnavailable")}>
+        <SettingsToggle disabled={!view.boardReady} checked={on} ariaLabel={t("commodore.switchAria")} onChange={(next) => act(() => setCommodoreAutonomy(theaterId, next))} />
       </SettingsRow>
       <SettingsRow
         label={t("commodore.settings.model")}
@@ -308,12 +308,12 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
         <PatrolControl
           t={t}
           minutes={patrol}
-          nextPatrolAt={on && run.phase === "idle" ? run.nextWakeAt : undefined}
+          nextPatrolAt={view.active && run.phase === "idle" ? run.nextWakeAt : undefined}
           onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
         />
       </SettingsRow>
       <SettingsRow label={t("commodore.stop.title")} hint={t("commodore.stop.hint")}>
-        <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!on || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
+        <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!view.active || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
       </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow

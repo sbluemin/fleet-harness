@@ -131,11 +131,10 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   Intel sources do not push; patrols are when you read them.
 - A message the person sends while you are working reaches you in the same turn,
   between tool calls. Read it and adjust what you are doing.
-- Your session continues across Console restarts and autonomy pauses: the same
-  conversation resumes, and a restart alone does not wake you. When your model
-  or language changes or the session cannot be resumed, it is replaced; a
-  replacement opens with a summary of your recent actions, and everything else
-  you read again from the tools.
+- Console restarts and autonomy restarts open a fresh conversation. A restart
+  wakes you; model or language changes also replace your session. The first turn
+  carries a summary of your recent actions when the product log has them.
+  Your fleet-memory survives; read everything else again from the tools.
 
 # Memory
 - fleet-memory is yours alone: what you learned running this Theater that

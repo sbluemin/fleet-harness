@@ -92,7 +92,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     try { first = migrateCommodoreData(data); } finally { rename.mockRestore(); copy.mockRestore(); }
     expect(first!.unresolved).toBeGreaterThan(0);
     expect(first!.cleanedSessions).toBe(false);
-    expect(first!.blockedUnknown).toBe(true);
+    expect(first!.blockedPaths.has(stopped.root)).toBe(true);
     expect(first!.blockedPaths.has(failedCopy.root)).toBe(true);
     expect(fs.readFileSync(path.join(failedCopy.dir, "state.json"), "utf8")).toBe(state(failedCopy.text));
     const failedCopyId = JSON.parse(fs.readFileSync(path.join(failedCopy.dir, ".migration.json"), "utf8")).commodoreId;
@@ -110,7 +110,6 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(fs.readdirSync(entities).some((name) => name.startsWith(".copy-") || name.startsWith(".new-"))).toBe(false);
 
     // 오류를 고치고 다음 기동: 실제 feature가 이동 완료 → 색인 → 선제 발급을 수행한다.
-    write(path.join(unknown.workspace, "cwd.json"), JSON.stringify({ cwd: unknown.root }));
     fs.unlinkSync(linked); // 테스트가 만든 심볼릭 링크만 제거한다. 대상은 건드리지 않는다.
     const unreadableId = fs.readdirSync(entities).find((id) => {
       const file = path.join(entities, id, ".migration.json");
@@ -146,6 +145,13 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect((await call("commodore/resolve", { theaterId: workspaceHash(stopped.root) })).commodoreId).toBe(stoppedId);
     expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { directive: { text: stopped.text, rev: 1 } } });
     expect((await call("commodore/resolve", { theaterId: workspaceHash(fresh) })).commodoreId).toEqual(expect.any(String));
+    // cwd 미상 원본은 보존·경고·CLI 정리 보류만 한다. 관계없는 새 Theater 발급을 막지 않는다.
+    expect(fs.existsSync(unknown.dir)).toBe(true);
+    expect(fs.existsSync(cli)).toBe(true);
+    write(path.join(unknown.workspace, "cwd.json"), JSON.stringify({ cwd: unknown.root }));
+    await feature.dispose();
+    feature = createCommodoreFeature(deps);
+
     expect(fs.existsSync(a.dir)).toBe(false);
     expect(fs.existsSync(b.dir)).toBe(false); // 등록하지 않은 digest 원본도 이동했다.
     expect(fs.existsSync(path.join(entities, stoppedId, "state.json"))).toBe(true);

@@ -37,7 +37,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     if (!root) throw new CommodoreStoreError("theater_unavailable");
     const existing = entities.resolve(theaterId);
     if (existing) return existing;
-    if (migration.blockedUnknown || migration.blockedPaths.has(root)) throw new CommodoreStoreError("commodore_migration_pending");
+    if (migration.blockedPaths.has(root)) throw new CommodoreStoreError("commodore_migration_pending");
     return entities.create(root);
   };
   const ensureRegistered = () => {

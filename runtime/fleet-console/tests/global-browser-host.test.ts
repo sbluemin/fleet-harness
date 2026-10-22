@@ -192,7 +192,7 @@ describe("session browser host contract", () => {
       const agent = createPluginAgentHost({
         baseUrl: () => "http://127.0.0.1:1",
         consoleUse: { connect: () => { throw new Error("unexpected console access"); } },
-        browserMcp: { connectPlugin: (options) => browser.connectPlugin({ ...options, pluginId: "objectives" }) },
+        browserMcp: { connectPlugin: (options) => browser.connectPlugin({ ...options, pluginId: "commodore" }) },
         createSdk: async () => ({
           startTurn: async (turn: ClaudeGatewayTurn) => {
             await browserTurn(turn);
@@ -202,8 +202,8 @@ describe("session browser host contract", () => {
         }) as unknown as ClaudeGatewaySdk,
       });
       try {
-        const session = await agent.createSession({ model: "sonnet", systemPrompt: "test", continuation: "conversation", settlement: "result", tools: { browser: { scopeId: "commodore:t1" } } });
-        const owner = browser.resolveSessionOwner("objectives", "commodore:t1")!;
+        const session = await agent.createSession({ model: "sonnet", systemPrompt: "test", continuation: "conversation", settlement: "result", tools: { browser: { scopeId: "commodore:00000000-0000-0000-0000-000000000001" } } });
+        const owner = browser.resolveSessionOwner("commodore", "commodore:00000000-0000-0000-0000-000000000001")!;
         expect(owner).toBeTruthy();
         expect(owner).not.toBe(GLOBAL_BROWSER_OWNER_ID);
         expect(browser.isSessionOwner(GLOBAL_BROWSER_OWNER_ID)).toBe(false);
@@ -236,11 +236,11 @@ describe("session browser host contract", () => {
         expect(service.state(owner).tabs).toHaveLength(0);
         expect(released).toContain(owner);
         expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
-        const resumed = browser.connectPlugin({ pluginId: "objectives", scopeId: "commodore:t1", enabled: () => true });
-        expect(browser.resolveSessionOwner("objectives", "commodore:t1")).toBe(owner);
-        const another = browser.connectPlugin({ pluginId: "another", scopeId: "commodore:t1", enabled: () => true });
-        expect(browser.resolveSessionOwner("another", "commodore:t1")).not.toBe(owner);
-        await resumed.dispose(); await another.dispose();
+        const reconnected = browser.connectPlugin({ pluginId: "commodore", scopeId: "commodore:00000000-0000-0000-0000-000000000001", enabled: () => true });
+        expect(browser.resolveSessionOwner("commodore", "commodore:00000000-0000-0000-0000-000000000001")).toBe(owner);
+        const another = browser.connectPlugin({ pluginId: "another", scopeId: "commodore:00000000-0000-0000-0000-000000000001", enabled: () => true });
+        expect(browser.resolveSessionOwner("another", "commodore:00000000-0000-0000-0000-000000000001")).not.toBe(owner);
+        await reconnected.dispose(); await another.dispose();
       } finally { await agent.dispose(); await (client as Client | null)?.close(); }
 
       const router = createBrowserRouter({
@@ -251,12 +251,12 @@ describe("session browser host contract", () => {
         isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
         readJsonBody: async <T>() => ({} as T),
-        readUrl: () => new URL("http://localhost:50212/api/v1/browser/sessions/resolve?pluginId=objectives&scopeId=commodore%3At1"),
+        readUrl: () => new URL("http://localhost:50212/api/v1/browser/sessions/resolve?pluginId=commodore&scopeId=commodore%3A00000000-0000-0000-0000-000000000001"),
         withSecurityHeaders: (headers) => headers,
       });
       const resolved = {} as ServerResponse & { status: number; body: { ownerId: string } };
       await router({ req: { method: "GET" } as IncomingMessage, res: resolved, pathname: "/api/v1/browser/sessions/resolve" });
-      expect(resolved.body.ownerId).toBe(browser.resolveSessionOwner("objectives", "commodore:t1"));
+      expect(resolved.body.ownerId).toBe(browser.resolveSessionOwner("commodore", "commodore:00000000-0000-0000-0000-000000000001"));
       const sessionState = {} as ServerResponse & { status: number; body: { operationId: string } };
       await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/operations/${encodeURIComponent(resolved.body.ownerId)}/state` });
       expect(sessionState.status).toBe(200);

@@ -58,7 +58,7 @@ await session.dispose();
 
 사령관은 `features/commodore`의 Console 기능이다. 보드 플러그인은 `@fleet-console/sdk/commodore`의 계약으로만 연결하며, 사령관 세션·화면 구현을 가져오거나 직접 띄우지 않는다.
 
-- 서버의 선택 능력 `ctx.host.commodore.registerBoard(adapter)`로 보드 도구·관측·목표 조회·언어를 등록하고, 반환된 해제 함수를 플러그인 수명에 묶는다. 대기·운영 주체·정체·자기 쓰기 판정은 보드 어댑터가 소유한다. `ctx.host.commodore.commander(theaterId)`는 사령관이 만드는 목표의 지휘관 좌표를 읽기만 한다. 보드 어댑터가 없으면 사령관은 실행하지 않고 기존 데이터를 유지한다.
+- 서버의 선택 능력 `ctx.host.commodore.registerBoard(adapter)`로 보드 도구·관측·목표 조회·언어를 등록하고, 반환된 해제 함수를 플러그인 수명에 묶는다. 대기·운영 주체·정체·자기 쓰기 판정은 보드 어댑터가 소유한다. `ctx.host.commodore.commander(theaterId)`는 사령관이 만드는 목표의 지휘관 좌표를 읽기만 한다. 보드 어댑터가 없으면 사령관은 실행하지 않고 기존 데이터를 유지한다. 브라우저 view의 `boardReady`는 실행 가능 여부, `active`는 실험·저장된 자율 운영·보드 준비가 모두 충족된 상태다. 활성 글리프·상태 문장은 `active`를 사용하고, 저장된 스위치 위치는 보드가 없을 때 비활성화해 구분한다.
 - 클라이언트의 선택 능력 `PluginInstallContext.commodore`(`ctx.commodore`)로 상태·구독·열기·언어·행 글리프를 사용한다. 반대 방향은 `FleetClientPlugin.commodoreBoard`가 보드 투영·구독·목표 열기·아바타 렌더러를 제공한다. 공유 상태·기록·질문·기억 DTO도 같은 SDK 경계에 있다.
 - 사령관 HTTP는 `/api/v1/commodore/*`, SSE 채널은 `commodore`다. 요청은 `commodoreId`(UUID)를 사용한다. Theater 머리에서는 `commodore/resolve { theaterId }`로 UUID를 얻고, `commodore/create { theaterId }`는 멱등 발급이다. SSE 사건은 `commodoreId`와 표시용 `theaterIds`를 싣는다. 보드 행위자의 `{ kind: "commodore", theaterId }`는 보드의 Theater 경계를 유지한다. 클라이언트 제공자 id는 `commodore`지만 저장된 대화 표면 id `commodore`는 그대로 유지한다.
 

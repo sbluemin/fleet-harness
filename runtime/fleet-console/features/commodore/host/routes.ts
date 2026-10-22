@@ -60,14 +60,15 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   const experiments = () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
   const view = (commodoreId: string, state: CommodoreState): CommodoreStateView => {
     const settings = experiments();
-    const active = settings.commodore && state.autonomy && (hooks.boardReady?.() ?? true);
+    const boardReady = hooks.boardReady?.() ?? true;
+    const active = settings.commodore && state.autonomy && boardReady;
     const run = hooks.run?.(commodoreId) ?? { phase: active ? "idle" : "off" };
     const asks = state.asks ?? [];
     const objectives = Object.fromEntries([...new Set(asks.flatMap((ask) => (ask.objectiveId ? [ask.objectiveId] : [])))].map((id) => {
       const found = hooks.objective?.(id);
       return [id, found && (hooks.theaterIds?.(commodoreId) ?? []).includes(found.theaterId) ? { title: found.title } : null];
     }));
-    return { commodoreId, theaterIds: hooks.theaterIds?.(commodoreId) ?? [], state, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS }, asks: { open: asks.filter((ask) => !ask.settled).length, objectives } };
+    return { commodoreId, theaterIds: hooks.theaterIds?.(commodoreId) ?? [], state, boardReady, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS }, asks: { open: asks.filter((ask) => !ask.settled).length, objectives } };
   };
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }

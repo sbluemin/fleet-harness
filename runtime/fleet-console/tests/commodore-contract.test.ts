@@ -181,6 +181,10 @@ describe("commodore theater state", () => {
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
 
+    // 저장된 스위치와 실행 가능 여부는 별개다. 보드 없는 view는 꺼짐이며 켜기 요청도 거절한다.
+    expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { autonomy: true }, run: { phase: "off" } });
+    expect(await h.route("commodore/autonomy", { commodoreId: "t1", autonomy: true }, { boardReady: () => false })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(h.store.read("t1")!.autonomy).toBe(true);
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
     expect((await h.route("commodore/state", { commodoreId: "t1" })).status).toBe(401);
