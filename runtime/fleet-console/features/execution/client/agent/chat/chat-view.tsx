@@ -118,6 +118,9 @@ export function AgentChatView({
   const isMember = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
   const commanderLedger = useCommanderLedgerFramed(context.operationId);
   const isMemberChat = isMember || commanderLedger;
+  // 생성형 UI(OpenUI 펜스)는 목표의 지휘관 답에서만 그린다 — 그룹 대화 말풍선과 같은 말이 지휘관 채팅(모바일)·원장에서 다르게 보이지
+  // 않게. 구성원(하위 Operation)과 일반 Operation 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
+  const objectiveCommander = useObjectiveCommander(context.operationId) && !isMember;
   // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
   // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
   // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Operation 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
@@ -746,6 +749,7 @@ export function AgentChatView({
             onToggleTool={toggleToolId}
             onOpenTool={openToolId}
             speaker={speaker}
+            openui={objectiveCommander}
           />
         ))}
       </div>
@@ -766,6 +770,7 @@ export function AgentChatView({
           onOpenTool={openToolId}
           speaker={speaker}
           liveSpeaker
+          openui={objectiveCommander}
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
@@ -1169,8 +1174,11 @@ export const ChatTurn = React.memo(function ChatTurn({
   onRetry,
   speaker = null,
   liveSpeaker = false,
+  openui = false,
 }: {
   readonly operationId: string;
+  /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅만 켠다. 플러그인 기록(transcript)에는 넘어오지 않는다. */
+  readonly openui?: boolean;
   readonly turn: AgentChatTurn;
   /**
    * 모바일 대화 문법의 답 발화자 — 있으면 답·흐르는 글을 왼쪽 말풍선으로 세우고 그 옆에 아바타를, 이름이 있으면 말풍선 위에 이름을
@@ -1384,6 +1392,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   text={view.streamingText}
                   streaming={working && streaming}
                   language={language}
+                  openui={openui}
                 />
               </SpeakerRow>
             ) : null}
@@ -1399,6 +1408,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   text={view.answer}
                   streaming={false}
                   language={language}
+                  openui={openui}
                 />
                 {mobileSurface && !speaker ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
               </div>
@@ -1426,6 +1436,12 @@ interface MobileConversationSpeaker {
  * 그룹 대화로 세우고 답 말풍선 위에 「지휘관」 이름표를, 왼쪽 아래에 몽글 아바타를 단다. 그 밖의 1:1 대화는 이름 없이 선다 — 헷갈릴
  * 상대가 없다. 모바일은 같은 판정으로 같은 표식을 단다. 그룹 입력창·구성원 전언 줄은 옮기지 않는다(이 화면은 한 에이전트의 본문이다).
  */
+/** 목표 대화(보드)의 뿌리, 곧 지휘관 Operation 인가 — 조합 루트가 묶은 클러스터 원천의 기존 판정을 그대로 구독한다. */
+function useObjectiveCommander(operationId: string): boolean {
+  const read = React.useCallback(() => isGroupConversationRoot(operationId), [operationId]);
+  return React.useSyncExternalStore(subscribeGroupClusters, read, read);
+}
+
 function useMobileConversationSpeaker(operationId: string, language: "en" | "ko", enabled: boolean): MobileConversationSpeaker | null {
   const subscribe = React.useCallback((listener: () => void) => {
     const disposeClusters = subscribeGroupClusters(listener);

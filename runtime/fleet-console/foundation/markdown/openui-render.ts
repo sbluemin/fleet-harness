@@ -240,7 +240,8 @@ class Builder {
       if (columns.length === 0) return null;
       throw new Unrenderable();
     }
-    // 채팅 마크다운 표와 같은 요소라 그 규칙(면·헤어라인·가로 스크롤)을 그대로 입는다.
+    // 칸 문법(여백·헤어라인·머리칸)은 채팅 마크다운 표 규칙을 그대로 입는다. 면과 가로 스크롤은 감싼 칸이 지고, 표는 카드 폭을 채운다.
+    const frame = this.element("div", "openui-table-frame openui-face");
     const table = this.element("table", "openui-table");
     const head = this.element("thead");
     const headRow = this.element("tr");
@@ -255,7 +256,8 @@ class Builder {
       body.append(tr);
     }
     table.append(head, body);
-    return table;
+    frame.append(table);
+    return frame;
   }
 
   private dot(state: OpenUIState, label: string): HTMLElement {

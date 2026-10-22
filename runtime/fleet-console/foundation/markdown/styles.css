@@ -946,22 +946,23 @@ code.hljs {
 /* ===== OpenUI 블록 (사령관·지휘관 말풍선의 생성형 UI) =====
    하이드레이터(openui.ts)가 그린 칸은 채팅의 마크다운 표·코드 블록과 같은 가족이다 — 같은 중립 면(--control-rest),
    같은 반경(--radius-md), 바깥 테두리 없이 칸 사이 헤어라인, 머리 글자는 굵기 한 단으로만 갈린다.
-   신호 토큰은 상태 점에만 쓰고 brass·정체성 톤은 쓰지 않는다. 표는 따로 규칙을 두지 않는다 — .markdown-body 안의
-   <table>이라 채팅 표 규칙(면·헤어라인·넘치면 가로 스크롤)을 그대로 입는다. */
+   신호 토큰은 상태 점에만 쓰고 brass·정체성 톤은 쓰지 않는다. 표의 칸 문법은 .markdown-body 안의 <table>이라
+   채팅 표 규칙을 그대로 입고, 카드 안에서만 면·폭·가로 스크롤을 감싼 칸이 진다(일반 마크다운 표는 그대로). */
 .openui-block { min-width: 0; }
 /* 코드 블록은 폴백일 때만 보인다 — 그리는 중·그린 뒤에는 소유 칸이 그 자리를 진다. */
 .openui-block:not([data-openui-state="fallback"]) > pre { display: none; }
 .openui-block > .code-block { margin: 0; }
 .openui-pending { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
 
-/* 폭은 내용이 아니라 한 단으로 정한다 — 짧은 문장 옆에서도 말풍선이 UI를 세로로 접지 않고, 좁은 자리에서는 말풍선 폭까지 줄어든다. */
-.openui { display: flex; flex-direction: column; gap: var(--space-2); inline-size: 36em; max-inline-size: 100%; min-width: 0; }
+/* 폭은 내용이 아니라 한 단으로 정한다 — 짧은 문장 옆에서도 말풍선이 UI를 세로로 접지 않고, 좁은 자리에서는 말풍선 폭까지 줄어든다.
+   폭이 정해져 있으므로 카드가 스스로 크기 컨테이너가 된다 — 안쪽의 좁은 자리 판정(지표 목록 전환·표 칸 여백)은 카드 폭을 본다. */
+.openui { display: flex; flex-direction: column; gap: var(--space-2); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }
 .openui-title { margin: 0; font-size: var(--font-content-size); font-weight: var(--weight-medium); color: var(--text-primary); }
 .openui-face { background: var(--control-rest); border-radius: var(--radius-md); }
 
-/* 지표 — 한 면에 칸을 나란히. 좁으면 칸이 다음 줄로 접히고, 칸 사이 헤어라인은 칸마다 왼쪽·위로 그어 면 가장자리에서 잘린다. */
-.openui-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5em), 1fr)); overflow: hidden; }
-.openui-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0.7em 1.1em 0.75em; box-shadow: -1px 0 0 var(--hairline), 0 -1px 0 var(--hairline); }
+/* 지표 — 한 면에 칸(최대 넷)을 한 줄로 등분한다. 칸 사이 헤어라인은 칸마다 왼쪽에 그어 면 가장자리에서 잘린다. */
+.openui-stats { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); overflow: hidden; }
+.openui-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0.7em 1.1em 0.75em; box-shadow: -1px 0 0 var(--hairline); }
 .openui-stat-label { display: inline-flex; align-items: center; gap: 6px; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
 .openui-stat-value { font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.25; letter-spacing: -0.01em; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .openui-stat-note { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
@@ -989,4 +990,28 @@ code.hljs {
 .openui-bar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--gauge-fill-neutral); }
 .openui-bar-value { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
-.openui .openui-table { margin: 0; }
+/* 표 — 감싼 칸이 면·반경·가로 스크롤을 지고, 표는 카드 폭을 채운다(내용이 더 넓으면 칸 안에서 가로로 흐른다).
+   칸 여백·헤어라인·머리칸은 채팅 표 규칙 그대로다. 채팅 표 규칙(:is(.agent-chat, .group-chat) .markdown-body table)보다
+   한 단 구체적인 선택자로 카드 안의 표만 덮는다. */
+.openui-table-frame { overflow-x: auto; }
+.markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
+
+/* 좁은 카드(모바일 말풍선 등) — 칸을 한 줄에 억지로 등분하면 값이 눌리고 라벨이 조각나며, 줄바꿈 격자는 한 칸을 홀로 남긴다.
+   그래서 지표를 단계·표와 같은 행 문법의 목록(라벨 왼쪽 · 값 오른쪽)으로 바꾼다 — 칸 수와 무관하게 모든 지표가 같은 모양으로 선다. */
+@container openui (max-width: 26em) {
+  .openui-stats { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); }
+  .openui-stat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label value" "note value";
+    align-items: center;
+    column-gap: 0.75em;
+    row-gap: 0;
+    padding: 0.5em 1em;
+    box-shadow: none;
+  }
+  .openui-stat + .openui-stat { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
+  .openui-stat-label { grid-area: label; font-size: calc(var(--font-content-size) * 0.928571); color: var(--text-secondary); }
+  .openui-stat-value { grid-area: value; font-size: var(--t-lg); }
+  .openui-stat-note { grid-area: note; }
+}
