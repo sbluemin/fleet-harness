@@ -38,8 +38,8 @@ export type ConsoleTheme = "dark" | "light";
 /**
  * Operation 런타임은 두 축이다 — 축을 섞으면 한쪽이 다른 쪽을 삼킨다.
  *
- * `lifecycle`은 실행 표면이 살아 있는지를 말하고(`dormant`는 살아 있는 생산자가 하나도 없고
- * 재개 근거만 남은 상태), `activity`는 살아 있는 동안 무엇을 하는지를 말한다. 예전에는
+ * `lifecycle`은 실행 표면이 접근 가능한지를 말한다. 채팅은 SDK 자식 없이도 항상 live이고,
+ * `dormant`는 터미널 프로세스 없이 재개 근거만 남은 상태다. `activity`는 무엇을 하는지를 말한다. 예전에는
  * `dormant`가 활동 어휘에도 있어서 활동 해석의 첫 분기를 차지했고, 그래서 PTY를 접고 SDK로
  * 이어 도는 세션(Chat Mode)의 진행 신호가 전부 그 분기에 삼켜졌다. 판별 유니온으로 갈라두면
  * "dormant인데 running" 같은 상태를 타입이 만들 수 없다.
@@ -1462,13 +1462,15 @@ export interface FleetPluginConsoleControlHost {
   /** 소유한 세션 사이에 닿은 세션 간 메시지 — 보낸·받은 Operation 과 시각만(본문 없음). 보낸 쪽이 채팅 세션일 때만 관측된다. */
   subscribeSessionMessages?(listener: (event: ConsoleSessionMessage) => void): () => void;
   /**
-   * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
+   * 유휴 터미널 Agent Operation을 휴면으로 보낸다. 채팅은 chat_sleep_unsupported, 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
    * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가
    * 사라질 때까지 다음 기동을 미루고, 상한 안에 사라지지 않으면 operation_busy 로 거절해 휴면으로 남긴다.
    * `endPendingWork` 는 interrupt 로 풀 수 없는 두 상태도 재운다 — 사람의 답을 기다리는 터미널 세션은 떠 있던 질문·허가 요청을 버리고,
    * 백그라운드 작업이 남은 세션은 그 작업을 끝낸다. 사람이 그 작업의 종결을 결정한 경우에만 쓴다. 실행 중인 턴은 여전히 not_idle 이다.
    */
   sleep?(operationId: string, options?: { readonly endPendingWork?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
+  /** 소유한 채팅의 SDK 주소를 명시적으로 준비한다. 모델 턴이나 lifecycle 전이는 없으며 실패는 코드로 던진다. */
+  prepareChat?(operationId: string): Promise<void>;
   /**
    * 이미 있는 Operation의 다음 프로세스 기동(휴면 재개·채팅을 새로 띄우는 실행)에 쓸 서브에이전트 정책.
    * live 프로세스는 중단하지 않고, 세션 스냅샷도 바꾸지 않는다. 없는 Operation은 무시한다.
@@ -1490,7 +1492,7 @@ export interface FleetPluginConsoleControlHost {
   /**
    * 떠 있는 채팅 세션의 모델·강도를 바꾼다 — 채팅 화면의 모델 메뉴와 같은 후보·같은 검증을 지난다. 턴이 도는 중이면 그 턴이 닫히는
    * 경계로 미루고(`scheduled`), 지금 실행값을 다시 고르면 예약을 거둔다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 —
-   * 아니면 `forbidden`. `effort` 는 런치 어휘이며 null 은 모델 기본이다. 휴면·터미널 세션은 `chat_not_active` 다.
+   * 아니면 `forbidden`. `effort` 는 런치 어휘이며 null 은 모델 기본이다. 자식이 없으면 저장 좌표만 바꾸고 다음 기동에 적용한다. 터미널은 `chat_not_active` 다.
    */
   setCoordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션의 지금 좌표와 예약. 떠 있는 채팅이 아니면 null. */

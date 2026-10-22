@@ -80,6 +80,8 @@ export interface ConsoleExecutionAdapter {
   /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
   coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   readCoordinates?(operationId: string): ConsoleCoordinates | null;
+  /** 명시적으로 채팅의 SDK 주소를 준비한다. 관측은 이 포트를 호출하지 않는다. */
+  prepareChat?(operationId: string): Promise<void>;
   /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
   advertisedTools?(operationId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
@@ -187,6 +189,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_operation");
       const observation = observe(op.id);
       if (input.kind === "interrupt" && (observation?.activity === "idle" || observation?.activity === "ended")) fail("nothing_to_interrupt");
+      if (input.kind === "resume" && op.payload.chatMode === true) fail("chat_resume_unsupported");
       if (input.kind === "resume" && observation?.lifecycle !== "dormant") fail("not_dormant");
       if (!observation?.supportedActions.includes(input.kind)) fail("capability_unavailable");
     }
@@ -468,6 +471,13 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
     },
     launchKeyState, coordinates, transcript,
+    async prepareChat(caller: ConsoleCaller, operationId: string): Promise<void> {
+      const op = node(operationId);
+      if (!op) return fail("unknown_operation");
+      if (!launchedByPlugin(caller, op)) return fail("forbidden");
+      if (!adapter?.prepareChat) return fail("capability_unavailable");
+      await adapter.prepareChat(operationId);
+    },
     readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
     /** 광고한 도구 목록 — 그 플러그인이 띄운 Operation(또는 그 자식)만. 남의 세션이거나 모르면 null. */
     advertisedTools(caller: ConsoleCaller, operationId: string): readonly string[] | null {

@@ -18,6 +18,7 @@ export function sessionActivity(session: AgentActivitySource): OperationActivity
   return session.backgroundPending === true ? "background" : "idle";
 }
 
+/** 채팅 어댑터의 소유권은 SDK 자식이 없어도 유지된다. dormant는 터미널만의 수명주기다. */
 export function sessionRuntime(session: AgentActivitySource): OperationRuntimeState {
   if (session.chatActive !== true && session.status === "dormant") return { lifecycle: "dormant" };
   return { lifecycle: "live", activity: sessionActivity(session) };

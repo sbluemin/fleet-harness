@@ -2590,7 +2590,13 @@ class AgentChatSession {
    */
   open(): void {
     if (this.disposed) return;
-    void this.ensureSession().catch(() => undefined);
+    void this.prepare().catch(() => undefined);
+  }
+
+  /** 명시적으로 SDK 주소를 준비한다. 실패는 muster 호출자에게 그대로 돌아간다. */
+  async prepare(): Promise<void> {
+    if (this.disposed) throw new Error("chat_session_disposed");
+    await this.ensureSession();
   }
 
   /**
