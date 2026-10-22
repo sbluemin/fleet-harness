@@ -343,6 +343,11 @@ describe("openui hydrator containment", () => {
       expect(block.querySelector("pre.code-block")).not.toBeNull();
     }
     expect(blocks[0]!.querySelector("script")).toBeNull();
+    // 흐르는 중이라도 더 와도 풀리지 않는 위반(원문에 적힌 Stat 5개 > 상한 4)은 카드를 거치지 않고 바로 코드 블록이다.
+    const [streaming] = await hydrated(["```openui-lang", 'root = Card("x", [kpi])', "kpi = Stats([a, b, c, d, e])", 'a = Stat("목표", '].join("\n"), { streaming: true });
+    expect(streaming!.getAttribute("data-openui-final")).toBe("0");
+    expect(streaming!.dataset.openuiState).toBe("fallback");
+    expect(streaming!.querySelector("[data-openui-owned]")).toBeNull();
     // 켜지 않은 대화(구성원·일반 채팅)에서는 자리표시자조차 생기지 않는다.
     expect(renderMarkdown("```openui-lang\nroot = Card(\"x\", [])\n```").html).not.toContain("openui-block");
   });

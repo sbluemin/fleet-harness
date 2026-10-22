@@ -82,7 +82,7 @@ const stepReady = (p: Record<string, unknown>) => plain(p.label) !== null && one
 const choiceReady = (p: Record<string, unknown>) => typeof p.label === "string" && p.label.trim() !== "" && sendableReply(p.reply) !== null;
 const factReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-// 흐르는 중에는 판정(LIMITS)이 돌지 않으므로 컴포넌트도 같은 조건을 본다 — 0 ≤ done ≤ total, total > 0.
+// 흐르는 중 판정은 더 와도 풀리지 않는 위반만 보므로(열린 숫자는 아님) 컴포넌트도 같은 조건을 본다 — 0 ≤ done ≤ total, total > 0.
 const progressReady = (p: Record<string, unknown>) =>
   plain(p.label) !== null && finite(p.done) && finite(p.total) && p.total > 0 && p.done >= 0 && p.done <= p.total;
 
@@ -530,18 +530,135 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
 export type Verdict = { kind: "render" } | { kind: "hold" } | { kind: "fallback" };
 const parser = createParser(library.toJSONSchema(), "Card");
 
+// ---- 3. 흐르는 중 확정 위반 — 원문이 더 와도 풀리지 않는 위반만 흐르는 중에 fallback 으로 앞당긴다.
+// 파서 결과에는 노드 단위 완결 표시가 없다(요소의 partial 은 블록 전체 값이다). 그래서 문장 경계로 완결을 정한다.
+// 아래 규칙은 lang-core 1.0.1 의 실측 동작에 기댄다: 미해소 참조는 배열에서 빠지고 필수 자리면 null-required,
+// 열린 문장(partial)은 enum 을 보지 않으며, union 소속은 검사하지 않고, 노드 탈락에는 오류가 붙는다(null 값 참조만 예외).
+// 버전을 올리면 이 가정을 다시 실측한다.
+type LimitIssue = z.core.$ZodIssue;
+// 미해소 참조로는 생기지 않는 오류 — 완결 문장에서 나면 최종에도 남는다. null-required 는 참조가 풀리면 사라질 수 있어 뺀다.
+const SETTLED_ERRORS = new Set<string>(["unknown-component", "unknown-function", "inline-reserved", "excess-args", "type-mismatch", "missing-required"]);
+// 정적 그림 밖의 기능 — 한 번 나오면 최종에도 남는다.
+const dynamic = (result: ParseResult) =>
+  !!(result.queryStatements.length || result.mutationStatements.length || Object.keys(result.stateDeclarations).length || result.rootExpression !== undefined);
+const limitIssues = (node: Node): readonly LimitIssue[] => {
+  const check = LIMITS[node.typeName]?.safeParse(node.props);
+  return check && !check.success ? check.error.issues : [];
+};
+const arrayCount = (issue: LimitIssue, code: "too_big" | "too_small") => issue.code === code && "origin" in issue && issue.origin === "array";
+const placeholders = (template: string) => new Set([...template.matchAll(/\{([a-z][a-z0-9_]{0,15})\}/g)].map((match) => match[1]));
+// 요소 트리에서 found 가 참인 노드가 있는지. Button.action 은 visit 처럼 따로 본다. 요소 아닌 객체는 other 가 정한다.
+function someNode(root: unknown, found: (node: Node) => boolean, other: () => boolean = () => false): boolean {
+  const go = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(go);
+    if (!value || typeof value !== "object") return false;
+    if ((value as Node).type !== "element") return other();
+    const node = value as Node;
+    return found(node) || Object.entries(node.props).some(([key, child]) => !(node.typeName === "Button" && key === "action") && go(child));
+  };
+  return go(root);
+}
+// 마지막 완결 문장의 끝. 규칙 출처: lang-core 1.0.1 createStreamParser 의 scanNewCompleted —
+// 문자열(" ' 와 escape) 밖, 괄호 깊이 0, 삼항 깊이 0 인 줄바꿈이 문장을 끝내고, 다음 비공백이 ? 면 이어진다.
+// 주석 전처리는 따라 하지 않는다 — 대신 호출자가 그 접두를 파서가 미완성으로 보지 않는지 확인한다.
+function settledEnd(source: string): number {
+  let depth = 0, ternary = 0, quote = "", escaped = false, end = -1;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === quote) quote = "";
+      continue;
+    }
+    if (c === "\"" || c === "'") quote = c;
+    else if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth = Math.max(0, depth - 1);
+    else if (c === "?" && depth === 0) ternary++;
+    else if (c === ":" && depth === 0 && ternary > 0) ternary--;
+    else if (c === "\n" && depth === 0 && ternary === 0 && /\S/.exec(source.slice(i + 1))?.[0] !== "?") end = i;
+  }
+  return end;
+}
+// 템플릿과 이미 해소된 필드만으로 확정되는 Form 결함 — formReady 에서 '아직 안 온 필드'에 달린 조건만 뺐다.
+function formSettledBad(p: Record<string, unknown>): boolean {
+  const fields = list(p.fields);
+  if (fields.length > 4 || typeof p.template !== "string" || !line(160).safeParse(p.template).success || /^[/@]/u.test(p.template.trim())) return true;
+  const names = fields.flatMap((f) => isNode(f, "Input") || isNode(f, "Select") ? [String(f.props.name)] : []);
+  const used = placeholders(p.template);
+  return new Set(names).size !== names.length || /[{}]/u.test(p.template.replace(/\{([a-z][a-z0-9_]{0,15})\}/g, "")) || names.some((name) => !used.has(name));
+}
+// 완결 문장 접두의 확정 위반. 원문 요소 수는 미해소 참조마다 대역 Tag 하나를 채워 다시 센다(union 소속을 보지 않으므로 어느 요소 자리에도 하나로 세진다).
+// 많다는 언제나 믿는다 — 대역 탈락은 수를 줄일 뿐이다. 적다는 대역 파싱에 오류가 없을 때만 믿는다 — 대역이 스칼라 자리에 들어가면 부모가 떨어진다.
+function prefixBad(prefix: string): boolean {
+  let result: ParseResult;
+  try { result = parser.parse(prefix); } catch { return false; }
+  if (result.meta.incomplete) return false; // 경계를 파서가 인정하지 않으면(주석 속 괄호 등) 완료 판정에 맡긴다.
+  const pending = result.meta.unresolved.length > 0;
+  if (result.meta.errors.some((e) => e.severity !== "warning" && e.code !== "no-root" && (!pending || SETTLED_ERRORS.has(e.code)))) return true;
+  if (dynamic(result)) return true;
+  const root = result.root as Node | null;
+  if (!root) return false;
+  if (root.typeName !== "Card") return true;
+  let forms = 0;
+  const bad = someNode(root, (node) =>
+    limitIssues(node).some((issue) => !(pending && arrayCount(issue, "too_small")))
+    || ((node.typeName === "Choices" || node.typeName === "Form") && ++forms > 1)
+    || (node.typeName === "Form" && (pending ? formSettledBad(node.props) : !formReady(node.props))), () => true);
+  if (bad || !pending) return bad;
+  let counted: ParseResult;
+  try { counted = parser.parse(`${prefix}\n${[...new Set(result.meta.unresolved)].map((name) => `${name} = Tag("x")`).join("\n")}`); } catch { return false; }
+  const clean = !counted.meta.errors.some((e) => e.severity !== "warning" && e.code !== "no-root");
+  return someNode(counted.root, (node) => {
+    if (limitIssues(node).some((issue) => arrayCount(issue, "too_big") || (clean && arrayCount(issue, "too_small")))) return true;
+    if (node.typeName !== "Form" || typeof node.props.template !== "string") return false;
+    // 필드 이름과 쓰인 이름은 일대일이어야 한다 — 원문 필드 수와 서로 다른 자리표시자 수가 다르면 풀리지 않는다.
+    const fields = list(node.props.fields).length, used = placeholders(node.props.template).size;
+    return fields > used || (clean && fields < used);
+  });
+}
+// 접두는 새 문장이 끝날 때만 바뀐다 — 마지막 접두의 결과 하나만 기억해 델타마다 다시 파싱하지 않는다. 순수 캐시다.
+let settled: { prefix: string; bad: boolean } | null = null;
+function settledBad(source: string, full: ParseResult): boolean {
+  // 마지막 문장도 괄호·문자열이 다 닫혔고 닫는 글자로 끝나면 완결로 본다. 그 순간 파서가 엄격하게 노드를 떨궈 위반이 사라지지 않게 한다.
+  const trimmed = source.trimEnd();
+  const end = !full.meta.incomplete && /[)\]}"']$/u.test(trimmed) ? trimmed.length : settledEnd(source);
+  if (end < 0) return false;
+  const prefix = source.slice(0, end);
+  if (settled?.prefix !== prefix) settled = { prefix, bad: prefixBad(prefix) };
+  return settled.bad;
+}
+// 열린 문자열도 최종 문자열의 접두다 — 허용값 어느 것의 접두도 아니면 더 와도 풀리지 않는다.
+function enumDeadEnd(node: Node, issue: LimitIssue): boolean {
+  if (issue.code !== "invalid_value" || !issue.values.every((v) => typeof v === "string")) return false;
+  let value: unknown = node.props;
+  for (const key of issue.path) value = value && typeof value === "object" ? (value as Record<PropertyKey, unknown>)[key] : undefined;
+  return typeof value === "string" && !issue.values.some((v) => (v as string).startsWith(value as string));
+}
+// 열린 마지막 문장까지 포함한 파싱에서 단조인 것만 — 요소는 남고(탈락에는 오류), 배열 수는 하한이며, 호출 이름은 '(' 앞에서 완결된다.
+function openBad(full: ParseResult): boolean {
+  let forms = 0;
+  return someNode(full.root, (node) =>
+    limitIssues(node).some((issue) => arrayCount(issue, "too_big") || (issue.code === "invalid_value" && (issue.path[issue.path.length - 1] === "typeName" || enumDeadEnd(node, issue))))
+    || ((node.typeName === "Choices" || node.typeName === "Form") && ++forms > 1));
+}
+
 /**
- * 엄격 판정 — 확정이면 하나라도 걸리면 fallback, 흐르는 중이면 hold(지난 그림 유지). Renderer 에 원문을 넘기기 전에 동기로 한 번.
+ * 엄격 판정 — 확정이면 하나라도 걸리면 fallback. 흐르는 중에는 더 와도 풀리지 않는 위반이면 fallback,
+ * 아직 판단할 수 없으면 hold(지난 그림 유지), 아니면 render. Renderer 에 원문을 넘기기 전에 동기로 한 번.
  */
 export function judge(source: string, final: boolean): Verdict {
   const no: Verdict = final ? { kind: "fallback" } : { kind: "hold" };
-  if (!source.trim() || source.length > MAX_SOURCE) return no;
+  if (!source.trim()) return no;
+  if (source.length > MAX_SOURCE) return { kind: "fallback" };
   let result: ParseResult;
   try { result = parser.parse(source); } catch { return no; }
   // 정적 그림 밖의 기능은 흐르는 중에도 그리지 않는다(Query 로더·상태 바인딩이 한 번도 서지 않게).
-  if (result.queryStatements.length || result.mutationStatements.length || Object.keys(result.stateDeclarations).length || result.rootExpression !== undefined) return no;
+  if (dynamic(result)) return { kind: "fallback" };
   const root = result.root as Node | null;
-  if (!root || root.typeName !== "Card") return no;
+  if (root && root.typeName !== "Card") return { kind: "fallback" };
+  if (!final && (settledBad(source, result) || openBad(result))) return { kind: "fallback" };
+  if (!root) return no;
   if (final && (result.meta.incomplete || result.meta.unresolved.length)) return no;
   if (final && result.meta.errors.some((error) => error.severity !== "warning")) return no;
   let choices = 0;
