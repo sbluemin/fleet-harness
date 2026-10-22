@@ -147,7 +147,6 @@
 .objectives-m-handed { margin: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklch, var(--m-text) 9%, transparent); color: var(--m-text-nav); font-size: var(--m-fs-small); line-height: 18px; overflow-wrap: anywhere; }
 .objectives-m-handed b { margin-right: 6px; color: var(--m-text); }
 .objectives-m-route { flex-basis: 100%; }
-.objectives-m-ucard-tm { margin-left: auto; font-size: var(--m-fs-caption); font-weight: var(--weight-regular); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
 .objectives-m-ucard-p { margin: 0; font-size: var(--m-fs-secondary); line-height: 21px; color: var(--m-text-muted); overflow-wrap: anywhere; }
 .objectives-m-ucard-p.is-question, .objectives-m-answer { color: var(--m-text); }
 /* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 분류일 뿐이라 칩 면 위 옅은 잉크. */

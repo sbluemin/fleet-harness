@@ -6,7 +6,6 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
-  "repository.feedback.ready": "Local working tree · Fetch updates remote-tracking branches",
   "repository.context.choose": "Choose repository or worktree",
   "repository.context.empty": "No repositories found. Try scanning deeper.",
   "repository.source.aria": "Repository views",
@@ -19,8 +18,6 @@ const repositoryEn = {
   "repository.staging.editLastCommit": "Edit last commit",
   "repository.staging.amendChecking": "Checking the commit for this Amend draft…",
   "repository.staging.amendHeadChanged": "HEAD changed since this Amend draft. Your message is preserved. Turn Amend off, review History, then select Amend again if you want to edit the current commit.",
-  "repository.sync.button": "Fetch",
-  "repository.sync.title": "Update remote-tracking branches",
 
   // workspace tree sections
   "repository.section.context": "CONTEXT",
@@ -34,11 +31,6 @@ const repositoryEn = {
   // working rows / sources
   "repository.source.history": "History",
   "repository.source.changes": "Changes",
-
-  // ref groups
-  "repository.refs.local": "LOCAL",
-  "repository.refs.remotes": "REMOTES",
-  "repository.refs.tags": "TAGS",
 
   // discovery
   "repository.discovery.placeholder": "Find repositories…",
@@ -59,13 +51,10 @@ const repositoryEn = {
   "repository.common.retry": "Retry",
   "repository.common.loading": "Loading…",
   "repository.common.filterPlaceholder": "Filter…",
-  "repository.common.filterChangedFiles": "Filter changed files",
-  "repository.common.clearFilter": "Clear filter",
   "repository.common.listView": "List view",
   "repository.common.treeView": "Tree view",
   "repository.common.resizeSourceTree": "Resize source tree",
   "repository.common.noMatchingItems": "No matching items",
-  "repository.common.reloadState": "Reload repository state",
 
   // read failures — a code is not a sentence; every one of these names the failure and the next move
   "repository.read.failedGit": "Git couldn't finish this read. Try again.",
@@ -159,9 +148,6 @@ const repositoryEn = {
   "repository.compare.announceUnpinned": "Compare base unpinned.",
   "repository.compare.announceResult": "Comparing {base} with {head}.",
 
-  // checkout containment labeling
-  "repository.history.offHead": "Outside the highlighted history",
-
   // sync outcome surfacing (manual sync only; auto sync stays silent)
   "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for the remote.",
   "repository.sync.failedNetwork": "Fetch failed — network. The remote is unreachable.",
@@ -177,10 +163,6 @@ const repositoryEn = {
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
   "repository.hunk.close": "Close this diff",
-
-  // checkout tabs
-  "repository.tabs.aria": "Checkouts",
-  "repository.tabs.worktreeMark": "worktree",
 
   // toolbar verbs
   "repository.verb.pull": "Pull",
@@ -251,7 +233,6 @@ const repositoryEn = {
   "repository.staging.committed": "Committed {sha}",
   "repository.staging.failedIdentity": "Git doesn't know who you are here. Set user.name and user.email, then commit again.",
   "repository.staging.failedNothingToCommit": "Nothing is staged to commit.",
-  "repository.staging.selectFile": "Select a file to see its changes",
 
   // stash rows
   "repository.stash.apply": "Apply",
@@ -320,13 +301,11 @@ const repositoryEn = {
   "repository.filetree.loading": "Loading tree…",
   "repository.filetree.empty": "Empty folder",
   "repository.filetree.error": "Unable to load this folder",
-  "repository.filetree.hint": "Files changed in this commit are marked; select one to open its diff.",
   "repository.mobile.description": "Changes · History",
 } as const;
 
 const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
-  "repository.feedback.ready": "로컬 작업 트리 · Fetch로 원격 추적 정보를 갱신합니다",
   "repository.context.choose": "저장소·워크트리 선택",
   "repository.context.empty": "발견한 저장소가 없습니다. 탐색 깊이를 늘려 보세요.",
   "repository.source.aria": "저장소 작업 보기",
@@ -339,8 +318,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.staging.editLastCommit": "마지막 커밋 수정",
   "repository.staging.amendChecking": "Amend 초안의 대상 커밋을 확인하고 있습니다…",
   "repository.staging.amendHeadChanged": "Amend 초안을 작성한 뒤 HEAD가 바뀌었습니다. 메시지는 보존했습니다. Amend를 끄고 기록을 확인한 뒤, 현재 커밋을 수정하려면 Amend를 다시 선택하세요.",
-  "repository.sync.button": "Fetch",
-  "repository.sync.title": "원격 추적 브랜치를 갱신합니다",
 
   "repository.section.context": "컨텍스트",
   "repository.section.working": "작업",
@@ -353,9 +330,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.source.history": "기록",
   "repository.source.changes": "변경",
 
-  "repository.refs.local": "로컬",
-  "repository.refs.remotes": "원격",
-  "repository.refs.tags": "태그",
 
   "repository.discovery.placeholder": "저장소 찾기…",
   "repository.discovery.aria": "저장소 찾기",
@@ -374,13 +348,10 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.common.retry": "다시 시도",
   "repository.common.loading": "불러오는 중…",
   "repository.common.filterPlaceholder": "필터…",
-  "repository.common.filterChangedFiles": "변경된 파일 필터",
-  "repository.common.clearFilter": "필터 지우기",
   "repository.common.listView": "목록 보기",
   "repository.common.treeView": "트리 보기",
   "repository.common.resizeSourceTree": "소스 트리 크기 조절",
   "repository.common.noMatchingItems": "일치하는 항목 없음",
-  "repository.common.reloadState": "저장소 상태 새로 읽기",
 
   "repository.read.failedGit": "Git이 이 읽기를 끝내지 못했습니다. 다시 시도하세요.",
   "repository.read.failedNoRepo": "이 폴더는 git 저장소가 아닙니다.",
@@ -466,7 +437,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.announceUnpinned": "비교 기준 고정을 해제했습니다.",
   "repository.compare.announceResult": "{base}와(과) {head}를 비교합니다.",
 
-  "repository.history.offHead": "강조한 계보에 포함되지 않음",
 
   "repository.sync.failedAuth": "가져오기 실패 — 인증. 원격 자격 증명을 확인하세요.",
   "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. 원격에 연결할 수 없습니다.",
@@ -482,8 +452,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.hunk.diffTruncated": "Diff가 잘림",
   "repository.hunk.close": "이 diff 닫기",
 
-  "repository.tabs.aria": "체크아웃",
-  "repository.tabs.worktreeMark": "워크트리",
 
   "repository.verb.pull": "Pull",
   "repository.verb.pullTitle": "현재 브랜치를 upstream에서 fast-forward",
@@ -551,7 +519,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.staging.committed": "{sha} 커밋됨",
   "repository.staging.failedIdentity": "이 저장소에 Git 사용자 정보가 없습니다. user.name과 user.email을 설정한 뒤 다시 커밋하세요.",
   "repository.staging.failedNothingToCommit": "커밋할 스테이지된 변경이 없습니다.",
-  "repository.staging.selectFile": "파일을 선택하면 변경 내용이 보입니다",
 
   "repository.stash.apply": "적용",
   "repository.stash.pop": "적용 후 제거",
@@ -612,7 +579,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.filetree.loading": "트리 불러오는 중…",
   "repository.filetree.empty": "빈 폴더",
   "repository.filetree.error": "이 폴더를 불러올 수 없습니다",
-  "repository.filetree.hint": "이 커밋에서 바뀐 파일에 표시가 붙습니다. 선택하면 diff가 열립니다.",
   "repository.mobile.description": "변경·히스토리",
 };
 

@@ -405,19 +405,6 @@
   background: color-mix(in oklab, var(--text-primary) 62%, transparent);
 }
 
-.quota-meter__risk {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
-.quota-meter--warning .quota-meter__risk {
-  color: var(--warn-ink);
-}
-
-.quota-meter--critical .quota-meter__risk {
-  color: var(--coral-ink);
-}
-
 .quota-meter__reset {
   margin-left: auto;
   color: var(--text-tertiary);
