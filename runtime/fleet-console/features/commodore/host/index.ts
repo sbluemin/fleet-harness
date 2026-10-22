@@ -8,6 +8,7 @@ import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { createCommodoreEntities } from "./entities.js";
+import { migrateCommodoreData } from "./migrate.js";
 import { CommodoreStoreError } from "./errors.js";
 import { COMMODORE_CHANNEL } from "./types.js";
 
@@ -28,11 +29,15 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let board: CommodoreBoardAdapter | null = null;
   let restored = false;
   let disposed = false;
-  // 레거시 마이그레이션은 반드시 이 색인 스캔·선제 발급보다 먼저 실행한다.
+  // 슬롯 lock을 획득한 조합이 부른다. 이동 → 색인 → 선제 발급 순서를 바꾸면 빈 UUID가 구 기록을 가린다.
+  const migration = migrateCommodoreData(deps.paths.consoleDataDir);
   const entities = createCommodoreEntities(path.join(deps.paths.consoleDataDir, "commodore"), deps.paths.workspaceHash);
   const create = (theaterId: string) => {
     const root = deps.paths.resolveTheaterPath(theaterId);
     if (!root) throw new CommodoreStoreError("theater_unavailable");
+    const existing = entities.resolve(theaterId);
+    if (existing) return existing;
+    if (migration.blockedUnknown || migration.blockedPaths.has(root)) throw new CommodoreStoreError("commodore_migration_pending");
     return entities.create(root);
   };
   const ensureRegistered = () => {
