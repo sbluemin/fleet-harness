@@ -43,6 +43,7 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
   const runtimes = new Map<string, Runtime>();
   let reaper: ConsoleReaperLink | null = null;
   const ptyGroups = new Map<number, OwnedProcessGroup>();
+  const ptyJobs = new Set<ProcessGroupContainment>();
   const registry = createOwnedProcessRegistry({ ...(containment ? { containment } : {}), onRegistered: (g) => reaper?.registered(g), onLeaderExited: (g) => reaper?.leaderExited(g), onRemoved: (g) => reaper?.removed(g) });
   if (process.platform !== "win32") reaper = startConsoleReaper({ script: boot.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: path.join(path.dirname(path.dirname(boot.generation.root)), `runner-${process.pid}.lock`), lockStartedAt: Date.now() }, groups: () => { const registered = registry.groups(); const ids = new Set(registered.map((g) => g.pgid)); return [...registered, ...[...ptyGroups.values()].filter((g) => !ids.has(g.pgid))]; } });
   let stopping = false;
@@ -75,16 +76,27 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
   async function shutdown(): Promise<void> {
     if (stopping) return;
     stopping = true;
-    const deadline = setTimeout(() => { registry.killAll(); process.exit(1); }, CONSOLE_STOP_DEADLINE_MS); deadline.unref();
+    const started = performance.now();
+    const deadline = setTimeout(() => {
+      try { fs.appendFileSync(path.join(path.dirname(path.dirname(boot.generation.root)), "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_runner_stop_deadline", ownedJobs: registry.groups().length, ptyJobs: ptyJobs.size }) + "\n", { mode: 0o600 }); } catch { /* Diagnostics cannot postpone containment. */ }
+      registry.killAll(); for (const job of ptyJobs) job.terminate(); process.exit(1);
+    }, CONSOLE_STOP_DEADLINE_MS); deadline.unref();
     registry.beginStop(() => false, OWNED_GROUP_TERM_GRACE_MS);
     await Promise.allSettled([...runtimes.values()].map(close));
-    const ptyUntil = performance.now() + OWNED_GROUP_TERM_GRACE_MS;
+    const ptyUntil = started + OWNED_GROUP_TERM_GRACE_MS;
     while ([...runtimes.values()].some((r) => r.pty && !r.data.ptyExited) && performance.now() < ptyUntil) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
-    const flushUntil = performance.now() + CONSOLE_STOP_DEADLINE_MS - OWNED_GROUP_TERM_GRACE_MS;
+    const flushUntil = started + CONSOLE_STOP_DEADLINE_MS - OWNED_GROUP_TERM_GRACE_MS;
     while (registry.groups().some((g) => g.leaderExitedAt === null) && performance.now() < flushUntil) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
     if (process.platform === "win32") {
       registry.killAll();
-      while (registry.groups().length > 0) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
+      while (registry.groups().length > 0 || ptyJobs.size > 0) {
+        for (const job of ptyJobs) if (!job.hasMembers()) { job.close(); ptyJobs.delete(job); }
+        if (registry.groups().length > 0 || ptyJobs.size > 0) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
+      }
+      peer.close();
+      // ConPTY's DLL output worker can remain referenced after all native jobs are empty.
+      // Its JS handle is not live execution; exit only after every held job proved ActiveProcesses=0.
+      clearTimeout(deadline); process.exit(0);
     } else await reaper?.drain();
     peer.close();
   }
@@ -211,7 +223,14 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
           }
           let job: ProcessGroupContainment | null = null;
           if (process.platform === "win32") { job = containment?.contain(ptyPid) ?? null; if (!job) throw new Error("session_pty_containment_unavailable"); }
-          if (job) r.cleanup.push(() => { job!.terminate(); if (!job!.hasMembers()) job!.close(); });
+          if (job) {
+            const heldJob = job; ptyJobs.add(heldJob);
+            r.cleanup.push(async () => {
+              heldJob.terminate();
+              while (heldJob.hasMembers()) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
+              if (ptyJobs.delete(heldJob)) heldJob.close();
+            });
+          }
           const modes = createTerminalModeTracker(); r.data.modes = modes.snapshot();
           let output = Promise.resolve<unknown>(undefined); let buffered = 0;
           r.pty.onData((data) => {

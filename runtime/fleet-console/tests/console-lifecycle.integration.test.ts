@@ -245,7 +245,14 @@ describe("Console session-host lifecycle integration", () => {
       expect(fs.existsSync(lockFile)).toBe(false);
       await stopSlotSessionHost(root);
       for (const pid of [before.sessions[0]?.runtime.pid, sdk.runtime.runnerPid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
-      if (process.platform === "win32") expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain('"kind":"session_host_jobs_drained","generation":null,"reason":"remainingJobs=0"');
+      if (process.platform === "win32") {
+        const journal = fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8");
+        expect(journal).toContain('"kind":"session_host_jobs_drained","generation":null,"reason":"remainingJobs=0"');
+        expect(journal).not.toContain('"kind":"session_host_stop_deadline"');
+        expect(journal).not.toContain('"kind":"session_runner_stop_deadline"');
+        const drained = journal.trim().split("\n").map((line) => JSON.parse(line) as { kind: string; reason?: string }).find((row) => row.kind === "session_host_jobs_drained")!;
+        console.info("session-host-windows-proof", JSON.stringify({ runnerBefore: sdk.runtime.runnerPid, runnerAfter: after.sessions.find((s) => s.sessionKey === "chat")!.runtime.runnerPid, remainingJobs: Number(drained.reason!.split("=")[1]) }));
+      }
       recordSessionUpdateIncompatibility(root, "1.0.0", "1.0.1");
       writeConsoleUpdateProgress(root, { phase: "completed", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), fromVersion: "1.0.0", targetVersion: "1.0.1" });
       expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-bridge-incompatible", description: expect.stringContaining("ready for new sessions") });
@@ -254,6 +261,7 @@ describe("Console session-host lifecycle integration", () => {
       await vi.waitFor(() => expect(fs.existsSync(retiredRoot)).toBe(false), { timeout: 15_000 });
       expect(fs.existsSync(client.generation.root)).toBe(true);
       expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
+      if (process.platform === "win32") console.info("session-host-windows-gc-proof", JSON.stringify({ retiredCollected: !fs.existsSync(retiredRoot), currentRetained: fs.existsSync(client.generation.root), outsideSentinelPreserved: fs.readFileSync(path.join(outside, "keep"), "utf8") === "untouched" }));
       execution = await HostedExecution.attach(client, () => {}, env);
       const cleanSdk = createHostedSdk(execution, sdkOptions, { key: "chat" });
       const freshSession = await cleanSdk.openSession({ model: "opus", cwd: root });

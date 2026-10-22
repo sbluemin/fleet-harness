@@ -126,7 +126,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       update = null;
       for (const pending of business.values()) { clearTimeout(pending.timer); pending.reject(new Error("session_host_stopping")); }
       business.clear();
-      const deadline = setTimeout(() => { registry.killAll(); process.exit(1); }, CONSOLE_STOP_DEADLINE_MS); deadline.unref();
+      const deadline = setTimeout(() => { diagnostic("session_host_stop_deadline", null, `remainingJobs=${registry.groups().length}`); registry.killAll(); process.exit(1); }, CONSOLE_STOP_DEADLINE_MS); deadline.unref();
       await Promise.allSettled([...runners.values()].map(async (r) => {
         if (!r.child || r.child.exitCode !== null || r.child.signalCode !== null) return;
         const exited = new Promise<void>((resolve) => r.child!.once("exit", () => resolve()));
