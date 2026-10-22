@@ -989,6 +989,20 @@ code.hljs {
 .openui-bar-track { display: block; height: 6px; border-radius: var(--radius-pill); background: var(--control-rest); overflow: hidden; }
 .openui-bar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--gauge-fill-neutral); }
 .openui-bar-value { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+/* 진행률 — 막대 한 줄(이름 · 트랙 · done/total)을 그대로 입고, 메모만 다음 줄에 3단 잉크로 받친다. */
+.openui-progress-note { grid-column: 1 / -1; margin-top: -0.3em; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); overflow-wrap: anywhere; }
+
+/* 사실 — 라벨·값 상세(PR·커밋·검증). 단계의 행 문법에 막대 이름 칸(보조 잉크)을 얹었다. 목록 전체가 격자 하나라 값이 모든 행에서 같은 x 에 선다.
+   라벨 칸은 카드 폭의 40% 까지만 자라 좁은 카드에서도 값 칸이 남고, 긴 SHA·브랜치는 칸 안에서 줄을 바꾼다. */
+.openui-facts { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); column-gap: 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-fact { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 0.5em 1em; }
+.openui-fact + .openui-fact { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
+.openui-fact-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.openui-fact-value { min-width: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* 강조 한 줄 — 면 하나에 점(톤이 있을 때)과 문장. 테두리·배경 틴트·왼쪽 띠 없음: 강조는 면과 점뿐이다. */
+.openui-callout { display: flex; align-items: center; gap: 0.75em; padding: 0.6em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; color: var(--text-primary); }
+.openui-callout-text { min-width: 0; overflow-wrap: anywhere; }
 
 /* 표 — 감싼 칸이 면·반경·가로 스크롤을 지고, 표는 카드 폭을 채운다(내용이 더 넓으면 칸 안에서 가로로 흐른다).
    칸 여백·헤어라인·머리칸은 채팅 표 규칙 그대로다. 채팅 표 규칙(:is(.agent-chat, .group-chat) .markdown-body table)보다

@@ -54,22 +54,35 @@ export function sendableReply(value: unknown): string | null {
 function Dot({ state, label }: { state: OpenUIState; label: string }) {
   return <span className={`openui-dot is-${state}`} role="img" aria-label={label} />;
 }
+// 블록 컨텍스트는 대문자 컴포넌트 안에서만 읽는다 — defineComponent 의 component 콜백은 React 가 컴포넌트로 보지 않아 훅 규칙에 걸린다.
+function ToneDot({ tone }: { tone: OpenUITone }) {
+  const { labels } = useBlock();
+  return <Dot state={TONE_DOT[tone]} label={labels.tones[tone]} />;
+}
+function StateDot({ state }: { state: OpenUIState }) {
+  const { labels } = useBlock();
+  return <Dot state={state} label={labels.states[state]} />;
+}
 
 const statReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
 const stepReady = (p: Record<string, unknown>) => plain(p.label) !== null && oneOf(p.state, STATES) !== null;
 const choiceReady = (p: Record<string, unknown>) => typeof p.label === "string" && p.label.trim() !== "" && sendableReply(p.reply) !== null;
+const factReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+// 흐르는 중에는 판정(LIMITS)이 돌지 않으므로 컴포넌트도 같은 조건을 본다 — 0 ≤ done ≤ total, total > 0.
+const progressReady = (p: Record<string, unknown>) =>
+  plain(p.label) !== null && finite(p.done) && finite(p.total) && p.total > 0 && p.done >= 0 && p.done <= p.total;
 
 const Stat = defineComponent({
   name: "Stat",
   description: "One metric tile.",
   props: z.object({ label: z.string(), value: text, note: text.optional(), tone }),
   component: ({ props }) => {
-    const { labels } = useBlock();
     const t = oneOf(props.tone, TONES);
     const note = plain(props.note);
     return (
       <div className="openui-stat">
-        <span className="openui-stat-label">{t ? <Dot state={TONE_DOT[t]} label={labels.tones[t]} /> : null}{plain(props.label)}</span>
+        <span className="openui-stat-label">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>
         <span className="openui-stat-value">{plain(props.value)}</span>
         {note ? <span className="openui-stat-note">{note}</span> : null}
       </div>
@@ -90,12 +103,11 @@ const Step = defineComponent({
   description: "One work item and its state.",
   props: z.object({ label: z.string(), state: z.enum(STATES), note: text.optional() }),
   component: ({ props }) => {
-    const { labels } = useBlock();
     const state = oneOf(props.state, STATES)!;
     const note = plain(props.note);
     return (
       <div className={`openui-step is-${state}`} role="listitem">
-        <Dot state={state} label={labels.states[state]} />
+        <StateDot state={state} />
         <span className="openui-step-label">{plain(props.label)}</span>
         {note ? <span className="openui-step-note">{note}</span> : null}
       </div>
@@ -158,24 +170,84 @@ const Table = defineComponent({
     );
   },
 });
+const Fact = defineComponent({
+  name: "Fact",
+  description: "One label/value detail.",
+  props: z.object({ label: z.string(), value: text, tone }),
+  component: ({ props }) => {
+    const t = oneOf(props.tone, TONES);
+    return (
+      <div className="openui-fact" role="listitem">
+        <span className="openui-fact-label">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>
+        <span className="openui-fact-value">{plain(props.value)}</span>
+      </div>
+    );
+  },
+});
+const Facts = defineComponent({
+  name: "Facts",
+  description: "Label/value details such as PR, commit or check result.",
+  props: z.object({ items: z.array(Fact.ref) }),
+  component: ({ props, renderNode }) => {
+    const items = list(props.items).filter((item) => isNode(item, "Fact") && factReady(item.props));
+    return items.length ? <div className="openui-facts openui-face" role="list">{renderNode(items)}</div> : null;
+  },
+});
+const Callout = defineComponent({
+  name: "Callout",
+  description: "One sentence to stand out.",
+  props: z.object({ text: z.string(), tone }),
+  component: ({ props }) => {
+    const sentence = plain(props.text);
+    if (!sentence) return null;
+    const t = oneOf(props.tone, TONES);
+    return (
+      <div className="openui-callout openui-face" role="note">
+        {t ? <ToneDot tone={t} /> : null}
+        <span className="openui-callout-text">{sentence}</span>
+      </div>
+    );
+  },
+});
+// 분수 진행률 — 막대의 한 줄 문법(이름 · 트랙 · 값)을 그대로 입는다. 값은 "done/total", 채움 폭은 계산한 비율 하나다.
+const Progress = defineComponent({
+  name: "Progress",
+  description: "Fractional progress such as 3 of 5 missions.",
+  props: z.object({ label: z.string(), done: z.number(), total: z.number(), note: text.optional() }),
+  component: ({ props }) => {
+    if (!progressReady(props)) return null;
+    const done = props.done as number;
+    const total = props.total as number;
+    const note = plain(props.note);
+    const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+    return (
+      <div className="openui-bars openui-progress openui-face">
+        <span className="openui-bar-label">{plain(props.label)}</span>
+        <span className="openui-bar-track"><span className="openui-bar-fill" style={{ width: `${Math.min(100, Math.max(0, (done / total) * 100))}%` }} /></span>
+        <span className="openui-bar-value">{`${format.format(done)}/${format.format(total)}`}</span>
+        {note ? <span className="openui-progress-note">{note}</span> : null}
+      </div>
+    );
+  },
+});
+function ChoiceButton({ label, reply }: { label: string; reply: string }) {
+  const { final, reply: port } = useBlock();
+  // 보낼 문장은 이 클로저에만 있다 — DOM 속성에서 읽지 않는다. 사람의 클릭(isTrusted)·확정·포트가 모두 있을 때만 포트를 부른다.
+  const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!event.nativeEvent.isTrusted || !final || !port) return;
+    port(reply);
+  };
+  return (
+    <button type="button" className="openui-choice" title={reply} disabled={!final} aria-disabled={final && !port ? true : undefined} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
 const Choice = defineComponent({
   name: "Choice",
   description: "One answer the person can pick; reply is the sentence that becomes their words after they confirm.",
   props: z.object({ label: z.string(), reply: z.string() }),
-  component: ({ props }) => {
-    const { final, reply: port } = useBlock();
-    const reply = sendableReply(props.reply)!;
-    // 보낼 문장은 이 클로저에만 있다 — DOM 속성에서 읽지 않는다. 사람의 클릭(isTrusted)·확정·포트가 모두 있을 때만 포트를 부른다.
-    const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-      if (!event.nativeEvent.isTrusted || !final || !port) return;
-      port(reply);
-    };
-    return (
-      <button type="button" className="openui-choice" title={reply} disabled={!final} aria-disabled={final && !port ? true : undefined} onClick={onClick}>
-        {(props.label as string).trim()}
-      </button>
-    );
-  },
+  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} />,
 });
 const Choices = defineComponent({
   name: "Choices",
@@ -186,11 +258,11 @@ const Choices = defineComponent({
     return items.length ? <div className="openui-choices" role="group">{renderNode(items)}</div> : null;
   },
 });
-const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Choices"]);
+const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices"]);
 const Card = defineComponent({
   name: "Card",
   description: "Titled group of components.",
-  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Choices.ref])) }),
+  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Facts.ref, Callout.ref, Progress.ref, Choices.ref])) }),
   component: ({ props, renderNode }) => {
     const title = plain(props.title);
     const children = list(props.children).filter((child) => !!child && typeof child === "object" && CHILDREN.has((child as Node).typeName));
@@ -203,14 +275,14 @@ const Card = defineComponent({
   },
 });
 
-export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Choices, Choice], root: "Card" });
+export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice], root: "Card" });
 
 // ---- 2. 상한 — 등록 스키마와 따로 둔 Zod 판정(lang-core 는 max/refine 을 보지 않는다, 실측). 노드마다 safeParse.
 const reply = z.string().refine((value) => sendableReply(value) !== null);
 // 자식 자리에는 허용된 컴포넌트만 — lang-core 는 union 소속을 검사하지 않는다(실측: Card 직속 Stat 이 오류 없이 통과).
 const element = (...names: [string, ...string[]]) => z.object({ type: z.literal("element"), typeName: z.enum(names) });
 const LIMITS: Readonly<Record<string, z.ZodType>> = {
-  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Choices")).max(8) }),
+  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices")).max(8) }),
   Stats: z.object({ items: z.array(element("Stat")).max(4) }),
   Stat: z.object({ label: z.string(), value: text, note: text.nullish(), tone: z.enum(TONES).nullish() }),
   Steps: z.object({ items: z.array(element("Step")).max(50) }),
@@ -218,6 +290,11 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
   Bars: z.object({ labels: z.array(z.string()), values: z.array(z.number().finite()), unit: z.string().nullish() })
     .refine((p) => Math.min(p.labels.length, p.values.length) <= 12),
   Table: z.object({ columns: z.array(z.string()).max(8), rows: z.array(z.array(text).max(8)).max(50) }),
+  Facts: z.object({ items: z.array(element("Fact")).max(8) }),
+  Fact: z.object({ label: z.string(), value: text, tone: z.enum(TONES).nullish() }),
+  Callout: z.object({ text: z.string(), tone: z.enum(TONES).nullish() }),
+  Progress: z.object({ label: z.string(), done: z.number().finite().min(0), total: z.number().finite().gt(0), note: text.nullish() })
+    .refine((p) => p.done <= p.total),
   Choices: z.object({ items: z.array(element("Choice")).min(2).max(4) }),
   Choice: z.object({ label: z.string().refine((value) => { const t = value.trim(); return t.length > 0 && t.length <= 40; }), reply }),
 };

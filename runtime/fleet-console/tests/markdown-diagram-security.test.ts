@@ -262,11 +262,14 @@ describe("openui hydrator containment", () => {
   it("draws only whitelisted elements and keeps hostile strings as text", async () => {
     const [block] = await hydrated([
       "```openui-lang",
-      'root = Card("<img src=x onerror=alert(1)>", [kpi, steps, bars, tbl])',
+      'root = Card("<img src=x onerror=alert(1)>", [kpi, steps, bars, tbl, facts, note, prog])',
       'kpi = Stats([Stat("<script>alert(1)</script>", "javascript:alert(1)", null, "bad")])',
       'steps = Steps([Step("<a href=javascript:alert(1)>x</a>", "blocked", "<svg onload=alert(1)>")])',
       'bars = Bars(["<b>bold</b>"], [1e308], "<svg onload=alert(1)>")',
       'tbl = Table(["<iframe src=//evil.example>"], [["<style>body{}</style>"]])',
+      'facts = Facts([Fact("<img src=x>", "<script>alert(2)</script>", "good")])',
+      'note = Callout("<a href=javascript:alert(2)>x</a>", "warn")',
+      'prog = Progress("<b>p</b>", 3, 5, "<iframe src=//evil.example>")',
       "```",
     ].join("\n"));
 
@@ -295,6 +298,9 @@ describe("openui hydrator containment", () => {
     expect(view.querySelector(".openui-stat-label")?.textContent).toBe("<script>alert(1)</script>");
     expect(view.querySelector(".openui-stat-value")?.textContent).toBe("javascript:alert(1)");
     expect(view.querySelector("td")?.textContent).toBe("<style>body{}</style>");
+    expect(view.querySelector(".openui-fact-value")?.textContent).toBe("<script>alert(2)</script>");
+    expect(view.querySelector(".openui-callout-text")?.textContent).toBe("<a href=javascript:alert(2)>x</a>");
+    expect(view.querySelector(".openui-progress-note")?.textContent).toBe("<iframe src=//evil.example>");
   });
 
   it("falls back to the sanitized code block for truncated or unknown programs", async () => {
