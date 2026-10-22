@@ -258,11 +258,111 @@ const Choices = defineComponent({
     return items.length ? <div className="openui-choices" role="group">{renderNode(items)}</div> : null;
   },
 });
-const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices"]);
+const momentReady = (p: Record<string, unknown>) => plain(p.time) !== null && plain(p.label) !== null && (p.state == null || oneOf(p.state, STATES) !== null);
+const deltaReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.before) !== null && plain(p.after) !== null;
+const sparkReady = (p: Record<string, unknown>) => plain(p.label) !== null && Array.isArray(p.values) && p.values.length >= 2 && p.values.length <= 32 && p.values.every((v) => finite(v) && Math.abs(v) <= 1e15);
+const CompareHeadings = React.createContext({ before: "", after: "" });
+const Moment = defineComponent({
+  name: "Moment",
+  description: "One timed event.",
+  props: z.object({ time: z.string(), label: z.string(), state: z.enum(STATES).optional(), note: text.optional() }),
+  component: ({ props }) => {
+    const state = oneOf(props.state, STATES);
+    const note = plain(props.note);
+    return <div className={`openui-moment is-${state ?? "none"}`} role="listitem">
+      <span className="openui-moment-time">{plain(props.time)}</span>
+      <span className="openui-moment-rail">{state ? <StateDot state={state} /> : <span className="openui-dot" aria-hidden="true" />}</span>
+      <span className="openui-moment-body"><span className="openui-moment-label">{plain(props.label)}</span>{note ? <span className="openui-moment-note">{note}</span> : null}</span>
+    </div>;
+  },
+});
+const Timeline = defineComponent({
+  name: "Timeline",
+  description: "Timed events in order.",
+  props: z.object({ items: z.array(Moment.ref) }),
+  component: ({ props, renderNode }) => {
+    const items = list(props.items).filter((item) => isNode(item, "Moment") && momentReady(item.props));
+    return items.length ? <div className="openui-timeline openui-face" role="list">{renderNode(items)}</div> : null;
+  },
+});
+function DeltaRow({ props }: { props: Record<string, unknown> }) {
+  const headings = React.useContext(CompareHeadings);
+  const t = oneOf(props.tone, TONES);
+  return <div className="openui-delta" role="listitem">
+    <span className="openui-delta-label">{plain(props.label)}</span>
+    <span className="openui-delta-before"><span className="openui-delta-caption">{headings.before}</span><span className="openui-delta-value">{plain(props.before)}</span></span>
+    <span className="openui-delta-after"><span className="openui-delta-caption">{headings.after}</span><span className="openui-delta-value">{t ? <ToneDot tone={t} /> : null}{plain(props.after)}</span></span>
+  </div>;
+}
+const Delta = defineComponent({
+  name: "Delta",
+  description: "One before/after comparison.",
+  props: z.object({ label: z.string(), before: text, after: text, tone }),
+  component: ({ props }) => <DeltaRow props={props} />,
+});
+const Compare = defineComponent({
+  name: "Compare",
+  description: "Two named columns compared by row.",
+  props: z.object({ before: z.string(), after: z.string(), items: z.array(Delta.ref) }),
+  component: ({ props, renderNode }) => {
+    const before = plain(props.before), after = plain(props.after);
+    const items = list(props.items).filter((item) => isNode(item, "Delta") && deltaReady(item.props));
+    return before && after && items.length ? <CompareHeadings.Provider value={{ before, after }}><div className="openui-compare openui-face" role="list">
+      <div className="openui-compare-head" aria-hidden="true"><span /><span>{before}</span><span>{after}</span></div>{renderNode(items)}
+    </div></CompareHeadings.Provider> : null;
+  },
+});
+const Tag = defineComponent({
+  name: "Tag",
+  description: "One noninteractive label.",
+  props: z.object({ label: z.string(), tone }),
+  component: ({ props }) => {
+    const t = oneOf(props.tone, TONES);
+    return <span className="openui-tag" role="listitem">{t ? <ToneDot tone={t} /> : null}{plain(props.label)}</span>;
+  },
+});
+const Tags = defineComponent({
+  name: "Tags",
+  description: "A group of noninteractive labels.",
+  props: z.object({ items: z.array(Tag.ref) }),
+  component: ({ props, renderNode }) => {
+    const items = list(props.items).filter((item) => isNode(item, "Tag") && plain(item.props.label) !== null);
+    return items.length ? <div className="openui-tags" role="list">{renderNode(items)}</div> : null;
+  },
+});
+const Sparkline = defineComponent({
+  name: "Sparkline",
+  description: "One numeric trend, oldest first.",
+  props: z.object({ label: z.string(), values: z.array(z.number()), unit: z.string().optional() }),
+  component: ({ props }) => {
+    if (!sparkReady(props)) return null;
+    const values = props.values as number[];
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const round2 = (v: number) => String(Math.round(v * 100) / 100);
+    const points = values.map((v, i) => `${round2(i / (values.length - 1) * 100)},${round2(hi === lo ? 10 : 2 + (1 - (v - lo) / (hi - lo)) * 16)}`).join(" ");
+    const unit = typeof props.unit === "string" ? props.unit.slice(0, MAX_UNIT) : "";
+    const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+    return <React.Fragment>
+      <span className="openui-bar-label">{plain(props.label)}</span>
+      <svg className="openui-spark" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polyline points={points} fill="none" vectorEffect="non-scaling-stroke" /></svg>
+      <span className="openui-bar-value"><span className="openui-sr">{`${format.format(values[0]!)}${unit} → `}</span>{`${format.format(values[values.length - 1]!)}${unit}`}</span>
+    </React.Fragment>;
+  },
+});
+const Sparklines = defineComponent({
+  name: "Sparklines",
+  description: "Up to four numeric trends.",
+  props: z.object({ items: z.array(Sparkline.ref) }),
+  component: ({ props, renderNode }) => {
+    const items = list(props.items).filter((item) => isNode(item, "Sparkline") && sparkReady(item.props));
+    return items.length ? <div className="openui-bars openui-sparklines openui-face">{renderNode(items)}</div> : null;
+  },
+});
+const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines"]);
 const Card = defineComponent({
   name: "Card",
   description: "Titled group of components.",
-  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Facts.ref, Callout.ref, Progress.ref, Choices.ref])) }),
+  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Facts.ref, Callout.ref, Progress.ref, Choices.ref, Timeline.ref, Compare.ref, Tags.ref, Sparklines.ref])) }),
   component: ({ props, renderNode }) => {
     const title = plain(props.title);
     const children = list(props.children).filter((child) => !!child && typeof child === "object" && CHILDREN.has((child as Node).typeName));
@@ -275,14 +375,23 @@ const Card = defineComponent({
   },
 });
 
-export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice], root: "Card" });
+export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice, Timeline, Moment, Compare, Delta, Tags, Tag, Sparklines, Sparkline], root: "Card" });
 
 // ---- 2. 상한 — 등록 스키마와 따로 둔 Zod 판정(lang-core 는 max/refine 을 보지 않는다, 실측). 노드마다 safeParse.
 const reply = z.string().refine((value) => sendableReply(value) !== null);
 // 자식 자리에는 허용된 컴포넌트만 — lang-core 는 union 소속을 검사하지 않는다(실측: Card 직속 Stat 이 오류 없이 통과).
 const element = (...names: [string, ...string[]]) => z.object({ type: z.literal("element"), typeName: z.enum(names) });
+const short = (max: number) => z.string().refine((value) => { const t = value.trim(); return t.length > 0 && t.length <= max; });
 const LIMITS: Readonly<Record<string, z.ZodType>> = {
-  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices")).max(8) }),
+  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines")).max(8) }),
+  Timeline: z.object({ items: z.array(element("Moment")).min(1).max(12) }),
+  Moment: z.object({ time: short(20), label: z.string(), state: z.enum(STATES).nullish(), note: text.nullish() }),
+  Compare: z.object({ before: short(40), after: short(40), items: z.array(element("Delta")).min(1).max(8) }),
+  Delta: z.object({ label: z.string(), before: text, after: text, tone: z.enum(TONES).nullish() }),
+  Tags: z.object({ items: z.array(element("Tag")).min(1).max(12) }),
+  Tag: z.object({ label: short(32), tone: z.enum(TONES).nullish() }),
+  Sparklines: z.object({ items: z.array(element("Sparkline")).min(1).max(4) }),
+  Sparkline: z.object({ label: z.string(), values: z.array(z.number().finite().min(-1e15).max(1e15)).min(2).max(32), unit: z.string().nullish() }),
   Stats: z.object({ items: z.array(element("Stat")).max(4) }),
   Stat: z.object({ label: z.string(), value: text, note: text.nullish(), tone: z.enum(TONES).nullish() }),
   Steps: z.object({ items: z.array(element("Step")).max(50) }),

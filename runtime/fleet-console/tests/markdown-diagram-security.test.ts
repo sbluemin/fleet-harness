@@ -233,8 +233,8 @@ it("delegates only host-classified Markdown links without trusting source metada
 // OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
 // 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답 단추는 사람의 클릭으로만 입력창 포트에 닿는다.
 describe("openui hydrator containment", () => {
-  const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]);
-  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "data-openui-owned"]);
+  const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "svg", "polyline"]);
+  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "aria-hidden", "data-openui-owned", "viewBox", "preserveAspectRatio", "points", "fill", "vector-effect", "focusable"]);
   const containers = new Set<HTMLElement>();
 
   afterEach(async () => {
@@ -260,7 +260,7 @@ describe("openui hydrator containment", () => {
   }
 
   it("draws only whitelisted elements and keeps hostile strings as text", async () => {
-    const [block] = await hydrated([
+    const [block, staticBlock] = await hydrated([
       "```openui-lang",
       'root = Card("<img src=x onerror=alert(1)>", [kpi, steps, bars, tbl, facts, note, prog])',
       'kpi = Stats([Stat("<script>alert(1)</script>", "javascript:alert(1)", null, "bad")])',
@@ -271,11 +271,20 @@ describe("openui hydrator containment", () => {
       'note = Callout("<a href=javascript:alert(2)>x</a>", "warn")',
       'prog = Progress("<b>p</b>", 3, 5, "<iframe src=//evil.example>")',
       "```",
+      "",
+      "```openui-lang",
+      'root = Card("정적", [timeline, compare, tags, sparks])',
+      'timeline = Timeline([Moment("<img src=x>", "<script>x</script>", "done", "<svg onload=x>")])',
+      'compare = Compare("<img src=x>", "<script>x</script>", [Delta("<b>x</b>", "<iframe>", "<svg onload=x>", "good")])',
+      'tags = Tags([Tag("<script>x</script>", "bad")])',
+      'sparks = Sparklines([Sparkline("<b>x</b>", [1, -1e15, 3], "<svg>")])',
+      "```",
     ].join("\n"));
 
     expect(block!.dataset.openuiState).toBe("rendered");
     const view = block!.querySelector("[data-openui-owned]")!;
-    for (const element of view.querySelectorAll("*")) {
+    expect(staticBlock!.dataset.openuiState).toBe("rendered");
+    for (const element of [...view.querySelectorAll("*"), ...staticBlock!.querySelectorAll("[data-openui-owned] *")]) {
       expect(ALLOWED_TAGS.has(element.tagName)).toBe(true);
       for (const attribute of element.attributes) {
         if (attribute.name === "style") {
@@ -294,6 +303,13 @@ describe("openui hydrator containment", () => {
       }
     }
     expect(block!.querySelector("script, img, a, iframe, svg, style, b")).toBeNull();
+    expect(staticBlock!.querySelector("script, img, a, iframe, style, b")).toBeNull();
+    expect(staticBlock!.querySelectorAll("svg")).toHaveLength(1);
+    expect(staticBlock!.querySelector("svg")?.classList.contains("openui-spark")).toBe(true);
+    expect(staticBlock!.querySelector("polyline")?.getAttribute("points")).toMatch(/^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
+    expect(staticBlock!.querySelector(".openui-moment-label")?.textContent).toBe("<script>x</script>");
+    expect(staticBlock!.querySelector(".openui-delta-value")?.textContent).toBe("<iframe>");
+    expect(staticBlock!.querySelector(".openui-tag")?.textContent).toBe("<script>x</script>");
     expect(view.querySelector(".openui-title")?.textContent).toBe("<img src=x onerror=alert(1)>");
     expect(view.querySelector(".openui-stat-label")?.textContent).toBe("<script>alert(1)</script>");
     expect(view.querySelector(".openui-stat-value")?.textContent).toBe("javascript:alert(1)");
@@ -309,12 +325,17 @@ describe("openui hydrator containment", () => {
       'root = Card("x", [Html("<script>alert(1)</script>")])',
       "```",
       "",
+      ...[
+        'root = Card("x", [Moment("14:02", "x")])',
+        'root = Card("x", [Sparklines([Sparkline("x", [1])])])',
+        `root = Card("x", [Tags([${Array.from({ length: 13 }, () => 'Tag("x")').join(", ")}])])`,
+      ].flatMap((source) => ["```openui-lang", source, "```", ""]),
       "```openui-lang",
       'root = Card("x", [kpi])',
       'kpi = Stats([Stat("목표", "3"), Stat("결정", ',
     ].join("\n"));
 
-    expect(blocks).toHaveLength(2);
+    expect(blocks).toHaveLength(5);
     for (const block of blocks) {
       expect(block.dataset.openuiState).toBe("fallback");
       expect(block.querySelector("[data-openui-owned]")).toBeNull();

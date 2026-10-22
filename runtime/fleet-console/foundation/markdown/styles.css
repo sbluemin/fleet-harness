@@ -1004,6 +1004,57 @@ code.hljs {
 .openui-callout { display: flex; align-items: center; gap: 0.75em; padding: 0.6em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; color: var(--text-primary); }
 .openui-callout-text { min-width: 0; overflow-wrap: anywhere; }
 
+/* 시각 흐름 — 표시용 시각은 파싱·정렬하지 않고, 한 격자의 레일이 다음 점까지 이어진다. */
+.openui-timeline { display: grid; grid-template-columns: max-content 6px minmax(0, 1fr); column-gap: 0.75em; padding: 0.55em 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-moment { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
+.openui-moment > * { padding-block: 0.35em; min-width: 0; }
+.openui-moment-time { color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.openui-moment-rail { display: flex; flex-direction: column; align-items: center; padding-block: 0; }
+.openui-moment-rail > .openui-dot { margin-top: calc(0.35em + 0.75em - 3px); }
+.openui-moment:not(:last-child) .openui-moment-rail::after { content: ""; flex: 1; width: 1px; margin-top: 4px; margin-bottom: calc(-0.35em - 0.75em + 3px + 4px); background: var(--hairline-strong); }
+.openui-moment-body { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75em; }
+.openui-moment-label { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.openui-moment.is-done .openui-moment-label { color: var(--text-secondary); }
+.openui-moment-note { flex: none; max-width: 45%; color: var(--text-tertiary); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+
+/* 비교 — 열 이름은 각 값에도 읽기 캡션으로 남고, 좁은 카드에서는 캡션이 보이는 세로 행이 된다. */
+.openui-compare { display: grid; grid-template-columns: fit-content(34%) minmax(0, 1fr) minmax(0, 1fr); column-gap: 1em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
+.openui-compare-head, .openui-delta { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 0.5em 1em; }
+.openui-compare-head { padding-block: 0.55em 0.35em; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
+.openui-delta + .openui-delta { border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent); }
+.openui-delta-label { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.openui-delta-before, .openui-delta-after { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.openui-delta-before { color: var(--text-secondary); }
+.openui-delta-after { color: var(--text-primary); }
+.openui-delta-after::before { content: "→" / ""; margin-left: -1.05em; width: 0.75em; color: var(--text-tertiary); }
+.openui-delta-caption, .openui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.openui-delta-value { min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+
+/* 꼬리표 — 무테·채운 면·22px로 답 단추와 갈린다. 누르는 물건이 아니므로 폰에서도 커지지 않는다. */
+.openui-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.openui-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-secondary); font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+
+/* 추세 — 막대의 행 문법, 중립 잉크 선 하나. 단일 계열의 마지막 값과 숨긴 처음 값을 함께 읽는다. */
+.openui-spark { display: block; width: 100%; height: 20px; overflow: visible; }
+.openui-spark polyline { stroke: var(--text-secondary); stroke-width: 1.5px; stroke-linejoin: round; stroke-linecap: round; }
+
+@container openui (max-width: 26em) {
+  .openui-timeline { grid-template-columns: 6px minmax(0, 1fr); }
+  .openui-moment { grid-template-columns: 6px minmax(0, 1fr); grid-template-areas: "rail time" "rail body"; column-gap: 0.75em; }
+  .openui-moment-time { grid-area: time; padding-bottom: 0; font-size: calc(var(--font-content-size) * 0.857143); }
+  .openui-moment-rail { grid-area: rail; }
+  .openui-moment-body { grid-area: body; padding-top: 0; flex-direction: column; gap: 0; }
+  .openui-moment-note { max-width: none; text-align: left; }
+  .openui-moment-rail > .openui-dot { margin-top: calc(0.35em + 0.65em - 3px); }
+  .openui-compare { display: block; }
+  .openui-compare-head { display: none; }
+  .openui-delta { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.75em; row-gap: 1px; }
+  .openui-delta-label { grid-column: 1 / -1; margin-bottom: 2px; }
+  .openui-delta-before, .openui-delta-after { display: contents; }
+  .openui-delta-after::before { content: none; }
+  .openui-delta-caption { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); }
+}
+
 /* 표 — 감싼 칸이 면·반경·가로 스크롤을 지고, 표는 카드 폭을 채운다(내용이 더 넓으면 칸 안에서 가로로 흐른다).
    칸 여백·헤어라인·머리칸은 채팅 표 규칙 그대로다. 채팅 표 규칙(:is(.agent-chat, .group-chat) .markdown-body table)보다
    한 단 구체적인 선택자로 카드 안의 표만 덮는다. */
