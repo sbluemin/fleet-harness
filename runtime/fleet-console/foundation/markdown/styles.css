@@ -951,7 +951,8 @@ code.hljs {
 .openui-block > .code-block { margin: 0; }
 .openui-pending { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
 
-.openui { display: flex; flex-direction: column; gap: var(--space-3); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }
+/* 보조 잉크는 다크 말풍선·줄무늬 위의 판독 하한을 넘되 2단 라벨보다 낮게 둔다. 라이트는 기존 3단을 보존한다. */
+.openui { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 70%, var(--text-secondary))); display: flex; flex-direction: column; gap: var(--space-3); inline-size: 36em; max-inline-size: 100%; min-width: 0; container: openui / inline-size; }
 .openui-title { margin: 0; font-size: var(--font-content-size); font-weight: var(--weight-medium); color: var(--text-primary); }
 /* tone/state 잉크 — 점 대신 글자색·선색·틴트로. 의미는 함께 붙는 글자(상태 태그) 또는 읽기 라벨(.openui-sr)이 진다. */
 .openui .is-good { --tone: var(--positive); } .openui .is-warn { --tone: var(--warn); } .openui .is-bad { --tone: var(--coral); } .openui .is-wait { --tone: var(--aurora-ink); }
@@ -971,7 +972,7 @@ code.hljs {
 .openui-stat { display: flex; flex-direction: column; min-width: 0; }
 .openui-stat-value { order: -1; font-size: var(--t-lg); font-weight: var(--weight-medium); line-height: 1.35; font-variant-numeric: tabular-nums; color: var(--tone, var(--text-primary)); }
 .openui-stat-label { overflow-wrap: anywhere; color: var(--text-secondary); font-size: calc(var(--font-content-size) * 0.928571); }
-.openui-stat-note { color: var(--text-tertiary); font-size: calc(var(--font-content-size) * 0.857143); }
+.openui-stat-note { color: var(--openui-muted); font-size: calc(var(--font-content-size) * 0.857143); }
 /* Facts — 표 문법(머리 없음) */
 .openui-facts { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
 .openui-fact { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 1em; align-items: baseline; padding: 0.55em 0.85em; }
@@ -1006,14 +1007,14 @@ code.hljs {
 /* Timeline — 왼쪽 선 하나에 시각(작은 3단)/사건(본문) 쌍. 상태는 태그 글자 */
 .openui-timeline { display: flex; flex-direction: column; gap: 0.65em; border-left: 2px solid var(--hairline-strong); padding-left: 0.9em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; }
 .openui-moment { display: flex; flex-direction: column; min-width: 0; }
-.openui-moment-time { font-size: calc(var(--font-content-size) * 0.857143); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.openui-moment-time { font-size: calc(var(--font-content-size) * 0.857143); color: var(--openui-muted); font-variant-numeric: tabular-nums; }
 .openui-moment-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em 0.6em; }
 .openui-moment-note { color: var(--text-tertiary); }
 .openui-moment .openui-tag { height: 20px; padding: 0 6px; }
 /* Compare — 표 문법(머리 있음). 수정본 값만 톤 잉크 */
 .openui-compare { display: grid; grid-template-columns: fit-content(34%) minmax(0, 1fr) minmax(0, 1fr); font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.5; }
 .openui-compare-head, .openui-delta { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 1em; align-items: baseline; padding: 0.55em 0.85em; }
-.openui-compare-head { color: var(--text-tertiary); }
+.openui-compare-head { color: var(--openui-muted); }
 .openui-delta { border-top: 1px solid var(--hairline); }
 .openui-delta:nth-child(odd) { background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
 .openui-delta-label, .openui-delta-before { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
@@ -1069,7 +1070,7 @@ code.hljs {
   .openui-delta { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.75em; }
   .openui-delta-label { grid-column: 1 / -1; color: var(--text-primary); }
   .openui-delta-before, .openui-delta-after { display: contents; }
-  .openui-delta-caption { position: static; width: auto; height: auto; overflow: visible; clip-path: none; color: var(--text-tertiary); font-size: calc(var(--font-content-size) * 0.857143); }
+  .openui-delta-caption { position: static; width: auto; height: auto; overflow: visible; clip-path: none; color: var(--openui-muted); font-size: calc(var(--font-content-size) * 0.857143); }
   .openui-form { grid-template-columns: minmax(0, 1fr); }
   .openui-form-actions .openui-button { width: 100%; justify-content: center; }
 }
@@ -1079,6 +1080,9 @@ code.hljs {
 /* 라이트의 작은 tone 글자는 태그 틴트·표 줄무늬 위에서도 읽히도록 잉크를 섞는다. 다크의 기존 색은 보존한다. */
 :is(:root[data-theme="light"]:not([data-view-mode="mobile"]), :root[data-view-mode="mobile"][data-mobile-scheme="light"]) .openui :is(.openui-tag, .openui-fact-value, .openui-delta-after):is(.is-good, .is-warn, .is-bad),
 :is(:root[data-theme="light"]:not([data-view-mode="mobile"]), :root[data-view-mode="mobile"][data-mobile-scheme="light"]) .openui .openui-stat:is(.is-good, .is-warn, .is-bad) .openui-stat-value { color: color-mix(in oklch, var(--tone) 75%, var(--text-primary)); }
+/* 폰 다크의 문제 잉크만 밝힌다. 톤 자체와 태그 틴트·선은 그대로 두고 붉은 hue를 보존한다. */
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"] .openui :is(.openui-tag, .openui-fact-value, .openui-delta-after).is-bad,
+:root[data-view-mode="mobile"][data-mobile-scheme="dark"] .openui .openui-stat.is-bad .openui-stat-value { color: color-mix(in oklab, var(--tone) 70%, var(--text-primary)); }
 .openui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
 .markdown-body .openui .openui-table th { background: none; }
