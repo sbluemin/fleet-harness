@@ -437,12 +437,6 @@
   align-items: center;
 }
 
-/*
- * 데스크톱에서 테마 카드는 남는 가로를 채우며 흐르지만, 폰에서는 그 흐름이 카드마다 다른 폭의
- * 계단이 된다(실측 158·145·132px 2행). 선택지가 셋뿐이라 한 열로 세우면 계단도 사라지고 각
- * 카드가 이름 전체를 싣는다.
- */
-
 /* 행이 세로로 서면 뒤따르는 액션은 stretch를 상속해 폭 전체를 먹는 판이 된다 — 자기 글자만큼만 쓴다. */
 .mobile-settings-detail .global-settings-row > button {
   align-self: flex-start;

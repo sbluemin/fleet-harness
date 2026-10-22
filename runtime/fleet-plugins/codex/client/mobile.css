@@ -27,8 +27,6 @@ html[data-mobile-scheme="light"] .codex-m-field { background: var(--m-surface); 
 .codex-m-field::placeholder { color: var(--m-text-muted); }
 .codex-m-field:focus-visible { outline: 2px solid var(--m-text); outline-offset: -2px; }
 
-/* 검토 대기 글리프 — 상태 글리프 문법의 review(청록 테두리·옅은 면·체크). */
-
 /* 리더 열이 모바일 화면에 설 때 — Theater 표식은 막대 부제가 대신한다. */
 
 /*

@@ -430,13 +430,6 @@ button.chip:focus-visible {
   flex-shrink: 0;
 }
 
-/* Rail 카드 */
-
-/* Patch Manifest dl */
-
-/* CLI action 카드 */
-
-
 @media (max-width: 1024px) {
   .document h1 {
     font-size: var(--font-size-display-xl);

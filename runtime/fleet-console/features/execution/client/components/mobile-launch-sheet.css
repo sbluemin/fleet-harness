@@ -66,8 +66,6 @@ html[data-mobile-scheme="light"] .mls-input { background: var(--m-surface); }
 .mls-mention-mark { display: grid; place-items: center; flex: none; width: 20px; height: 20px; color: var(--m-text-muted); }
 .mls-mention-chip { margin-bottom: 8px; }
 
-/* 첨부 미리보기 — 56 정사각, 누르면 뺀다. */
-
 @media (prefers-reduced-motion: reduce) {
   .mls-toggle::after { transition: none; }
 }

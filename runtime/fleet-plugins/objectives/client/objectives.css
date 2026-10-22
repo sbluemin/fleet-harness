@@ -249,7 +249,6 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 @media (prefers-reduced-motion: reduce) { .is-armed > svg { animation: none; } }
 /* 지휘관 행은 모델·강도·보기 설정만 맡는다 — 원래 hover 규칙을 버튼에만 좁히고, span은 손 모양만 거둔다. */
 span.objectives-row-main { cursor: default; }
-/* 그래프 도구 — 그래프 상자 안 오른쪽 위에 선다. 상자는 위쪽에 도구 줄만큼 자리를 비워 노드·제목과 겹치지 않는다. 확대본(포털)은 이 틀 밖이다. */
 /* 지휘관 모델·강도·표면 — 한 줄의 글. 누르면 공통 팝업 표면의 메뉴가 뜬다(불투명 면·40px 본문 행·중립 워시). */
 /* 트리거·구성원 줄의 공급자 글리프 — 메뉴의 칩 상자 없이 글리프 자체만 공급자 톤으로 칠한다. */
 .objectives-launch-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
@@ -693,7 +692,6 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-trace ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 .objectives-followup-trace li s { color: var(--text-tertiary); }
 .objectives-followup-trace li span { font-size: var(--t-2xs); }
-/* 본문 구획의 펼친 카드 — 배경 양 끝을 안내 상자와 맞춘다(텍스트 들여쓰기도 나란히 선다). */
 /* 완료 뒤 결과 — 머리 아래에 영속한다. */
 .objectives-followup-results { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
 .objectives-followup-collected { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px; }

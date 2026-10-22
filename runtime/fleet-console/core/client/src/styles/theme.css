@@ -266,8 +266,6 @@
      그래서 다크 유리는 자기 위쪽에 광원을 하나 얹어 재질을 명도가 아니라 기울기로 말한다.
      이 채널은 광원의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다. */
   --glass-pane-light: transparent;
-  /* 캔버스 대기광 — 반투명 유리에 비칠 바탕을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
-  /* 캔버스 워시·블룸 — 대기광과 같은 일을 계조와 방위 라디알에서 한다. 기본값이 현행 sea·현행 혼합률이라 게이트가 닫히면 지금 화면 그대로다. */
   --glass-rim: transparent;
   /* 아래쪽 어두운 베벨. 밝은 바탕에서는 흰 하이라이트에 여유가 없어(라이트 유리 본체 L*94.7,
      흰 천장까지 5.3포인트) 판의 두께를 그늘 쪽이 말한다. 다크는 위쪽 rim이 이미 이기므로
@@ -481,8 +479,6 @@
   --quiet-halo-gain: 0;
   /* 장식 기호와 휴면 상태 표기 — 위치가 아니므로 3티어 글자색. */
   --quiet-decor-ink: var(--text-tertiary);
-  /* 미니맵 현재 뷰포트 렌즈 — 1px 테두리와 얕은 면만, 상시 글로우는 없다. */
-  /* 모서리 브래킷 — 헤어라인. 소비처가 떠난 quiet 슬롯이다. */
   /* 이니셜 배지·번호 칩 — Theater 정체성은 brass로 칠하지 않는다. 현재 위치는 1px brass 링만 말한다. */
   --quiet-chip-fill: var(--control-rest);
   --quiet-anchor-ink: var(--text-secondary);
@@ -496,7 +492,6 @@
   /* 변경 수 칩(저장소) — 수는 값이라 중립 워시 위 2티어 글자. */
   --quiet-count-fill: var(--control-wash);
   --quiet-count-ink: var(--text-secondary);
-  /* 확인 필요 상자용 quiet 테두리·면. 소비처가 떠난 테마 표의 자리다. */
 }
 
 

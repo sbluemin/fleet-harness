@@ -115,9 +115,6 @@
 .repository-seam-readout.is-limit { color: var(--coral-ink); }
 @media (prefers-reduced-motion: reduce) { .repository-seam, .repository-seam-pill { transition-duration: .01ms; } }
 
-/* ── 플러그인 툴바 (List/Tree 토글) ── */
-/* 밴드는 코어 surface 토큰을 소비해 테마 재질이 플러그인 내부까지 관통하게 한다. */
-
 .history-filter {
   display: flex;
   align-items: center;
@@ -147,9 +144,6 @@
 .history-filter-input:focus {
   border-color: var(--brass);
 }
-
-/* 메타 라벨은 계기판 어휘(mono·uppercase·광폭 자간)를 걷고 본문 서체의 낮은 목소리로 선다 —
-   2026-09-01 소프트 그래파이트 재가. 데이터(sha·시각·경로)만 mono로 남는다. */
 
 .repository-view-toggle {
   margin-left: auto;
@@ -1392,7 +1386,6 @@
 .history-commit-row.is-picked .history-commit-sha { color: var(--aurora); }
 .repository-pin-chip { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent); border-radius: var(--radius-xs); color: var(--aurora); cursor: pointer; }
 .repository-pin-chip:hover { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
-/* 3탭 세그먼트 줄 안의 비교 고정 버튼 — 탭과 달리 자기 폭만 차지한다. */
 .repository-ws-dock-meta .history-inspector-head { padding-right: 210px; }
 .history-compare-inspector { height: 100%; }
 .history-compare-inspector > .repository-sr-only { position: absolute; }

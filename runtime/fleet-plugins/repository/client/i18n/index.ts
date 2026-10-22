@@ -32,8 +32,6 @@ const repositoryEn = {
   "repository.source.history": "History",
   "repository.source.changes": "Changes",
 
-  // ref groups
-
   // discovery
   "repository.discovery.placeholder": "Find repositories…",
   "repository.discovery.aria": "Find repositories",
@@ -150,8 +148,6 @@ const repositoryEn = {
   "repository.compare.announceUnpinned": "Compare base unpinned.",
   "repository.compare.announceResult": "Comparing {base} with {head}.",
 
-  // checkout containment labeling
-
   // sync outcome surfacing (manual sync only; auto sync stays silent)
   "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for the remote.",
   "repository.sync.failedNetwork": "Fetch failed — network. The remote is unreachable.",
@@ -167,8 +163,6 @@ const repositoryEn = {
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
   "repository.hunk.close": "Close this diff",
-
-  // checkout tabs
 
   // toolbar verbs
   "repository.verb.pull": "Pull",

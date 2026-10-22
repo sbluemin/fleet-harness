@@ -148,11 +148,6 @@
   min-width: 0;
 }
 
-/* 칩은 전부 선다 — 줄바꿈이 접힘(+N)을 대신한다(재가된 변형 B의 계약). */
-
-/* 도움말이 있는 칩의 슬롯 — 말풍선(.settings-help-tip__bubble)의 기준면. 칩 자체가 hover로
-   말풍선을 열므로 옆에 '?'를 세우지 않는다. */
-
 .settings-chip {
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
@@ -745,8 +740,6 @@
   color: var(--warn-ink);
   font-weight: var(--weight-bold);
 }
-
-/* 원격 접속 — 포트 행의 제어 문법을 그대로 쓰고, 자격을 다루는 부분만 경고 채널을 더한다. */
 
 /* 메뉴 항목에서 연 판은 그 항목 옆에 서는 서브메뉴다. 사이드바가 넘치는 것을 잘라 내므로 창에 고정해 세우고,
    자리(left·top·max-height)는 useSideSubmenu가 항목의 자리에서 잰다. 도움말 판도 같은 클래스다.
@@ -1812,8 +1805,6 @@
   gap: var(--space-3);
 }
 
-/* 정보 뱃지 — 신호색(aurora) 금지. 중립 잉크 + 헤어라인으로 침묵한다. */
-
 .font-control {
   display: flex;
   flex-direction: column;
@@ -2346,8 +2337,6 @@
     flex: none;
   }
 }
-
-/* 열림은 지속 선택이 아니라 순간 상태 — 잉크 워시 하나로 말하고 밑줄 다텀은 두지 않는다. */
 
 /* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
    상태에 쓰는 기존 STATUS 예외다. */
@@ -2915,11 +2904,6 @@
 @property --arena-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --arena-bottom { syntax: "<length>"; inherits: false; initial-value: 0px; }
 
-/* 입력 대기: 신호는 테두리 전체와 옅은 워시. 선택된 칩은 위치 신호인 brass를 유지한다. */
-
-/* 지금 보고 있는 탭: brass 워시와 테두리 전체 (왼쪽 강조 띠 금지) */
-
-/* 글리프 폭은 고정하고 이름은 스크롤 영역 밖의 말풍선에 표시한다. */
 @media (prefers-reduced-motion: reduce) {
 }
 
@@ -2951,9 +2935,6 @@
 .cluster-member-glyph.is-tone-rose { --member-tone: var(--id-rose); }
 .cluster-member-glyph.is-tone-indigo { --member-tone: var(--id-indigo); }
 .cluster-member-glyph.is-tone-crimson { --member-tone: var(--id-crimson); }
-
-/* 지휘관·임무 칩 사이의 구성원만 가로로 이동한다. */
-
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
    Operations Progressive Left SideBar
@@ -3922,10 +3903,6 @@
   width: 100%;
   line-height: 1.3;
 }
-
-/* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 브랜치는 늘, 폴더는 Theater 루트를 벗어났을 때만.
-   글자색은 3티어이고 편차가 있을 때만 2티어로 한 단계 오른다. 상태(aurora/warn/coral/positive)·
-   brass·--id-* 채널은 쓰지 않는다: 이 줄은 위치 사실이지 상태도 정체성도 아니다. */
 
 .side-bar-chip-rename-input {
   flex: 1;
@@ -8063,28 +8040,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 }
 
-/* ---- 공유 표면 크롬 (Side/Modal 헤더·본문 공통) ---- */
-
-/* mount host(.codex-host)가 appendChild로 꽂히는 컨테이너 — 세 모드 공통 ref 대상. */
-
-/* Side에서는 host 둘레에 살짝 가라앉은 면을 둬 글래스 카드와 분리한다(Full은 맨 면 유지). */
-
-/* ============================ FULL (전용 라우트) ============================ */
-/* console-shell 2행 그리드 셀을 그대로 채운다 — 기존 Codex 라우트와 동일한 점유/스크롤. */
-
-/* ============================ SIDE (우현 도킹) ============================ */
-
-/* 좌측 모서리 리사이즈 핸들 — 우현 도킹이라 핸들은 좌측에 둔다. */
-
-/* prefers-reduced-motion: 표면 reveal 애니메이션 명시 차단(directory-browser와 동일 안전장치). */
-/* ===== 우현 엣지 핸들 (항목①) — 비-Codex 화면에서 Side를 여는 가장자리 탭. ===== */
-
-/* ===== Side 헤더 pane 토글 (항목④) — 좌(Nav)/우(ToC) pane 수동 접기. ===== */
-
-/* 접힌 상태 = pane 숨김. brass로 '활성 토글'을 강조(focus-adjacent emphasis). */
-
-/* ===== Side 모드 ⌘K 검색 국한 (항목③) — 전체 화면 모달을 Side 패널 영역으로 가둔다. ===== */
-
 .whatsnew-overlay {
   position: fixed;
   inset: 0;
@@ -10230,8 +10185,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .keyboard-shortcuts-group dt { color: var(--text-primary); }
 .keyboard-shortcuts-group dd { margin: 0; }
 .keyboard-shortcuts-group kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin-right: 3px; padding: 0 6px; border: 0; border-radius: var(--radius-xs); background: var(--control-rest); box-shadow: inset 0 0 0 1px var(--popover-divider); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs); }
-
-/* v5: 비-Operations 라우트의 복귀 링크 — GNB 부재 보완 */
 
 /* ── 캡슐 컴포저(SDK `composer/attachment-surface`)의 호스트 외양 ─────────────────
    그룹 대화 입력창과 사령관 입력창이 같은 캡슐 · 원 · 첨부 줄 · 안내 줄 · 「+」 메뉴를 쓴다. 형태는 SDK 가, 외양은 여기가
