@@ -49,6 +49,8 @@ function plain(value: unknown): string | null {
   if (raw === null) return null;
   return raw.length > MAX_TEXT ? `${raw.slice(0, MAX_TEXT - 1)}…` : raw;
 }
+// 선택 설명은 공백만 있어도 생략과 같다. 필수 문장·전송 값은 이 규칙으로 정규화하지 않는다.
+const optionalPlain = (value: unknown): string | null => typeof value === "string" && !value.trim() ? null : plain(value);
 const oneOf = <T extends string>(value: unknown, options: readonly T[]): T | null =>
   typeof value === "string" && (options as readonly string[]).includes(value) ? (value as T) : null;
 
@@ -67,7 +69,7 @@ const StepIndex = React.createContext(0);
 function StepRow({ props }: { props: Record<string, unknown> }) {
   const index = React.useContext(StepIndex);
   const state = oneOf(props.state, STATES)!;
-  const note = plain(props.note);
+  const note = optionalPlain(props.note);
   return <div className={`openui-step is-${state}`} role="listitem">
     <span className="openui-step-index" aria-hidden="true">{index}</span>
     <span className="openui-step-body"><span className="openui-step-label">{plain(props.label)}</span>{note ? <span className="openui-step-note">{note}</span> : null}</span>
@@ -90,7 +92,7 @@ const Stat = defineComponent({
   props: z.object({ label: z.string(), value: text, note: text.optional(), tone }),
   component: ({ props }) => {
     const t = oneOf(props.tone, TONES);
-    const note = plain(props.note);
+    const note = optionalPlain(props.note);
     return (
       <div className={`openui-stat openui-rule${toneClass(t)}`}>
         <span className="openui-stat-label">{plain(props.label)}</span>
@@ -219,7 +221,7 @@ const Progress = defineComponent({
     if (!progressReady(props)) return null;
     const done = props.done as number;
     const total = props.total as number;
-    const note = plain(props.note);
+    const note = optionalPlain(props.note);
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
     return (
       <div className="openui-bars openui-progress">
@@ -232,7 +234,7 @@ const Progress = defineComponent({
   },
 });
 const DecisionLayout = React.createContext(false);
-function ChoiceButton({ label, reply, why, effect }: { label: string; reply: string; why?: string; effect?: string }) {
+function ChoiceButton({ label, reply, why, effect }: { label: string; reply: string; why: string | null; effect: string | null }) {
   const block = useBlock();
   const decision = React.useContext(DecisionLayout);
   const trigger = useTriggerAction();
@@ -247,7 +249,7 @@ const Choice = defineComponent({
   name: "Choice",
   description: "One answer sent as the person's message when clicked.",
   props: z.object({ label: z.string(), reply: z.string(), why: z.string().optional(), effect: z.string().optional() }),
-  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} {...(typeof props.why === "string" ? { why: props.why } : {})} {...(typeof props.effect === "string" ? { effect: props.effect } : {})} />,
+  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} why={optionalPlain(props.why)} effect={optionalPlain(props.effect)} />,
 });
 const Choices = defineComponent({
   name: "Choices",
@@ -255,7 +257,7 @@ const Choices = defineComponent({
   props: z.object({ items: z.array(Choice.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Choice") && choiceReady(item.props));
-    const decision = items.some((item) => isNode(item, "Choice") && (plain(item.props.why) || plain(item.props.effect)));
+    const decision = items.some((item) => isNode(item, "Choice") && (optionalPlain(item.props.why) || optionalPlain(item.props.effect)));
     return items.length ? <DecisionLayout.Provider value={decision}><div className={decision ? "openui-decision" : "openui-choices"} role="group">{renderNode(items)}</div></DecisionLayout.Provider> : null;
   },
 });
@@ -308,10 +310,10 @@ const Button = defineComponent({
 
 const fieldName = z.string().regex(/^[a-z][a-z0-9_]{0,15}$/);
 // 한 줄 판정은 표시용 문장에도 적용한다. 명령 접두 규칙은 전송 문장에만 적용한다.
-const line = (max: number) => z.string().refine((v) => {
+const line = (max: number, allowEmpty = false) => z.string().refine((v) => {
   const t = v.trim();
   // eslint-disable-next-line no-control-regex
-  return !!t && t.length <= max && !/[\u0000-\u001f\u007f\p{Zl}\p{Zp}]/u.test(v);
+  return (allowEmpty || !!t) && t.length <= max && !/[\u0000-\u001f\u007f\p{Zl}\p{Zp}]/u.test(v);
 });
 const inputLimit = z.object({ name: fieldName, label: line(40) });
 const selectLimit = inputLimit.extend({ options: z.array(line(40)).min(2).max(6).refine((values) => new Set(values).size === values.length) });
@@ -319,7 +321,8 @@ function formReady(p: Record<string, unknown>): boolean {
   const fields = list(p.fields);
   if (!fields.length || fields.length > 4 || typeof p.template !== "string" || !line(160).safeParse(p.template).success) return false;
   const names = fields.flatMap((f) => isNode(f, "Input") && inputLimit.safeParse(f.props).success || isNode(f, "Select") && selectLimit.safeParse(f.props).success ? [(f as Node).props.name as string] : []);
-  if (names.length !== fields.length || new Set(names).size !== names.length || /^[{/@]/u.test(p.template.trim())) return false;
+  // 첫 필드가 만든 명령 접두는 composeDraft의 완성 문장 판정과 전송 직전 검사에서 거절한다.
+  if (names.length !== fields.length || new Set(names).size !== names.length || /^[/@]/u.test(p.template.trim())) return false;
   const used = new Set<string>();
   const rest = p.template.replace(/\{([a-z][a-z0-9_]{0,15})\}/g, (_, name: string) => { used.add(name); return ""; });
   return !/[{}]/u.test(rest) && names.every((name) => used.has(name)) && [...used].every((name) => names.includes(name));
@@ -359,7 +362,7 @@ const Moment = defineComponent({
   props: z.object({ time: z.string(), label: z.string(), state: z.enum(STATES).optional(), note: text.optional() }),
   component: ({ props }) => {
     const state = oneOf(props.state, STATES);
-    const note = plain(props.note);
+    const note = optionalPlain(props.note);
     return <div className="openui-moment" role="listitem">
       <span className="openui-moment-time">{plain(props.time)}</span>
       <span className="openui-moment-line"><span className="openui-moment-label">{plain(props.label)}</span>{state ? <StateTag state={state} /> : null}{note ? <span className="openui-moment-note">{note}</span> : null}</span>
@@ -517,7 +520,7 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
   Progress: z.object({ label: z.string(), done: z.number().finite().min(0), total: z.number().finite().gt(0), note: text.nullish() })
     .refine((p) => p.done <= p.total),
   Choices: z.object({ items: z.array(element("Choice")).min(2).max(4) }),
-  Choice: z.object({ label: short(40), reply, why: line(120).nullish(), effect: line(120).nullish() }),
+  Choice: z.object({ label: short(40), reply, why: line(120, true).nullish(), effect: line(120, true).nullish() }),
   Button: z.object({ label: line(40), action: z.unknown().optional() }).refine((p) => sourceAction(p.action, p.label) !== null),
   Form: z.object({ fields: z.array(element("Input", "Select")).min(1).max(4), template: z.string(), submit: line(24) }),
   Input: inputLimit,

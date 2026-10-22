@@ -439,8 +439,11 @@ describe("openui hydrator containment", () => {
     const { composeDraft, sendableDraft } = await import("@fleet-console/markdown/openui");
     expect(composeDraft("PR {a} 확인", new Map([["a", "{b} $& \n/clear"]]))).toBe("PR {b} $& /clear 확인");
     expect(sendableDraft("확인 @누군가")).toBeNull();
+    expect(composeDraft("{pr} 병합", new Map([["pr", "12"]]))).toBe("12 병합");
+    expect(composeDraft("{pr} 병합", new Map([["pr", "/compact"]]))).toBeNull();
+    expect(composeDraft("{pr} 병합", new Map([["pr", "@x"]]))).toBeNull();
     const reply = vi.fn();
-    const source = 'root = Card("입력", [Form([Input("pr", "PR"), Select("mode", "방식", ["병합", "대기"])], "PR {pr}을 {mode}", "보내기")])';
+    const source = 'root = Card("입력", [Form([Input("pr", "PR"), Select("mode", "방식", ["병합", "대기"])], "{pr}을 {mode}", "보내기")])';
     const [block] = await hydrated(["```openui-lang", source, "```"].join("\n"), { reply });
     expect(block!.querySelector("form, input[name], input[id], [action], [target]")).toBeNull();
     const input = block!.querySelector<HTMLInputElement>("input")!;
@@ -455,10 +458,17 @@ describe("openui hydrator containment", () => {
     await waitFor(() => !submit.disabled);
     submit.click();
     expect(reply).not.toHaveBeenCalled();
+    for (const command of ["/compact", "@x"]) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, command);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await waitFor(() => submit.disabled);
+      submit.click();
+    }
+    expect(reply).not.toHaveBeenCalled();
     const [inert] = await hydrated(["```openui-lang", source, "```"].join("\n"));
     expect([...inert!.querySelectorAll<HTMLInputElement>(".openui-form input, .openui-form select, .openui-form button")].every((field) => field.disabled)).toBe(true);
     const refused = await hydrated([
-      '{pr} 병합', 'PR {missing} 병합', 'PR 병합', 'PR {pr}\\n병합',
+      '/compact {pr}', '@x {pr}', 'PR {missing} 병합', 'PR 병합', 'PR {pr}\\n병합',
     ].map((template) => ["```openui-lang", `root = Card("x", [Form([Input("pr", "PR")], "${template}", "보내기")])`, "```"].join("\n")).concat([
       ["```openui-lang", 'root = Card("x", [Choices([Choice("A", "A"), Choice("B", "B")]), Form([Input("pr", "PR")], "PR {pr}", "보내기")])', "```"].join("\n"),
     ]).join("\n\n"));
