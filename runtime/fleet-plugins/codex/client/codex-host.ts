@@ -43,7 +43,7 @@ let activeNavigatorWorkspaceId: string | null = null;
 let readerHostNode: HTMLDivElement | null = null;
 let tocHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
-let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null;
+let activeReaderKind: "entry" | "schema" | null = null;
 let activeReaderEntryId: string | null = null;
 let activeReaderWorkspaceId: string | null = null;
 let activeReaderSubId: string | undefined = undefined;
@@ -275,8 +275,8 @@ export function mountReaderInto(
   } else if (opts.kind === "entry" && opts.initialEntryId && opts.initialEntryId !== activeReaderEntryId) {
     // 엔트리가 실제로 바뀐 경우에만 재렌더(같은 엔트리 relocate는 재렌더 없이 스크롤 보존).
     void readerController.setEntry(opts.initialEntryId);
-  } else if ((opts.kind === "drydock" || opts.kind === "conflicts" || opts.kind === "schema") && opts.subId !== activeReaderSubId) {
-    // 드라이독/컨플릭트: subId가 바뀐 경우(목록↔상세 전환) navigateSub으로 내부 재렌더
+  } else if (opts.kind === "schema" && opts.subId !== activeReaderSubId) {
+    // 스키마 문서가 바뀌면 navigateSub으로 내부를 다시 그린다.
     activeReaderSubId = opts.subId;
     void readerController.navigateSub(opts.subId);
   }
@@ -288,9 +288,6 @@ export function mountReaderInto(
   // relocate마다 현재 마운트 소유자(split/overlay)의 콜백을 컨트롤러에 반영한다.
   // 재생성 경로에서도 idempotent이므로 항상 호출한다.
   readerController.refreshCallbacks({
-    onPatchOpen: opts.onPatchOpen,
-    onConflictOpen: opts.onConflictOpen,
-    onDecided: opts.onDecided,
     onRelatedClick: opts.onRelatedClick,
     onClose: opts.onClose,
     onTagClick: opts.onTagClick,

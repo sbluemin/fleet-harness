@@ -33,12 +33,12 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
   const node = document.createElement("div");
   document.body.append(node);
   const root = createRoot(node);
-  const params = { kind: "schema", templateId: "prd", theaterId: "theater-a" };
+  const params = { kind: "schema", templateId: "initial-template", theaterId: "theater-a" };
   const ctx = { params, theaterId: "theater-a", close } as unknown as ExpandedSurfaceContext;
   try {
     expect(getReaderState().codexReader).toBeNull();
     await act(async () => { root.render(codexReadingSurface.render(ctx)); });
-    expect(getReaderState()).toMatchObject({ codexReader: { kind: "schema", templateId: "prd" }, codexReaderExpanded: true });
+    expect(getReaderState()).toMatchObject({ codexReader: { kind: "schema", templateId: "initial-template" }, codexReaderExpanded: true });
     expect(resolvedCodexWorkspaceIdFor("theater-a")).toBe("abcdef123456");
     expect(open).not.toHaveBeenCalled();
     expect(openRail).not.toHaveBeenCalled();

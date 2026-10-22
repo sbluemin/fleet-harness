@@ -70,7 +70,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
     panel.innerHTML = `<header>${peekPathLabel(ref)}<button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></header><div role="status">${escapeHtml(t()("codex.files.loading"))}</div>`;
     peek = panel;
     if (target && options.container.contains(target)) {
-      (target.closest(".cowork-block, p, li, td, blockquote") ?? target).insertAdjacentElement("afterend", panel);
+      (target.closest("p, li, td, blockquote") ?? target).insertAdjacentElement("afterend", panel);
     } else options.container.prepend(panel);
     panel.querySelector<HTMLElement>("[data-peek-close]")?.addEventListener("click", closePeek);
     panel.querySelector<HTMLElement>("[data-peek-close]")?.focus({ preventScroll: true });

@@ -11,8 +11,6 @@ import { hostCapabilities, onCodexHostBound, resolveActiveLocaleFromHost } from 
  */
 export type CodexReaderRequest =
   | { readonly kind: "entry"; readonly entryId: string }
-  | { readonly kind: "drydock"; readonly patchId?: string }
-  | { readonly kind: "conflicts"; readonly id?: string }
   | { readonly kind: "schema"; readonly templateId?: string };
 
 const SURFACE_ID = "codex";
@@ -134,8 +132,6 @@ function expandedReaderParams(): Readonly<Record<string, string>> {
 export function readExpandedCodexRequest(params: Readonly<Record<string, string>>): CodexReaderRequest | null {
   switch (params.kind) {
     case "entry": return params.entryId ? { kind: "entry", entryId: params.entryId } : null;
-    case "drydock": return { kind: "drydock", ...(params.patchId ? { patchId: params.patchId } : {}) };
-    case "conflicts": return { kind: "conflicts", ...(params.id ? { id: params.id } : {}) };
     case "schema": return { kind: "schema", ...(params.templateId ? { templateId: params.templateId } : {}) };
     default: return null;
   }

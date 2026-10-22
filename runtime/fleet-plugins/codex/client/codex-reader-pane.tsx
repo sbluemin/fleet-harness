@@ -9,7 +9,6 @@ import {
   getCodexReaderHistoryState,
   mountReaderInto,
   navigateCodexReaderHistory,
-  refreshCodexHealth,
   saveReaderScroll,
   setNavigatorTagFilter,
   subscribeCodexReaderDocument,
@@ -19,7 +18,6 @@ import { getT } from "./i18n/index.js";
 import { wikiReaderDepth } from "./mobile-stack.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
-import { loadInitialData } from "./codex/state.js";
 
 /**
  * 문서 창 — 표면의 detail 열.
@@ -111,7 +109,7 @@ function CodexReaderPane(ctx: PaneContext) {
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
   const readerKey = reader
-    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
+    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : (reader.templateId ?? "")}`
     : null;
 
   // 패널 DOM이 detach되기 전에 현재 reader 위치를 싱글톤에 저장한다.
@@ -122,7 +120,7 @@ function CodexReaderPane(ctx: PaneContext) {
     if (!workspaceId || !hasReader || expanded) return;
     if (!readRef.current || !tocRef.current || !reader) return;
     const kind = reader.kind;
-    const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
+    const subId = kind === "schema" ? reader.templateId : undefined;
     mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
@@ -133,14 +131,7 @@ function CodexReaderPane(ctx: PaneContext) {
       navigate: ctx.navigate,
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
-      onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
-      onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
       onTagClick: (tag) => setNavigatorTagFilter(tag),
-      onDecided: (kind) => {
-        void loadInitialData();
-        refreshCodexHealth();
-        if (kind !== "conflicts") openCodexReader({ kind: "drydock", patchId: undefined });
-      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, hasReader, expanded, readerKey, locale, theaterId]);
