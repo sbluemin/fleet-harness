@@ -207,7 +207,10 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
     if (!target || !openui) return;
     return () => releaseOpenUIHydrator(target);
   }, [openui]);
+  // React 19 는 dangerouslySetInnerHTML 을 객체 참조로 비교한다 — 같은 HTML 로 다시 렌더될 때(답 단추 콜백·발화자 객체가 새로
+  // 만들어지는 턴 끝 등) 새 객체를 주면 innerHTML 이 통째로 다시 들어가 그려 둔 OpenUI·다이어그램이 빈 칸부터 다시 그려진다.
+  const innerHtml = React.useMemo(() => ({ __html: html }), [html]);
   return manageDom
     ? <div ref={root} className={streamingClass} />
-    : <div ref={root} className={streamingClass} dangerouslySetInnerHTML={{ __html: html }} />;
+    : <div ref={root} className={streamingClass} dangerouslySetInnerHTML={innerHtml} />;
 });

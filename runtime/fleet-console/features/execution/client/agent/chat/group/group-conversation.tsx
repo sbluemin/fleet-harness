@@ -200,7 +200,20 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     });
     observer.observe(column);
     observer.observe(log);
-    return () => observer.disconnect();
+    // 새로 선 OpenUI 블록(흐르던 말풍선이 확정 줄로 바뀌는 턴 끝 등)은 첫 그림 전까지 비어 있다 — 그 사이 강제 레이아웃이
+    // scrollTop 을 자르고 높이가 같은 크기로 돌아오면 RO 가 침묵해, 잘린 자리로 한 프레임이 그려진다. 블록 상태가 바뀐 직후
+    // (마이크로태스크, 페인트 전) 따라가는 중이면 바닥을 다시 맞춘다. 위로 읽는 중이면 건드리지 않는다.
+    const drawn = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      if (!nearBottomRef.current || log.closest("[inert]") || log.clientHeight === 0) return;
+      if (!records.some((record) => record.oldValue !== (record.target as Element).getAttribute("data-openui-state"))) return;
+      const height = log.scrollHeight;
+      if (height - log.clientHeight - log.scrollTop <= 1) return;
+      placed.current = { first: placed.current?.first, height };
+      log.scrollTop = height;
+      programmaticTop.current = log.scrollTop;
+    });
+    drawn?.observe(column, { subtree: true, attributes: true, attributeFilter: ["data-openui-state"], attributeOldValue: true });
+    return () => { observer.disconnect(); drawn?.disconnect(); };
   }, [setFollowing]);
 
   // 드러내기 — 그 줄이 아직 없으면(쪽을 읽는 중) 줄이 올 때 다시 찾는다. 찾은 요청만 끝낸다.
