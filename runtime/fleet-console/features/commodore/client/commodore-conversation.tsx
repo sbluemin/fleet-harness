@@ -315,6 +315,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
             references={references}
             coordinates={ledgerCoordinates}
+            openui
           />
         </div>
       ) : (

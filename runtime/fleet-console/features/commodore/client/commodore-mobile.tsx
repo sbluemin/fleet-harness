@@ -525,7 +525,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
     body = (
       <>
         {hasMore ? <button type="button" data-press="r1" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("commodore.log.older")}</button> : null}
-        {Transcript ? <Transcript entries={chat} language={language} mobile references={references} /> : null}
+        {Transcript ? <Transcript entries={chat} language={language} mobile references={references} openui /> : null}
         {pending ? (
           <div className="objectives-cm-msg">
             <p className="objectives-cm-head"><b>{t("commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(pending.at)}</span><span>{t("commodore.mobile.sending")}</span></p>

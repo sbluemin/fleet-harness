@@ -80,6 +80,11 @@ export interface AgentChatTranscriptProps {
   readonly reveal?: { readonly at: number; readonly nonce: number } | null;
   /** How the person's inline references open and look. */
   readonly references?: AgentChatReferenceHost;
+  /**
+   * Draw fenced `openui-lang` blocks in the agent's answers as small generative UI, the way the Console draws them for the
+   * Commodore and Commanders. Off by default: the block stays a code block. A block that cannot be drawn stays a code block.
+   */
+  readonly openui?: boolean;
 }
 
 /**
@@ -170,6 +175,8 @@ export interface AgentLedgerProps {
    * that applies later. A missing effort reads as the model default; `null` when the session is unknown, and no coordinate is shown.
    */
   readonly coordinates?: { readonly model: string | null; readonly effort: string | null } | null;
+  /** Draw fenced `openui-lang` blocks in the answers as generative UI — the same opt-in as `AgentChatTranscriptProps.openui`. */
+  readonly openui?: boolean;
 }
 
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */

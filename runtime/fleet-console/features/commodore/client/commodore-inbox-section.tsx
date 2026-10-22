@@ -548,7 +548,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
         return (
           <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
             {line}
-            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} />
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openui />
           </div>
         );
       }) : null}

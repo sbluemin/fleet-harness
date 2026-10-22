@@ -25,7 +25,7 @@ const FOLLOW_SLACK_PX = 48;
  * (`.agent-chat` · 스크롤 주체인 `.agent-chat-log` · 같은 거터와 컬럼, 채팅 폭 선호)이며, 바닥은 구성원 원장과 같은 읽기 전용 좌표
  * 줄이다. 턴은 기록 면(`ctx.chat.Transcript`)과 같은 렌더러로 선다 — 둘의 차이는 담는 그릇뿐이다. 입력 틀은 서지 않는다.
  */
-export function AgentLedger({ speaker, theaterId, language, onBack, entries, reveal = null, older = null, references, coordinates = null }: AgentLedgerProps) {
+export function AgentLedger({ speaker, theaterId, language, onBack, entries, reveal = null, older = null, references, coordinates = null, openui = false }: AgentLedgerProps) {
   const t = getT(language);
   const readingWidth = useChatReadingWidth();
   const logRef = React.useRef<HTMLDivElement | null>(null);
@@ -74,7 +74,7 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
                     onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}
                   >
                     {older ? <button type="button" className="group-chat-link agent-ledger-older" disabled={older.loading} onClick={older.load}>{older.label}</button> : null}
-                    <TranscriptLines entries={entries} language={language} />
+                    <TranscriptLines entries={entries} language={language} openui={openui} />
                   </div>
                 </ChatReferenceContext.Provider>
               </div>

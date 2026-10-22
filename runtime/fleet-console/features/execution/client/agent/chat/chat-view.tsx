@@ -1177,7 +1177,7 @@ export const ChatTurn = React.memo(function ChatTurn({
   openui = false,
 }: {
   readonly operationId: string;
-  /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅만 켠다. 플러그인 기록(transcript)에는 넘어오지 않는다. */
+  /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅과, 플러그인이 켠 기록(사령관 원장·기록)만. */
   readonly openui?: boolean;
   readonly turn: AgentChatTurn;
   /**
