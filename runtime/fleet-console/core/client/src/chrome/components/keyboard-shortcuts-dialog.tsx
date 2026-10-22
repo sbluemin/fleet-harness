@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { buildShortcutGroups, useActiveCompanionShortcuts } from "../../integration/shortcuts.js";
+import { buildShortcutGroups } from "../../integration/shortcuts.js";
 import { useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
@@ -30,13 +30,12 @@ export function shouldHandleOperationsKeyboardShortcut(): boolean {
 
 export function KeyboardShortcutsDialog({ onClose }: KeyboardShortcutsDialogProps) {
   const t = useT();
-  const companionShortcuts = useActiveCompanionShortcuts();
   const overrides = useShortcutOverrides();
   const shortcutGroups = useMemo(
-    () => buildShortcutGroups(t, companionShortcuts),
+    () => buildShortcutGroups(t),
     // 재배정이 바뀌면 목록을 다시 짓는다 — overrides는 그 신호다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [companionShortcuts, overrides, t],
+    [overrides, t],
   );
   const dialogRef = useRef<HTMLDivElement>(null);
 

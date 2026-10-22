@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
-import { ActiveCompanionShortcutsProvider, takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
+import { takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
@@ -559,7 +559,6 @@ function ConnectedApp() {
 
   return (
     <ComputerScreenShareProvider>
-    <ActiveCompanionShortcutsProvider value={[]}>
       <div className={`console-shell${desktopOperationsVisible ? " is-operations-view" : ""}`}>
         {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다. */}
         <PersistentPluginComponents />
@@ -634,7 +633,6 @@ function ConnectedApp() {
           {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>
-    </ActiveCompanionShortcutsProvider>
     </ComputerScreenShareProvider>
   );
 }

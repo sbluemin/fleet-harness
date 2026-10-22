@@ -1,12 +1,10 @@
-// Console keyboard-shortcut policy: the catalog the dialog renders, which companion
-// panels a surface can reach, and the guards every global key handler consults first.
+// Console keyboard-shortcut policy: the dialog catalog, companion shortcut admission,
+// and the guards every global key handler consults first.
 // Installation of the window-level listeners stays in global-shortcuts.ts, which reads
 // the dialog module — folding it in here would make the two files import each other.
 
-import { createContext, useContext, type ReactNode } from "react";
 import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
 import type { CoreMessageKey } from "../i18n/index.js";
-import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { chordKeyLabels, isApplePlatform, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "./shortcut-bindings.js";
@@ -23,23 +21,13 @@ export interface ShortcutGroup {
   readonly entries: readonly ShortcutEntry[];
 }
 
-export interface CompanionShortcutEntry {
-  /** 등록부 명령 id — 도움말과 설정 카드가 같은 자리에서 재배정을 읽는다. */
-  readonly commandId: string;
-  readonly defaultChord: string;
-  readonly title: string;
-}
-
 type T = Translate<CoreMessageKey>;
 
 /**
  * 도움말 목록. 재배정 가능한 명령은 등록부(현재 조합)를 읽고, 문법 묶음(Alt+화살표)과 제스처는
  * 글쇠 라벨 리터럴로 남는다. 조합 라벨은 플랫폼으로 푼다(⌘ 또는 Ctrl) — 팔레트·접힘 힌트와 같은 표기.
  */
-export function buildShortcutGroups(
-  t: T,
-  companionShortcuts: readonly CompanionShortcutEntry[] = [],
-): readonly ShortcutGroup[] {
+export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
   const alt = isApplePlatform() ? "⌥" : "Alt";
   const shift = isApplePlatform() ? "⇧" : "Shift";
   const bound = (commandId: string, defaults?: readonly string[]) => resolveShortcutChords(commandId, defaults).map((chord) => chordKeyLabels(chord));
@@ -62,10 +50,6 @@ export function buildShortcutGroups(
         { combos: [[shift, "Enter"]], description: t("shortcuts.operations.insertNewline") },
         { combos: [["Enter"], ["Esc"]], description: t("shortcuts.operations.renameConfirm") },
         { combos: [["↑"], ["↓"]], description: t("shortcuts.operations.menuNav") },
-        ...companionShortcuts.map((entry) => ({
-          combos: bound(entry.commandId, [entry.defaultChord]),
-          description: t("shortcuts.operations.toggleCompanion", { title: entry.title }),
-        })),
       ],
     },
     {
@@ -74,36 +58,17 @@ export function buildShortcutGroups(
         { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
         { combos: bound("operations.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
-        { combos: [["Click"]], description: t("shortcuts.map.clearFocus") },
       ],
     },
   ];
 }
 
-// ─── companion panels — availability and toggle resolution ─────────────────────
+// ─── companion shortcut admission ─────────────────────────────────────────────
 
 // core가 플러그인보다 먼저 소비하는 키는 선언을 허용하면 도움말과 실제 디스패치가 어긋난다.
 export const RESERVED_SHORTCUT_CODES: readonly string[] = [
   "KeyS", "ArrowLeft", "ArrowRight", "Escape",
 ];
-
-export interface CompanionVisibilityChange {
-  readonly id: string;
-  readonly visible: boolean;
-}
-
-export interface CompanionShortcutToggle {
-  readonly openLayer: boolean;
-  readonly closeLayer: boolean;
-  readonly visibilityChanges: readonly CompanionVisibilityChange[];
-}
-
-export function availableCompanionPanels(
-  companions: readonly CompanionPanelDescriptor[],
-  operation: OperationNode,
-): readonly CompanionPanelDescriptor[] {
-  return companions.filter((companion) => companion.available?.(operation) ?? true);
-}
 
 export function usableCompanionShortcuts(
   companions: readonly CompanionPanelDescriptor[],
@@ -116,67 +81,6 @@ export function usableCompanionShortcuts(
     seenCodes.add(code);
     return true;
   });
-}
-
-export function resolveCompanionShortcutToggle(input: {
-  readonly companions: readonly CompanionPanelDescriptor[];
-  readonly targetId: string;
-  readonly clusterIds?: readonly string[];
-  readonly companionsOpen: boolean;
-  readonly visibilityOverrides: Readonly<Record<string, boolean>>;
-}): CompanionShortcutToggle {
-  const target = input.companions.find((companion) => companion.id === input.targetId);
-  const currentlyVisible = target
-    ? companionVisible(target, input.companionsOpen, input.visibilityOverrides)
-    : false;
-  if (!currentlyVisible) {
-    return {
-      openLayer: !input.companionsOpen,
-      closeLayer: false,
-      visibilityChanges: [{ id: input.targetId, visible: true }],
-    };
-  }
-
-  const clusterIds = [...new Set([input.targetId, ...(input.clusterIds ?? [])])];
-  const clusterIdSet = new Set(clusterIds);
-  const remainingVisible = input.companions.some((companion) =>
-    !clusterIdSet.has(companion.id)
-    && companionVisible(companion, input.companionsOpen, input.visibilityOverrides));
-  return {
-    openLayer: false,
-    closeLayer: !remainingVisible,
-    visibilityChanges: clusterIds.map((id) => ({ id, visible: false })),
-  };
-}
-
-function companionVisible(
-  companion: CompanionPanelDescriptor,
-  companionsOpen: boolean,
-  visibilityOverrides: Readonly<Record<string, boolean>>,
-): boolean {
-  return companionsOpen && (visibilityOverrides[companion.id] ?? companion.defaultHidden !== true);
-}
-
-// ─── companion shortcuts in scope for the active surface ───────────────────────
-
-const ActiveCompanionShortcutsContext = createContext<readonly CompanionShortcutEntry[]>([]);
-
-export function ActiveCompanionShortcutsProvider({
-  children,
-  value,
-}: {
-  readonly children: ReactNode;
-  readonly value: readonly CompanionShortcutEntry[];
-}) {
-  return (
-    <ActiveCompanionShortcutsContext.Provider value={value}>
-      {children}
-    </ActiveCompanionShortcutsContext.Provider>
-  );
-}
-
-export function useActiveCompanionShortcuts(): readonly CompanionShortcutEntry[] {
-  return useContext(ActiveCompanionShortcutsContext);
 }
 
 // ─── focus guards — dialog boundary and return-focus handoff ───────────────────

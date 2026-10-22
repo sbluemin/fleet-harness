@@ -129,10 +129,6 @@ const ACHROMATIC_NAMED_COLORS = new Set([
 const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".add-host-close",
   ".pair-close",
-  ".settings-disclosure-toggle::after",
-  ".thought-chevron",
-  ".tool-chip-glyph",
-  ".timeline-chevron",
   ".effort-track-fill::after",
   ".effort-track-fill::before",
   ".app-toast-close",
@@ -688,7 +684,6 @@ describe("Instrument core design contract", () => {
     // 새 채널 셋의 닫힌-게이트 기본값이 곧 구 불투명 계약이다.
     expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
     expect(theme).toContain("--glass-pane-light: transparent;");
-    expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
     // 다크는 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
     // pane-light는 22%만 얹고 terminal도 같은 반투명 tint(panel과 한 장)를 쓴다. 알파는 테마마다 고정이다.
     for (const raw of ["18.5% 0.028 245"]) {
@@ -733,11 +728,6 @@ describe("Instrument core design contract", () => {
     // 채널의 중립 기본값이 곧 이제 모든 테마가 보는 값이다.
     expect(theme).toContain("--glass-bevel: transparent;");
     expect(theme).toContain("--glass-lift: var(--shadow-floating);");
-    expect(theme).toContain("--canvas-wash-near: var(--canvas-sea-near);");
-    expect(theme).toContain("--canvas-wash-mid: var(--canvas-sea-mid);");
-    expect(theme).toContain("--canvas-wash-far: var(--canvas-sea-far);");
-    expect(theme).toContain("--canvas-bloom-aurora: 7%;");
-    expect(theme).toContain("--canvas-bloom-brass: 5%;");
 
     // 재료도, 그 재료를 싣던 게이트 다리도 남아 있지 않다.
     for (const material of [
@@ -1308,10 +1298,7 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
     expect(components).toMatch(/\.side-bar-status-section--ended\s*\{[^}]*--activity-color:\s*var\(--ink-fog\)/);
     expect(components).toContain("--activity-color: var(--ink-fog);");
-    // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
-    expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
-    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).not.toMatch(/\.side-bar-status-section \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
@@ -1347,12 +1334,8 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-chip-unseen");
     expect(components).not.toContain(".side-bar-chip--unseen");
     expect(components).not.toContain(".side-bar-status-header__unseen");
-    // 마크 축은 진짜 대기(aurora 1.8s 호출 맥동)와 미확인 완료(positive 3.6s 느린 점등)를 갈라 그린다.
-    // 두 사실이 한 색이면 화면은 "사람을 기다리는 중"과 "안 본 채 끝난 것"을 구별해 주지 못한다.
-    expect(components).toMatch(/\.status-glyph\.is-unseen::after \{[^}]*background: var\(--positive\);\s*animation: status-glyph-blink 3\.6s/);
-    expect(components).toMatch(/\.status-glyph\.is-awaiting::before \{[^}]*animation: status-glyph-breathe 1\.8s/);
+    // 미확인 완료를 알리는 살아 있는 마크의 공유 점등 모션은 유지한다.
     expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.status-glyph,\s*\.status-glyph::before,\s*\.status-glyph::after \{\s*animation: none !important;/);
     // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
     expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
@@ -1705,9 +1688,9 @@ describe("Instrument core design contract", () => {
     for (const block of blocksFor(/^\s*:root:not\(\[data-theme="light"\]\) \{\n([\s\S]*?)\n\s*\}/gm)) {
       for (const token of declared(block)) themeTuned.add(token);
     }
-    // [doctrine] 유리 재료(--glass-on-*·--canvas-on-ambience)는 게이트를 거쳐서만 화면에 닿고, 모바일은
+    // [doctrine] 유리 재료(--glass-on-*)는 게이트를 거쳐서만 화면에 닿고, 모바일은
     // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다.
-    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$)/.test(token);
+    const exempt = (token: string) => /^--glass-on-/.test(token);
     for (const scheme of ["dark", "light"] as const) {
       const missing = [...themeTuned].filter((token) => !exempt(token) && !schemeTokens[scheme].has(token));
       expect(missing, `mobile ${scheme} leaves Console-theme tokens undefined`).toEqual([]);

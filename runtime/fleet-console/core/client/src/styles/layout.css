@@ -340,8 +340,6 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
   overflow-wrap: anywhere;
 }
 
-.update-recovery-words { color: var(--text-tertiary); }
-
 .update-recovery-actions { display: flex; justify-content: flex-end; }
 
 @keyframes update-outcome-drop {

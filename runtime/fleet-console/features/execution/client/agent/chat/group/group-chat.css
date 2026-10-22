@@ -385,9 +385,7 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
 }
-.group-relay-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.group-relay-party { cursor: pointer; }
-button.group-relay-party:hover .group-relay-party-name { text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
 button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
 .group-relay-party .group-chat-mark.is-lg,
 .group-relay-mark .group-chat-mark.is-lg { width: 30px; height: 30px; }
@@ -418,9 +416,7 @@ button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-
   color: var(--text-primary);
   font: inherit;
 }
-.group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.group-relay-pill-party { cursor: pointer; }
-button.group-relay-pill-party:hover .group-relay-pill-party-name { text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
 button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .group-relay-message { display: flex; flex-direction: column; }
 .group-relay-time { align-self: center; margin: 18px 0 14px; font-size: var(--t-sm); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
@@ -479,7 +475,6 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 }
 .group-chat-line-label { font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
 .group-chat-line-label:not(:first-child) { margin-top: var(--space-2); }
-.group-chat-line-failure { color: var(--coral-ink); }
 .group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
 
 /* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */
