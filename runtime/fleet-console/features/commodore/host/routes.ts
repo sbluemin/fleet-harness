@@ -45,6 +45,8 @@ export interface CommodoreRouteHooks {
   readonly retry?: (theaterId: string) => Promise<void> | void;
   readonly clear?: (theaterId: string) => Promise<void>;
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly theaterId: string; readonly title: string; readonly removed?: unknown } | null;
+  /** 보드 어댑터가 등록돼 있는가 — 없으면 감독자가 runner를 세우지 않으므로 사령관은 꺼진 것으로 보이고 켜지지 않는다. */
+  readonly boardReady?: () => boolean;
 }
 
 const ids = z.string().min(1).max(128);
@@ -55,7 +57,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   const experiments = () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
   const view = (theaterId: string, state: CommodoreState): CommodoreStateView => {
     const settings = experiments();
-    const active = settings.commodore && state.autonomy;
+    const active = settings.commodore && state.autonomy && (hooks.boardReady?.() ?? true);
     const run = hooks.run?.(theaterId) ?? { phase: active ? "idle" : "off" };
     const asks = state.asks ?? [];
     const objectives = Object.fromEntries([...new Set(asks.flatMap((ask) => (ask.objectiveId ? [ask.objectiveId] : [])))].map((id) => {
@@ -113,6 +115,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore glyph on the sidebar Theater header).", handler: json(theaterRef.extend({ autonomy: z.boolean() }).strict(), ({ theaterId, autonomy }) => {
       read(theaterId);
       if (autonomy && !experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
+      if (autonomy && hooks.boardReady && !hooks.boardReady()) throw new CommodoreStoreError("commodore_inactive");
       return view(theaterId, store.setAutonomy(theaterId, autonomy));
     }) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(theaterRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ theaterId, text }) => { read(theaterId); return view(theaterId, store.setDirective(theaterId, text)); }) },

@@ -80,6 +80,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     run: (theaterId) => supervisor.status(theaterId),
     retry: (theaterId) => supervisor.retry(theaterId),
     clear: (theaterId) => supervisor.clear(theaterId),
+    boardReady: () => board !== null,
     objective: (id) => {
       for (const theaterId of deps.paths.listTheaterIds?.() ?? []) {
         const found = board?.objective(theaterId, id);
