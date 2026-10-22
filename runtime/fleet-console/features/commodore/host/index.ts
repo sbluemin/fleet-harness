@@ -1,4 +1,5 @@
 import path from "node:path";
+import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import type { CommodoreBoardAdapter, CommodoreEvent, FleetPluginCommodoreHost } from "@fleet-console/sdk/commodore";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
@@ -37,7 +38,9 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     if (!root) throw new CommodoreStoreError("theater_unavailable");
     const existing = entities.resolve(theaterId);
     if (existing) return existing;
-    if (migration.blockedPaths.has(root)) throw new CommodoreStoreError("commodore_migration_pending");
+    // 옛 이름은 손실 변환이라 다른 경로와 겹칠 수 있다. 그때도 구 기록을 가리는 새 UUID보다 함께 보류하는 쪽이 안전하다.
+    const unresolvedWorkspace = workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
+    if (migration.blockedPaths.has(root) || unresolvedWorkspace) throw new CommodoreStoreError("commodore_migration_pending");
     return entities.create(root);
   };
   const ensureRegistered = () => {

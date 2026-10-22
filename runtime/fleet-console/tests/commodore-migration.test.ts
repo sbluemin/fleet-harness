@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
+import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import { createCommodoreFeature, type CommodoreFeatureDeps } from "../features/commodore/host/index.js";
 import { migrateCommodoreData } from "../features/commodore/host/migrate.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
@@ -54,8 +55,12 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     const conflict = seed("downgraded-conflict", theater("conflict"));
     const conflictId = randomUUID();
     write(path.join(entities, conflictId, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters: [{ path: conflict.root }] }));
-    const unknown = seed("unknown-identity", theater("unknown"));
-    fs.unlinkSync(path.join(unknown.workspace, "cwd.json"));
+    const unknownRoot = theater("unknown");
+    const unknown = seed(workspaceDirectoryNames(unknownRoot)[0], unknownRoot, "Keep the unreadable-identity directive");
+    write(path.join(unknown.workspace, "cwd.json"), "{corrupt cwd");
+    const lateRoot = theater("late-unknown");
+    const lateUnknown = seed(workspaceDirectoryNames(lateRoot)[1]!, lateRoot, "Keep the late-registered legacy directive");
+    write(path.join(lateUnknown.workspace, "cwd.json"), "{corrupt legacy cwd");
     const broken = seed("broken-state", theater("broken"));
     write(path.join(broken.dir, "state.json"), "{broken legacy state");
     const linked = path.join(data, "workspaces", "linked-source", "objectives", "commodore");
@@ -93,6 +98,9 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(first!.unresolved).toBeGreaterThan(0);
     expect(first!.cleanedSessions).toBe(false);
     expect(first!.blockedPaths.has(stopped.root)).toBe(true);
+    expect(first!.blockedPaths.has(unknown.root)).toBe(false);
+    expect(first!.blockedWorkspaceNames.has(path.basename(unknown.workspace))).toBe(true);
+    expect(first!.blockedWorkspaceNames.has(path.basename(lateUnknown.workspace))).toBe(true);
     expect(first!.blockedPaths.has(failedCopy.root)).toBe(true);
     expect(fs.readFileSync(path.join(failedCopy.dir, "state.json"), "utf8")).toBe(state(failedCopy.text));
     const failedCopyId = JSON.parse(fs.readFileSync(path.join(failedCopy.dir, ".migration.json"), "utf8")).commodoreId;
@@ -120,7 +128,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     // 충돌은 제품이 병합하지 않았다. 이 테스트의 다운그레이드 시드를 안전한 위치로 치워 해결한다.
     fs.renameSync(conflict.dir, path.join(temp, "preserved-conflict"));
     const fresh = theater("newly-registered");
-    const roots = new Map([[workspaceHash(a.root), a.root], [workspaceHash(stopped.root), stopped.root], [workspaceHash(fresh), fresh]]);
+    const roots = new Map([[workspaceHash(a.root), a.root], [workspaceHash(stopped.root), stopped.root], [workspaceHash(unknown.root), unknown.root], [workspaceHash(fresh), fresh]]);
     let request: unknown;
     let response: { status: number; value: unknown } | undefined;
     const deps = {
@@ -132,10 +140,10 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
       knowledgeTools: () => [],
     } as unknown as CommodoreFeatureDeps;
     feature = createCommodoreFeature(deps);
-    const call = async (name: string, body: unknown) => {
+    const call = async (name: string, body: unknown, status = 200) => {
       request = body;
       await feature!.routes.find((route) => route.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
-      expect(response!.status).toBe(200);
+      expect(response!.status).toBe(status);
       return response!.value as Record<string, unknown>;
     };
     const resolved = await call("commodore/resolve", { theaterId: workspaceHash(a.root) });
@@ -145,12 +153,30 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect((await call("commodore/resolve", { theaterId: workspaceHash(stopped.root) })).commodoreId).toBe(stoppedId);
     expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { directive: { text: stopped.text, rev: 1 } } });
     expect((await call("commodore/resolve", { theaterId: workspaceHash(fresh) })).commodoreId).toEqual(expect.any(String));
-    // cwd 미상 원본은 보존·경고·CLI 정리 보류만 한다. 관계없는 새 Theater 발급을 막지 않는다.
-    expect(fs.existsSync(unknown.dir)).toBe(true);
+    // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
+    expect(await call("commodore/resolve", { theaterId: workspaceHash(unknown.root) })).toEqual({ commodoreId: null });
+    expect(await call("commodore/create", { theaterId: workspaceHash(unknown.root) }, 409)).toEqual({ error: "commodore_migration_pending" });
+    // 실행 중 등록도 같은 방어를 쓴다. 이 원본은 옛 손실 변환 이름이므로 digest 쪽만 검사하면 놓친다.
+    roots.set(workspaceHash(lateUnknown.root), lateUnknown.root);
+    feature.sync();
+    expect(await call("commodore/resolve", { theaterId: workspaceHash(lateUnknown.root) })).toEqual({ commodoreId: null });
+    expect(await call("commodore/create", { theaterId: workspaceHash(lateUnknown.root) }, 409)).toEqual({ error: "commodore_migration_pending" });
+    expect(fs.readFileSync(path.join(unknown.dir, "state.json"), "utf8")).toBe(state(unknown.text));
+    expect(fs.readFileSync(path.join(lateUnknown.dir, "state.json"), "utf8")).toBe(state(lateUnknown.text));
     expect(fs.existsSync(cli)).toBe(true);
     write(path.join(unknown.workspace, "cwd.json"), JSON.stringify({ cwd: unknown.root }));
+    write(path.join(lateUnknown.workspace, "cwd.json"), JSON.stringify({ cwd: lateUnknown.root }));
     await feature.dispose();
     feature = createCommodoreFeature(deps);
+    const recovered = await call("commodore/resolve", { theaterId: workspaceHash(unknown.root) });
+    expect(recovered.commodoreId).toEqual(expect.any(String));
+    expect(await call("commodore/state", { commodoreId: recovered.commodoreId })).toMatchObject({ state: { directive: { text: unknown.text, rev: 1 } } });
+    expect(await call("commodore/transcript", { commodoreId: recovered.commodoreId })).toMatchObject({ entries: [{ kind: "result", seq: 1, outcome: "ok" }] });
+    const recoveredLate = await call("commodore/resolve", { theaterId: workspaceHash(lateUnknown.root) });
+    expect(recoveredLate.commodoreId).toEqual(expect.any(String));
+    expect(await call("commodore/state", { commodoreId: recoveredLate.commodoreId })).toMatchObject({ state: { directive: { text: lateUnknown.text, rev: 1 } } });
+    expect(fs.existsSync(unknown.dir)).toBe(false);
+    expect(fs.existsSync(lateUnknown.dir)).toBe(false);
 
     expect(fs.existsSync(a.dir)).toBe(false);
     expect(fs.existsSync(b.dir)).toBe(false); // 등록하지 않은 digest 원본도 이동했다.

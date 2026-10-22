@@ -18,6 +18,7 @@ import {
   findWorkspaceDirectory,
   resolveWorkspaceDirectoryByName,
   toWorkspaceDirectoryName,
+  workspaceDirectoryNames,
 } from "../../src/workspace-dir/workspace-dir.js";
 
 const cleanupPaths: string[] = [];
@@ -88,8 +89,8 @@ describe("WorkspaceDirectory", () => {
     mkdirSync(cwd, { recursive: true });
     mkdirSync(otherCwd, { recursive: true });
     const canonicalCwd = realpathSync.native(cwd);
-    // 이전 버전이 저장한 이름·identity·내용을 새 API를 거치지 않고 준비한다.
-    const legacyName = canonicalCwd.replace(/[^a-zA-Z0-9]/g, "-");
+    // 이전 버전 이름의 후보를 공유 로직에서 받고, identity·내용은 workspace 생성 API 없이 준비한다.
+    const legacyName = workspaceDirectoryNames(canonicalCwd)[1]!;
     const legacyPath = path.join(dataDir, "workspaces", legacyName);
     mkdirSync(legacyPath, { recursive: true });
     writeFileSync(path.join(legacyPath, "cwd.json"), JSON.stringify({ cwd: canonicalCwd }));

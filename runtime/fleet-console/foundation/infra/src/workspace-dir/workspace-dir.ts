@@ -39,6 +39,13 @@ function toLegacyWorkspaceDirectoryName(canonicalCwd: string): string {
   return canonicalCwd.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
+/** 정준 cwd가 사용할 수 있는 workspace 이름. 읽기 실패한 옛 데이터도 이름으로 보수적으로 보호할 때 쓴다. */
+export function workspaceDirectoryNames(canonicalCwd: string): readonly [current: string, ...legacy: string[]] {
+  const current = toWorkspaceDirectoryName(canonicalCwd);
+  const legacy = toLegacyWorkspaceDirectoryName(canonicalCwd);
+  return legacy.length <= 255 ? [current, legacy] : [current];
+}
+
 function getWorkspaceDirectoryRoot(dataDir: string): string {
   if (!dataDir.trim()) {
     throw new Error("Fleet data directory is required");
@@ -48,13 +55,13 @@ function getWorkspaceDirectoryRoot(dataDir: string): string {
 
 export function resolveWorkspaceDirectory(dataDir: string, cwd: string): WorkspaceDirectory {
   const canonicalCwd = canonicalizeWorkspaceCwd(cwd);
-  const workspace = buildWorkspaceDirectory(dataDir, toWorkspaceDirectoryName(canonicalCwd), canonicalCwd);
+  const [currentName, legacyName] = workspaceDirectoryNames(canonicalCwd);
+  const workspace = buildWorkspaceDirectory(dataDir, currentName, canonicalCwd);
   assertSafeWorkspaceRoot(dataDir, workspace.root, true);
   if (safeLstat(workspace.path)) return workspace;
 
   // 옛 위치는 정확히 같은 cwd가 소유할 때만 재사용한다. 이동하지 않아 저장된 경로도 유지된다.
-  const legacyName = toLegacyWorkspaceDirectoryName(canonicalCwd);
-  if (legacyName.length > 255) return workspace;
+  if (!legacyName) return workspace;
   const legacy = readWorkspaceDirectoryIfPresent(buildWorkspaceDirectory(dataDir, legacyName, canonicalCwd));
   return legacy?.cwd === canonicalCwd ? legacy : workspace;
 }
