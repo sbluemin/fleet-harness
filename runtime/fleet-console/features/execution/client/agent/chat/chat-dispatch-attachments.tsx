@@ -4,6 +4,9 @@ import { agentChatAttachmentPreviewUrl } from "../api.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatAttachment } from "./chat-events.js";
 
+/** 미리보기가 열 수 있는 같은 출처 API — 플러그인 경로와 사령관 feature의 첨부 경로뿐이다. */
+const PREVIEW_PREFIXES = ["/plugins/", "/api/v1/commodore/attachment?"] as const;
+
 /**
  * 보낸 이미지 — 말풍선 머리에 컴포저 칩과 같은 문법으로 선다.
  *
@@ -26,7 +29,7 @@ export function ChatDispatchAttachments({
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
   const live = attachments.flatMap((attachment) => {
     const image = "id" in attachment ? { id: attachment.id, src: agentChatAttachmentPreviewUrl(attachment.id) }
-      : "preview" in attachment && attachment.preview.url.startsWith("/plugins/") && !attachment.preview.url.includes("\\")
+      : "preview" in attachment && PREVIEW_PREFIXES.some((prefix) => attachment.preview.url.startsWith(prefix)) && !attachment.preview.url.includes("\\")
         ? { id: attachment.preview.id, src: attachment.preview.url } : null;
     return image && !lapsed.includes(image.id) ? [image] : [];
   });
