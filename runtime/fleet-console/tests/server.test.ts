@@ -169,12 +169,24 @@ describe("console terminal observability", () => {
     hooks.__fleetStartupGate = async () => { entered.resolve(); await release.promise; };
     const plugin = createPluginPackageRoot({ demoRoutes: "export async function register() { await globalThis.__fleetStartupGate(); }" });
     const deps = { port: 0, dataDir: fleetDataDir, pluginHomeDir: dir, release: plugin.release };
+    // 폐기한 Skills 플러그인의 데이터만 걷힌다. 다른 플러그인의 데이터와 사용자 Claude 스킬은 남는다.
+    const retiredData = path.join(consoleDir, "plugins", "skills");
+    const retiredFile = path.join(retiredData, "cli", "node_modules", "skills", "package.json");
+    const siblingFile = path.join(consoleDir, "plugins", "scuttlebutt", "workspace", "keep.txt");
+    const userSkill = path.join(dir, ".claude", "skills", "mine", "SKILL.md");
+    for (const file of [retiredFile, siblingFile, userSkill]) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "keep");
+    }
     const winner = createConsoleServer(deps);
     servers.push(winner);
     const starting = winner.start({ dir, lockFile });
     void starting.catch(() => {});
     try {
       await entered.promise;
+      expect(fs.existsSync(retiredData)).toBe(false);
+      expect(fs.readFileSync(siblingFile, "utf8")).toBe("keep");
+      expect(fs.readFileSync(userSkill, "utf8")).toBe("keep");
       const owner = readConsoleLockFile(lockFile)!;
       const lockBefore = fs.readFileSync(lockFile, "utf8");
       const healthUrl = new URL("api/v1/health", owner.endpoint);
@@ -196,6 +208,8 @@ describe("console terminal observability", () => {
       fs.mkdirSync(path.join(fleetDataDir, "harness"), { recursive: true });
       const legacyFile = path.join(fleetDataDir, "harness", "probe.txt");
       fs.writeFileSync(legacyFile, "keep");
+      fs.mkdirSync(path.dirname(retiredFile), { recursive: true });
+      fs.writeFileSync(retiredFile, "keep");
       const loser = createConsoleServer(deps);
       servers.push(loser);
       await expect(loser.start({ dir, lockFile })).rejects.toMatchObject({ consoleLockHeld: true });
@@ -204,6 +218,7 @@ describe("console terminal observability", () => {
       expect(fs.readFileSync(stateFile, "utf8")).toBe(state);
       expect(fs.existsSync(`${stateFile}.pre-archive-backup`)).toBe(false);
       expect(fs.readFileSync(legacyFile, "utf8")).toBe("keep");
+      expect(fs.readFileSync(retiredFile, "utf8")).toBe("keep");
       expect(fs.existsSync(path.join(fleetDataDir, "workspaces", "probe"))).toBe(true);
       expect(fs.readFileSync(lockFile, "utf8")).toBe(lockBefore);
       release.resolve();

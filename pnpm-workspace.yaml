@@ -17,7 +17,6 @@ packages:
   - "runtime/fleet-plugins/codex"
   - "runtime/fleet-plugins/repository"
   - "runtime/fleet-plugins/file-explorer"
-  - "runtime/fleet-plugins/skills"
   - "runtime/fleet-plugins/quota"
   - "runtime/fleet-plugins/scuttlebutt"
   - "runtime/fleet-plugins/objectives"

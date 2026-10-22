@@ -47,7 +47,6 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
   "examples",
 ]);
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
-const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../features/execution/client/agent/index.tsx", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/agent-cli.css", import.meta.url);
@@ -135,7 +134,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".directory-browser-close",
   ".directory-browser-sector-advance",
   ".whatsnew-close",
-  ".skills-overlay-close",
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
@@ -1480,7 +1478,6 @@ describe("Instrument core design contract", () => {
   it("pins the popup opacity underlay contract", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
-    const skillsCss = externalSource(SKILLS_CSS_PATH);
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // 팝업은 공통 팝업 면(--popover-face) 한 장을 칠한다. 이 채널은 다크 유리 게이트와 투명도 축소
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
@@ -1520,9 +1517,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
-    // 내장 플러그인 팝업도 같은 면을 칠한다 — 스킬 읽기는 대화상자 면, 신호 토스트·소식은 신호색을 불투명 면에 섞는다.
-    paintsPopoverFace(skillsCss, ".skills-overlay-dialog", "--dialog-face");
-    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*background: color-mix\(in srgb, var\(--aurora\) 15%, var\(--popover-face\)\);/);
+    // 내장 플러그인 팝업도 같은 면을 칠한다 — 신호 소식은 신호색을 불투명 면에 섞는다.
     // Quaker aides float over the Map and other busy surfaces, so every speech surface stays on the opaque popover face.
     for (const selector of [
       ".scuttlebutt-bird-tag",
@@ -2360,13 +2355,11 @@ describe("Instrument core design contract", () => {
   it("keeps real GNB producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
-    const skillsCss = externalSource(SKILLS_CSS_PATH);
     expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
     expect(components).not.toContain("data-signature");
     expect(terminalAgent).not.toContain("data-signature");
-    expect(skillsCss).not.toMatch(/color-mix\([^)]*\b(?:black|white)\b/);
   });
 
   it("keeps the retired carrier identity grammar out of the product", () => {
