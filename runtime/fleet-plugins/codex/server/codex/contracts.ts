@@ -86,134 +86,11 @@ export interface EntryResponse {
   raw?: RawSourceItem[];
   /** 본문에서 [[wiki:이 문서]]를 참조하는 다른 엔트리들(역링크). */
   backlinks?: EntryBacklink[];
-  pendingPatchCount?: number;
-  /**
-   * 이 문서를 고치는 대기 갱신 패치(update_wiki) — 문서 안 인라인 변경 제안으로 선다. 제안 본문과 낡은 기준 여부만 싣고,
-   * 승인·반려는 검토 대기열과 같은 결정 라우트를 쓴다. 삭제·생성 제안은 여기 없고 `pendingPatchCount`에만 센다.
-   */
-  pendingProposals?: EntryPendingProposal[];
+  hash: string;
 }
 
-export interface EntryPendingProposal {
-  id: string;
-  summary: string;
-  proposer: string;
-  created: string;
-  proposedBody: string;
-  baseConflict?: DrydockBaseConflict;
-}
-
-export interface DrydockPatchSetMember {
-  id: string;
-  status?: string;
-  target?: string;
-  summary?: string;
-  source: "queue" | "archive" | "missing";
-}
-
-export interface DrydockPatchSetResponse {
-  id: string;
-  sourceRef: string;
-  createdAt: string;
-  members: DrydockPatchSetMember[];
-}
-
-export interface DrydockMeta {
-  id: string;
-  status: "pending" | "accepted" | "rejected";
-  createdAt: string;
-  decidedAt?: string;
-  reason?: string;
-  rawSourceRef?: string;
-  warnings?: string[];
-  patch_set_id?: string | null;
-}
-
-export interface DrydockDiffStat {
-  /** 제안이 더하는 라인 수(변경 블록 기준). */
-  added: number;
-  /** 제안이 걷어내는 라인 수(변경 블록 기준). */
-  removed: number;
-}
-
-export interface DrydockListItem {
-  id: string;
-  meta: DrydockMeta;
-  source: "queue" | "archive";
-  summary?: string;
-  op?: "create_wiki" | "update_wiki" | "delete_wiki";
-  target?: string;
-  proposer?: string;
-  /** pending(queue) 항목에만 계산된다 — 결정된 패치의 diff는 현재 문서와 무의미하다. */
-  diffstat?: DrydockDiffStat;
-  baseConflict?: DrydockBaseConflict;
-}
-
-export interface DrydockBatchResult {
-  id: string;
-  outcome: "approved" | "rejected" | "skipped" | "failed";
-  error?: string;
-  conflictId?: string;
-}
-
-export interface DrydockBatchResponse { ok: true; results: DrydockBatchResult[]; }
-
-export interface DrydockListResponse {
-  items: DrydockListItem[];
-  pendingCount: number;
-  archivedCount: number;
-}
-
-export interface DrydockPatchFrontmatter {
-  op: "create_wiki" | "update_wiki" | "delete_wiki";
-  target: string;
-  summary: string;
-  proposer: string;
-  created: string;
-}
-
-export interface DrydockPatch {
-  frontmatter: DrydockPatchFrontmatter;
-  body: string;
-}
-
-export interface DrydockWikiEntry {
-  id: string;
-  title: string;
-  tags: string[];
-  created: string;
-  updated: string;
-  version: number;
-  rawSourceRef?: string;
-  rawSourceRefs?: string[];
-  status?: string;
-  confidence?: string;
-  body: string;
-}
-
-export interface DrydockBaseConflict {
-  reason: "base_version" | "base_hash";
-  baseVersion?: number;
-  currentVersion: number | null;
-}
-
-export interface DrydockDetailResponse {
-  source: "queue" | "archive";
-  patch: DrydockPatch;
-  meta: DrydockMeta;
-  wikiEntry: DrydockWikiEntry;
-  targetExists: boolean;
-  patchSet: DrydockPatchSetResponse | null;
-  baseConflict?: DrydockBaseConflict;
-  deletion?: {
-    snapshot: string;
-    claims?: string;
-    targetMissing?: boolean;
-    backlinks: Array<{ id: string; title: string; alsoDeleting: boolean }>;
-    rawSources: string[];
-    sharedRawSources: string[];
-  };
-}
+export interface EntryDeleteResponse { ok: true; historyRef: string; }
+export interface EntryRestoreResponse { ok: true; version: number; }
 
 export interface SchemaCatalogResponse {
   schema: { ref: string; exists: boolean; summary: string };
@@ -225,30 +102,6 @@ export interface SchemaDocumentResponse {
   content: string;
 }
 
-export interface ConflictListItem {
-  id: string;
-  title: string;
-  createdAt?: string;
-  updated: string;
-  status: "open" | "resolved" | "unknown";
-  path: string;
-}
-
-export interface ConflictDetailResponse {
-  id: string;
-  title?: string;
-  status?: ConflictListItem["status"];
-  meta: Record<string, unknown>;
-  base?: string | null;
-  current: string | null;
-  currentHash?: string;
-  currentAtConflict?: string | null;
-  proposed: string | null;
-  rawSource: string | null;
-  canRepropose?: boolean;
-  pendingPatch?: boolean;
-}
-
 export interface CodexHealthResponse {
   lastDrydock: {
     at: string;
@@ -258,8 +111,6 @@ export interface CodexHealthResponse {
     infoCount: number;
     issueCount: number;
   } | null;
-  conflictCount: number;
-  pendingCount: number;
   logUnreadable?: true;
 }
 
@@ -271,7 +122,7 @@ export const CODEX_WATCH_EVENT = "codex:watch";
  * Codex 지식 루트에서 변한 범위. 이벤트는 사실을 싣지 않고 "여기가 변했다"만 말한다 —
  * 화면은 그 힌트를 받아 정식 API로 다시 읽는다(순서 뒤바뀜·유실에 강하다).
  */
-export type CodexKnowledgeScope = "queue" | "wiki" | "conflicts" | "schema" | "index" | "health";
+export type CodexKnowledgeScope = "wiki" | "schema" | "index" | "health";
 
 /** 감시가 살아 있는지. degraded면 화면은 스스로 주기 재검증으로 강등한다. */
 export type CodexWatchState = "watching" | "degraded";
