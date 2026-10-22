@@ -261,9 +261,12 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         onScroll={(event) => {
           const log = event.currentTarget;
           if (log.closest("[inert]") || log.clientHeight === 0 || autoScrolling.current) return;
-          const gesture = scrollPointers.current.size > 0 || performance.now() - userScrollAt.current < USER_SCROLL_MS;
-          // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 사람 입력은 같은 좌표여도 지금 높이로 판정한다.
-          if (!gesture && log.scrollTop === programmaticTop.current) return;
+          const now = performance.now();
+          const gesture = scrollPointers.current.size > 0 || now - userScrollAt.current < USER_SCROLL_MS;
+          // 손을 놓은 뒤에도 관성 scroll 이 이어진다 — 사람 입력에서 시작된 사건 사슬은 매번 창을 연장한다.
+          if (gesture) userScrollAt.current = now;
+          // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 포인터 해제가 누락돼도 이 기존 방어는 유지한다.
+          if (log.scrollTop === programmaticTop.current) return;
           programmaticTop.current = null;
           const height = log.scrollHeight;
           if (nearBottomRef.current && !gesture) {
