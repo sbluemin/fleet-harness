@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import type { PaneContext } from "@fleet-console/sdk/pane";
 
 import type { SearchEntry } from "../server/codex/contracts.js";
-import { fetchDrydock, fetchSearch } from "./codex/api.js";
+import { fetchSearch } from "./codex/api.js";
 import { CODEX_READER_PANE_ID } from "./codex-reader-pane.js";
 import { getT } from "./i18n/index.js";
 import { enterMobileWiki, setWikiSearchOpen } from "./mobile-stack.js";
@@ -12,16 +12,16 @@ import { publishResolvedWorkspace, resolveCodexWorkspace } from "./workspace-sto
 import "./mobile.css";
 
 /**
- * 모바일 목적지 「위키」(S-44) — 검토 대기 한 줄과 항목 목록. 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다.
- * 항목·검토 대기를 누르면 데스크톱과 같은 리더 열(`codex-reader`)이 상세로 선다 — 본문은 리더가 그린다.
- * 데이터는 데스크톱 카탈로그와 같은 창구(`search`·`drydock`)에서 읽는다.
+ * 모바일 목적지 「위키」(S-44) — 항목 목록. 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다.
+ * 항목을 누르면 데스크톱과 같은 리더 열(`codex-reader`)이 상세로 선다 — 본문은 리더가 그린다.
+ * 데이터는 데스크톱 카탈로그와 같은 창구(`search`)에서 읽는다.
  */
 
 type Load =
   | { readonly kind: "loading" }
   | { readonly kind: "none" }
   | { readonly kind: "failed" }
-  | { readonly kind: "ready"; readonly entries: readonly SearchEntry[]; readonly pending: number };
+  | { readonly kind: "ready"; readonly entries: readonly SearchEntry[] };
 
 const Icon = ({ children, size = 22 }: { readonly children: ReactNode; readonly size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
@@ -88,8 +88,8 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
         publishResolvedWorkspace({ contextKey: theaterId, ...workspace });
         if (!workspace.hasWiki || !workspace.id) { workspaceRef.current = null; setLoad({ kind: "none" }); return; }
         workspaceRef.current = workspace.id;
-        const [search, drydock] = await Promise.all([fetchSearch(workspace.id), fetchDrydock(workspace.id, "pending").catch(() => null)]);
-        if (current()) setLoad({ kind: "ready", entries: search.entries, pending: drydock?.pendingCount ?? 0 });
+        const search = await fetchSearch(workspace.id);
+        if (current()) setLoad({ kind: "ready", entries: search.entries });
       })
       .catch(() => { if (current()) setLoad({ kind: "failed" }); });
   }, [theaterId]);
@@ -99,7 +99,6 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   useEffect(() => { if (visible) refresh(); }, [visible, refresh]);
 
   const openEntry = (entryId: string) => { openCodexReader({ kind: "entry", entryId }); panes.open({ paneId: CODEX_READER_PANE_ID }); };
-  const openReview = () => { openCodexReader({ kind: "drydock" }); panes.open({ paneId: CODEX_READER_PANE_ID }); };
 
   if (searching) {
     return (
@@ -130,14 +129,6 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
         {load.kind === "loading" ? <p className="codex-m-note" role="status">{t("mobile.wiki.loading")}</p> : null}
         {load.kind === "failed" ? <button type="button" className="codex-m-note" onClick={refresh}>{t("mobile.wiki.failed")}</button> : null}
         {load.kind === "none" ? <p className="codex-m-note">{t("rail.codex.wikiUnavailable")}</p> : null}
-        {load.kind === "ready" && load.pending > 0 ? (
-          <div className="codex-m-grp">
-            <button type="button" data-press="r2" className="codex-m-row is-two" onClick={openReview}>
-              <span className="codex-m-sg" aria-hidden="true" />
-              <span className="codex-m-tx">{t("mobile.wiki.review")}<small>{t("mobile.wiki.reviewCount", { count: load.pending })}</small></span>
-            </button>
-          </div>
-        ) : null}
         {load.kind === "ready" ? (
           <>
             <h2 className="codex-m-glab">{t("mobile.wiki.items")}</h2>

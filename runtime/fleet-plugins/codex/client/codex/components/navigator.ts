@@ -10,8 +10,6 @@ import type { CodexHealthResponse, SearchEntry, WikiIndexEntry } from "../api.js
 
 export type NavigatorRequest =
   | { kind: "entry"; id: string }
-  | { kind: "drydock"; patchId?: string }
-  | { kind: "conflicts"; id?: string }
   | { kind: "schema"; templateId?: string };
 
 export interface NavigatorController {
@@ -215,8 +213,6 @@ export function mountNavigatorInto(
   let healthPopoverElement: HTMLElement | null = null;
   let healthPopoverTrigger: HTMLButtonElement | null = null;
   let healthPopoverResizeObserver: ResizeObserver | null = null;
-  // 대기 수가 늘어난 순간에만 도착 표식을 켠다 — 줄어드는 변화(승인·반려)는 알림이 아니다.
-  let lastSeenPendingCount: number | null = null;
 
   function renderShell(): void {
     const t = consoleT();
@@ -239,10 +235,6 @@ export function mountNavigatorInto(
         />
       </div>
       <div class="codex-nav-quick-row">
-        <button class="codex-nav-quick" data-action="drydock" type="button">
-          ${escapeHtml(t("codex.nav.reviewQueue"))} <span class="badge" id="codex-nav-drydock-badge">0</span>
-        </button>
-        <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))} <span class="badge" id="codex-nav-conflict-badge" hidden>0</span></button>
         <div class="codex-nav-health" hidden></div>
       </div>
       <div class="codex-nav-list-header">
@@ -269,9 +261,7 @@ export function mountNavigatorInto(
   const navList = root.querySelector<HTMLElement>("#codex-nav-list")!;
   const tagToolbar = root.querySelector<HTMLElement>(".codex-nav-tag-filters")!;
   const eyebrow = root.querySelector<HTMLElement>("#codex-nav-eyebrow")!;
-  const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
   const activeFilterButton = root.querySelector<HTMLButtonElement>("[data-clear-tag]")!;
-  const conflictBadge = root.querySelector<HTMLElement>("#codex-nav-conflict-badge")!;
   const sortControls = root.querySelector<HTMLElement>(".codex-nav-sort")!;
   const healthStrip = root.querySelector<HTMLElement>(".codex-nav-health")!;
 
@@ -362,8 +352,6 @@ export function mountNavigatorInto(
       <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? "—"}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthWarnings"))}</span><strong>${drydock?.warningCount ?? "—"}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthInfos"))}</span><strong>${drydock?.infoCount ?? "—"}</strong></div>
-      <div><span>${escapeHtml(t("codex.nav.healthConflicts"))}</span><strong>${health.conflictCount}</strong></div>
-      <div><span>${escapeHtml(t("codex.nav.healthPending"))}</span><strong>${health.pendingCount}</strong></div>
       <div><span>${escapeHtml(t("codex.nav.healthWatch"))}</span><strong>${escapeHtml(
         state.liveState === "live"
           ? t("codex.nav.healthWatchLive")
@@ -389,9 +377,7 @@ export function mountNavigatorInto(
     const issueCount = drydock?.issueCount ?? 0;
     const logUnreadable = health?.logUnreadable === true;
     // 문장형 스트립은 좁은 폭에서 잘려 나갔다 — 항상 보이는 응축 칩으로 바꾸고
-    // 세부는 뷰포트 레이어가 담당한다. 충돌 수는 충돌 칩의 배지로 옮긴다.
-    conflictBadge.textContent = String(health?.conflictCount ?? 0);
-    conflictBadge.hidden = (health?.conflictCount ?? 0) === 0;
+    // 세부는 뷰포트 레이어가 담당한다.
     healthStrip.hidden = health === null;
     if (!health) {
       closeHealthPopover();
@@ -423,7 +409,7 @@ export function mountNavigatorInto(
     healthPopoverOpen = false;
     renderHealth();
     if (!viewedTheaterId) return;
-    void revalidateScopes(["queue"]).catch(() => {});
+    void revalidateScopes(["health"]).catch(() => {});
   }
 
   function optionKey(element: HTMLElement): string {
@@ -482,8 +468,6 @@ export function mountNavigatorInto(
       navList.innerHTML = catalog ? `
         <button class="codex-nav-entry" type="button" ${catalog.schema.exists ? 'data-schema-resource="workspace"' : 'disabled aria-disabled="true"'}><span class="t">${escapeHtml(t("codex.nav.workspaceSchema"))}</span><span class="meta">${catalog.schema.exists ? escapeHtml(catalog.schema.ref) : escapeHtml(t("codex.nav.unavailable"))}</span></button>
         ${catalog.templates.map((template) => `<button class="codex-nav-entry" type="button" data-template-id="${escapeHtml(template.id)}"><span class="t">${escapeHtml(template.id)}</span><span class="meta">${escapeHtml(template.ref)}</span></button>`).join("")}` : `<div class="codex-nav-empty">${escapeHtml(t("codex.nav.schemaUnavailable"))}</div>`;
-      drydockBadge.textContent = String(state.pendingPatchCount);
-      markQueueArrival(state.pendingPatchCount);
       return;
     }
 
@@ -511,9 +495,6 @@ export function mountNavigatorInto(
     root.querySelectorAll<HTMLElement>("[data-sort]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.sort === sortOrder));
     });
-    drydockBadge.textContent = String(state.pendingPatchCount);
-    drydockBadge.hidden = state.pendingPatchCount === 0;
-    markQueueArrival(state.pendingPatchCount);
 
     if (state.loading && state.index.length === 0) {
       navList.innerHTML = `<div class="codex-nav-loading" aria-live="polite">${escapeHtml(t("common.loading"))}</div>`;
@@ -539,22 +520,6 @@ export function mountNavigatorInto(
       return;
     }
     navList.innerHTML = renderGroupedEntries(merged, renderRow, t);
-  }
-
-  /**
-   * 도착 표식은 상태 채널(aurora)이 맡는다 — brass는 위치·포커스 전용이라는 계약이 있어
-   * "새로 왔다"를 brass로 칠하면 그 색이 두 가지를 말하게 된다.
-   */
-  function markQueueArrival(pendingCount: number): void {
-    const previous = lastSeenPendingCount;
-    lastSeenPendingCount = pendingCount;
-    // 줄어든 변화(승인·반려)는 도착이 아니다 — 그때는 표식을 끈다. 켜진 채로 두면
-    // 이미 처리된 소식이 계속 새것인 척한다.
-    if (previous === null || pendingCount <= previous) {
-      drydockBadge.removeAttribute("data-arrived");
-      return;
-    }
-    drydockBadge.setAttribute("data-arrived", "true");
   }
 
   function requestServerSearch(): void {
@@ -639,17 +604,6 @@ export function mountNavigatorInto(
     if (entry?.dataset.entryId) {
       selectEntry(entry.dataset.entryId);
       return;
-    }
-
-    const quickBtn = target.closest<HTMLElement>("[data-action]");
-    if (quickBtn?.dataset.action === "drydock") {
-      // 대기열을 연 순간 그 소식은 읽힌 것이다.
-      drydockBadge.removeAttribute("data-arrived");
-      options.onRequest({ kind: "drydock" });
-      return;
-    }
-    if (quickBtn?.dataset.action === "conflicts") {
-      options.onRequest({ kind: "conflicts" });
     }
   }
 
@@ -796,7 +750,6 @@ export function mountNavigatorInto(
       searchController = null;
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       searchInput.value = "";
-      lastSeenPendingCount = null;
       renderList(getState());
       loadHealth();
     },
@@ -828,20 +781,6 @@ export function mountNavigatorInto(
       if (schemaTab) schemaTab.textContent = t("codex.nav.schema");
       searchInput.placeholder = t("codex.nav.searchPlaceholder");
       searchInput.setAttribute("aria-label", t("codex.nav.searchAria"));
-      const drydockBtn = root.querySelector<HTMLElement>('[data-action="drydock"]');
-      if (drydockBtn) {
-        drydockBtn.replaceChildren(
-          document.createTextNode(`${t("codex.nav.reviewQueue")} `),
-          drydockBadge,
-        );
-      }
-      const conflictsBtn = root.querySelector<HTMLElement>('[data-action="conflicts"]');
-      if (conflictsBtn) {
-        conflictsBtn.replaceChildren(
-          document.createTextNode(`${t("codex.nav.conflicts")} `),
-          conflictBadge,
-        );
-      }
       renderHealth();
       sortControls.setAttribute("aria-label", t("codex.nav.sortAria"));
       const updatedSort = root.querySelector<HTMLElement>('[data-sort="updated"]');

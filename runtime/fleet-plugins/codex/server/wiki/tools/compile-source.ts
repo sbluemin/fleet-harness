@@ -5,8 +5,7 @@ import { briefingQuery } from "../briefing.js";
 import { mergeRawSourceRefs, normalizeComparableText, truncateSummary } from "../briefing.js";
 import { extractWikiLinks } from "../store.js";
 import { appendLog } from "../log.js";
-import { buildPatchSetId, writePatchSet } from "../patch.js";
-import { enqueuePatch } from "../patch.js";
+import { prepareEntry, withWikiWriteLock, writeEntry } from "../write.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_COMPILE_SOURCE_DESCRIPTION,
@@ -15,15 +14,15 @@ import {
   buildWikiCompileSourceSchema,
 } from "../prompts.js";
 import { assertNoUnsafeSecret } from "../store.js";
-import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
-import type { Patch, RawSourceEntry, WikiEntry } from "../types.js";
+import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, resolveWikiEntryPath, writeRawSourceEntry } from "../store.js";
+import type { RawSourceEntry, WikiEntry } from "../types.js";
 import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface WikiCompileSourceInput {
   source?: string;
   source_ref?: string;
   source_title?: string;
-  mode?: "preview" | "stage";
+  mode?: "preview" | "write";
   max_pages_touched?: number;
   update_index?: boolean;
   update_log?: boolean;
@@ -31,20 +30,14 @@ interface WikiCompileSourceInput {
 
 interface WikiCompileSourceOutput {
   ok: boolean;
-  patch_set_id: string;
-  patches: Array<{
-    patch_id: string;
-    op: "create_wiki" | "update_wiki";
-    target: string;
-    summary: string;
-  }>;
+  entries: Array<{ entry_id: string; op: "create_wiki" | "update_wiki"; target: string; summary: string; version?: number }>;
+  failed?: { target: string; error: string };
   related_entry_candidates: Array<{
     id: string;
     title: string;
     reason: "briefing" | "alias" | "tag" | "canonical_id" | "title" | "body";
     score: number;
   }>;
-  conflicts: unknown[];
   warnings: string[];
 }
 
@@ -52,7 +45,7 @@ interface NormalizedCompileSourceInput {
   source?: string;
   sourceRef?: string;
   sourceTitle?: string;
-  mode: "preview" | "stage";
+  mode: "preview" | "write";
   maxPagesTouched: number;
   updateIndex: boolean;
   updateLog: boolean;
@@ -113,8 +106,8 @@ export function buildCompileSourceToolConfig() {
       const now = new Date().toISOString();
       const paths = resolveToolMemoryPaths(ctx);
       const input = normalizeCompileSourceInput(params as WikiCompileSourceInput);
-      const output = input.mode === "stage"
-        ? await stageSourceCompile(input, paths, now)
+      const output = input.mode === "write"
+        ? await withWikiWriteLock(paths, () => writeSourceCompile(input, paths, now))
         : await compileSourcePreview(input, paths, now);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }],
@@ -130,88 +123,39 @@ async function compileSourcePreview(
   now: string,
 ): Promise<WikiCompileSourceOutput> {
   const resolvedSource = await resolveCompileSource(input, paths, now);
-  const patchSetId = buildPatchSetId(now, resolvedSource.rawSourceRef);
   const warnings = buildCompileWarnings(input, "preview");
   const proposals = await buildCompileProposals(input, paths, now, resolvedSource);
-
   return {
     ok: true,
-    patch_set_id: patchSetId,
-    patches: proposals.map((proposal, index) => ({
-      patch_id: `preview:${patchSetId}:${index + 1}`,
-      op: proposal.op,
-      target: proposal.target,
-      summary: proposal.summary,
-    })),
-    related_entry_candidates: await discoverRelatedEntryCandidates(paths, resolvedSource.sourceContent, resolvedSource.sourceTitle),
-    conflicts: [],
-    warnings,
+    entries: proposals.map(p => ({ entry_id: p.entry.id, op: p.op, target: p.target, summary: p.summary })),
+    related_entry_candidates: await discoverRelatedEntryCandidates(paths, resolvedSource.sourceContent, resolvedSource.sourceTitle), warnings,
   };
 }
 
-async function stageSourceCompile(
-  input: NormalizedCompileSourceInput,
-  paths: ReturnType<typeof resolveMemoryPaths>,
-  now: string,
-): Promise<WikiCompileSourceOutput> {
-  const resolvedSource = await resolveCompileSource(input, paths, now);
-  if (resolvedSource.wroteRawSource && input.updateLog) {
-    await appendLog(paths, "raw source added", {
-      id: `${resolvedSource.sourcePageId}-source`,
-      raw_source_ref: resolvedSource.rawSourceRef,
-      source_type: "inline",
-      tag_count: 0,
-      title: resolvedSource.sourceTitle ?? null,
-    });
+async function writeSourceCompile(input: NormalizedCompileSourceInput, paths: ReturnType<typeof resolveMemoryPaths>, now: string): Promise<WikiCompileSourceOutput> {
+  const source = await resolveCompileSource(input, paths, now);
+  const proposals = await buildCompileProposals(input, paths, now, source);
+  const options = { actor: "tool:wiki_compile_source", tool: "wiki_compile_source" };
+  // Validate the complete plan before any source or entry mutation.
+  for (const p of proposals) await prepareEntry(p.entry, p.target, paths, { ...options, op: p.op, base_hash: p.baseHash, base_version: p.baseVersion });
+  if (input.source !== undefined) await writeRawSourceEntry({ id: `${source.sourcePageId}-source`, created: now, sourceType: "inline", title: input.sourceTitle, tags: [], content: input.source } satisfies RawSourceEntry, paths);
+  const result: WikiCompileSourceOutput = { ok: true, entries: [], related_entry_candidates: await discoverRelatedEntryCandidates(paths, source.sourceContent, source.sourceTitle), warnings: buildCompileWarnings(input, "write") };
+  for (const p of proposals) {
+    try {
+      const written = await writeEntry(p.entry, p.target, paths, { ...options, op: p.op, base_hash: p.baseHash, base_version: p.baseVersion });
+      result.entries.push({ entry_id: p.entry.id, op: p.op, target: p.target, summary: p.summary, version: written.version });
+    } catch (error) {
+      result.ok = false;
+      result.failed = { target: p.target, error: error instanceof Error ? error.message : String(error) };
+      break;
+    }
   }
-
-  const warnings = buildCompileWarnings(input, "stage");
-  const proposals = await buildCompileProposals(input, paths, now, resolvedSource);
-  const patchSetId = buildPatchSetId(now, resolvedSource.rawSourceRef);
-  const patchIds: string[] = [];
-
-  for (const proposal of proposals) {
-    const patch = buildProposalPatch(proposal, now);
-    const patchId = await enqueuePatch(patch, paths, {
-      baseCheckedAt: proposal.baseHash || proposal.baseVersion !== undefined ? now : undefined,
-      baseHash: proposal.baseHash,
-      baseVersion: proposal.baseVersion,
-      patch_set_id: patchSetId,
-      rawSourceRef: resolvedSource.rawSourceRef,
-    });
-    patchIds.push(patchId);
-  }
-
-  await writePatchSet(paths, {
-    id: patchSetId,
-    sourceRef: resolvedSource.rawSourceRef,
-    createdAt: now,
-    patchIds,
-  });
-  if (input.updateLog) {
-    await appendLog(paths, "patch set staged", {
-      patch_count: patchIds.length,
-      patch_set_id: patchSetId,
-      source_ref: resolvedSource.rawSourceRef,
-    });
-  }
-
-  return {
-    ok: true,
-    patch_set_id: patchSetId,
-    patches: proposals.map((proposal, index) => ({
-      patch_id: patchIds[index]!,
-      op: proposal.op,
-      target: proposal.target,
-      summary: proposal.summary,
-    })),
-    related_entry_candidates: await discoverRelatedEntryCandidates(paths, resolvedSource.sourceContent, resolvedSource.sourceTitle),
-    conflicts: [],
-    warnings,
-  };
+  await appendLog(paths, "source compiled", { actor: options.actor, tool: options.tool, entry_id: null, target: null, version: null, previous_version: null, previous_hash: null, hash: null, history_ref: null, raw_source_ref: source.rawSourceRef, reason: null, changed_fields: null, entry_count: result.entries.length, ok: result.ok });
+  return result;
 }
 
 function normalizeCompileSourceInput(params: WikiCompileSourceInput): NormalizedCompileSourceInput {
+  if ((params.mode as string) === "stage") throw new Error("mode=stage was removed; use mode=write");
   const source = typeof params.source === "string" ? params.source : undefined;
   const sourceRef = typeof params.source_ref === "string" ? params.source_ref.trim() : undefined;
   const sourceTitle = typeof params.source_title === "string" ? params.source_title.trim() : undefined;
@@ -228,7 +172,7 @@ function normalizeCompileSourceInput(params: WikiCompileSourceInput): Normalized
     source,
     sourceRef,
     sourceTitle: sourceTitle || undefined,
-    mode: params.mode === "stage" ? "stage" : "preview",
+    mode: params.mode === "write" ? "write" : "preview",
     maxPagesTouched: normalizeMaxPagesTouched(params.max_pages_touched),
     updateIndex: params.update_index === true,
     updateLog: params.update_log !== false,
@@ -263,21 +207,7 @@ async function resolveCompileSource(
     };
   }
 
-  const rawSourceRef = await writeRawSourceEntry({
-    id: `${sourcePageId}-source`,
-    created: now,
-    sourceType: "inline",
-    title: input.sourceTitle,
-    tags: [],
-    content: input.source ?? "",
-  } satisfies RawSourceEntry, paths);
-  return {
-    rawSourceRef,
-    sourceContent: input.source ?? "",
-    sourceTitle: input.sourceTitle,
-    sourcePageId,
-    wroteRawSource: true,
-  };
+  return { rawSourceRef: `raw/${now.slice(0, 10)}-${sourcePageId}-source-${computeContentHash(input.source ?? "")}.md`, sourceContent: input.source ?? "", sourceTitle: input.sourceTitle, sourcePageId, wroteRawSource: false };
 }
 
 async function buildCompileProposals(
@@ -315,7 +245,7 @@ async function buildCompileProposals(
 
   const relatedCandidates = await discoverRelatedEntryCandidates(paths, resolvedSource.sourceContent, resolvedSource.sourceTitle);
   const updateCandidates = relatedCandidates
-    .filter((candidate) => candidate.reason === "canonical_id" || candidate.reason === "alias" || candidate.reason === "title")
+    .filter((candidate) => candidate.id !== sourceEntry.id && (candidate.reason === "canonical_id" || candidate.reason === "alias" || candidate.reason === "title"))
     .slice(0, Math.max(0, input.maxPagesTouched - 1));
 
   for (const candidate of updateCandidates) {
@@ -323,7 +253,7 @@ async function buildCompileProposals(
     if (!existing) continue;
     proposals.push({
       op: "update_wiki",
-      target: `wiki/${existing.id}.md`,
+      target: (await resolveWikiEntryPath(existing.id, paths))!,
       summary: truncateSummary(`Compile note for ${existing.title}`),
       entry: {
         ...existing,
@@ -333,7 +263,7 @@ async function buildCompileProposals(
         rawSourceRefs: mergeRawSourceRefs(existing.rawSourceRefs, existing.rawSourceRef, { ref: resolvedSource.rawSourceRef }),
         body: appendSourceCompileNote(existing.body, resolvedSource.sourcePageId, resolvedSource.rawSourceRef),
       },
-      baseHash: computeContentHash(await readPatchFile(path.join(paths.wikiDir, `${existing.id}.md`))),
+      baseHash: computeContentHash(await readPatchFile(path.join(paths.root, (await resolveWikiEntryPath(existing.id, paths))!))),
       baseVersion: existing.version,
     });
   }
@@ -385,27 +315,15 @@ async function discoverRelatedEntryCandidates(
   return [...candidates.values()].sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
 }
 
-function buildProposalPatch(proposal: CompileSourceProposal, createdAt: string): Patch {
-  return {
-    frontmatter: {
-      op: proposal.op,
-      target: proposal.target,
-      summary: proposal.summary,
-      proposer: "tool:wiki_compile_source",
-      created: createdAt,
-    },
-    body: JSON.stringify(proposal.entry),
-  };
-}
-
-function buildCompileWarnings(input: NormalizedCompileSourceInput, mode: "preview" | "stage"): string[] {
+function buildCompileWarnings(input: NormalizedCompileSourceInput, mode: "preview" | "write"): string[] {
   const warnings: string[] = [];
   if (mode === "preview") {
-    warnings.push("preview mode does not persist raw source, queue items, logs, or patch set metadata");
+    warnings.push("preview mode does not persist sources, entries, or logs");
   }
   if (input.updateIndex) {
     warnings.push("index is generated; update_index ignored");
   }
+  if (!input.updateLog) warnings.push("audit logging is mandatory; update_log=false ignored");
   return warnings;
 }
 

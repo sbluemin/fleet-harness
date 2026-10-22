@@ -16,22 +16,13 @@ let server: CodexTestServer | null = null;
 let baseUrl = "";
 let tempDir = "";
 
-// 테스트 픽스처용 유효한 patchId
-const VALID_PATCH_ID = "2026-05-04T03-15-55-143Z-51756575";
-
 describe("security routes", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-console-codex-routes-"));
     const wikiDir = path.join(tempDir, ".fleet", "knowledge", "wiki");
     const rawDir = path.join(tempDir, ".fleet", "knowledge", "raw");
-    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
-    const archiveDir = path.join(tempDir, ".fleet", "knowledge", "archive");
-    const conflictsDir = path.join(tempDir, ".fleet", "knowledge", "conflicts");
     await mkdir(wikiDir, { recursive: true });
     await mkdir(rawDir, { recursive: true });
-    await mkdir(path.join(queueDir, VALID_PATCH_ID), { recursive: true });
-    await mkdir(path.join(archiveDir, VALID_PATCH_ID), { recursive: true });
-    await mkdir(path.join(conflictsDir, "conflict-alpha"), { recursive: true });
     await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body", "raw/sample.md");
     await writeEntry(
       wikiDir,
@@ -40,18 +31,6 @@ describe("security routes", () => {
       `${"introductory context ".repeat(12)}Drydock approval keeps proposed changes behind a human review gate.`,
     );
     await writeFile(path.join(rawDir, "sample.md"), "raw content body", "utf8");
-    await writeFile(path.join(conflictsDir, "conflict-alpha", "meta.json"), JSON.stringify({
-      id: "conflict-alpha",
-      status: "unresolved",
-      createdAt: "2026-05-05T00:00:00.000Z",
-      wikiId: "valid-id",
-      target: "wiki/valid-id.md",
-    }), "utf8");
-    await writeFile(path.join(conflictsDir, "conflict-alpha", "proposed.md"), "# proposed", "utf8");
-    // pending 패치 픽스처
-    await writePatch(queueDir, VALID_PATCH_ID, "valid-id", "테스트 요약", "pending");
-    // archive 패치 픽스처
-    await writePatch(archiveDir, VALID_PATCH_ID, "valid-id", "테스트 요약", "accepted");
     const lockPath = path.join(tempDir, "server.lock");
     server = await startCodexTestServer({ cwd: tempDir, lockPath, port: 0, host: "127.0.0.1" });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
@@ -82,16 +61,16 @@ describe("loopback-only origin check", () => {
   let loopbackTempDir = "";
   let loopbackPort = 0;
 
-  function postWithOrigin(origin: string | undefined, patchId: string): Promise<{ statusCode: number }> {
+  function postWithOrigin(origin: string | undefined, entryId: string): Promise<{ statusCode: number }> {
     return new Promise((resolve, reject) => {
-      const requestBody = JSON.stringify({ action: "approve" });
+      const requestBody = JSON.stringify({ expectedHash: "test" });
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "Content-Length": String(Buffer.byteLength(requestBody)),
       };
       if (origin !== undefined) headers["Origin"] = origin;
       const req = http.request(
-        { hostname: "127.0.0.1", port: loopbackPort, path: codexPath(`/api/drydock/${patchId}/decision`), method: "POST", headers },
+        { hostname: "127.0.0.1", port: loopbackPort, path: codexPath(`/api/entry/${entryId}/delete`), method: "POST", headers },
         (res) => {
           let body = "";
           res.on("data", (chunk) => { body += chunk; });
@@ -123,18 +102,14 @@ describe("loopback-only origin check", () => {
   });
 
   it("allows POST with exact 127.0.0.1 origin", async () => {
-    const queueDir = path.join(loopbackTempDir, ".fleet", "knowledge", "queue");
-    const pid = "2026-05-06T10-02-00-000Z-00cafe03";
-    await mkdir(path.join(queueDir, pid), { recursive: true });
-    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
-    const { statusCode } = await postWithOrigin(`http://127.0.0.1:${loopbackPort}`, pid);
+    const { statusCode } = await postWithOrigin(`http://127.0.0.1:${loopbackPort}`, "wc-entry");
     expect(statusCode).not.toBe(403);
   });
 
-  it("rejects drydock writes the listener did not admit, before Origin validation", async () => {
+  it("rejects entry writes the listener did not admit, before Origin validation", async () => {
     const response = createResponseRecorder();
     await handleApiRequest(
-      createRouteRequest(`/api/drydock/${VALID_PATCH_ID}/decision`, "POST", "192.168.1.10"),
+      createRouteRequest(`/api/entry/valid-id/delete`, "POST", "192.168.1.10"),
       response.response,
       createMinimalRouteContext({ admitted: false }),
     );
@@ -242,9 +217,7 @@ function createMinimalRouteContext(
       wikiDir: "",
       rawDir: "",
       schemaDir: "",
-      queueDir: "",
-      archiveDir: "",
-      conflictsDir: "",
+      historyDir: "",
       indexFile: "",
     },
     port: 3737,
@@ -281,42 +254,4 @@ function createRouteRequest(url: string, method: string, remoteAddress: string):
     socket: { remoteAddress },
     url,
   } as Parameters<typeof handleApiRequest>[0];
-}
-
-async function writePatch(
-  baseDir: string,
-  patchId: string,
-  targetId: string,
-  summary: string,
-  status: "pending" | "accepted" | "rejected",
-): Promise<void> {
-  const dir = path.join(baseDir, patchId);
-  await mkdir(dir, { recursive: true });
-  // WikiEntry body JSON
-  const wikiEntry = JSON.stringify({
-    id: targetId,
-    title: summary,
-    tags: [],
-    created: "2026-05-04T00:00:00.000Z",
-    updated: "2026-05-04T00:00:00.000Z",
-    version: 1,
-    body: "테스트 본문",
-  });
-  const patchMd = [
-    "---",
-    `op: "create_wiki"`,
-    `target: "wiki/${targetId}.md"`,
-    `summary: "${summary}"`,
-    `proposer: "test"`,
-    `created: "2026-05-04T00:00:00.000Z"`,
-    "---",
-    wikiEntry,
-  ].join("\n");
-  const metaJson = JSON.stringify({
-    id: patchId,
-    status,
-    createdAt: "2026-05-04T00:00:00.000Z",
-  });
-  await writeFile(path.join(dir, "patch.md"), patchMd, "utf8");
-  await writeFile(path.join(dir, "meta.json"), metaJson, "utf8");
 }

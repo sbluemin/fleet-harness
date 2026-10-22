@@ -88,59 +88,6 @@ export interface ClaimSet {
   claims: Claim[];
 }
 
-export type PatchOp = "create_wiki" | "update_wiki" | "delete_wiki";
-export type PatchStatus = "pending" | "accepted" | "rejected";
-export type WikiIngestMode = "auto" | "create" | "update";
-export type DuplicatePolicy = "reject" | "queue_conflict" | "append_evidence";
-export type ConflictReason =
-  | "create_target_exists"
-  | "update_target_missing"
-  | "delete_target_missing"
-  | "base_version_mismatch"
-  | "base_hash_mismatch"
-  | "raw_source_contradiction"
-  | "duplicate_id"
-  | "duplicate_title"
-  | "duplicate_alias"
-  | "patch_body_target_mismatch"
-  | "source_provenance_conflict";
-export type ConflictStatus = "unresolved" | "resolved";
-
-export interface PatchFrontmatter {
-  op: PatchOp;
-  target: string;
-  summary: string;
-  proposer: string;
-  created: string;
-}
-
-export interface Patch {
-  frontmatter: PatchFrontmatter;
-  body: string;
-}
-
-export interface PatchMeta {
-  id: string;
-  status: PatchStatus;
-  createdAt: string;
-  decidedAt?: string;
-  reason?: string;
-  rawSourceRef?: string;
-  conflictId?: string;
-  warnings?: string[];
-  patch_set_id?: string;
-  baseVersion?: number;
-  baseHash?: string;
-  baseCheckedAt?: string;
-  /** queue/<id>/base.md와 보관 이동 수명을 공유하는 실제 기준본의 해시. */
-  baseSnapshotHash?: string;
-  editedAt?: string;
-  editCount?: number;
-  lastEditedBy?: string;
-  lastEditHash?: string;
-  previousPatchHash?: string;
-}
-
 export interface SchemaCatalogTemplate {
   id: string;
   ref: string;
@@ -157,60 +104,12 @@ export interface SchemaDocument {
   content: string;
 }
 
-export interface PatchSet {
-  id: string;
-  sourceRef: string;
-  createdAt: string;
-  patchIds: string[];
-}
-
-export interface ConflictMeta {
-  id: string;
-  status: ConflictStatus;
-  reason: ConflictReason;
-  createdAt: string;
-  resolvedAt?: string;
-  resolution?: "queued" | "rejected" | "superseded" | "manual";
-  note?: string;
-  target: string;
-  wikiId: string;
-  title?: string;
-  proposer?: string;
-  rawSourceRef?: string;
-  patchId?: string;
-  currentVersion?: number;
-  proposedVersion?: number;
-  baseVersion?: number;
-  baseHash?: string;
-  currentHash?: string;
-  warnings?: string[];
-}
-
-export interface ConflictRecord {
-  meta: ConflictMeta;
-  current?: string;
-  proposed: string;
-  rawSource?: string;
-}
-
-export interface IngestResult {
-  ok: boolean;
-  mode: WikiIngestMode;
-  op?: PatchOp;
-  patch_id?: string;
-  conflict_id?: string;
-  raw_source_ref?: string;
-  warnings: string[];
-}
-
 export interface MemoryPaths {
   root: string;
   rawDir: string;
   wikiDir: string;
   schemaDir: string;
-  queueDir: string;
-  archiveDir: string;
-  conflictsDir: string;
+  historyDir: string;
   indexFile: string;
 }
 
@@ -224,7 +123,16 @@ export interface WorkspaceSchema {
   templates?: WorkspaceTemplate[];
 }
 
+export type WikiIngestMode = "auto" | "create" | "update";
+export type DuplicatePolicy = "reject" | "append_evidence";
+
 export type WikiLogEvent =
+  | "entry created"
+  | "entry updated"
+  | "entry deleted"
+  | "entry restored"
+  | "source compiled"
+  | "schema default upgraded"
   | "raw source added"
   | "patch enqueued"
   | "patch edited"
@@ -360,7 +268,7 @@ export interface DryDockIssue {
     | "template_compliance"
     | "schema_agents_missing"
     | "unresolved_conflict"
-    | "orphan_patch_set_member"
+    | "legacy_review_data"
     | "claim_orphan"
     | "malformed_claim_sidecar"
     | "orphan_page"

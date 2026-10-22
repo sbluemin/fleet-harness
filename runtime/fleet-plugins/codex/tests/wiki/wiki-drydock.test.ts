@@ -3,11 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 
-import { createConflict } from "../../server/wiki/conflicts.js";
-import { buildPatchSetId, writePatchSet } from "../../server/wiki/patch.js";
 import { runDryDock } from "../../server/wiki/drydock.js";
-import { PATCH_FILENAME } from "../../server/wiki/patch.js";
-import { enqueuePatch, parsePatch } from "../../server/wiki/patch.js";
 import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, resolveMemoryPaths } from "../../server/wiki/paths.js";
 import { WORKSPACE_SCHEMA_AGENTS_FILENAME, WORKSPACE_SCHEMA_FILENAME } from "../../server/wiki/schema.js";
 import { rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";

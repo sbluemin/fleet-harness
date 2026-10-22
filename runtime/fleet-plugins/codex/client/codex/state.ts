@@ -1,7 +1,7 @@
-import { fetchDrydock, fetchHealth, fetchSchemaCatalog, fetchSearch } from "./api.js";
+import { fetchHealth, fetchSchemaCatalog, fetchSearch } from "./api.js";
 import { reconcileReaderSession } from "../reader-session.js";
 import { lastResolvedCodexWorkspace } from "../workspace-store.js";
-import type { CodexHealthResponse, ConflictListItem, SchemaCatalogResponse, SearchEntry } from "./api.js";
+import type { CodexHealthResponse, SchemaCatalogResponse, SearchEntry } from "./api.js";
 import type { CodexKnowledgeScope } from "../../server/codex/contracts.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -14,8 +14,6 @@ export type CodexLiveState = "live" | "polling" | "unknown";
 
 export interface AppState {
   index: SearchEntry[];
-  conflicts: ConflictListItem[];
-  pendingPatchCount: number;
   schemaCatalog: SchemaCatalogResponse | null;
   currentWorkspaceId: string | null;
   loading: boolean;
@@ -40,11 +38,10 @@ let requestSeq = 0;
 /**
  * 상태 조각마다 마지막으로 반영한 요청 번호. 무효화를 요청 단위가 아니라 조각 단위로 두는
  * 이유는, 서로 다른 범위의 재검증이 겹칠 때 한쪽이 다른 쪽을 통째로 버리면 안 되기 때문이다 —
- * 스키마를 다시 읽는 요청은 대기열을 가져오지도 않았으므로 대기열 결과를 무효로 만들 수 없다.
+ * 스키마를 다시 읽는 요청이 항목 결과를 무효로 만들 수 없다.
  */
-const committedSeq: Record<"index" | "queue" | "schema" | "health", number> = {
+const committedSeq: Record<"index" | "schema" | "health", number> = {
   index: 0,
-  queue: 0,
   schema: 0,
   health: 0,
 };
@@ -55,8 +52,6 @@ let loadEpoch = 0;
 
 const state: AppState = {
   index: [],
-  conflicts: [],
-  pendingPatchCount: 0,
   schemaCatalog: null,
   currentWorkspaceId: null,
   loading: false,
@@ -101,16 +96,14 @@ export async function loadInitialData(): Promise<void> {
   const myLoad = ++loadEpoch;
   setState({ loading: true, error: null });
   try {
-    const [searchResult, drydockList, schemaCatalog, health] = await Promise.all([
+    const [searchResult, schemaCatalog, health] = await Promise.all([
       fetchSearch(theaterId),
-      fetchDrydock(theaterId, "pending").catch(() => null),
       fetchSchemaCatalog(theaterId).catch(() => null),
       fetchHealth(theaterId).catch(() => null),
     ]);
     if (state.currentWorkspaceId !== theaterId || workspaceEpoch !== capturedEpoch) return;
     const next: Partial<AppState> = { loading: myLoad === loadEpoch ? false : state.loading };
     if (commitSlot("index", seq)) next.index = searchResult.entries;
-    if (commitSlot("queue", seq)) next.pendingPatchCount = drydockList?.pendingCount ?? 0;
     if (commitSlot("schema", seq)) next.schemaCatalog = schemaCatalog;
     if (commitSlot("health", seq)) next.health = health;
     next.lastCheckedAt = Date.now();
@@ -128,8 +121,8 @@ export async function loadInitialData(): Promise<void> {
  * 변한 범위만 다시 읽는다. 이벤트가 실어 온 것은 힌트일 뿐이므로 사실은 언제나 정식 API에서
  * 가져온다 — 이벤트 순서가 뒤바뀌거나 하나 유실돼도 화면은 서버를 따라간다.
  *
- * 상태 칩(health)은 어느 범위가 변하든 함께 다시 읽는다. 대기 수·충돌 수·drydock 결과가
- * 모두 그 한 칩에 모여 있어서, 범위별로 나누면 칩만 옛 숫자로 남는다.
+ * 상태 칩(health)은 어느 범위가 변하든 함께 다시 읽는다. drydock 결과와 감시 상태를
+ * 함께 보여 주므로, 범위별로 나누면 칩만 옛 상태로 남는다.
  */
 export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): Promise<void> {
   const theaterId = state.currentWorkspaceId;
@@ -137,12 +130,10 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
   const seq = ++requestSeq;
   const wanted = new Set(scopes);
   const needsIndex = wanted.has("wiki") || wanted.has("index");
-  const needsQueue = wanted.has("queue");
   const needsSchema = wanted.has("schema");
 
-  const [searchResult, drydockList, schemaCatalog, health] = await Promise.all([
+  const [searchResult, schemaCatalog, health] = await Promise.all([
     needsIndex ? fetchSearch(theaterId).catch(() => null) : Promise.resolve(null),
-    needsQueue ? fetchDrydock(theaterId, "pending").catch(() => null) : Promise.resolve(null),
     needsSchema ? fetchSchemaCatalog(theaterId).catch(() => null) : Promise.resolve(null),
     fetchHealth(theaterId).catch(() => null),
   ]);
@@ -154,10 +145,6 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
     next.index = searchResult.entries;
     // 재검증이 성공했다면 이전 로드 실패는 더 이상 사실이 아니다.
     next.error = null;
-    committed = true;
-  }
-  if (drydockList && commitSlot("queue", seq)) {
-    next.pendingPatchCount = drydockList.pendingCount;
     committed = true;
   }
   if (schemaCatalog && commitSlot("schema", seq)) {
@@ -176,7 +163,7 @@ export async function revalidateScopes(scopes: readonly CodexKnowledgeScope[]): 
 
 /** 전 범위 재검증 — 창 복귀·감시 강등 폴링처럼 "무엇이 변했는지 모를 때" 쓴다. */
 export async function revalidateAll(): Promise<void> {
-  await revalidateScopes(["wiki", "queue", "schema", "index", "conflicts"]);
+  await revalidateScopes(["wiki", "schema", "index"]);
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

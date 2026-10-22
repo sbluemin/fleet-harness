@@ -6,6 +6,7 @@ import type { MemoryPaths, WikiLogEntry, WikiLogEvent, WikiLogPayload } from "./
 const LOG_HEADER_PATTERN = /^## (.+) — (.+)$/;
 const LOG_BULLET_PATTERN = /^- ([a-z0-9_]+): `([\s\S]*)`$/;
 const LOG_EVENTS: WikiLogEvent[] = [
+  "entry created", "entry updated", "entry deleted", "entry restored", "source compiled", "schema default upgraded",
   "raw source added",
   "patch enqueued",
   "patch edited",

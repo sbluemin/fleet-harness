@@ -11,8 +11,7 @@ import { buildCompileSourceToolConfig } from "../server/wiki/index.js";
 import { buildDryDockToolConfig } from "../server/wiki/index.js";
 import { buildIngestToolConfig } from "../server/wiki/index.js";
 import { buildOrientToolConfig } from "../server/wiki/index.js";
-import { buildPatchEditToolConfig } from "../server/wiki/index.js";
-import { buildPatchQueueToolConfig } from "../server/wiki/index.js";
+import { buildEditToolConfig } from "../server/wiki/index.js";
 import { buildQueryToolConfig } from "../server/wiki/index.js";
 import { buildReadToolConfig } from "../server/wiki/index.js";
 import { buildResolveToolConfig } from "../server/wiki/index.js";
@@ -33,7 +32,7 @@ describe("Wiki agent specs", () => {
     const paths = createMemoryPaths(path.join(root, "knowledge"));
     const expectedParameters = [
       buildBriefingToolConfig(), buildDryDockToolConfig(), buildIngestToolConfig(), buildOrientToolConfig(),
-      buildPatchEditToolConfig(), buildPatchQueueToolConfig(), buildCompileSourceToolConfig(), buildQueryToolConfig(),
+      buildEditToolConfig(), buildCompileSourceToolConfig(), buildQueryToolConfig(),
       buildReadToolConfig(), buildResolveToolConfig(), buildSchemaListToolConfig(), buildSchemaReadToolConfig(), buildSchemaCreateToolConfig(),
     ].map((config) => config.parameters);
     let calls = 0;
@@ -55,8 +54,7 @@ describe("Wiki agent specs", () => {
       await invoke("wiki_drydock", {});
       const ingest = await invoke("wiki_ingest", { id: "entry", title: "Entry", body: BODY, tags: [], source: BODY });
       await invoke("wiki_orient", {});
-      await invoke("wiki_patch_edit", { patch_id: ingest.patch_id, title: "Edited" });
-      await invoke("wiki_patch_queue", { action: "list" });
+      await invoke("wiki_edit", { entry_id: ingest.entry_id, action: "history" });
       await invoke("wiki_compile_source", { source: BODY, mode: "preview" });
       await invoke("wiki_query", { question: "What is entry?" });
       await invoke("wiki_read", { ids: ["entry"] });

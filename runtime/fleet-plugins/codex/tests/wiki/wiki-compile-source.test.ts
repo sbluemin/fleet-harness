@@ -3,12 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { readPatchSet } from "../../server/wiki/patch.js";
-import { showQueue } from "../../server/wiki/patch.js";
 import { resolveMemoryPaths } from "../../server/wiki/paths.js";
-import { pathExists, readJsonFile, writeWikiEntry } from "../../server/wiki/store.js";
+import { pathExists, readWikiEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildCompileSourceToolConfig } from "../../server/wiki/tools/compile-source.js";
-import type { PatchMeta, WikiEntry } from "../../server/wiki/types.js";
+import type { WikiEntry } from "../../server/wiki/types.js";
 
 const cleanupPaths: string[] = [];
 
@@ -28,22 +26,20 @@ describe("wiki compile source", () => {
     }, undefined, undefined, { cwd: root } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       ok: boolean;
-      patch_set_id: string;
-      patches: Array<{ patch_id: string; target: string }>;
+      entries: Array<{ entry_id: string; target: string; version?: number }>;
       related_entry_candidates: Array<{ reason: string }>;
       warnings: string[];
     };
 
     expect(payload.ok).toBe(true);
-    expect(payload.patch_set_id.length).toBeGreaterThan(0);
-    expect(payload.patches[0]?.patch_id).toMatch(/^preview:/);
-    expect(payload.patches[0]?.target).toBe("wiki/sources/alpha-source.md");
+    expect(payload.entries[0]?.version).toBeUndefined();
+    expect(payload.entries[0]?.target).toBe("wiki/sources/alpha-source.md");
     expect(Array.isArray(payload.related_entry_candidates)).toBe(true);
-    expect(payload.warnings).toContain("preview mode does not persist raw source, queue items, logs, or patch set metadata");
+    expect(payload.warnings).toContain("preview mode does not persist sources, entries, or logs");
     expect(await pathExists(path.join(root, ".fleet/knowledge"))).toBe(false);
   });
 
-  it("stages a patch set with a source page and deterministic related update patches", async () => {
+  it("writes a source page and deterministic related entry updates", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
     const tool = buildCompileSourceToolConfig();
@@ -63,43 +59,31 @@ describe("wiki compile source", () => {
     const result = await tool.execute("tool-call", {
       source: "Alpha source context with [[wiki:alpha]] and stable product notes.",
       source_title: "Alpha Source",
-      mode: "stage",
+      mode: "write",
       max_pages_touched: 3,
     }, undefined, undefined, { cwd: root } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       ok: boolean;
-      patch_set_id: string;
-      patches: Array<{ patch_id: string; target: string }>;
+      entries: Array<{ entry_id: string; target: string; version?: number }>;
       related_entry_candidates: Array<{ id: string }>;
     };
-    const patchSet = await readPatchSet(paths, payload.patch_set_id);
-    const sourceMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[0]!.patch_id, "meta.json"));
-    const sourcePatch = await showQueue(payload.patches[0]!.patch_id, paths);
-    const sourceEntry = JSON.parse(sourcePatch.patch.body) as WikiEntry;
-    const targetMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[1]!.patch_id, "meta.json"));
-    const targetPatch = await showQueue(payload.patches[1]!.patch_id, paths);
-    const targetEntry = JSON.parse(targetPatch.patch.body) as WikiEntry;
+    const sourceEntry = (await readWikiEntry(payload.entries[0]!.entry_id, paths))!;
+    const targetEntry = (await readWikiEntry(payload.entries[1]!.entry_id, paths))!;
     const logContent = await readFile(path.join(paths.root, "log.md"), "utf8");
 
     expect(payload.ok).toBe(true);
-    expect(payload.patches).toHaveLength(2);
-    expect(payload.patches.map((item) => item.target)).toEqual(expect.arrayContaining([
+    expect(payload.entries).toHaveLength(2);
+    expect(payload.entries.map((item) => item.target)).toEqual(expect.arrayContaining([
       "wiki/sources/alpha-source.md",
       "wiki/alpha.md",
     ]));
-    expect(patchSet.patchIds).toEqual(payload.patches.map((item) => item.patch_id));
-    expect(sourceMeta.patch_set_id).toBe(payload.patch_set_id);
     expect(sourceEntry.templateId).toBeUndefined();
     expect(sourceEntry.body).toContain("## Overview");
     expect(sourceEntry.body).toContain("## Related");
-    expect(targetMeta.patch_set_id).toBe(payload.patch_set_id);
-    expect(targetMeta.baseVersion).toBe(1);
-    expect(targetMeta.baseHash).toBeDefined();
-    expect(sourceMeta.baseVersion).toBeUndefined();
     expect(targetEntry.rawSourceRef).not.toBe("raw/old-alpha.md");
     expect(targetEntry.rawSourceRefs?.map((item) => item.ref)).toEqual(["raw/old-alpha.md", targetEntry.rawSourceRef]);
     expect(payload.related_entry_candidates[0]?.id).toBe("alpha");
-    expect(logContent).toContain("— patch set staged");
+    expect(logContent).toContain("— source compiled");
   });
 });
 

@@ -168,8 +168,6 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
     mountNavigatorInto(node, workspaceId);
     setOnRequestOpenReader((r) => {
       if (r.kind === "entry") openCodexReader({ kind: "entry", entryId: r.id });
-      else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
-      else if (r.kind === "conflicts") openCodexReader({ kind: "conflicts", id: r.id });
       else if (r.kind === "schema") openCodexReader({ kind: "schema", templateId: r.templateId });
       // 덱이 열려 있는 동안의 카탈로그 선택은 덱 안에서 문서를 교체한다 —
       // openCodexReader가 expanded를 접으므로 즉시 되살린다(오버레이 콜백과 동일 문법).

@@ -1,36 +1,53 @@
 # Fleet Wiki 구현 참조
 
-Wiki 도구 동작·저장 형식·스키마를 변경할 때 해당 절을 읽는다. 승인·노출 경계는 이 디렉터리의 `CLAUDE.md`가 소유한다.
+Wiki 도구 동작·저장 형식·스키마를 변경할 때 해당 절을 읽는다. 쓰기·노출 경계는 이 디렉터리의 `CLAUDE.md`가 소유한다.
 
 ## Tools
 
-- `wiki_briefing` — Targeted wiki entry lookup and context pack generation. `enhanced=true` opt-in adds alias/type/status/freshness boost, snippet around match, and graph boost via canonical link/backlink count (inline BM25-style). Default `enhanced=false` keeps deterministic substring ranking.
-- `wiki_drydock` — Deterministic lint gate covering frontmatter, links, queue integrity, safety, schema health, conflicts, claim sidecars, and semantic issues (orphan/stale/deprecated/superseded/duplicate-alias/contradiction/duplicate-frontmatter). Accepts optional `fix` parameter (default dry-run, opt-in auto-cleanup).
-- `wiki_ingest` — Captures immutable raw source and stages a patch. `mode` parameter (`auto` / `create` / `update`) plus optional `base_version`, `base_hash`, `duplicate_policy`. `duplicate_policy="append_evidence"` enqueues a warning for raw-source contradictions while preserving existing body. Conflicts persisted to `.fleet/knowledge/conflicts/` for inspection.
-- `wiki_patch_edit` — Precisely edits an already-pending queue proposal in place before approval. Preserves `patch_id`, utilizes in-process mutex to prevent races, and does not write new raw sources.
-- `wiki_patch_queue` — Lists, stages entry deletion proposals (`action="stage_delete"`, `entry_ids`), approves, or rejects pending patches through human approval. Multiple deletions share a patch set for `approve_set`; `show` recomputes backlinks before review. Approval uses per-patch mutex and stale-base checks; only approval removes the entry, its claims sidecar and currently unshared raw files, rebuilds indexes, and archives the original snapshot. `approve_set` also accepts sets staged by `wiki_compile_source` and is non-transactional.
-- `wiki_orient` — Workspace orientation snapshot (schema summary, index catalog, recent log entries, pending queue count, drydock status, four-rule trust boundary array, deterministic `max_tokens` truncation).
-- `wiki_read` — Multi-entry full-content read with `mode` (`full` / `summary` / `facts` / `diffable`), `include_raw_source`, `include_related`, deterministic `max_tokens` truncation. All output is boundary-wrapped; raw source uses `trust="untrusted"`.
-- `wiki_resolve` — Context-pack synthesizer combining briefing + read into compact JSON or `markdown_pack` output. Honors `freshness` (`prefer_recent` / `strict_current` / `any`), pulls claim provenance from `.claims/` sidecars when present, and reports `missing_or_uncertain`.
-- `wiki_compile_source` — Multi-page batch ingest from a single source. `mode="preview"` returns proposed patches without mutation; `mode="stage"` enqueues correlated patches under one `patch_set_id` (`queue/_sets/{id}/meta.json`).
-- `wiki_query` — Citation-aware query interface. `mode="answer"` returns context_pack + citations with no mutation; `mode="stage_answer_page"` (or `save_good_answer=true`) stages a wiki page patch under `wiki/queries/` or `wiki/synthesis/`. Claim sidecar auto-staging is deferred until queue auxiliary-file support is introduced; for now sidecars must be written manually via `writeClaims()`.
-- `wiki_schema_list` — Host-only catalog of the workspace schema and available templates.
-- `wiki_schema_read` — Host-only read of `schema/wiki-schema.md` or one named template.
-- `wiki_schema_create` — Host-only direct creation of a new custom schema template; never updates or overwrites an existing template.
-Wiki entry writes use the human-approved patch queue without exception. Comments and questions picked in the Codex reader go to a commander's or the Commodore's composer as quote chips; a commander that revises an entry stages a patch like any other caller. Schema template creation is separate: host-only `wiki_schema_create` is direct and create-only.
+카탈로그는 12개다. carrier에는 briefing·orient·read·resolve 네 pure-read 도구만 노출하고 나머지는 host-only다. history는 삭제된 본문을 볼 수 있으므로 `wiki_edit action=history`도 host-only다.
+
+- `wiki_briefing`: 주제별 엔트리 검색과 context pack 후보. 기본 `enhanced=false`의 결정적 substring 순위를 유지한다. opt-in enhanced는 alias·type·status·freshness·snippet·graph 순위를 더한다.
+- `wiki_drydock`: frontmatter·링크·schema·안전·claims·semantic 진단. `fix`는 기존 중복 frontmatter 정리를 명시적으로 요청한다. 폐지된 검토 데이터가 있으면 `legacy_review_data` info 한 건으로 안내한다.
+- `wiki_ingest`: raw 근거를 수집하고 곧바로 엔트리를 쓴다. mode는 auto(기본)·create·update이고 auto의 create fallback을 유지한다. 반환은 ok·mode·op·entry_id·target·version·hash·raw_source_ref·history_ref?·warnings다. duplicate_policy는 reject(기본)·append_evidence이며 후자는 동일 raw 정체성의 모순을 warning으로 알리고 기존 본문을 보존한다. 제거된 queue_conflict는 안내 오류를 낸다.
+- `wiki_edit`: entry_id 필수, action은 edit(기본)·delete·history·restore다. edit는 metadata 필드와 body_replace의 정확한 문자열을 고치며 changed_fields·body_replacements·version·hash·history_ref를 돌려준다. delete는 reason?과 제거한 raw·남긴 공유 raw·깨진 backlink ID를 반환한다. history는 최신순 최대 50개이며 history_ref가 있으면 그 본문을 retrieval boundary로 감싼다. restore는 history_ref 필수다.
+- `wiki_orient`: schema 요약·index catalog·최근 log·drydock 상태·네 가지 trust boundary와 usage_hints. max_tokens는 결정적으로 자른다.
+- `wiki_read`: 여러 엔트리의 full·summary·facts·diffable 읽기. include_raw_source·include_related·max_tokens를 지원한다. 모든 본문은 boundary로 감싸며 raw는 trust="untrusted"다.
+- `wiki_resolve`: briefing과 read를 조합한 compact JSON 또는 markdown_pack. freshness와 claims provenance를 반영하고 missing_or_uncertain을 보고한다.
+- `wiki_compile_source`: 단일 source 또는 source_ref로 여러 페이지를 만든다. preview(기본)는 쓰지 않고 write는 직접 반영한다. 제거된 stage는 오류다. 모든 제안을 같은 lock에서 검증한 뒤 raw를 한 번 쓰며 엔트리별로 적용한다. entries는 entry_id·op·target·summary·version?이며 중간 I/O 실패는 ok:false·이미 쓴 entries·failed:{target,error}로 드러낸다. 여러 페이지 쓰기는 non-transactional이다.
+- `wiki_query`: answer는 context_pack·citations만 반환한다. save_answer_page 또는 save_good_answer=true는 queries/나 synthesis/에 직접 쓰고 saved_entry_id·version을 반환한다. 제거된 stage_answer_page는 오류다. claim sidecars는 자동으로 쓰지 않는다.
+- `wiki_schema_list`: workspace schema와 template catalog를 읽는다.
+- `wiki_schema_read`: schema/wiki-schema.md나 이름을 지정한 template을 읽는다.
+- `wiki_schema_create`: 새 custom template을 직접 생성한다. 기존 template은 절대 덮어쓰지 않는다.
 
 ## Key Modules
 
-- `log.ts` — Append-only operational log helpers. Exports `appendLog()`, `parseLog()`, `formatLogEntry()` for `.fleet/knowledge/log.md`. Payload values are escaped (newlines → `\n`, backticks → `` \` ``) so multiline user input cannot break the single-bullet line invariant.
-- `schema.ts` — Workspace schema bootstrap, catalog, read, and create-only template validation. Exports `ensureWorkspaceSchema()`, `readWorkspaceSchemaSummary()`, `readSchemaCatalog()`, `readSchemaDocument()`, `createSchemaTemplate()`, default schema constants, and required section definitions.
-- `store.ts` — Wiki entry storage, `index.json` + `wiki/index.md` generation, raw source management with content-hash filename suffix. `readWikiEntry()` falls back to recursive scan when `index.json` is stale. `writeWikiEntry()` automatically strips duplicate leading frontmatter from the body before serialization. Also the canonical wiki-link SSoT (`WIKI_LINK_PATTERN`, `extractWikiLinks()`, `extractLegacyMarkdownWikiLinks()`, `replaceWikiLinksWithMarkdown()`) and the retrieval boundary SSoT (`wrapWikiEntryBoundary()`, `wrapWikiRawSourceBoundary()`, `FLEET_WIKI_BOUNDARY_GUIDELINES` four-rule array) used by every LLM-facing tool.
-- `patch.ts` — Patch queuing, validation (`create_wiki` overwrite prevention, target/body collision detection), approval/rejection. `buildPatchId()` hashes timestamp + summary + target + body to prevent compile_source ID collisions. The module-level lock Maps (`approvalLocks` / `patchEditLocks`) are an intended exception to the no-module-level-singleton rule: they implement the in-process per-patch mutex shared by tool and direct (console Codex) call paths. Also owns `PatchSet` metadata (`buildPatchSetId()`, `writePatchSet()`, `readPatchSet()`) stored at `queue/_sets/{patch_set_id}/meta.json`.
-- `conflicts.ts` — Conflict persistence under `.fleet/knowledge/conflicts/{id}/`. Exports `createConflict()`, `listConflicts()`, `readConflict()`, `resolveConflict()`. Triggered by ingest auto-mode, base_version mismatch, duplicate alias, raw source contradiction, or patch body/target id mismatch.
-- `claims.ts` — Claim provenance sidecar at `wiki/.claims/{id}.json` with `ClaimSet`/`Claim`/`ClaimSourceRef` types. Exports `readClaims()`, `writeClaims()`, `listClaims()`. Optional — `wiki_resolve` falls back to summary if absent.
-- `search.ts` — Optional enhanced ranker for `wiki_briefing`. Inline BM25-style scoring with alias/type/status/freshness/graph boost, no new dependency. Default ranker remains the deterministic substring scorer in `briefing.ts`.
-- `drydock.ts` — Lint rules including canonical/legacy link checks, frontmatter validation, duplicate frontmatter detection with optional auto-cleanup, schema health, conflict surfacing, and Wave 13 semantic issues (orphan/stale/deprecated/superseded/duplicate alias/contradiction marker/claim orphan/claim malformed).
-- `prompts.ts` — Tool prompt snippets, guidelines, and TypeBox schemas. References `schema/wiki-schema.md` for workspace conventions.
-- `paths.ts` — Memory path resolution, `ensureMemoryRoot()` bootstraps schema files via `ensureWorkspaceSchema()`.
+- `write.ts`: knowledge root realpath를 key로 한 단일 write lock Map과 writeEntry·deleteEntry·restoreEntry. 계획·현재본 재읽기·기준 검사·적용·index 재생성·raw 고아 계산을 같은 root lock에서 처리한다. 프로세스 간 보장은 없다. caller별·entry별 lock으로 나누지 않는다.
+- `history.ts`: overwritten/deleted snapshot의 생성·검증·최신 목록·읽기. 보관 실패 시 변경을 중단한다.
+- `store.ts`: 엔트리·raw 저장과 index.json·wiki/index.md 생성. index가 낡으면 재귀 검색한다. writeWikiEntry는 본문 선두 중복 frontmatter를 제거한다. canonical `[[wiki:id]]` 파싱과 retrieval/raw boundary의 단일 원천이다.
+- `paths.ts`: MemoryPaths 해석·초기화와 lexical/realpath containment·symlink 검사. 새 root는 raw·wiki·schema·history만 만든다.
+- `log.ts`: append-only log.md. multiline 값은 escape하므로 사용자 입력이 단일 bullet을 깨지 못한다. 과거 patch/conflict 이벤트는 계속 읽힌다.
+- `schema.ts`: schema bootstrap·catalog·읽기·create-only template 검증. 누락 기본 파일을 만든다. a96db4cf 기본값의 SHA-256과 기존 바이트가 일치할 때만 세 기본 문서를 교체하고 `schema default upgraded`를 기록한다. 사용자가 고친 문서는 보존한다.
+- `claims.ts`: 선택적 wiki/.claims/{id}.json provenance. resolve는 sidecar가 없으면 summary로 fallback한다.
+- `search.ts`: briefing의 선택적 enhanced ranker. 기본 ranker는 briefing.ts의 결정적 substring scorer다.
+- `drydock.ts`: 링크·schema·안전·semantic·claim 진단. 레거시 디렉터리는 pending/unresolved metadata만 오류를 건너뛰며 센다. 내용이 손상되어도 정상 읽기·쓰기를 막지 않는다.
+- `prompts.ts`: 도구 설명·guidelines·TypeBox schema. workspace schema를 참조한다.
+
+## 쓰기·복구·감사
+
+base_version·base_hash는 선택 인자다. lock 안의 현재본과 다르면 stale 오류를 내며 raw·history·log를 쓰지 않는다. 기준을 생략하면 lock 안의 현재본에 마지막 쓰기가 이긴다. 성공한 변경은 version을 올리고 updated를 갱신한다(touch_updated=false 제외). 엔트리 I/O가 raw 뒤 실패하면 고아 raw가 남을 수 있다.
+
+snapshot은 `history/<entryId>/<compactISO>-<op>-v<version>/`에 기록한다. 같은 이름이 겹치면 -2 등 suffix를 붙인다. history_ref는 knowledge-root 기준 POSIX 상대 경로다.
+
+- entry.md는 이전 파일의 정확한 바이트다. create는 이전 파일이 없으므로 snapshot이 없다.
+- meta.json은 schemaVersion:1·entryId·target·op·actor·at·version·hash·reason?·raw:[ref]다. 완성된 snapshot만 목록에 보인다.
+- delete는 claims.json(있을 때)과 이번 삭제로 고아가 되는 raw/<원래 상대 경로>도 보관한다. snapshot 완료 뒤에만 entry·claims·비공유 raw를 제거하고 index를 재생성한다. 공유 raw는 남긴다.
+- restore는 ref의 형식·entry prefix·symlink·본문 1MiB 상한을 확인한다. 현재본이 있으면 먼저 op=restore snapshot을 남긴다. version은 max(current?.version ?? 0, snapshot.version)+1이다. claims와 raw는 없을 때만 되살리고 같은 경로의 다른 내용은 warning과 함께 보존한다.
+- history는 자동 정리하지 않으며 watcher와 drydock은 검사하지 않는다. HTTP는 history 본문을 반환하지 않는다.
+- log 이벤트는 entry created·updated·deleted·restored와 source compiled다. actor는 proposer 또는 tool:<name>, Console은 console:codex-reader다. 공통 필드 actor·tool·entry_id·target·version·previous_version·previous_hash·hash·history_ref·raw_source_ref·reason·changed_fields 중 해당 없는 값은 null이다.
+
+Console 삭제는 POST /api/entry/:id/delete의 expectedHash 필수, 선택적 reason ≤256이다. stale hash는 409 entry_changed와 currentHash다. POST /api/entry/:id/restore는 historyRef 필수이며 현재본이 있으면 409 entry_exists다. 두 경로는 기존 admitted loopback → Origin → JSON → body 상한 가드를 그대로 쓴다.
+
+기존 queue/·archive/·conflicts/는 옮기거나 지우거나 자동 적용하지 않는다. 레거시 데이터가 존재해도 정상 엔트리 작업은 이 디렉터리를 열지 않는다.
 
 ## 이주 사본 표식
 
@@ -41,12 +58,6 @@ Wiki entry writes use the human-approved patch queue without exception. Comments
 
 ## Schema & Documentation
 
-- Workspace conventions live in `.fleet/knowledge/schema/wiki-schema.md` (auto-generated with `ensureWorkspaceSchema()`).
-- Maintainer guide in `.fleet/knowledge/schema/AGENTS.md` defines schema ownership and edit-preservation policy.
-- Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard used by Codex storage and web surface).
-- `index.md` at `.fleet/knowledge/wiki/index.md` provides deterministic markdown catalog with id ordering and tag grouping.
-- `log.md` at `.fleet/knowledge/log.md` append-only operational chronicle of ingest, patch, rebuild, drydock, and conflict events.
-- `conflicts/{id}/` stores `meta.json` + `current.md` + `proposed.md` + `raw-source.md` (when applicable). Surfaced via `wiki_drydock` `conflict_unresolved` warnings and the web `/conflicts` route (the `unresolved_conflict` code is reserved for corrupted conflict entries).
-- 새 update/delete 패치는 제공된 기준 버전·해시와 실제 현재본이 일치할 때 `queue/{patch_id}/base.md`와 `meta.json`의 `baseSnapshotHash`를 저장한다. UTF-8 기준본은 최대 1MiB이며 해시 검증 후에만 비교·재적용에 사용한다. 승인·반려 시 패치 디렉터리와 함께 `archive/`로 이동한다. 기존 기준본 없는 패치는 자동 마이그레이션하지 않는다.
-- Console의 충돌 결정은 Wiki를 직접 수정하지 않는다. 반려·수동 해결은 연결된 pending 패치를 반려·보관하며, 다시 제안은 검증된 기준본과 검토한 현재 해시를 사용해 독립 변경만 3-way 재적용한 새 pending 패치를 만든다. 겹치는 변경은 거절한다. 모든 결정은 `conflict resolved` 감사 이벤트를 남기고, 연결 패치의 반려도 별도로 기록한다.
-- `wiki/.claims/{id}.json` claim sidecars are optional but enable provenance-tracked `wiki_resolve` facts. Schema: `{ entryId, claims: [{ id, text, sourceRefs: [{ ref, quote, span }], confidence }] }`.
+workspace schema는 schema/wiki-schema.md, maintainer 지침은 schema/AGENTS.md다. canonical Wiki 링크는 `[[wiki:id]]`다. wiki/index.md는 ID 순서와 태그별 catalog를 결정적으로 생성한다.
+
+선택적 claims sidecar 형식은 `{entryId, claims:[{id,text,sourceRefs:[{ref,quote,span}],confidence}]}`다. query가 sidecar를 자동 동기화한다고 가정하지 않는다.

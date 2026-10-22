@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import os from "node:os";
 import path from "node:path";
 
-import { INDEX_FILENAME, INDEX_MD_FILENAME, REQUIRED_WIKI_FRONTMATTER_KEYS } from "./patch.js";
+import { INDEX_FILENAME, INDEX_MD_FILENAME, REQUIRED_WIKI_FRONTMATTER_KEYS } from "./paths.js";
 import { appendLog } from "./log.js";
 import { ensureMemoryRoot, getIndexMarkdownFile } from "./paths.js";
 import {

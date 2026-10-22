@@ -15,7 +15,7 @@ export interface WikiToolSpec {
 
 import {
   buildBriefingToolConfig, buildDryDockToolConfig, buildCompileSourceToolConfig,
-  buildIngestToolConfig, buildOrientToolConfig, buildPatchEditToolConfig, buildPatchQueueToolConfig,
+  buildIngestToolConfig, buildOrientToolConfig, buildEditToolConfig,
   buildQueryToolConfig, buildReadToolConfig, buildResolveToolConfig,
   buildSchemaCreateToolConfig, buildSchemaListToolConfig, buildSchemaReadToolConfig,
   type MemoryPaths, type WikiWorkspaceResolver,
@@ -52,8 +52,7 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_drydock",
   "wiki_ingest",
   "wiki_orient",
-  "wiki_patch_edit",
-  "wiki_patch_queue",
+  "wiki_edit",
   "wiki_compile_source",
   "wiki_query",
   "wiki_read",
@@ -70,7 +69,7 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
 export function getWikiToolSpecs(resolver?: WikiWorkspaceResolver): WikiToolSpec[] {
   return [
     buildWikiBriefingSpec(resolver), buildWikiDryDockSpec(resolver), buildWikiIngestSpec(resolver),
-    buildWikiOrientSpec(resolver), buildWikiPatchEditSpec(resolver), buildWikiPatchQueueSpec(resolver),
+    buildWikiOrientSpec(resolver), buildWikiEditSpec(resolver),
     buildWikiCompileSourceSpec(resolver), buildWikiQuerySpec(resolver), buildWikiReadSpec(resolver), buildWikiResolveSpec(resolver),
     buildWikiSchemaListSpec(resolver), buildWikiSchemaReadSpec(resolver), buildWikiSchemaCreateSpec(resolver),
   ];
@@ -86,14 +85,14 @@ function buildWikiSchemaListSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec
 function buildWikiSchemaReadSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildSchemaReadToolConfig(), {
     whenToUse: ["Read the workspace Wiki schema or a named template"],
-    whenNotToUse: ["Reading approved Wiki entries — use wiki_read"],
+    whenNotToUse: ["Reading Wiki entries — use wiki_read"],
   }, resolver);
 }
 
 function buildWikiSchemaCreateSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildSchemaCreateToolConfig(), {
     whenToUse: ["Create a new custom Wiki schema template"],
-    whenNotToUse: ["Updating, deleting, overwriting, or approving templates"],
+    whenNotToUse: ["Updating, deleting, or overwriting templates"],
   }, resolver);
 }
 
@@ -113,8 +112,8 @@ function buildWikiBriefingSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
 function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildDryDockToolConfig(), {
     whenToUse: [
-      "Audit wiki repository health: frontmatter, broken links, queue conflicts, and semantic issues",
-      "Pre-write lint gate before staging or approving patches",
+      "Audit wiki repository health: frontmatter, broken links, schema, safety, and semantic issues",
+      "Run after wiki writes to check links, schema, and safety",
     ],
     whenNotToUse: [
       "Goal is content retrieval or search — drydock performs diagnostics only, no content is returned",
@@ -125,12 +124,12 @@ function buildWikiDryDockSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
 function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildIngestToolConfig(), {
     whenToUse: [
-      "Stage durable Fleet Wiki knowledge as an approval-gated pending patch with captured raw source",
-      "Need to create or update a PRD wiki entry without directly modifying approved wiki files",
+      "Write durable Fleet Wiki knowledge immediately with captured raw source",
+      "Need to create or update a PRD wiki entry through host-only tools",
     ],
     whenNotToUse: [
       "Only reading or searching existing wiki context is needed — use wiki_briefing, wiki_read, or wiki_resolve",
-      "The user has not approved staging wiki changes for this task",
+      "The task did not ask to record knowledge in the wiki",
     ],
   }, resolver);
 }
@@ -138,51 +137,32 @@ function buildWikiIngestSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
 function buildWikiOrientSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildOrientToolConfig(), {
     whenToUse: [
-      "Start a wiki-aware task by checking schema, index, recent log, queue count, and drydock status",
+      "Start a wiki-aware task by checking schema, index, recent log, and drydock status",
       "Need a compact orientation snapshot before deciding which wiki tools to call next",
     ],
     whenNotToUse: [
       "A specific entry ID is already known and full content is needed — use wiki_read instead",
-      "Only staging a patch is needed and current wiki context is already understood — use wiki_ingest instead",
+      "Only writing an entry is needed and current wiki context is already understood — use wiki_ingest instead",
     ],
   }, resolver);
 }
 
-function buildWikiPatchEditSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
-  return buildWikiToolSpec(buildPatchEditToolConfig(), {
-    whenToUse: [
-      "A pending Fleet Wiki patch needs a small exact body or metadata correction before approval",
-      "Need to preserve the same patch_id while avoiding a second wiki_ingest queue item",
-    ],
-    whenNotToUse: [
-      "The patch has already been approved or rejected",
-      "The desired change requires approving wiki content — use wiki_patch_queue for approval",
-    ],
-  }, resolver);
-}
-
-function buildWikiPatchQueueSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
-  return buildWikiToolSpec(buildPatchQueueToolConfig(), {
-    whenToUse: [
-      "Pending Fleet Wiki patches need human approval or rejection",
-      "A patch set staged by wiki_compile_source needs batch approval",
-    ],
-    whenNotToUse: [
-      "New wiki content needs to be staged — use wiki_ingest instead",
-      "Existing approved wiki content needs to be read — use wiki_read instead",
-    ],
+function buildWikiEditSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
+  return buildWikiToolSpec(buildEditToolConfig(), {
+    whenToUse: ["Make an exact correction, delete an entry, inspect prior versions, or restore a snapshot"],
+    whenNotToUse: ["Creating a new entry or replacing its complete body — use wiki_ingest"],
   }, resolver);
 }
 
 function buildWikiCompileSourceSpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildCompileSourceToolConfig(), {
     whenToUse: [
-      "A single source needs to be split into multiple proposed wiki page patches",
-      "Multi-page batch ingest from one source should be previewed or staged under one patch_set_id",
+      "A single source needs to be split into multiple wiki pages",
+      "Multi-page writes from one source should be previewed or applied directly",
     ],
     whenNotToUse: [
-      "Only one wiki entry needs to be staged — use wiki_ingest instead",
-      "Pending patches need approval or rejection — use wiki_patch_queue instead",
+      "Only one wiki entry needs to be written — use wiki_ingest instead",
+      "A small exact correction to one existing entry — use wiki_edit",
     ],
   }, resolver);
 }
@@ -191,10 +171,10 @@ function buildWikiQuerySpec(resolver?: WikiWorkspaceResolver): WikiToolSpec {
   return buildWikiToolSpec(buildQueryToolConfig(), {
     whenToUse: [
       "Answer a wiki-grounded question with evidence context and citations",
-      "Stage an approval-gated answer or synthesis page from cited wiki context",
+      "Save an answer or synthesis page from cited wiki context",
     ],
     whenNotToUse: [
-      "The task requires final approval of pending patches — use the host-side approval flow instead",
+      "A small exact correction to one existing entry — use wiki_edit",
       "Only a ranked list of candidate entries is needed — use wiki_briefing instead",
     ],
   }, resolver);
@@ -255,7 +235,7 @@ function buildWikiToolSpec(
 }
 
 /**
- * 모델에 닿는 설명. MCP 등록이 싣는 것은 `description`뿐이므로, 승인 게이트·모드 의미·신뢰 경계처럼
+ * 모델에 닿는 설명. MCP 등록이 싣는 것은 `description`뿐이므로, 쓰기·모드 의미·신뢰 경계처럼
  * 도구 계약에 속하는 문장을 여기서 한 문자열로 모은다.
  */
 export function modelFacingWikiToolDescription(spec: Pick<WikiToolSpec, "description" | "promptSnippet" | "whenNotToUse" | "usageGuidelines">): string {

@@ -8,7 +8,7 @@ This directory owns repository-work skills. It is separate from what Fleet embed
 - Keep inputs, execution decisions, authority boundaries, and completion/stop conditions in the entrypoint. Leave judgment-dependent ordering flexible; retain order required by dependencies or side effects.
 - Put long commands and platform/mode-specific procedures once in `references/`. Link them with **when and why to read**, not a requirement to preload everything.
 - Do not duplicate procedures owned by another skill or `CLAUDE.md`. Do not copy harness or MCP tool contracts; name the destination and the boundaries those contracts do not state. Add a skill only for a distinct recurring task.
-- Continue reversible local checks within authorized scope. Automatic selection does not authorize commits, external publication, deployment, or permanent Wiki approval. Model-performance claims do not relax product-direction, deletion-ownership, credential, or required-check boundaries.
+- Continue reversible local checks within authorized scope. Automatic selection does not authorize commits, external publication, deployment, or Wiki writes the task did not request. Model-performance claims do not relax product-direction, deletion-ownership, credential, or required-check boundaries.
 
 ## Validation
 
@@ -43,7 +43,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Rebase a topic with sync_local_base=no | rebase-on-canary; preview/rebase/verification all use origin/canary, no push |
 | Resume Codex review on an open PR | pr-workflow; recover pushed head/frozen context, ignore stale +1, bounded passes and final audit |
 | Synchronize only / range is docs-only | release-version-update; no main deployment push, no fake product change to trigger CI |
-| Record why an approved decision was made | wiki-history; the workspace PRD template's sections and an evidence-backed preview, no permanent registration before approval |
+| Record why an approved decision was made | wiki-history; the workspace PRD template's sections, written directly once its evidence checks pass |
 | Capture recurring learning from this task | learning-harvest; recurrence/cost/generality, no encoding before candidate approval |
 | Implement an approved single CSS fix or edit docs only | Keep implementation scoped; pr-workflow follows root CLAUDE.md standing delivery authorization unless local-only or otherwise narrowed; no unrelated proposal/sweep/release |
 

@@ -12,7 +12,7 @@
 //
 // --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
 // --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the plugin's settings route.
-// --wiki stages one Wiki entry through the product's wiki_ingest tool and approves it for the Theater registered from --theater-dir.
+// --wiki writes one Wiki entry through the product's wiki_ingest tool for the Theater registered from --theater-dir.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { createRequire, register } from "node:module";
@@ -139,10 +139,9 @@ if (deputies.length > 0) {
   if (off.length > 0) throw new Error(`Deputy settings did not keep: ${off.join(", ")}.`);
 }
 
-// Wiki entries are written only through the approval queue. The fixture stages one with the product's wiki_ingest
-// tool and approves it programmatically, in the knowledge root that Codex resolves
+// The fixture writes one entry with the product's wiki_ingest tool in the knowledge root that Codex resolves
 // for this Theater. Reading it back through the Theater's Codex route proves the server serves the same root.
-let wiki: { entry: string; patch: string | null; reused: boolean } | null = null;
+let wiki: { entry: string; version: number; reused: boolean } | null = null;
 if (wikiId) {
   const theaters = (await getJson<{ theaters: { id: string }[] }>("/api/v1/theaters")).theaters;
   if (!theaters.some((theater) => theater.id === theaterId)) throw new Error(`Theater ${theaterId} is not registered in the owned Console.`);
@@ -150,7 +149,6 @@ if (wikiId) {
   const { ensureWorkspaceDirectory, withDirectoryLock } = await load(join(consoleSrc, "foundation/infra/src/index.ts"));
   const { createWikiWorkspaceResolver } = await load(join(pluginsDir, "codex/server/wiki/workspace-resolver.ts"));
   const { buildIngestToolConfig } = await load(join(pluginsDir, "codex/server/wiki/tools/ingest.ts"));
-  const { approvePatch } = await load(join(pluginsDir, "codex/server/wiki/patch.ts"));
   const { readWikiEntry } = await load(join(pluginsDir, "codex/server/wiki/store.ts"));
   // Same injected ports as the Codex plugin's register() in runtime/fleet-plugins/codex/routes.ts (MIGRATION_LOCK).
   const cwd = wikiCwd!;
@@ -159,15 +157,14 @@ if (wikiId) {
     withMigrationLock: <T,>(workspace: { path: string }, operation: () => T): T =>
       withDirectoryLock({ lockDir: join(workspace.path, "knowledge.migration.lock") }, operation),
   }).resolve(cwd);
-  let patch: string | null = null;
   const reused = Boolean(await readWikiEntry(wikiId, paths));
   if (!reused) {
-    const staged = await buildIngestToolConfig().execute("console-e2e-seed", {
+    const written = await buildIngestToolConfig().execute("console-e2e-seed", {
       id: wikiId,
       title: `E2E fixture ${wikiId}`,
       body: [
         `This entry is a console-e2e fixture for ${wikiId}.`,
-        "It exists so a scenario can open the Wiki panel and find a real, approved entry without a model turn.",
+        "It exists so a scenario can open the Wiki panel and find a real entry without a model turn.",
         "Nothing in it is project knowledge; delete the owned run directory to discard it.",
       ].join("\n\n"),
       tags: ["console-e2e"],
@@ -175,14 +172,12 @@ if (wikiId) {
       proposer: "console-e2e:seed-onboarding",
       mode: "create",
     }, undefined, undefined, { cwd, paths });
-    const result = JSON.parse(staged.content[0].text) as { patch_id?: string };
-    if (!result.patch_id) throw new Error(`wiki_ingest staged no patch: ${staged.content[0].text}`);
-    await approvePatch(result.patch_id, paths);
-    patch = result.patch_id;
+    const result = JSON.parse(written.content[0].text) as { entry_id?: string; version?: number };
+    if (!result.entry_id || !result.version) throw new Error(`wiki_ingest wrote no entry: ${written.content[0].text}`);
   }
   const served = await fetch(`${origin}/console/codex/w/${encodeURIComponent(theaterId!)}/api/entry/${encodeURIComponent(wikiId)}`);
   if (!served.ok) throw new Error(`The Theater's Codex route does not serve ${wikiId} (${served.status}); --theater-dir may not be that Theater's folder.`);
-  wiki = { entry: wikiId, patch, reused };
+  wiki = { entry: wikiId, version: (await readWikiEntry(wikiId, paths))!.version, reused };
 }
 
 console.log(JSON.stringify({
