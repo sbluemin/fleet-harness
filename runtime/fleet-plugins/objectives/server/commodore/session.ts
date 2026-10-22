@@ -11,7 +11,7 @@ import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type Com
  *
  * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`·
  * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + 호스트가 이 Theater 루트에 묶어 준 지식 도구
- * (`fleet-codex` 의 Wiki 도구 — Operation 이 받는 것과 같은 이름·같은 Theater 판정) + WebSearch·WebFetch·SendMessage·ListAgents 다. Console Use 연결은 쓰지 않는다 — 플러그인
+ * (`fleet-codex` 의 Wiki 도구 — Operation 이 받는 것과 같은 이름·같은 Theater 판정) + WebSearch·WebFetch·SendMessage·ListAgents·Read 다. Console Use 연결은 쓰지 않는다 — 플러그인
  * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
  *
@@ -209,7 +209,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       persist: { key: commodorePersistKey(options.theaterId) },
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
-        builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents"],
+        builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"],
         browser: { scopeId: `commodore:${options.theaterId}` },
         custom: [
           { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
@@ -310,6 +310,8 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
     case "next_wake": return { name, summary: [typeof args.inMinutes === "number" ? `${args.inMinutes}m` : undefined, str("reason")].filter(Boolean).join(" · "), counts: false };
     case "read_file": case "git_log": return { name, summary: str("path"), counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
+    // Read는 Theater 밖의 절대 경로도 받는다 — 기록에는 경로 요약 없이 도구명·성공 여부만 남긴다.
+    case "Read": return { name, counts: false };
     case "WebSearch": return { name, summary: str("query"), counts: false };
     case "WebFetch": return { name, summary: str("url"), counts: false };
     default: return { name, counts: false };

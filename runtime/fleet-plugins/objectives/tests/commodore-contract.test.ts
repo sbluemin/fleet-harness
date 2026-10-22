@@ -354,6 +354,8 @@ describe("commodore session", () => {
       stub.emit({ kind: "tool-end", id: "u2", isError: false });
       stub.emit({ kind: "tool-start", id: "u3", name: "mcp__console__console_objectives", input: { action: "inbox" } });
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
+      stub.emit({ kind: "tool-start", id: "u4", name: "Read", input: { file_path: outside } });
+      stub.emit({ kind: "tool-end", id: "u4", isError: false });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
     const outcome = await session.turn({ reasons: ["directive changed (rev 1)", "1 new intel item"] });
@@ -365,7 +367,7 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents"], browser: { scopeId: "commodore:t1" } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"], browser: { scopeId: "commodore:t1" } });
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
@@ -374,14 +376,18 @@ describe("commodore session", () => {
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.
     const log = h.store.transcriptRead("t1").entries;
-    expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "result"]);
+    expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "tool", "result"]);
     // 거절된 보드 행위는 코드 한 낱말로 남고 행위로 세지 않는다 — 결과의 힌트는 싣지 않는다.
     expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
     expect(log[2]).toMatchObject({ kind: "thinking", text: "The directive changed." });
     expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
     expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
     expect(JSON.stringify(log)).not.toContain("secret");
-    expect(log[7]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
+    // 내장 Read의 Theater 밖 경로는 기록 요약에도 싣지 않는다.
+    expect(log[7]).toMatchObject({ kind: "tool", name: "Read", ok: true });
+    expect(log[7]).not.toHaveProperty("summary");
+    expect(JSON.stringify(log)).not.toContain(outside);
+    expect(log[8]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
     expect(h.store.read("t1")!.run).toEqual({ session: 0, costUsd: 0.25, actions: 1 });
 
     // 사령관 전용 도구 — 지시·정보는 저장소에서, 읽기 도구는 Theater 안에서만.
