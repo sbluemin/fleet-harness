@@ -76,7 +76,7 @@ const listTool = defineConsoleTool({
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
-    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore dormant, retaining completion and records.") }) },
+    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore retaining completion and records; chats stay live and wait for a message.") }) },
     purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
   },
 });

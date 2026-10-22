@@ -164,7 +164,7 @@ export interface MusterMember {
   readonly role: string;
   readonly session: string;
   readonly operationId: string;
-  readonly state: "live" | "launched" | "resumed" | "unknown" | "failed";
+  readonly state: "live" | "ready" | "launched" | "resumed" | "unknown" | "failed";
   readonly error?: string;
 }
 
@@ -631,6 +631,21 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const observation = operationId ? ctx.host.consoleControl?.observe(operationId) : null;
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
+      if (operationId && node?.payload.chatMode === true) {
+        const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
+        rememberSubagentSpawn(operationId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
+        try {
+          await settleTurn(objectiveId, member.id, { idle: 0 });
+          const prepare = ctx.host.consoleControl?.prepareChat;
+          if (!prepare) throw new ObjectiveStoreError("capability_unavailable");
+          await prepare(operationId);
+          touchLive(operationId);
+          members.push({ id: member.id, role: member.role, session, operationId, state: "ready" });
+        } catch (error) {
+          members.push({ id: member.id, role: member.role, session, operationId, state: "failed", error: failureCode(error) });
+        }
+        continue;
+      }
       if (operationId && node && observation?.lifecycle === "live") {
         touchLive(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), operationId, state: "live" });
@@ -695,9 +710,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 라우팅·기동 중 변경된 허용값도 다음 기동 정책에는 반영한다. 첫 프로세스는 중단하지 않는다.
       const linked = objective(objectiveId).members.find((candidate) => candidate.id === member.id);
       if (linked) rememberSubagentSpawn(linked.id, linked.subagents === true);
-      members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
+      try {
+        const prepare = ctx.host.consoleControl?.prepareChat;
+        if (!prepare) throw new ObjectiveStoreError("capability_unavailable");
+        await prepare(launchedId);
+        members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
+      } catch (error) {
+        members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "failed", error: failureCode(error) });
+      }
     }
-    const broughtUp = members.flatMap((member) => member.state === "live" || member.state === "launched" || member.state === "resumed" ? [member.id] : []);
+    const broughtUp = members.flatMap((member) => member.state === "live" || member.state === "ready" || member.state === "launched" || member.state === "resumed" ? [member.id] : []);
     if (broughtUp.length) store.noteAssignments(objectiveId, broughtUp);
     store.refresh(objectiveId);
     return members;
@@ -833,6 +855,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         throw coordinatesError(result);
       }
     }
+    // 채팅은 자식이 없더라도 호스트 좌표 포트로만 바꾼다. 터미널 sleep fallback으로 가지 않는다.
+    if (node.payload.chatMode === true) throw new ObjectiveStoreError("chat_not_active");
     if (!target?.model || samePreset(target, running)) { store.memberLaunchState(current.id, memberId, { next: null }); return; }
     const goal = { ...target, model: target.model };
     const observation = ctx.host.consoleControl?.observe(memberId);
@@ -915,6 +939,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       else done({ next: null, routed: null });
       return;
     }
+    if (node.payload.chatMode === true) { failed("chat_not_active"); return; }
     if (next.held === "host") store.memberLaunchState(objectiveId, memberId, { next: { ...next, held: "plugin" } });
     if (observation.activity !== "idle") { entry.idle = 0; return; }
     if (++entry.idle < IDLE_TICKS) return;
@@ -1491,7 +1516,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         for (const member of current.members) {
           const next = store.storedMember(current.id, member.id)?.next;
           if (!next || next.failed) continue;
-          if (next.held) { watch(current.id, member.id); continue; }
+          if (next.held) {
+            // Console과 함께 사라진 채팅 예약은 새 호스트 포트로 다시 적용한다. 실패한 예약은 재시도하지 않는다.
+            const node = ctx.host.operations.get(member.id);
+            const host = hostCoordinates(member.id);
+            if (node?.payload.chatMode === true && next.held === "host" && !host?.pending && !host?.refused) {
+              store.memberLaunchState(current.id, member.id, { next: { ...next, held: "plugin" } });
+            }
+            watch(current.id, member.id);
+            continue;
+          }
           // 「다음 재개」 시절의 옛 예약 — 세션 좌표는 이미 그 값이고, 떠 있던 프로세스는 Console 재시작과 함께 끝났다. 다음 깨움이 그 값으로 선다.
           store.memberLaunchState(current.id, member.id, { next: null, routed: null });
         }
