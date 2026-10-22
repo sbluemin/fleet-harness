@@ -1,46 +1,56 @@
 .codex-panel-body { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 
-.entry-pending-patches, .queue-row-stale { display: inline-block; padding: var(--space-1) var(--space-2); border: 1px solid var(--warn); border-radius: var(--radius-xs); color: var(--warn-ink); font-size: var(--t-xs); }
-.queue-row-stale { flex: none; }
-.queue-row-top { flex-wrap: wrap; }
-.queue-row.conflict-row { grid-template-columns: minmax(0, 1fr); }
-.conflict-row .queue-row-target { white-space: normal; overflow-wrap: anywhere; word-break: keep-all; }
-.conflict-comparison-region { container-type: inline-size; container-name: codex-conflict-comparison; }
-.conflict-comparison { display: grid; gap: var(--space-3); }
-.conflict-panel-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
-.conflict-panel-tabs button { flex: 1; padding: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.conflict-panel-tabs button[aria-selected="true"] { border-color: var(--brass); color: var(--brass-bright); }
-.conflict-panel-tabs button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-.conflict-compare-panel { min-width: 0; padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); }
-.conflict-compare-panel > h2 { margin: 0 0 var(--space-2); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: 0.08em; color: var(--text-secondary); }
-.conflict-comparison .conflict-compare-panel { display: none; }
-.conflict-comparison[data-active-panel="base"] [data-conflict-panel="base"], .conflict-comparison[data-active-panel="current"] [data-conflict-panel="current"], .conflict-comparison[data-active-panel="proposed"] [data-conflict-panel="proposed"] { display: block; }
-/* 충돌 비교는 정독 목차와 읽기 measure가 아닌 시트의 가용 폭을 쓴다. */
-.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-body { grid-template-columns: minmax(0, 1fr); }
-.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-toc { display: none; }
-.codex-reading-body[data-conflict-comparison="true"] .codex-reading-sheet-read { --codex-reader-gutter-x: var(--space-4); padding-inline: var(--codex-reader-gutter-x); }
-.codex-reading-body .codex-reading-sheet-read > .codex-reader-host > .document--conflict > :not(.queue-decision-dock) { max-inline-size: none; }
-/* 판 테두리 기준 240px × 3와 두 간격(12px)이 실제 비교 영역에 들어갈 때만 나란히 놓는다. */
-@container codex-conflict-comparison (min-width: 744px) {
-  .conflict-panel-tabs { display: none; }
-  .conflict-comparison { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .conflict-comparison .conflict-compare-panel { display: block; }
+.codex-entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.codex-entry-delete, .codex-delete-undo {
+  min-height: 28px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  cursor: pointer;
 }
-.document--conflict .conflict-compare-panel .markdown-body :is(h1, h2, h3, h4, h5, h6) { font-size: var(--t-sm); line-height: 1.4; margin-block: var(--space-3) var(--space-2); }
-.conflict-compare-panel pre { max-height: 320px; overflow: auto; }
-.conflict-base-warning { color: var(--warn-ink); font-size: var(--t-sm); }
-.conflict-resolved { color: var(--positive-ink); font-size: var(--t-sm); }
-[data-conflict-controls] { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
-[data-conflict-controls] textarea { width: 100%; padding: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); resize: vertical; }
-[data-conflict-controls] textarea:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-.queue-action-btn { background: var(--surface-panel); border: 1px solid var(--surface-rim); color: var(--text-primary); }
+.codex-entry-delete:hover:not(:disabled), .codex-delete-undo:hover:not(:disabled) { background: var(--control-hover-fill); color: var(--text-primary); }
+.codex-entry-delete[data-armed="true"] { color: var(--coral-ink); background: color-mix(in oklch, var(--coral) 10%, transparent); }
+.codex-entry-delete:focus-visible, .codex-delete-undo:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.codex-entry-delete:disabled, .codex-delete-undo:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.codex-entry-delete-hint { color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
+.codex-entry-delete-error { color: var(--coral-ink); font-family: var(--font-ui); font-size: var(--t-xs); }
+.codex-entry-delete-error:empty, .codex-entry-delete-hint:empty { display: none; }
+.codex-delete-toast {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+.codex-delete-toast > span { min-width: 0; overflow-wrap: anywhere; }
+.codex-delete-undo { flex: none; color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.codex-schema-ref { font-family: var(--font-code); font-size: var(--t-xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
+[data-host-surface="mobile-screen"] .codex-entry-delete,
+[data-host-surface="mobile-screen"] .codex-delete-undo,
+[data-host-surface="mobile-sheet"] .codex-entry-delete,
+[data-host-surface="mobile-sheet"] .codex-delete-undo { min-width: 44px; min-height: 44px; }
 .codex-reading-body { position: relative; --codex-reader-head-height: 40px; }
 .codex-reading-body > .codex-reader-overlay { z-index: var(--z-overlay); padding-top: calc(var(--codex-reader-head-height) + var(--space-4)); }
 .codex-reading-body[data-compact="true"] .codex-reading-sheet-body { grid-template-columns: minmax(0, 1fr); }
 .codex-reading-body[data-compact="true"] .codex-reading-sheet-toc { display: none; }
 .codex-reading-body[data-compact="true"] .codex-reading-sheet-read { padding-inline: var(--space-3); }
 .codex-reading-body[data-compact="true"] .codex-reading-sheet-read > .codex-reader-host > .document.has-related { display: block; }
-.codex-reading-body[data-compact="true"] .codex-reading-sheet-read > .codex-reader-host > .document > :not(.queue-decision-dock) { inline-size: 100%; max-inline-size: none; }
+.codex-reading-body[data-compact="true"] .codex-reading-sheet-read > .codex-reader-host > .document > * { inline-size: 100%; max-inline-size: none; }
 .codex-reading-body[data-compact="true"] .codex-reading-sheet-read > .codex-reader-host > .document > .related-list { display: none; }
 .codex-reading-body[data-compact="true"] > .codex-reading-sheet-head { flex-wrap: wrap; flex-basis: auto; height: auto; padding-block: var(--space-2); overflow: visible; }
 .codex-reading-body[data-compact="true"] .codex-reader-headline { flex: 1; }
@@ -480,8 +490,6 @@ button.chip:focus-visible {
   color: var(--brass-bright);
   font-variation-settings: "opsz" 144;
 }
-
-/* 유틸 표면(대기열·패치 상세·충돌) — 목록 2행에 디스플레이 히어로를 쓰지 않는다(F5). */
 .document--utility h1 {
   font-size: var(--font-size-title-xl);
   font-weight: var(--weight-medium);
@@ -725,36 +733,6 @@ button.chip:focus-visible {
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
-}
-
-.queue-toc-nav {
-  display: grid;
-  gap: 5px;
-}
-
-.queue-toc-link {
-  display: block;
-  min-width: 0;
-  padding: 5px 0;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-md);
-  letter-spacing: -0.005em;
-  line-height: 1.45;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.queue-toc-link:hover {
-  color: var(--text-primary);
-  transform: translateX(2px);
-}
-
-.queue-toc-level-3 {
-  padding-left: var(--space-3);
-  font-size: var(--font-size-compact);
 }
 
 .manifest-card {
@@ -1298,598 +1276,6 @@ button.chip:focus-visible {
   display: none;
 }
 
-/* ===== 사이드바 Drydock 진입점 ===== */
-
-.nav-drydock-section {
-  padding-top: var(--space-3);
-  padding-bottom: var(--space-3);
-  border-top: 1px solid var(--surface-rim);
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.nav-drydock-link {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 9px 10px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-md);
-  letter-spacing: -0.005em;
-  text-decoration: none;
-  position: relative;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.nav-drydock-link:hover {
-  background: color-mix(in oklch, var(--ink-veil) 40%, transparent);
-  color: var(--text-primary);
-  transform: translateX(2px);
-}
-
-.nav-drydock-link.active {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  color: var(--brass-bright);
-  font-weight: var(--weight-medium);
-}
-
-.nav-drydock-link.active::before {
-  content: "";
-  position: absolute;
-  left: -7px;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--brass);
-  transform: translate(0, -50%) scale(1);
-  opacity: 1;
-  box-shadow: 0 0 8px var(--brass-glow);
-}
-
-.nav-drydock-icon {
-  display: inline-flex;
-  align-items: center;
-  color: var(--brass-ink);
-  flex-shrink: 0;
-}
-
-.nav-drydock-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nav-drydock-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 18%, transparent);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
-  flex-shrink: 0;
-}
-
-/* ===== op-badge — 둘 다 brass 톤, 글리프+라벨로만 구분 ===== */
-
-.op-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  border: 1px solid color-mix(in oklch, var(--brass) 35%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.op-badge-glyph {
-  font-size: var(--font-size-md);
-  font-weight: var(--weight-bold);
-  line-height: 1;
-}
-
-/* UPDATE만 aurora 1px hairline-edge로 미세 차이 — 전체는 brass 불변 */
-.op-badge--update {
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--aurora) 18%, transparent);
-}
-
-/* 제안자 각인 — 도구 표식 + 이름. 읽기 전용이라 hover·포커스 스타일이 없다. */
-.queue-proposer { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; }
-.queue-proposer-mark { color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1; }
-.meta-chip--proposer .queue-proposer { font-size: inherit; letter-spacing: inherit; color: inherit; }
-
-/* ===== Queue 뷰 (Drydock 목록) ===== */
-
-.queue-view {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.queue-header {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.drydock-eyebrow {
-  margin: 0;
-  color: var(--brass-bright);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-}
-
-.queue-title {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: var(--font-size-display-xl);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  color: var(--text-primary);
-  font-variation-settings: "opsz" 60;
-}
-
-.queue-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
-  border: 1px solid var(--surface-rim);
-  width: fit-content;
-}
-
-.queue-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-radius: var(--radius-xs);
-  padding: 7px 14px;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.06em;
-  text-decoration: none;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.queue-tab:hover {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--ink-veil) 35%, transparent);
-}
-
-.queue-tab.active {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-  color: var(--brass-bright);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
-}
-
-.queue-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 18%, transparent);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
-}
-
-.queue-badge--muted {
-  background: var(--surface-glass);
-  border-color: var(--surface-rim);
-  color: var(--text-tertiary);
-}
-
-.queue-list {
-  display: grid;
-  gap: var(--space-3);
-}
-
-/* 컴팩트 대화형 패치 행 (레일 목록 뷰) */
-/* 대기 ↔ 결정됨 세그먼트 — 결정 이력(F9)으로 가는 상시 문이다. */
-.queue-segments {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: var(--surface-glass);
-  width: fit-content;
-}
-
-.queue-segments button {
-  border: 0;
-  border-radius: var(--radius-xs);
-  padding: var(--space-1) var(--space-3);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  cursor: pointer;
-}
-
-.queue-segments button:hover {
-  color: var(--text-secondary);
-}
-
-.queue-segments button[aria-pressed="true"] {
-  background: var(--surface-pillar);
-  color: var(--text-primary);
-}
-
-.queue-row-top {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-/* diffstat — 가감은 상태이므로 positive/coral 신호 채널이 정당하다. */
-.queue-row-diffstat {
-  flex: none;
-  display: inline-flex;
-  gap: var(--space-1);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-}
-
-.queue-row-diffstat ins {
-  color: var(--positive-ink);
-  text-decoration: none;
-}
-
-.queue-row-diffstat del {
-  color: var(--coral-ink);
-  text-decoration: none;
-}
-
-.queue-row-decision {
-  flex: none;
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--surface-rim);
-}
-
-.queue-row-decision--approve {
-  color: var(--positive-ink);
-  border-color: color-mix(in oklch, var(--positive) 40%, transparent);
-}
-
-.queue-row-decision--reject {
-  color: var(--coral-ink);
-  border-color: color-mix(in oklch, var(--coral) 40%, transparent);
-}
-
-/* 스티키 결정 독 — 근거와 결정 수단이 폴드 아래로 사라지지 않는다(F4). */
-.queue-decision-dock {
-  position: sticky;
-  top: 0;
-  z-index: 8;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin: calc(var(--space-5) * -1) calc(var(--codex-reader-gutter-x, var(--space-6)) * -1) var(--space-5);
-  padding: var(--space-3) var(--codex-reader-gutter-x, var(--space-6));
-  border-bottom: 1px solid var(--surface-rim-strong);
-  background: var(--ink-deep);
-}
-
-.queue-decision-dock-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.queue-decision-dock-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-primary);
-  font-size: var(--font-size-md);
-  font-weight: var(--weight-medium);
-  min-width: 0;
-}
-
-.queue-decision-dock-meta {
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.queue-decision-dock-actions {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-/* diff 표시 토글 + 접힘 표지 */
-.queue-diff-controls {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: var(--surface-glass);
-  margin-bottom: var(--space-4);
-}
-
-.queue-diff-controls button {
-  border: 0;
-  border-radius: var(--radius-xs);
-  padding: var(--space-1) var(--space-3);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  cursor: pointer;
-}
-
-.queue-diff-controls button:hover {
-  color: var(--text-secondary);
-}
-
-.queue-diff-controls button[aria-pressed="true"] {
-  background: var(--surface-pillar);
-  color: var(--text-primary);
-}
-
-.queue-diff-fold {
-  margin: var(--space-3) 0;
-  padding: var(--space-1) var(--space-3);
-  border: 1px dashed var(--surface-rim);
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  text-align: center;
-}
-
-.queue-diff-legend {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.queue-diff-legend-item {
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-xs);
-}
-
-.queue-diff-legend-item--added {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-}
-
-.queue-diff-legend-item--removed {
-  background: color-mix(in oklch, var(--coral) 5%, transparent);
-  text-decoration: line-through;
-}
-
-.queue-batch-controls { padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-md); margin-bottom: var(--space-3); font-size: var(--t-sm); }
-.queue-batch-controls p { margin: 0 0 var(--space-2); }
-.queue-batch-controls .queue-action-buttons { flex-wrap: wrap; }
-.queue-batch-controls textarea { box-sizing: border-box; width: 100%; resize: vertical; background: var(--surface-panel); color: var(--text-primary); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: var(--space-2); font: inherit; margin-bottom: var(--space-2); }
-.queue-selection-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; gap: var(--space-1); }
-.queue-selection-row > input { margin: var(--space-4) 0 0; accent-color: var(--brass); }
-.queue-selection-row .queue-row { width: 100%; min-width: 0; }
-
-.queue-row-list {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2) 0;
-}
-
-.queue-row {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: var(--space-2);
-  align-items: start;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: transparent;
-  border: 1px solid transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
-  min-width: 0;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
-
-.queue-row:hover {
-  background: color-mix(in oklch, var(--brass) 6%, transparent);
-  border-color: color-mix(in oklch, var(--brass) 22%, transparent);
-}
-
-.queue-row-badge {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 1px;
-}
-
-.queue-row-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.queue-row-target {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  font-weight: var(--weight-medium);
-  color: var(--text-primary);
-  letter-spacing: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-row-summary {
-  font-family: var(--font-content);
-  font-size: calc(var(--font-content-size) * 0.857143);
-  color: var(--text-secondary);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.queue-row-meta {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-2xs);
-  color: var(--text-tertiary);
-  letter-spacing: 0.04em;
-  margin-top: 2px;
-}
-
-.queue-empty {
-  margin: 0;
-  padding: var(--space-5) 0;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-lg);
-  font-family: var(--font-ui);
-  letter-spacing: -0.005em;
-}
-
-.queue-card {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  border: 1px solid transparent;
-  box-shadow: var(--shadow-soft);
-  text-decoration: none;
-  color: inherit;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.queue-card:hover {
-  transform: translateX(3px);
-  border-color: color-mix(in oklch, var(--aurora) 40%, transparent);
-  background: color-mix(in oklch, var(--aurora) 8%, transparent);
-}
-
-.queue-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.queue-card-id {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  color: var(--text-tertiary);
-  letter-spacing: 0.04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.queue-card-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.queue-card-time {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-}
-
-.queue-card-summary {
-  margin: 0;
-  font-family: var(--font-content);
-  font-size: var(--font-content-size);
-  font-weight: var(--weight-medium);
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.queue-card-target {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  color: var(--text-tertiary);
-  letter-spacing: 0.04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.queue-card-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-/* status dot */
 .status-dot {
   display: inline-block;
   width: 8px;
@@ -1898,194 +1284,9 @@ button.chip:focus-visible {
   flex-shrink: 0;
 }
 
-.status-dot--pending {
-  background: var(--brass);
-  box-shadow: 0 0 6px var(--brass-glow);
-}
-
-.status-dot--accepted {
-  background: var(--positive);
-}
-
-.status-dot--rejected {
-  background: var(--coral);
-}
-
-/* ===== Queue Detail 뷰 ===== */
-
-.queue-detail-view {
-  min-width: 0;
-}
-
-.queue-detail-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: var(--space-8);
-  align-items: start;
-}
-
-.queue-detail-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  min-width: 0;
-}
-
-.queue-back {
-  align-self: flex-start;
-}
-
-.queue-detail-header {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.queue-patch-id {
-  margin: 0;
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  color: var(--text-tertiary);
-  letter-spacing: 0.08em;
-}
-
-.queue-summary {
-  margin: 0;
-  font-family: var(--font-content);
-  font-size: calc(var(--font-content-size) * 1.571429);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  color: var(--text-primary);
-  font-variation-settings: "opsz" 60;
-}
-
 /* Rail 카드 */
-.queue-rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  position: sticky;
-  top: var(--space-8);
-}
-
-.queue-rail-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  box-shadow: var(--shadow-soft);
-}
-
-.queue-rail-header {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.queue-rail-subtitle {
-  margin: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-body);
-  font-weight: var(--weight-regular);
-  letter-spacing: -0.01em;
-  font-variation-settings: "opsz" 16;
-}
-
-.queue-rail-hint {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
-  letter-spacing: -0.005em;
-}
 
 /* Patch Manifest dl */
-.queue-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-2) var(--space-3);
-  margin: 0;
-  align-items: baseline;
-}
-
-.queue-dl-key {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  padding-top: 2px;
-}
-
-.queue-dl-value {
-  margin: 0;
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.queue-dl-mono {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-}
-
-.queue-dl-muted {
-  color: var(--text-tertiary);
-}
-
-.queue-dl-time {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.queue-dl-relative {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  letter-spacing: 0.04em;
-}
-
-.queue-dl-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.queue-raw-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
-  border: 1px solid var(--surface-rim);
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-sm);
-  letter-spacing: 0;
-  min-width: 0;
-  width: 100%;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.queue-raw-link:hover {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
-  transform: translateY(-1px);
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-}
 
 /* CLI action 카드 */
 .cli-action-card .code-block {
@@ -2101,218 +1302,6 @@ button.chip:focus-visible {
   white-space: pre;
 }
 
-/* 패치 상세 뒤로가기 버튼 */
-.queue-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 3px 8px;
-  border-radius: var(--radius-xs);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  margin-bottom: var(--space-4);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.queue-back-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--surface-rim);
-  background: var(--surface-glass);
-}
-
-/* 패치 상세 결정 바 */
-.queue-decision-section {
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--surface-rim);
-}
-
-.queue-decision-confirm {
-  margin: 0 0 var(--space-3) 0;
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-}
-
-.queue-decision-decided {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.04em;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
-  display: inline-flex;
-  align-items: center;
-}
-
-.queue-decision-decided--approve {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  border: 1px solid color-mix(in oklch, var(--brass) 30%, transparent);
-}
-
-.queue-decision-decided--reject {
-  color: var(--coral-ink);
-  background: color-mix(in oklch, var(--coral) 8%, transparent);
-  border: 1px solid color-mix(in oklch, var(--coral) 25%, transparent);
-}
-
-/* ===== Drydock 액션 카드 ===== */
-
-.queue-action-buttons {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.queue-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 14px;
-  border-radius: var(--radius-xs);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    opacity var(--duration-fast) var(--ease-glide),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.queue-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.queue-action-btn--approve {
-  background: color-mix(in oklch, var(--brass) 18%, transparent);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
-  color: var(--brass-bright);
-}
-
-.queue-action-btn--approve:not(:disabled):hover {
-  background: color-mix(in oklch, var(--brass) 28%, transparent);
-  transform: translateY(-1px);
-}
-
-.queue-action-btn--reject {
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
-  color: var(--coral-ink);
-}
-
-.queue-action-btn--reject:not(:disabled):hover {
-  background: color-mix(in oklch, var(--coral) 10%, transparent);
-  transform: translateY(-1px);
-}
-
-.queue-action-btn--reject-submit {
-  background: color-mix(in oklch, var(--coral) 18%, transparent);
-  border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
-  color: var(--coral-ink);
-}
-
-.queue-action-btn--reject-submit:not(:disabled):hover {
-  background: color-mix(in oklch, var(--coral) 28%, transparent);
-}
-
-.queue-action-btn--cancel {
-  background: transparent;
-  border: 1px solid var(--surface-rim);
-  color: var(--text-secondary);
-}
-
-.queue-action-btn--cancel:not(:disabled):hover {
-  background: color-mix(in oklch, var(--ink-veil) 20%, transparent);
-  color: var(--text-primary);
-}
-
-.queue-reject-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-}
-
-.queue-reject-textarea {
-  width: 100%;
-  min-height: 80px;
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  color: var(--text-primary);
-  font-family: var(--font-content);
-  font-size: calc(var(--font-content-size) * 0.928571);
-  line-height: 1.5;
-  resize: vertical;
-  box-sizing: border-box;
-  transition: border-color var(--duration-fast) var(--ease-spring);
-}
-
-.queue-reject-textarea:focus {
-  outline: none;
-  border-color: var(--brass);
-  box-shadow: 0 0 0 2px var(--brass-glow);
-}
-
-.queue-action-error {
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--coral) 8%, transparent);
-  border: 1px solid color-mix(in oklch, var(--coral) 25%, transparent);
-  color: var(--coral-ink);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-ui);
-}
-
-.queue-action-spinner {
-  display: block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid color-mix(in oklch, var(--brass) 25%, transparent);
-  border-top-color: var(--brass);
-  border-radius: 50%;
-  animation: queue-spin var(--duration-slow) linear infinite; animation-name: var(--state-motion, queue-spin);
-  margin-bottom: var(--space-2);
-}
-
-@keyframes queue-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .queue-action-spinner { animation-duration: 0.01ms; }
-}
-
-@media (max-width: 1100px) {
-  .queue-detail-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .queue-rail {
-    position: static;
-  }
-}
 
 @media (max-width: 1024px) {
   .document h1 {
@@ -2377,14 +1366,6 @@ button.chip:focus-visible {
     font-size: var(--font-size-title-sm);
   }
 
-  .queue-title {
-    font-size: var(--font-size-display-md);
-  }
-
-  .queue-summary {
-    font-size: var(--font-size-title-md);
-  }
-
   .app-shell:has(.toc-panel) .rail {
     display: none;
   }
@@ -2409,65 +1390,6 @@ button.chip:focus-visible {
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   border-color: color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-bright);
-}
-
-.conflict-meta-card,
-.conflict-section {
-  margin-top: var(--space-5);
-  padding: var(--space-5);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  box-shadow: var(--shadow-soft);
-}
-
-.conflict-list,
-.patch-set-list {
-  display: grid;
-  gap: var(--space-3);
-  list-style: none;
-  padding: 0;
-  margin: var(--space-4) 0 0;
-}
-
-.patch-set-list {
-  margin-top: 0;
-}
-
-.conflict-list-item,
-.patch-set-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-glass) 80%, transparent);
-  color: inherit;
-  text-decoration: none;
-}
-
-.conflict-list-copy,
-.patch-set-item-copy {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.conflict-list-copy small,
-.patch-set-item-copy small {
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-xs);
-}
-
-.conflict-meta-card pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--font-code); font-size: var(--font-code-size);
-  color: var(--text-secondary);
 }
 
 .log-controls {
@@ -2521,54 +1443,6 @@ button.chip:focus-visible {
   border-bottom: 1px solid var(--surface-rim);
 }
 
-.codex-nav-quick {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  white-space: nowrap;
-  padding: 2px 0;
-  background: none;
-  border: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  cursor: pointer;
-  transition: color var(--duration-base) var(--ease-spring);
-}
-
-.codex-nav-quick:hover {
-  color: var(--text-primary);
-}
-
-.codex-nav-quick:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* display 지정이 UA의 [hidden]을 이겨 "0" 배지가 새어 나온다 — 명시적으로 닫는다. */
-.codex-nav-quick .badge[hidden] {
-  display: none;
-}
-
-/* 개수는 면 없는 숫자다 — 이름 옆에 한 단계 밝은 잉크로 선다. */
-.codex-nav-quick .badge {
-  display: inline;
-  padding: 0;
-  background: none;
-  color: var(--text-primary);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-/* 새로 도착한 대기는 상태 채널이 말한다 — brass는 위치·포커스 전용이므로 도착을 칠할 수 없다.
-   숫자가 늘어난 순간에만 숫자 잉크가 aurora로 서고, 대기열이 비면 꺼진다. */
-.codex-nav-quick .badge[data-arrived="true"] {
-  color: var(--aurora);
-}
-
 /* 헬스는 quick-row에 사는 응축 칩이다 — 문장형 스트립은 좁은 폭에서 잘렸다(F6). */
 .codex-nav-health {
   position: relative;
@@ -2576,7 +1450,6 @@ button.chip:focus-visible {
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  margin-left: auto;
 }
 
 .codex-nav-health-chip {
@@ -3003,65 +1876,6 @@ button.chip:focus-visible {
 @keyframes codex-quote-rise { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .codex-quote-pill { animation: none; } }
 
-/* ─── 문서 안 인라인 변경 제안 (Quiet Line) ─────────────────────────────────────────
-   지휘관이 이 문서를 고친 대기 패치가 머리 아래에 선다. 면은 헤어라인 하나, 무장은 brass(위치 채널)가 아니라 positive/coral
-   상태로 말한다 — 적용은 positive, 버리기는 coral 잉크다. */
-.codex-inline-proposals { display: grid; gap: var(--space-3); margin: 0 0 var(--space-5); }
-.codex-proposal {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  font-family: var(--font-ui);
-}
-.codex-proposal-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); font-size: var(--t-xs); color: var(--text-tertiary); }
-.codex-proposal-who { color: var(--text-secondary); font-weight: var(--weight-medium); }
-.codex-proposal-summary { min-width: 0; overflow-wrap: anywhere; }
-.codex-proposal-diff { min-width: 0; font-family: var(--font-content); }
-.codex-proposal-diff > :first-child { margin-top: 0; }
-.codex-proposal-error { margin: 0; font-size: var(--t-xs); color: var(--coral-ink); }
-.codex-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.codex-proposal-spacer { flex: 1 1 auto; }
-.codex-proposal-link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: var(--t-xs);
-  text-decoration: underline;
-  text-decoration-color: var(--hairline-strong);
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.codex-proposal-link:hover { color: var(--text-secondary); }
-.codex-proposal-btn {
-  padding: 5px 14px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-}
-.codex-proposal-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--control-hover-fill); }
-.codex-proposal-btn.is-primary { color: var(--text-primary); }
-.codex-proposal-btn.is-armed { border-color: currentColor; }
-.codex-proposal-btn.is-primary.is-armed { color: var(--positive-ink); }
-.codex-proposal-btn.is-armed:not(.is-primary) { color: var(--coral-ink); }
-.codex-proposal-btn:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
-.codex-proposal-btn:focus-visible,
-.codex-proposal-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-
-/* 렌더드 diff 블록(검토 대기열) — 상태 채널(positive/coral)만 진다. */
-.cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
-.cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }
-.cowork-block--removed { border-left-color: var(--coral); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); text-decoration: line-through; }
-.queue-diff-block-label { display: inline-block; font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); text-decoration: none; color: var(--text-primary); }
-
 /* ===== Codex Refit — 내비게이터 신선도 그룹 ===== */
 
 /* "이번 주 무엇이 바뀌었나"를 목록 최상단에서 답하는 그룹 헤더. */
@@ -3159,12 +1973,6 @@ button.chip:focus-visible {
   font-size: var(--t-xs);
 }
 
-/* 결정 사실은 더 강한 소식이다 — 아직 자기가 승인할 수 있다고 믿는 사람을 멈춰 세운다. */
-.codex-reader-stale[data-tone="decided"] {
-  border-color: color-mix(in oklab, var(--warn) 50%, var(--surface-rim));
-  background: color-mix(in oklch, var(--warn) 12%, var(--surface-panel));
-}
-
 .codex-reader-stale-text {
   min-width: 0;
 }
@@ -3193,13 +2001,6 @@ button.chip:focus-visible {
 }
 
 .document { font-family: var(--font-content); --font-size-body: var(--font-content-size); --font-size-code: var(--font-code-size); }
-
-/* 표 — 채팅 표(chat.css 의 `:is(.agent-chat, .group-chat) .markdown-body table`)와 같은 문법이다. 공용 표(전폭·바깥 테두리·
-   금색 대문자 머리칸·줄무늬·12/16 여백)를 위키 본문(.document — 엔트리·스키마·제안 diff·충돌 비교 패널)에서만 걷어 낸다.
-   파일 탐색기·목표 등 다른 공용 마크다운 표는 그대로다. 폭은 내용에 맞추고(넘치면 공용 규칙대로 표 상자 안에서 가로로 흐른다),
-   면은 중립 면 하나, 바깥 테두리 없이 칸 사이 세로 헤어라인과 그보다 옅은 가로 줄만 남는다. 머리칸은 본문과 같은 크기·주 잉크에
-   굵기 한 단으로만 갈린다 — brass 는 위치 채널이라 머리칸이 빌리지 않는다. 글자는 본문(--font-content-size)의 13/14, 줄높이 1.5,
-   칸 여백 0.5em 1em 이다. */
 .document .markdown-body table {
   width: fit-content;
   max-width: 100%;
@@ -3248,8 +2049,7 @@ button.chip:focus-visible {
    글자는 폰 글자 사다리의 small(12px) 아래로 내려가지 않고, 누르는 것은 손가락 칸이 44 이상이다. 보이는 모양은 되도록 유지하고
    칸만 넓히되(투명 ::after), 칸을 넓힐 자리가 이웃 조작부와 겹치는 곳은 조작부 자체를 키운다. */
 :root[data-view-mode="mobile"] .breadcrumb li,
-:root[data-view-mode="mobile"] .meta-chips .chip,
-:root[data-view-mode="mobile"] .queue-back-btn { font-size: var(--m-fs-small); }
+:root[data-view-mode="mobile"] .meta-chips .chip { font-size: var(--m-fs-small); }
 
 /* 태그 칩 — 칩 모양은 그대로 두고 높이만 26(위아래 여백 6), 위아래 투명 칸 10씩으로 46. 칸은 머리 격자 간격(12) 안에 머문다.
    줄이 꺾여도 윗줄 칸과 겹치지 않게 줄 간격을 20으로 벌린다. */
@@ -3259,4 +2059,3 @@ button.chip:focus-visible {
 :root[data-view-mode="mobile"] .meta-chips button.chip::after { position: absolute; inset: -10px 0; content: ""; }
 
 /* 「삭제 제안」·뒤로 — 글자 단추는 단추 자체를 44로 세운다. 아래 여백(16)을 높이가 대신 써서 머리 전체 높이는 거의 그대로다. */
-:root[data-view-mode="mobile"] .queue-back-btn { justify-self: start; min-height: 44px; margin-bottom: 0; padding: 0 var(--space-3); }

@@ -6,7 +6,6 @@ import {
   getCodexReaderMarkdown,
   mountReaderInto,
   navigateCodexReaderHistory,
-  refreshCodexHealth,
   saveReaderScroll,
   setCodexReaderExpandedForSession,
   setNavigatorTagFilter,
@@ -16,7 +15,7 @@ import {
 import { useT } from "./i18n/index.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
-import { getState as getCodexState, loadInitialData, subscribeState as subscribeCodexState } from "./codex/state.js";
+import { getState as getCodexState, subscribeState as subscribeCodexState } from "./codex/state.js";
 import type { SearchEntry } from "./codex/api.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -77,7 +76,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
   const [linkCopied, setLinkCopied] = useState(false);
 
   const readerKey = reader
-    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
+    ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : (reader.templateId ?? "")}`
     : null;
 
   // W2: expand 전용 — reader != null && expanded의 경우에만 시트 표시
@@ -154,7 +153,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
 
     const kind = reader.kind;
     const subId =
-      kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
+      kind === "schema" ? reader.templateId : undefined;
 
     mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
@@ -172,14 +171,6 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         expandCodexReader();
       },
       onClose: closeReading,
-      onPatchOpen: (pid) => {
-        openCodexReader({ kind: "drydock", patchId: pid });
-        expandCodexReader();
-      },
-      onConflictOpen: (id) => {
-        openCodexReader({ kind: "conflicts", id });
-        expandCodexReader();
-      },
       // 확대 중에는 카탈로그 레일이 화면 밖일 수 있다 — 필터 결과를 시트 안 항목 전환기로
       // 열어 보여주고, 레일 필터도 같은 값으로 맞춰 접었을 때 어긋나지 않게 한다.
       onTagClick: (tag) => {
@@ -188,14 +179,6 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         setSwitcherQuery("");
         setSwitcherIndex(0);
         setOverlay("switcher");
-      },
-      onDecided: (kind) => {
-        void loadInitialData();
-        refreshCodexHealth();
-        if (kind !== "conflicts") {
-          openCodexReader({ kind: "drydock", patchId: undefined });
-          expandCodexReader();
-        }
       },
     });
 
@@ -394,7 +377,6 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
         className="codex-reading-body"
         data-reading-size={size}
         data-compact={compact}
-        data-conflict-comparison={reader?.kind === "conflicts" && Boolean(reader.id)}
       >
         <div className="codex-reading-sheet-head">
           <div className="codex-reader-history">
