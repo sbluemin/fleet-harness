@@ -5,7 +5,11 @@ import { SESSION_HOST_POLL_MS } from "@fleet-console/protocol/session-host";
 import { loadWindowsJobBindings } from "./windows-job-containment.js";
 
 interface NativeLibrary { func(convention: string, name: string, result: unknown, args: readonly unknown[]): (...args: unknown[]) => unknown; }
-interface NativeModule { load(file: string): NativeLibrary; pointer(type: string): unknown; decode(value: unknown, type: string): unknown; }
+interface NativeModule {
+  load(file: string): NativeLibrary;
+  pointer(type: string): unknown;
+  decode: { (value: unknown, type: string): unknown; string16(value: unknown): string };
+}
 const CREATE_SUSPENDED = 0x00000004;
 const DETACHED_PROCESS = 0x00000008;
 const CREATE_UNICODE_ENVIRONMENT = 0x00000400;
@@ -46,7 +50,8 @@ export function createWindowsSessionPlatform(): SessionHostPlatform | undefined 
   const userSid = pointer(user);
   const converted = Buffer.alloc(8); if (!sidString(userSid, converted)) throw error("session_sid_string");
   let sid: string;
-  try { sid = String(koffi.decode(pointer(converted), "str16")); } finally { localFree(pointer(converted)); }
+  // converted는 LPWSTR 셀이고 pointer(converted)는 문자열 자체다. str16으로 재역참조하지 않는다.
+  try { sid = koffi.decode.string16(pointer(converted)); } finally { localFree(pointer(converted)); }
   const independent = (handle: unknown): void => {
     const member = Buffer.alloc(4);
     if (!inJob(handle, null, member)) throw error("session_job_query_failed");

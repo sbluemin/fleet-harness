@@ -30,11 +30,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @fleet-console/agent-runtime build
       - run: pnpm --filter @dotobokuri/fleet-console build
+      # Run the native boundary outside Vitest so a native crash has its own step/exit code.
+      - name: Native SID and ACL preflight
+        run: |
+          T=$(mktemp -d "$(cygpath -u "$RUNNER_TEMP")/fleet-native-probe-XXXXXX")
+          trap 'rm -rf -- "$T"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
+          mkdir -p "$T/native" "$T/home"
+          export FLEET_NATIVE_PROBE_DIR="$(cygpath -w "$T/native")"
+          export HOME="$(cygpath -w "$T/home")"
+          export USERPROFILE="$HOME"
+          pnpm --filter @dotobokuri/fleet-console exec node --import tsx --input-type=module - <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { createWindowsSessionPlatform } from './core/host/bootstrap/windows-session-platform.ts';
+          console.log('native-preflight: starting');
+          const platform = createWindowsSessionPlatform();
+          if (!platform) throw new Error('windows_platform_missing');
+          console.log('native-preflight: token SID decoded');
+          const directory = process.env.FLEET_NATIVE_PROBE_DIR;
+          platform.protectDirectory(directory);
+          const file = path.join(directory, 'owned'); fs.writeFileSync(file, 'fixture');
+          if (!platform.owns(directory) || !platform.owns(file)) throw new Error('native_owner_unverified');
+          console.log('native-preflight: user/SYSTEM DACL and current-token ownership verified');
+          JS
       # -t would pass with zero matching tests, so the step also requires at least two passed tests in the summary.
       - name: Session host representative cases (named pipe, job containment, same runner PID)
         run: |
           set -o pipefail
-          pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts -t "Console session-host lifecycle integration" 2>&1 | tee session-host.log
+          pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts --reporter=verbose -t "Console session-host lifecycle integration" 2>&1 | tee session-host.log
           grep -E "Tests +[0-9]+ passed" session-host.log
           passed=$(grep -oE "Tests +[0-9]+ passed" session-host.log | grep -oE "[0-9]+" | head -1)
           test "${passed:-0}" -ge 2
