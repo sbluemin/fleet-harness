@@ -364,8 +364,6 @@ function legacyWorkspacePath(url: URL): string | null {
   const pathname = url.pathname;
   if (
     pathname.startsWith("/entry/")
-    || pathname === "/conflicts"
-    || pathname.startsWith("/conflicts/")
   ) {
     return `${pathname}${url.search}`;
   }

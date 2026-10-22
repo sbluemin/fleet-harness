@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { dedupeStrings, truncateSummary } from "../briefing.js";
-import { enqueuePatch } from "../patch.js";
+import { dedupeStrings } from "../briefing.js";
+import { withWikiWriteLock, writeEntry } from "../write.js";
 import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_QUERY_DESCRIPTION,
@@ -11,7 +11,7 @@ import {
 } from "../prompts.js";
 import { assertSafeEntryId, computeContentHash, pathExists, readWikiEntry } from "../store.js";
 import { resolveWikiContext, type WikiContextPack, type WikiResolvePayload } from "./resolve.js";
-import type { Patch, WikiEntry, WikiRawSourceRef } from "../types.js";
+import type { WikiEntry, WikiRawSourceRef } from "../types.js";
 import type { WikiToolExecutionContext } from "../tool-context.js";
 
 interface QueryCitationInput {
@@ -31,14 +31,15 @@ interface WikiQueryOutput {
   question: string;
   context_pack: WikiContextPack;
   citations: WikiQueryOutputCitation[];
-  staged_patch_id?: string;
+  saved_entry_id?: string;
+  version?: number;
   trust_boundary: string;
   deferred?: string[];
 }
 
 interface WikiQueryInput {
   question: string;
-  mode?: "answer" | "stage_answer_page";
+  mode?: "answer" | "save_answer_page";
   cite?: boolean;
   save_good_answer?: boolean;
   max_tokens?: number;
@@ -52,7 +53,7 @@ interface WikiQueryInput {
 
 interface NormalizedWikiQueryInput {
   question: string;
-  mode: "answer" | "stage_answer_page";
+  mode: "answer" | "save_answer_page";
   cite: boolean;
   maxTokens: number;
   answer?: string;
@@ -100,16 +101,19 @@ export function buildQueryToolConfig() {
         } satisfies WikiQueryOutput);
       }
 
-      const citations = await normalizeStageCitations(input, resolvePayload, paths);
-      const stageResult = await stageAnswerPage(input, citations, paths);
+      const { citations, written: saveResult } = await withWikiWriteLock(paths, async () => {
+        const citations = await normalizeSaveCitations(input, resolvePayload, paths);
+        return { citations, written: await saveAnswerPage(input, citations, paths) };
+      });
       return textResult({
         ok: true,
         question: input.question,
         context_pack: resolvePayload.context_pack,
         citations,
-        staged_patch_id: stageResult.patchId,
+        saved_entry_id: saveResult.entry_id,
+        version: saveResult.version,
         trust_boundary: QUERY_TRUST_BOUNDARY,
-        deferred: ["claim sidecar auto-staging deferred until queue auxiliary sidecar support exists"],
+        deferred: ["claim sidecars are not written by wiki_query"],
       } satisfies WikiQueryOutput);
     },
   };
@@ -123,14 +127,15 @@ function textResult(payload: WikiQueryOutput) {
 }
 
 function normalizeQueryInput(params: WikiQueryInput): NormalizedWikiQueryInput {
+  if ((params.mode as string) === "stage_answer_page") throw new Error("mode=stage_answer_page was removed; use mode=save_answer_page");
   const question = typeof params.question === "string" ? params.question.trim() : "";
   if (!question) {
     throw new Error("[fleet-wiki] wiki_query question must be a non-empty string");
   }
   const mode = params.save_good_answer === true
-    ? "stage_answer_page"
-    : params.mode === "stage_answer_page"
-      ? "stage_answer_page"
+    ? "save_answer_page"
+    : params.mode === "save_answer_page"
+      ? "save_answer_page"
       : "answer";
   return {
     question,
@@ -142,7 +147,7 @@ function normalizeQueryInput(params: WikiQueryInput): NormalizedWikiQueryInput {
     targetType: params.target_type === "synthesis" ? "synthesis" : "query",
     targetId: typeof params.target_id === "string" ? params.target_id.trim() : undefined,
     title: typeof params.title === "string" ? params.title.trim() : undefined,
-    proposer: typeof params.proposer === "string" && params.proposer.trim().length > 0 ? params.proposer.trim() : "wiki_query",
+    proposer: typeof params.proposer === "string" && params.proposer.trim().length > 0 ? params.proposer.trim() : "tool:wiki_query",
   };
 }
 
@@ -174,16 +179,16 @@ async function buildCitations(
   return citations;
 }
 
-async function normalizeStageCitations(
+async function normalizeSaveCitations(
   input: NormalizedWikiQueryInput,
   resolvePayload: WikiResolvePayload,
   paths: ReturnType<typeof resolveMemoryPaths>,
 ): Promise<WikiQueryOutputCitation[]> {
   if (!input.answer) {
-    throw new Error("[fleet-wiki] wiki_query stage_answer_page requires non-empty answer");
+    throw new Error("[fleet-wiki] wiki_query save_answer_page requires non-empty answer");
   }
   if (!input.citations || input.citations.length === 0) {
-    throw new Error("[fleet-wiki] wiki_query stage_answer_page requires citations");
+    throw new Error("[fleet-wiki] wiki_query save_answer_page requires citations");
   }
   const allowedEntryIds = new Set(resolvePayload.context_pack.entries.map((entry) => entry.id));
   const citations: WikiQueryOutputCitation[] = [];
@@ -214,11 +219,11 @@ async function normalizeStageCitations(
   return citations;
 }
 
-async function stageAnswerPage(
+async function saveAnswerPage(
   input: NormalizedWikiQueryInput,
   citations: WikiQueryOutputCitation[],
   paths: ReturnType<typeof resolveMemoryPaths>,
-): Promise<{ patchId: string }> {
+) {
   const now = new Date().toISOString();
   const targetId = input.targetId?.length
     ? input.targetId
@@ -247,22 +252,7 @@ async function stageAnswerPage(
     rawSourceRefs: rawSourceRefs.map((ref) => ({ ref } satisfies WikiRawSourceRef)),
     body: buildAnswerPageBody(input.question, input.answer!, citations),
   };
-  const patch: Patch = {
-    frontmatter: {
-      op: exists ? "update_wiki" : "create_wiki",
-      target,
-      summary: truncateSummary(entry.title),
-      proposer: input.proposer,
-      created: now,
-    },
-    body: JSON.stringify(entry),
-  };
-  return {
-    patchId: await enqueuePatch(patch, paths, {
-      rawSourceRef: rawSourceRefs[0],
-      warnings: ["claim sidecar auto-staging deferred until queue auxiliary sidecar support exists"],
-    }),
-  };
+  return writeEntry(entry, target, paths, { actor: input.proposer, tool: "wiki_query", op: exists ? "update_wiki" : "create_wiki" });
 }
 
 function buildAnswerPageBody(question: string, answer: string, citations: WikiQueryOutputCitation[]): string {

@@ -17,7 +17,7 @@ function createCodexWikiToolSpecs(fleetDataDir: string) {
 const BODY = "A durable Terminal Wiki entry. ".repeat(12);
 
 describe("Codex Wiki storage composition", () => {
-  it("registers the unchanged catalog while a representative write resolves the Theater-root durable store", async () => {
+  it("registers the direct-write catalog while a representative write resolves the Theater-root durable store", async () => {
     await withFixture(async ({ fleetDataDir, theaterRoot }) => {
       const sourceFile = path.join(theaterRoot, ".fleet", "knowledge", "legacy.md");
       const legacy = "legacy source remains immutable\n";
@@ -37,7 +37,7 @@ describe("Codex Wiki storage composition", () => {
       const knowledge = path.join(workspace.path, "knowledge");
       expect(await readFile(sourceFile, "utf8")).toBe(legacy);
       expect(await readFile(path.join(knowledge, "legacy.md"), "utf8")).toBe(legacy);
-      expect(await readdir(path.join(knowledge, "queue"))).toHaveLength(1);
+      expect(await readFile(path.join(knowledge, "wiki", "terminal-entry.md"), "utf8")).toContain(BODY.trim());
     });
   });
 

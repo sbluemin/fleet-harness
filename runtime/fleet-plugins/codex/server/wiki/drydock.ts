@@ -3,18 +3,16 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { getClaimsDir, validateClaimSet } from "./claims.js";
+import { withWikiWriteLock, writeEntry } from "./write.js";
+import { parseWikiEntry } from "./store.js";
 import {
   INDEX_MD_FILENAME,
-  PATCH_FILENAME,
-  PATCH_META_FILENAME,
   REQUIRED_WIKI_FRONTMATTER_KEYS,
-} from "./patch.js";
-import { listConflicts, readConflict } from "./conflicts.js";
+} from "./paths.js";
 import { dedupeStrings } from "./briefing.js";
 import { extractLegacyMarkdownWikiLinks, extractWikiLinks } from "./store.js";
 import { appendLog, parseLog } from "./log.js";
-import { PATCH_SET_DIRNAME, readPatchSet } from "./patch.js";
-import { getIndexMarkdownFile, getLogFile } from "./paths.js";
+import { assertContainedPath, getIndexMarkdownFile, getLogFile } from "./paths.js";
 import { findUnsafeMemoryText } from "./store.js";
 import {
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
@@ -32,7 +30,6 @@ import {
   readJsonFile,
   readPatchFile,
   stripLeadingFrontmatter,
-  writePatchFile,
 } from "./store.js";
 import {
   WIKI_ENTRY_STATUSES,
@@ -40,7 +37,6 @@ import {
   type DryDockIssue,
   type DryDockReport,
   type MemoryPaths,
-  type PatchMeta,
 } from "./types.js";
 
 interface ParsedSemanticEntry {
@@ -86,6 +82,10 @@ const NORMALIZED_STATUSES = new Set<string>(WIKI_ENTRY_STATUSES);
 const NORMALIZED_TYPES = new Set<string>(WIKI_ENTRY_TYPES);
 
 export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {}): Promise<DryDockReport> {
+  return options.fix ? withWikiWriteLock(paths, () => inspectWiki(paths, options)) : inspectWiki(paths, options);
+}
+
+async function inspectWiki(paths: MemoryPaths, options: DryDockOptions): Promise<DryDockReport> {
   const issues: DryDockIssue[] = [];
   const wikiIds = new Map<string, string>();
   const parsedWikiFiles: Array<{ filePath: string; body: string }> = [];
@@ -125,7 +125,7 @@ export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {
     if (strippedBody !== parsed.body) {
       issues.push(issue("duplicate_frontmatter", "warning", "위키 본문 선두에 중복 YAML frontmatter 블록이 있습니다.", filePath));
       if (options.fix) {
-        await writePatchFile(filePath, serializeParsedMarkdown(parsed.rawFrontmatter, strippedBody), paths);
+        await writeEntry({ ...parseWikiEntry(content), body: strippedBody }, path.relative(paths.root, filePath).split(path.sep).join("/"), paths, { actor: "tool:wiki_drydock", tool: "wiki_drydock", historyOp: "edit", changed_fields: ["body"] });
         fixedDuplicateFrontmatterCount += 1;
       }
     }
@@ -160,90 +160,22 @@ export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {
     issues.push(...safetyIssues(await readPatchFile(filePath), filePath));
   }
 
-  for (const queueId of await listDirectoryNames(paths.queueDir)) {
-    if (queueId === PATCH_SET_DIRNAME) continue;
-    const queueDir = path.join(paths.queueDir, queueId);
-    try {
-      const patchContent = await readPatchFile(path.join(queueDir, PATCH_FILENAME));
-      issues.push(...safetyIssues(patchContent, path.join(queueDir, PATCH_FILENAME)));
-      await readJsonFile<PatchMeta>(path.join(queueDir, PATCH_META_FILENAME));
-    } catch {
-      issues.push(issue("malformed_queue", "error", "손상된 queue 엔트리", queueDir));
-    }
-  }
-
-  for (const patchSetId of await listDirectoryNames(path.join(paths.queueDir, PATCH_SET_DIRNAME))) {
-    const patchSetMetaFile = path.join(paths.queueDir, PATCH_SET_DIRNAME, patchSetId, PATCH_META_FILENAME);
-    let patchSet;
-    try {
-      patchSet = await readPatchSet(paths, patchSetId);
-    } catch {
-      issues.push(issue("malformed_queue", "error", "손상된 patch set metadata", patchSetMetaFile));
-      continue;
-    }
-    for (const patchId of patchSet.patchIds) {
-      const queueMetaFile = path.join(paths.queueDir, patchId, PATCH_META_FILENAME);
-      const archiveMetaFile = path.join(paths.archiveDir, patchId, PATCH_META_FILENAME);
-      if (!(await pathExists(queueMetaFile)) && !(await pathExists(archiveMetaFile))) {
-        issues.push(
-          issue(
-            "orphan_patch_set_member",
-            "error",
-            `Patch set ${patchSet.id} references missing patch: ${patchId}`,
-            patchSetMetaFile,
-          ),
-        );
-        continue;
-      }
-      const metaFile = await pathExists(queueMetaFile) ? queueMetaFile : archiveMetaFile;
+  const countLegacy = async (dir: string, status: string): Promise<number> => {
+    try { await assertContainedPath(paths, dir); }
+    catch { return 0; }
+    let count = 0;
+    for (const id of await listDirectoryNames(path.join(paths.root, dir)).catch(() => [])) {
       try {
-        const meta = await readJsonFile<PatchMeta>(metaFile);
-        if (meta.patch_set_id && meta.patch_set_id !== patchSet.id) {
-          issues.push(
-            issue(
-              "orphan_patch_set_member",
-              "error",
-              `Patch set ${patchSet.id} references mismatched patch_set_id on ${patchId}`,
-              patchSetMetaFile,
-            ),
-          );
-        }
-      } catch {
-        issues.push(issue("malformed_queue", "error", "손상된 patch set member metadata", metaFile));
-      }
+        const file = `${dir}/${id}/meta.json`;
+        await assertContainedPath(paths, file);
+        if ((await readJsonFile<{ status?: string }>(path.join(paths.root, file))).status === status) count++;
+      } catch { /* 손상된 레거시 데이터는 무시한다. */ }
     }
-  }
-
-  for (const conflict of await listConflicts(paths)) {
-    if (conflict.status !== "unresolved") continue;
-    // "미해결 상태의 conflict" 표면화 경고. 코드값이 아래 "손상된 conflict 엔트리"의
-    // unresolved_conflict와 의미상 교차되어 있으나, 출력 호환성 계약 때문에 코드값을 바꾸지 않는다.
-    issues.push(
-      issue(
-        "conflict_unresolved",
-        "warning",
-        `미해결 conflict: ${conflict.reason} (${conflict.target})`,
-        path.join(paths.conflictsDir, conflict.id, "meta.json"),
-      ),
-    );
-  }
-
-  for (const conflictId of await listDirectoryNames(paths.conflictsDir)) {
-    try {
-      await readConflict(conflictId, paths);
-    } catch {
-      // "손상된(파싱 불가) conflict 엔트리" 경고. 코드값이 위 "미해결 conflict"의
-      // conflict_unresolved와 의미상 교차되어 있으나, 출력 호환성 계약 때문에 코드값을 바꾸지 않는다.
-      issues.push(
-        issue(
-          "unresolved_conflict",
-          "warning",
-          "손상된 conflict 엔트리",
-          path.join(paths.conflictsDir, conflictId, "meta.json"),
-        ),
-      );
-    }
-  }
+    return count;
+  };
+  const pending = await countLegacy("queue", "pending");
+  const unresolved = await countLegacy("conflicts", "unresolved");
+  if (pending || unresolved) issues.push(issue("legacy_review_data", "info", `폐지된 검토 대기열의 이전 데이터: 대기 패치 ${pending}건(queue/), 미해결 충돌 ${unresolved}건(conflicts/). 적용되지 않으며 보존만 됩니다. 필요한 내용은 wiki_ingest로 다시 쓰고, 디렉터리는 직접 정리하세요.`, paths.root));
 
   if (!(await pathExists(indexMarkdownFile))) {
     issues.push(issue("missing_index_md", "warning", "wiki/index.md가 없습니다.", indexMarkdownFile));
@@ -353,10 +285,6 @@ function parseFrontmatter(content: string): ParsedFrontmatterDocument | null {
     frontmatter[key] = rawValue.replace(/^"(.*)"$/, "$1");
   }
   return { frontmatter, rawFrontmatter, body };
-}
-
-function serializeParsedMarkdown(rawFrontmatter: string, body: string): string {
-  return `---\n${rawFrontmatter}\n---\n${body}`;
 }
 
 function toSemanticEntry(filePath: string, frontmatter: Record<string, unknown>, body: string): ParsedSemanticEntry {

@@ -3,7 +3,6 @@ import { readFile, stat } from "node:fs/promises";
 import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiEntryBoundary } from "../store.js";
 import { runDryDock } from "../drydock.js";
 import { formatLogEntry, parseLog } from "../log.js";
-import { listQueue } from "../patch.js";
 import { getIndexMarkdownFile, resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_ORIENT_DESCRIPTION,
@@ -29,7 +28,6 @@ interface OrientPayload {
   schema_summary?: Record<string, unknown>;
   index_summary?: Record<string, unknown>;
   recent_log?: Record<string, unknown>;
-  pending_queue_count: number;
   drydock_summary: Record<string, unknown>;
   usage_hints: string[];
   trust_boundary: readonly string[];
@@ -66,7 +64,6 @@ export function buildOrientToolConfig() {
       const paths = resolveToolMemoryPaths(ctx);
       await ensureWorkspaceSchema(paths);
 
-      const pendingQueueCount = await loadPendingQueueCount(paths);
       const drydockReport = await runDryDock(paths);
       const schemaSummary = input.includeSchema ? await buildSchemaSummary(paths) : undefined;
       const indexSummary = input.includeIndex ? await buildIndexSummary(paths) : undefined;
@@ -75,7 +72,6 @@ export function buildOrientToolConfig() {
       const payload: OrientPayload = {
         ok: true,
         tool: "wiki_orient",
-        pending_queue_count: pendingQueueCount,
         drydock_summary: {
           ok: drydockReport.ok,
           issue_count: drydockReport.issues.length,
@@ -91,7 +87,7 @@ export function buildOrientToolConfig() {
         usage_hints: [
           "Start with wiki_orient once per task to understand available wiki context.",
           "Use wiki_briefing for targeted lookup after orientation.",
-          "Use wiki_patch_queue before assuming pending knowledge is accepted.",
+          "Wiki writes apply immediately; overwritten or deleted versions are kept in history and restorable with wiki_edit action=restore.",
           "Use wiki_drydock when orientation reports integrity issues.",
         ],
         trust_boundary: FLEET_WIKI_BOUNDARY_GUIDELINES,
@@ -126,14 +122,6 @@ function normalizeInput(params: Record<string, unknown>): OrientInput {
     logLimit: clampInteger(params.log_limit, DEFAULT_LOG_LIMIT, 1, 20),
     maxTokens: clampInteger(params.max_tokens, DEFAULT_MAX_TOKENS, MAX_TOKENS_FLOOR, MAX_TOKENS_CEILING),
   };
-}
-
-async function loadPendingQueueCount(paths: ReturnType<typeof resolveMemoryPaths>): Promise<number> {
-  try {
-    return (await listQueue(paths)).length;
-  } catch {
-    return 0;
-  }
 }
 
 async function buildSchemaSummary(paths: ReturnType<typeof resolveMemoryPaths>): Promise<Record<string, unknown>> {

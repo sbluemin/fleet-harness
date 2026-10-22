@@ -3,9 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { showQueue } from "../../server/wiki/patch.js";
 import { resolveMemoryPaths } from "../../server/wiki/paths.js";
-import { computeContentHash, readRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";
+import { computeContentHash, readRawSourceEntry, readWikiEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildIngestToolConfig } from "../../server/wiki/tools/ingest.js";
 import type { WikiEntry } from "../../server/wiki/types.js";
 
@@ -66,9 +65,8 @@ describe("wiki ingest provenance", () => {
       template_id: "prd",
       mode: "create",
     }, undefined, undefined, { cwd: root } as any);
-    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string };
-    const queued = await showQueue(payload.patch_id, paths);
-    const entry = JSON.parse(queued.patch.body) as WikiEntry;
+    const payload = JSON.parse(result.content[0]!.text) as { entry_id: string };
+    const entry = (await readWikiEntry(payload.entry_id, paths))!;
 
     expect(entry.templateId).toBe("prd");
   });
@@ -99,9 +97,8 @@ describe("wiki ingest provenance", () => {
       mode: "update",
       base_version: 1,
     }, undefined, undefined, { cwd: root } as any);
-    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string; raw_source_ref: string };
-    const queued = await showQueue(payload.patch_id, paths);
-    const entry = JSON.parse(queued.patch.body) as WikiEntry;
+    const payload = JSON.parse(result.content[0]!.text) as { entry_id: string; raw_source_ref: string; version: number; history_ref: string };
+    const entry = (await readWikiEntry(payload.entry_id, paths))!;
     const raw = await readRawSourceEntry(payload.raw_source_ref, paths);
 
     expect(entry.rawSourceRef).toBe(payload.raw_source_ref);
@@ -110,8 +107,8 @@ describe("wiki ingest provenance", () => {
       title: "New Source",
       hash: computeContentHash(raw.content),
     });
-    expect(queued.meta.baseVersion).toBe(1);
-    expect(queued.meta.baseHash).toBeDefined();
+    expect(payload.version).toBe(2);
+    expect(payload.history_ref).toBeDefined();
   });
 });
 

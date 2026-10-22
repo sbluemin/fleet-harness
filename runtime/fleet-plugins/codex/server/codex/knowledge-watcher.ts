@@ -25,8 +25,6 @@ export interface CodexKnowledgeWatcherDeps {
   readonly watcherFactory?: KnowledgeWatcherFactory;
   readonly debounceMs?: number;
   readonly platform?: NodeJS.Platform;
-  /** 디렉토리 열거 주입 지점 — 비재귀 플랫폼에서 큐 항목을 훑을 때만 쓰인다. */
-  readonly readDirectory?: (target: string) => readonly string[];
 }
 
 export interface CodexKnowledgeWatcher {
@@ -56,7 +54,7 @@ interface WatchEntry {
   announced: CodexWatchState | null;
 }
 
-// 서버측 디바운스 — 승인 한 번은 queue·archive·wiki·index를 연달아 건드린다.
+// 서버측 디바운스 — 쓰기 한 번은 wiki·index·log를 연달아 건드린다.
 const DEBOUNCE_MS = 200;
 
 /**
@@ -64,38 +62,18 @@ const DEBOUNCE_MS = 200;
  * log.md는 drydock 결과의 출처라 health만 무효화하고 기존 디바운스로 합친다.
  */
 const DIRECTORY_SCOPES: ReadonlyMap<string, CodexKnowledgeScope> = new Map([
-  ["queue", "queue"],
-  // 결정된 패치가 옮겨 가는 곳 — "결정됨" 이력이 여기서 자란다.
-  ["archive", "queue"],
   ["wiki", "wiki"],
-  ["conflicts", "conflicts"],
   ["schema", "schema"],
 ]);
 
 const INDEX_FILENAME = "index.json";
-
-/**
- * 하위 디렉토리 *안쪽* 쓰기가 화면을 바꾸는 곳. 대기 중 제안 본문 편집은
- * `queue/<patch-id>/patch.md`를, 충돌 해소는 `conflicts/<id>/meta.json`을 고쳐 쓰므로,
- * 부모 디렉토리 감시만으로는 잡히지 않는다.
- */
-const NESTED_SCOPE_DIRS: readonly string[] = ["queue", "archive", "conflicts"];
-// 큐가 비정상적으로 커진 워크스페이스에서 감시자가 무한정 늘지 않게 하는 상한.
-// 초과분은 조용히 포기한다 — 목록에 드러나는 추가·삭제·결정은 부모 감시가 계속 잡는다.
-const MAX_NESTED_WATCHERS = 256;
 
 export function createCodexKnowledgeWatcher(deps: CodexKnowledgeWatcherDeps): CodexKnowledgeWatcher {
   const watcherFactory: KnowledgeWatcherFactory = deps.watcherFactory
     ?? ((p, opts, cb) => fs.watch(p, opts, (event, filename) => cb(event, typeof filename === "string" ? filename : null)));
   const debounceMs = deps.debounceMs ?? DEBOUNCE_MS;
   const platform = deps.platform ?? process.platform;
-  const readDirectory = deps.readDirectory
-    ?? ((target: string) => fs.readdirSync(target, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name));
-  // recursive 감시는 macOS·Windows만 지원한다. 그 밖에서는 디렉토리마다 하나씩 붙이며,
-  // 패치 디렉토리 *안쪽* 수정(예: 대기 중 제안 본문 편집)은 놓칠 수 있다 — 목록에 드러나는
-  // 추가·삭제·결정은 부모 디렉토리 이벤트로 그대로 잡힌다.
+  // recursive 감시는 macOS·Windows에서 지원한다.
   const recursive = platform === "darwin" || platform === "win32";
   const entries = new Map<string, WatchEntry>();
 
@@ -172,8 +150,6 @@ export function createCodexKnowledgeWatcher(deps: CodexKnowledgeWatcherDeps): Co
         }
         const scope = DIRECTORY_SCOPES.get(key.split("/")[0] ?? "");
         if (scope) schedule(workspaceId, entry, scope);
-        // 큐 디렉토리 자체의 이벤트는 항목이 늘거나 줄었다는 뜻이다 — 하위 감시를 다시 맞춘다.
-        if (NESTED_SCOPE_DIRS.includes(key)) armNested(workspaceId, entry, key);
       });
       watcher.on("error", () => degrade(workspaceId, entry));
       entry.watchers.set(key, watcher);
@@ -191,40 +167,10 @@ export function createCodexKnowledgeWatcher(deps: CodexKnowledgeWatcherDeps): Co
       }
       if (startWatcher(workspaceId, entry, key, path.join(entry.knowledgeRoot, key))) {
         entry.missing.delete(key);
-        if (NESTED_SCOPE_DIRS.includes(key)) armNested(workspaceId, entry, key);
         const scope = DIRECTORY_SCOPES.get(key);
         // 디렉토리가 생겼다는 사실 자체가 내용 변화다.
         if (scope) schedule(workspaceId, entry, scope);
       }
-    }
-  }
-
-  /**
-   * 비재귀 플랫폼에서 큐 항목 디렉토리마다 감시를 붙인다. 대기 중 제안의 본문 편집은
-   * `queue/<patch-id>/patch.md`를 고쳐 쓰기 때문에, 부모만 보면 편집된 제안이 낡은 채로
-   * 화면에 남고 읽는 사람이 못 본 내용을 승인하게 된다.
-   */
-  function armNested(workspaceId: string, entry: WatchEntry, parentKey: string): void {
-    if (entry.recursive) return;
-    let names: readonly string[];
-    try {
-      names = readDirectory(path.join(entry.knowledgeRoot, parentKey));
-    } catch {
-      return;
-    }
-    const live = new Set<string>();
-    for (const name of names) {
-      const key = `${parentKey}/${name}`;
-      live.add(key);
-      if (entry.watchers.has(key)) continue;
-      if (entry.watchers.size >= MAX_NESTED_WATCHERS) break;
-      startWatcher(workspaceId, entry, key, path.join(entry.knowledgeRoot, parentKey, name));
-    }
-    // 사라진 항목의 감시자는 정리한다 — 결정된 패치는 archive로 옮겨 가며 큐에서 없어진다.
-    for (const key of [...entry.watchers.keys()]) {
-      if (!key.startsWith(`${parentKey}/`) || live.has(key)) continue;
-      try { entry.watchers.get(key)?.close(); } catch { /* already closed */ }
-      entry.watchers.delete(key);
     }
   }
 
@@ -235,7 +181,6 @@ export function createCodexKnowledgeWatcher(deps: CodexKnowledgeWatcherDeps): Co
         entry.missing.add(key);
         continue;
       }
-      if (NESTED_SCOPE_DIRS.includes(key)) armNested(workspaceId, entry, key);
     }
   }
 
