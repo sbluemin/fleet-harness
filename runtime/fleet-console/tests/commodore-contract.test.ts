@@ -2,10 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// 테스트의 실제 호스트 보관소 fixture만 동적으로 읽는다 — 플러그인 빌드의 rootDir에는 호스트 소스를 싣지 않는다.
-const hostAttachmentFixture = new URL("../../../fleet-console/features/execution/host/agent/launch-attachments.ts", import.meta.url).pathname;
-const { createLaunchAttachmentStore } = await import(hostAttachmentFixture);
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../server/commodore/attachment-budget.js";
+import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "@fleet-console/sdk/commodore";
 import type { AgentEvent, AgentHost, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -15,14 +13,30 @@ import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "@fleet-c
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../server/commodore/routes.js";
-import { createCommodoreSession } from "../server/commodore/session.js";
-import { createCommodoreStore } from "../server/commodore/store.js";
-import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS } from "../server/commodore/supervisor.js";
-import { COMMANDER_REST_MS, restClock } from "../server/board-state.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../server/commodore/types.js";
-import type { Objective, ObjectiveEvent } from "../server/types.js";
-import type { CommodoreAttachmentReader } from "../server/console-tools.js";
+import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
+import { createCommodoreSession } from "../features/commodore/host/session.js";
+import { createCommodoreStore } from "../features/commodore/host/store.js";
+import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
+import { COMMANDER_REST_MS, restClock } from "../../fleet-plugins/objectives/server/board-state.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/host/types.js";
+import type { Objective, ObjectiveEvent } from "../../fleet-plugins/objectives/server/types.js";
+import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
+import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../../fleet-plugins/objectives/server/commodore-board.js";
+
+/** 기존 대표 시나리오는 실제 보드 어댑터와 feature의 SDK 경계를 함께 검증한다. */
+function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board"> & CommodoreBoardWatchDeps & {
+  boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly PluginMcpTool[];
+}) {
+  return createHostSupervisor({ ...deps, board: () => ({
+    tools: (theaterId, turn) => deps.boardTools(theaterId, turn.readAttachments, turn.hasPersonMessage),
+    watch: (theaterId, sink) => createCommodoreBoardWatch(deps, theaterId, sink),
+    objective: (theaterId, id) => {
+      const objective = deps.objectives(theaterId).find((objective) => objective.id === id && !objective.removed);
+      return objective ? { id: objective.id, theaterId, title: objective.title } : null;
+    },
+  }) });
+}
 
 /**
  * 사령관 Theater 상태의 필수 계약 — 보드 곁 `commodore/` 에 한 건으로 영속되고, 지시 개정은 본문이 바뀔 때만 오르며,

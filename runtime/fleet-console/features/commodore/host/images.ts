@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
 
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "./attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "../shared/attachment-budget.js";
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EXTENSIONS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" } as const;

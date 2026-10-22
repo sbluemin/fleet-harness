@@ -2,7 +2,7 @@ import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models";
 
-import type { CommodorePatrolMinutes } from "../server/commodore/types.js";
+import type { CommodorePatrolMinutes } from "@fleet-console/sdk/commodore";
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";

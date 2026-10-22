@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ConversationDecision, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { CommodoreAsk } from "../server/commodore/types.js";
+import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
 import { MAX_DECISION_ANSWER_INPUT } from "../server/types.js";
 import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, openAsks, useCommodore } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";

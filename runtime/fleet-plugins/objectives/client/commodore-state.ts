@@ -7,21 +7,23 @@ import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
-import type { MemoryEntry } from "../server/commodore/memory.js";
-import type { CommodoreStateView } from "../server/commodore/routes.js";
-import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { MemoryEntry } from "@fleet-console/sdk/commodore";
+import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
+import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
 import { followupsJudgeable, livePersonHold, reasonAwaits } from "../server/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
-import { post } from "./objectives-state.js";
+import { post as postBoard } from "./objectives-state.js";
+
+const post = <T,>(api: ClientApiCapability, path: string, body: unknown): Promise<T> => postBoard<T>(api, path, body, null);
 
 /**
  * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
  *
- * 진실은 서버다: 화면은 응답이 아니라 `objectives:commodore` 사건으로 갱신되고, 스트림이 다시 붙으면 읽은 Theater 를
+ * 진실은 서버다: 화면은 응답이 아니라 `commodore` 사건으로 갱신되고, 스트림이 다시 붙으면 읽은 Theater 를
  * 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면 머리 글리프·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
  */
 
-export const COMMODORE_CHANNEL = "objectives:commodore";
+export const COMMODORE_CHANNEL = "commodore";
 
 export type CommodoreTab = "log" | "directive" | "memory" | "settings";
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */

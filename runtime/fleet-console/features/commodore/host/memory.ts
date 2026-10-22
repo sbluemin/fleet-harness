@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { ObjectiveStoreError } from "../store.js";
+import { CommodoreStoreError } from "./errors.js";
 
 /**
  * fleet-memory — 사령관만 쓰는 Theater 의 기억. 사령관 폴더 안 `memory/` 하나에 갈래·주제·항목 세 단계로 둔다.
@@ -17,8 +17,8 @@ import { ObjectiveStoreError } from "../store.js";
  * 인덱스를 다시 만들고 마지막에 알린다. 읽기는 세 단계 밖의 파일·링크를 건너뛰고, 깨진 항목은 빼고 보여 준다.
  */
 
-export const MEMORY_BRANCHES = ["person", "theater", "lessons", "crew"] as const;
-export type MemoryBranch = (typeof MEMORY_BRANCHES)[number];
+import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "@fleet-console/sdk/commodore";
+export { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "@fleet-console/sdk/commodore";
 
 export const MAX_MEMORY_ENTRIES = 200;
 export const MAX_MEMORY_LINKS = 10;
@@ -41,26 +41,6 @@ export const memoryTopicSchema = z.string().transform((value) => value.normalize
 export const memorySlugSchema = z.string().regex(SLUG);
 export const memoryRefSchema = z.string().min(5).max(160);
 
-export interface MemorySource {
-  readonly objectiveId: string;
-  readonly title: string;
-}
-
-export interface MemoryEntry {
-  readonly ref: string;
-  readonly branch: MemoryBranch;
-  readonly topic: string;
-  readonly slug: string;
-  readonly title: string;
-  readonly description: string;
-  readonly why: string;
-  readonly how: string;
-  readonly sources: readonly MemorySource[];
-  readonly links: readonly string[];
-  readonly created: number;
-  readonly updated: number;
-  readonly verified: number;
-}
 
 export interface MemorySaveInput {
   readonly branch: MemoryBranch;
@@ -120,11 +100,11 @@ export function looksSecret(text: string): boolean {
 /** ref 를 갈래·주제·slug 로 — 규칙 밖이면 `invalid_ref`. 디렉터리 이름은 NFC 로 맞춘다. */
 export function parseMemoryRef(ref: string): { readonly branch: MemoryBranch; readonly topic: string; readonly slug: string } {
   const parts = ref.normalize("NFC").split("/");
-  if (parts.length !== 3) throw new ObjectiveStoreError("invalid_ref");
+  if (parts.length !== 3) throw new CommodoreStoreError("invalid_ref");
   const branch = memoryBranchSchema.safeParse(parts[0]);
   const topic = memoryTopicSchema.safeParse(parts[1]);
   const slug = memorySlugSchema.safeParse(parts[2]);
-  if (!branch.success || !topic.success || !slug.success) throw new ObjectiveStoreError("invalid_ref");
+  if (!branch.success || !topic.success || !slug.success) throw new CommodoreStoreError("invalid_ref");
   return { branch: branch.data, topic: topic.data, slug: slug.data };
 }
 
@@ -179,7 +159,7 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
   const find = (theaterId: string, ref: string): MemoryEntry => {
     const { branch, topic, slug } = parseMemoryRef(ref);
     const found = list(theaterId).find((entry) => entry.branch === branch && entry.topic === topic && entry.slug === slug);
-    if (!found) throw new ObjectiveStoreError("unknown_memory");
+    if (!found) throw new CommodoreStoreError("unknown_memory");
     return found;
   };
 
@@ -189,11 +169,11 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
    */
   const prepareDir = (root: string, dirs: readonly string[]) => {
     for (const dir of [root, ...dirs]) {
-      try { if (fs.lstatSync(dir).isSymbolicLink()) throw new ObjectiveStoreError("invalid_ref"); }
+      try { if (fs.lstatSync(dir).isSymbolicLink()) throw new CommodoreStoreError("invalid_ref"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
     fs.mkdirSync(dirs.at(-1) ?? root, { recursive: true, mode: 0o700 });
-    for (const dir of dirs) if (!contained(root, dir)) throw new ObjectiveStoreError("invalid_ref");
+    for (const dir of dirs) if (!contained(root, dir)) throw new CommodoreStoreError("invalid_ref");
   };
 
   /** 항목을 쓰고 인덱스를 다시 만든다. */
@@ -211,17 +191,17 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
   };
 
   const checkText = (fields: readonly (string | undefined)[]) => {
-    if (fields.some((field) => field !== undefined && looksSecret(field))) throw new ObjectiveStoreError("memory_secret");
+    if (fields.some((field) => field !== undefined && looksSecret(field))) throw new CommodoreStoreError("memory_secret");
   };
   /** 항목 파일의 절 제목(`## `)과 같은 줄이 본문에 있으면 다시 읽을 때 절이 갈린다 — 쓰기 전에 거절한다. */
   const checkBody = (fields: readonly (string | undefined)[]) => {
-    if (fields.some((field) => field !== undefined && BODY_HEADING.test(field))) throw new ObjectiveStoreError("memory_heading");
+    if (fields.some((field) => field !== undefined && BODY_HEADING.test(field))) throw new CommodoreStoreError("memory_heading");
   };
 
   const checkLinks = (theaterId: string, self: string, links: readonly string[] | undefined): string[] | undefined => {
     if (links === undefined) return undefined;
     const normalized = [...new Set(links.map((link) => { const { branch, topic, slug } = parseMemoryRef(link); return refOf(branch, topic, slug); }))].filter((link) => link !== self);
-    if (normalized.length > MAX_MEMORY_LINKS) throw new ObjectiveStoreError("invalid_request");
+    if (normalized.length > MAX_MEMORY_LINKS) throw new CommodoreStoreError("invalid_request");
     return normalized;
   };
 
@@ -234,8 +214,8 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
       checkText([input.title, input.description, input.why, input.how, topic, slug, ...(input.links ?? []), ...(input.sources ?? []).map((source) => source.title)]);
       checkBody([input.why, input.how]);
       const existing = list(theaterId);
-      if (existing.some((entry) => entry.ref === ref)) throw new ObjectiveStoreError("memory_exists");
-      if (existing.length >= MAX_MEMORY_ENTRIES) throw new ObjectiveStoreError("too_many_memories");
+      if (existing.some((entry) => entry.ref === ref)) throw new CommodoreStoreError("memory_exists");
+      if (existing.length >= MAX_MEMORY_ENTRIES) throw new CommodoreStoreError("too_many_memories");
       const at = options.now();
       const entry: MemoryEntry = {
         ref, branch, topic, slug,
@@ -274,7 +254,7 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     remove(theaterId, ref) {
       const current = find(theaterId, ref);
       const { root, file } = fileOf(theaterId, current.ref);
-      if (!contained(root, file)) throw new ObjectiveStoreError("unknown_memory");
+      if (!contained(root, file)) throw new CommodoreStoreError("unknown_memory");
       fs.unlinkSync(file);
       // 빈 주제 디렉터리는 함께 걷는다 — 화면의 빈 주제가 남지 않게. 갈래 디렉터리는 고정이라 둔다.
       try { fs.rmdirSync(path.dirname(file)); } catch { /* 비어 있지 않으면 그대로 */ }

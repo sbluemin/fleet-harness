@@ -1,3 +1,4 @@
+import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
@@ -648,6 +649,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   let desktopUpdateRequestedAt = 0;
   const pluginSseChannels = new Set<string>();
+  let commodore: CommodoreFeature | null = null;
   const pluginTheaterFlags = new Map<string, (theaterId: string) => boolean>();
 
   /**
@@ -658,6 +660,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored" | "updated", theaterId: string): void {
     publishPluginEvent(`theater:${event}`, { theaterId });
+    if (event === "restored") commodore?.sync();
   }
   // 브라우저도 같은 순간을 들어야 한다 — 다른 창·API·Console Use가 잊거나 되돌린 Theater는 이 스트림이
   // 아니면 다음 재수화까지 사이드바에 남는다. 싣는 것은 theaterId뿐이라 그대로 내보낸다.
@@ -977,6 +980,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
+    commodore: {
+      registerBoard: (adapter) => { if (!commodore) throw new Error("commodore_unavailable"); return commodore.host.registerBoard(adapter); },
+      commander: (theaterId) => commodore?.host.commander(theaterId) ?? null,
+    },
     agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,
     mcpTransport: mcpHttp.transport,
@@ -2115,6 +2122,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ...(theater.order !== undefined ? { order: theater.order } : {}),
       ...(theater.alias !== undefined ? { alias: theater.alias } : {}),
       ...resolveTheaterFlags(theater.id),
+      commodoreActive: commodore?.active(theater.id) ?? false,
       hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === null && operation.type === "agent").length,
     };
@@ -2178,6 +2186,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     boundPort = null;
     access.revokeAllSessions();
     await closeHttpServer(closingRemote);
+    try { await commodore?.dispose(); } catch (error) { console.warn("[fleet-console] Commodore cleanup failed:", error); }
+    consoleAgentOwners.delete("commodore");
     // SDK는 동기 cleanup도 허용한다 — async 래퍼가 동기 throw를 그 cleanup 하나의 reject로 바꿔, 나머지 정리와 lock 해제를 막지 않는다.
     const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map(async (cleanup) => cleanup()));
     for (const result of cleanupResults) {
@@ -2796,10 +2806,35 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       stopForArchive = execution.stopForArchive;
       purgeCoreOperation = execution.purgeOperation;
       consoleUse.activate({ ...consoleActions, ...execution.actions });
+      commodore = createCommodoreFeature({
+        paths: pluginHostCapabilities.paths, events: pluginHostCapabilities.events,
+        experiments: pluginHostCapabilities.experiments, models: pluginHostCapabilities.models,
+        attachments: attachmentsForPlugin?.("commodore"),
+        http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+        knowledgeTools: (theaterId) => pluginHostCapabilities.admiralMcp.bindTheater?.(theaterId) ?? [],
+        agent: {
+          baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
+          consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,
+          browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "objectives" }) },
+          resolveExecutablePath: async () => {
+            const executable = await resolveClaudeExecutable?.();
+            if (!executable) throw new Error("agent_cli_unavailable");
+            return executable;
+          },
+          compactCeiling: () => readGatewayCompactCeiling?.(),
+        },
+      });
+      consoleAgentOwners.add("commodore");
+      for (const route of commodore.routes) {
+        const routePath = `/api/v1/${route.name}`;
+        routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
+        executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
+      }
       await pluginHost.boot();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
       announceRestoredTheaters();
+      commodore.sync();
       operationArchive.flushEvents();
       deletionCoordinator.sweepExpired();
       await pluginClientAssets.prepare();

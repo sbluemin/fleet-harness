@@ -1,18 +1,18 @@
-import { AGENT_EFFORTS, type AgentEffort } from "@fleet-console/sdk/models";
-import { isExperimentModelId } from "@fleet-console/sdk/settings";
+import { AGENT_EFFORTS, type AgentEffort } from "../models/index.js";
+import { isExperimentModelId, type ExperimentAideSelection } from "../settings/types.js";
 import { z } from "zod";
 
-import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "../types.js";
+import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
 
 /**
- * 사령관(Commodore) — Theater 마다 하나, Objectives 플러그인이 소유하는 자율 운영 세션의 Theater 상태.
+ * 사령관(Commodore) — Theater 마다 하나, Console feature가 소유하는 자율 운영 세션의 Theater 상태.
  *
  * 보드와 같은 Theater 작업 디렉터리에 `objectives/commodore/` 로 산다: `state.json` 한 건(자율 운영·지시·정보·정보 출처·
  * Theater 별 모델 좌표)과 `transcript.jsonl`(사령관 기록). 사람의 「지시」와 「정보」는 사령관 전용 도구로만 읽히고 시스템
  * 프롬프트나 깨움 턴에는 실리지 않는다 — 그래서 상태의 진실은 이 파일이고, 세션은 매번 여기서 다시 읽는다.
  */
 
-export const COMMODORE_CHANNEL = "objectives:commodore";
+export const COMMODORE_CHANNEL = "commodore";
 
 /** 지시 원문 상한. 사령관 도구가 통째로 돌려주므로 한 턴에 읽히는 크기여야 한다. */
 export const MAX_DIRECTIVE = 8_000;
@@ -290,7 +290,7 @@ export type CommodoreLiveEvent =
   | { readonly kind: "text-delta"; readonly text: string }
   | { readonly kind: "tool-start"; readonly name: string };
 
-/** 브라우저·감독자 양쪽으로 나가는 사건 — `objectives:commodore` 채널. */
+/** 브라우저·감독자 양쪽으로 나가는 사건 — `commodore` 채널. */
 export type CommodoreEvent =
   | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
   | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
@@ -304,4 +304,22 @@ export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-e
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {
   return (state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES) * 60_000;
+}
+
+export interface CommodoreStateView {
+  readonly theaterId: string;
+  readonly state: CommodoreState;
+  /** 실험 기능 「자율 운영」. 꺼져 있으면 Theater 머리의 사령관 글리프·서랍이 서지 않는다. */
+  readonly enabled: boolean;
+  /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
+  readonly defaults: ExperimentAideSelection;
+  /** 실험 기능과 자율 운영이 모두 켜져 있다 — 사이드바 Theater 플래그와 같은 값. */
+  readonly active: boolean;
+  /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
+  readonly run: CommodoreRunStatus;
+  /**
+   * 사람에게 묻는 질문의 보조 — 서 있는 질문 수와, 질문이 가리키는 목표의 제목(보드에서 사라졌으면 null).
+   * 질문·답 본문은 `state.asks` 다(물은 순서, settled 가 없으면 서 있다).
+   */
+  readonly asks: { readonly open: number; readonly objectives: Readonly<Record<string, { readonly title: string } | null>> };
 }

@@ -29,7 +29,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextTokens, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";

@@ -1,4 +1,5 @@
-import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
+export type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
 import { type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mcp/actions";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -25,10 +26,6 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
  * 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
-/** 감독자가 이번 턴에 전달한 메시지만 읽는다 — 모델 입력으로 메시지나 Theater를 고르지 않는다. */
-export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<PluginAttachmentHost["read"]>;
-/** 감독자가 현재 턴에 실제로 전달한 사람 메시지의 유무만 알려 준다. */
-export type CommodorePersonMessageReader = () => boolean;
 
 const ids = z.string().min(1).max(128);
 const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Commodore: preserve this turn's image IDs in the brief, not as text; copy now, or ask to resend. No paths.");
@@ -137,7 +134,16 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
 
 /** 호스트가 호출자를 넣지 않는 사령관 전용 도구. Theater는 모델 입력이 아니라 생성 때 고정한다. */
 export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly PluginMcpTool[] {
-  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, readAttachments, hasPersonMessage);
+  // 호스트와 플러그인 번들은 오류 클래스도 따로 갖는다 — 공개 포트의 거절을 보드 오류로 옮겨 코드·힌트를 보존한다.
+  const read: CommodoreAttachmentReader | undefined = readAttachments ? (ids) => {
+    try { return readAttachments(ids); }
+    catch (error) {
+      const failure = error as { code?: unknown; details?: Record<string, unknown> } | null;
+      if (failure?.code === "attachment_not_available") throw new ObjectiveStoreError(failure.code, undefined, failure.details);
+      throw error;
+    }
+  } : undefined;
+  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, read, hasPersonMessage);
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;

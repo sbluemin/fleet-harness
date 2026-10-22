@@ -7,7 +7,7 @@ import { canonicalModelId } from "@fleet-console/sdk/models";
 import { createCommodoreImages } from "./images.js";
 import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
-import { ObjectiveStoreError } from "../store.js";
+import { CommodoreStoreError } from "./errors.js";
 import {
   commodoreStateSchema,
   commodoreTranscriptEntrySchema,
@@ -155,12 +155,12 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
 
   const dirFor = (theaterId: string): string => {
     const dir = options.dirOf(theaterId);
-    if (!dir) throw new ObjectiveStoreError("theater_unavailable");
+    if (!dir) throw new CommodoreStoreError("theater_unavailable");
     return path.join(dir, "commodore");
   };
   const images = createCommodoreImages((theaterId) => {
     const dir = options.dirOf(theaterId);
-    if (!dir) throw new ObjectiveStoreError("theater_unavailable");
+    if (!dir) throw new CommodoreStoreError("theater_unavailable");
     return dir;
   }, {
     maxBytes: options.maxRetainedImageBytes,
@@ -191,7 +191,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   /** 상태 한 건을 검증해 쓰고, 성공한 뒤에만 캐시를 갈고 방송한다. */
   const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">): CommodoreState => {
     const parsed = commodoreStateSchema.safeParse(next);
-    if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
+    if (!parsed.success) throw new CommodoreStoreError("invalid_request");
     const file = stateFile(theaterId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(parsed.data));
@@ -212,7 +212,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   const append = (theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry => {
     const entry = { ...input, seq: seqOf(theaterId) + 1, at: now() } as CommodoreTranscriptEntry;
     const parsed = commodoreTranscriptEntrySchema.safeParse(entry);
-    if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
+    if (!parsed.success) throw new CommodoreStoreError("invalid_request");
     const file = transcriptFile(theaterId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
@@ -234,7 +234,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     read(theaterId) {
       try { return load(theaterId); }
       catch (error) {
-        if (error instanceof ObjectiveStoreError && error.code === "theater_unavailable") return null;
+        if (error instanceof CommodoreStoreError && error.code === "theater_unavailable") return null;
         throw error;
       }
     },
@@ -246,23 +246,23 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setStopAt(theaterId, stopAt) {
       const current = load(theaterId);
-      if (!current.autonomy) throw new ObjectiveStoreError("commodore_inactive");
+      if (!current.autonomy) throw new CommodoreStoreError("commodore_inactive");
       const at = now();
-      if (current.stopAt !== undefined && current.stopAt <= at) throw new ObjectiveStoreError("commodore_stopping");
-      if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new ObjectiveStoreError("invalid_request");
+      if (current.stopAt !== undefined && current.stopAt <= at) throw new CommodoreStoreError("commodore_stopping");
+      if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new CommodoreStoreError("invalid_request");
       if ((current.stopAt ?? null) === stopAt) return current;
       const { stopAt: _stopAt, ...rest } = current;
       return commit(theaterId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
     },
     setDirective(theaterId, text) {
-      if (text.length > MAX_DIRECTIVE) throw new ObjectiveStoreError("invalid_request");
+      if (text.length > MAX_DIRECTIVE) throw new CommodoreStoreError("invalid_request");
       const current = load(theaterId);
       if (current.directive.text === text) return current;
       return commit(theaterId, { ...current, directive: { text, rev: current.directive.rev + 1, updatedAt: now() } }, "directive");
     },
     addIntel(theaterId, input) {
       const text = input.text.trim();
-      if (!text || text.length > MAX_INTEL_TEXT) throw new ObjectiveStoreError("invalid_request");
+      if (!text || text.length > MAX_INTEL_TEXT) throw new CommodoreStoreError("invalid_request");
       const current = load(theaterId);
       const item: CommodoreIntel = { id: `i_${randomUUID().slice(0, 8)}`, at: now(), source: input.source?.trim() || "person", text };
       // 최신이 앞이다 — 사령관 도구가 "지난번 이후" 를 앞에서부터 읽는다. 상한을 넘으면 가장 오래된 것이 떨어진다.
@@ -271,10 +271,10 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     editIntel(theaterId, intelId, input) {
       const text = input.trim();
-      if (!text || text.length > MAX_INTEL_TEXT) throw new ObjectiveStoreError("invalid_request");
+      if (!text || text.length > MAX_INTEL_TEXT) throw new CommodoreStoreError("invalid_request");
       const current = load(theaterId);
       const index = current.intel.findIndex((entry) => entry.id === intelId);
-      if (index < 0) throw new ObjectiveStoreError("unknown_intel");
+      if (index < 0) throw new CommodoreStoreError("unknown_intel");
       const existing = current.intel[index]!;
       if (existing.text === text) return { state: current, item: existing };
       const item: CommodoreIntel = { ...existing, text, editedAt: now() };
@@ -284,12 +284,12 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     removeIntel(theaterId, intelId) {
       const current = load(theaterId);
       const item = current.intel.find((entry) => entry.id === intelId);
-      if (!item) throw new ObjectiveStoreError("unknown_intel");
+      if (!item) throw new CommodoreStoreError("unknown_intel");
       const intel = current.intel.filter((entry) => entry.id !== intelId);
       return commit(theaterId, { ...current, intel }, "intel-removed", intelId, { id: item.id, text: item.text });
     },
     setSources(theaterId, sources) {
-      if (sources.length > MAX_SOURCES) throw new ObjectiveStoreError("invalid_request");
+      if (sources.length > MAX_SOURCES) throw new CommodoreStoreError("invalid_request");
       const current = load(theaterId);
       // 같은 종류·위치의 출처는 id 를 잇는다 — 정보 항목의 source 가 가리키는 자리가 바뀌지 않게.
       const next = sources.map((source) => ({ id: current.sources.find((known) => known.kind === source.kind && known.locator === source.locator)?.id ?? `s_${randomUUID().slice(0, 8)}`, ...source }));
@@ -344,7 +344,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     askAdd(theaterId, input) {
       const reason = input.reason.trim();
-      if (!reason || reason.length > MAX_ASK_REASON) throw new ObjectiveStoreError("invalid_request");
+      if (!reason || reason.length > MAX_ASK_REASON) throw new CommodoreStoreError("invalid_request");
       const current = load(theaterId);
       const asks = current.asks ?? [];
       // 저장될 모양 그대로 비교한다 — 같은 목표에 같은 질문이 서 있으면 다시 묻지 않는다.
@@ -353,7 +353,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const objectiveId = input.objective?.id ?? null;
       const same = asks.find((ask) => !ask.settled && ask.objectiveId === objectiveId && isDeepStrictEqual(shape(ask.questions), shape(input.questions)));
       if (same) return { state: current, ask: same, reused: true };
-      if (asks.filter((ask) => !ask.settled).length >= MAX_OPEN_ASKS) throw new ObjectiveStoreError("too_many_asks", undefined, { limit: MAX_OPEN_ASKS });
+      if (asks.filter((ask) => !ask.settled).length >= MAX_OPEN_ASKS) throw new CommodoreStoreError("too_many_asks", undefined, { limit: MAX_OPEN_ASKS });
       const ask: CommodoreAsk = {
         id: `a_${randomUUID()}`, at: now(), reason, objectiveId,
         questions: shape(input.questions).map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),
@@ -365,8 +365,8 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     askWithdraw(theaterId, askId) {
       const current = load(theaterId);
       const ask = (current.asks ?? []).find((entry) => entry.id === askId);
-      if (!ask) throw new ObjectiveStoreError("unknown_ask");
-      if (ask.settled?.outcome === "answered") throw new ObjectiveStoreError("ask_already_answered");
+      if (!ask) throw new CommodoreStoreError("unknown_ask");
+      if (ask.settled?.outcome === "answered") throw new CommodoreStoreError("ask_already_answered");
       if (ask.settled) return { state: current, ask, withdrawn: false };
       const withdrawn: CommodoreAsk = { ...ask, settled: { at: now(), by: "commodore", outcome: "withdrawn" } };
       const state = commit(theaterId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? withdrawn : entry))) }, "asks");
@@ -375,22 +375,22 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     askAnswer(theaterId, askId, input) {
       const current = load(theaterId);
       const ask = (current.asks ?? []).find((entry) => entry.id === askId);
-      if (!ask) throw new ObjectiveStoreError("unknown_ask");
-      if (ask.settled?.outcome === "withdrawn") throw new ObjectiveStoreError("ask_withdrawn");
+      if (!ask) throw new CommodoreStoreError("unknown_ask");
+      if (ask.settled?.outcome === "withdrawn") throw new CommodoreStoreError("ask_withdrawn");
       // 모든 질문에 정확히 한 번 — 고른 것은 그 질문의 선택지, 하나 고르기는 하나까지, 빈 답은 받지 않는다(결정 요청과 같은 규칙).
       const byQuestion = new Map(input.map((answer) => [answer.questionId, answer]));
-      if (byQuestion.size !== input.length || input.length !== ask.questions.length) throw new ObjectiveStoreError("invalid_answers");
+      if (byQuestion.size !== input.length || input.length !== ask.questions.length) throw new CommodoreStoreError("invalid_answers");
       const answers = ask.questions.map((question) => {
         const answer = byQuestion.get(question.id);
-        if (!answer) throw new ObjectiveStoreError("invalid_answers");
+        if (!answer) throw new CommodoreStoreError("invalid_answers");
         const picked = new Set(answer.selectedOptionIds);
-        if (picked.size !== answer.selectedOptionIds.length || [...picked].some((id) => !question.options.some((option) => option.id === id)) || (!question.multiSelect && picked.size > 1)) throw new ObjectiveStoreError("invalid_answers");
-        if (picked.size === 0 && !answer.text.trim()) throw new ObjectiveStoreError("invalid_answers");
+        if (picked.size !== answer.selectedOptionIds.length || [...picked].some((id) => !question.options.some((option) => option.id === id)) || (!question.multiSelect && picked.size > 1)) throw new CommodoreStoreError("invalid_answers");
+        if (picked.size === 0 && !answer.text.trim()) throw new CommodoreStoreError("invalid_answers");
         return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
       });
       // 이미 답한 질문 — 같은 답의 재전송(응답을 잃은 재시도)은 그 결과를, 다른 답은 덮지 않고 거절한다.
       if (ask.settled) {
-        if (!isDeepStrictEqual(ask.settled.answers, answers)) throw new ObjectiveStoreError("ask_already_answered");
+        if (!isDeepStrictEqual(ask.settled.answers, answers)) throw new CommodoreStoreError("ask_already_answered");
         return { state: current, ask, repeated: true };
       }
       const answered: CommodoreAsk = { ...ask, settled: { at: now(), by: "human", outcome: "answered", answers } };

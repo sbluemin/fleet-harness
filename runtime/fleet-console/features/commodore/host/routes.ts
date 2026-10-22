@@ -1,23 +1,27 @@
 import type http from "node:http";
 import { randomUUID } from "node:crypto";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "./attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../shared/attachment-budget.js";
 import { validCommodoreImageId } from "./images.js";
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import { canonicalModelId } from "@fleet-console/sdk/models";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
+
+export interface CommodoreRouteContext {
+  readonly host: Pick<FleetPluginHostCapabilities, "experiments" | "attachments" | "http" | "security">;
+}
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "@fleet-console/sdk/settings";
 import { z } from "zod";
 
-import { ObjectiveStoreError } from "../store.js";
-import { decisionAnswersSchema } from "../types.js";
+import { CommodoreStoreError } from "./errors.js";
+import { decisionAnswersSchema } from "@fleet-console/sdk/commodore";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
- * `objectives:commodore` 사건으로 갱신되므로 응답은 확인용이다.
+ * `commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
  * 실험 기능 「자율 운영」이 꺼져 있어도 지시·정보는 읽고 쓸 수 있다(데이터는 사람의 것이다). 꺼진 채로 자율 운영을 켜는
  * 것은 거절한다 — 켜져 보이는데 돌지 않는 상태를 만들지 않는다. 메시지도 사령관이 돌지 않으면 거절한다: 지시·정보와 달리
@@ -31,23 +35,8 @@ export interface CommodoreRoute {
   readonly handler: RouteHandler;
 }
 
-export interface CommodoreStateView {
-  readonly theaterId: string;
-  readonly state: CommodoreState;
-  /** 실험 기능 「자율 운영」. 꺼져 있으면 Theater 머리의 사령관 글리프·서랍이 서지 않는다. */
-  readonly enabled: boolean;
-  /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
-  readonly defaults: ExperimentAideSelection;
-  /** 실험 기능과 자율 운영이 모두 켜져 있다 — 사이드바 Theater 플래그와 같은 값. */
-  readonly active: boolean;
-  /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
-  readonly run: CommodoreRunStatus;
-  /**
-   * 사람에게 묻는 질문의 보조 — 서 있는 질문 수와, 질문이 가리키는 목표의 제목(보드에서 사라졌으면 null).
-   * 질문·답 본문은 `state.asks` 다(물은 순서, settled 가 없으면 서 있다).
-   */
-  readonly asks: { readonly open: number; readonly objectives: Readonly<Record<string, { readonly title: string } | null>> };
-}
+export type { CommodoreStateView } from "@fleet-console/sdk/commodore";
+import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
 
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {
@@ -62,7 +51,7 @@ const ids = z.string().min(1).max(128);
 /** 모든 요청은 사람의 언어를 실을 수 있다 — 목표 라우트와 같은 출처(브라우저 로케일)이고, Theater 의 사령관 기록 언어가 된다. */
 const theaterRef = z.object({ theaterId: ids, language: z.enum(["en", "ko"]).optional() });
 
-export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: CommodoreStore, hooks: CommodoreRouteHooks = {}): readonly CommodoreRoute[] {
+export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: CommodoreStore, hooks: CommodoreRouteHooks = {}): readonly CommodoreRoute[] {
   const experiments = () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
   const view = (theaterId: string, state: CommodoreState): CommodoreStateView => {
     const settings = experiments();
@@ -90,7 +79,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) {
+    if (error instanceof CommodoreStoreError) {
       const status = error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
@@ -100,7 +89,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
   };
   const read = (theaterId: string): CommodoreState => {
     const state = store.read(theaterId);
-    if (!state) throw new ObjectiveStoreError("theater_unavailable");
+    if (!state) throw new CommodoreStoreError("theater_unavailable");
     return state;
   };
 
@@ -123,7 +112,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: autonomy, directive, intel, sources and model coordinates.", handler: json(theaterRef, ({ theaterId }) => view(theaterId, read(theaterId))) },
     { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore glyph on the sidebar Theater header).", handler: json(theaterRef.extend({ autonomy: z.boolean() }).strict(), ({ theaterId, autonomy }) => {
       read(theaterId);
-      if (autonomy && !experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
+      if (autonomy && !experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
       return view(theaterId, store.setAutonomy(theaterId, autonomy));
     }) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(theaterRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ theaterId, text }) => { read(theaterId); return view(theaterId, store.setDirective(theaterId, text)); }) },
@@ -133,53 +122,53 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     { name: "commodore/sources", method: "POST", summary: "Replace the list of intel sources the Commodore reads on patrol.", handler: json(theaterRef.extend({ sources: z.array(commodoreSourceSchema.omit({ id: true })).max(MAX_SOURCES) }).strict(), ({ theaterId, sources }) => { read(theaterId); return view(theaterId, store.setSources(theaterId, sources)); }) },
     { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(theaterRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable() }).strict(), ({ theaterId, model, effort }) => {
       read(theaterId);
-      if ((model === null) !== (effort === null)) throw new ObjectiveStoreError("invalid_request");
+      if ((model === null) !== (effort === null)) throw new CommodoreStoreError("invalid_request");
       // 정준 id(실행 id)로 접어 저장한다 — 옛 표기(`claude-gateway--…`)도 받는다. Gateway에서 꺼진 모델도 저장은 하고
       // 실행만 폴백한다(감독자가 턴마다 로스터에 대조한다).
       return view(theaterId, store.setCoordinates(theaterId, model !== null && effort !== null ? { model: canonicalModelId(model), effort } : null));
     }) },
     { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model and effort for objectives the Commodore creates; cleared falls back to the board's Commander default.", handler: json(theaterRef.extend({ model: z.string().trim().min(1).max(128).nullable(), effort: z.string().trim().min(1).max(32).nullable().optional() }).strict(), ({ theaterId, model, effort }) => {
       read(theaterId);
-      if (model === null && effort) throw new ObjectiveStoreError("invalid_request");
+      if (model === null && effort) throw new CommodoreStoreError("invalid_request");
       return view(theaterId, store.setCommander(theaterId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(theaterRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ theaterId, minutes }) => { read(theaterId); return view(theaterId, store.setPatrol(theaterId, minutes)); }) },
     { name: "commodore/stop-at", method: "POST", summary: "Schedule the end of autonomous operation at an epoch-millisecond timestamp, or pass null to cancel it. Requires running autonomy and a future timestamp.", handler: json(theaterRef.extend({ stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).nullable() }).strict(), ({ theaterId, stopAt }) => {
       read(theaterId);
-      if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
-      if (!hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
+      if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
+      if (!hooks.run?.(theaterId)) throw new CommodoreStoreError("commodore_inactive");
       return view(theaterId, store.setStopAt(theaterId, stopAt));
     }) },
     { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
-      if (!experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
-      if (!state.autonomy || !hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
-      if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new ObjectiveStoreError("commodore_stopping");
+      if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
+      if (!state.autonomy || !hooks.run?.(theaterId)) throw new CommodoreStoreError("commodore_inactive");
+      if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new CommodoreStoreError("commodore_stopping");
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
-      if (objectiveId && !objective) throw new ObjectiveStoreError("unknown_objective");
-      if (objective && objective.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
+      if (objectiveId && !objective) throw new CommodoreStoreError("unknown_objective");
+      if (objective && objective.theaterId !== theaterId) throw new CommodoreStoreError("objective_theater_mismatch");
       // 본문 속 참조 — 참조가 있으면 표식 글자 수와 참조 수가 같아야 하고, 한 목표는 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다.
       // 하나라도 어긋나면 기록에 남기지 않는다. 참조가 없으면 본문의 표식 글자는 지운다 — 브라우저가 이미지 섞인 서식 글을 복사할 때 만들어
       // 내는 글자라(새 세션·그룹 대화에서 붙여 보낸 말) 거절하지 않고, 지운 뒤 비면 빈 메시지와 같이 거절한다. 어느 쪽이든 검증하지
       // 않은 참조는 서지 않는다.
       const text = referenceIds.length ? raw : raw.split(CONVERSATION_REFERENCE_MARK).join("").trim();
-      if (!text) throw new ObjectiveStoreError("invalid_request");
-      if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds).size !== referenceIds.length) throw new ObjectiveStoreError("invalid_request");
+      if (!text) throw new CommodoreStoreError("invalid_request");
+      if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds).size !== referenceIds.length) throw new CommodoreStoreError("invalid_request");
       const references = referenceIds.map((id) => {
         const found = hooks.objective?.(id);
-        if (!found || found.removed) throw new ObjectiveStoreError("unknown_objective");
-        if (found.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
+        if (!found || found.removed) throw new CommodoreStoreError("unknown_objective");
+        if (found.theaterId !== theaterId) throw new CommodoreStoreError("objective_theater_mismatch");
         return { id: found.id, title: found.title };
       });
       const messageId = randomUUID();
-      if (attachmentIds.length && !ctx.host.attachments) throw new ObjectiveStoreError("attachments_unavailable");
+      if (attachmentIds.length && !ctx.host.attachments) throw new CommodoreStoreError("attachments_unavailable");
       let imageBytes = 0;
       try { imageBytes = attachmentIds.length ? ctx.host.attachments!.claim(theaterId, messageId, attachmentIds, MAX_COMMODORE_MESSAGE_IMAGE_BYTES) : 0; }
       catch (error) {
         const code = (error as { code?: string }).code;
-        if (code?.startsWith("attachment_")) throw new ObjectiveStoreError(code);
+        if (code?.startsWith("attachment_")) throw new CommodoreStoreError(code);
         throw error;
       }
       // 기록 사본 실패는 전달을 막지 않는다 — 그 메시지는 예전처럼 참조 자리로 남는다.
@@ -206,13 +195,13 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);
-      if (!hooks.retry) throw new ObjectiveStoreError("commodore_not_retrying");
+      if (!hooks.retry) throw new CommodoreStoreError("commodore_not_retrying");
       await hooks.retry(theaterId);
       return view(theaterId, read(theaterId));
     }) },
     { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and the stop schedule.", handler: json(theaterRef.extend({ confirm: z.literal(true) }).strict(), async ({ theaterId }) => {
       read(theaterId);
-      if (!hooks.clear) throw new ObjectiveStoreError("commodore_inactive");
+      if (!hooks.clear) throw new CommodoreStoreError("commodore_inactive");
       await hooks.clear(theaterId);
       return view(theaterId, read(theaterId));
     }) },
@@ -228,7 +217,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
 /** 사이드바 Theater DTO 에 싣는 플래그 — 실험 기능과 자율 운영이 모두 켜진 Theater. */
 export const COMMODORE_ACTIVE_FLAG = "commodoreActive";
 
-export function commodoreActive(ctx: FleetPluginServerContext, store: CommodoreStore, theaterId: string): boolean {
+export function commodoreActive(ctx: CommodoreRouteContext, store: CommodoreStore, theaterId: string): boolean {
   if (!(ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS).commodore) return false;
   return store.read(theaterId)?.autonomy === true;
 }

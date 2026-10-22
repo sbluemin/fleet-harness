@@ -1,20 +1,18 @@
 import { Buffer } from "node:buffer";
 import type { AgentHost, AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
-import type { ConsoleOperationObservation, PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, stallEpisode, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
-import type { Objective, ObjectiveEvent } from "../types.js";
-import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../console-tools.js";
-import { ObjectiveStoreError } from "../store.js";
+import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "@fleet-console/sdk/commodore";
+import { CommodoreStoreError } from "./errors.js";
 import { commodorePersistKey, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
-import { undeliveredMessageSeqs } from "./delivery.js";
-import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
+import { undeliveredMessageSeqs } from "../shared/delivery.js";
+import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/attachment-budget.js";
 import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "./types.js";
 
 /**
@@ -24,7 +22,7 @@ import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANS
  * 다음 턴 하나로 합친다. 턴 중에 온 사람의 말은 예외다 — 도는 턴에 건네 같은 턴이 읽는다(채팅·지휘관과 같다). 순찰은 사령관이
  * `next_wake` 로 예약하되 사람이 고른 순찰 간격(기본 60분)을 넘지 않고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분 간격으로 계속한다
  * (자율 운영은 꺼지지 않는다). 문맥이 길어지면 같은 세션이 압축해 잇고, 대화는 호스트에 남아 Console 재시작·자율 운영 재개 뒤에도
- * 같은 대화를 이어 받는다. 좌표·언어·이미지 예산이 바뀔 때만 교대한다(새 세션 + 최근 행위 요약). 플러그인 등록 때 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
+ * 같은 대화를 이어 받는다. 좌표·언어·이미지 예산이 바뀔 때만 교대한다(새 세션 + 최근 행위 요약). Console 조합이 모든 플러그인을 붙인 뒤 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
  *
  * 순찰 간격만 사람의 노브다(서랍). 재시도 간격·모으는 시간·교대 비율은 감독자 내부 값이다.
  */
@@ -35,14 +33,6 @@ export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_0
 export const RETRY_STEADY_MS = 60 * 60_000;
 /** 깨움 이유를 모으는 시간. */
 export const COALESCE_MS = 3_000;
-/** 정체 기준은 보드와 같다(`board-state.ts`) — inbox 보기와 감독자가 같은 목표를 정체라 부른다. */
-export { STALL_MS };
-export const STALL_CHECK_MS = 5 * 60_000;
-/**
- * 대기 점검 주기 — 사령관이 운영하는 목표의 지휘관이 일을 마쳐 개시·완료할 수 있게 되는 순간(턴 끝, 백그라운드 작업의 끝)은
- * 보드 사건이 아니고, 턴 끝 신호는 이 플러그인이 띄운 세션에만 오므로 관측으로 본다. 개시 대기·검토 대기 목표가 있을 때만 다시 센다.
- */
-export const PLANNED_CHECK_MS = 2_000;
 const RECENT_ACTIONS = 12;
 
 export interface CommodoreSupervisorDeps {
@@ -58,17 +48,9 @@ export interface CommodoreSupervisorDeps {
   readonly models?: Pick<FleetPluginModelsHost, "resolve" | "pinClaudeVersion">;
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (theaterId: string) => { readonly label: string; readonly root: string } | null;
-  readonly objectives: (theaterId: string) => readonly Objective[];
-  /** 사람이 이 Theater 를 보는 언어 — 저장된 사령관 언어, 없으면 목표가 남긴 언어, 그것도 없으면 영어. */
-  readonly language?: (theaterId: string) => "en" | "ko";
-  readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
-  /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
-  readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader, hasPersonMessage: CommodorePersonMessageReader) => readonly PluginMcpTool[];
+  readonly board: () => CommodoreBoardAdapter | null;
   /** 호스트가 이 Theater 루트에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
   readonly knowledgeTools?: (theaterId: string) => readonly PluginMcpServerTools[];
-  readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
-  /** 정체가 구성원이 일하는 동안의 지휘관 휴식이면 그 사실을 지휘관에게 보낸다 — 사령관을 깨우는 같은 순간에 한 번. */
-  readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -101,14 +83,7 @@ type Phase = CommodoreRunStatus["phase"];
  */
 export type WakeCode = "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
 
-/** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
-const SELF_WRITE_GRACE_MS = 5_000;
-/** 깨움 문장에 싣는 상태 변화 줄 수 — 나머지는 수로만. 내용은 사령관이 보드에서 읽는다. */
 const STATUS_DETAILS = 8;
-const STATUS_WORDS: Record<ObjectiveStatus | "new", string> = {
-  new: "new", pending: "not started", planning: "planning", planned: "lineup ready", running: "in progress",
-  "missions-done": "missions done, awaiting hand-off", review: "awaiting review", done: "done", removed: "removed",
-};
 
 interface PendingReason {
   count?: number;
@@ -116,19 +91,6 @@ interface PendingReason {
   /** 이 이유를 낸 목표(상태·정체)와 그 목표가 보탠 상세 — 범위 줄과, 돌려받은 목표의 사유를 걷는 데 쓴다. 보드 대기 코드는 턴 직전 보드에서 다시 찾는다. */
   ids?: Map<string, string[]>;
 }
-
-/** 감독자가 아는 목표 한 자리 — 상태와 운영 주체. 운영 주체가 사람에서 사령관으로 바뀌면 「맡겨짐」으로 깨운다. */
-interface TrackedStatus {
-  readonly status: ObjectiveStatus;
-  readonly operator: ObjectiveOperator;
-}
-
-/** 사람이 운영하는 목표의 대기 키 머리 — 깨우지 않고 기록에만 남긴다. */
-const HUMAN_KEY = "human";
-/** 사령관이 사람에게 넘긴 항목의 대기 키 머리 — 깨우지 않는다. 돌려받으면 머리 없는 새 항목이 되어 그때 깨운다. */
-const PERSON_KEY = "person";
-/** 넘김이 끝난 사건(사람이 답함·돌려줌) — 대기가 아니라 한 번 깨우는 항목이다. 상세는 목표 제목과 대상. */
-const SETTLED_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["answered", "returned"]);
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
@@ -225,16 +187,9 @@ interface Runner {
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
-  /** 사령관이 이미 들은 대기 상태 — `code:objectiveId[:rev]`. 새 항목이 생길 때만 깨우고, 줄어드는 것은 조용히 잊는다. */
-  seen: Set<string>;
+  board: CommodoreBoardWatch | null;
   stalledReported: Set<string>;
-  /** 이미 깨우고 통지한 정체 에피소드 — 목표 id → `stallEpisode` 서명. 같은 에피소드의 되울림에는 깨우지 않는다. */
-  notifiedStall: Map<string, string>;
   emptyReported: boolean;
-  /** 사령관이 아는 목표 상태와 운영 주체 — 사령관이 운영하는 목표의 상태가 바뀌거나 사람이 맡기면 깨운다. */
-  statuses: Map<string, TrackedStatus>;
-  /** 사령관 자신이 쓰는 중(또는 막 쓴) 목표 — 그 상태 변화는 깨울 일이 아니다. 값은 유효 시각(쓰는 중이면 Infinity). */
-  selfWrites: Map<string, number>;
 }
 
 export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): CommodoreSupervisor {
@@ -249,7 +204,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const message of messages) if (message.messageId) deps.attachments?.release(runner.theaterId, message.messageId);
   };
   const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
-    const unavailable = () => new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
+    const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
     if (!deps.attachments || runner.stopping || runner.ending || disposed || !runner.turnMessages.length) throw unavailable();
     const selected = ids.map((id) => {
       const message = runner.turnMessages.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
@@ -267,14 +222,23 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return image;
     });
   };
+  const boardTools = (runner: Runner): readonly PluginMcpTool[] => {
+    const turn: CommodoreTurnBindings = {
+      readAttachments: turnAttachments(runner),
+      hasPersonMessage: () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0,
+      stopping: () => disposed || runner.stopping || runner.ending || deadlineReached(runner),
+    };
+    return (deps.board()?.tools(runner.theaterId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
+  };
+
   const takeUndelivered = (runner: Runner) => {
     const messages = runner.messages.splice(0);
     releaseMessages(runner, messages);
     return messages.map((message) => message.seq);
   };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
-  const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null;
-  const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.language?.(theaterId) ?? "en";
+  const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null && deps.board() !== null;
+  const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.board()?.language?.(theaterId) ?? "en";
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
   const resolveCoordinates = (theaterId: string): RunCoordinates => {
     const state = deps.store.read(theaterId);
@@ -362,9 +326,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
-      boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner), () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0).map((tool) => selfAttributed(runner, tool)), now,
+      boardTools: boardTools(runner), now,
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.theaterId) } : {}),
-      objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
+      objective: (objectiveId) => { const objective = deps.board()?.objective(runner.theaterId, objectiveId); return objective && !objective.removed ? objective : null; },
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
       onInput: ({ id, state }) => {
@@ -495,7 +459,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (event !== "opened" && !session.resumed) {
             replacementSummary = runner.recentActions.slice(-RECENT_ACTIONS);
             wake(runner, event === "restarted" ? "restart" : "rotated");
-            if (event === "restarted" && !runner.emptyReported && !hasOpenOperated(deps.objectives(runner.theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+            if (event === "restarted" && !runner.emptyReported && runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
           }
         }
       } catch (error) {
@@ -508,10 +472,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (deadlineReached(runner)) { endScheduled(runner); return; }
       // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
       // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
-      const digest = new Map(inboxDigest(deps.objectives(runner.theaterId), deps.observe));
+      const digest = runner.board?.recount() ?? new Map();
       const pending = [...runner.pending.entries()].flatMap(([code, reason]): [WakeCode, PendingReason][] => {
         if (!BOARD_CODES.has(code)) return [[code, reason]];
-        const count = digest.get(code) ?? 0;
+        const count = digest.get(code as CommodoreBoardWakeCode) ?? 0;
         return count ? [[code, { ...reason, count }]] : [];
       });
       runner.pending.clear();
@@ -519,7 +483,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const messages = runner.messages.splice(0, batchCount);
       const reasons = pending.map(([code, reason]) => wakeToken(code, reason.count));
       const sentences = pending.map(([code, reason]) => wakeSentence(code, reason));
-      const scope = scopeOf(runner, pending);
+      const scope = runner.board?.scope(new Map(pending.map(([code, reason]) => [code, [...(reason.ids?.keys() ?? [])]])));
       setPhase(runner, "turn");
       runner.patrolSet = false;
       // 실패한 턴도 CLI resume 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
@@ -588,7 +552,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], board: null, stalledReported: new Set(), emptyReported: false };
+    const current = runner;
+    current.board = deps.board()?.watch(theaterId, {
+      wake: (code, input) => {
+        wake(current, code, input);
+        if (input?.objectiveId && input.detail) noteIds(current, code, input.objectiveId, input.detail);
+      },
+      forget: (objectiveId) => forgetStatus(current, objectiveId),
+      stalledChanged: (ids) => { current.stalledReported = new Set(ids); publish(current); },
+    }) ?? null;
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
@@ -600,7 +573,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
     } else {
       wake(runner, reason);
-      if (!hasOpenOperated(deps.objectives(theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+      if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
     }
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(theaterId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
@@ -627,6 +600,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const runner = runners.get(theaterId);
     if (!runner) return previous ?? Promise.resolve();
     runner.stopping = true;
+    runner.board?.dispose();
     runners.delete(theaterId);
     clearTimer(runner, "stopTimer");
     clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
@@ -717,15 +691,6 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
   }));
 
-  /** 사람이 운영하는 목표에 나서 깨우지 않은 사건 — 다음 턴의 범위 줄에 한 번 실리고 비워진다. */
-  const held = new WeakMap<Runner, Map<string, Set<string>>>();
-  const hold = (runner: Runner, objectiveId: string, code: string) => {
-    let byObjective = held.get(runner);
-    if (!byObjective) held.set(runner, byObjective = new Map());
-    let codes = byObjective.get(objectiveId);
-    if (!codes) byObjective.set(objectiveId, codes = new Set());
-    codes.add(code);
-  };
   const noteIds = (runner: Runner, code: WakeCode, id: string, detail: string) => {
     const reason = runner.pending.get(code);
     if (!reason) return;
@@ -746,185 +711,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
   };
 
-  /** 이번 턴의 보드 범위(기록 전용) — 보드 대기 코드는 지금 그 이유를 가진 운영 목표, 상태·정체는 모인 목표, 그리고 held. */
-  const scopeOf = (runner: Runner, pending: readonly (readonly [WakeCode, PendingReason])[]) => {
-    const objectives = deps.objectives(runner.theaterId);
-    const operators = operatorsOf(objectives);
-    const woke = new Map<string, Set<string>>();
-    const add = (id: string, code: string) => { let codes = woke.get(id); if (!codes) woke.set(id, codes = new Set()); codes.add(code); };
-    for (const [code, reason] of pending) {
-      if (BOARD_CODES.has(code)) { for (const objective of objectives) if (operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => reason === code && !heldForPerson(objective, reason))) add(objective.id, code); }
-      else for (const id of reason.ids?.keys() ?? []) add(id, code);
-    }
-    const quiet = held.get(runner);
-    held.delete(runner);
-    if (!woke.size && !quiet?.size) return null;
-    // 보드에서 사라진 목표는 사령관이 운영하던 것만 상태 변화로 실린다.
-    return {
-      woke: [...woke].map(([id, codes]) => ({ id, operator: operators.get(id) ?? "commodore", codes: [...codes] })),
-      held: [...(quiet ?? [])].map(([id, codes]) => ({ id, operator: "human" as const, codes: [...codes] })),
-    };
-  };
-
-  /** 지난 상태에서 열려 있던 운영 목표 중 지금 닫힌 것이 있고, 그것이 모두 사령관의 (아직 유예 안의) 쓰기 대상인가. */
-  const closedBySelf = (runner: Runner, objectives: readonly Objective[]): boolean => {
-    const at = now();
-    const open = new Set(objectives.filter((objective) => !objective.done && !objective.removed).map((objective) => objective.id));
-    const closed = [...runner.statuses].filter(([id, tracked]) => tracked.operator === "commodore" && tracked.status !== "done" && tracked.status !== "removed" && !open.has(id)).map(([id]) => id);
-    return closed.length > 0 && closed.every((id) => (runner.selfWrites.get(id) ?? 0) >= at);
-  };
-
-  // 보드 사건 — 사령관이 운영하는 목표에 아직 듣지 못한 대기 상태가 생길 때만 깨운다. 사령관 자신의 개시·완료로 대기가 줄어드는
-  // 것은 깨울 일이 아니다(빈 inbox 를 읽으러 깨어나는 비용). 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 깨운다.
-  // 사람이 운영하는 목표의 사건은 깨우지 않고 다음 턴의 범위 줄(held)에만 남는다 — 조회에는 그대로 보인다.
-  /** 대기 상태를 다시 보고 아직 듣지 못한 항목으로 깨운다. 사라진 항목은 잊어 같은 상태가 돌아오면 다시 깨운다. */
-  const waitingChanged = (runner: Runner, objectives: readonly Objective[]) => {
-    const current = waitingKeys(objectives, deps.observe);
-    const fresh = [...current].filter((key) => !runner.seen.has(key));
-    runner.seen = current;
-    const freshCodes = new Set<WakeCode>();
-    const settled: { code: WakeCode; id: string; detail: string }[] = [];
-    for (const key of fresh) {
-      const [head, ...rest] = key.split(":");
-      if (head === HUMAN_KEY) hold(runner, rest[1]!, rest[0]!);
-      else if (head === PERSON_KEY) continue;
-      else if (SETTLED_CODES.has(head as WakeCode)) settled.push({ code: head as WakeCode, id: rest[0]!, detail: `"${objectives.find((objective) => objective.id === rest[0])?.title ?? rest[0]}" ${rest[1]}` });
-      else freshCodes.add(head as WakeCode);
-    }
-    if (freshCodes.size) {
-      const digest = new Map(inboxDigest(objectives, deps.observe));
-      for (const code of freshCodes) wake(runner, code, { count: digest.get(code) ?? 1 });
-    }
-    // 사람이 넘겨받은 항목을 끝냈다 — 그 목표와 대상을 깨움 문장과 범위 줄에 남긴다.
-    for (const entry of settled) { wake(runner, entry.code, { bump: true, detail: entry.detail }); noteIds(runner, entry.code, entry.id, entry.detail); }
-  };
-  /** 보드를 다시 본다 — 대기 상태, 빈 보드, 상태 변화. 보드 사건과 대기 점검이 같은 길을 쓴다. */
-  const boardChanged = (runner: Runner) => {
-    const objectives = deps.objectives(runner.theaterId);
-    waitingChanged(runner, objectives);
-    const empty = !hasOpenOperated(objectives);
-    // 사령관 자신의 완료·정리로 보드가 비었으면 깨우지 않는다 — 방금 닫힌 운영 목표가 모두 그의 쓰기 대상이면 그것은 제가 한 일이다.
-    if (empty && !runner.emptyReported && !closedBySelf(runner, objectives)) wake(runner, "empty");
-    runner.emptyReported = empty;
-    // 상태 변화 — 사령관이 운영하는 목표가 한 단계 옮겨 갈 때마다(새 목표·지워짐·사람이 맡김 포함). 사령관 자신의 쓰기와 그 쓰기로
-    // 생긴 목표는 뺀다.
-    for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text }); noteIds(runner, "status", change.id, change.text); }
-  };
-  cleanups.push(deps.subscribeObjectives((event) => {
-    const runner = runners.get(event.theaterId);
-    if (runner) boardChanged(runner);
-  }));
-
-  // 개시·검토 대기 — 지휘관이 일하는 동안의 목표는 대기가 아니다(commence 는 objective_busy·retryWhen commander_turn_end 로, 완료는
-  // objective_busy 로 거절된다; 인계는 지휘관 턴 도중에 기록된다). 그 일이 끝나 쉬게 되면 새 항목으로 한 번 깨운다. 일이 시작될 때도
-  // 보드 사건이 없으므로 같은 점검이 그 항목을 들은 것에서 내린다. 깨우기까지만 한다 — 다음 행위는 사령관이 정한다.
-  const plannedTimer = setInterval(() => {
-    if (disposed || !deps.observe) return;
-    for (const runner of runners.values()) {
-      const objectives = deps.objectives(runner.theaterId);
-      const operators = operatorsOf(objectives);
-      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => (reason === "planned" || reason === "review" || (reason === "followup" && !objective.done)) && !heldForPerson(objective, reason)))) boardChanged(runner);
-    }
-  }, PLANNED_CHECK_MS);
-  plannedTimer.unref?.();
-  cleanups.push(() => clearInterval(plannedTimer));
-
-  /** 보드 도구를 감싸 사령관이 쓰는 목표를 표시한다 — 쓰는 동안과 끝난 뒤 잠깐, 그 목표의 상태 변화는 사령관 자신의 것이다. */
-  const selfAttributed = (runner: Runner, tool: PluginMcpTool): PluginMcpTool => ({
-    ...tool,
-    execute: async (args, context) => {
-      // 종료 알림은 보드를 변경하는 마지막 기회가 아니다. 이미 실행 중인 쓰기를 되돌리지는 않는다.
-      if (runner.stopping || runner.ending || deadlineReached(runner)) return { content: [{ type: "text", text: JSON.stringify({ error: "commodore_stopping" }) }], isError: true };
-      const targets = writeTargets(args);
-      for (const id of targets) runner.selfWrites.set(id, Number.POSITIVE_INFINITY);
-      try {
-        const result = await tool.execute(args, context);
-        // 지휘관이 일하는 중이라 개시가 거절됐다 — 그 목표의 개시 대기는 들은 항목에서 내려, 일이 끝나 쉬게 되면 다시 깨운다.
-        // 점검 주기보다 짧은 턴이어도 이 거절이 일하던 때를 증언한다.
-        const call = (args ?? {}) as { action?: unknown; objectiveId?: unknown };
-        if (call.action === "commence" && typeof call.objectiveId === "string" && (result as { structuredContent?: { error?: unknown } }).structuredContent?.error === "objective_busy") runner.seen.delete(`planned:${call.objectiveId}`);
-        return result;
-      } finally {
-        const until = now() + SELF_WRITE_GRACE_MS;
-        // 이 목표에 쓴 손은 그 목표의 지금 상태를 보고 행동했다 — 턴 도중 쌓인 그 목표의 상태·정체 사유는 처리된 것이라 다음 턴을 열지 않는다.
-        for (const id of targets) { runner.selfWrites.set(id, until); forgetStatus(runner, id); }
-      }
-    },
-  });
-
-  const statusChanges = (runner: Runner, objectives: readonly Objective[]): { readonly id: string; readonly text: string }[] => {
-    const at = now();
-    for (const [id, until] of runner.selfWrites) if (until < at) runner.selfWrites.delete(id);
-    const tracked = statusMap(objectives);
-    const byId = new Map(objectives.map((objective) => [objective.id, objective]));
-    const changes: { id: string; text: string }[] = [];
-    for (const objective of objectives) {
-      const next = tracked.get(objective.id)!;
-      const previous = runner.statuses.get(objective.id);
-      if (previous?.status === next.status && previous.operator === next.operator) continue;
-      // 검토 대기로 옮긴 목표도 지휘관이 그 턴을 마칠 때까지 미룬다 — 옛 상태를 남겨 두어 다시 볼 때 이 전환으로 깨운다.
-      if (next.status === "review" && previous?.operator === next.operator && commanderWorking(deps.observe, objective.id)) continue;
-      runner.statuses.set(objective.id, next);
-      // 사람이 맡김 — 사령관은 운영값을 바꿀 수 없으므로 이 전환은 늘 사람의 것이다. 사령관의 쓰기 유예 안이어도 한 번 깨운다.
-      if (previous?.operator === "human" && next.operator === "commodore") { changes.push({ id: objective.id, text: `"${objective.title}" handed to you by the person (${STATUS_WORDS[next.status]})` }); continue; }
-      // 사람이 돌려받음 — 깨우지 않고, 모으는 동안 쌓인 이 목표의 상태·정체 사유(방금 맡김 포함)도 걷는다.
-      if (previous?.operator === "commodore" && next.operator === "human") { forgetStatus(runner, objective.id); continue; }
-      if (runner.selfWrites.has(objective.id)) continue;
-      // 임무가 끝나 인계를 기다리는 단계는 지휘관의 몫이다(회고를 모아 인계한다) — 사령관은 검토 대기나 정체로 깨운다.
-      if (next.status === "missions-done") continue;
-      // 사람이 운영하는 목표는 깨우지 않고 기록에만 남긴다.
-      if (next.operator === "human") { hold(runner, objective.id, "status"); continue; }
-      if (previous === undefined && createdByCommodore(objective, (id) => byId.get(id))) continue;
-      changes.push({ id: objective.id, text: `"${objective.title}" ${STATUS_WORDS[previous?.status ?? "new"]} → ${STATUS_WORDS[next.status]}` });
-    }
-    // 보드에서 영영 사라진 목표(영구 삭제)도 지워짐이다.
-    for (const [id, previous] of [...runner.statuses]) {
-      if (byId.has(id)) continue;
-      runner.statuses.delete(id);
-      if (previous.status === "removed" || runner.selfWrites.has(id)) continue;
-      if (previous.operator === "human") hold(runner, id, "status");
-      else changes.push({ id, text: `${id} ${STATUS_WORDS[previous.status]} → ${STATUS_WORDS.removed}` });
-    }
-    return changes;
-  };
-
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
-
-  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남았는데 구성원이 일하는 동안 지휘관이 오래 쉬거나, 보드가 오래 그대로인데
-  // 모두 쉰다. 새로 정체된 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
-  const stallTimer = setInterval(() => {
-    if (disposed || !deps.observe) return;
-    for (const runner of runners.values()) {
-      const objectives = deps.objectives(runner.theaterId);
-      const operators = operatorsOf(objectives);
-      const stalled = new Set(stalledObjectives(objectives, deps.observe, now()));
-      let changed = false;
-      for (const id of [...runner.stalledReported]) if (!stalled.has(id)) { runner.stalledReported.delete(id); changed = true; }
-      // 끝난 에피소드의 통지 기록은 거둔다 — 보드가 앞으로 가거나 일하는 명단이 바뀌거나 관문을 못 넘으면 다음 정체는 새 에피소드다.
-      // 통지 때문에 생긴 지휘관 턴은 서명을 바꾸지 않으므로 기록이 남아 되울림을 막는다.
-      for (const [id, episode] of [...runner.notifiedStall]) {
-        const current = objectives.find((objective) => objective.id === id);
-        if (!current || stallEpisode(current, deps.observe) !== episode) runner.notifiedStall.delete(id);
-      }
-      for (const id of stalled) {
-        if (runner.stalledReported.has(id)) continue;
-        runner.stalledReported.add(id); changed = true;
-        // 정체 표시는 사람의 줄에도 서야 하므로 모두 적고, 깨우는 것은 사령관이 운영하는 목표만이다.
-        if (operators.get(id) === "human") { hold(runner, id, "stalled"); continue; }
-        const current = objectives.find((objective) => objective.id === id);
-        const episode = current ? stallEpisode(current, deps.observe) : null;
-        if (episode !== null && runner.notifiedStall.get(id) === episode) continue;
-        const title = current?.title ?? id;
-        wake(runner, "stalled", { bump: true, detail: title });
-        noteIds(runner, "stalled", id, title);
-        void deps.notifyCommanderRest?.(id).catch(() => false);
-        if (episode !== null) runner.notifiedStall.set(id, episode);
-      }
-      if (changed) publish(runner);
-    }
-  }, STALL_CHECK_MS);
-  stallTimer.unref?.();
-  cleanups.push(() => clearInterval(stallTimer));
 
   return {
     status(theaterId) {
@@ -966,81 +753,6 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
 }
 
-function statusMap(objectives: readonly Objective[]): Map<string, TrackedStatus> {
-  const operators = operatorsOf(objectives);
-  return new Map(objectives.map((objective) => [objective.id, { status: objectiveStatus(objective), operator: operators.get(objective.id)! }]));
-}
-
-/** 목표마다 운영 주체 — 깨움·집계·기록이 같은 판정(`objectiveOperator`)을 쓴다. */
-function operatorsOf(objectives: readonly Objective[]): Map<string, ObjectiveOperator> {
-  const byId = new Map(objectives.map((objective) => [objective.id, objective]));
-  return new Map(objectives.map((objective) => [objective.id, objectiveOperator(objective, (id) => byId.get(id))]));
-}
-
-/** 사령관이 운영하는 열린 목표가 하나라도 있다 — 없으면 「빈 보드」로 한 번 깨운다. */
-function hasOpenOperated(objectives: readonly Objective[]): boolean {
-  const operators = operatorsOf(objectives);
-  return objectives.some((objective) => operators.get(objective.id) === "commodore" && !objective.done && !objective.removed);
-}
-
-/** 보드 도구 입력이 가리키는 목표 — 읽기는 상태를 바꾸지 않으니 함께 표시돼도 해가 없다. */
-function writeTargets(args: unknown): readonly string[] {
-  if (!args || typeof args !== "object") return [];
-  const input = args as { objectiveId?: unknown; objectiveIds?: unknown; into?: unknown; from?: unknown };
-  const ids = [input.objectiveId, ...(Array.isArray(input.objectiveIds) ? input.objectiveIds : []), input.into, ...(Array.isArray(input.from) ? input.from : [])];
-  return ids.filter((id): id is string => typeof id === "string");
-}
-
-/**
- * 감독자가 듣는 대기 이유 — inbox 보기와 같은 관측으로, 지휘관 턴이 도는 동안의 목표는 개시 대기가 아니다. 정체는 정체 타이머가
- * 따로 깨우므로 뺀다.
- */
-function waitingReasons(objective: Objective, observe: BoardObserver | undefined): readonly InboxReason[] {
-  // 검토 대기도 지휘관이 그 턴을 마친 뒤에 — 인계는 턴 도중에 기록되고, 그 턴이 끝나기 전의 완료는 objective_busy 다.
-  // 인계와 함께 선 후속 후보도 같은 때에 — 검토와 한 번에 깨워 모인 후보 전체를 판단하게 한다.
-  const atReview = (reason: InboxReason) => reason === "review" || (reason === "followup" && !objective.done);
-  return inboxReasons(objective, observe ? { observe } : {}).filter((reason) => reason !== "stalled" && !(atReview(reason) && commanderWorking(observe, objective.id)));
-}
-
-/** 지휘관이 일하는 중인가(턴 또는 백그라운드 작업) — 관측이 없으면 아니다. */
-function commanderWorking(observe: BoardObserver | undefined, objectiveId: string): boolean {
-  const observation = observe?.(objectiveId);
-  return !!observation && observation.lifecycle !== "dormant" && (observation.activity === "running" || observation.activity === "background");
-}
-
-/**
- * 보드의 대기 상태 항목 — `code:objectiveId`, 결정 요청은 개정까지(같은 목표의 새 요청도 새 항목). 이유는 inbox 보기와 같다.
- * 사람이 운영하는 목표의 항목은 `human:` 머리를 단다 — 깨우지 않고, 사람이 맡기면 머리 없는 새 항목이 되어 그때 깨운다.
- */
-function waitingKeys(objectives: readonly Objective[], observe?: BoardObserver): Set<string> {
-  const operators = operatorsOf(objectives);
-  const keys = new Set<string>();
-  for (const objective of objectives) {
-    const human = operators.get(objective.id) === "human";
-    for (const reason of waitingReasons(objective, observe)) {
-      const head = human ? `${HUMAN_KEY}:` : heldForPerson(objective, reason) ? `${PERSON_KEY}:` : "";
-      keys.add(head + (reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`));
-    }
-    // 넘김이 끝난 사건 — 끝난 시각까지 키에 실어 같은 대상의 다음 넘김이 끝나도 새 항목이 된다. 사람이 운영하는 목표는 깨우지 않는다.
-    if (!human) for (const hold of objective.personHolds ?? []) if (hold.settled) keys.add(`${hold.settled.outcome}:${objective.id}:${hold.target}:${hold.settled.at}`);
-  }
-  return keys;
-}
-
-/** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 대기 이유. */
-function heldForPerson(objective: Objective, reason: InboxReason): boolean {
-  const target = holdTargetOf(reason);
-  return !!target && !!livePersonHold(objective, target);
-}
-
-/** 사령관이 운영하는 목표에 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
-function inboxDigest(objectives: readonly Objective[], observe?: BoardObserver): readonly [WakeCode, number][] {
-  // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
-  const operators = operatorsOf(objectives);
-  const counts = new Map<string, number>();
-  for (const objective of objectives) if (operators.get(objective.id) === "commodore") for (const reason of waitingReasons(objective, observe)) if (!heldForPerson(objective, reason)) counts.set(reason, (counts.get(reason) ?? 0) + 1);
-  return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
-}
 
 /** 모델 문맥 — 네 Claude 가족(정준·bare)은 1M, 그 밖 bare 모델은 200k(압축 지점과 문맥 미터에만 쓴다). */
 function contextWindow(model: string): number {

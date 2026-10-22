@@ -1,3 +1,4 @@
+import type { FleetPluginCommodoreHost } from "../commodore/ports.js";
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
@@ -1284,6 +1285,7 @@ export interface FleetPluginServerContext {
 }
 
 export interface FleetPluginHostCapabilities {
+  readonly commodore?: FleetPluginCommodoreHost;
   readonly agent: AgentHost;
   readonly attachments?: PluginAttachmentHost;
   readonly consoleUse: ConsoleUseMcpHost;

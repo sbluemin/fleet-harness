@@ -419,7 +419,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const offBoard = subscribeObjective(listener);
     return () => { offCommodore(); offBoard(); };
   },
-  // 사령관 세션은 이 scope 로 Session 브라우저를 얻는다(server/commodore/session.ts 의 tools.browser). 호스트가 지구본·카드·칸을 그린다.
+  // 사령관 세션은 이 scope 로 Session 브라우저를 얻는다(Console 사령관 feature의 tools.browser). 호스트가 지구본·카드·칸을 그린다.
   sessionBrowser: (ctx) => {
     const params = readParams(ctx.params);
     if (!params) return null;

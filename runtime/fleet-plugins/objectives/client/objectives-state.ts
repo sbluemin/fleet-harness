@@ -478,10 +478,10 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
   if (result?.objective) upsertObjectiveLocally(result.objective);
 }
 
-export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
+export async function post<T>(api: ClientApiCapability, path: string, body: unknown, pluginId: string | null = "objectives"): Promise<T> {
   let response: Response;
   try {
-    response = await api.fetch("objectives", path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    response = await api.fetch(pluginId, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch (error) {
     // 호스트가 !ok 응답을 먼저 ApiError 로 끊어 post 의 코드 추출에 닿지 않는다 —
     // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.

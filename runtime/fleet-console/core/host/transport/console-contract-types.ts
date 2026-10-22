@@ -64,6 +64,7 @@ export interface ConsoleTheaterInfo {
   readonly alias?: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+  readonly commodoreActive?: boolean;
 }
 
 export interface ConsoleAgentCliMetadata {

@@ -307,6 +307,11 @@
       "types": "./navigation/browser.ts",
       "import": "./navigation/browser.ts",
       "default": "./navigation/browser.ts"
+    },
+    "./commodore": {
+      "types": "./commodore/index.ts",
+      "import": "./commodore/index.ts",
+      "default": "./commodore/index.ts"
     }
   },
   "scripts": {

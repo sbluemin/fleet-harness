@@ -2,12 +2,8 @@ import path from "node:path";
 
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 
-import { COMMODORE_ACTIVE_FLAG, commodoreActive, createCommodoreRoutes } from "./server/commodore/routes.js";
-import { createCommodoreStore } from "./server/commodore/store.js";
-import { createCommodoreSupervisor } from "./server/commodore/supervisor.js";
-import { COMMODORE_CHANNEL } from "./server/commodore/types.js";
+import { createCommodoreBoardWatch } from "./server/commodore-board.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools } from "./server/console-tools.js";
 import { createLaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
@@ -69,10 +65,8 @@ export default definePlugin({
     collectEvidence();
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
-    // 사령관 저장소는 보드보다 먼저 선다 — 사령관이 만드는 목표의 지휘관 설정을 기동 서비스가 읽는다.
-    const commodore = createCommodoreStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event) });
     const launch = createLaunchService(ctx, store, {
-      commodoreCommander: (theaterId) => { const state = commodore.read(theaterId); return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null; },
+      commodoreCommander: (theaterId) => ctx.host.commodore?.commander(theaterId) ?? null,
     });
     watchQuiet = () => launch.watchReportQuiet();
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
@@ -140,43 +134,26 @@ export default definePlugin({
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
 
-    // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.
-    ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(COMMODORE_CHANNEL));
-    // 감독자 — 자율 운영이 켜진 Theater 의 사령관을 깨우고, 되살리고, 멈춘다. 보드 도구는 Theater 에 묶인 사령관 전용 사본이다.
-    const supervisor = createCommodoreSupervisor({
-      store: commodore, agent: ctx.host.agent,
-      ...(ctx.host.attachments ? { attachments: ctx.host.attachments } : {}),
-      experiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
-      ...(ctx.host.experiments?.subscribe ? { subscribeExperiments: (listener) => ctx.host.experiments!.subscribe!(listener) } : {}),
-      // 사령관 좌표는 Console의 모델 로스터에 대조해 연다 — 꺼진 모델은 폴백하고 기록에 남긴다.
-      ...(ctx.host.models ? { models: ctx.host.models } : {}),
-      theater: (theaterId) => { const root = ctx.host.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
-      objectives: (theaterId) => store.list(theaterId),
-      // 사령관 언어의 폴백 — 목표 라우트가 지휘관 Operation 에 남긴 언어(가장 최근 것).
+    // 사령관은 Console feature다. 보드 의미와 도구만 명시 계약으로 건넨다.
+    const releaseBoard = ctx.host.commodore?.registerBoard({
+      tools: (theaterId, turn) => createCommodoreBoardTools(ctx, store, launch, theaterId, turn.readAttachments, turn.hasPersonMessage),
+      watch: (theaterId, sink) => createCommodoreBoardWatch({
+        objectives: (id) => store.list(id),
+        subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
+        ...(ctx.host.consoleControl ? { observe: (operationId) => launch.observeBoard(operationId) } : {}),
+        notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
+      }, theaterId, sink),
+      objective: (theaterId, id) => {
+        const objective = store.find(id);
+        return objective?.theaterId === theaterId ? { id: objective.id, theaterId, title: objective.title, ...(objective.removed ? { removed: true as const } : {}) } : null;
+      },
+      // 목표 라우트가 남긴 언어 중 가장 최근 것 — 사령관에 저장된 언어가 없을 때만 쓴다.
       language: (theaterId) => {
         const latest = ctx.host.operations.list().filter((node) => node.theaterId === theaterId && (node.payload.objectiveLanguage === "ko" || node.payload.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
         return latest?.payload.objectiveLanguage === "ko" ? "ko" : "en";
       },
-      subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
-      boardTools: (theaterId, readAttachments, hasPersonMessage) => createCommodoreBoardTools(ctx, store, launch, theaterId, readAttachments, hasPersonMessage),
-      // Theater 지식(Codex Wiki) — 호스트가 그 Theater 루트에 묶어 준 MCP 도구만 받는다. 어느 플러그인의 것인지는 호스트가 안다.
-      ...(ctx.host.admiralMcp.bindTheater ? { knowledgeTools: (theaterId) => ctx.host.admiralMcp.bindTheater!(theaterId) } : {}),
-      ...(ctx.host.consoleControl ? { observe: (operationId) => launch.observeBoard(operationId) } : {}),
-      notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
-      emit: (event) => ctx.host.events.publish(COMMODORE_CHANNEL, event),
     });
-    ctx.host.lifecycle.registerCleanup(() => supervisor.dispose());
-    for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId), clear: (theaterId) => supervisor.clear(theaterId), objective: (objectiveId) => store.find(objectiveId) })) {
-      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
-    }
-    // 재시작 복원은 모든 플러그인이 붙은 뒤에 한다 — 세션을 열 때 Theater 지식 도구도 함께 묶여야 한다.
-    // 실행 중 Theater 를 되살릴 때도 맞춘다. 이미 살아 있는 사령관은 감독자가 그대로 두므로 중복 턴을 보내지 않는다.
-    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:restored", () => {
-      try { supervisor.sync("restart"); } catch (error) { console.warn(`[objectives] commodore restore failed: ${error instanceof Error ? error.message : String(error)}`); }
-    }));
-    // 사이드바 Theater DTO 의 「사령관 활동 중」 — 호스트 스텁(테스트)에는 이 능력이 없을 수 있다.
-    const releaseFlag = (ctx.host.theaterFlags as typeof ctx.host.theaterFlags | undefined)?.register(COMMODORE_ACTIVE_FLAG, (theaterId) => commodoreActive(ctx, commodore, theaterId));
-    if (releaseFlag) ctx.host.lifecycle.registerCleanup(releaseFlag);
+    if (releaseBoard) ctx.host.lifecycle.registerCleanup(releaseBoard);
 
     // Console 세션의 서브에이전트 호출 — 띄우지 않고, 그 자리를 이 목표의 구성원이 맡는다는 사실로 답한다.
     const releaseAgentCalls = ctx.host.consoleControl?.redirectAgentCalls?.((operationId) => agentCallRedirect(store.find(operationId), store.findMember(operationId) !== null));

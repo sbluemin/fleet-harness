@@ -6,11 +6,11 @@ import { promisify } from "node:util";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
-import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../types.js";
-import { refuse, text } from "../views.js";
+import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "@fleet-console/sdk/commodore";
+import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
-import { MEMORY_STALE_MS } from "./memory-stale.js";
+import { MEMORY_STALE_MS } from "../shared/memory-stale.js";
 import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
 
 /**

@@ -8,7 +8,7 @@ import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } 
 import { chromeRowHeight, useChromeHeightProperty, useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
 import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";

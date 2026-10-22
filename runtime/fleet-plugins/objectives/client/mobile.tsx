@@ -11,7 +11,7 @@ import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
-import type { CommodoreAsk } from "../server/commodore/types.js";
+import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
