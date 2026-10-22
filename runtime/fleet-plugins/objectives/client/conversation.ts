@@ -1,3 +1,4 @@
+import { objectiveOpenUIPort } from "./openui-ports.js";
 import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
@@ -59,7 +60,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { operationId: objective.id, recordedObjective: objective.recorded === true, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
+  return { operationId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,

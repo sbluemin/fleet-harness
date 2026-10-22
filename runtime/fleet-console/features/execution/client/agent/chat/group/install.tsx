@@ -1,3 +1,4 @@
+import { OpenUINavigationContext } from "../../openui-boundary.js";
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
@@ -31,7 +32,7 @@ import { useGroupConversationActions, useGroupUseRequests } from "../group-write
 import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
-import { GroupComposer, fillGroupComposer } from "./group-composer.js";
+import { GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
@@ -237,7 +238,7 @@ function GroupLinkBoundary({ root, language, ports, children }: {
   const t = getT(language);
   const fileLinkError = links.fileLinkFailure === null ? null : t(links.fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed");
   return (
-    <MarkdownLinkBoundary className="group-chat-link-boundary" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" {...links.fileLinks}>
+    <MarkdownLinkBoundary className="group-chat-link-boundary" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
       {children(fileLinkError)}
       {links.card}
     </MarkdownLinkBoundary>
@@ -251,6 +252,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
   const clusters = useGroupClusters();
+  const openUIOpen = clusters.find((cluster) => cluster.conversation?.operationId === root.id)?.conversation?.openUIOpen;
   // 보드 동작이 있는 일반 Operation도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
   const recordedObjective = clusters.some((cluster) => cluster.conversation?.operationId === root.id && cluster.conversation.recordedObjective === true);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
@@ -285,13 +287,13 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
-  // 답 단추(OpenUI)는 이 대화의 입력창을 채운다 — 입력창이 쓸 수 있는 대화(쓰기 계약이 선 대화)에서만.
-  const fillReply = React.useCallback((reply: string, speaker: ConversationSpeaker) => {
-    fillGroupComposer(root.id, reply, speaker.kind === "commodore" ? "commodore" : "commander");
-  }, [root.id]);
+  // 답 단추(OpenUI)는 이 말의 화자에게 기존 대화 전송 계약으로 보낸다. 초안·첨부는 섞지 않는다.
+  const sendOpenUI = React.useCallback((text: string, speaker: ConversationSpeaker) => {
+    void actions?.send({ kind: speaker.kind === "commodore" ? "commodore" : "commander" }, text).catch(() => {});
+  }, [actions]);
   const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
   return (
-    <GroupConversation
+    <OpenUINavigationContext.Provider value={openUIOpen ?? null}><GroupConversation
       snapshot={snapshot}
       language={language}
       onOpenLedger={openMemberLedger}
@@ -300,7 +302,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       fold={fold}
       computerActor={computerActor}
       pillOperationId={root.id}
-      {...(actions ? { onOpenUIReply: fillReply } : {})}
+      {...(actions ? { onOpenUISend: sendOpenUI } : {})}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare
           operationId={root.id}
@@ -312,7 +314,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
         />
       )}
       {...(recordedObjective ? { renderComposerWithWorking: composer } : { composer: composer() })}
-    />
+    /></OpenUINavigationContext.Provider>
   );
 }
 

@@ -1,3 +1,5 @@
+import { useCommodoreOpenUIPort } from "./openui-ports.js";
+import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { AgentConversationEntry, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -17,7 +19,7 @@ import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
-import { CommodoreComposer, fillCommodoreComposer, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
+import { CommodoreComposer, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
@@ -390,6 +392,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   }, [theaterId]);
   const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
     open: (entry) => { if (entry.objectiveId) openObjectiveOnPhone(entry.objectiveId, theaterId); },
@@ -397,8 +400,8 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   // 원장(기록 탭)에 설 턴이 있을 때만 이름이 눌린다 — 눌리는 척하지 않는다.
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn ? () => onOpenLog() : null), [hasTurn, onOpenLog]);
-  // 답 단추는 아래 입력창을 채운다(보내지 않는다, 화면 키보드도 올리지 않는다).
-  const fillReply = useCallback((reply: string) => { fillCommodoreComposer(theaterId, reply); }, [theaterId]);
+  // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   const composer = (
     <div className="objectives-cm-dock">
       <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
@@ -418,11 +421,11 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
           older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
           openBoardAction={openBoardAction}
           openLedger={openLedger}
-          references={references}
+          references={references} openUIOpen={openUIOpen}
           cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />}
           composer={composer}
           composerTopEntries
-          onOpenUIReply={fillReply}
+          onOpenUISend={sendOpenUI}
         />
       ) : composer}
     </div>
@@ -453,8 +456,9 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
-  // 답 단추는 아래 입력창을 채운다(보내지 않는다, 화면 키보드도 올리지 않는다).
-  const fillReply = useCallback((reply: string) => { fillCommodoreComposer(theaterId, reply); }, [theaterId]);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
+  // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -530,7 +534,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
     body = (
       <>
         {hasMore ? <button type="button" data-press="r1" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("commodore.log.older")}</button> : null}
-        {Transcript ? <Transcript entries={chat} language={language} mobile references={references} openui onOpenUIReply={fillReply} /> : null}
+        {Transcript ? <Transcript entries={chat} language={language} mobile references={references} openUIOpen={openUIOpen} openui onOpenUISend={sendOpenUI} /> : null}
         {pending ? (
           <div className="objectives-cm-msg">
             <p className="objectives-cm-head"><b>{t("commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(pending.at)}</span><span>{t("commodore.mobile.sending")}</span></p>

@@ -1,3 +1,5 @@
+import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
+export type { OpenUIOpenPort, OpenUIOpenTarget } from "@fleet-console/markdown/openui";
 import type { ComposerQuote } from "../composer/quotes.js";
 import type { ComponentType, ReactNode } from "react";
 
@@ -86,11 +88,13 @@ export interface AgentChatTranscriptProps {
    */
   readonly openui?: boolean;
   /**
-   * Where an answer button in a drawn block puts its sentence — the plugin's own composer for this record. Only fill a draft here;
-   * never send: the person reviews the sentence and sends it with their own Enter. Called only for a person's click on a finished
-   * block, never while drawing or reloading. Without it the buttons show as inert chips (a read-only record).
+   * Send the clicked answer as the person's message through this record's normal send path. Called only for a trusted click on a
+   * finished block, once per mounted block; drawing, replay and synthetic clicks never send. Leave the composer's draft untouched.
+   * Without this port, send buttons remain inert (a read-only record).
    */
-  readonly onOpenUIReply?: (reply: string) => void;
+  readonly onOpenUISend?: (text: string) => void;
+  /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
+  readonly openUIOpen?: OpenUIOpenPort;
 }
 
 /**
@@ -137,10 +141,12 @@ export interface AgentConversationProps {
   /** How the person's inline references (a message's `references`) open and look. */
   readonly references?: AgentChatReferenceHost;
   /**
-   * Where an answer button in a Commodore or Commander bubble puts its sentence — the plugin's composer below this conversation. The
-   * same contract as `AgentChatTranscriptProps.onOpenUIReply`: fill a draft, never send. Omit it on read-only conversations.
+   * Send a clicked answer as the person's message. Same contract as `AgentChatTranscriptProps.onOpenUISend`: one trusted click,
+   * one send, leaving the composer's draft untouched. Omit it on read-only conversations.
    */
-  readonly onOpenUIReply?: (reply: string) => void;
+  readonly onOpenUISend?: (text: string) => void;
+  /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
+  readonly openUIOpen?: OpenUIOpenPort;
 }
 
 /**
@@ -188,6 +194,8 @@ export interface AgentLedgerProps {
   readonly coordinates?: { readonly model: string | null; readonly effort: string | null } | null;
   /** Draw fenced `openui-lang` blocks in the answers as generative UI — the same opt-in as `AgentChatTranscriptProps.openui`. */
   readonly openui?: boolean;
+  /** Navigation is available in a read-only ledger too; send actions remain inert. */
+  readonly openUIOpen?: OpenUIOpenPort;
 }
 
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */

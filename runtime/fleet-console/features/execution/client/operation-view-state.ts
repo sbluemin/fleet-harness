@@ -22,10 +22,6 @@ interface ComposerDraft {
   readonly sentEpoch: number;
   readonly failed: boolean;
   readonly ultracodeIgnored: boolean;
-  /** 답 단추가 초안을 채운 횟수 — 입력창이 이 값이 오를 때 커서를 데려온다(폰은 화면 키보드를 올리지 않는다). */
-  readonly filled: number;
-  /** 쓰던 말이 있어 답 단추가 초안을 덮지 않은 횟수 — 입력창이 이 값이 오를 때 안내 줄을 세운다. */
-  readonly occupied: number;
 }
 
 export interface TerminalViewPosition {
@@ -46,7 +42,7 @@ function createComposerDraft(operationId: string) {
     discard: (id) => discardLaunchAttachment(id),
   });
   const quotes = createComposerQuotes();
-  let current: Omit<ComposerDraft, "attachments" | "attachmentNotice" | "quotes"> = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false, filled: 0, occupied: 0 };
+  let current: Omit<ComposerDraft, "attachments" | "attachmentNotice" | "quotes"> = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
   let disposed = false;
   const listeners = new Set<() => void>();
   // useSyncExternalStore는 스냅샷 참조가 같으면 멈춘다. 매 읽기마다 새 객체를 만들면 렌더가 끝나지 않는다.
@@ -71,14 +67,6 @@ function createComposerDraft(operationId: string) {
     read,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setText: (text: string) => update({ text, revision: current.revision + 1, failed: false }),
-    /**
-     * 답 단추(OpenUI)가 고른 문장을 빈 초안에 넣는다. 보내지 않는다 — 발사는 사람의 Enter 다. 쓰던 말이 있으면 덮지 않고 알린다.
-     */
-    fill: (text: string): boolean => {
-      if (current.text.trim().length > 0) { update({ occupied: current.occupied + 1 }); return false; }
-      update({ text, revision: current.revision + 1, failed: false, filled: current.filled + 1 });
-      return true;
-    },
     setUltracodeIgnored: (ultracodeIgnored: boolean) => update({ ultracodeIgnored }),
     addFile: (file: File) => { attachments.add([file]); },
     removeAttachment: (key: string) => { attachments.remove(key); },
@@ -112,7 +100,7 @@ function createComposerDraft(operationId: string) {
       disposed = true;
       attachments.dispose();
       quotes.clear();
-      current = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false, filled: 0, occupied: 0 };
+      current = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
       view = { ...current, attachments: [], attachmentNotice: null, quotes: [] };
       listeners.clear();
     },

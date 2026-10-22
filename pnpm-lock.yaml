@@ -429,6 +429,9 @@ importers:
       '@fleet-console/link':
         specifier: workspace:*
         version: link:../foundation/link
+      '@fleet-console/markdown':
+        specifier: workspace:*
+        version: link:../foundation/markdown
       react:
         specifier: ^19.0.0
         version: 19.2.7

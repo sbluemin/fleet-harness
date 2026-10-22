@@ -4,7 +4,9 @@
  */
 import "./openui-devtools-guard.js";
 
-import { createLibrary, createParser, defineComponent, Renderer, type ParseResult } from "@openuidev/react-lang";
+import { BuiltinActionType, createLibrary, createParser, defineComponent, Renderer, steps, useTriggerAction, type ActionPlan, type ParseResult } from "@openuidev/react-lang";
+import { composeDraft, parseOpenUIOpenTarget, sendableReply, sendableText, type OpenUIOpenPort, type OpenUISendPort } from "./openui-actions.js";
+export { composeDraft, sendableDraft, sendableReply } from "./openui-actions.js";
 import * as React from "react";
 import { z } from "zod";
 
@@ -27,7 +29,15 @@ const text = z.union([z.string(), z.number()]);
 const tone = z.enum(TONES).optional();
 
 // 블록마다 바뀌는 값(라벨·확정·포트)은 컨텍스트로 — 라이브러리는 모듈에 하나다.
-interface BlockContext { readonly labels: OpenUIRenderLabels; readonly final: boolean; readonly reply: ((text: string) => void) | null }
+type SafeAction = { readonly type: "send"; readonly message: string; readonly max: 200 | 480 } | { readonly type: "open"; readonly url: string };
+interface BlockContext {
+  readonly labels: OpenUIRenderLabels;
+  readonly final: boolean;
+  readonly send: OpenUISendPort | null;
+  readonly open: OpenUIOpenPort | null;
+  readonly sent: string | null;
+  readonly activate: (event: React.MouseEvent<HTMLButtonElement>, action: SafeAction, key: string, trigger: ReturnType<typeof useTriggerAction>) => void;
+}
 const Block = React.createContext<BlockContext | null>(null);
 const useBlock = () => React.useContext(Block)!;
 
@@ -42,14 +52,6 @@ function plain(value: unknown): string | null {
 }
 const oneOf = <T extends string>(value: unknown, options: readonly T[]): T | null =>
   typeof value === "string" && (options as readonly string[]).includes(value) ? (value as T) : null;
-export function sendableReply(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const reply = value.trim();
-  if (!reply || reply.length > 200) return null;
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f\u2028\u2029]/u.test(reply)) return null;
-  return reply.startsWith("/") || reply.startsWith("@") ? null : reply;
-}
 
 function Dot({ state, label }: { state: OpenUIState; label: string }) {
   return <span className={`openui-dot is-${state}`} role="img" aria-label={label} />;
@@ -230,24 +232,23 @@ const Progress = defineComponent({
     );
   },
 });
-function ChoiceButton({ label, reply }: { label: string; reply: string }) {
-  const { final, reply: port } = useBlock();
-  // 보낼 문장은 이 클로저에만 있다 — DOM 속성에서 읽지 않는다. 사람의 클릭(isTrusted)·확정·포트가 모두 있을 때만 포트를 부른다.
-  const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (!event.nativeEvent.isTrusted || !final || !port) return;
-    port(reply);
-  };
-  return (
-    <button type="button" className="openui-choice" title={reply} disabled={!final} aria-disabled={final && !port ? true : undefined} onClick={onClick}>
-      {label}
-    </button>
-  );
+const DecisionLayout = React.createContext(false);
+function ChoiceButton({ label, reply, why, effect }: { label: string; reply: string; why?: string; effect?: string }) {
+  const block = useBlock();
+  const decision = React.useContext(DecisionLayout);
+  const trigger = useTriggerAction();
+  const key = React.useId();
+  return <button type="button" className={`${decision ? "openui-option" : "openui-choice"}${block.sent === key ? " is-selected" : ""}`} title={reply}
+    disabled={!block.final || block.sent !== null} aria-disabled={block.final && !block.send ? true : undefined}
+    onClick={(event) => block.activate(event, { type: "send", message: reply, max: 200 }, key, trigger)}>
+    {decision ? <><span className="openui-option-label">{label}</span>{why ? <span className="openui-option-why">{why}</span> : null}{effect ? <span className="openui-option-effect">{effect}</span> : null}</> : label}
+  </button>;
 }
 const Choice = defineComponent({
   name: "Choice",
-  description: "One answer the person can pick; reply is the sentence that becomes their words after they confirm.",
-  props: z.object({ label: z.string(), reply: z.string() }),
-  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} />,
+  description: "One answer sent as the person's message when clicked.",
+  props: z.object({ label: z.string(), reply: z.string(), why: z.string().optional(), effect: z.string().optional() }),
+  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} {...(typeof props.why === "string" ? { why: props.why } : {})} {...(typeof props.effect === "string" ? { effect: props.effect } : {})} />,
 });
 const Choices = defineComponent({
   name: "Choices",
@@ -255,8 +256,98 @@ const Choices = defineComponent({
   props: z.object({ items: z.array(Choice.ref) }),
   component: ({ props, renderNode }) => {
     const items = list(props.items).filter((item) => isNode(item, "Choice") && choiceReady(item.props));
-    return items.length ? <div className="openui-choices" role="group">{renderNode(items)}</div> : null;
+    const decision = items.some((item) => isNode(item, "Choice") && (plain(item.props.why) || plain(item.props.effect)));
+    return items.length ? <DecisionLayout.Provider value={decision}><div className={decision ? "openui-decision openui-face" : "openui-choices"} role="group">{renderNode(items)}</div></DecisionLayout.Provider> : null;
   },
+});
+
+// 등록 때는 액션 문법을 알리지만, 판정은 단일 리터럴 단계만 허용한다. Action·Run·상태 변경은 실행기에 닿지 않는다.
+function sourceAction(value: unknown, label: unknown): SafeAction | null {
+  if (value == null) {
+    const message = sendableReply(label);
+    return message ? { type: "send", message, max: 200 } : null;
+  }
+  const action = z.object({ k: z.literal("Comp"), name: z.enum(["OpenUrl", "ToAssistant"]), args: z.tuple([z.object({ k: z.literal("Str"), v: z.string() }).strict()]), mappedProps: z.record(z.string(), z.unknown()).optional() }).strict().safeParse(value);
+  if (!action.success) return null;
+  const raw = action.data.args[0].v;
+  if (action.data.name === "OpenUrl") return parseOpenUIOpenTarget(raw) ? { type: "open", url: raw } : null;
+  const message = sendableReply(raw);
+  return message ? { type: "send", message, max: 200 } : null;
+}
+function runtimeAction(value: unknown, label: unknown): SafeAction | null {
+  if (value == null) return sourceAction(value, label);
+  const plan = z.object({ steps: z.tuple([z.union([
+    z.object({ type: z.literal("open_url"), url: z.string() }).strict(),
+    z.object({ type: z.literal("continue_conversation"), message: z.string() }).strict(),
+  ])]) }).strict().safeParse(value);
+  if (!plan.success) return null;
+  const step = plan.data.steps[0];
+  if (step.type === "open_url") return parseOpenUIOpenTarget(step.url) ? { type: "open", url: step.url } : null;
+  const message = sendableReply(step.message);
+  return message ? { type: "send", message, max: 200 } : null;
+}
+function ActionButton({ label, action }: { label: string; action: unknown }) {
+  const block = useBlock();
+  const trigger = useTriggerAction();
+  const key = React.useId();
+  const safe = runtimeAction(action, label);
+  if (!safe) return null;
+  const target = safe.type === "open" ? parseOpenUIOpenTarget(safe.url) : null;
+  const tail = target?.kind === "https" ? target.hostname : target?.kind === "objective" ? `objective:${target.id.slice(0, 8)}` : target?.kind === "mission" ? `mission:${target.number}` : null;
+  const contents = <><span>{label}</span>{tail ? <span className="openui-button-target">{tail}</span> : null}</>;
+  if (target && !block.open?.accepts(target)) return <span className="openui-button is-inert" title={safe.type === "open" ? safe.url : undefined}>{contents}</span>;
+  return <button type="button" className={`openui-choice openui-button${block.sent === key ? " is-selected" : ""}`} title={safe.type === "open" ? safe.url : safe.message}
+    disabled={!block.final || (safe.type === "send" && block.sent !== null)} aria-disabled={safe.type === "send" && !block.send ? true : undefined}
+    onClick={(event) => block.activate(event, safe, key, trigger)}>{contents}</button>;
+}
+const Button = defineComponent({
+  name: "Button", description: "Send a message or ask the host to open a visible target.",
+  props: z.object({ label: z.string(), action: z.union([steps.OpenUrl.ref, steps.ToAssistant.ref]).optional() }),
+  component: ({ props }) => <ActionButton label={String(props.label)} action={props.action} />,
+});
+
+const fieldName = z.string().regex(/^[a-z][a-z0-9_]{0,15}$/);
+// 한 줄 판정은 표시용 문장에도 적용한다. 명령 접두 규칙은 전송 문장에만 적용한다.
+const line = (max: number) => z.string().refine((v) => {
+  const t = v.trim();
+  // eslint-disable-next-line no-control-regex
+  return !!t && t.length <= max && !/[\u0000-\u001f\u007f\p{Zl}\p{Zp}]/u.test(v);
+});
+const inputLimit = z.object({ name: fieldName, label: line(40) });
+const selectLimit = inputLimit.extend({ options: z.array(line(40)).min(2).max(6).refine((values) => new Set(values).size === values.length) });
+function formReady(p: Record<string, unknown>): boolean {
+  const fields = list(p.fields);
+  if (!fields.length || fields.length > 4 || typeof p.template !== "string" || !line(160).safeParse(p.template).success) return false;
+  const names = fields.flatMap((f) => isNode(f, "Input") && inputLimit.safeParse(f.props).success || isNode(f, "Select") && selectLimit.safeParse(f.props).success ? [(f as Node).props.name as string] : []);
+  if (names.length !== fields.length || new Set(names).size !== names.length || /^[{/@]/u.test(p.template.trim())) return false;
+  const used = new Set<string>();
+  const rest = p.template.replace(/\{([a-z][a-z0-9_]{0,15})\}/g, (_, name: string) => { used.add(name); return ""; });
+  return !/[{}]/u.test(rest) && names.every((name) => used.has(name)) && [...used].every((name) => names.includes(name));
+}
+const Input = defineComponent({ name: "Input", description: "One single-line field.", props: z.object({ name: z.string(), label: z.string() }), component: () => null });
+const Select = defineComponent({ name: "Select", description: "Choose one value.", props: z.object({ name: z.string(), label: z.string(), options: z.array(z.string()) }), component: () => null });
+function FormFields({ props }: { props: Record<string, unknown> }) {
+  const block = useBlock();
+  const trigger = useTriggerAction();
+  const key = React.useId();
+  const fields = list(props.fields) as Node[];
+  const [values, setValues] = React.useState<ReadonlyMap<string, string>>(() => new Map(fields.map((field) => [String(field.props.name), field.typeName === "Select" ? String(list(field.props.options)[0] ?? "") : ""])));
+  const disabled = !block.final || !block.send || block.sent !== null;
+  const draft = composeDraft(String(props.template), values);
+  const complete = fields.every((f) => !!values.get(String(f.props.name))?.trim());
+  const update = (name: string, value: string) => setValues((current) => new Map(current).set(name, value));
+  return <div className="openui-form openui-face" role="group"><div className="openui-fields">{fields.map((field) => {
+    const name = String(field.props.name);
+    return <label className="openui-field" key={name}><span>{String(field.props.label)}</span>{field.typeName === "Input"
+      ? <input type="text" maxLength={80} autoComplete="off" spellCheck={false} disabled={disabled} value={values.get(name) ?? ""} onChange={(e) => update(name, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
+      : <select disabled={disabled} value={String(list(field.props.options).indexOf(values.get(name)))} onChange={(e) => { const option = list(field.props.options)[Number(e.currentTarget.value)]; if (typeof option === "string") update(name, option); }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>{list(field.props.options).map((option, i) => <option key={i} value={String(i)}>{String(option)}</option>)}</select>}</label>;
+  })}</div><button type="button" className={`openui-choice${block.sent === key ? " is-selected" : ""}`} title={String(props.template)} disabled={disabled || !complete || !draft}
+    onClick={(event) => { if (complete && draft) block.activate(event, { type: "send", message: draft, max: 480 }, key, trigger); }}>{String(props.submit)}</button></div>;
+}
+const Form = defineComponent({
+  name: "Form", description: "A few fields composing one message, sent only when clicked.",
+  props: z.object({ fields: z.array(z.union([Input.ref, Select.ref])), template: z.string(), submit: z.string() }),
+  component: ({ props }) => formReady(props) ? <FormFields key={JSON.stringify(props.fields)} props={props} /> : null,
 });
 const momentReady = (p: Record<string, unknown>) => plain(p.time) !== null && plain(p.label) !== null && (p.state == null || oneOf(p.state, STATES) !== null);
 const deltaReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.before) !== null && plain(p.after) !== null;
@@ -358,11 +449,11 @@ const Sparklines = defineComponent({
     return items.length ? <div className="openui-bars openui-sparklines openui-face">{renderNode(items)}</div> : null;
   },
 });
-const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines"]);
+const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines", "Button", "Form"]);
 const Card = defineComponent({
   name: "Card",
   description: "Titled group of components.",
-  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Facts.ref, Callout.ref, Progress.ref, Choices.ref, Timeline.ref, Compare.ref, Tags.ref, Sparklines.ref])) }),
+  props: z.object({ title: z.string(), children: z.array(z.union([Stats.ref, Steps.ref, Bars.ref, Table.ref, Facts.ref, Callout.ref, Progress.ref, Choices.ref, Timeline.ref, Compare.ref, Tags.ref, Sparklines.ref, Button.ref, Form.ref])) }),
   component: ({ props, renderNode }) => {
     const title = plain(props.title);
     const children = list(props.children).filter((child) => !!child && typeof child === "object" && CHILDREN.has((child as Node).typeName));
@@ -375,7 +466,7 @@ const Card = defineComponent({
   },
 });
 
-export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice, Timeline, Moment, Compare, Delta, Tags, Tag, Sparklines, Sparkline], root: "Card" });
+export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice, Timeline, Moment, Compare, Delta, Tags, Tag, Sparklines, Sparkline, Button, Form, Input, Select], root: "Card" });
 
 // ---- 2. 상한 — 등록 스키마와 따로 둔 Zod 판정(lang-core 는 max/refine 을 보지 않는다, 실측). 노드마다 safeParse.
 const reply = z.string().refine((value) => sendableReply(value) !== null);
@@ -383,7 +474,7 @@ const reply = z.string().refine((value) => sendableReply(value) !== null);
 const element = (...names: [string, ...string[]]) => z.object({ type: z.literal("element"), typeName: z.enum(names) });
 const short = (max: number) => z.string().refine((value) => { const t = value.trim(); return t.length > 0 && t.length <= max; });
 const LIMITS: Readonly<Record<string, z.ZodType>> = {
-  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines")).max(8) }),
+  Card: z.object({ title: z.string(), children: z.array(element("Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines", "Button", "Form")).max(8) }),
   Timeline: z.object({ items: z.array(element("Moment")).min(1).max(12) }),
   Moment: z.object({ time: short(20), label: z.string(), state: z.enum(STATES).nullish(), note: text.nullish() }),
   Compare: z.object({ before: short(40), after: short(40), items: z.array(element("Delta")).min(1).max(8) }),
@@ -405,7 +496,11 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
   Progress: z.object({ label: z.string(), done: z.number().finite().min(0), total: z.number().finite().gt(0), note: text.nullish() })
     .refine((p) => p.done <= p.total),
   Choices: z.object({ items: z.array(element("Choice")).min(2).max(4) }),
-  Choice: z.object({ label: z.string().refine((value) => { const t = value.trim(); return t.length > 0 && t.length <= 40; }), reply }),
+  Choice: z.object({ label: short(40), reply, why: line(120).nullish(), effect: line(120).nullish() }),
+  Button: z.object({ label: line(40), action: z.unknown().optional() }).refine((p) => sourceAction(p.action, p.label) !== null),
+  Form: z.object({ fields: z.array(element("Input", "Select")).min(1).max(4), template: z.string(), submit: line(24) }),
+  Input: inputLimit,
+  Select: selectLimit,
 };
 
 export type Verdict = { kind: "render" } | { kind: "hold" } | { kind: "fallback" };
@@ -428,25 +523,50 @@ export function judge(source: string, final: boolean): Verdict {
   let choices = 0;
   const visit = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.every(visit);
-    if (!value || typeof value !== "object" || (value as Node).type !== "element") return true;
-    const node = value as Node & { hasDynamicProps?: boolean };
+    if (!value || typeof value !== "object") return true;
+    if ((value as Node).type !== "element") return false;
+    const node = value as Node;
     const limit = LIMITS[node.typeName];
-    // 덜 온 정적 props는 컴포넌트가 거르지만 동적 props는 흐르는 중에도 런타임에 넘기지 않는다.
-    if (!limit || node.hasDynamicProps !== false || (final && !limit.safeParse(node.props).success)) return false;
-    if (node.typeName === "Choices" && ++choices > 1) return false;
-    return Object.values(node.props).every(visit);
+    // 액션 때문에 부모까지 동적으로 표시된다. Button.action의 단일 리터럴만 예외이며 다른 AST 객체는 visit이 거절한다.
+    if (!limit || (final && !limit.safeParse(node.props).success)) return false;
+    if ((node.typeName === "Choices" || node.typeName === "Form") && ++choices > 1) return false;
+    if (node.typeName === "Form" && final && !formReady(node.props)) return false;
+    return Object.entries(node.props).every(([key, child]) => node.typeName === "Button" && key === "action" ? sourceAction(child, node.props.label) !== null : visit(child));
   };
   return visit(root) ? { kind: "render" } : no;
 }
 
-/** 블록 하나의 React 트리 — Renderer.Root + Content 슬롯만(기본 Query 로더를 쓰지 않는다). onAction·toolProvider 는 주지 않는다. */
-export function OpenUIView({ source, final, labels, reply }: { source: string; final: boolean; labels: OpenUIRenderLabels; reply: ((text: string) => void) | null }) {
-  const context = React.useMemo(() => ({ labels, final, reply }), [labels, final, reply]);
-  return (
-    <Block.Provider value={context}>
-      <Renderer.Root response={source} library={library} isStreaming={!final} publishObservability={false}>
-        <Renderer.Content className="openui-content" />
-      </Renderer.Root>
-    </Block.Provider>
-  );
+/** 블록 하나의 React 트리 — 클릭 클로저가 만든 일회 허가만 onAction에서 소비한다. Query·toolProvider는 주지 않는다. */
+export function OpenUIView({ source, final, labels, send, open }: { source: string; final: boolean; labels: OpenUIRenderLabels; send: OpenUISendPort | null; open: OpenUIOpenPort | null }) {
+  const [sent, setSent] = React.useState<string | null>(null);
+  const locked = React.useRef(false);
+  const grant = React.useRef<{ action: SafeAction; at: { x: number; y: number } } | null>(null);
+  const activate: BlockContext["activate"] = (event, action, key, trigger) => {
+    if (!event.nativeEvent.isTrusted || !final) return;
+    const target = action.type === "open" ? parseOpenUIOpenTarget(action.url) : null;
+    if (action.type === "send") {
+      if (locked.current || !send || !sendableText(action.message, action.max)) return;
+      locked.current = true;
+      setSent(key);
+    } else if (!target || !open?.accepts(target)) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    grant.current = { action, at: event.detail === 0 ? { x: rect.left + rect.width / 2, y: rect.bottom } : { x: event.clientX, y: event.clientY } };
+    const plan: ActionPlan = { steps: [action.type === "send" ? { type: "continue_conversation", message: action.message } : { type: "open_url", url: action.url }] };
+    // 허용 단계는 onAction을 동기로 부른다. 다른 시점의 이벤트에는 허가가 없다.
+    try { void trigger(action.type === "send" ? action.message : "", undefined, plan); } finally { grant.current = null; }
+  };
+  return <Block.Provider value={{ labels, final, send, open, sent, activate }}>
+    <Renderer.Root response={source} library={library} isStreaming={!final} publishObservability={false} onAction={(event) => {
+      const allowed = grant.current;
+      grant.current = null;
+      if (!allowed || !final) return;
+      if (event.type === BuiltinActionType.ContinueConversation && allowed.action.type === "send" && !Object.keys(event.params).length) {
+        const message = sendableText(event.humanFriendlyMessage, allowed.action.max);
+        if (message && message === allowed.action.message) send?.(message);
+      } else if (event.type === BuiltinActionType.OpenUrl && allowed.action.type === "open" && event.params.url === allowed.action.url) {
+        const target = parseOpenUIOpenTarget(event.params.url);
+        if (target && open?.accepts(target)) open.open(target, allowed.at);
+      }
+    }}><Renderer.Content className="openui-content" /></Renderer.Root>
+  </Block.Provider>;
 }

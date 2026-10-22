@@ -50,7 +50,6 @@ import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } fro
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
-import { getComposerDraft } from "../../operation-view-state.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
@@ -122,10 +121,10 @@ export function AgentChatView({
   // 생성형 UI(OpenUI 펜스)는 목표의 지휘관 답에서만 그린다 — 그룹 대화 말풍선과 같은 말이 지휘관 채팅(모바일)·원장에서 다르게 보이지
   // 않게. 구성원(하위 Operation)과 일반 Operation 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
   const objectiveCommander = useObjectiveCommander(context.operationId) && !isMember;
-  // 답 단추(OpenUI)는 이 채팅의 입력창 초안을 채운다(보내지 않는다). 원장으로 서는 지휘관 본문은 입력이 없으므로 단추가 정적 칩이다.
+  // 답 단추(OpenUI)는 사람이 누를 때 이 Operation의 기존 메시지 API로 보낸다. 입력창 초안은 건드리지 않고, 원장은 읽기 전용이다.
   const operationId = context.operationId;
-  const fillReply = React.useCallback((reply: string) => { getComposerDraft(operationId).fill(reply); }, [operationId]);
-  const openUIReply = objectiveCommander && !commanderLedger ? fillReply : undefined;
+  const sendOpenUI = React.useCallback((text: string) => { void messageAgentSession(operationId, text).catch(() => {}); }, [operationId]);
+  const openUISend = objectiveCommander && !commanderLedger ? sendOpenUI : undefined;
   // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
   // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
   // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Operation 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
@@ -755,7 +754,7 @@ export function AgentChatView({
             onOpenTool={openToolId}
             speaker={speaker}
             openui={objectiveCommander}
-            {...(openUIReply ? { onOpenUIReply: openUIReply } : {})}
+            {...(openUISend ? { onOpenUISend: openUISend } : {})}
           />
         ))}
       </div>
@@ -777,7 +776,7 @@ export function AgentChatView({
           speaker={speaker}
           liveSpeaker
           openui={objectiveCommander}
-          {...(openUIReply ? { onOpenUIReply: openUIReply } : {})}
+          {...(openUISend ? { onOpenUISend: openUISend } : {})}
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
@@ -1182,13 +1181,13 @@ export const ChatTurn = React.memo(function ChatTurn({
   speaker = null,
   liveSpeaker = false,
   openui = false,
-  onOpenUIReply,
+  onOpenUISend,
 }: {
   readonly operationId: string;
   /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅과, 플러그인이 켠 기록(사령관 원장·기록)만. */
   readonly openui?: boolean;
-  /** OpenUI 답 단추가 고른 문장을 이 턴이 서 있는 표면의 입력창 초안으로 옮긴다. 주지 않으면 단추는 정적 칩이다(원장·입력 없는 기록). */
-  readonly onOpenUIReply?: (reply: string) => void;
+  /** 사람이 누른 OpenUI 답을 이 표면의 기존 전송 경로로 보낸다. 포트 없는 원장은 정적 칩이다. */
+  readonly onOpenUISend?: (reply: string) => void;
   readonly turn: AgentChatTurn;
   /**
    * 모바일 대화 문법의 답 발화자 — 있으면 답·흐르는 글을 왼쪽 말풍선으로 세우고 그 옆에 아바타를, 이름이 있으면 말풍선 위에 이름을
@@ -1403,7 +1402,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   streaming={working && streaming}
                   language={language}
                   openui={openui}
-                  {...(openui && onOpenUIReply ? { onOpenUIReply } : {})}
+                  {...(openui && onOpenUISend ? { onOpenUISend } : {})}
                 />
               </SpeakerRow>
             ) : null}
@@ -1420,7 +1419,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   streaming={false}
                   language={language}
                   openui={openui}
-                  {...(openui && onOpenUIReply ? { onOpenUIReply } : {})}
+                  {...(openui && onOpenUISend ? { onOpenUISend } : {})}
                 />
                 {mobileSurface && !speaker ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
               </div>

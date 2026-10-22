@@ -1091,6 +1091,31 @@ code.hljs {
 .openui-choice:focus-visible { border-radius: var(--radius-pill); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .openui-choice:disabled,
 .openui-choice[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+/* 결정 행·폼도 같은 답 단추 경계를 쓴다. 고른 표식은 전송된 한 단추에만 남는다. */
+.openui-decision { display: flex; flex-direction: column; overflow: hidden; }
+.openui-option { display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 100%; padding: 0.7em 1em; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.openui-option + .openui-option { border-top: 1px solid var(--hairline); }
+.openui-option-label { color: var(--text-primary); font-weight: var(--weight-medium); }
+.openui-option-why { color: var(--text-secondary); }
+.openui-option-effect { color: var(--text-tertiary); }
+.openui-option-effect::before { content: "→" / ""; margin-right: 0.5em; }
+.openui-option:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
+.openui-option:hover:not(:disabled, [aria-disabled="true"]) .openui-option-label { color: var(--brass-ink); }
+.openui-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.openui-option:disabled, .openui-option[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+.openui-choice.is-selected::after, .openui-option.is-selected .openui-option-label::after { content: "✓"; margin-left: 0.5em; }
+.openui-button { gap: 8px; }
+.openui-button-target { color: var(--text-tertiary); font-size: var(--t-sm); }
+.openui-button.is-inert { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.openui-form { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: 0.75em 1em; }
+.openui-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(12em, 100%), 1fr)); gap: var(--space-2); width: 100%; }
+.openui-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
+.openui-field :is(input, select) { min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--control-field); color: var(--text-primary); font: inherit; }
+.openui-field :is(input, select):focus-visible { border-color: var(--brass); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+:root[data-view-mode="mobile"] .openui-option, [data-mobile-surface] .openui-option { min-height: 44px; }
+:root[data-view-mode="mobile"] .openui-fields, [data-mobile-surface] .openui-fields { grid-template-columns: minmax(0, 1fr); }
+:root[data-view-mode="mobile"] .openui-field :is(input, select), [data-mobile-surface] .openui-field :is(input, select) { height: 40px; font-size: 16px; }
+
 /* 폰 — 손가락 높이. 모바일 Operation 본문([data-mobile-surface])과 폰 보기의 플러그인 화면(사령관) 모두. */
 :root[data-view-mode="mobile"] .openui-choice,
 [data-mobile-surface] .openui-choice { height: 36px; padding: 0 var(--space-3); }

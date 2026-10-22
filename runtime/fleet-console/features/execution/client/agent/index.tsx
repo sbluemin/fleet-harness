@@ -1,3 +1,4 @@
+import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
@@ -43,7 +44,7 @@ import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-ga
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
-import { installGroupTimeline, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
+import { installGroupTimeline, useGroupClusters, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
@@ -740,17 +741,18 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
   // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
   const groupConversation = useHasGroupConversation(context.operationId);
+  const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.operationId === context.operationId)?.conversation?.openUIOpen;
   const foldTurns = useFoldTurns();
   // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
   const commanderLedger = useCommanderLedgerFramed(context.operationId);
 
   if (chatMode) {
     const chatView = (
-      <AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
-        : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} />
+      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
+        : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
     );
     return (
-      <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" {...links.fileLinks}>
+      <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
         {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
           ? <MobileGroupConversation root={context.operation} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
           : chatView}

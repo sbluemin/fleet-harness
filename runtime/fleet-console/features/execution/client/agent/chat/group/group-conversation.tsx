@@ -80,10 +80,10 @@ export interface GroupConversationProps {
   /** 전언 대화 화면이 머리 pill 을 바꿀 대화 주인 Operation — 주지 않으면(플러그인 대화) 화면 안에 보낸 이 ⇄ 받는 이 칩을 둔다. */
   readonly pillOperationId?: string;
   /**
-   * 사령관·지휘관 말의 OpenUI 답 단추가 고른 문장을 이 대화의 입력창 초안으로 옮긴다(보내지 않는다). 그 말의 화자를 함께 받아 받는 이를
-   * 맞춘다. 주지 않으면(입력창이 없는 대화) 단추는 누를 수 없는 정적 칩이다.
+   * 사람이 누른 OpenUI 답을 이 말의 화자에게 기존 전송 경로로 보낸다. 초안은 건드리지 않는다.
+   * 포트 없는 읽기 전용 대화는 정적 칩이다.
    */
-  readonly onOpenUIReply?: (reply: string, speaker: ConversationSpeaker) => void;
+  readonly onOpenUISend?: (reply: string, speaker: ConversationSpeaker) => void;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -98,7 +98,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId, onOpenUIReply }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId, onOpenUISend }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -340,7 +340,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
                   report={item.report}
                   showMark={showMark}
                   onOpenRelay={relay.open}
-                  onOpenUIReply={onOpenUIReply}
+                  onOpenUISend={onOpenUISend}
                 />
               </React.Fragment>
             );
@@ -678,7 +678,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay, onOpenUIReply }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay, onOpenUISend }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -696,10 +696,10 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly showMark?: boolean;
   /** 전언 줄(위임·플러그인 지시)을 눌러 대화 화면을 연다. */
   readonly onOpenRelay?: RelayOpener;
-  readonly onOpenUIReply?: GroupConversationProps["onOpenUIReply"];
+  readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUIReply={onOpenUIReply} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
     case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -709,7 +709,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
     case "note": return <NoteLine entry={entry} language={language} />;
   }
 }, (before, after) => {
-  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay || before.onOpenUIReply !== after.onOpenUIReply) return false;
+  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay || before.onOpenUISend !== after.onOpenUISend) return false;
   if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
@@ -752,7 +752,7 @@ function showsSpeakerMarks(participants: readonly ConversationParticipant[]): bo
   return false;
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report, showMark = true, onOpenUIReply }: {
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report, showMark = true, onOpenUISend }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -766,12 +766,12 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly report?: DelegationEntry | undefined;
   /** 말풍선 옆 아바타. 상대가 하나뿐이면 끄고 이름만 남긴다. 원장을 여는 이름 단추는 그대로다. */
   readonly showMark?: boolean;
-  readonly onOpenUIReply?: GroupConversationProps["onOpenUIReply"];
+  readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   const t = getGroupT(language);
-  // 답 단추는 이 말의 화자를 받는 이로 입력창을 채운다 — 훅은 이른 반환보다 앞에 선다.
+  // 답 단추는 이 말의 화자에게 보낸다 — 훅은 이른 반환보다 앞에 선다.
   const replySpeaker = entry.speaker;
-  const reply = React.useMemo(() => (onOpenUIReply ? (text: string) => onOpenUIReply(text, replySpeaker) : undefined), [onOpenUIReply, replySpeaker]);
+  const reply = React.useMemo(() => (onOpenUISend ? (text: string) => onOpenUISend(text, replySpeaker) : undefined), [onOpenUISend, replySpeaker]);
   const ledgerOf = React.useContext(LedgerTargetContext);
   // 높이 상한은 구성원 말풍선만. 지휘관·보드 없는 루트·사령관 말은 접기를 켜도 상한 없이 선다.
   const clip = useBubbleClip(capped && entry.speaker.kind === "member");
@@ -848,7 +848,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
             {entry.text.trim().length === 0
               ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
-              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUIReply: reply } : {})} />}
+              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks openui={openui} {...(openui && reply ? { onOpenUISend: reply } : {})} />}
           </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}

@@ -1,3 +1,4 @@
+import { useOpenUIOpenPort } from "./openui-boundary.js";
 import { useMarkdownLinkResolver } from "./markdown-link-boundary.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
@@ -98,7 +99,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   siteLinks = false,
   preserveStreamingDom = false,
   openui = false,
-  onOpenUIReply,
+  onOpenUISend,
 }: {
   readonly text: string;
   readonly streaming: boolean;
@@ -114,10 +115,10 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   /** `openui-lang` 펜스를 생성형 UI로 그린다 — 사령관·지휘관 말풍선만 켠다. 그리지 못하면 코드 블록 그대로다. */
   readonly openui?: boolean;
   /**
-   * OpenUI 답 단추가 고른 문장을 이 말이 서 있는 표면의 입력창 초안으로 옮긴다(보내지 않는다). 주지 않으면 단추는 누를 수 없는 정적 칩이다 —
-   * 읽기 전용 원장처럼 입력창이 없는 자리. 참조가 바뀌어도 다시 그리지 않는다(최신 함수를 ref 로 부른다).
+   * OpenUI 답 단추를 사람이 누르면 기존 전송 경로로 보낸다. 초안은 건드리지 않는다. 포트 없는 읽기 전용 원장은 정적 칩이다.
+   * 참조가 바뀌어도 다시 그리지 않는다(최신 함수를 ref로 부른다).
    */
-  readonly onOpenUIReply?: (reply: string) => void;
+  readonly onOpenUISend?: (reply: string) => void;
 }) {
   const resolveLink = useMarkdownLinkResolver();
   const latestText = React.useRef(text);
@@ -193,15 +194,16 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
     if (!target) return;
     installDiagramHydrator(target, diagramHydratorLabels(language));
   }, [language]);
-  const reply = React.useRef(onOpenUIReply);
-  reply.current = onOpenUIReply;
-  const hasReply = onOpenUIReply !== undefined;
+  const openPort = useOpenUIOpenPort();
+  const reply = React.useRef(onOpenUISend);
+  reply.current = onOpenUISend;
+  const hasReply = onOpenUISend !== undefined;
   const replyPort = React.useCallback((text: string) => reply.current?.(text), []);
   React.useEffect(() => {
     const target = root.current;
     if (!target || !openui) return;
-    installOpenUIHydrator(target, openUIHydratorLabels(language), hasReply ? replyPort : null);
-  }, [openui, language, hasReply, replyPort]);
+    installOpenUIHydrator(target, openUIHydratorLabels(language), hasReply ? replyPort : null, openPort);
+  }, [openui, language, hasReply, replyPort, openPort]);
   React.useEffect(() => {
     const target = root.current;
     if (!target || !openui) return;
