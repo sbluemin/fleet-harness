@@ -2,11 +2,11 @@ import { useMemo, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { Objective, ObjectiveActor } from "../server/types.js";
-import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { revealObjective, useObjectiveTheater } from "./objectives-state.js";
+import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "@fleet-console/sdk/commodore";
+import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
+import { revealObjective, useObjectiveTheater } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 사령관이 목표에서 한 일 — 기록 곁 칸. 원천은 보드다: 목표마다 남는 행위 기록 중 행위자가 사령관인 것, 사령관이 대신 답한 결정,
@@ -58,8 +58,8 @@ const commodoreActor = (by: ObjectiveActor | undefined, theaterId: string): Extr
   typeof by === "object" && by.kind === "commodore" && by.theaterId === theaterId ? by : null;
 
 function actWord(t: T, kind: string): string {
-  const key = `objectives.prov.act.${kind}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : kind;
+  const key = `commodore.board.prov.act.${kind}`;
+  return key in commodoreEn ? t(key as CommodoreMessageKey) : kind;
 }
 
 function tooltip(parts: readonly (string | undefined)[], fallback: string): string {
@@ -68,8 +68,8 @@ function tooltip(parts: readonly (string | undefined)[], fallback: string): stri
 }
 
 export function commodoreTrail(t: T, theaterId: string, objectives: readonly Objective[]): readonly CommodoreTrailGroup[] {
-  const reveal = t("objectives.commodore.trail.reveal");
-  const decisionWord = t("objectives.commodore.trail.decision");
+  const reveal = t("commodore.trail.reveal");
+  const decisionWord = t("commodore.trail.decision");
   const groups: CommodoreTrailGroup[] = [];
   for (const objective of objectives) {
     const entries: CommodoreTrailEntry[] = [];
@@ -79,7 +79,7 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
         key: `${objective.id}:added`,
         at: objective.createdAt,
         family: "added",
-        word: t("objectives.prov.addedByCommodore"),
+        word: t("commodore.board.prov.addedByCommodore"),
         title: tooltip([added.why], reveal),
       });
     }
@@ -215,16 +215,16 @@ export function CommodoreTrail({
     node.scrollTop = node.scrollHeight;
   };
   return (
-    <section className="objectives-commodore-trail" aria-label={t("objectives.commodore.trail.title")} style={width !== undefined ? { width } : undefined}>
-      <h3 className="objectives-commodore-trail-title">{t("objectives.commodore.trail.title")}</h3>
-      {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{t("objectives.commodore.trail.empty")}</p> : (
+    <section className="objectives-commodore-trail" aria-label={t("commodore.trail.title")} style={width !== undefined ? { width } : undefined}>
+      <h3 className="objectives-commodore-trail-title">{t("commodore.trail.title")}</h3>
+      {groups.length === 0 ? <p className="objectives-commodore-trail-empty">{t("commodore.trail.empty")}</p> : (
         <>
           <div ref={scrollRef} className="objectives-commodore-trail-scroll" onScroll={onScroll}>
             <div className="objectives-commodore-trail-spacer" />
             <ul ref={listRef} className="objectives-commodore-trail-list">
               {groups.map((group) => (
                 <li key={group.objectiveId} className={`objectives-commodore-trail-group${group.done ? " is-done" : ""}`}>
-                  <button type="button" className="objectives-commodore-trail-objective" title={t("objectives.commodore.trail.open")} onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{group.title}</button>
+                  <button type="button" className="objectives-commodore-trail-objective" title={t("commodore.trail.open")} onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{group.title}</button>
                   <ul className="objectives-commodore-trail-entries">
                     {group.entries.map((entry) => {
                       const body = (
@@ -253,7 +253,7 @@ export function CommodoreTrail({
               ))}
             </ul>
           </div>
-          {fresh ? <button type="button" className="objectives-commodore-trail-fresh" onClick={jump}>{t("objectives.commodore.trail.new")}</button> : null}
+          {fresh ? <button type="button" className="objectives-commodore-trail-fresh" onClick={jump}>{t("commodore.trail.new")}</button> : null}
         </>
       )}
     </section>

@@ -248,7 +248,7 @@ function ConnectedApp() {
       if (cancelled) return;
       const capabilities = createHostCapabilities(() => {
         void fetchOperations().then(hydrateOperations).catch(() => {});
-      }, { railBindings: () => railBindingsRef.current });
+      }, { railBindings: () => railBindingsRef.current, commodore: registry.commodore });
       for (const plugin of registry.providers) {
         const cleanup = plugin.install?.(capabilities);
         if (typeof cleanup === "function") cleanups.push(cleanup);

@@ -108,7 +108,7 @@ function noteTransient(): void {
  * 세션이 살아 있다는 증거 — 게이트를 내리고 곧바로 한 번 스윕한다. 게이트가 서 있던 동안 탐침에 밀려 한 번도 묻지 않은
  * Theater 는 장부에 없으므로, 장부 기한만 겨냥하는 타이머로는 깨어나지 않는다. 미룬 엔트리는 마지막 실패에서 첫 간격까지 당긴다.
  */
-function noteAlive(): void {
+export function noteAlive(): void {
   if (!degraded) return;
   degraded = null;
   for (const theaterId of loadRetries.keys()) rearm(theaterId);
@@ -478,10 +478,10 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
   if (result?.objective) upsertObjectiveLocally(result.objective);
 }
 
-export async function post<T>(api: ClientApiCapability, path: string, body: unknown, pluginId: string | null = "objectives"): Promise<T> {
+export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await api.fetch(pluginId, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    response = await api.fetch("objectives", path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch (error) {
     // 호스트가 !ok 응답을 먼저 ApiError 로 끊어 post 의 코드 추출에 닿지 않는다 —
     // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.

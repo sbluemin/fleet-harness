@@ -115,10 +115,10 @@ export function DatePicker({ anchor, trigger, value, language, t, onPick, onClos
   ];
 
   return createPortal(
-    <div ref={cardRef} className={`objectives-cal${withTime ? " is-time" : ""}`} role="dialog" aria-label={t(withTime ? "objectives.commodore.stop.title" : "objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
+    <div ref={cardRef} className={`objectives-cal${withTime ? " is-time" : ""}`} role="dialog" aria-label={t(withTime ? "objectives.autonomy.stop.title" : "objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
       <div className="objectives-cal-quick">
         {quick.map((entry) => <button key={entry.key} type="button" disabled={withTime && new Date(entry.value).getTime() <= now} className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(!withTime && entry.value === value ? null : entry.value); onClose(); }}>{t(entry.key)}</button>)}
-        {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t(withTime ? "objectives.commodore.stop.cancel" : "objectives.date.clear")}</button> : null}
+        {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t(withTime ? "objectives.autonomy.stop.cancel" : "objectives.date.clear")}</button> : null}
       </div>
       <div className="objectives-cal-head">
         <button type="button" className="objectives-glyph" aria-label={t("objectives.date.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>

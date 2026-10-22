@@ -6,14 +6,13 @@ import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, ME
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { Objective } from "../server/types.js";
+import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
 import type { CommodoreObjectiveIndex } from "./commodore-chat.js";
-import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
-import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { goToObjective } from "./fresh-conversation.js";
-import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, useObjectiveTheater, useOperationSummaries } from "./objectives-state.js";
+import type { CommodoreMessageKey } from "./i18n/index.js";
+import { goToObjective } from "./board.js";
+import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, useObjectiveTheater, renderObjectiveAvatar } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 사령관 입력의 '@' 지휘관 참조(목표 8d9a400b 시안 A · 본문 인라인 토큰).
@@ -134,12 +133,12 @@ function serialize(root: HTMLElement): CommodoreReferenceValue {
 function tokenSpec(t: T, reference: CommodoreReference): MentionChipMarkup {
   return {
     label: reference.title,
-    removeLabel: t("objectives.commodore.reference.remove", { title: reference.title }),
+    removeLabel: t("commodore.reference.remove", { title: reference.title }),
     attributes: {
       contenteditable: "false",
       "data-ref-id": reference.id,
       "data-ref-title": reference.title,
-      "aria-label": t("objectives.commodore.reference.token", { title: reference.title }),
+      "aria-label": t("commodore.reference.token", { title: reference.title }),
     },
   };
 }
@@ -273,10 +272,10 @@ function rowStatus(objective: Objective): RowStatus {
 type CandidateGroup = "active" | "pending" | "done";
 const GROUP_ORDER: readonly CandidateGroup[] = ["active", "pending", "done"];
 const GROUP_LABEL = {
-  active: "objectives.commodore.reference.groupActive",
-  pending: "objectives.commodore.reference.groupPending",
-  done: "objectives.commodore.reference.groupDone",
-} as const satisfies Record<CandidateGroup, ObjectiveMessageKey>;
+  active: "commodore.reference.groupActive",
+  pending: "commodore.reference.groupPending",
+  done: "commodore.reference.groupDone",
+} as const satisfies Record<CandidateGroup, CommodoreMessageKey>;
 
 /** 묶음 — 시작 전(`pending`)과 완료(`done`)만 따로 서고 나머지(진행·결정·검토·임무 완료)는 「진행 중」이다. 판정 순서는 `rowStatus` 그대로다. */
 function groupOf(status: RowStatus): CandidateGroup {
@@ -294,13 +293,6 @@ function candidatesOf(objectives: readonly Objective[], query: string): readonly
   return GROUP_ORDER.flatMap((group) => rows.filter((row) => groupOf(row.status) === group)).slice(0, MAX_ROWS);
 }
 
-const NO_OBJECTIVES: readonly Objective[] = [];
-/** 완료로 지휘관이 보관된 목표(`/finished`) — 보드 상태(`/state`)에서 빠지므로 따로 읽는다. '@' 후보는 아니고(보관함은 숨긴다) 토큰 얼굴의 원천이다. */
-function useFinishedObjectives(theaterId: string): readonly Objective[] {
-  const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_OBJECTIVES);
-  return useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
-}
-
 /**
  * 사령관 기록 줄이 가리키는 목표를 찾는 자리 — 보드의 목표와 읽어 둔 끝난 목표. 끝난 목표를 아직 못 읽었으면 `finished` 는 null 이라
  * 줄이 못 찾은 목표를 지워졌다고 말하지 않는다. 읽기는 같은 화면의 참조 호스트(`useCommodoreReferenceHost`)가 시작한다.
@@ -310,17 +302,6 @@ export function useCommodoreObjectiveIndex(theaterId: string): CommodoreObjectiv
   const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : null);
   const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
   return useMemo(() => ({ live: board.objectives, finished }), [board.objectives, finished]);
-}
-
-/** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). 기록·초안 토큰의 얼굴(`ReferenceMark`)이 읽는다. */
-function useTheaterObjectives(theaterId: string): readonly Objective[] {
-  const { objectives } = useObjectiveTheater(theaterId);
-  const finished = useFinishedObjectives(theaterId);
-  return useMemo(() => {
-    if (!finished.length) return objectives;
-    const known = new Set(objectives.map((objective) => objective.id));
-    return [...objectives, ...finished.filter((objective) => !known.has(objective.id))];
-  }, [objectives, finished]);
 }
 
 /* ── 입력 ─────────────────────────────────────────────────────────── */
@@ -671,8 +652,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
       />
       {slots.map((slot, at) => createPortal(<ReferenceMark theaterId={theaterId} objectiveId={slot.id} size={16} />, slot.node, `${slot.id}:${at}`))}
       {list.open ? (
-        <ComposerDeck id={listId} label={t("objectives.commodore.reference.list")} listbox={candidates.length > 0} contentKey={`${list.query}:${candidates.length}:${full}`} className={`objectives-commodore-ref-list${phone ? " is-phone" : ""}`}>
-          {full ? <p className="objectives-commodore-ref-note" role="status">{t("objectives.commodore.reference.limit", { count: MAX_COMMODORE_REFERENCES })}</p> : null}
+        <ComposerDeck id={listId} label={t("commodore.reference.list")} listbox={candidates.length > 0} contentKey={`${list.query}:${candidates.length}:${full}`} className={`objectives-commodore-ref-list${phone ? " is-phone" : ""}`}>
+          {full ? <p className="objectives-commodore-ref-note" role="status">{t("commodore.reference.limit", { count: MAX_COMMODORE_REFERENCES })}</p> : null}
           {GROUP_ORDER.map((group) => {
             const rows = candidates.flatMap((candidate, at) => (groupOf(candidate.status) === group ? [{ candidate, at }] : []));
             if (!rows.length) return null;
@@ -695,9 +676,9 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                       // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
                       meta={(
                         <span className="objectives-commodore-ref-sub">
-                          {isTaken ? <span>{`✓ ${t("objectives.commodore.reference.taken")}`}</span> : <>
-                            {group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`objectives.commodore.reference.status.${candidate.status}`)}</span>}
-                            {missions ? <span>{t("objectives.commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
+                          {isTaken ? <span>{`✓ ${t("commodore.reference.taken")}`}</span> : <>
+                            {group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
+                            {missions ? <span>{t("commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
                           </>}
                         </span>
                       )}
@@ -709,7 +690,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
               </ComposerDeckGroup>
             );
           })}
-          {candidates.length === 0 ? <ComposerDeckEmpty>{list.query ? t("objectives.commodore.reference.empty", { query: list.query }) : t("objectives.commodore.reference.none")}</ComposerDeckEmpty> : null}
+          {candidates.length === 0 ? <ComposerDeckEmpty>{list.query ? t("commodore.reference.empty", { query: list.query }) : t("commodore.reference.none")}</ComposerDeckEmpty> : null}
         </ComposerDeck>
       ) : null}
     </>
@@ -721,12 +702,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
  * 활동은 지휘관 Operation 의 끌어올린 활동이고, 턴 뒤 백그라운드 작업은 진행 중으로 접는다(보드와 같은 셈).
  */
 export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
-  const objectives = useTheaterObjectives(theaterId);
-  const operations = useOperationSummaries();
-  const objective = objectives.find((candidate) => candidate.id === objectiveId);
-  if (!objective) return null;
-  const activity = operations.find((operation) => operation.id === objectiveId)?.activity ?? "closed";
-  return <ObjectiveAvatar operationId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
+  useObjectiveTheater(theaterId);
+  return renderObjectiveAvatar(theaterId, objectiveId, size);
 }
 
 /**
@@ -747,6 +724,6 @@ export function useCommodoreReferenceHost(t: T, theaterId: string, openOnPhone?:
   return useMemo(() => ({
     open: openOnPhone ?? ((objectiveId: string) => openReferencedObjective(theaterId, objectiveId)),
     mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={16} />,
-    describe: (reference: { readonly label: string }) => t("objectives.commodore.reference.open", { title: reference.label }),
+    describe: (reference: { readonly label: string }) => t("commodore.reference.open", { title: reference.label }),
   }), [t, theaterId, openOnPhone]);
 }

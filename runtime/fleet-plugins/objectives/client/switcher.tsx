@@ -5,7 +5,7 @@ import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyp
 
 import type { Objective } from "../server/types.js";
 import { memberFailureNote, originTitleOf } from "./clusters.js";
-import { decisionTurn, livePersonHolds, personTurnAt, useCommodoreBoard } from "./commodore-state.js";
+import { decisionTurn, livePersonHolds, personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import type { ObjectiveGroup } from "./objectives-state.js";
@@ -128,13 +128,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     const meta: { readonly key: string; readonly text: string; readonly tone?: string }[] = [];
     // 결정 수 — 사람이 답할 요청만 대기 신호로 칠한다. 사령관이 맡은 요청은 같은 자리에 무채색으로.
     if (objective.decisionRequest) meta.push({ key: "req", text: t("objectives.switch.decisionCount", { count: objective.decisionRequest.questions.length || 1 }), ...(decisionTurn(objective, commodore.active) === "person" ? { tone: "req" } : {}) });
-    if (livePersonHolds(objective).length) meta.push({ key: "handed", text: t("objectives.commodore.note.handed") });
+    if (livePersonHolds(objective).length) meta.push({ key: "handed", text: t("objectives.autonomy.note.handed") });
     // 사이드바 줄 메모와 같은 판정·같은 낱말 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
     const failureNote = memberFailureNote(objective);
     if (failureNote) meta.push({ key: "failed", text: t(failureNote), tone: "warn" });
     if (objective.missions.length) meta.push({ key: "progress", text: `✓ ${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
     // 사이드바 줄의 상태 문구와 같은 판정·같은 말·같은 명도 물결 — 단계 바로 뒤에 선다.
-    if (handling(objective)) meta.push({ key: "answering", text: t("objectives.commodore.note.answering"), tone: "handling" });
+    if (handling(objective)) meta.push({ key: "answering", text: t("objectives.autonomy.note.answering"), tone: "handling" });
     if (objective.dueDate) meta.push({ key: "due", text: day.format(new Date(`${objective.dueDate}T00:00:00`)), ...(overdueOf(objective) ? { tone: "late" } : {}) });
     const originTitle = from ? originTitleOf(objective, byId) : undefined;
     if (originTitle !== undefined) meta.push({ key: "from", text: originTitle ? t("objectives.switch.followupOf", { title: originTitle }) : t("objectives.switch.followup"), tone: "from" });

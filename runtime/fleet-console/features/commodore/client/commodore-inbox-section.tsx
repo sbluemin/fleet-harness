@@ -46,7 +46,6 @@ import {
   clearCommodore,
   commodoreLanguage,
   COMMODORE_INBOX_SECTION_ID,
-  OBJECTIVES_ENTRY_ID,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
@@ -71,10 +70,10 @@ import {
   useCommodore,
   type CommodoreTab,
 } from "./commodore-state.js";
-import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH } from "./launch-control.js";
+import { getT, type CommodoreMessageKey } from "./i18n/index.js";
+import { DEFAULT_LAUNCH } from "./defaults.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 const PATROL_MENU_WIDTH = 248;
 const PATROL_MENU_MARGIN = 12;
@@ -96,16 +95,16 @@ function cachedSectionState(state: TheaterInboxSectionState): TheaterInboxSectio
 /** 사령관의 지금 한 줄 — 옛 「사령관 기록」 시트 왼쪽 머리에 있던 그 말(자율 운영 · 다음 순찰 …). */
 function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): string {
   const view = readCommodore(theaterId).view;
-  if (!view) return t("objectives.commodore.inbox.scope");
+  if (!view) return t("commodore.inbox.scope");
   const on = view.state.autonomy === true;
   const run = view.run;
   return [
-    on ? t("objectives.commodore.meta.autonomous") : t("objectives.commodore.meta.manual"),
-    on && view.state.stopAt ? t("objectives.commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
-    on && run.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
-    on && run.phase === "turn" ? t("objectives.commodore.meta.turn") : null,
-    on && run.phase === "retrying" && run.nextWakeAt ? t("objectives.commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
-    on && run.phase === "error" ? `${t("objectives.commodore.meta.error")}${run.reason ? ` · ${errorWord(t, run.reason)}` : ""}` : null,
+    on ? t("commodore.meta.autonomous") : t("commodore.meta.manual"),
+    on && view.state.stopAt ? t("commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
+    on && run.phase === "idle" && run.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
+    on && run.phase === "turn" ? t("commodore.meta.turn") : null,
+    on && run.phase === "retrying" && run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
+    on && run.phase === "error" ? `${t("commodore.meta.error")}${run.reason ? ` · ${errorWord(t, run.reason)}` : ""}` : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -115,22 +114,22 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   id: COMMODORE_INBOX_SECTION_ID,
-  title: (language) => getT(language)("objectives.commodore.name"),
+  title: (language) => getT(language)("commodore.name"),
   icon: () => <CommodoreMentionGlyph className="objectives-commodore-inbox-glyph" />,
   pages: [
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
-    { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log"), layout: "fill" },
+    { id: "log", title: (language) => getT(language)("commodore.tabs.log"), layout: "fill" },
     // 지시 칸은 옛 정보 칸을 흡수했다(지시 아래 정보·정보 출처) — 정보 칸을 부르는 요청도 이 칸이 받는다.
-    { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive") },
-    { id: "memory", title: (language) => getT(language)("objectives.commodore.tabs.memory") },
-    { id: "settings", title: (language) => getT(language)("objectives.commodore.tabs.settings"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.settings") },
+    { id: "directive", title: (language) => getT(language)("commodore.tabs.directive"), applies: (language) => getT(language)("commodore.inbox.applies.directive") },
+    { id: "memory", title: (language) => getT(language)("commodore.tabs.memory") },
+    { id: "settings", title: (language) => getT(language)("commodore.tabs.settings"), applies: (language) => getT(language)("commodore.inbox.applies.settings") },
   ],
   operatorDirectivePageId: "directive",
   read: (theater, language) => {
     const t = getT(language);
     const experiment = readCommodoreExperiment();
     if (!experiment.known) return cachedSectionState({ availability: "loading", scope: "" });
-    if (!experiment.enabled) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("objectives.commodore.inbox.disabled") });
+    if (!experiment.enabled) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("commodore.inbox.disabled") });
     return cachedSectionState({ availability: "available", scope: commodoreStatusLine(t, theater.id, language) });
   },
   subscribe: subscribeCommodore,
@@ -139,9 +138,6 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id, true),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
-  // 사령관에게는 목표가 없다 — 이 섹션을 열 때 열려 있던 목표 패널을 남기지 않는다. 도구 줄은 가운데 대화 머리의 공통 도구모음이
-  // 맡고, 그 도구모음은 목표를 싣지 않는다. 필드는 SDK 에서 @deprecated 다(남은 소비처가 없어지면 함께 걷는다).
-  omitsRailEntries: [OBJECTIVES_ENTRY_ID],
 };
 
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {
@@ -211,20 +207,20 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const fail = (error: unknown) => {
     const code = error instanceof Error ? error.message : "failed";
     if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
-    setFailure(code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code }));
+    setFailure(code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code }));
   };
   const openSystemPrompt = () => navigation.open({ ...links.systemPrompt, theaterId, focus: "editor-end" });
   const totals = !view ? "" : [
-    run && run.totals.session > 0 ? t("objectives.commodore.drawer.session", { n: run.totals.session }) : null,
-    t("objectives.commodore.drawer.cost", { cost: (run?.totals.costUsd ?? 0).toFixed(2) }),
+    run && run.totals.session > 0 ? t("commodore.drawer.session", { n: run.totals.session }) : null,
+    t("commodore.drawer.cost", { cost: (run?.totals.costUsd ?? 0).toFixed(2) }),
   ].filter(Boolean).join(" · ");
 
   return (
     <div ref={rootRef} className={`objectives-commodore-inbox${compact ? " is-compact" : ""}`}>
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
-          <span>{run.reason ? errorWord(t, run.reason) : t("objectives.commodore.meta.error")}</span>
-          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
+          <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       {tab === "log" ? (
@@ -239,7 +235,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />} />
             {compact ? null : (
               <CommodoreTrailSeam
-                label={t("objectives.commodore.trail.resize")}
+                label={t("commodore.trail.resize")}
                 value={trailWidth}
                 bodyWidth={logBodyWidth}
                 onChange={setTrailWidth}
@@ -272,7 +268,7 @@ type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 
 /** 「기본값 사용」 — 설정 줄 설명 끝의 글자 단추. 기본값을 쓰는 중이면 서지 않는다. */
 function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => void }) {
-  return <> <button type="button" className="objectives-commodore-default" onClick={onClick}>{t("objectives.commodore.settings.useDefault")}</button></>;
+  return <> <button type="button" className="objectives-commodore-default" onClick={onClick}>{t("commodore.settings.useDefault")}</button></>;
 }
 
 
@@ -289,25 +285,25 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
-      <SettingsRow label={t("objectives.commodore.settings.autonomy")} hint={t("objectives.commodore.settings.autonomyHint")}>
-        <SettingsToggle checked={on} ariaLabel={t("objectives.commodore.switchAria")} onChange={(next) => act(() => setCommodoreAutonomy(theaterId, next))} />
+      <SettingsRow label={t("commodore.settings.autonomy")} hint={t("commodore.settings.autonomyHint")}>
+        <SettingsToggle checked={on} ariaLabel={t("commodore.switchAria")} onChange={(next) => act(() => setCommodoreAutonomy(theaterId, next))} />
       </SettingsRow>
       <SettingsRow
-        label={t("objectives.commodore.settings.model")}
-        hint={<>{t("objectives.commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
+        label={t("commodore.settings.model")}
+        hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
       >
         <CommodoreCoordinateField
           t={t}
           target="agent"
-          label={t("objectives.commodore.drawer.modelAria")}
+          label={t("commodore.drawer.modelAria")}
           value={commodoreValue(state)}
           fallback={defaults}
           onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
         />
       </SettingsRow>
       <SettingsRow
-        label={t("objectives.commodore.settings.patrol")}
-        hint={<>{t("objectives.commodore.settings.patrolHint")}{state.patrolMinutes !== undefined ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, null))} /> : null}</>}
+        label={t("commodore.settings.patrol")}
+        hint={<>{t("commodore.settings.patrolHint")}{state.patrolMinutes !== undefined ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, null))} /> : null}</>}
       >
         <PatrolControl
           t={t}
@@ -316,18 +312,18 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
           onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
         />
       </SettingsRow>
-      <SettingsRow label={t("objectives.commodore.stop.title")} hint={t("objectives.commodore.stop.hint")}>
+      <SettingsRow label={t("commodore.stop.title")} hint={t("commodore.stop.hint")}>
         <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!on || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
       </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
-        label={t("objectives.commodore.settings.commander")}
-        hint={<>{t("objectives.commodore.settings.commanderHint")}{commanderOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCommander(theaterId, null))} /> : null}</>}
+        label={t("commodore.settings.commander")}
+        hint={<>{t("commodore.settings.commanderHint")}{commanderOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCommander(theaterId, null))} /> : null}</>}
       >
         <CommodoreCoordinateField
           t={t}
           target="launch"
-          label={t("objectives.commodore.settings.commanderAria")}
+          label={t("commodore.settings.commanderAria")}
           value={commanderValue(state)}
           fallback={DEFAULT_LAUNCH}
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
@@ -350,9 +346,9 @@ function StopAtControl({ t, language, stopAt, disabled, onPick }: { readonly t: 
   const close = () => { setAnchor(null); trigger.current?.focus({ preventScroll: true }); };
   useEffect(() => { if (disabled) setAnchor(null); }, [disabled]);
   return <>
-    <button ref={trigger} type="button" className="fc-row-value objectives-commodore-patrol" disabled={disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-label={t("objectives.commodore.stop.title")} onClick={() => setAnchor(trigger.current?.getBoundingClientRect() ?? null)}>
+    <button ref={trigger} type="button" className="fc-row-value objectives-commodore-patrol" disabled={disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-label={t("commodore.stop.title")} onClick={() => setAnchor(trigger.current?.getBoundingClientRect() ?? null)}>
       <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
-      <span className="fc-row-value-text">{stopAt ? stopTime(stopAt, language) : t("objectives.commodore.stop.none")}</span>
+      <span className="fc-row-value-text">{stopAt ? stopTime(stopAt, language) : t("commodore.stop.none")}</span>
     </button>
     {anchor && !disabled ? <DatePicker withTime anchor={anchor} value={stopAt ? localDateTime(new Date(stopAt)) : null} language={language} t={t} onClose={close} onPick={(value) => onPick(value === null ? null : new Date(value).getTime())} /> : null}
   </>;
@@ -380,7 +376,7 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
   const menuRef = useRef<HTMLDivElement | null>(null);
   const focusOnOpen = useRef(false);
   const word = patrolWord(t, minutes);
-  const title = [t("objectives.commodore.patrol.title", { interval: word }), nextPatrolAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
+  const title = [t("commodore.patrol.title", { interval: word }), nextPatrolAt ? t("commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -428,7 +424,7 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
         className="fc-row-value objectives-commodore-patrol"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${t("objectives.commodore.patrol.aria")} · ${word}`}
+        aria-label={`${t("commodore.patrol.aria")} · ${word}`}
         title={title}
         onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); focusOnOpen.current = true; setOpen(true); } }}
         onClick={(event) => { focusOnOpen.current = event.detail === 0; setOpen((value) => !value); }}
@@ -437,17 +433,17 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
         <span className="fc-row-value-text">{word}</span>
       </button>
       {open ? createPortal(
-        <div ref={menuRef} className="objectives-menu objectives-commodore-patrol-menu" role="menu" aria-label={t("objectives.commodore.patrol.aria")} style={pos} onKeyDown={onMenuKey}>
+        <div ref={menuRef} className="objectives-menu objectives-commodore-patrol-menu" role="menu" aria-label={t("commodore.patrol.aria")} style={pos} onKeyDown={onMenuKey}>
           <div className="objectives-menu-head">
-            <b>{t("objectives.commodore.patrol.head")}</b>
-            <span>{t("objectives.commodore.patrol.hint")}</span>
+            <b>{t("commodore.patrol.head")}</b>
+            <span>{t("commodore.patrol.hint")}</span>
           </div>
           {PATROL_STEPS.map((step) => {
             const active = step === minutes;
             return (
               <button key={step} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`} onClick={() => { if (!active) onPick(step); close(true); }}>
                 <span className="objectives-menu-label">{patrolWord(t, step)}</span>
-                {step === DEFAULT_PATROL ? <span className="objectives-menu-hint">{t("objectives.commodore.patrol.default")}</span> : null}
+                {step === DEFAULT_PATROL ? <span className="objectives-menu-hint">{t("commodore.patrol.default")}</span> : null}
                 <span className="objectives-menu-chev objectives-commodore-patrol-check" aria-hidden="true">{active ? <CheckGlyph /> : null}</span>
               </button>
             );
@@ -531,10 +527,10 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   const empty = loaded && blocks.length === 0;
   return (
     <div ref={scrollRef} className="objectives-commodore-log" onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SLACK_PX; }}>
-      {empty ? <p className="objectives-commodore-empty">{t("objectives.commodore.log.empty")}</p> : null}
+      {empty ? <p className="objectives-commodore-empty">{t("commodore.log.empty")}</p> : null}
       {hasMore ? (
         <button type="button" className="objectives-commodore-text-button objectives-commodore-older" disabled={loadingOlder} onClick={older}>
-          {t("objectives.commodore.log.older")}
+          {t("commodore.log.older")}
         </button>
       ) : null}
       {Transcript ? blocks.map((block) => {
@@ -585,12 +581,12 @@ function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonl
 function turnDuration(t: T, durationMs: number | undefined): string | null {
   if (durationMs === undefined) return null;
   const seconds = Math.round(durationMs / 1000);
-  if (seconds < 60) return t("objectives.commodore.log.seconds", { n: seconds });
+  if (seconds < 60) return t("commodore.log.seconds", { n: seconds });
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return rest === 0
-    ? t("objectives.commodore.log.minutes", { n: minutes })
-    : t("objectives.commodore.log.minutesSeconds", { m: minutes, s: rest });
+    ? t("commodore.log.minutes", { n: minutes })
+    : t("commodore.log.minutesSeconds", { m: minutes, s: rest });
 }
 
 
@@ -651,8 +647,8 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
         type="button"
         className="objectives-commodore-ctx-chip"
         aria-expanded={open}
-        aria-label={t("objectives.commodore.context.aria", { percent, summary })}
-        title={t("objectives.commodore.context.title", { summary })}
+        aria-label={t("commodore.context.aria", { percent, summary })}
+        title={t("commodore.context.title", { summary })}
         onClick={() => setOpen((was) => !was)}
       >
         <svg className="objectives-commodore-ctx-arc" viewBox="0 0 16 16" aria-hidden="true">
@@ -661,9 +657,9 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
         </svg>
       </button>
       {open ? (
-        <div className="objectives-commodore-ctx-pop" role="dialog" aria-label={t("objectives.commodore.context.label")}>
+        <div className="objectives-commodore-ctx-pop" role="dialog" aria-label={t("commodore.context.label")}>
           <div className="objectives-commodore-ctx-head">
-            <span>{t("objectives.commodore.context.label")}</span>
+            <span>{t("commodore.context.label")}</span>
             <span>{summary} · {percent}%</span>
           </div>
           <div className="objectives-commodore-ctx-bar">
@@ -671,11 +667,11 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
             {untilCompact !== null ? <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} /> : null}
           </div>
           <ul className="objectives-commodore-ctx-rows">
-            <li><span className="objectives-commodore-ctx-swatch" /><span>{t("objectives.commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
-            {untilCompact !== null ? <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li> : null}
-            <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("objectives.commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
+            <li><span className="objectives-commodore-ctx-swatch" /><span>{t("commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
+            {untilCompact !== null ? <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li> : null}
+            <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
           </ul>
-          {untilCompact !== null ? <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot", { percent: Math.round(limit * 100) })}</p> : null}
+          {untilCompact !== null ? <p className="objectives-commodore-ctx-foot">{t("commodore.context.foot", { percent: Math.round(limit * 100) })}</p> : null}
         </div>
       ) : null}
     </span>
@@ -730,17 +726,17 @@ export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, 
   const key = useReleasedKey();
   if (variant === "caption") {
     return <div className="objectives-commodore-clear-wrap is-caption">
-      <CaptionTipHost label={t("objectives.commodore.clear.title")}>
-        <button type="button" className={`fleet-caption-action${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} onPointerDown={(event) => { event.stopPropagation(); }} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+      <CaptionTipHost label={t("commodore.clear.title")}>
+        <button type="button" className={`fleet-caption-action${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "commodore.clear.confirm" : "commodore.clear.title")} onPointerDown={(event) => { event.stopPropagation(); }} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
           <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
-          {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
+          {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.confirm")}</span> : null}
         </button>
       </CaptionTipHost>
     </div>;
   }
   return <div className="objectives-commodore-clear-wrap">
-    {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
-    <button type="button" className={`objectives-commodore-clear${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} title={t("objectives.commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+    {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.confirm")}</span> : null}
+    <button type="button" className={`objectives-commodore-clear${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "commodore.clear.confirm" : "commodore.clear.title")} title={t("commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
       <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
     </button>
   </div>;
@@ -984,7 +980,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
         {menuOpen ? <ComposerMenu ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" aria-label={ct("composer.more")}>
           <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
-          <ComposerMenuItem glyph="@" keyHint="@" onClick={() => { setMenuOpen(false); inputRef.current?.openReferences(); }}>{t("objectives.commodore.reference.menu")}</ComposerMenuItem>
+          <ComposerMenuItem glyph="@" keyHint="@" onClick={() => { setMenuOpen(false); inputRef.current?.openReferences(); }}>{t("commodore.reference.menu")}</ComposerMenuItem>
         </ComposerMenu> : null}
         <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!usable || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }} />
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; if (!phone) inputRef.current?.focus(); }} />
@@ -1002,8 +998,8 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        placeholder={placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("objectives.commodore.composer.placeholder")}
-        ariaLabel={t("objectives.commodore.composer.aria")}
+        placeholder={placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
+        ariaLabel={t("commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
@@ -1015,16 +1011,16 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
       {/* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */}
       <ComposerSendButton
         className={armed ? undefined : "is-idle"}
-        aria-label={t("objectives.commodore.composer.send")}
-        title={t("objectives.commodore.composer.send")}
+        aria-label={t("commodore.composer.send")}
+        title={t("commodore.composer.send")}
         disabled={phone ? !usable || sending || uploading || clear.busy : !armed}
         onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
         onKeyUp={clearKey.up}
         onClick={send}
       />
     </div>
-    {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.enterConfirm")}</p> : null}
-    {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
+    {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
+    {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}
     </>
   );
 }
@@ -1052,22 +1048,22 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
   };
   return (
     <div className="objectives-commodore-section">
-      <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-directive">{t("objectives.commodore.directive.label")}</label>
+      <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-directive">{t("commodore.directive.label")}</label>
       <textarea
         id="objectives-commodore-directive"
         className="objectives-commodore-input is-tall"
         value={draft}
         maxLength={8_000}
-        placeholder={t("objectives.commodore.directive.placeholder")}
+        placeholder={t("commodore.directive.placeholder")}
         onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
       />
       {/* 안내 끝의 「시스템 프롬프트」는 같은 Theater Inbox 의 그 칸으로 간다 — 받는 쪽과 적용 시점이 다른 두 지침을 오가는 길. */}
-      <p className="objectives-commodore-hint">{t("objectives.commodore.directive.hintBefore")}<button type="button" className="objectives-commodore-hint-link" onClick={onOpenSystemPrompt}>{t("objectives.commodore.directive.hintLink")}</button>{t("objectives.commodore.directive.hintAfter")}</p>
+      <p className="objectives-commodore-hint">{t("commodore.directive.hintBefore")}<button type="button" className="objectives-commodore-hint-link" onClick={onOpenSystemPrompt}>{t("commodore.directive.hintLink")}</button>{t("commodore.directive.hintAfter")}</p>
       <div className="objectives-commodore-section-foot">
-        {directive.rev > 0 ? <span className="objectives-commodore-hint">{t("objectives.commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) })}</span> : <span />}
-        <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("objectives.commodore.directive.save")}</button>
+        {directive.rev > 0 ? <span className="objectives-commodore-hint">{t("commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) })}</span> : <span />}
+        <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("commodore.directive.save")}</button>
       </div>
-      {saved && !dirty ? <p className="objectives-commodore-hint is-done" role="status">{t(active ? "objectives.commodore.directive.saved" : "objectives.commodore.directive.savedIdle")}</p> : null}
+      {saved && !dirty ? <p className="objectives-commodore-hint is-done" role="status">{t(active ? "commodore.directive.saved" : "commodore.directive.savedIdle")}</p> : null}
     </div>
   );
 }
@@ -1131,18 +1127,18 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
   const adder = useCommodoreIntelAdd(theaterId, { onFail, onClear });
   const hintId = `objectives-commodore-intel-add-hint-${theaterId}`;
-  const sourceLabel = (source: string) => source === "person" ? t("objectives.commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
+  const sourceLabel = (source: string) => source === "person" ? t("commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
   // 지시 칸 안에서 지시 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」, 그 아래 정보 출처가 한 덩어리로 선다.
   return (
     <div className="objectives-commodore-section">
-      <p className="objectives-commodore-section-title">{t("objectives.commodore.intel.label")}</p>
-      {intel.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.empty")}</p> : (
+      <p className="objectives-commodore-section-title">{t("commodore.intel.label")}</p>
+      {intel.length === 0 ? <p className="objectives-commodore-hint">{t("commodore.intel.empty")}</p> : (
         <ul ref={editing.listRef} className="objectives-commodore-intel-list">
           {intel.map((item) => {
             const edit = editing.edits[item.id];
             // 출처와 「수정됨」은 한 덩어리로 줄을 넘긴다 — 사이 공백은 끊기지 않는 공백이다.
-            const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}>{"\u00a0·\u00a0"}{t("objectives.commodore.intel.edited")}</span> : null}</span>;
+            const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}>{"\u00a0·\u00a0"}{t("commodore.intel.edited")}</span> : null}</span>;
             if (edit) {
               const unchanged = edit.draft.trim() === item.text;
               return (
@@ -1155,7 +1151,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
                       value={edit.draft}
                       maxLength={4_000}
                       readOnly={edit.saving}
-                      aria-label={t("objectives.commodore.intel.editField")}
+                      aria-label={t("commodore.intel.editField")}
                       onChange={(event) => editing.change(item.id, event.target.value)}
                       onKeyDown={(event) => {
                         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -1164,12 +1160,12 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
                         if (event.key === "Enter" && !event.shiftKey && !event.altKey) { event.preventDefault(); editing.save(item.id); }
                       }}
                     />
-                    {edit.error ? <p className="objectives-commodore-intel-error" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
+                    {edit.error ? <p className="objectives-commodore-intel-error" role="alert">{t("commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
                     <div className="objectives-commodore-intel-edit-foot">
                       {meta}
-                      <span className="objectives-commodore-hint">{t("objectives.commodore.intel.editHint")}</span>
-                      <button type="button" className="objectives-commodore-text-button" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
-                      <button type="button" className="objectives-btn" disabled={edit.saving || !edit.draft.trim() || unchanged} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
+                      <span className="objectives-commodore-hint">{t("commodore.intel.editHint")}</span>
+                      <button type="button" className="objectives-commodore-text-button" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("commodore.intel.cancel")}</button>
+                      <button type="button" className="objectives-btn" disabled={edit.saving || !edit.draft.trim() || unchanged} onClick={() => editing.save(item.id)}>{t(edit.saving ? "commodore.intel.saving" : "commodore.intel.save")}</button>
                     </div>
                   </div>
                 </li>
@@ -1181,8 +1177,8 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
                 {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
                 <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
                 <span className="objectives-commodore-intel-actions">
-                  <button type="button" className="objectives-commodore-text-button" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
-                  <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                  <button type="button" className="objectives-commodore-text-button" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("commodore.intel.edit")}</button>
+                  <button type="button" className="objectives-commodore-text-button" aria-label={t("commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("commodore.intel.remove")}</button>
                 </span>
               </li>
             );
@@ -1195,21 +1191,21 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
         <div className="objectives-commodore-intel-add-body">
           <textarea
             {...adder.field}
-            aria-label={t("objectives.commodore.intel.add")}
-            placeholder={t("objectives.commodore.intel.add")}
+            aria-label={t("commodore.intel.add")}
+            placeholder={t("commodore.intel.add")}
             {...(adder.draft.trim() ? { "aria-describedby": hintId } : {})}
           />
-          {adder.draft.trim() ? <p id={hintId} className="objectives-commodore-hint">{t("objectives.commodore.intel.addHint")}</p> : null}
+          {adder.draft.trim() ? <p id={hintId} className="objectives-commodore-hint">{t("commodore.intel.addHint")}</p> : null}
         </div>
       </div>
       <div className="objectives-commodore-intel-sources">
-        <p className="objectives-commodore-section-title">{t("objectives.commodore.intel.sources")} <span className="objectives-commodore-later">· {t("objectives.commodore.intel.sourcesLater")}</span></p>
-        {sources.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.sourcesEmpty")}</p> : (
+        <p className="objectives-commodore-section-title">{t("commodore.intel.sources")} <span className="objectives-commodore-later">· {t("commodore.intel.sourcesLater")}</span></p>
+        {sources.length === 0 ? <p className="objectives-commodore-hint">{t("commodore.intel.sourcesEmpty")}</p> : (
           <ul className="objectives-commodore-sources">
             {sources.map((source) => <li key={source.id}><span>{source.label}</span><span className="objectives-commodore-source-locator">{source.locator}</span></li>)}
           </ul>
         )}
-        <p className="objectives-commodore-hint">{t("objectives.commodore.intel.sourcesHint")}</p>
+        <p className="objectives-commodore-hint">{t("commodore.intel.sourcesHint")}</p>
       </div>
     </div>
   );

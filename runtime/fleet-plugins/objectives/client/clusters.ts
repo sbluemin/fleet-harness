@@ -9,10 +9,10 @@ import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
 import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
-import { openCommodoreConversation, openCommodoreLog } from "./commodore-conversation.js";
+import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
-import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
-import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore } from "./commodore-state.js";
+import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./board-commodore.js";
+import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -71,10 +71,10 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
  * 줄 서명이 메모의 종류로 비교된다(글은 로케일마다 호스트가 푼다). 사령관이 결정 요청에 답하는 중이라는 사실은 메모가 아니라
  * 줄의 상태 문구(`delegated.status`)가 말한다.
  */
-const NOTE_REVIEWING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.reviewing"), tone: "accent" };
-const NOTE_STALLED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.stalled"), tone: "warn" };
+const NOTE_REVIEWING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.autonomy.note.reviewing"), tone: "accent" };
+const NOTE_STALLED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.autonomy.note.stalled"), tone: "warn" };
 /** 사령관이 사람에게 넘긴 항목이 선 줄 — 「내 결정」에 선 까닭(`decisionNote`). 대화 중심 화면에서도 줄의 상태 문구로 보인다. */
-const HANDED_NOTE = (locale: "en" | "ko") => getT(locale)("objectives.commodore.note.handed");
+const HANDED_NOTE = (locale: "en" | "ko") => getT(locale)("objectives.autonomy.note.handed");
 /** 구성원 실패 — 확인하지 않은 실패가 남은 동안만. 자율 운영과 상관없이 사람의 줄에 선다. 사유가 하나로 모이면 그 사유로 말한다. */
 const NOTE_MEMBER_FAILED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberFailed"), tone: "warn" };
 const NOTE_MEMBER_LIMITED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberLimited"), tone: "warn" };
@@ -96,7 +96,7 @@ export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | 
   return reasons.size === 1 && only ? FAILURE_NOTE_TEXT[only] : "objectives.note.memberFailed";
 };
 /** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 모듈 상수라 줄 서명이 바뀌지 않는다. */
-const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.commodore.note.answering");
+const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.autonomy.note.answering");
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),

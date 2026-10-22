@@ -5,7 +5,7 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 
 import { MAX_CONTEXT, ROUTING_PREVIEW_TTL_MS, type Objective, type ObjectiveEditKind, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { nonHumanEditors } from "./actors.js";
-import { commodoreLanguage } from "./commodore-state.js";
+import { commodoreLanguage } from "./board-commodore.js";
 import {
   clearSelection,
   discardedFollowups,

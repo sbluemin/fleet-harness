@@ -4,8 +4,6 @@ import { mongleStateOf, type MongleState } from "@fleet-console/sdk/avatars";
 import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
 
 import {
-  isRunningObjective,
-  isCommodoreWaiting,
   loadCommodore,
   noteCommodoreLanguage,
   openAsks,
@@ -21,8 +19,8 @@ import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { isCommodoreConversationActive } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
-import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
-import type { Objective } from "../server/types.js";
+import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
+import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -71,7 +69,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
         return null;
       }
       const t = getT(language);
-      return { label: t(view.state.autonomy ? "objectives.commodore.menu.turnOff" : "objectives.commodore.menu.turnOn"), icon: <CommodoreMobileRowGlyph /> };
+      return { label: t(view.state.autonomy ? "commodore.menu.turnOff" : "commodore.menu.turnOn"), icon: <CommodoreMobileRowGlyph /> };
     },
     run: (theaterId) => {
       const on = readCommodore(theaterId).view?.state.autonomy === true;
@@ -111,13 +109,13 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
   const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
-  const status = [`${t("objectives.commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
+  const status = [`${t("commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
   // 꺼짐 회색은 다른 표면의 Theater 아바타와 같은 규칙이다 — `header.face` 의 off 와 같은 조건(자율 운영 꺼짐)이다.
-  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
+  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(theater.id).length;
-  const asksWord = asks > 0 ? t("objectives.ask.badge", { count: asks }) : null;
+  const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (busy || !view) return;
@@ -128,12 +126,12 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
     <button
       type="button"
       className={`objectives-commodore-mark ${on ? "is-on" : "is-off"}${warn ? " is-warn" : ""}`}
-      aria-label={[t(on ? "objectives.commodore.mark.onAria" : "objectives.commodore.mark.offAria", { theater: theater.label }), asksWord].filter(Boolean).join(", ")}
+      aria-label={[t(on ? "commodore.mark.onAria" : "commodore.mark.offAria", { theater: theater.label }), asksWord].filter(Boolean).join(", ")}
       aria-pressed={on}
       aria-busy={busy || undefined}
       aria-disabled={busy || undefined}
       disabled={!view}
-      title={[theater.label, status, asksWord, t(on ? "objectives.commodore.mark.onTitle" : "objectives.commodore.mark.offTitle")].filter(Boolean).join("\n")}
+      title={[theater.label, status, asksWord, t(on ? "commodore.mark.onTitle" : "commodore.mark.offTitle")].filter(Boolean).join("\n")}
       onClick={toggleAutonomy}
       onMouseEnter={peek(true)}
       onMouseLeave={peek(false)}
@@ -165,7 +163,7 @@ function CommodoreAutonomyMenuItem({ theater, language, onClose }: TheaterMenuCo
       }}
     >
       <span className={`theater-menu-check objectives-commodore-menu-glyph${on ? " is-on" : ""}`} aria-hidden="true"><CommodoreMentionGlyph className="objectives-commodore-menu-glyph-svg" /></span>
-      <span className="theater-menu-label">{on ? t("objectives.commodore.menu.turnOff") : t("objectives.commodore.menu.turnOn")}</span>
+      <span className="theater-menu-label">{on ? t("commodore.menu.turnOff") : t("commodore.menu.turnOn")}</span>
     </button>
   );
 }
@@ -197,18 +195,18 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
   const waiting = objectives.filter((objective) => isCommodoreWaiting(objective)).length;
   const meta: CommodoreMetaPart[] = on
     ? [
-      { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },
-      ...(run?.phase === "turn" ? [{ key: "turn", text: t("objectives.commodore.meta.turn") }] : []),
-      ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
-      ...(run?.phase === "error" ? [{ key: "error", text: t("objectives.commodore.meta.error"), tone: "warn" as const }] : []),
-      { key: "running", text: t("objectives.commodore.meta.running", { n: running }) },
-      { key: "handled", text: t("objectives.commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
+      { key: "mode", text: t("commodore.meta.autonomous"), tone: "on" },
+      ...(run?.phase === "turn" ? [{ key: "turn", text: t("commodore.meta.turn") }] : []),
+      ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
+      ...(run?.phase === "error" ? [{ key: "error", text: t("commodore.meta.error"), tone: "warn" as const }] : []),
+      { key: "running", text: t("commodore.meta.running", { n: running }) },
+      { key: "handled", text: t("commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
     ]
     : [
-      { key: "mode", text: t("objectives.commodore.meta.manual") },
-      { key: "waiting", text: t("objectives.commodore.meta.waiting", { n: waiting }) },
+      { key: "mode", text: t("commodore.meta.manual") },
+      { key: "waiting", text: t("commodore.meta.waiting", { n: waiting }) },
     ];
-  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
+  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
   const errorReason = on && (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
   return { on, meta, patrol, errorReason };
 }

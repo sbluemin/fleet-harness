@@ -4,14 +4,14 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 
 import type { CommodorePatrolMinutes } from "@fleet-console/sdk/commodore";
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
-import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH } from "./launch-control.js";
+import type { CommodoreMessageKey } from "./i18n/index.js";
+import { DEFAULT_LAUNCH } from "./defaults.js";
 
 /**
  * 사령관 설정의 값과 선택기 — 데스크톱 Theater Inbox 의 사령관 「설정」 칸과 폰 사령관 화면이 함께 쓴다.
  */
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
@@ -34,7 +34,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
 }) {
   const roster = useCommodoreRoster(target);
-  const auto = t("objectives.commander.effortAuto");
+  const auto = t("commodore.board.commander.effortAuto");
   const fallbackWords = rosterCoordinateWords(roster, fallback, auto);
   return (
     <ModelCoordinatePicker
@@ -47,13 +47,13 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
       {...(reset ? { reset: { ...reset, description: [fallbackWords.model, fallbackWords.effort].filter(Boolean).join(" · ") } } : {})}
       labels={{
         menu: label,
-        effort: t("objectives.commander.effortAria"),
+        effort: t("commodore.board.commander.effortAria"),
         auto,
-        back: t("objectives.launch.backToModels"),
-        loading: t("objectives.launch.loading"),
-        empty: t("objectives.launch.empty"),
-        off: t("objectives.launch.off"),
-        fallback: t("objectives.launch.fallback"),
+        back: t("commodore.board.launch.backToModels"),
+        loading: t("commodore.board.launch.loading"),
+        empty: t("commodore.board.launch.empty"),
+        off: t("commodore.board.launch.off"),
+        fallback: t("commodore.board.launch.fallback"),
       }}
       trigger={{ variant: "field" }}
     />
@@ -91,6 +91,6 @@ export function commanderCoordinates(state: CommodoreStateFields, next: { readon
 /* ── 순찰 간격 ───────────────────────────────────────────────────────── */
 
 export function patrolWord(t: T, minutes: number): string {
-  if (minutes < 60) return t("objectives.commodore.patrol.minutes", { n: minutes });
-  return minutes === 60 ? t("objectives.commodore.patrol.hour") : t("objectives.commodore.patrol.hours", { n: minutes / 60 });
+  if (minutes < 60) return t("commodore.patrol.minutes", { n: minutes });
+  return minutes === 60 ? t("commodore.patrol.hour") : t("commodore.patrol.hours", { n: minutes / 60 });
 }

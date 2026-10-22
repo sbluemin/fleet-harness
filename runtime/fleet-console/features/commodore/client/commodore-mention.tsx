@@ -7,7 +7,7 @@ import { isCommodoreConversationOpen, subscribeCommodoreConversationActive } fro
 import { commodoreMongleState } from "./commodore-header.js";
 import { commodoreAlias, commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
-import { useObjectiveTheater } from "./objectives-state.js";
+import { useObjectiveTheater } from "./board.js";
 
 const TARGET_PREFIX = "commodore:";
 
@@ -32,8 +32,8 @@ export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
     return {
       id: `${TARGET_PREFIX}${theaterId}`,
       label: alias ?? theater,
-      categoryLabel: t("objectives.commodore.name"),
-      description: alias ? t("objectives.commodore.mention.descriptionAlias", { alias, theater }) : t("objectives.commodore.mention.description", { theater }),
+      categoryLabel: t("commodore.name"),
+      description: alias ? t("commodore.mention.descriptionAlias", { alias, theater }) : t("commodore.mention.description", { theater }),
       ...(alias ? { keywords: [theater] } : {}),
       renderMark: () => <CommodoreMentionMark theaterId={theaterId} />,
     };

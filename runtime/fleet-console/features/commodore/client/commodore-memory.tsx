@@ -5,10 +5,10 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { MemoryBranch, MemoryEntry } from "@fleet-console/sdk/commodore";
 import { MEMORY_STALE_MS } from "@fleet-console/sdk/commodore";
 import { useCommodoreMemory } from "./commodore-state.js";
-import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { revealObjective } from "./objectives-state.js";
+import type { CommodoreMessageKey } from "./i18n/index.js";
+import { revealObjective } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 사령관의 fleet-memory — 오른쪽 패널(대화 중심 화면)과 Inbox 시트의 「기억」 칸. 사령관만 쓰고 사람은 읽기만 한다.
@@ -19,17 +19,17 @@ type T = Translate<ObjectiveMessageKey>;
 
 /** 서버 `MEMORY_BRANCHES` 와 같은 순서 — 서버 모듈은 파일시스템을 쓰므로 값은 여기 둔다. */
 export const MEMORY_BRANCHES: readonly MemoryBranch[] = ["person", "theater", "lessons", "crew"];
-export const MEMORY_BRANCH_LABEL: Record<MemoryBranch, ObjectiveMessageKey> = {
-  person: "objectives.commodore.memory.branch.person",
-  theater: "objectives.commodore.memory.branch.theater",
-  lessons: "objectives.commodore.memory.branch.lessons",
-  crew: "objectives.commodore.memory.branch.crew",
+export const MEMORY_BRANCH_LABEL: Record<MemoryBranch, CommodoreMessageKey> = {
+  person: "commodore.memory.branch.person",
+  theater: "commodore.memory.branch.theater",
+  lessons: "commodore.memory.branch.lessons",
+  crew: "commodore.memory.branch.crew",
 };
-export const MEMORY_BRANCH_HINT: Record<MemoryBranch, ObjectiveMessageKey> = {
-  person: "objectives.commodore.memory.hint.person",
-  theater: "objectives.commodore.memory.hint.theater",
-  lessons: "objectives.commodore.memory.hint.lessons",
-  crew: "objectives.commodore.memory.hint.crew",
+export const MEMORY_BRANCH_HINT: Record<MemoryBranch, CommodoreMessageKey> = {
+  person: "commodore.memory.hint.person",
+  theater: "commodore.memory.hint.theater",
+  lessons: "commodore.memory.hint.lessons",
+  crew: "commodore.memory.hint.crew",
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -79,18 +79,18 @@ export function CommodoreMemory({ t, theaterId }: { readonly t: T; readonly thea
     <div className="objectives-commodore-memory">
       <div className="objectives-commodore-section">
         <div className="objectives-commodore-memory-head">
-          <h3 className="objectives-commodore-section-title">{t("objectives.commodore.memory.label")}</h3>
-          {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("objectives.commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
+          <h3 className="objectives-commodore-section-title">{t("commodore.memory.label")}</h3>
+          {memory.entries.length ? <span className="objectives-commodore-memory-meta">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</span> : null}
         </div>
         {memory.entries.length ? (
           <label className="objectives-commodore-memory-search">
             <svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="5.2" cy="5.2" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.2" /><path d="M7.8 7.8 L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
-            <input type="search" value={query} placeholder={t("objectives.commodore.memory.search")} aria-label={t("objectives.commodore.memory.search")} onChange={(event) => setQuery(event.target.value)} />
+            <input type="search" value={query} placeholder={t("commodore.memory.search")} aria-label={t("commodore.memory.search")} onChange={(event) => setQuery(event.target.value)} />
           </label>
         ) : null}
-        {memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("objectives.commodore.memory.failed")}</p> : null}
-        {memory.loaded && !memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("objectives.commodore.memory.empty")}</p> : null}
-        {searching && !branches.length ? <p className="objectives-commodore-hint">{t("objectives.commodore.memory.noMatch")}</p> : null}
+        {memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("commodore.memory.failed")}</p> : null}
+        {memory.loaded && !memory.failed && !memory.entries.length ? <p className="objectives-commodore-hint">{t("commodore.memory.empty")}</p> : null}
+        {searching && !branches.length ? <p className="objectives-commodore-hint">{t("commodore.memory.noMatch")}</p> : null}
       </div>
       {branches.map((group) => {
         const open = searching || !closed.has(group.branch);
@@ -110,7 +110,7 @@ export function CommodoreMemory({ t, theaterId }: { readonly t: T; readonly thea
                     <li key={item.ref}>
                       <button type="button" className="objectives-commodore-memory-entry" title={item.description} onClick={() => setSelected(item.ref)}>
                         <span className="objectives-commodore-memory-entry-title">{item.title}</span>
-                        {stale(item) ? <span className="objectives-commodore-memory-stale" role="img" aria-label={t("objectives.commodore.memory.stale")} title={t("objectives.commodore.memory.stale")} /> : null}
+                        {stale(item) ? <span className="objectives-commodore-memory-stale" role="img" aria-label={t("commodore.memory.stale")} title={t("commodore.memory.stale")} /> : null}
                         <span className="objectives-commodore-memory-date">{memoryDay(item.updated)}</span>
                       </button>
                     </li>
@@ -123,8 +123,8 @@ export function CommodoreMemory({ t, theaterId }: { readonly t: T; readonly thea
       })}
       {memory.entries.length ? (
         <div className="objectives-commodore-section objectives-commodore-memory-foot">
-          <span className="objectives-commodore-memory-legend"><span className="objectives-commodore-memory-stale" aria-hidden="true" />{t("objectives.commodore.memory.stale")}</span>
-          <span>{t("objectives.commodore.memory.readOnly")}</span>
+          <span className="objectives-commodore-memory-legend"><span className="objectives-commodore-memory-stale" aria-hidden="true" />{t("commodore.memory.stale")}</span>
+          <span>{t("commodore.memory.readOnly")}</span>
         </div>
       ) : null}
     </div>
@@ -143,10 +143,10 @@ function CommodoreMemoryEntry({ t, entry, entries, stale, onBack, onOpen }: {
   return (
     <div className="objectives-commodore-memory is-entry">
       <div className="objectives-commodore-section">
-        <nav className="objectives-commodore-memory-crumbs" aria-label={t("objectives.commodore.memory.label")}>
+        <nav className="objectives-commodore-memory-crumbs" aria-label={t("commodore.memory.label")}>
           <button type="button" className="objectives-commodore-text-button objectives-commodore-memory-back" onClick={onBack}>
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 2 L3.5 5 L6.5 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            {t("objectives.commodore.memory.label")}
+            {t("commodore.memory.label")}
           </button>
           <span aria-hidden="true">/</span>
           <span>{t(MEMORY_BRANCH_LABEL[entry.branch])}</span>
@@ -156,26 +156,26 @@ function CommodoreMemoryEntry({ t, entry, entries, stale, onBack, onOpen }: {
         <h3 className="objectives-commodore-memory-title">{entry.title}</h3>
         <p className="objectives-commodore-memory-description">{entry.description}</p>
         <div className="objectives-commodore-memory-stamps">
-          <span>{t("objectives.commodore.memory.updated", { date: memoryDay(entry.updated) })}</span>
-          <span>{t("objectives.commodore.memory.verified", { date: memoryDay(entry.verified) })}</span>
-          {stale ? <span className="objectives-commodore-memory-due"><span className="objectives-commodore-memory-stale" aria-hidden="true" />{t("objectives.commodore.memory.due")}</span> : null}
+          <span>{t("commodore.memory.updated", { date: memoryDay(entry.updated) })}</span>
+          <span>{t("commodore.memory.verified", { date: memoryDay(entry.verified) })}</span>
+          {stale ? <span className="objectives-commodore-memory-due"><span className="objectives-commodore-memory-stale" aria-hidden="true" />{t("commodore.memory.due")}</span> : null}
         </div>
       </div>
       <section className="objectives-commodore-section">
-        <h4 className="objectives-commodore-section-title">{t("objectives.commodore.memory.why")}</h4>
+        <h4 className="objectives-commodore-section-title">{t("commodore.memory.why")}</h4>
         <p className="objectives-commodore-memory-body">{entry.why}</p>
       </section>
       <section className="objectives-commodore-section">
-        <h4 className="objectives-commodore-section-title">{t("objectives.commodore.memory.how")}</h4>
+        <h4 className="objectives-commodore-section-title">{t("commodore.memory.how")}</h4>
         <p className="objectives-commodore-memory-body">{entry.how}</p>
       </section>
       {entry.sources.length ? (
         <section className="objectives-commodore-section">
-          <h4 className="objectives-commodore-section-title">{t("objectives.commodore.memory.sources")}</h4>
+          <h4 className="objectives-commodore-section-title">{t("commodore.memory.sources")}</h4>
           <ul className="objectives-commodore-memory-entries is-flat">
             {entry.sources.map((source) => (
               <li key={source.objectiveId}>
-                <button type="button" className="objectives-commodore-memory-entry" title={t("objectives.commodore.trail.open")} onClick={() => revealObjective({ objectiveId: source.objectiveId })}>
+                <button type="button" className="objectives-commodore-memory-entry" title={t("commodore.trail.open")} onClick={() => revealObjective({ objectiveId: source.objectiveId })}>
                   <svg className="objectives-commodore-memory-glyph" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.8" fill="none" stroke="currentColor" strokeWidth="1.1" /><circle cx="5" cy="5" r="1.3" fill="currentColor" /></svg>
                   <span className="objectives-commodore-memory-entry-title">{source.title}</span>
                 </button>
@@ -186,7 +186,7 @@ function CommodoreMemoryEntry({ t, entry, entries, stale, onBack, onOpen }: {
       ) : null}
       {links.length ? (
         <section className="objectives-commodore-section">
-          <h4 className="objectives-commodore-section-title">{t("objectives.commodore.memory.links")}</h4>
+          <h4 className="objectives-commodore-section-title">{t("commodore.memory.links")}</h4>
           <ul className="objectives-commodore-memory-entries is-flat">
             {links.map((link) => (
               <li key={link.ref}>

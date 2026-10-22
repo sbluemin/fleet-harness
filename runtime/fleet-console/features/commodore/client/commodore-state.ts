@@ -10,11 +10,8 @@ import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 import type { MemoryEntry } from "@fleet-console/sdk/commodore";
 import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
-import { followupsJudgeable, livePersonHold, reasonAwaits } from "../server/board-state.js";
-import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
-import { post as postBoard } from "./objectives-state.js";
-
-const post = <T,>(api: ClientApiCapability, path: string, body: unknown): Promise<T> => postBoard<T>(api, path, body, null);
+import { post } from "./request.js";
+export { askObjectiveTitle } from "@fleet-console/sdk/commodore";
 
 /**
  * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
@@ -123,25 +120,6 @@ export function setCommodorePeek(theaterId: string | null): void {
   if (peekTheater === theaterId) return;
   peekTheater = theaterId;
   notify();
-}
-
-/** 보드 화면용 — 줄 계산과 같은 값을 React 로. 읽지 않은 Theater 면 읽기를 건다. */
-export function useCommodoreBoard(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
-  const enabled = useCommodoreEnabled();
-  const board = useSyncExternalStore(subscribeCommodore, () => boardSnapshot(theaterId), () => boardSnapshot(theaterId));
-  useEffect(() => { if (enabled && theaterId) void loadCommodore(theaterId); }, [enabled, theaterId]);
-  return board;
-}
-
-const boardSnapshots = new Map<string, { readonly key: string; readonly value: { readonly active: boolean; readonly stalled: readonly string[] } }>();
-function boardSnapshot(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[] } {
-  const { active, stalled } = commodoreBoardOf(theaterId);
-  const value = { active, stalled };
-  const key = `${value.active}:${value.stalled.join(",")}`;
-  const cached = boardSnapshots.get(theaterId);
-  if (cached?.key === key) return cached.value;
-  boardSnapshots.set(theaterId, { key, value });
-  return value;
 }
 
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>, announce = true): void {
@@ -448,9 +426,6 @@ export function commodoreAlias(theaterId: string): string | null {
 
 export const COMMODORE_ENTRY_ID = "commodore";
 
-/** 목표 레일 엔트리 id — 엔트리 선언과, 그 입구를 걷는 사령관 섹션(사령관에게는 목표가 없다)이 같이 쓴다. */
-export const OBJECTIVES_ENTRY_ID = "objectives";
-
 /** Theater Inbox 의 사령관 섹션 id(플러그인 로컬) — 정준 id 의 접두는 호스트가 붙인다. 섹션과 사이드바 줄이 같이 쓴다. */
 export const COMMODORE_INBOX_SECTION_ID = "commodore";
 
@@ -623,11 +598,6 @@ export async function messageCommodore(theaterId: string, text: string, attachme
 
 /* ── 보드에서 세는 것 ────────────────────────────────────────────────── */
 
-/** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
-export function isRunningObjective(objective: Objective): boolean {
-  return !objective.removed && !objective.done && objective.commander.started && !objective.awaitingReview && !objective.awaitingHandoff;
-}
-
 const NO_ASKS: readonly CommodoreAsk[] = [];
 const openAskMemo = new Map<string, { readonly source: readonly CommodoreAsk[] | undefined; readonly open: readonly CommodoreAsk[] }>();
 /**
@@ -647,57 +617,6 @@ export function openAsks(theaterId: string | null): readonly CommodoreAsk[] {
 /** 서 있는 질문이 있는 Theater — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다(읽은 Theater 만). */
 export function openAskTheaters(): readonly string[] {
   return [...theaters.keys()].filter((theaterId) => openAsks(theaterId).length > 0);
-}
-
-/**
- * 결정 요청이 누구의 차례인가 — 보드의 차례 축(`reasonAwaits`) 위에 자율 운영을 얹는다. 자율 운영이 실제로 돌지 않으면 사령관
- * 몫도 사람에게 돌아오므로 사람이다. 요청이 없거나 끝난 목표는 null. 사이드바·전환 목록·폰·레일·결정 칸이 이 하나를 읽는다.
- */
-export function decisionTurn(objective: Objective, commodoreActive: boolean): "person" | "commodore" | null {
-  if (objective.removed || objective.done || !objective.decisionRequest) return null;
-  return !commodoreActive || reasonAwaits(objective, "decision") === "person" ? "person" : "commodore";
-}
-
-/** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 항목들 — 대상 순서(결정·기준·검토·후속)대로. */
-export function livePersonHolds(objective: Objective): readonly ObjectivePersonHold[] {
-  if (objective.removed) return [];
-  return PERSON_HOLD_TARGETS.flatMap((target) => livePersonHold(objective, target) ?? []);
-}
-
-/**
- * 「내 결정」에 서는 시각 — 사람이 답할 결정 요청이면 그 요청 시각, 아니면 사령관이 넘긴 다른 항목(기준·검토·후속)의 가장 이른
- * 넘김 시각. 사람의 차례가 없으면 null.
- */
-export function personTurnAt(objective: Objective, commodoreActive: boolean): number | null {
-  if (decisionTurn(objective, commodoreActive) === "person") return objective.decisionRequest!.createdAt;
-  const holds = livePersonHolds(objective);
-  return holds.length ? Math.min(...holds.map((hold) => hold.at)) : null;
-}
-
-/**
- * 질문이 가리킨 목표의 제목 — 살아 있는 보드(목표 상태)를 먼저 읽어 질문이 선 뒤의 새 목표·이름 변경·제거를 바로 따른다.
- * 그 Theater 의 보드를 아직 읽지 않았으면 서버가 상태 뷰와 함께 준 제목으로 대신한다. 보드에서 사라졌으면 null.
- */
-export function askObjectiveTitle(board: { readonly loaded: boolean; readonly objectives: readonly { readonly id: string; readonly title: string; readonly removed?: unknown }[] }, served: Readonly<Record<string, { readonly title: string } | null>> | undefined, objectiveId: string): string | null {
-  if (!board.loaded) return served?.[objectiveId]?.title ?? null;
-  const live = board.objectives.find((objective) => objective.id === objectiveId);
-  return live && !live.removed ? live.title : null;
-}
-
-/**
- * 사령관이 맡아 기다리는 목표 — 사령관이 운영하고, 사람에게 넘기지 않은 대기 항목(출범 전·기준 제안·결정 요청·검토·후속)이 남았다.
- * 사람에게 넘긴 항목만 남은 목표는 사령관을 기다리지 않는다.
- */
-export function isCommodoreWaiting(objective: Objective): boolean {
-  if (objective.operator !== "commodore" || objective.removed || objective.done) return false;
-  const kept = (target: (typeof PERSON_HOLD_TARGETS)[number]) => !livePersonHold(objective, target);
-  // 출범 전 기준 제안을 사람에게 넘겼으면 개시는 사람의 답을 기다린다(criteria_pending) — 사령관의 일이 아니다.
-  return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
-    || (objective.criteriaProposals.length > 0 && kept("criteria"))
-    || (objective.decisionRequest !== null && kept("decision"))
-    || (objective.awaitingReview && kept("review"))
-    // 진행 중의 후속 후보는 모이기만 한다 — 검토 대기에 검토와 함께 사령관을 기다린다.
-    || (followupsJudgeable(objective) && objective.followups.some((followup) => followup.state === "open") && kept("followup"));
 }
 
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */

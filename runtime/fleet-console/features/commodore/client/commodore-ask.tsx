@@ -4,12 +4,12 @@ import type { ConversationDecision, ConversationSpeaker } from "@fleet-console/s
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
-import { MAX_DECISION_ANSWER_INPUT } from "../server/types.js";
+import { MAX_DECISION_ANSWER_INPUT } from "@fleet-console/sdk/commodore";
 import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, openAsks, useCommodore } from "./commodore-state.js";
-import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { openObjectiveFromCluster, openObjectiveOnPhone, revealObjective, useObjectiveTheater } from "./objectives-state.js";
+import type { CommodoreMessageKey } from "./i18n/index.js";
+import { openObjectiveFromCluster, openObjectiveOnPhone, revealObjective, useObjectiveTheater } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 질문이 이미 끝났다는 거절 — 상태를 다시 읽으면 카드가 곧 걷히므로 그 사유는 카드 밖(기록 칸의 실패 줄)이 말한다.
@@ -38,7 +38,7 @@ export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnd
   // 답이 받아들여진 질문은 상태가 다시 읽히기 전에도 내린다 — 그룹 대화의 결정 카드와 같은 규칙.
   const [answered, setAnswered] = useState<readonly string[]>([]);
   useEffect(() => setAnswered([]), [theaterId]);
-  const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
+  const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
   if (!Card || shown.length === 0) return null;
@@ -81,8 +81,8 @@ function askDecision(ask: CommodoreAsk, { theaterId, t, phone, onEnded, objectiv
       options: question.options.map((option) => ({ id: option.id, label: option.label, ...(option.description ? { description: option.description } : {}) })),
     })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT,
-    handed: { label: t("objectives.ask.reason"), reason: ask.reason },
-    route: t("objectives.ask.route"),
+    handed: { label: t("commodore.board.ask.reason"), reason: ask.reason },
+    route: t("commodore.board.ask.route"),
     ...(objectiveId && objectiveOnBoard ? {
       open: () => {
         if (phone) { openObjectiveOnPhone(objectiveId, theaterId); return; }

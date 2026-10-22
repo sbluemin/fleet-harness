@@ -15,10 +15,10 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
-import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
+import { getT, type CommodoreMessageKey } from "./i18n/index.js";
+import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 기록(행위 곁 칸)·지시(정보 포함)·
@@ -106,7 +106,7 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
  */
 export function openCommodoreLog(theaterId: string): void {
   if (openCommodoreConversation(theaterId)) return;
-  inbox?.open({ theaterId, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" });
+  inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
 }
 
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
@@ -193,7 +193,7 @@ function readParams(params: Readonly<Record<string, unknown>>): { readonly theat
 function failureWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
   if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
-  return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
+  return code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code });
 }
 
 /** 드러낼 시각이 읽은 기록 창보다 앞이면 이전 쪽을 이만큼까지 더 읽는다 — 한 요청이 기록 전체를 끌어오지 않게. */
@@ -225,7 +225,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed), [t, entries, live, confirmed]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
 
@@ -251,7 +251,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const references = useCommodoreReferenceHost(t, theaterId);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
-    label: t("objectives.commodore.trail.open"),
+    label: t("commodore.trail.open"),
     open: (entry) => { if (entry.objectiveId) openReferencedObjective(theaterId, entry.objectiveId); },
   }), [t, theaterId]);
 
@@ -288,7 +288,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     <footer className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
-        ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("objectives.commodore.conversation.back")}</button>
+        ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
         : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
@@ -298,8 +298,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
           밑으로 흘러 올라간다. */}
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
-          <span>{run.reason ? errorWord(t, run.reason) : t("objectives.commodore.meta.error")}</span>
-          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
+          <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       {ledgerOpen && Ledger ? (
@@ -312,7 +312,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             onBack={() => setCommodoreLedger(theaterId, false)}
             entries={ledgerEntries}
             reveal={ledgerReveal}
-            older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
+            older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
             references={references}
             coordinates={ledgerCoordinates}
           />
@@ -327,8 +327,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             language={language}
             theaterId={theaterId}
             loading={!transcriptLoaded}
-            empty={t("objectives.commodore.log.empty")}
-            older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
+            empty={t("commodore.log.empty")}
+            older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
             reveal={revealEntry}
             openBoardAction={openBoardAction}
             openLedger={openLedger}
@@ -392,11 +392,11 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. */
 const TAB_INBOX_PAGES = { goals: "log", directive: "directive", memory: "memory", settings: "settings" } as const;
 
-const TAB_TITLES: Record<ConversationTab, ObjectiveMessageKey> = {
-  goals: "objectives.commodore.tabs.log",
-  directive: "objectives.commodore.tabs.directive",
-  memory: "objectives.commodore.tabs.memory",
-  settings: "objectives.commodore.tabs.settings",
+const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
+  goals: "commodore.tabs.log",
+  directive: "commodore.tabs.directive",
+  memory: "commodore.tabs.memory",
+  settings: "commodore.tabs.settings",
 };
 
 /** Console 이 가운데 칸·오른쪽 패널에 세우는 사령관 대화. */
@@ -405,14 +405,14 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   title: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId ?? "";
     const label = commodoreTheaterLabel(theaterId);
-    const name = getT(ctx.language)("objectives.commodore.name");
+    const name = getT(ctx.language)("commodore.name");
     return label ? `${name} · ${label}` : name;
   },
-  subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
+  subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name"), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
+    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("commodore.name"), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);

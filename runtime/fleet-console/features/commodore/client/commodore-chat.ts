@@ -5,11 +5,11 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { undeliveredMessageSeqs } from "@fleet-console/sdk/commodore";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
-import type { Objective } from "../server/types.js";
+import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
 import { clockTime } from "./commodore-header.js";
-import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 /**
  * 사령관 기록 → Operation 채팅 어휘. 화면은 호스트의 채팅 턴 렌더러(`ctx.chat.Transcript`)가 그리고, 여기는 서버가 정제해 쌓은
@@ -47,7 +47,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
     switch (entry.kind) {
       case "wake":
         if (turnAt !== null) end(entry.at, "ok");
-        push({ kind: "dispatch", text: entry.reasons.map((reason) => reasonWord(t, reason)).join(" · "), at: entry.at, by: { kind: "plugin", pluginId: "objectives", label: t("objectives.commodore.log.woke") } }, entry.at);
+        push({ kind: "dispatch", text: entry.reasons.map((reason) => reasonWord(t, reason)).join(" · "), at: entry.at, by: { kind: "plugin", pluginId: "commodore", label: t("commodore.log.woke") } }, entry.at);
         push({ kind: "turn-start", at: entry.at }, entry.at);
         turnAt = entry.at;
         break;
@@ -77,7 +77,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "result":
         resume(entry.at);
         end(entry.at, entry.outcome);
-        if (entry.outcome === "error") push({ kind: "note", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }), at: entry.at, tone: "warn" }, entry.at);
+        if (entry.outcome === "error") push({ kind: "note", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }), at: entry.at, tone: "warn" }, entry.at);
         break;
       case "compacted":
         if (turnAt !== null) heldNotes.push({ text: compactedText(t, entry), at: entry.at });
@@ -85,12 +85,12 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         break;
       case "session":
         end(entry.at, "cancelled");
-        push({ kind: "note", text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · "), at: entry.at }, entry.at);
+        push({ kind: "note", text: [t(`commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · "), at: entry.at }, entry.at);
         break;
       case "error": {
         end(entry.at, "error");
         const code = errorWord(t, entry.code);
-        push({ kind: "note", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
+        push({ kind: "note", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
         break;
       }
       // 사령관이 물었다 — 그 턴 안의 글로 선다(이유·질문·선택지). 지금 상태(답을 기다림·답함·거둠)는 상태의 질문에서 읽는다.
@@ -157,7 +157,7 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
 export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null): readonly AgentConversationEntry[] {
-  const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
+  const commodore: ConversationSpeaker = { kind: "commodore", name: t("commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
@@ -171,7 +171,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
     switch (entry.kind) {
       case "wake": {
         if (entry.reasons.every((reason) => reason === "message" || reason.startsWith("message:"))) break;
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t("objectives.commodore.log.woke"), ...entry.reasons.map((reason) => reasonWord(t, reason))].join(" · ") });
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t("commodore.log.woke"), ...entry.reasons.map((reason) => reasonWord(t, reason))].join(" · ") });
         break;
       }
       case "message": {
@@ -195,17 +195,17 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "result":
-        if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }) });
+        if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }) });
         break;
       case "compacted":
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: compactedText(t, entry) });
         break;
       case "session":
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
         break;
       case "error": {
         const code = errorWord(t, entry.code);
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }) });
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
         break;
       }
       // 물음과 답은 보드 행위 줄과 같은 가운데 줄이다 — 물음은 사령관, 답은 사람이 낸 줄. 펼치면 이유·질문(답)이 선다.
@@ -213,13 +213,13 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const status = askStatusWord(t, entry.askId, asks);
         const target = objectiveTarget(t, index, entry.objective?.id, entry.objective?.title);
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: target.id ?? "",
-          action: t("objectives.ask.logged"), target, ...(status ? { status: { text: status } } : {}),
+          action: t("commodore.board.ask.logged"), target, ...(status ? { status: { text: status } } : {}),
           text: [entry.reason, ...entry.questions.map((question, index) => questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0))].join("\n\n") });
         break;
       }
       case "ask-answered":
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: human, objectiveId: "",
-          action: t("objectives.ask.answered"), target: {}, text: entry.answers.map((answer) => `${answer.question}\n\n→ ${answerWords(answer)}`).join("\n\n") });
+          action: t("commodore.board.ask.answered"), target: {}, text: entry.answers.map((answer) => `${answer.question}\n\n→ ${answerWords(answer)}`).join("\n\n") });
         break;
       case "thinking":
       case "undelivered":
@@ -236,7 +236,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
 export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[]): readonly AgentConversationEntry[] {
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("objectives.commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */
@@ -244,7 +244,7 @@ function compactedText(t: T, entry: Extract<CommodoreTranscriptEntry, { kind: "c
   const tokens = entry.postTokens !== undefined
     ? `${formatContextTokens(entry.preTokens)} → ${formatContextTokens(entry.postTokens)}`
     : formatContextTokens(entry.preTokens);
-  return t("objectives.commodore.log.compacted", { tokens });
+  return t("commodore.log.compacted", { tokens });
 }
 
 /** 문맥 토큰을 사람이 읽는 크기로(1.2k·750k·1M). */
@@ -375,7 +375,7 @@ function describeTurn(t: T, bucket: readonly AgentChatTranscriptEntry[], ordinal
     id: `${at}:${seen}`,
     at,
     message,
-    label: message ? t("objectives.commodore.log.message") : dispatchText,
+    label: message ? t("commodore.log.message") : dispatchText,
     summary,
     ...(durationMs !== undefined && durationMs >= 1000 ? { durationMs } : {}),
     failed: end?.event.kind === "turn-end" && end.event.ok === false,
@@ -429,7 +429,7 @@ function objectiveTarget(t: T, index: CommodoreObjectiveIndex, objectiveId: stri
   const objective = index.live.find((candidate) => candidate.id === objectiveId) ?? index.finished?.find((candidate) => candidate.id === objectiveId);
   if (objective) return objective.removed ? { label: objective.title } : { id: objective.id, label: objective.title };
   if (index.finished === null) return { id: objectiveId, ...(title ? { label: title } : {}) };
-  return { label: t("objectives.commodore.target.gone") };
+  return { label: t("commodore.target.gone") };
 }
 
 /* ── 사령관의 질문 줄 ─────────────────────────────────────────────── */
@@ -441,20 +441,20 @@ type AnsweredEntry = Extract<CommodoreTranscriptEntry, { kind: "ask-answered" }>
 function askStatusWord(t: T, askId: string, asks: readonly CommodoreAsk[] | undefined): string | null {
   const ask = asks?.find((candidate) => candidate.id === askId);
   if (!ask) return null;
-  if (!ask.settled) return t("objectives.ask.status.open");
-  return t(ask.settled.outcome === "withdrawn" ? "objectives.ask.status.withdrawn" : "objectives.ask.status.answered");
+  if (!ask.settled) return t("commodore.board.ask.status.open");
+  return t(ask.settled.outcome === "withdrawn" ? "commodore.board.ask.status.withdrawn" : "commodore.board.ask.status.answered");
 }
 
 /** 질문 한 줄 — 번호(여럿일 때), 질문, 선택지 이름(「 / 」로 잇는다), 여러 개 고르기 표시. */
 function questionLine(t: T, question: AskEntry["questions"][number], n: number): string {
-  const options = question.options.length ? ` — ${question.options.join(" / ")}${question.multiSelect ? ` (${t("objectives.ask.multi")})` : ""}` : "";
+  const options = question.options.length ? ` — ${question.options.join(" / ")}${question.multiSelect ? ` (${t("commodore.board.ask.multi")})` : ""}` : "";
   return `${n ? `${n}. ` : ""}${question.text}${options}`;
 }
 
 const answerWords = (answer: AnsweredEntry["answers"][number]): string => [answer.selected.join(" · "), answer.text.trim()].filter(Boolean).join(" — ");
 
 function askMarkdown(t: T, entry: AskEntry, asks: readonly CommodoreAsk[] | undefined): string {
-  const head = [`**${t("objectives.ask.logged")}**`, entry.objective?.title, askStatusWord(t, entry.askId, asks)].filter(Boolean).join(" · ");
+  const head = [`**${t("commodore.board.ask.logged")}**`, entry.objective?.title, askStatusWord(t, entry.askId, asks)].filter(Boolean).join(" · ");
   const lines = entry.questions.map((question, index) => `- ${questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0)}`);
   return [head, `> ${entry.reason.replaceAll("\n", "\n> ")}`, ...lines].join("\n\n");
 }
@@ -469,26 +469,26 @@ function answeredText(entry: AnsweredEntry): string {
 }
 
 export function errorWord(t: T, code: string): string {
-  const key = `objectives.commodore.errorCode.${code}`;
-  return Object.hasOwn(objectivesEn, key) ? t(key as ObjectiveMessageKey) : t("objectives.commodore.errorCode.failed");
+  const key = `commodore.errorCode.${code}`;
+  return Object.hasOwn(commodoreEn, key) ? t(key as CommodoreMessageKey) : t("commodore.errorCode.failed");
 }
 
 /** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */
 export function reasonWord(t: T, reason: string): string {
   const match = /^([a-z][a-z-]*)(?::(\d+))?$/.exec(reason);
   if (!match) return reason;
-  const key = `objectives.commodore.reason.${match[1]}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey, { n: match[2] ?? "" }).trim() : reason;
+  const key = `commodore.reason.${match[1]}`;
+  return key in commodoreEn ? t(key as CommodoreMessageKey, { n: match[2] ?? "" }).trim() : reason;
 }
 
 /** 세션 기록의 로스터 폴백(`fallback:<reason>:<model>`) — 실제로 도는 모델과 사유. 다른 사유는 표시하지 않는다. */
 export function fallbackWord(t: T, reason: string): string {
   const match = /^fallback:(model_off|roster_empty):(.+)$/u.exec(reason);
   if (!match) return "";
-  return t(match[1] === "roster_empty" ? "objectives.commodore.log.fallback.rosterEmpty" : "objectives.commodore.log.fallback.modelOff", { model: match[2]! });
+  return t(match[1] === "roster_empty" ? "commodore.log.fallback.rosterEmpty" : "commodore.log.fallback.modelOff", { model: match[2]! });
 }
 
 export function actionWord(t: T, action: string): string {
-  const key = `objectives.commodore.action.${action}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
+  const key = `commodore.action.${action}`;
+  return key in commodoreEn ? t(key as CommodoreMessageKey) : action;
 }

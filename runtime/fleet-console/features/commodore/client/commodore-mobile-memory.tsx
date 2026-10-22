@@ -5,14 +5,14 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { MemoryBranch } from "@fleet-console/sdk/commodore";
 import { MEMORY_BRANCH_HINT, MEMORY_BRANCH_LABEL, memoryDay, memoryDayTime, memoryLinks, useCommodoreMemoryTree } from "./commodore-memory.js";
 import { loadCommodoreMemory } from "./commodore-state.js";
-import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { openObjectiveOnPhone } from "./objectives-state.js";
+import type { CommodoreMessageKey } from "./i18n/index.js";
+import { openObjectiveOnPhone } from "./board.js";
 
-type T = Translate<ObjectiveMessageKey>;
+type T = Translate<CommodoreMessageKey>;
 
 const Chevron = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>;
 const MemoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z" /></svg>;
-const StaleDot = ({ t }: { readonly t: T }) => <span className="objectives-cm-memory-dot" role="img" aria-label={t("objectives.commodore.memory.stale")} />;
+const StaleDot = ({ t }: { readonly t: T }) => <span className="objectives-cm-memory-dot" role="img" aria-label={t("commodore.memory.stale")} />;
 
 /** 폰 기억은 같은 스토어를 읽되, 항목 이동과 뒤로 가기는 호스트 막대의 깊이에 싣는다. */
 export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
@@ -50,8 +50,8 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
     <div className="objectives-cm-content objectives-cm-memory">
       <div className="objectives-cm-center" role="status">
         {memory.loaded || memory.failed ? <span className="objectives-cm-bigmono"><MemoryIcon /></span> : null}
-        <p className="objectives-cm-center-text">{t(memory.failed ? "objectives.commodore.memory.failed" : memory.loaded ? "objectives.commodore.memory.empty" : "objectives.commodore.memory.loading")}</p>
-        {memory.failed ? <button type="button" data-press="r3" className="objectives-cm-pill" onClick={() => { void loadCommodoreMemory(theaterId); }}>{t("objectives.commodore.memory.retry")}</button> : null}
+        <p className="objectives-cm-center-text">{t(memory.failed ? "commodore.memory.failed" : memory.loaded ? "commodore.memory.empty" : "commodore.memory.loading")}</p>
+        {memory.failed ? <button type="button" data-press="r3" className="objectives-cm-pill" onClick={() => { void loadCommodoreMemory(theaterId); }}>{t("commodore.memory.retry")}</button> : null}
       </div>
     </div>
   );
@@ -61,32 +61,32 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
     <div ref={scrollRef} className={`objectives-cm-content objectives-cm-memory${entry ? " is-entry" : ""}`}>
       <div className="objectives-cm-pad">
         {entry ? <>
-          <nav className="objectives-cm-memory-crumbs" aria-label={t("objectives.commodore.memory.label")}>
-            <span>{t("objectives.commodore.memory.label")}</span><span aria-hidden="true">/</span><span>{t(MEMORY_BRANCH_LABEL[entry.branch])}</span><span aria-hidden="true">/</span><span>{entry.topic}</span>
+          <nav className="objectives-cm-memory-crumbs" aria-label={t("commodore.memory.label")}>
+            <span>{t("commodore.memory.label")}</span><span aria-hidden="true">/</span><span>{t(MEMORY_BRANCH_LABEL[entry.branch])}</span><span aria-hidden="true">/</span><span>{entry.topic}</span>
           </nav>
           <div className="objectives-cm-memory-head">
             <h3 className="objectives-cm-memory-title">{entry.title}</h3>
             <p className="objectives-cm-memory-desc">{entry.description}</p>
             <div className="objectives-cm-memory-stamps">
-              <span>{t("objectives.commodore.memory.updated", { date: memoryDay(entry.updated) })}</span>
-              <span>{t("objectives.commodore.memory.verified", { date: memoryDay(entry.verified) })}</span>
-              {stale(entry) ? <span className="objectives-cm-memory-due"><StaleDot t={t} />{t("objectives.commodore.memory.due")}</span> : null}
+              <span>{t("commodore.memory.updated", { date: memoryDay(entry.updated) })}</span>
+              <span>{t("commodore.memory.verified", { date: memoryDay(entry.verified) })}</span>
+              {stale(entry) ? <span className="objectives-cm-memory-due"><StaleDot t={t} />{t("commodore.memory.due")}</span> : null}
             </div>
           </div>
-          <h4 className="objectives-cm-glab">{t("objectives.commodore.memory.why")}</h4>
+          <h4 className="objectives-cm-glab">{t("commodore.memory.why")}</h4>
           <p className="objectives-cm-gr objectives-cm-memory-body">{entry.why}</p>
-          <h4 className="objectives-cm-glab">{t("objectives.commodore.memory.how")}</h4>
+          <h4 className="objectives-cm-glab">{t("commodore.memory.how")}</h4>
           <p className="objectives-cm-gr objectives-cm-memory-body">{entry.how}</p>
           {entry.sources.length ? <>
-            <h4 className="objectives-cm-glab">{t("objectives.commodore.memory.sources")}</h4>
+            <h4 className="objectives-cm-glab">{t("commodore.memory.sources")}</h4>
             <div className="objectives-cm-grp">
-              {entry.sources.map((source) => <button key={source.objectiveId} type="button" data-press="r2" className="objectives-cm-gr objectives-cm-memory-jump is-source" aria-label={`${t("objectives.commodore.trail.open")}: ${source.title}`} onClick={() => openObjectiveOnPhone(source.objectiveId, theaterId)}>
+              {entry.sources.map((source) => <button key={source.objectiveId} type="button" data-press="r2" className="objectives-cm-gr objectives-cm-memory-jump is-source" aria-label={`${t("commodore.trail.open")}: ${source.title}`} onClick={() => openObjectiveOnPhone(source.objectiveId, theaterId)}>
                 <span className="objectives-cm-memory-glyph" aria-hidden="true">◎</span><span className="objectives-cm-gr-tx">{source.title}</span><Chevron />
               </button>)}
             </div>
           </> : null}
           {links.length ? <>
-            <h4 className="objectives-cm-glab">{t("objectives.commodore.memory.links")}</h4>
+            <h4 className="objectives-cm-glab">{t("commodore.memory.links")}</h4>
             <div className="objectives-cm-grp">
               {links.map((link) => <button key={link.ref} type="button" data-press="r2" className="objectives-cm-gr objectives-cm-memory-jump is-link" onClick={() => open(link.ref)}>
                 <span className="objectives-cm-memory-glyph" aria-hidden="true">↗</span><span className="objectives-cm-gr-tx">{link.title}<small>{t(MEMORY_BRANCH_LABEL[link.branch])}</small></span><Chevron />
@@ -95,12 +95,12 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
           </> : null}
           <p className="objectives-cm-secnote objectives-cm-memory-path">{`commodore/memory/${entry.ref}.md`}</p>
         </> : <>
-          <p className="objectives-cm-secnote">{t("objectives.commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</p>
+          <p className="objectives-cm-secnote">{t("commodore.memory.meta", { count: memory.entries.length, time: memoryDayTime(latest) })}</p>
           <label className="objectives-cm-memory-search">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
-            <input type="search" value={query} placeholder={t("objectives.commodore.memory.search")} aria-label={t("objectives.commodore.memory.search")} onChange={(event) => setQuery(event.target.value)} />
+            <input type="search" value={query} placeholder={t("commodore.memory.search")} aria-label={t("commodore.memory.search")} onChange={(event) => setQuery(event.target.value)} />
           </label>
-          {searching && !branches.length ? <p className="objectives-cm-secnote" role="status">{t("objectives.commodore.memory.noMatch")}</p> : null}
+          {searching && !branches.length ? <p className="objectives-cm-secnote" role="status">{t("commodore.memory.noMatch")}</p> : null}
           {branches.map((group) => {
             const expanded = searching || !closed.has(group.branch);
             return <section key={group.branch} className="objectives-cm-memory-branch">
@@ -117,7 +117,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
               </div>) : null}
             </section>;
           })}
-          <div className="objectives-cm-memory-foot objectives-cm-secnote"><span className="objectives-cm-memory-legend"><span className="objectives-cm-memory-dot" aria-hidden="true" />{t("objectives.commodore.memory.stale")}</span><span>{t("objectives.commodore.memory.readOnly")}</span></div>
+          <div className="objectives-cm-memory-foot objectives-cm-secnote"><span className="objectives-cm-memory-legend"><span className="objectives-cm-memory-dot" aria-hidden="true" />{t("commodore.memory.stale")}</span><span>{t("commodore.memory.readOnly")}</span></div>
         </>}
       </div>
     </div>
