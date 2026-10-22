@@ -8,7 +8,6 @@ export const SESSION_KEEPER_LOSS_MS = 30_000;
 /** Installs have no existing stop-budget bound; preservation still has a hard ceiling. */
 export const SESSION_UPDATE_MAX_MS = 15 * 60_000;
 export const SESSION_RPC_TIMEOUT_MS = 30 * 60_000;
-export const SESSION_DEFERRED_MAX_MS = 5 * 60_000;
 export const SESSION_HOST_POLL_MS = 250;
 export const SESSION_ATTACH_POLL_MS = 25;
 export const SESSION_HOOK_INPUT_MS = 500;
@@ -98,14 +97,17 @@ export interface SessionGeneration {
   readonly reaper: string;
   readonly hook: string;
 }
-export interface SessionDeferredBusiness {
+export type SessionDeferredBusiness = {
   readonly $sessionHostDeferred: true;
   readonly turnId: string;
   readonly permissionEpoch: number;
-  /** Absolute lifetime, preserved across observer replacement; never renewed by attach. */
-  readonly expiresAt: number;
   readonly presentation: unknown;
-}
+} & (
+  /** 제품의 무기한 질문은 턴·철회·dispose만 끝낸다. 재접속이 새 타이머를 만들지 않는다. */
+  | { readonly lifetime: "turn"; readonly expiresAt: null }
+  /** 기존 요청의 실제 만료 시각이다. Console Use의 idle 제한과는 다른 축이다. */
+  | { readonly lifetime: "deadline"; readonly expiresAt: number }
+);
 export interface SessionBusinessCall {
   readonly requestId: string;
   readonly sessionKey: string;

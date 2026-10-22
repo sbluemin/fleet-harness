@@ -41,6 +41,8 @@ export class SessionHostClient {
   }
   listSessions(): Promise<SessionHostSnapshot> { return this.peer.call("snapshot"); }
   open(launch: HostedSessionLaunch): Promise<SessionSnapshot> { return this.peer.call("open", { epoch: this.epoch, launch }); }
+  /** 서버 전용 원 launch 계약. credentials/env와 raw 경로가 있으므로 browser DTO로 쓰지 않는다. */
+  describe(sessionKey: string): Promise<HostedSessionLaunch> { return this.peer.call("describe", { epoch: this.epoch, sessionKey }); }
   readEvents(sessionKey: string, afterSeq: number): Promise<SessionReplay> { return this.peer.call("events", { epoch: this.epoch, sessionKey, afterSeq }); }
   command(input: Omit<SessionCommand, "epoch">): Promise<SessionCommandRecord> { return this.peer.call("command", { ...input, epoch: this.epoch }); }
   commandStatus(sessionKey: string, commandId: string): Promise<SessionCommandRecord | null> { return this.peer.call("command-status", { epoch: this.epoch, sessionKey, commandId }); }

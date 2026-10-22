@@ -80,7 +80,7 @@ describe("Console session-host lifecycle integration", () => {
       await expect(client.prepareUpdate("unsafe-update")).rejects.toThrow("session_business_not_drained");
       finishMutation({ content: [{ type: "text", text: "drained" }] });
       expect(await mutation).toMatchObject({ result: { content: [{ text: "drained" }] } });
-      client.bindBusiness(() => ({ $sessionHostDeferred: true, turnId: "turn-one", permissionEpoch: 7, expiresAt: Date.now() + 60_000, presentation: { kind: "approval" } }));
+      client.bindBusiness(() => ({ $sessionHostDeferred: true, turnId: "turn-one", permissionEpoch: 7, lifetime: "turn", expiresAt: null, presentation: { kind: "approval" } }));
       const pendingTool = callTool();
       let pendingRequestId = "";
       await vi.waitFor(async () => {
@@ -98,6 +98,11 @@ describe("Console session-host lifecycle integration", () => {
       client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
       client.bindBusiness(() => ({ content: [{ type: "text", text: `successor-${++toolCalls}` }] }));
       const after = await client.listSessions();
+      expect((await client.describe("chat")).kind).toBe("sdk");
+      const frozen = await client.describe("chat");
+      expect(frozen.kind === "sdk" && frozen.embeddedTools?.[0]?.port).toBe("fixture-tools");
+      expect(frozen.kind === "sdk" && frozen.request.model).toBe("opus");
+      expect((after.sessions.find((s) => s.sessionKey === "chat")!.runtime.pendingBusiness as { deferred: { lifetime: string; expiresAt: null } }[])[0]?.deferred).toMatchObject({ lifetime: "turn", expiresAt: null });
       await expect(client.answerBusiness(pendingRequestId, 8, {})).rejects.toThrow("session_permission_stale");
       await client.answerBusiness(pendingRequestId, 7, { content: [{ type: "text", text: "approved-after-update" }] });
       expect(await pendingTool).toMatchObject({ result: { content: [{ text: "approved-after-update" }] } });

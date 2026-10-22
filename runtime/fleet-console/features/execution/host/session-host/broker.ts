@@ -7,10 +7,11 @@ import type { ChildProcess } from "node:child_process";
 import { createOwnedProcessRegistry, isPidAlive, observeConsoleLockFile, startConsoleReaper, type ConsoleReaperLink, type ProcessContainmentPort } from "@fleet-console/lifecycle";
 import { SessionRpcPeer, privateSessionDirectory, publishSessionHost, removeOwnSessionManifest, sessionHostPaths } from "@fleet-console/lifecycle/session-host";
 import { OWNED_GROUP_TERM_GRACE_MS, CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
-import { assertSessionKey, SESSION_HOST_POLL_MS, SESSION_RPC_TIMEOUT_MS, SESSION_DEFERRED_MAX_MS, SESSION_HOST_WIRE, SESSION_RUNNER_WIRE, SESSION_BUSINESS_MAX, SESSION_COMMAND_MAX, SESSION_HOST_START_MS, SESSION_KEEPER_LOSS_MS, SESSION_OWNER_LOSS_MS, SESSION_REPLAY_MAX_BYTES, SESSION_UPDATE_MAX_MS, type SessionBusinessCall, type SessionCommand, type SessionCommandRecord, type SessionGeneration, type SessionHostEvent, type SessionHostManifest, type SessionHostSnapshot, type SessionOwner, type SessionReplay, type SessionSnapshot, type SessionUpdateRef } from "@fleet-console/protocol/session-host";
+import { assertSessionKey, SESSION_HOST_POLL_MS, SESSION_RPC_TIMEOUT_MS, SESSION_HOST_WIRE, SESSION_RUNNER_WIRE, SESSION_BUSINESS_MAX, SESSION_COMMAND_MAX, SESSION_HOST_START_MS, SESSION_KEEPER_LOSS_MS, SESSION_OWNER_LOSS_MS, SESSION_REPLAY_MAX_BYTES, SESSION_UPDATE_MAX_MS, type SessionBusinessCall, type SessionCommand, type SessionCommandRecord, type SessionGeneration, type SessionHostEvent, type SessionHostManifest, type SessionHostSnapshot, type SessionOwner, type SessionReplay, type SessionSnapshot, type SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import type { HostedSessionLaunch, SessionCheckpoint } from "./contracts.js";
 
 interface LiveSession {
+  launch: HostedSessionLaunch;
   snapshot: SessionSnapshot;
   events: SessionHostEvent[];
   bytes: number;
@@ -30,7 +31,7 @@ interface Business {
   dispatched: boolean;
   resolve(value: unknown): void;
   reject(error: Error): void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
   deferred?: import("@fleet-console/protocol/session-host").SessionDeferredBusiness;
 }
 export interface SessionBrokerOptions {
@@ -77,10 +78,12 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       void owner.peer.call("business", pending.call).then((value) => {
         const deferred = value as import("@fleet-console/protocol/session-host").SessionDeferredBusiness | null;
         if (deferred?.$sessionHostDeferred === true) {
-          if (!Number.isFinite(deferred.expiresAt) || deferred.expiresAt <= Date.now() || deferred.expiresAt > Date.now() + SESSION_DEFERRED_MAX_MS) throw new Error("session_permission_lifetime_invalid");
+          if (!deferred.turnId || !Number.isSafeInteger(deferred.permissionEpoch) || (deferred.lifetime === "turn" ? deferred.expiresAt !== null : deferred.lifetime !== "deadline" || !Number.isFinite(deferred.expiresAt) || deferred.expiresAt <= Date.now())) throw new Error("session_permission_lifetime_invalid");
           pending.dispatched = false; pending.deferred = deferred;
-          clearTimeout(pending.timer);
-          pending.timer = setTimeout(() => { business.delete(pending.call.requestId); pending.reject(new Error("session_permission_expired")); }, deferred.expiresAt - Date.now()); pending.timer.unref();
+          clearTimeout(pending.timer); pending.timer = undefined;
+          if (deferred.lifetime === "deadline") {
+            pending.timer = setTimeout(() => { business.delete(pending.call.requestId); pending.reject(new Error("session_permission_expired")); }, deferred.expiresAt - Date.now()); pending.timer.unref();
+          }
         } else { clearTimeout(pending.timer); business.delete(pending.call.requestId); pending.resolve(value); }
       }).catch((error: Error) => { clearTimeout(pending.timer); business.delete(pending.call.requestId); pending.reject(error); });
     }
@@ -203,7 +206,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       if (method === "backend-ready") { owner!.ready = true; flushBusiness(); return true; }
       if (method === "answer-business" || method === "revoke-business") {
         const pending = business.get(String(body.requestId));
-        if (!pending || !pending.deferred || pending.deferred.permissionEpoch !== body.permissionEpoch || pending.deferred.expiresAt <= Date.now()) throw new Error("session_permission_stale");
+        if (!pending || !pending.deferred || pending.deferred.permissionEpoch !== body.permissionEpoch || (pending.deferred.lifetime === "deadline" && pending.deferred.expiresAt <= Date.now())) throw new Error("session_permission_stale");
         clearTimeout(pending.timer); business.delete(pending.call.requestId);
         if (method === "revoke-business") pending.reject(new Error("session_permission_revoked")); else pending.resolve(body.value);
         return true;
@@ -215,7 +218,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         if (sessions.has(launch.sessionKey)) throw new Error("session_already_exists");
         const fingerprint = launch.launchFingerprint == null ? null : JSON.parse(JSON.stringify(launch.launchFingerprint));
         if (fingerprint && Buffer.byteLength(JSON.stringify(fingerprint)) > 4_096) throw new Error("session_fingerprint_limit");
-        const s: LiveSession = { snapshot: { sessionKey: launch.sessionKey, kind: launch.kind, generation: launch.generation.id, startedAt: Date.now(), state: "starting", seq: 0, runtime: {}, checkpoint: null, lastCommandSequence: 0, commands: [], launchFingerprint: fingerprint }, events: [], bytes: 0, commands: new Map(), lastCommandSequence: 0 };
+        const s: LiveSession = { launch: JSON.parse(JSON.stringify(launch)) as HostedSessionLaunch, snapshot: { sessionKey: launch.sessionKey, kind: launch.kind, generation: launch.generation.id, startedAt: Date.now(), state: "starting", seq: 0, runtime: {}, checkpoint: null, lastCommandSequence: 0, commands: [], launchFingerprint: fingerprint }, events: [], bytes: 0, commands: new Map(), lastCommandSequence: 0 };
         sessions.set(launch.sessionKey, s);
         try { const runner = await runnerFor(launch.generation); const runtime = await runner.call<Record<string, unknown>>("open", launch); s.snapshot = { ...s.snapshot, state: "live", runtime: { ...s.snapshot.runtime, ...runtime } }; publish(s, "opened", null); return s.snapshot; }
         catch (error) { s.snapshot = { ...s.snapshot, state: "lost" }; publish(s, "lost", null); throw error; }
@@ -234,6 +237,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       const session = sessions.get(String(body.sessionKey));
       if (!session) throw new Error("session_not_found");
       if (method === "events") { const after = Number(body.afterSeq); const replay: SessionReplay = { snapshot: sessionSnapshot(session), events: session.events.filter((e) => e.seq > after), gap: after < (session.events[0]?.seq ?? 1) - 1 }; return replay; }
+      if (method === "describe") return session.launch;
       if (method === "command-status") return session.commands.get(String(body.commandId))?.record ?? null;
       if (method === "checkpoint") {
         const next = body.checkpoint as SessionCheckpoint;

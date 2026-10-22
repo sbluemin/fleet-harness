@@ -8,7 +8,7 @@ export type RpcHandler = (method: string, body: unknown) => unknown | Promise<un
 export class SessionRpcPeer {
   private input = Buffer.alloc(0);
   private closed = false;
-  private readonly pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  private readonly pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> | undefined }>();
   private readonly closeListeners = new Set<() => void>();
   private handler: RpcHandler = () => { throw new Error("session_rpc_unbound"); };
   constructor(readonly socket: Socket) {
@@ -34,8 +34,8 @@ export class SessionRpcPeer {
     if (this.closed) return Promise.reject(new Error("session_rpc_closed"));
     const id = randomUUID();
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error("session_rpc_timeout")); }, timeoutMs);
-      timer.unref();
+      const timer = timeoutMs > 0 ? setTimeout(() => { this.pending.delete(id); reject(new Error("session_rpc_timeout")); }, timeoutMs) : undefined;
+      timer?.unref();
       this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
       try { this.send({ id, method, body }); } catch (error) {
         clearTimeout(timer); this.pending.delete(id); reject(error);

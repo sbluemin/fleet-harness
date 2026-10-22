@@ -59,7 +59,7 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
     r.pending.set(call.requestId, call); changed(r);
     const abort = () => { void peer.call("cancel-business", { sessionKey: r.launch.sessionKey, requestId: call.requestId }).catch(() => {}); };
     signal?.addEventListener("abort", abort, { once: true });
-    try { return await peer.call("business", call); }
+    try { return await peer.call("business", call, 0); }
     finally { signal?.removeEventListener("abort", abort); r.pending.delete(call.requestId); changed(r); }
   }
   async function close(r: Runtime): Promise<void> {
