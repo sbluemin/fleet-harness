@@ -31,7 +31,8 @@ try {
   const log = fs.openSync(cfg.log, 'a');
   const env = {};
   for (const key of ['PATH', 'Path', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'PATHEXT', 'NUMBER_OF_PROCESSORS']) if (process.env[key]) env[key] = process.env[key];
-  env.HOME = __dirname; env.USERPROFILE = __dirname; env.CI = 'true'; env.FORCE_COLOR = '0';
+  env.PATH = path.dirname(cfg.node) + path.delimiter + (process.env.PATH || process.env.Path || ''); delete env.Path;
+  env.HOME = __dirname; env.USERPROFILE = __dirname; env.TEMP = __dirname; env.TMP = __dirname; env.CI = 'true'; env.FORCE_COLOR = '0';
   child = spawn(cfg.node, [vitest, 'run', 'tests/console-lifecycle.integration.test.ts', '--reporter=verbose', '-t', 'Console session-host lifecycle integration'], { cwd: cfg.cwd, env, detached: true, windowsHide: true, stdio: ['ignore', log, log] });
   fs.closeSync(log);
   const timeout = setTimeout(() => { child.kill('SIGKILL'); }, 360000);

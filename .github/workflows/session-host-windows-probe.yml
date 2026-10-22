@@ -67,9 +67,7 @@ jobs:
         run: |
           set -o pipefail
           FORCE_COLOR=0 pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts --reporter=verbose -t "runs Console-owned sessions" 2>&1 | tee session-host.log
-          grep -E "Tests +[0-9]+ passed" session-host.log
-          passed=$(grep -oE "Tests +[0-9]+ passed" session-host.log | grep -oE "[0-9]+" | head -1)
-          test "${passed:-0}" -ge 1
+          node -e 'const s=require("node:fs").readFileSync("session-host.log","utf8").replace(/\x1B\[[0-?]*[ -/]*[@-~]/g,""); const m=s.match(/Tests\s+(\d+) passed/); console.log("fallback passed="+(m?.[1]??0)); if(!m||Number(m[1])<1)process.exit(1)'
       # Keep every preservation/authentication/job-zero assertion; run the driver outside the CI-owned job.
       - name: Session host representative cases outside the runner job
         if: ${{ !cancelled() }}

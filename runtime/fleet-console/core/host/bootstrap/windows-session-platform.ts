@@ -46,8 +46,11 @@ export function createWindowsSessionPlatform(consoleProcesses?: OwnedProcessRegi
   const wide = (value: string) => Buffer.from(value + "\0", "utf16le");
   const error = (name: string) => new Error(`${name}:${Number(getError())}`);
   const token = Buffer.alloc(8); if (!openToken(current(), 0x0008, token)) throw error("session_token_open");
-  const user = Buffer.alloc(4096); const needed = Buffer.alloc(4);
-  try { if (!tokenInfo(pointer(token), 1, user, user.length, needed)) throw error("session_token_user"); }
+  const user = Buffer.alloc(4096); const defaultOwner = Buffer.alloc(4096); const needed = Buffer.alloc(4);
+  try {
+    if (!tokenInfo(pointer(token), 1, user, user.length, needed)) throw error("session_token_user");
+    if (!tokenInfo(pointer(token), 4, defaultOwner, defaultOwner.length, needed)) throw error("session_token_owner");
+  }
   finally { close(pointer(token)); }
   const userSid = pointer(user);
   const converted = Buffer.alloc(8); if (!sidString(userSid, converted)) throw error("session_sid_string");
@@ -63,7 +66,9 @@ export function createWindowsSessionPlatform(consoleProcesses?: OwnedProcessRegi
     const owner = Buffer.alloc(8); const descriptor = Buffer.alloc(8);
     const result = Number(security(wide(file), 1, 1, owner, null, null, null, descriptor));
     if (result !== 0) return false;
-    try { return Boolean(equalSid(pointer(owner), pointer(user))); } finally { localFree(pointer(descriptor)); }
+    // elevated token의 기본 owner는 Administrators일 수 있다. 임의 group이 아니라 현재 TokenOwner만 허용한다.
+    try { return Boolean(equalSid(pointer(owner), pointer(user))) || Boolean(equalSid(pointer(owner), pointer(defaultOwner))); }
+    finally { localFree(pointer(descriptor)); }
   };
   return {
     assertIndependent: () => independent(current()),

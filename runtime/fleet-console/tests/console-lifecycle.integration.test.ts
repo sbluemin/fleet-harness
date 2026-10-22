@@ -73,9 +73,11 @@ describe("Console session-host lifecycle integration", () => {
       const client = await owner.start(held.payload);
       expect(client.preservesUpdates).toBe(false);
       await client.bindBusiness(() => null);
-      const terminal = await client.open({ kind: "pty", sessionKey: "bound", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data',b=>process.stdout.write(b));setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
-      await client.command({ sessionKey: "bound", commandId: "write", sequence: 1, kind: "write", body: { data: "bound-still-runs\n" } });
-      await vi.waitFor(async () => expect((await client.readEvents("bound", 0)).events.some((event) => event.kind === "pty-data" && String(event.data).includes("bound-still-runs"))).toBe(true));
+      const terminal = await client.open({ kind: "pty", sessionKey: "bound", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data',b=>process.stdout.write(b));process.stdout.write('fixture-ready\\n');setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
+      const output = async () => (await client.readEvents("bound", 0)).events.filter((event) => event.kind === "pty-data").map((event) => String(event.data)).join("");
+      await vi.waitFor(async () => expect(await output()).toContain("fixture-ready"), { timeout: 10_000 });
+      await client.command({ sessionKey: "bound", commandId: "write", sequence: 1, kind: "write", body: { data: `bound-still-runs${process.platform === "win32" ? "\r" : "\n"}` } });
+      await vi.waitFor(async () => expect(await output()).toContain("bound-still-runs"), { timeout: 10_000 });
       await expect(client.prepareUpdate("forged-keeper")).rejects.toThrow("session_update_preservation_unavailable");
       expect(await owner.prepareUpdate("bound-update")).toBe(null);
       await owner.commitUpdate("bound-update"); expect(owner.preservingUpdate).toBe(false);
@@ -232,8 +234,8 @@ describe("Console session-host lifecycle integration", () => {
       const launches = fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string });
       expect(launches.filter((e) => e.event === "launch")).toHaveLength(1);
       expect(launches.filter((e) => e.event === "turn-start")).toHaveLength(1);
-      await client.command({ sessionKey: "terminal", commandId: "write-one", sequence: 1, kind: "write", body: { data: "continued\n" } });
-      await vi.waitFor(async () => expect((await client!.readEvents("terminal", 0)).events.some((e) => e.kind === "pty-data" && String(e.data).includes("continued"))).toBe(true));
+      await client.command({ sessionKey: "terminal", commandId: "write-one", sequence: 1, kind: "write", body: { data: `continued${process.platform === "win32" ? "\r" : "\n"}` } });
+      await vi.waitFor(async () => expect((await client!.readEvents("terminal", 0)).events.filter((e) => e.kind === "pty-data").map((e) => String(e.data)).join("")).toContain("continued"), { timeout: 10_000 });
       const incompatibleExecution = await HostedExecution.attach(client, () => {}, env);
       const incompatible = createHostedSdk(incompatibleExecution, sdkOptions, { ...binding, tools: [{ ...binding.tools[0]!, tools: [{ ...binding.tools[0]!.tools[0]!, inputSchema: { type: "object", properties: { changed: { type: "string" } } } }] }] });
       await expect(incompatible.openSession({ model: "opus", cwd: root })).rejects.toThrow("session_tool_schema_incompatible");
