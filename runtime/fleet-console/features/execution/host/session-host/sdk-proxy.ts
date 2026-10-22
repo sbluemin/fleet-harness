@@ -30,9 +30,12 @@ async function mcp(server: ClaudeGatewayServedMcpServer, method: string, params?
 /** Converts session-scoped served MCP endpoints to frozen runner fronts and replaceable business handlers. */
 export async function bindServedTools(execution: HostedExecution, key: string, servers: readonly ClaudeGatewayServedMcpServer[]): Promise<HostedToolGroup[]> {
   return Promise.all(servers.map(async (server) => {
-    const initialized = await mcp(server, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "fleet-session-host", version: "1" } }) as { instructions?: string };
+    const initialized = await mcp(server, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "fleet-session-host", version: "1" } }) as { instructions?: string; capabilities?: { resources?: Record<string, unknown> } };
     const listed = await mcp(server, "tools/list") as { tools: HostedToolGroup["tools"] };
-    const resourceList = await mcp(server, "resources/list") as { resources?: HostedToolGroup["resources"] };
+    // Resources are optional in MCP. Tool-only Console endpoints reject resources/list.
+    const resourceList = initialized.capabilities?.resources
+      ? await mcp(server, "resources/list") as { resources?: HostedToolGroup["resources"] }
+      : {};
     if (!Array.isArray(listed.tools)) throw new Error("session_mcp_schema_invalid");
     const port = `${key}:mcp:${server.name}`;
     execution.bind(port, async (call) => {

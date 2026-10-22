@@ -2769,7 +2769,10 @@ class AgentChatSession {
         // 여는 사이 고른 좌표는 첫 말보다 먼저 적용한다. 디스패치는 이 비행을 기다린 뒤 보낸다.
         this.applyPendingCoordinates();
         return session;
-      })().finally(() => {
+      })().catch((error) => {
+        this.seed.hostedExecution?.failure("chat_session_open_failed", error);
+        throw error;
+      }).finally(() => {
         this.sessionFlight = null;
       });
     }

@@ -372,6 +372,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
         ptyFds = readSpawnedPtyFds(beforePtyFds, pty);
       }
     } catch (error) {
+      reportFailure("terminal_start_failed", error);
       await runLaunchCleanup(launch.cleanup);
       throw error;
     }
