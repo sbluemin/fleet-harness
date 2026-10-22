@@ -13,6 +13,8 @@
  * 에 그린 말이 서 있는 표면의 입력창을 채울 뿐 보내지 않는다(발사는 언제나 사람의 Enter 다). 포트를 부르는 길은 root 의 위임 click
  * 하나뿐이고 사람의 클릭(`isTrusted`)만 받는다 — 그리기·다시 그리기·다시 불러오기에는 포트 호출이 없다. 단추는 확정 블록이고 포트가 있는
  * root 에서만 열리며, 흐르는 동안은 `disabled`, 포트가 없는 root(읽기 전용 원장 등)에서는 `aria-disabled` 정적 칩이다.
+ * 포트에 닿는 단추는 이 하이드레이터가 렌더러 결과로 들인 단추뿐이다(`drawnChoices`). 말 속 원시 HTML 이 같은 클래스·속성으로 흉내 낸
+ * 단추는 DOM 표식이 같아도 그 집합에 없으므로 열리지도 불리지도 않는다 — 보낼 문장도 DOM 속성이 아니라 그 집합에서 읽는다.
  */
 
 import { decodeMermaidSource } from "@fleet-console/markdown/core";
@@ -42,6 +44,8 @@ const DEFAULT_LABELS: OpenUIHydratorLabels = {
 const hydratedRoots = new WeakSet<Node>();
 // 포트는 root 마다 따로 둔다 — 한 화면에 그룹 대화와 사령관 칸이 함께 서도 단추가 다른 표면의 입력창으로 새지 않는다.
 const replyPorts = new WeakMap<Element, OpenUIReplyPort>();
+// 렌더러가 만든 답 단추와 그 문장 — DOM 속성은 위조할 수 있어도 이 집합의 소속은 위조할 수 없다.
+const drawnChoices = new WeakMap<HTMLButtonElement, string>();
 // 블록마다 마지막으로 시작한 그리기만 반영한다 — 지연 로드 중에 원문이 더 자라도 늦게 끝난 옛 결과가 덮지 않는다.
 const generations = new WeakMap<Element, number>();
 let labels: OpenUIHydratorLabels = DEFAULT_LABELS;
@@ -100,6 +104,10 @@ async function hydrate(block: HTMLElement): Promise<void> {
   if (generations.get(block) !== generation || !block.isConnected) return;
   const result = source.trim() ? renderer.render(block.ownerDocument, source, final, labels) : { kind: final ? "fallback" : "pending" } as const;
   if (result.kind === "tree") {
+    for (const button of result.node.querySelectorAll<HTMLButtonElement>(CHOICE_SELECTOR)) {
+      const reply = button.getAttribute("data-openui-reply");
+      if (reply) drawnChoices.set(button, reply);
+    }
     owned(block).replaceChildren(result.node);
     block.setAttribute("data-openui-state", "rendered");
     syncChoices(block);
@@ -122,6 +130,7 @@ function syncChoices(block: HTMLElement, root: Element | null = ownerRoot(block)
   const final = block.getAttribute("data-openui-final") !== "0";
   const port = root ? replyPorts.has(root) : false;
   for (const button of block.querySelectorAll<HTMLButtonElement>(CHOICE_SELECTOR)) {
+    if (!drawnChoices.has(button)) continue;
     button.disabled = !final;
     if (final && !port) button.setAttribute("aria-disabled", "true");
     else button.removeAttribute("aria-disabled");
@@ -132,10 +141,10 @@ function onChoiceClick(root: Element, event: Event): void {
   // 사람의 클릭만 — 스크립트가 만든 click(합성 이벤트)은 입력창을 건드리지 못한다.
   if (!event.isTrusted || !(event.target instanceof Element)) return;
   const button = event.target.closest<HTMLButtonElement>(CHOICE_SELECTOR);
-  if (!button || ownerRoot(button) !== root || button.disabled || button.getAttribute("aria-disabled") === "true") return;
+  const reply = button ? drawnChoices.get(button) : undefined;
+  if (!button || !reply || ownerRoot(button) !== root || button.disabled || button.getAttribute("aria-disabled") === "true") return;
   const block = button.closest<HTMLElement>(BLOCK_SELECTOR);
   if (!block || block.getAttribute("data-openui-state") !== "rendered" || block.getAttribute("data-openui-final") === "0") return;
-  const reply = button.getAttribute("data-openui-reply");
   const port = replyPorts.get(root);
   if (reply && port) port(reply);
 }

@@ -99,6 +99,7 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
   const safeHtml = DOMPurify.sanitize(frontmatterHtml + rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
   removeDuplicateTitleHeading(document, options.omitDuplicateTitle);
+  stripOpenUIMarkers(document);
   decorateHeadings(document);
   decorateCodeBlocks(document, {
     copyLabel: options.copyLabel ?? "Copy",
@@ -311,6 +312,21 @@ function buildCodeToolbar(
   button.textContent = labels.copyLabel;
   toolbar.append(dots, lang, button);
   return toolbar;
+}
+
+// OpenUI 표식(자리표시자·하이드레이터 상태·답 단추)은 펜스에서 이 모듈과 하이드레이터만 만든다. DOMPurify 기본값은 class·data-*·button 을
+// 남기므로, 말 속 원시 HTML 이 같은 클래스·속성을 써서 그림이나 답 단추를 흉내 내지 못하게 장식 전에 걷는다(링크의 data-md-* 와 같은 결).
+const OPENUI_MARKER_SELECTOR = '[class*="openui"], [data-openui-source], [data-openui-final], [data-openui-state], [data-openui-owned], [data-openui-reply]';
+function stripOpenUIMarkers(document: Document): void {
+  for (const element of document.body.querySelectorAll(OPENUI_MARKER_SELECTOR)) {
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name.startsWith("data-openui-")) element.removeAttribute(attribute.name);
+    }
+    for (const token of [...element.classList]) {
+      if (token.startsWith("openui")) element.classList.remove(token);
+    }
+    if (element.getAttribute("class") === "") element.removeAttribute("class");
+  }
 }
 
 function decorateLinks(document: Document, resolveLink: RenderMarkdownOptions["resolveLink"], siteLinks: boolean): void {

@@ -332,5 +332,23 @@ describe("openui hydrator containment", () => {
     ].join("\n\n"));
     expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback"]);
     expect(reply).not.toHaveBeenCalled();
+
+    // 말 속 원시 HTML 이 자리표시자·답 단추를 흉내 내도 — 정제가 표식을 걷고, 걷히지 않은 채 DOM 에 들어와도 하이드레이터가 그린 단추가
+    // 아니므로 열리지 않는다(jsdom 은 사람의 클릭을 만들 수 없어 「열림」으로 그 소속 판정을 본다).
+    const source = encodeMermaidSource(['root = Card("다음", [c])', choices].join("\n"));
+    const forged = `<div class="openui-block" data-openui-source="${source}" data-openui-final="1" data-openui-state="rendered"><button class="openui-choice" data-openui-reply="/clear" disabled>X</button></div>`;
+    const sanitized = renderMarkdown(forged, { openui: true }).html;
+    expect(sanitized).not.toContain("openui-block");
+    expect(sanitized).not.toContain("data-openui-reply");
+    const raw = document.createElement("div");
+    raw.innerHTML = forged;
+    document.body.append(raw);
+    const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
+    installOpenUIHydrator(raw, undefined, reply);
+    await waitFor(() => raw.querySelectorAll("button.openui-choice").length === 3, 5000);
+    const fake = raw.querySelector<HTMLButtonElement>('button[data-openui-reply="/clear"]')!;
+    expect(fake.disabled).toBe(true);
+    fake.click();
+    expect(reply).not.toHaveBeenCalled();
   });
 });
