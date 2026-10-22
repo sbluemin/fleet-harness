@@ -2704,7 +2704,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (operation.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return injected;
     const { dormantBorn: _born, restoredDormant: _restored, ...payload } = operation.payload;
     if (_born !== undefined || _restored !== undefined) ctx.host.operations.patch(operation.id, { payload });
-    return observability.setTerminalSessionChatActive(operation.id, true) ?? injected;
+    const adopted = observability.setTerminalSessionChatActive(operation.id, true) ?? injected;
+    // 복원된 채팅은 살아 있는 대화다 — 예전 깨우기 경로가 하던 대로 "지금 어디" 축에 다시 올린다.
+    // 첫 send의 SDK 자식은 seed cwd 그대로면 cwd 변경을 보고하지 않으므로 여기서 세우지 않으면 비어 남는다.
+    if (cwd) workspaceContext.observe(operation.id, operation.theaterId, cwd);
+    return observability.getTerminalSessionInfo(operation.id) ?? adopted;
   }
 
   function rehydrateDormantAgentOperations(): void {
