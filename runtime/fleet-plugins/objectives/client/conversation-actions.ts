@@ -1,7 +1,7 @@
 import type { GroupConversationActions, GroupWriteResult } from "@fleet-console/sdk/conversation";
 import type { Objective } from "../server/types.js";
 import { objectiveBoardActions } from "./board-actions.js";
-import { commodoreLanguage } from "./commodore-state.js";
+import { commodoreLanguage } from "./board-commodore.js";
 import { objectivesApi, post } from "./objectives-state.js";
 
 /**

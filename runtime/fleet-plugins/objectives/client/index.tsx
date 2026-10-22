@@ -2,14 +2,9 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
+import { commodoreBoard, installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./board-commodore.js";
 import { objectivesClusterSource } from "./clusters.js";
-import { commodoreInboxSection } from "./commodore-inbox-section.js";
-import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
-import { commodoreTheaterContribution } from "./commodore-header.js";
-import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
-import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
-import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface, goToObjective } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
 import { objectiveConversationTabs, objectiveMobileConversationTabs } from "./head-tabs.js";
@@ -19,6 +14,7 @@ import { objectivesOnboarding } from "./onboarding.js";
 import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
+const OBJECTIVES_ENTRY_ID = "objectives";
 export const OBJECTIVE_SURFACE_ID = "objectives";
 
 const ObjectiveIcon = () => (
@@ -110,69 +106,25 @@ export const objectivesEntry: RailEntryDescriptor = {
   },
 };
 
-/** 모바일 사령관 화면 — 바로가기 목적지 「사령관」의 본문. 데스크톱은 사이드바 줄과 「사령관 기록」 시트를 그대로 쓴다. */
-export const commodoreMobilePane: PaneDescriptor = {
-  id: COMMODORE_MOBILE_PANE,
-  role: "primary",
-  mounts: ["rail"],
-  title: (ctx) => getT(ctx.language)("objectives.commodore.name"),
-  hideCaption: true,
-  render: (ctx) => ctx.mobileBar ? <MobileCommodore ctx={ctx} /> : null,
-};
-
-/**
- * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 홈 대표 자리(바로가기 칩)에 「사령관」 목적지로 선다.
- * 데스크톱 레일에는 오르지 않는다(`mobile.desktop: false`) — 팔레트의 사령관 행은 호스트가 Theater Inbox 섹션(`commodoreInboxSection`)에서 세운다.
- */
-export const commodoreEntry: RailEntryDescriptor = {
-  id: COMMODORE_ENTRY_ID,
-  title: (locale) => getT(locale)("objectives.commodore.name"),
-  icon: () => <PennantIcon />,
-  scope: "theater",
-  panes: [COMMODORE_MOBILE_PANE],
-  // 목적지 order 5(「목표」 목적지 10 앞). 칩 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
-  mobile: { desktop: false, destination: { order: 5, shown: commodoreDestinationShown, trailing: commodoreDestinationTrailing }, icon: () => <PennantIcon /> },
-  // 사령관 칩 배지 — 사령관이 사람에게 물어 답을 기다리는 질문 수(`openAsks`). 행은 「목표」의 확인 필요가 같은 질문을 이미 세우므로 두지 않는다.
-  attention: {
-    subscribe: subscribeCommodore,
-    count: (theaterId) => openAsks(theaterId).length,
-    label: (count, locale) => getT(locale)("objectives.ask.badge", { count }),
-  },
-};
-
 const objectivesPlugin = definePlugin({
   id: "objectives",
   install: (ctx) => {
     const dispose = installObjectiveState(ctx);
-    const disposeCommodore = installCommodoreState(ctx);
-    // 대화 중심 화면(Console 실험 기능)이 서 있으면 Theater 머리·Inbox 의 사령관 기록 요청이 가운데 칸에 사령관 대화를 연다.
-    const disposeConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
+    const disposeCommodore = installCommodoreHost(ctx.commodore);
     // 시작 전 목표의 시작 화면도 같은 능력으로 가운데 칸에 선다.
     const disposeFresh = connectFreshConversation(ctx.conversation);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
-    // Codex 문서에서 고른 문장(인용)을 사령관 입력창에 받는다 — 호스트가 붙일 곳(지금 열린 대화 우선)과 붙이기를 중개한다. 보내지는 않는다.
-    const disposeQuotes = ctx.composer.receiveQuotes?.("objectives", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets }) ?? (() => undefined);
-    return () => { disposeQuotes(); disposeRoster(); disposeFresh(); disposeConversation(); disposeCommodore(); dispose(); };
+    return () => { disposeRoster(); disposeFresh(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,
-  railEntries: [objectivesEntry, commodoreEntry],
+  railEntries: [objectivesEntry],
   onboarding: objectivesOnboarding,
-  panes: [objectivesPane, objectivesMobileDetailPane, commodoreMobilePane],
+  panes: [objectivesPane, objectivesMobileDetailPane],
   // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
   operationClusters: objectivesClusterSource,
-  // 사령관(자율 운영) — Theater 머리의 글리프(켬 brass·끔 회색)·턴 물결·머리를 누르면 여는 칸·우클릭 메뉴의 켜기/끄기. 실험 기능이 꺼져 있으면 빌려 주지 않는다.
-  theaterContributions: [commodoreTheaterContribution],
-  // 새 세션 '@' — 지금 Theater 의 사령관(자율 운영이 실제로 돌 때만)에게 사령관 기록 입력과 같은 경로로 보낸다.
-  mentionTargets: commodoreMentionTargets,
-  subscribeMentionTargets: subscribeCommodoreMentions,
-  messageMentionTarget: messageCommodoreMention,
-  // 사령관 — Theater Inbox 의 섹션(기록·지시·정보·설정). 시트 틀은 호스트가 그린다.
-  theaterInboxSections: [commodoreInboxSection],
-  // 상주 기여라 머리 글리프·Inbox 가 닫혀 있어도 언어를 알린다 — 리액트 밖의 새 세션 '@' 행이 이 값으로 문구를 고른다.
-  persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
-  // 대화 중심 화면에서는 같은 사령관이 Inbox 시트 대신 가운데 칸(기록)과 오른쪽 패널(행위 기록·지시·정보·설정)에 선다.
-  conversationSurfaces: [commodoreConversationSurface, freshConversationSurface],
+  commodoreBoard,
+  conversationSurfaces: [freshConversationSurface],
 });
 
 export const plugins = [objectivesPlugin] as const;

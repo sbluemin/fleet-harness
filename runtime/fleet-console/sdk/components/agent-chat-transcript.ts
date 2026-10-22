@@ -21,7 +21,7 @@ export interface AgentChatTranscriptOrigin {
 
 /** Reference-only attachments never open the Operation preview route. */
 /** `quote` — 다른 표면이 입력창에 붙여 보낸 인용(`@fleet-console/sdk/composer/quotes`). */
-/** `preview` — plugin-owned image bytes at a same-origin plugin API URL; never a host filesystem path. */
+/** `preview` — image bytes at a same-origin plugin API URL (`/plugins/…`) or the Commodore feature's attachment route (`/api/v1/commodore/attachment?…`); never a host filesystem path. */
 export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
 
 /**

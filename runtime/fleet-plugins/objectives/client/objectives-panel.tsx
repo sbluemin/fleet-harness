@@ -22,7 +22,7 @@ import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerOperation, openNewOperation, hasDecisionRequest, focusOperation, followActiveOperation, listedOperationSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
-import { personTurnAt, useCommodoreBoard } from "./commodore-state.js";
+import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   followupGate,

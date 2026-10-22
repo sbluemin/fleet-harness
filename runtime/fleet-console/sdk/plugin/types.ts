@@ -1,3 +1,5 @@
+import type { CommodoreBoardClient, CommodoreClientHost } from "../commodore/client.js";
+import type { FleetPluginCommodoreHost } from "../commodore/ports.js";
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
@@ -296,10 +298,12 @@ export interface ClientExecutionProvider {
 }
 
 export interface FleetClientPlugin extends ClientExecutionProvider {
+  readonly commodoreBoard?: CommodoreBoardClient;
   readonly id: string;
 }
 
 export interface PluginInstallContext {
+  readonly commodore?: CommodoreClientHost;
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly api: ClientApiCapability;
@@ -1284,6 +1288,7 @@ export interface FleetPluginServerContext {
 }
 
 export interface FleetPluginHostCapabilities {
+  readonly commodore?: FleetPluginCommodoreHost;
   readonly agent: AgentHost;
   readonly attachments?: PluginAttachmentHost;
   readonly consoleUse: ConsoleUseMcpHost;

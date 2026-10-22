@@ -619,6 +619,10 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities, 
   return {
     host: {
       ...host,
+      ...(host.commodore ? { commodore: {
+        commander: host.commodore.commander,
+        registerBoard: (adapter: Parameters<NonNullable<FleetPluginHostCapabilities["commodore"]>["registerBoard"]>[0]) => track(host.commodore!.registerBoard(adapter)),
+      } } : {}),
       ...(host.consoleControl?.subscribeTurnEnds ? { consoleControl: {
         ...host.consoleControl,
         subscribeTurnEnds: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void) => track(host.consoleControl!.subscribeTurnEnds!(listener)),

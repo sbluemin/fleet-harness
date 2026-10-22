@@ -10,8 +10,8 @@ import { SettingsCard, SettingsRow, SettingsToggle, useMobileSettingsHost } from
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
-import type { CommodoreAsk } from "../server/commodore/types.js";
+import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
+import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
@@ -139,7 +139,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
       id: objective.id,
       clusterId: objective.id,
       title: objective.title,
-      reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
+      reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.autonomy.note.handed"),
       open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
     })),
   ];
@@ -1255,8 +1255,8 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
-              {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
+              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.autonomy.note.answering")}</span> : null}</div>
+              {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.autonomy.decisionHint")}</p> : null}
               {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
               {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>

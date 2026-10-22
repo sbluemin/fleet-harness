@@ -1,3 +1,5 @@
+import { createCommodoreClient } from "../../../../features/commodore/client/index.js";
+import type { CommodoreClientHost } from "@fleet-console/sdk/commodore";
 import { consoleExecution } from "./execution.js";
 import { createContext, useContext, useMemo } from "react";
 import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
@@ -36,6 +38,7 @@ export interface PluginLoadFailure {
 }
 
 export interface PluginRegistry {
+  readonly commodore: CommodoreClientHost;
   readonly plugins: readonly FleetClientPlugin[];
   readonly providers: readonly ClientExecutionProvider[];
   /** 이 부팅에서 빠진 플러그인. 비어 있으면 전부 올라왔다는 뜻이다. */
@@ -99,7 +102,7 @@ export const PluginRegistryProvider = PluginRegistryContext.Provider;
 
 export async function loadPluginRegistry(): Promise<PluginRegistry> {
   const plugins = [...builtInPlugins];
-  const pluginIds = new Set(["terminal", ...plugins.map((plugin) => plugin.id)]);
+  const pluginIds = new Set(["terminal", "commodore", ...plugins.map((plugin) => plugin.id)]);
   const { entries, skipped } = await loadPluginRuntimeManifest();
   const failures: PluginLoadFailure[] = [...skipped];
   for (const entry of entries) {
@@ -162,7 +165,8 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 }
 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
-  const providers: readonly ClientExecutionProvider[] = [consoleExecution, ...plugins];
+  const commodore = createCommodoreClient(plugins.find((plugin) => plugin.commodoreBoard)?.commodoreBoard ?? null);
+  const providers: readonly ClientExecutionProvider[] = [consoleExecution, commodore.plugin, ...plugins];
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
@@ -217,6 +221,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   }
   return {
     plugins,
+    commodore: commodore.host,
     providers,
     failures,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),

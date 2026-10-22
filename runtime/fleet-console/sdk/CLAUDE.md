@@ -7,6 +7,7 @@
 | Directory | Responsibility |
 |---|---|
 | `agent/` | Host-owned, plugin-scoped Agent execution and tool contracts |
+| `commodore/` | Ports between the Console Commodore feature and the board plugin, plus their shared DTOs |
 | `operations/`, `plugin/` | Operation and plugin lifecycle contracts |
 | `models/` | Model roster contract and pure coordinate resolution shared by server and browser |
 | `settings/`, `notifications/` | Configuration and notification capabilities |

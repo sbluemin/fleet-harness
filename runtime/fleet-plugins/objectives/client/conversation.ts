@@ -3,7 +3,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
-import { decisionTurn } from "./commodore-state.js";
+import { decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchObjectiveView, returnPersonHold, revealObjective } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
@@ -64,7 +64,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
     ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
-    ...(handler ? { handler: localized((t) => t("objectives.commodore.note.answering")) } : {}),
+    ...(handler ? { handler: localized((t) => t("objectives.autonomy.note.answering")) } : {}),
     ...(handedHold ? { handed: {
       label: localized((t) => t("objectives.decision.handed")), reason: handedHold.reason,
       giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, "decision") },

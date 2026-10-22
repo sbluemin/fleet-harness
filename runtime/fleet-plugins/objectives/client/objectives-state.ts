@@ -108,7 +108,7 @@ function noteTransient(): void {
  * 세션이 살아 있다는 증거 — 게이트를 내리고 곧바로 한 번 스윕한다. 게이트가 서 있던 동안 탐침에 밀려 한 번도 묻지 않은
  * Theater 는 장부에 없으므로, 장부 기한만 겨냥하는 타이머로는 깨어나지 않는다. 미룬 엔트리는 마지막 실패에서 첫 간격까지 당긴다.
  */
-function noteAlive(): void {
+export function noteAlive(): void {
   if (!degraded) return;
   degraded = null;
   for (const theaterId of loadRetries.keys()) rearm(theaterId);

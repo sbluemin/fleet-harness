@@ -84,7 +84,7 @@ export interface TheaterSectionSearchEntry {
   readonly theaterId: string;
   readonly theaterLabel: string;
   readonly theaterAlias?: string;
-  /** 정준 id(`objectives:commodore`) */
+  /** 정준 id(`commodore:commodore`) */
   readonly sectionId: string;
   /** 서술자의 첫 칸 id */
   readonly pageId: string;

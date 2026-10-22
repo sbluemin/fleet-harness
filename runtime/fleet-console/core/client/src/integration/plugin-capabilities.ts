@@ -1,3 +1,4 @@
+import type { CommodoreClientHost } from "@fleet-console/sdk/commodore";
 import { requestShellOpenAt, requestShellRestartAt } from "@fleet-console/sdk/navigation/browser";
 import { getActiveShellKey } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
@@ -50,6 +51,7 @@ function viewTheaterInbox(theaterId: string): void {
 }
 
 export interface HostCapabilityDependencies {
+  readonly commodore?: CommodoreClientHost;
   /**
    * 레일 바인딩. 함수를 주면 부를 때마다 지금의 목록을 읽는다 — 설치한 능력이 레일 목록이 바뀔 때마다(대화 중심 화면의 탭이
    * 서고 걷힐 때마다) 다시 만들어지지 않게, 앱은 함수로 넘긴다. 배열을 주면 그 시점의 목록으로 고정된다.
@@ -178,6 +180,7 @@ export function createHostCapabilities(
   const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(readBindings()));
   const capabilities: PluginInstallContext = {
     ...base,
+    commodore: dependencies.commodore,
     operations: {
       ...base.operations,
       // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
