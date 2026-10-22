@@ -756,6 +756,15 @@
   min-width: 0;
 }
 
+/* 지휘관 세션의 시작 구성 표식이 선 줄 — 표식은 칩과 같이 제목 바로 뒤에 붙는다. 제목은 글자 폭만큼만 서고(좁으면 말줄임),
+   끝의 기한·주의 메모를 줄 끝으로 미는 일은 표식 뒤 첫 메모가 맡는다. */
+.side-bar-cluster-row-head:has(> .launch-configuration-mark) > .side-bar-cluster-row-title {
+  flex: 0 1 auto;
+}
+.side-bar-cluster-row-head > .launch-configuration-mark + .side-bar-cluster-row-lead {
+  margin-left: auto;
+}
+
 /* 상태 줄 — 단계가 상태 문구 앞에 같은 크기로 서고, 한 줄을 넘으면 상태 문구만 말줄인다. */
 .side-bar-cluster-row-line {
   display: flex;

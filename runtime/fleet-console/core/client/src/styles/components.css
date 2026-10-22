@@ -3865,8 +3865,11 @@
   color: var(--text-secondary);
 }
 
+/* 이름은 글자 폭만큼만 서고 남는 폭으로 자라지 않는다 — 이름 줄의 표식(결정 요청·시작 구성)이 행 끝이 아니라 이름 바로 뒤에 붙는다.
+   줄 폭이 모자라면 이름만 줄어 말줄임되고, 표식은 flex: none 이라 그대로 보인다. */
 .side-bar-chip-name {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
   opacity: 1;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
