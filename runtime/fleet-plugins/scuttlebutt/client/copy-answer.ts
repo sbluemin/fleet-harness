@@ -33,7 +33,7 @@ const copyCodeStates = new WeakMap<HTMLElement, { timer: number | null; seq: num
 
 /**
  * 마크다운 렌더러가 코드 블록마다 심는 Copy 버튼. 렌더러는 버튼만 그리고 동작은 표면이 위임으로
- * 받는다(Skills와 같은 계약). 말풍선과 카드가 같은 손잡이를 쓴다.
+ * 받는다. 말풍선과 카드가 같은 손잡이를 쓴다.
  *
  * 성공 글자는 writeText가 이행된 뒤에만 낸다. 클립보드가 없거나 던지거나 거절되면 모두 실패이고,
  * 복원 글자는 클릭 때의 textContent가 아니라 호출부가 넘긴 라벨이다 — 표시 중에 다시 누르면

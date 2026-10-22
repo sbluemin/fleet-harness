@@ -4,7 +4,7 @@ This directory owns repository-work skills. It is separate from what Fleet embed
 
 ## Authoring
 
-- Preserve directory names and `name` unless an explicitly requested merge or rename requires updating their callers; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` unsupported by the Console parser and descriptions longer than 500 characters.
+- Preserve directory names and `name` unless an explicitly requested merge or rename requires updating their callers; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` block scalars, quoted or continued values, and descriptions longer than 500 characters.
 - Keep inputs, execution decisions, authority boundaries, and completion/stop conditions in the entrypoint. Leave judgment-dependent ordering flexible; retain order required by dependencies or side effects.
 - Put long commands and platform/mode-specific procedures once in `references/`. Link them with **when and why to read**, not a requirement to preload everything.
 - Do not duplicate procedures owned by another skill or `CLAUDE.md`. Do not copy harness or MCP tool contracts; name the destination and the boundaries those contracts do not state. Add a skill only for a distinct recurring task.
@@ -16,10 +16,9 @@ From the repository root with its Node environment:
 
 ```bash
 node .claude/skills/validate-skills.mjs
-pnpm --filter @fleet-plugins/skills test
 ```
 
-The validator checks the real Console description parser, names, file links, and reachability of every `references/` file, including nested folders. The Scripts Tests workflow runs it on every pull request. Relative Markdown links must target real files within the skill tree. It does not enforce arbitrary body lengths or section wording. It is not evidence of LLM routing accuracy or successful lifecycle execution.
+The validator checks that the YAML-parsed description equals its single line, names, file links, and reachability of every `references/` file, including nested folders. The Scripts Tests workflow runs it on every pull request. Relative Markdown links must target real files within the skill tree. It does not enforce arbitrary body lengths or section wording. It is not evidence of LLM routing accuracy or successful lifecycle execution.
 
 Review semantic changes by assembling an entrypoint with **only references selected by the case** below. For comparisons with an earlier revision, hold prompt, model/effort, tools, and retrieval conditions constant; record initial route, loaded references, stopping point, and authority violations. Label a document dry-run as such rather than claiming live execution. When a change requires the second-stage representative task evaluation, follow [instruction-maintenance.md](../../docs/instruction-maintenance.md#개편-검증) to [instruction-evaluation.md](../../docs/instruction-evaluation.md) for its single execution procedure.
 

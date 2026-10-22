@@ -610,7 +610,7 @@ function entryIcon(binding: RailEntryBinding | null): ReactNode {
   return typeof icon === "function" ? icon() : icon ?? null;
 }
 
-/** 레일 엔트리의 페인 묶음(파일·Codex·스킬 등) — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
+/** 레일 엔트리의 페인 묶음(파일·Codex 등) — 오른쪽 사이드바가 쓰던 같은 표면 렌더러를 칸 안에 세운다. */
 function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<WorkbenchTile, { kind: "entry" }> }) {
   const t = useT();
   const { binding, toolContext, language } = props;

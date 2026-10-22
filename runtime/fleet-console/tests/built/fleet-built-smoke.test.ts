@@ -457,6 +457,7 @@ afterEach(async () => {
   // through the real path: both spellings name one slot, so the killed Console's leftovers are the next one's to reclaim.
   it.skipIf(process.platform === "win32")("leaves no process behind and reclaims the lock and leftovers after an external SIGKILL", async () => {
     const run = createRun("sigkill");
+    installPluginChildFixture(run);
     const linked = path.join(run.dir, "linked-root");
     fs.symlinkSync(run.root, linked, "dir");
     const group = spawnGroup(run, { env: { FLEET_DATA_DIR: linked, FLEET_CONSOLE_DATA_DIR: path.join(linked, "console") } });
@@ -492,6 +493,7 @@ afterEach(async () => {
     expect(Math.max(sdkCloseMaxMs, OWNED_GROUP_TERM_GRACE_MS) + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS,
       "정지 grace는 SDK 종료와 겹쳐야 하고, 증명 조회와 스케줄링 여유까지 B_int 안에 들어야 한다").toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
     const run = createRun("plugin-stop");
+    installPluginChildFixture(run);
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
@@ -588,6 +590,7 @@ afterEach(async () => {
     const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
     run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN = "1";
     run.env.PLUGIN_CHILD_BREAKAWAY_RESULT = pluginBreakawayFile;
+    installPluginChildFixture(run);
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
     run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
@@ -1379,23 +1382,59 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   }
 }
 
+const PLUGIN_CHILD_ID = "lifecycle-child";
+
+/** Where the fixture plugin lives: the run's own `~/.fleet/plugins`, which the Console scans for external plugins. */
+function pluginChildRoot(run: LifecycleRun): string {
+  return path.join(run.env.HOME!, ".fleet", "plugins", PLUGIN_CHILD_ID);
+}
+
 /**
- * A built-in plugin's own long-running children (N7): four Skills list requests each start the skills CLI once through
- * the plugin's owned-process port, and a stand-in installed where Skills looks for it hangs in the three shapes a CLI
- * leaves behind. Two runs ignore SIGTERM themselves. One run ends on SIGTERM but leaves a helper that ignores it and holds
- * the run's inherited stdout and stderr (N9). One run leaves the same helper and exits by itself before any stop, as a CLI
- * that timed out does. The runs claim those shapes in arrival order, so the four concurrent runs always split the same way.
- * Only the Console's containment ends them. Returns every process recorded, with its start time, so a case watches the
- * helpers too once they are no longer the Console's descendants. The suite owns each one at once: one that escapes is
- * reparented away from the Console and would otherwise outlive the case.
+ * A plugin whose only route starts `cli.mjs` through the owned-process port (`ctx.host.processes.spawnOwned`) and answers
+ * once that child closes. The port is bound per plugin id the same way for built-in and external plugins, so a fixture
+ * keeps the containment cases independent of any product plugin's CLI. Installed before the Console starts, because
+ * plugins are discovered at boot; `openPluginChildren` writes the CLI stand-in later. On Windows `os.homedir()` reads
+ * USERPROFILE, so the run points it at the same isolated home.
+ */
+function installPluginChildFixture(run: LifecycleRun): void {
+  if (process.platform === "win32") run.env.USERPROFILE = run.env.HOME!;
+  const root = pluginChildRoot(run);
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, "plugin.json"), JSON.stringify({ id: PLUGIN_CHILD_ID, name: "Lifecycle child", apiVersion: 1, routes: "routes.mjs" }));
+  fs.writeFileSync(path.join(root, "routes.mjs"), [
+    "import path from 'node:path';",
+    "import { fileURLToPath } from 'node:url';",
+    "const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cli.mjs');",
+    "export default {",
+    "  register(ctx) {",
+    "    ctx.registerRouter('run', async ({ res }) => {",
+    "      const child = ctx.host.processes.spawnOwned({ command: process.execPath, args: [cli] });",
+    "      child.stdout?.resume();",
+    "      child.stderr?.resume();",
+    "      await new Promise((resolve) => { child.on('close', resolve); child.on('error', resolve); });",
+    "      res.writeHead(204);",
+    "      res.end();",
+    "      return true;",
+    `    }, { method: 'GET', path: '', summary: 'Run the lifecycle child.', category: 'Lifecycle fixture', gate: 'origin-write', transport: 'http' });`,
+    "  },",
+    "};",
+  ].join("\n"));
+}
+
+/**
+ * A plugin's own long-running children (N7): four requests to the fixture plugin each start its CLI stand-in once through
+ * the plugin's owned-process port, and the stand-in hangs in the three shapes a CLI leaves behind. Two runs ignore SIGTERM
+ * themselves. One run ends on SIGTERM but leaves a helper that ignores it and holds the run's inherited stdout and stderr
+ * (N9). One run leaves the same helper and exits by itself before any stop, as a CLI that timed out does. The runs claim
+ * those shapes in arrival order, so the four concurrent runs always split the same way. Only the Console's containment
+ * ends them. Returns every process recorded, with its start time, so a case watches the helpers too once they are no
+ * longer the Console's descendants. The suite owns each one at once: one that escapes is reparented away from the Console
+ * and would otherwise outlive the case.
  */
 async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
-  const pkg = path.join(run.root, "console", "plugins", "skills", "cli", "node_modules", "skills");
+  const pkg = pluginChildRoot(run);
   const pids = path.join(pkg, "pids");
-  fs.mkdirSync(path.join(pkg, "bin"), { recursive: true });
-  // Skills reinstalls through npm anything but its pinned version (SKILLS_VERSION in fleet-plugins/skills/server/cli.ts).
-  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "skills", version: "1.5.14" }));
-  fs.writeFileSync(path.join(pkg, "bin", "cli.mjs"), [
+  fs.writeFileSync(path.join(pkg, "cli.mjs"), [
     "import { createRequire } from 'node:module';",
     "import { fileURLToPath } from 'node:url';",
     "const require = createRequire(import.meta.url);",
@@ -1416,15 +1455,15 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "}",
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
-  // Each list answers only once the CLI does; the requests end with the Console.
+  // Each request answers only once the CLI does; the requests end with the Console.
   for (let request = 0; request < 4; request += 1) {
-    fetch(new URL("plugins/skills/list", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+    fetch(new URL(`plugins/${PLUGIN_CHILD_ID}/run`, endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
   }
   const recorded = () => fs.existsSync(pids)
     ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
     : [];
   // Four CLI runs and the two helpers.
-  await waitUntil(() => recorded().length >= 6, 20_000, "the Skills plugin did not start its CLI");
+  await waitUntil(() => recorded().length >= 6, 20_000, "the fixture plugin did not start its CLI");
   if (run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN === "1") {
     const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));

@@ -95,6 +95,7 @@ import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { CONSOLE_FAILURE_LOG_FILE, createConsoleFailureLog } from "./failure-log.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
+import { reclaimRetiredPluginData } from "./retired-plugin-data.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -2757,6 +2758,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
       adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
       reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
+      // 같은 id로 발견된 플러그인(거절된 외부 플러그인 포함)이 있으면 그 폴더는 그 플러그인의 것이다.
+      reclaimRetiredPluginData(durablePaths.dir, new Set([...pluginHost.plugins.map((plugin) => plugin.manifest.id), ...pluginHost.skipped.map((plugin) => plugin.id)]));
       consoleSettingsStore.load();
       await rehydrateDurableState();
       // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
