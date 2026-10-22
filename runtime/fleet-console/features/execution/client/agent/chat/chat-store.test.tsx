@@ -351,7 +351,7 @@ it("keeps independent group journals alive across view closure, merges only conf
   const session = (id: string) => ({ sessionId: id, terminalSessionId: id, cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true });
   setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
     payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "member", payload: { chatMode: true }, ts: { createdAt: 2, updatedAt: 2 } },
-      { id: "archived", payload: { chatMode: true }, ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", payload: { chatMode: true }, ts: { createdAt: 4, updatedAt: 4 } }] }],
+      { id: "archived", payload: { chatMode: false }, ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", payload: { chatMode: false }, ts: { createdAt: 4, updatedAt: 4 } }] }],
     operationRuntime: { root: { lifecycle: "live", activity: "running" }, member: { lifecycle: "live", activity: "running" } } });
   setOperationRuntime("root", { lifecycle: "live", activity: "running" });
   setOperationRuntime("member", { lifecycle: "live", activity: "running" });
@@ -412,6 +412,7 @@ it("keeps independent group journals alive across view closure, merges only conf
     expect(group!.unavailableOperationIds).toEqual(["waking"]);
     // 이력을 받기 전에 재개되면 live 스냅숏이 권위다 — 늦게 도착한 이력이 그것을 덮지 않는다.
     act(() => {
+      setState({ operations: getState().operations.map((operation) => ({ ...operation, childSessions: operation.childSessions?.map((child) => child.id === "waking" ? { ...child, payload: { ...child.payload, chatMode: true } } : child) })) });
       setOperationRuntime("waking", { lifecycle: "live", activity: "idle" });
       setAgentState({ sessions: { ...getAgentState().sessions, waking: session("waking") } });
     });
@@ -451,7 +452,7 @@ it("keeps group timeline sockets and dormant history closed until the conversati
   let subject: string | null = null;
   const listeners = new Set<() => void>();
   setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
-    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "archived", payload: { chatMode: true }, ts: { createdAt: 3, updatedAt: 3 } }] }],
+    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "archived", payload: { chatMode: false }, ts: { createdAt: 3, updatedAt: 3 } }] }],
     operationRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" } } });
   setOperationRuntime("root", { lifecycle: "live", activity: "running" });
   setOperationRuntime("archived", { lifecycle: "dormant" });

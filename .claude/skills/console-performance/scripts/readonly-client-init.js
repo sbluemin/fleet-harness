@@ -15,7 +15,7 @@
     const url = String((input && input.url) || input);
     const body = init && typeof init.body === 'string' ? init.body : '';
     if (method === 'GET' || method === 'HEAD') return nativeFetch(input, init);
-    // Chat tickets are refused by the server for dormant sessions, so they cannot resume one.
+    // Chat sockets replay journals without opening SDK children; chats never need resume.
     if (method === 'POST' && TICKET.test(url) && /"channel":"chat"/.test(body) && !/"role"/.test(body)) return nativeFetch(input, init);
     // Terminal tickets become viewer tickets: live PTYs only, no input, no resize, no spawn.
     if (method === 'POST' && TICKET.test(url) && body) {

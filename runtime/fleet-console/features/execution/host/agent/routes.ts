@@ -12,7 +12,7 @@ import type { ConsoleCaller, ConsoleCoordinatesResult } from "@fleet-console/sdk
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../../../console-use/host/console-control.js";
-import { retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
 import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel, TERMINAL_PRIOR_WRITER_ALIVE } from "../terminal/index.js";
@@ -328,9 +328,26 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== null || payload.type !== AGENT_OPERATION_TYPE) return;
     const operation = ctx.host.operations.get(payload.operationId);
-    if (!operation || observability.getTerminalSessionInfo(operation.id)) return;
-    const dormant = injectOperation(operation);
-    observability.notifySessionUpdated(dormant);
+    if (!operation) return;
+    const restored = [operation, ...(operation.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])];
+    for (const node of restored) {
+      if (observability.getTerminalSessionInfo(node.id)) continue;
+      observability.notifySessionUpdated(injectOperation(node));
+    }
+  });
+
+  // 플러그인이 휴면한 옛 터미널을 채팅 표면으로 인수해도 어댑터는 즉시 live/idle다.
+  const unsubscribeChatSurface = ctx.host.events.subscribe("operation:launch-changed", (payload) => {
+    const id = (payload as { readonly operationId?: unknown } | null)?.operationId;
+    if (typeof id !== "string") return;
+    const node = ctx.host.operations.get(id);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE || node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return;
+    const session = observability.getTerminalSessionInfo(id);
+    if (!session) observability.notifySessionUpdated(injectOperation(node));
+    else {
+      const adopted = observability.setTerminalSessionChatActive(id, true);
+      if (adopted) observability.notifySessionUpdated(adopted);
+    }
   });
 
   // 호스트 주도 삭제(Theater 잊기 등)는 플러그인 DELETE 라우트를 지나지 않는다 — 유예가 끝나
@@ -552,6 +569,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const session = observability.getTerminalSessionInfo(operationId);
       if (!session) {
         const operation = ctx.host.operations.get(operationId);
+        if (operation?.payload[CHAT_MODE_PAYLOAD_KEY] === true) return {
+          activity: "idle", lifecycle: "live", observedAt: new Date().toISOString(), source: "host",
+          attention: { kind: "none" }, surface: "chat", supportedActions: ["send"], output: { status: "unavailable", outcome: "unknown" },
+        };
         return operation?.payload.restoredDormant === true ? {
           activity: "ended", lifecycle: "dormant", observedAt: new Date().toISOString(), source: "host",
           attention: { kind: "none" }, surface: "terminal", supportedActions: ["resume"], output: { status: "unavailable", outcome: "unknown" },
@@ -559,8 +580,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       const runtime = sessionRuntime(session);
       const chat = chatRegistry.get(operationId);
-      // 표면은 소유권이 아니라 마커가 말한다 — 휴면한 채팅도 여전히 채팅이고, 재개하면
-      // 터미널이 아니라 대화로 돌아온다. 살아 있는 산출(output)만 소유권을 따른다.
+      // 표면은 마커가 말한다. 채팅은 자식 없이도 접근 가능하고 산출은 현재 원장을 따른다.
       const chatSurface = session.chatActive === true || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       // 세대는 소유권을 따른다 — 살아 있는 생산자가 채팅이면 그 인스턴스, 아니면 마지막 PTY 기동.
       const generation = runtime.lifecycle !== "live" ? undefined : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : observability.getTerminalGeneration(operationId);
@@ -645,7 +665,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
-    // 채팅 화면의 모델 메뉴와 같은 길 — 떠 있는 채팅 세션만 바꾼다. 휴면·터미널은 다음 기동의 좌표(payload)가 다룬다.
+    // 채팅 화면의 모델 메뉴와 같은 길 — 자식이 없으면 다음 기동의 좌표(payload)만 바꾼다.
     async coordinates(operationId, input) {
       const node = ctx.host.operations.get(operationId);
       if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, error: "unknown_operation" };
@@ -653,6 +673,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return applyOperationChatCoordinates(operationId, input.model, input.effort);
     },
     prepareChat: prepareChatOperation,
+    async unstartedPreset(operationId, input, owned) {
+      const node = ctx.host.operations.get(operationId);
+      if (!node) return { ok: false, error: "unknown_operation" };
+      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
+      if (readOperationLaunch(node.payload).started || ctx.host.operations.isTransitioning?.(operationId) || chatRegistry.isBusy(operationId)) throw new ConsoleControlError("objective_busy");
+      if (chatRegistry.get(operationId)?.hasChild && !owned) return { ok: false, error: "forbidden" };
+      return applyOperationChatCoordinates(operationId, input.model, input.effort, owned);
+    },
     readCoordinates: (operationId) => {
       const chat = chatRegistry.get(operationId);
       if (chat) return chat.readCoordinates();
@@ -1824,7 +1852,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 채팅 화면의 모델 메뉴와 플러그인의 Console 제어가 함께 지나는 변경 — 후보는 런치 메뉴가 세우는 그 행과 칩이다.
    * 두 표면이 다른 목록으로 다루면 런치에서 끈 모델을 한쪽에서만 고를 수 있게 된다.
    */
-  async function applyOperationChatCoordinates(operationId: string, model: string, effort: string | null): Promise<ConsoleCoordinatesResult> {
+  async function applyOperationChatCoordinates(operationId: string, model: string, effort: string | null, unstartedOwner?: boolean): Promise<ConsoleCoordinatesResult> {
     let chat = chatRegistry.get(operationId);
     if (!chat) {
       const node = ctx.host.operations.get(operationId);
@@ -1836,6 +1864,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (chatRegistry.generation(operationId) !== generation || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.operations.isTransitioning?.(operationId)) return { ok: false, error: "chat_not_active" };
       try { chat = await chatRegistry.ensure(operationId, () => seed.seed); }
       catch { return { ok: false, error: "coordinates_apply_failed", cause: { message: "chat_unavailable" } }; }
+    }
+    if (unstartedOwner !== undefined) {
+      const node = ctx.host.operations.get(operationId);
+      if (!node || node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, error: "chat_not_active" };
+      if (readOperationLaunch(node.payload).started || ctx.host.operations.isTransitioning?.(operationId) || chat.busy) throw new ConsoleControlError("objective_busy");
+      if (chat.hasChild && !unstartedOwner) return { ok: false, error: "forbidden" };
     }
     // 원장만 준비한다. changeCoordinates는 자식이 없으면 payload와 다음 기동 좌표만 바꾼다.
     return applyChatCoordinates(chat, model, effort);
@@ -2570,6 +2604,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
+    unsubscribeChatSurface();
     unsubscribeChatDelete();
     unsubscribePurge();
     unsubscribeTitle();

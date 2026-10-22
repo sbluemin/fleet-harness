@@ -1471,6 +1471,8 @@ export interface FleetPluginConsoleControlHost {
   sleep?(operationId: string, options?: { readonly endPendingWork?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
   /** 소유한 채팅의 SDK 주소를 명시적으로 준비한다. 모델 턴이나 lifecycle 전이는 없으며 실패는 코드로 던진다. */
   prepareChat?(operationId: string): Promise<void>;
+  /** capture 전인 유휴 채팅의 프리셋. 자식이 없으면 저장 좌표만 바꾸고, 자식이 있으면 기존 소유 검사를 적용한다. */
+  setUnstartedPreset?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
   /**
    * 이미 있는 Operation의 다음 프로세스 기동(휴면 재개·채팅을 새로 띄우는 실행)에 쓸 서브에이전트 정책.
    * live 프로세스는 중단하지 않고, 세션 스냅샷도 바꾸지 않는다. 없는 Operation은 무시한다.

@@ -54,7 +54,7 @@ export interface ConsoleActionInput {
   readonly disableAutoMemory?: boolean;
   /** @deprecated launch 전용 — 받아들이되 무시한다. Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 뺀다. */
   readonly disableUserQuestions?: boolean;
-  /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
+  /** launch 전용 — 자식 없이 등록한다. 터미널은 dormant, 채팅은 live/idle로 서며 첫 send가 자식을 연다. */
   readonly dormant?: boolean;
   /**
    * launch 전용 — 태어날 때부터 이 Operation 아래 선다(목표의 구성원 → 지휘관). 같은 Theater 의, 부모가 없는 Operation 이어야 한다.

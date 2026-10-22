@@ -12,14 +12,14 @@ Open the client with [`scripts/readonly-client-init.js`](../scripts/readonly-cli
 
 - turns every non-GET `fetch`, XHR, and beacon into a local 503 and records it in `window.__fleetE2E.blockedFetch`;
 - allows only the POST reads it lists (the Objectives `state` and `objective/get` RPCs) — add another only after reading its server route and confirming it has no write side effect;
-- allows the chat ticket (`channel: "chat"`), which the server refuses for dormant sessions, and rewrites every terminal ticket to `role: "viewer"`, which attaches only to live PTYs and cannot spawn, type, or resize;
+- allows the chat ticket (`channel: "chat"`): attaching reads or prepares the journal and replays saved history, but never opens an SDK child; chat Operations stay live even without a child. Every terminal ticket is rewritten to `role: "viewer"`, which attaches only to live PTYs and cannot spawn, type, or resize;
 - drops every `send` on terminal/agent sockets, so neither keystrokes, xterm query replies, nor resize frames reach a PTY.
 
 The server applies the last resize from any controlling client to the PTY, and panel moves are persisted with `PATCH /api/v1/operations/:id`; both are why the guard is not optional.
 
 ## Using the client
 
-- Dismiss first-run modals, then open panels through the sidebar focus buttons (focusing a dormant Operation resumes it, so focus only live ones). Never press a dormant panel's resume button: it spawns a CLI.
+- Dismiss first-run modals, then open panels through the sidebar focus buttons (focusing a dormant terminal resumes it, so focus only live terminals or chats). Never press a dormant panel's resume button: it spawns a CLI.
 - After every reload the guard is re-applied, but CSSOM edits and injected code are gone; verify state (`rulesPresent`, focus target) before each bench.
 - Check `blockedFetch` after each scenario. A retry storm there is a guard side effect, not a product finding.
 - Close the session with `node .claude/skills/console-e2e/scripts/close-owned-session.mjs <session>` and confirm the user's Console and Desktop PIDs are still alive.

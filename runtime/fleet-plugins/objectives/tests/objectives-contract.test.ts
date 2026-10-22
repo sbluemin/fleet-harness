@@ -172,8 +172,15 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
+  const surfaceOf = (id: string) => surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal");
+  const chatCoordinates = (id: string) => {
+    if (surfaceOf(id) !== "chat") return null;
+    const saved = operations.get(id)?.payload.session as { model?: string; effort?: string } | undefined;
+    return hostChat.get(id) ?? { model: saved?.model ?? "opus[1m]", effort: saved?.effort ?? null, pending: null };
+  };
   const observeSession = (id: string) => {
-    const state = activity.get(id);
+    const raw = activity.get(id);
+    const state = raw === "dormant" && surfaceOf(id) === "chat" ? "idle" : raw;
     const outcome = outcomes.get(id);
     return state ? {
       lifecycle: state === "dormant" ? "dormant" : "live",
@@ -184,7 +191,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     } : null;
   };
   let watchQuiet: () => void = () => {};
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchQuiet() } : {}) });
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchQuiet() } : {}) });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -232,6 +239,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         subscribeSessionMessages: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
         // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
         sleep: async (operationId: string) => {
+          if (surfaceOf(operationId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
           const state = activity.get(operationId);
           if (!state) return { ok: false, error: "unknown_operation" };
           if (state === "dormant") return { ok: false, error: "already_dormant" };
@@ -240,18 +248,33 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
           return { ok: true, lifecycle: "dormant" };
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
-        coordinates: (operationId: string) => hostChat.get(operationId) ?? null,
+        setUnstartedPreset: async (operationId: string, input: { model: string; effort: string | null }) => {
+          const node = operations.get(operationId)!;
+          operationsHost.patch(operationId, { payload: { ...node.payload, session: { ...(node.payload.session as object), model: input.model, effort: input.effort ?? undefined } } });
+          return { ok: true, applied: "now" };
+        },
+        prepareChat: async (operationId: string) => {
+          if (surfaceOf(operationId) !== "chat") throw new Error("chat_not_active");
+          if (hostFault.rejectModel && (operations.get(operationId)?.payload.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled");
+          if (activity.get(operationId) === "dormant") activity.set(operationId, "idle");
+        },
+        coordinates: (operationId: string) => chatCoordinates(operationId),
         advertisedTools: (operationId: string) => advertised.get(operationId) ?? null,
         setCoordinates: async (operationId: string, input: { model: string; effort: string | null }) => {
           if (hostFault.coordinates) { const result = hostFault.coordinates; hostFault.coordinates = null; return result; }
-          const chat = hostChat.get(operationId);
+          const chat = chatCoordinates(operationId);
           if (!chat) return { ok: false, error: "chat_not_active" };
+          hostChat.set(operationId, chat);
           if (input.effort && hostEfforts[input.model] && !hostEfforts[input.model]!.includes(input.effort)) return { ok: false, error: "invalid_effort" };
           if (chat.model === input.model && chat.effort === input.effort) { chat.pending = null; return { ok: true, applied: "unchanged" }; }
           if (activity.get(operationId) === "running") { chat.pending = { ...input }; return { ok: true, applied: "scheduled" }; }
           Object.assign(chat, input, { pending: null });
           const parent = [...operations.values()].find((candidate) => candidate.childSessions?.some((child) => child.id === operationId));
           if (parent) parent.childSessions = parent.childSessions!.map((child) => child.id !== operationId ? child : { ...child, payload: { ...child.payload, session: { ...(child.payload.session as object), model: input.model, effort: input.effort ?? undefined } } });
+          else {
+            const node = operations.get(operationId)!;
+            node.payload = { ...node.payload, session: { ...(node.payload.session as object), model: input.model, effort: input.effort ?? undefined } };
+          }
           return { ok: true, applied: "now" };
         },
       },
@@ -264,7 +287,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
   const restart = () => {
     let watchAgain: () => void = () => {};
-    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => hostChat.get(id) ?? null, advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
+    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
     const relaunched = createLaunchService(ctx, reloaded, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
     launchServices.push(relaunched);
     watchAgain = () => relaunched.watchReportQuiet();
@@ -508,6 +531,7 @@ describe("Objectives contract", () => {
     expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([undefined, true, true]);
     const roster = store.find(objective.id)!;
     const blockedOperationId = blocked.id;
+    operations.get(blockedOperationId)!.payload.chatMode = false;
     activity.set(blockedOperationId, "dormant");
     await operationsHost.archive(objective.id);
     await launch.memberPatched(objective.id, blocked.id, { subagents: true });
@@ -521,7 +545,7 @@ describe("Objectives contract", () => {
     expect(interrupted).toEqual([]);
     subagentSpawns.length = 0;
     expect((await launch.muster(objective.id)).find((member) => member.id === blocked.id)!.state).toBe("resumed");
-    expect(subagentSpawns).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
+    expect(subagentSpawns).toEqual([{ operationId: allowedOperationId, policy: "default" }, { operationId: blockedOperationId, policy: "default" }]);
     expect(resumed).toEqual([blockedOperationId]);
     await launch.memberPatched(objective.id, allowed.id, { subagents: false });
     expect(store.find(objective.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
@@ -585,6 +609,7 @@ describe("Objectives contract", () => {
     const objective = await launch.create({ theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     await launch.startCommander(objective.id);
+    operations.get(reviewer.id)!.payload.chatMode = false;
     activity.set(reviewer.id, "dormant");
     const session = () => operations.get(reviewer.id)!.payload.session as { model?: string; effort?: string };
     const shown = () => store.find(objective.id)!.members.find((member) => member.id === reviewer.id)!;
@@ -636,6 +661,7 @@ describe("Objectives contract", () => {
 
       // 떠 있는 채팅은 호스트가 바꾼다 — 도는 턴 뒤의 예약은 세션 좌표(채팅 칩이 읽는 값)를 미리 고치지 않는다.
       surfaces.delete(reviewer.id);
+      operations.get(reviewer.id)!.payload.chatMode = true;
       hostChat.set(reviewer.id, { model: "opus[1m]", effort: "high", pending: null });
       activity.set(reviewer.id, "running");
       await pick("sonnet", "low");
@@ -838,8 +864,8 @@ describe("Objectives contract", () => {
     expect(clusterMember(build)).toMatchObject({ progress: "blocked", awaitingInput: false });
     // 다시 세워도 살아 있는 구성원은 그대로, 휴면한 구성원은 새로 띄우지 않고 세션째 재개한다.
     activity.set(research, "dormant");
-    expect((await launch.muster(objective.id)).map((member) => member.state)).toEqual(["resumed", "live"]);
-    expect([launches.length, resumed]).toEqual([3, [research]]);
+    expect((await launch.muster(objective.id)).map((member) => member.state)).toEqual(["ready", "ready"]);
+    expect([launches.length, resumed]).toEqual([3, []]);
     // 다시 작업해 다시 완료하면 기록이 쌓인다(종류는 위치로).
     store.missionDone(objective.id, a!.id, ["a done"]);
     store.missionDone(objective.id, a!.id, ["a redone", "fixed the gap"]);
@@ -1718,7 +1744,7 @@ describe("Objectives contract", () => {
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
-    const { store, call, launch, route, sent, deliveries, activity, hostFault } = harness();
+    const { store, call, launch, route, sent, deliveries, activity, hostFault, operations } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1736,7 +1762,12 @@ describe("Objectives contract", () => {
     expect(original.humanInput).toEqual({ id: expect.any(String), targetOperationId: member });
     expect(deliveries.at(-1)?.humanInput).toEqual({ ...original.humanInput, copy: true });
     expect(deliveries.at(-1)?.display).toBe(sent.at(-1)?.text);
-    // 방송은 같은 사람 입력 좌표로 live 구성원에게만 보낸다. 휴면 구성원은 깨우지 않는다.
+    // 쉬는 채팅도 방송을 받는다. dormant 터미널은 기존처럼 건너뛴다.
+    activity.set(member, "idle");
+    expect((await route("conversation/broadcast", { objectiveId: commander, text: "all chats" })).value).toMatchObject({ targets: [
+      { targetId: commander, outcome: "sent" }, { targetId: member, outcome: "sent" },
+    ] });
+    operations.get(member)!.payload.chatMode = false;
     activity.set(member, "dormant");
     expect((await route("conversation/broadcast", { objectiveId: commander, text: "all live" })).value).toMatchObject({ targets: [
       { targetId: commander, outcome: "sent" }, { targetId: member, outcome: "skipped", reason: "session_not_live" },

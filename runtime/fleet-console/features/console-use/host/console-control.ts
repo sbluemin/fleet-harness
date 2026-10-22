@@ -82,6 +82,7 @@ export interface ConsoleExecutionAdapter {
   readCoordinates?(operationId: string): ConsoleCoordinates | null;
   /** 명시적으로 채팅의 SDK 주소를 준비한다. 관측은 이 포트를 호출하지 않는다. */
   prepareChat?(operationId: string): Promise<void>;
+  unstartedPreset?(operationId: string, input: { readonly model: string; readonly effort: string | null }, owned: boolean): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
   advertisedTools?(operationId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
@@ -471,6 +472,13 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
     },
     launchKeyState, coordinates, transcript,
+    async unstartedPreset(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
+      const op = node(operationId);
+      if (!op) return { ok: false, error: "unknown_operation" };
+      if (caller.kind !== "plugin") return { ok: false, error: "forbidden" };
+      if (!adapter?.unstartedPreset) return { ok: false, error: "chat_not_active" };
+      return adapter.unstartedPreset(operationId, input, launchedByPlugin(caller, op));
+    },
     async prepareChat(caller: ConsoleCaller, operationId: string): Promise<void> {
       const op = node(operationId);
       if (!op) return fail("unknown_operation");

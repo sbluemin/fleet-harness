@@ -458,9 +458,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * 채팅 표면의 백그라운드 대기 보고. 필드는 PTY 쪽과 같은 하나지만, 그 setter를 그대로 쓸 수 없는
    * 이유가 둘이다.
    *
-   * 하나는 라이프사이클이다. 채팅이 인수한 세션은 PTY가 없어 status가 dormant로 남는다 — 채팅에서
-   * 태어난 Operation과 복원된 Operation이 모두 그렇다. 그 status로 보고를 막으면 이 축은 채팅에서
-   * 영영 서지 못한다. 활동 해석도 chatActive를 status보다 앞세우므로, 여기서도 문지기는 chatActive다.
+   * 하나는 소유권이다. 채팅에서 태어나거나 복원된 세션은 자식이 없어도 registered/live다.
+   * PTY의 훅은 그 활동축에 쓸 수 없고, 여기서는 chatActive가 채팅 보고의 소유권을 확인한다.
    *
    * 다른 하나는 TTL이다. hook 전달은 best-effort라 잃어버린 stop 하나가 배지를 영영 켜 둘 수 있어 PTY
    * 쪽은 시한을 둔다. 채팅의 원장은 세션 스트림 자체이고 세션이 사라지면 반드시 걷히므로, 여기에 시한을

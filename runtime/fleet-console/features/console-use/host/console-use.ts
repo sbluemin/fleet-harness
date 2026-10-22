@@ -142,7 +142,7 @@ const NEXT_ACTION: Record<string, string> = {
   not_dormant: "Only a dormant terminal Operation can be resumed. A live one is already there; console_operation send reaches it.",
   chat_sleep_unsupported: "Chats do not sleep. Use Stop to interrupt the turn, or archive the conversation when you are done.",
   chat_resume_unsupported: "Chats do not need resume. console_operation send continues the same conversation.",
-  already_dormant: "The Operation is already dormant. Nothing to do; console_operation resume wakes it.",
+  already_dormant: "The terminal Operation is already dormant. Nothing to do; console_operation resume wakes it.",
   not_idle: "Only an idle Operation can be put to sleep. Wait for its turn and background work to end, or press Stop with console_operation stop first.",
   chat_not_active: "That Operation is not on the chat surface. console_operation switch moves it there.",
   not_resumable: "This Operation has no captured provider session, so ending its process would delete it rather than park it. console_operation close is the way to remove it.",

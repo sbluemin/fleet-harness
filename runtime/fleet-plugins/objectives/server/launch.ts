@@ -232,7 +232,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    */
   const adoptChatSurface = (objectiveId: string): void => {
     const node = ctx.host.operations.get(objectiveId);
-    if (!node || node.payload.chatMode === true || !store.find(objectiveId)) return;
+    // 명시적인 목표 레코드가 없는 일반 CLI Operation을 부팅만으로 채팅으로 바꾸지 않는다.
+    if (!node || node.payload.chatMode === true || !store.recorded(objectiveId)) return;
     if (ctx.host.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") return;
     if (ctx.host.operations.patch(objectiveId, { payload: withOperationChatSurface(node.payload) })) store.refresh(objectiveId);
   };
@@ -1444,13 +1445,19 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
       if (!node) throw new ObjectiveStoreError("unknown_objective");
       // 캡처된 세션의 프리셋 금지는 복원 전에 확인한다. 복원으로 기존 제약을 우회하지 않는다.
-      if (readOperationLaunch(node.payload).started || pending.has(objectiveId) || control().observe(objectiveId)?.lifecycle === "live" || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+      if (readOperationLaunch(node.payload).started || pending.has(objectiveId) || (node.payload.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
       await accessOperation(objectiveId);
       editableObjective(objectiveId);
       const active = ctx.host.operations.get(objectiveId);
       if (!active) throw new ObjectiveStoreError("unknown_objective");
-      if (readOperationLaunch(active.payload).started || control().observe(objectiveId)?.lifecycle === "live") throw new ObjectiveStoreError("objective_busy");
-      patchOperation(objectiveId, { payload: withOperationLaunchPreset(active.payload, preset) });
+      if (readOperationLaunch(active.payload).started || (active.payload.chatMode !== true && control().observe(objectiveId)?.lifecycle === "live") || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+      if (active.payload.chatMode === true) {
+        const session = readOperationLaunch(active.payload);
+        const apply = ctx.host.consoleControl?.setUnstartedPreset;
+        if (!apply) throw new ObjectiveStoreError("capability_unavailable");
+        const result = await apply(objectiveId, { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null });
+        if (!result.ok) throw coordinatesError(result);
+      } else patchOperation(objectiveId, { payload: withOperationLaunchPreset(active.payload, preset) });
       store.refresh(objectiveId);
       return objective(objectiveId);
     }),
