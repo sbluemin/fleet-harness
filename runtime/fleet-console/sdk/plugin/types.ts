@@ -382,6 +382,11 @@ export interface ConversationSurfaceDescriptor {
    * `state` 는 그 주인의 지금 얼굴(`mongleStateOf` 로 고른 값)이다 — 생략하면 쉼(idle)이다. 값이 바뀌면 `subscribe` 로 알린다.
    */
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState } | null;
+  /**
+   * 이 대화의 주인 세션이 시작할 때 실은 구성의 판정. 호스트가 Operation 대화와 같은 시작 구성 표식을 머리 pill 의 이름 바로 뒤에
+   * 세운다(`previous` 일 때만). 없거나 null 이면 서지 않는다. 값이 바뀌면 `subscribe` 로 알린다.
+   */
+  readonly configuration?: (ctx: ConversationSurfaceContext) => LaunchConfigurationVerdict | null;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
@@ -853,6 +858,19 @@ export interface TheaterHeaderContribution {
    * to the next contribution, and finally to the host's system prompt page.
    */
   readonly landing?: (theaterId: string) => TheaterInboxAddress | null;
+  /**
+   * The start-time setup verdict of the session this contribution operates for the Theater. The host draws the same
+   * launch configuration mark as an Operation row right after the Theater name (only for `previous`). Null leaves it to
+   * the next contribution.
+   */
+  readonly configuration?: (theaterId: string) => LaunchConfigurationVerdict | null;
+}
+
+/** 세션 시작 구성의 판정 — 표식을 그리는 데 필요한 몫만. 지문 원문은 싣지 않는다. */
+export interface LaunchConfigurationVerdict {
+  readonly state: "current" | "previous" | "unknown";
+  /** `previous` 이고 시작 release 가 지금과 다를 때만 그 version. */
+  readonly release?: string;
 }
 
 /** 폰 Theater 시트의 플러그인 행. `get`이 null이면 행이 없다(실험 기능이 꺼진 때). 호스트는 값(label)으로 비교한다. */

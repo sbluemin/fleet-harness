@@ -4,7 +4,7 @@ import { createConversationStream } from "@fleet-console/sdk/conversation";
 
 import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps, AgentLedgerProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
-import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, LaunchConfigurationVerdict, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { MemoryEntry } from "@fleet-console/sdk/commodore";
@@ -346,6 +346,16 @@ const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
 
 export function readCommodore(theaterId: string): TheaterCommodore {
   return theaters.get(theaterId) ?? EMPTY_VIEW_SNAPSHOT;
+}
+
+/**
+ * 그 Theater 사령관의 열린 세션이 시작할 때 실은 구성의 판정 — 서버 감독자가 run 상태에 싣는다(세션이 열려 있을 때만).
+ * 사이드바 사령관 카드와 사령관 대화 머리가 같은 값으로 시작 구성 표식을 세운다.
+ */
+export function commodoreConfiguration(theaterId: string): LaunchConfigurationVerdict | null {
+  const run = readCommodore(theaterId).view?.run;
+  if (!run?.configurationState) return null;
+  return { state: run.configurationState, ...(run.configurationRelease ? { release: run.configurationRelease } : {}) };
 }
 
 export function useCommodore(theaterId: string): TheaterCommodore {

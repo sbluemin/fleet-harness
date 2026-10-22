@@ -177,6 +177,13 @@ export interface CommodoreRunStatus {
   readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt?: number };
   /** 지금 열린 세션이 실제로 도는 모델·강도(로스터 폴백까지 푼 좌표). 설정을 바꿔도 다음 교대 전까지는 이 값이다. 열린 세션이 없으면 없다. */
   readonly session?: { readonly model: string; readonly effort?: string };
+  /**
+   * 지금 열린 세션이 시작할 때 실은 구성(프롬프트·도구)의 판정 — `previous` 면 업데이트 전 구성으로 계속 도는 중이다(조용한 사실).
+   * 열린 세션이 없거나 구버전 호스트면 없다. 표시는 `@fleet-console/sdk/components/launch-configuration-mark` 를 쓴다.
+   */
+  readonly configurationState?: "current" | "previous" | "unknown";
+  /** `previous` 이고 시작 release 가 지금과 다를 때만 그 version. */
+  readonly configurationRelease?: string;
   readonly totals: CommodoreRunTotals;
 }
 

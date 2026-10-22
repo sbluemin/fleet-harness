@@ -1,4 +1,5 @@
 import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
+import { createResidentSessionFingerprints } from "../../../features/execution/host/agent/launch-fingerprint.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
@@ -2890,6 +2891,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         attachments: attachmentsForPlugin?.("commodore"),
         http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
         knowledgeTools: (commodoreId) => pluginHostCapabilities.admiralMcp.bindCommodore?.(commodoreId) ?? [],
+        // 사령관 세션의 시작 구성 지문 — Operation 세션과 같은 계산(실행 기능)과 같은 release 를 쓴다.
+        setupFingerprints: createResidentSessionFingerprints({ consoleVersion: version }),
         agent: {
           hostedExecution, pluginId: "commodore",
           baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },

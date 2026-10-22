@@ -1,4 +1,5 @@
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
+import type { ResidentSessionFingerprints } from "../../execution/host/agent/launch-fingerprint.js";
 import { Buffer } from "node:buffer";
 import type { AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
 import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
@@ -8,9 +9,9 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "@fleet-console/sdk/commodore";
 import { CommodoreStoreError } from "./errors.js";
-import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
+import { commodoreSessionSetup, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
-import type { CommandExecute } from "./tools.js";
+import { createCommodoreTools, type CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
 import { undeliveredMessageSeqs } from "../shared/delivery.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/attachment-budget.js";
@@ -57,6 +58,11 @@ export interface CommodoreSupervisorDeps {
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
+  /**
+   * 세션 시작 구성의 지문 — 세션을 연 순간 한 번 찍고, 상태를 낼 때 지금의 기대 구성과 비교한 판정만 싣는다. 없으면 판정을 싣지 않는다.
+   * 계산은 실행 기능(launch-fingerprint)이 지고, 여기는 불투명한 지문을 들고만 있다.
+   */
+  readonly setupFingerprints?: ResidentSessionFingerprints;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -195,6 +201,8 @@ interface Runner {
   /** 실제 첫 턴까지 붙든다 — 보드 사유가 사라져 방금 연 세션이 쉬어도 요약을 잃지 않는다. */
   replacementSummary?: readonly string[];
   board: CommodoreBoardWatch | null;
+  /** 지금 열린 세션이 시작할 때 실은 구성의 지문(불투명). 세션을 새로 열 때만 바뀐다. */
+  setupFingerprint?: unknown;
   stalledReported: Set<string>;
   emptyReported: boolean;
 }
@@ -262,7 +270,27 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
+  /** 같은 입력으로 지금 세션을 열면 실릴 구성 — openSession 과 같은 함수(commodoreSessionSetup)를 지난다. 도구는 설명·스키마만 읽는다. */
+  const expectedSetup = (runner: Runner) => {
+    const theater = deps.theater(theaterIdOf(runner.commodoreId));
+    if (!theater) return null;
+    const commodoreTools = createCommodoreTools({ commodoreId: runner.commodoreId, theaterRoot: theater.root, store: deps.store, onNextWake: () => undefined, objective: () => null, now, ...(deps.execute ? { execute: deps.execute } : {}) });
+    const knowledgeTools = deps.knowledgeTools?.(theaterIdOf(runner.commodoreId));
+    return commodoreSessionSetup({ theaterLabel: theater.label, language: resolveLanguage(runner.commodoreId), commodoreTools, boardTools: boardTools(runner), ...(knowledgeTools ? { knowledgeTools } : {}) });
+  };
+  /** 열린 세션의 시작 구성 판정 — 판정과 이전 release 만 상태에 싣는다. 기대 구성을 짓지 못하면 최신이라 단정하지 않는다. */
+  const configurationOf = (runner: Runner): Pick<CommodoreRunStatus, "configurationState" | "configurationRelease"> => {
+    if (!runner.session || !deps.setupFingerprints) return {};
+    let verdict: ReturnType<ResidentSessionFingerprints["describe"]>;
+    try {
+      const current = expectedSetup(runner);
+      verdict = current ? deps.setupFingerprints.describe(runner.setupFingerprint, current) : { state: "unknown" };
+    } catch {
+      verdict = { state: "unknown" };
+    }
+    return { configurationState: verdict.state, ...(verdict.release ? { configurationRelease: verdict.release } : {}) };
+  };
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ ...configurationOf(runner), phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.commodoreId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), run: { ...statusOf(runner), totals } });
@@ -376,6 +404,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     await session.start();
     runner.session = session;
     if (session.attached) return session;
+    // 시작 구성은 세션을 연 이 순간 한 번 찍는다 — 같은 세션에서 다시 찍으면 이전 구성으로 돈다는 사실이 지워진다.
+    const opened = session.setup();
+    runner.setupFingerprint = opened && deps.setupFingerprints ? deps.setupFingerprints.capture(opened) : undefined;
     runner.replacementSummary = runner.recentActions.length ? runner.recentActions.slice(-RECENT_ACTIONS) : undefined;
     runner.coordinates = coordinates;
     runner.language = language;

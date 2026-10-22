@@ -3570,6 +3570,19 @@
   flex: none;
 }
 
+/* 사령관 세션의 시작 구성 표식이 선 이름 줄 — 표식은 Operation 행처럼 이름 바로 뒤에 붙고, 좁으면 이름만 말줄임된다. */
+.side-bar-theater-name-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.side-bar-theater-name-row > .side-bar-theater-name {
+  flex: 0 1 auto;
+}
+
 .side-bar-theater-collapse-btn,
 .side-bar-theater-row-btn.side-bar-status-view-toggle {
   width: 22px;
@@ -3906,7 +3919,7 @@
    사이드바 칩·목표 줄·채팅 머리·목표 명단이 이 한 부품(sdk/components/launch-configuration-mark)을 쓴다. */
 .launch-configuration-mark { flex: none; align-self: center; display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
 .launch-configuration-mark svg { width: 12px; height: 12px; }
-:is(.side-bar-chip:hover, .side-bar-chip:focus-visible, .side-bar-chip--active, .side-bar-cluster-row:hover, .side-bar-cluster-row--active) .launch-configuration-mark { color: var(--text-secondary); }
+:is(.side-bar-chip:hover, .side-bar-chip:focus-visible, .side-bar-chip--active, .side-bar-cluster-row:hover, .side-bar-cluster-row--active, .side-bar-theater-header:hover, .side-bar-theater-header.is-active) .launch-configuration-mark { color: var(--text-secondary); }
 
 .side-bar-chip-rename-input {
   flex: none;

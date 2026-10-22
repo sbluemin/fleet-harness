@@ -25,6 +25,8 @@ export interface CommodoreFeatureDeps {
   readonly agent: ConsoleResidentAgentDeps;
   /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
   readonly knowledgeTools: (commodoreId: string) => readonly PluginMcpServerTools[];
+  /** 사령관 세션의 시작 구성 지문 — 실행 기능이 계산하고 조합이 넘긴다. 없으면 사령관 상태에 구성 판정이 실리지 않는다. */
+  readonly setupFingerprints?: import("../../execution/host/agent/launch-fingerprint.js").ResidentSessionFingerprints;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -90,6 +92,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.models ? { models: deps.models } : {}),
     theater: (theaterId) => { const root = deps.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
     knowledgeTools: deps.knowledgeTools,
+    ...(deps.setupFingerprints ? { setupFingerprints: deps.setupFingerprints } : {}),
     emit,
   });
   const host: FleetPluginCommodoreHost = {

@@ -209,6 +209,66 @@ export function readLaunchFingerprint(value: unknown): LaunchFingerprint | null 
   };
 }
 
+/**
+ * 호출자가 프롬프트·도구를 직접 쥐고 여는 상주 세션(사령관 등)의 시작 구성. Operation 이 아니라 Theater 프롬프트·Fleet 도구 목록으로
+ * 기대 구성을 되짓지 못하므로, 지금의 구성은 부른 쪽이 같은 모양으로 다시 넘긴다. 직렬화할 수 있는 값만 싣는다.
+ */
+export interface ResidentSessionSetup {
+  /** 시스템 프롬프트 본문·정책처럼 실제로 실은 입력. 해시에만 들어가고 밖으로 나가지 않는다. */
+  readonly prompt: unknown;
+  readonly tools: readonly { readonly group?: string; readonly name: string; readonly description: string; readonly inputSchema?: unknown }[];
+}
+
+/**
+ * 상주 세션 지문의 생성·판정 포트. 지문은 불투명한 레코드로 다룬다 — 보관하는 쪽(사령관 감독자·세션 호스트)은 키를 해석하지 않고,
+ * 판정은 이 모듈이 그 레코드를 다시 읽어 한다. 읽을 수 없으면 unknown.
+ */
+export interface ResidentSessionFingerprints {
+  capture(setup: ResidentSessionSetup): Readonly<Record<string, unknown>>;
+  describe(started: unknown, current: ResidentSessionSetup): LaunchConfigurationProjection;
+}
+
+export function createResidentSessionFingerprints(deps: { readonly consoleVersion: string; readonly executionBuildId?: () => string; readonly now?: () => number }): ResidentSessionFingerprints {
+  const now = deps.now ?? Date.now;
+  const buildId = deps.executionBuildId ?? readExecutionBuildId;
+  const components = (setup: ResidentSessionSetup) => ({
+    schema: LAUNCH_FINGERPRINT_SCHEMA,
+    kind: "resident" as const,
+    consoleVersion: deps.consoleVersion,
+    executionBuildId: buildId(),
+    effectivePromptHash: sha256(canonicalJson(setup.prompt ?? null)),
+    toolsetHash: sha256(canonicalJson([...setup.tools]
+      .map((tool) => ({ group: tool.group ?? null, name: tool.name, description: tool.description, inputSchema: tool.inputSchema ?? null }))
+      .sort((a, b) => {
+        const left = `${a.group ?? ""}\u0000${a.name}`;
+        const right = `${b.group ?? ""}\u0000${b.name}`;
+        return left < right ? -1 : left > right ? 1 : 0;
+      }))),
+  });
+  return {
+    capture(setup) {
+      const parts = components(setup);
+      return { ...parts, capturedAt: new Date(now()).toISOString(), digest: sha256(canonicalJson(parts)) };
+    },
+    describe(started, current) {
+      if (!isRecord(started) || started.schema !== LAUNCH_FINGERPRINT_SCHEMA || started.kind !== "resident") return { state: "unknown" };
+      const keys = ["consoleVersion", "executionBuildId", "effectivePromptHash", "toolsetHash", "digest"] as const;
+      if (keys.some((key) => typeof started[key] !== "string")) return { state: "unknown" };
+      let parts: ReturnType<typeof components>;
+      try {
+        parts = components(current);
+      } catch {
+        return { state: "unknown" };
+      }
+      if (started.digest === sha256(canonicalJson(parts))) return { state: "current" };
+      return {
+        state: "previous",
+        ...(started.consoleVersion && started.consoleVersion !== parts.consoleVersion ? { release: started.consoleVersion as string } : {}),
+      };
+    },
+  };
+}
+
 let cachedBuildId: string | undefined;
 
 /**

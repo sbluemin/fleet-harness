@@ -1199,6 +1199,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Operation 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
+  // 대화 주인 세션의 시작 구성 판정 — Operation 대화의 pill 과 같은 표식·같은 자리(이름 바로 뒤)다.
+  const configuration = descriptor.configuration?.(context) ?? null;
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
@@ -1208,6 +1210,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
               ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
               : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
             <span className="conversation-pill-title">{title}</span>
+            <LaunchConfigurationMark state={configuration?.state} release={configuration?.release} locale={language} />
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
           </button>
           {hasActions ? <span className="conversation-pill-controls"><PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary></span> : null}

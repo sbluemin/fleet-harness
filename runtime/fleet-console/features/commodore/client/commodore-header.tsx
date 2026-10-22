@@ -4,6 +4,7 @@ import { mongleStateOf, type MongleState } from "@fleet-console/sdk/avatars";
 import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
 
 import {
+  commodoreConfiguration,
   loadCommodore,
   noteCommodoreLanguage,
   openAsks,
@@ -53,6 +54,8 @@ export const commodoreTheaterContribution: TheaterContribution = {
       return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.active !== true };
     },
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
+    // 사령관 세션이 업데이트 전 구성으로 계속 도는 중 — 호스트가 Operation 행과 같은 표식을 Theater 이름 바로 뒤에 세운다.
+    configuration: (theaterId) => (readCommodoreExperiment().enabled ? commodoreConfiguration(theaterId) : null),
     // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
     landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
   },

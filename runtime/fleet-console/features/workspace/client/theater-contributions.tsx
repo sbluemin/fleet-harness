@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheaterSummary, TheaterContribution, TheaterFace } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheaterSummary, LaunchConfigurationVerdict, TheaterContribution, TheaterFace } from "@fleet-console/sdk/plugin";
 import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
 import type { MongleState } from "@fleet-console/sdk/avatars";
 
@@ -121,6 +121,34 @@ export function useTheaterContributionFace(theaterId: string): TheaterFace | nul
     if (snapshot === null) return null;
     const [state, off] = snapshot.split(":");
     return { state: state as MongleState, off: off === "off" };
+  }, [snapshot]);
+}
+
+/**
+ * 그 Theater 를 운영하는 세션(사령관)의 시작 구성 판정 — 머리는 Operation 행과 같은 표식을 Theater 이름 바로 뒤에 세운다.
+ * 처음으로 판정을 돌려준 기여가 이기고, 아무도 돌려주지 않으면 null 이다. 머리 구독으로 다시 읽는다.
+ */
+export function useTheaterContributionConfiguration(theaterId: string): LaunchConfigurationVerdict | null {
+  const { theaterContributions } = usePluginRegistry();
+  const sources = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.configuration), [theaterContributions]);
+  const subscribe = useHeaderSubscription(sources);
+  // 판정도 읽을 때마다 새 객체일 수 있다 — 스냅숏은 값을 이은 문자열이다.
+  const read = useCallback(() => {
+    for (const contribution of sources) {
+      try {
+        const verdict = contribution.header?.configuration?.(theaterId);
+        if (verdict != null) return `${verdict.state}\u0000${verdict.release ?? ""}`;
+      } catch {
+        // 한 기여의 실패는 다음 기여에게 자리를 넘긴다.
+      }
+    }
+    return null;
+  }, [sources, theaterId]);
+  const snapshot = useSyncExternalStore(subscribe, read, read);
+  return useMemo(() => {
+    if (snapshot === null) return null;
+    const [state, release] = snapshot.split("\u0000");
+    return { state: state as LaunchConfigurationVerdict["state"], ...(release ? { release } : {}) };
   }, [snapshot]);
 }
 

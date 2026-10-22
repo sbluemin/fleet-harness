@@ -66,10 +66,42 @@ export interface CommodoreTurnOutcome {
   readonly actions: number;
 }
 
+/** 세션이 실제로 실은 구성 — 시작 구성 지문의 입력이다(직렬화 가능한 값만). 해시에만 쓰이고 브라우저로 나가지 않는다. */
+export interface CommodoreSessionSetup {
+  readonly prompt: { readonly systemPrompt: string; readonly builtins: readonly string[] };
+  readonly tools: readonly { readonly group: string; readonly name: string; readonly description: string; readonly inputSchema: unknown }[];
+}
+
+const COMMODORE_BUILTINS = ["WebSearch", "WebFetch", "Read"] as const;
+
+/**
+ * 같은 입력으로 지금 세션을 열면 실릴 구성. 세션은 연 순간의 값을 `setup()` 으로 돌려주고, 감독자는 이 함수로 지금의 기대 구성을
+ * 다시 짓는다 — 두 쪽이 한 함수를 지나야 같은 입력이 같은 지문이 된다.
+ */
+export function commodoreSessionSetup(input: {
+  readonly theaterLabel: string;
+  readonly language?: CommodoreLanguage;
+  readonly commodoreTools: readonly PluginMcpTool[];
+  readonly boardTools: readonly PluginMcpTool[];
+  readonly knowledgeTools?: readonly PluginMcpServerTools[];
+}): CommodoreSessionSetup {
+  const groups = [
+    { name: COMMODORE_TOOL_GROUP, tools: input.commodoreTools },
+    ...(input.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: input.boardTools }] : []),
+    ...(input.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP),
+  ];
+  return {
+    prompt: { systemPrompt: commodoreSystemPrompt(input.theaterLabel, input.language), builtins: COMMODORE_BUILTINS },
+    tools: groups.flatMap((group) => group.tools.map((tool) => ({ group: group.name, name: tool.name, description: tool.description, inputSchema: tool.inputSchema }))),
+  };
+}
+
 export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
   readonly attached?: boolean;
   continueTurn?(): Promise<CommodoreTurnOutcome>;
+  /** 이 세션이 열릴 때 실은 구성. 아직 열리지 않았으면 null — 같은 세션에서 다시 짓지 않는다. */
+  setup(): CommodoreSessionSetup | null;
   start(): Promise<void>;
   /** 도는 턴에 사람의 말을 건넨다. 도는 턴이 없거나 건넬 수 없으면 false — 부른 쪽이 다음 턴에 싣는다. */
   steer(message: string, id: string): boolean;
@@ -90,6 +122,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   // 보드 도구마다 쓰기 action — 호출의 action 이 이 중 하나면 보드 행위로 기록하고 센다. 나머지는 읽기다.
   const boardWrites = new Map(options.boardTools.map((tool) => [tool.name, new Set(Object.entries(tool.actionSchema?.actions ?? {}).flatMap(([action, info]) => (info.kind === "write" ? [action] : [])))]));
   let session: ConsoleResidentSession | null = null;
+  let openedSetup: CommodoreSessionSetup | null = null;
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
@@ -186,6 +219,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
 
   const open = async () => {
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    const setup = commodoreSessionSetup({ theaterLabel: options.theaterLabel, ...(options.language ? { language: options.language } : {}), commodoreTools: tools, boardTools: options.boardTools, ...(options.knowledgeTools ? { knowledgeTools: options.knowledgeTools } : {}) });
     const created = await options.agent.createSession({
       liveKey: `commodore:${options.commodoreId}`,
       orchestration: {
@@ -209,7 +243,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
-        builtins: ["WebSearch", "WebFetch", "Read"],
+        builtins: [...COMMODORE_BUILTINS],
         browser: { scopeId: `commodore:${options.commodoreId}` },
         custom: [
           { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
@@ -222,6 +256,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     });
     if (disposed) { await created.dispose(); return; }
     session = created;
+    openedSetup = setup;
   };
 
   const finishOutcome = (): CommodoreTurnOutcome => {
@@ -244,6 +279,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       try { await session.waitForTurn(); } finally { turnActive = false; }
       return finishOutcome();
     },
+    setup: () => openedSetup,
     steer(message, id) {
       if (disposed || !turnActive || !session?.steer) return false;
       // 깨움 턴의 메시지와 같은 머리로 건넨다 — 모델에게는 「사람의 말」 한 덩이로 읽힌다.

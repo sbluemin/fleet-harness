@@ -16,7 +16,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConfiguration, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 
@@ -416,6 +416,11 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     return label ? `${name} · ${label}` : name;
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
+  // 지금 도는 사령관 세션의 시작 구성 판정 — 지난 대화를 읽는 화면(readOnly)에는 지금 도는 세션이 없으므로 세우지 않는다.
+  configuration: (ctx) => {
+    const params = readParams(ctx.params);
+    return params && !params.readOnly ? commodoreConfiguration(params.theaterId) : null;
+  },
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.

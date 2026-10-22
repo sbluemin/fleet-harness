@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
+import { getT, useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
@@ -22,7 +22,8 @@ import { operationAccentFromNode, resolveAccentColor } from "../operation-accent
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeSideBarAddTheater, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionConfiguration, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
+import { LaunchConfigurationMark } from "@fleet-console/sdk/components/launch-configuration-mark";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
@@ -1485,6 +1486,9 @@ function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
   const mark = useTheaterContributionMark(contributionSummary);
   const live = useTheaterHeaderLive(theater.id);
+  // 사령관 세션이 업데이트 전 구성으로 계속 도는 중 — Operation 행과 같은 표식이 Theater 이름 바로 뒤에 선다.
+  const configuration = useTheaterContributionConfiguration(theater.id);
+  const locale = useConsoleLocale();
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
   const keyFinishRef = useRef(false);
@@ -1622,7 +1626,14 @@ function TheaterSectionHeader({
         >
           {mark === null ? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
-            <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+            {configuration?.state === "previous" ? (
+              <span className="side-bar-theater-name-row">
+                <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+                <LaunchConfigurationMark state={configuration.state} release={configuration.release} locale={locale} />
+              </span>
+            ) : (
+              <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+            )}
             {subline ? <span className="side-bar-theater-sub">{subline}</span> : null}
           </span>
         </button>
