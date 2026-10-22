@@ -299,8 +299,13 @@ export function mountReadingInto(
       if (destroyed || epoch !== entryRequestEpoch || deletion !== undoDeletion || deletion.theaterId !== liveOpts.theaterId) return;
       clearDeleteToast();
       await renderEntryView(deletion.entryId);
-    } catch {
-      if (destroyed || epoch !== entryRequestEpoch || deletion !== undoDeletion) return;
+    } catch (error) {
+      if (destroyed || epoch !== entryRequestEpoch || deletion !== undoDeletion || deletion.theaterId !== liveOpts.theaterId) return;
+      if (error instanceof CodexRequestError && error.code === "entry_exists") {
+        clearDeleteToast();
+        await renderEntryView(deletion.entryId);
+        return;
+      }
       const label = readContainer.querySelector<HTMLElement>(".codex-delete-toast span");
       if (label) label.textContent = consoleT()("codex.reading.restoreFailed");
       if (button) button.disabled = false;
