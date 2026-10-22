@@ -8,6 +8,7 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 
 export default defineConfig({
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@fleet-console/agent-runtime/claude": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src/claude"),
       "@fleet-console/agent-runtime": path.join(workspaceRoot, "runtime/fleet-console/foundation/agent-runtime/src"),
@@ -20,6 +21,8 @@ export default defineConfig({
     },
   },
   test: {
+    // 외부화한 패키지는 Node가 자체 React를 읽는다. 렌더러도 Vite로 처리해 위 dedupe를 적용한다.
+    server: { deps: { inline: ["@openuidev/react-lang"] } },
     environment: "node",
     include: ["tests/**/*.test.{ts,tsx}", "features/*/host/**/*.test.ts", "features/*/client/**/*.test.{ts,tsx}"],
     // built smoke self-skips unless FLEET_BUILT_SMOKE=1; keep it discoverable for explicit runs.

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useCommodoreOpenUIPort } from "./openui-ports.js";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
@@ -466,11 +467,14 @@ const FOLLOW_SLACK_PX = 48;
  */
 export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal, cards }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null; readonly cards?: React.ReactNode }) {
   const Transcript = commodoreTranscriptRenderer();
+  // 답 단추는 같은 Theater의 사령관 메시지 API로 보낸다. 입력창 초안·첨부는 건드리지 않는다.
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
   const blocks = useMemo(() => commodoreLogBlocks(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const references = useCommodoreReferenceHost(t, theaterId);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
       const block = blocks[index];
@@ -548,7 +552,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
         return (
           <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
             {line}
-            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} />
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openUIOpen={openUIOpen} openui onOpenUISend={sendOpenUI} />
           </div>
         );
       }) : null}
@@ -749,7 +753,7 @@ interface CommodoreComposerDraft {
   readonly references: readonly CommodoreReference[];
   readonly textRevision: number;
   readonly sending: boolean;
-  /** 사령관만의 거절(합계 8 MiB). 그 밖 첨부 안내는 공유 스토어가 가진다. */
+  /** 입력창 위 안내 줄 — 사령관만의 거절(합계 8 MiB). 그 밖 첨부 안내는 공유 스토어가 가진다. */
   readonly budgetNotice: string | null;
 }
 

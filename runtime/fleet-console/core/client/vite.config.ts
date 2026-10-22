@@ -13,6 +13,8 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
+      // react-lang의 개발 모드 CDN 자동 로딩은 허용하지 않는다.
+      "@openuidev/devtools": path.resolve(__dirname, "openui-devtools-stub.ts"),
       // xterm 패키지는 workspace root에서 단일 인스턴스로 dedup
       "@xterm/addon-fit": path.resolve(__dirname, "../../node_modules/@xterm/addon-fit"),
       "@xterm/addon-unicode11": path.resolve(__dirname, "../../node_modules/@xterm/addon-unicode11"),

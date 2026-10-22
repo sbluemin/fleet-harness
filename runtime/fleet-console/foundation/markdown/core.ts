@@ -41,7 +41,16 @@ export interface RenderMarkdownOptions {
    * 미완성 원문을 델타마다 렌더하거나 파서 오류를 깜빡이지 않게 한다. 이미 닫힌 펜스는 그대로 자리표시자가 된다.
    */
   readonly deferUnclosedMermaid?: boolean;
+  /**
+   * `openui-lang`(별칭 `openui`) 펜스를 OpenUI 자리표시자(`.openui-block`)로 감싼다. 안에는 평소의 코드 블록이 그대로 있어
+   * 그리지 못하면 그 코드 블록이 폴백이 된다. 그림은 `installOpenUIHydrator`가 그린다. 기본은 꺼짐(지금과 같은 코드 블록)이다.
+   * `deferUnclosedMermaid`(흐르는 중)와 함께 켜면 아직 닫히지 않은 마지막 OpenUI 펜스는 미확정(`data-openui-final="0"`)으로 둔다.
+   */
+  readonly openui?: boolean;
 }
+
+/** OpenUI 펜스 언어 — 정식 이름은 업스트림 inline mode 관례인 `openui-lang`, `openui`는 별칭이다. */
+const OPENUI_LANGUAGES: ReadonlySet<string> = new Set(["openui-lang", "openui"]);
 
 interface FrontmatterEntry {
   key: string;
@@ -90,11 +99,12 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
   const safeHtml = DOMPurify.sanitize(frontmatterHtml + rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
   removeDuplicateTitleHeading(document, options.omitDuplicateTitle);
+  stripOpenUIMarkers(document);
   decorateHeadings(document);
   decorateCodeBlocks(document, {
     copyLabel: options.copyLabel ?? "Copy",
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
-  }, options.deferUnclosedMermaid === true ? bodyWithWikiLinks : undefined);
+  }, options.deferUnclosedMermaid === true ? bodyWithWikiLinks : undefined, options.openui === true);
   decorateLinks(document, options.resolveLink, options.siteLinks === true);
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
@@ -188,13 +198,21 @@ function decorateCodeBlocks(
   document: Document,
   labels: { readonly copyLabel: string; readonly copyAriaLabel: (language: string) => string },
   deferUnclosedMermaidSource?: string,
+  openui = false,
 ): void {
   const codes = [...document.querySelectorAll("pre > code")];
   // marked가 아직 닫지 않은 마지막 mermaid 펜스만 코드로 남긴다. 앞선 닫힌 펜스는 그대로 그린다.
   let trailingOpenMermaid: Element | null = null;
-  if (deferUnclosedMermaidSource !== undefined && trailingMermaidFenceOpen(deferUnclosedMermaidSource)) {
+  if (deferUnclosedMermaidSource !== undefined && trailingFenceOpen(deferUnclosedMermaidSource, isMermaidLanguage)) {
     for (const code of codes) {
       if (languageFromClass(code.className) === "mermaid") trailingOpenMermaid = code;
+    }
+  }
+  // OpenUI는 미완성 원문도 그 자리에서 자라며 그려진다 — 닫히지 않은 마지막 펜스는 자리표시자로 두되 미확정으로 표시한다.
+  let trailingOpenOpenUI: Element | null = null;
+  if (openui && deferUnclosedMermaidSource !== undefined && trailingFenceOpen(deferUnclosedMermaidSource, isOpenUILanguage)) {
+    for (const code of codes) {
+      if (OPENUI_LANGUAGES.has(languageFromClass(code.className) ?? "")) trailingOpenOpenUI = code;
     }
   }
   for (const code of codes) {
@@ -219,6 +237,15 @@ function decorateCodeBlocks(
     pre.classList.add("code-block");
     pre.dataset.code = rawCode;
     pre.insertBefore(buildCodeToolbar(document, language || "text", labels), pre.firstChild);
+    if (openui && language !== null && OPENUI_LANGUAGES.has(language)) {
+      // 원문은 base64 속성으로만 싣는다(Mermaid와 같은 이유) — 원문이 HTML로 해석되는 경로는 없다.
+      const block = document.createElement("div");
+      block.className = "openui-block";
+      block.setAttribute("data-openui-source", encodeMermaidSource(rawCode));
+      block.setAttribute("data-openui-final", code === trailingOpenOpenUI ? "0" : "1");
+      pre.replaceWith(block);
+      block.append(pre);
+    }
   }
 }
 
@@ -226,19 +253,23 @@ function isMermaidLanguage(language: string | undefined): boolean {
   return language?.trim().split(/\s+/)[0]?.toLowerCase() === "mermaid";
 }
 
-/** marked가 낸 마지막 mermaid 코드 토큰의 raw에 닫는 펜스가 없으면, 스트리밍 중인 미완성 원문이다. */
-function trailingMermaidFenceOpen(source: string): boolean {
-  const last = lastMermaidCode(marked.lexer(source));
-  if (!last) return false;
-  return !mermaidFenceClosed(last.raw);
+function isOpenUILanguage(language: string | undefined): boolean {
+  return OPENUI_LANGUAGES.has(language?.trim().split(/\s+/)[0]?.toLowerCase() ?? "");
 }
 
-function lastMermaidCode(tokens: readonly Token[]): Tokens.Code | null {
+/** marked가 낸 마지막 해당 언어 코드 토큰의 raw에 닫는 펜스가 없으면, 스트리밍 중인 미완성 원문이다. */
+function trailingFenceOpen(source: string, matches: (language: string | undefined) => boolean): boolean {
+  const last = lastFencedCode(marked.lexer(source), matches);
+  if (!last) return false;
+  return !fenceClosed(last.raw);
+}
+
+function lastFencedCode(tokens: readonly Token[], matches: (language: string | undefined) => boolean): Tokens.Code | null {
   let found: Tokens.Code | null = null;
   const visit = (list: readonly Token[] | undefined): void => {
     if (!list) return;
     for (const token of list) {
-      if (token.type === "code" && "lang" in token && isMermaidLanguage(token.lang)) found = token as Tokens.Code;
+      if (token.type === "code" && "lang" in token && matches(token.lang)) found = token as Tokens.Code;
       if ("tokens" in token && token.tokens) visit(token.tokens);
       if (token.type === "list") {
         for (const item of token.items) visit(item.tokens);
@@ -249,7 +280,7 @@ function lastMermaidCode(tokens: readonly Token[]): Tokens.Code | null {
   return found;
 }
 
-function mermaidFenceClosed(raw: string): boolean {
+function fenceClosed(raw: string): boolean {
   const opening = /^(?: {0,3})(`{3,}|~{3,})/.exec(raw);
   const marker = opening?.[1];
   if (!opening || !marker) return true;
@@ -281,6 +312,21 @@ function buildCodeToolbar(
   button.textContent = labels.copyLabel;
   toolbar.append(dots, lang, button);
   return toolbar;
+}
+
+// OpenUI 표식(자리표시자·하이드레이터 상태·답 단추)은 펜스에서 이 모듈과 하이드레이터만 만든다. DOMPurify 기본값은 class·data-*·button 을
+// 남기므로, 말 속 원시 HTML 이 같은 클래스·속성을 써서 그림이나 답 단추를 흉내 내지 못하게 장식 전에 걷는다(링크의 data-md-* 와 같은 결).
+const OPENUI_MARKER_SELECTOR = '[class*="openui"], [data-openui-source], [data-openui-final], [data-openui-state], [data-openui-owned], [data-openui-reply]';
+function stripOpenUIMarkers(document: Document): void {
+  for (const element of document.body.querySelectorAll(OPENUI_MARKER_SELECTOR)) {
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name.startsWith("data-openui-")) element.removeAttribute(attribute.name);
+    }
+    for (const token of [...element.classList]) {
+      if (token.startsWith("openui")) element.classList.remove(token);
+    }
+    if (element.getAttribute("class") === "") element.removeAttribute("class");
+  }
 }
 
 function decorateLinks(document: Document, resolveLink: RenderMarkdownOptions["resolveLink"], siteLinks: boolean): void {

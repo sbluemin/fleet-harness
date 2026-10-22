@@ -318,6 +318,7 @@
     "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
   },
   "dependencies": {
+    "@fleet-console/markdown": "workspace:*",
     "@fleet-console/link": "workspace:*",
     "zod": "^4.4.1"
   },

@@ -1,3 +1,4 @@
+import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
 import type { ComposerQuote } from "../composer/quotes.js";
 import type { ReactNode } from "react";
 
@@ -165,6 +166,8 @@ export interface OperationClusterConversation {
    * 플러그인이 줄 id 로 자기 기록을 찾는다. 없으면 그 줄은 펼침만 있다.
    */
   readonly openBoardAction?: (entryId: string) => void;
+  /** 플러그인이 소유한 목표·미션 열기. 없으면 OpenUI의 내부 대상은 정적 글자다. */
+  readonly openUIOpen?: OpenUIOpenPort;
   readonly actions?: GroupConversationActions;
 }
 

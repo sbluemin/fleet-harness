@@ -1,3 +1,4 @@
+import { OpenUIHttpsContext } from "./openui-boundary.js";
 import { createContext, useContext, useEffect, useRef, type MouseEventHandler, type ReactNode } from "react";
 import type { RenderMarkdownOptions } from "@fleet-console/markdown/core";
 import { bindMarkdownLinkActivation, type MarkdownLinkActivation } from "@fleet-console/markdown/link-activation";
@@ -8,7 +9,7 @@ export function useMarkdownLinkResolver() {
   return useContext(LinkResolverContext);
 }
 
-export function MarkdownLinkBoundary({ resolveLink, onActivate, className, onClick, onAuxClick, fleetLink, children }: {
+export function MarkdownLinkBoundary({ resolveLink, onActivate, className, onClick, onAuxClick, fleetLink, openUIChoose, children }: {
   readonly resolveLink: RenderMarkdownOptions["resolveLink"];
   readonly onActivate: MarkdownLinkActivation;
   readonly className?: string;
@@ -17,9 +18,10 @@ export function MarkdownLinkBoundary({ resolveLink, onActivate, className, onCli
   readonly onAuxClick?: MouseEventHandler<HTMLDivElement>;
   /** 문서 링크 라우터 예외 표식(`data-fleet-link`). 자체 카드로 묻는 영역은 "self". */
   readonly fleetLink?: "self" | "native";
+  readonly openUIChoose?: (url: string, at: { readonly x: number; readonly y: number }) => boolean;
   readonly children: ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => root.current ? bindMarkdownLinkActivation(root.current, onActivate) : undefined, [onActivate]);
-  return <LinkResolverContext.Provider value={resolveLink}><div ref={root} className={className} onClick={onClick} onAuxClick={onAuxClick} data-fleet-link={fleetLink}>{children}</div></LinkResolverContext.Provider>;
+  return <OpenUIHttpsContext.Provider value={openUIChoose ?? null}><LinkResolverContext.Provider value={resolveLink}><div ref={root} className={className} onClick={onClick} onAuxClick={onAuxClick} data-fleet-link={fleetLink}>{children}</div></LinkResolverContext.Provider></OpenUIHttpsContext.Provider>;
 }

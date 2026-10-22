@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCommodoreOpenUIPort } from "./openui-ports.js";
+import { messageCommodore } from "./commodore-state.js";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -249,6 +251,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
   const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
   const references = useCommodoreReferenceHost(t, theaterId);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
@@ -283,6 +286,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
   }, [run?.session, lastSession]);
 
+  // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   const composer = (
     <footer className="objectives-commodore-foot">
@@ -313,8 +318,9 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             entries={ledgerEntries}
             reveal={ledgerReveal}
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
-            references={references}
+            references={references} openUIOpen={openUIOpen}
             coordinates={ledgerCoordinates}
+            openui
           />
         </div>
       ) : (
@@ -332,10 +338,11 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             reveal={revealEntry}
             openBoardAction={openBoardAction}
             openLedger={openLedger}
-            references={references}
+            references={references} openUIOpen={openUIOpen}
             cards={readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
             composer={composer}
             composerTopEntries={!readOnly}
+            {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}
           />
         ) : composer}
       </div>

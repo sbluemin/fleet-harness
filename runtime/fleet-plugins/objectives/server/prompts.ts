@@ -1,10 +1,12 @@
+import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { memberFailureReason } from "./signals.js";
 import { MAX_CONTEXT, ownAnswer, type DecisionAnswer, type DecisionRequest, type ObjectiveActor, type ObjectiveEditKind, type Objective, type ObjectiveMember, type ObjectiveMemberFailure, type ObjectiveMemberUnreported } from "./types.js";
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
  * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 지휘관이 SendMessage 로 맥락을 담아 일을 시킨다.
- * 사람이 덧붙인 말이 있으면 그 한 줄 아래 인용으로 붙는다(구상·개시·스티어링 모두 같은 모양).
+ * 사람이 덧붙인 말이 있으면 그 한 줄 아래 인용으로 붙는다(구상·개시·스티어링 모두 같은 모양). 구상·개시 턴만 말풍선 UI 지침
+ * (`OPENUI_GUIDE`)을 인용 앞에 함께 싣는다.
  */
 
 export type PromptLanguage = "en" | "ko";
@@ -34,6 +36,12 @@ const quoted = (context: string | undefined): string => {
 export const humanWords = (context: string | undefined): string => quoted(context).trimStart();
 
 /**
+ * 말풍선 UI 지침 — 지휘관에게만, 구상·개시 턴에 싣는다(구성원 턴에는 없다). 사람이 덧붙인 인용보다 앞에 두어 인용이 프롬프트의
+ * 끝에 남는다 — 호스트가 표시 구간을 뒤에서부터(lastIndexOf) 찾기 때문이다.
+ */
+const visualBlocks = `\n\n${OPENUI_GUIDE}`;
+
+/**
  * 구상 — 한 줄: 목표 id 와 「구상」. 편성은 보드에 올리고(plan·place_mission) 임무는 수행하지 않는다 — 「계획만」을 보드에
  * 쓰지 말라는 뜻으로 읽으면 사람이 개시 전에 계획을 보지 못한다. 사람이 함께 준 맥락이 있으면 그 아래 인용으로.
  */
@@ -50,7 +58,7 @@ export function planTurn(objective: Objective, language: PromptLanguage, by: Obj
     : ` This is extension ${round.n} — keep finished missions and existing criteria and plan only the added scope. Propose any old met criterion that needs rechecking in criteria with {recheck: criterion number or id, reason}; only an approved recheck clears its met evidence.`;
   const request = quoted(round?.context ?? objective.planRequest);
   const replanning = round && objective.planRequest?.trim() && objective.planRequest.trim() !== round.context ? quoted(objective.planRequest) : "";
-  return `${word}${requestedBy(by, language)}${extension}${notice}${request}${replanning}`;
+  return `${word}${requestedBy(by, language)}${extension}${notice}${visualBlocks}${request}${replanning}`;
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {
@@ -146,7 +154,7 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
   const changed = !what ? "" : language === "ko"
     ? `\n\n마지막으로 읽은 뒤 ${editActors(objective, language)}이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
     : `\n\n${editActors(objective, language)} changed this objective since you last read it (${what}). Read it again with \`fleet-objectives\` before you proceed.`;
-  return `${word}${requestedBy(by, language)}${changed}${quoted(context)}`;
+  return `${word}${requestedBy(by, language)}${changed}${visualBlocks}${quoted(context)}`;
 }
 
 /**

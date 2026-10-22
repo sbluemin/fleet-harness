@@ -31,16 +31,37 @@
       "types": "./link-activation.ts",
       "import": "./link-activation.ts",
       "default": "./link-activation.ts"
+    },
+    "./openui": {
+      "types": "./openui.ts",
+      "import": "./openui.ts",
+      "default": "./openui.ts"
+    },
+    "./openui-guide": {
+      "types": "./openui-guide.ts",
+      "import": "./openui-guide.ts",
+      "default": "./openui-guide.ts"
     }
   },
   "dependencies": {
+    "@openuidev/lang-core": "1.0.1",
+    "@openuidev/react-lang": "1.0.1",
     "dompurify": "^3.2.7",
     "highlight.js": "^11.11.1",
     "marked": "^16.4.1",
-    "mermaid": "^11.12.1"
+    "mermaid": "^11.12.1",
+    "zod": "^4.4.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "typescript": "^6.0.2"
   },
   "scripts": {
