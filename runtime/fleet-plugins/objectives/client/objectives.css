@@ -326,6 +326,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-member.is-ledger { background: var(--control-wash); }
 .objectives-member > .objectives-member-remove { grid-area: remove; }
 .objectives-member:hover { background: var(--control-rest); }
+/* 시작 구성 표식(호스트 부품) — 머무른 명단 줄에서는 이름처럼 한 단 오른다. 사이드바 행과 같은 규칙이다. */
+.objectives-member:hover .launch-configuration-mark { color: var(--text-secondary); }
 /* 구성원·지휘관 표식 — 그 사람 Operation 의 몽글 아바타(objective-avatar.tsx)로 사이드바와 같은 얼굴이다. 같은 사람이 임무 줄·메뉴·그래프에
    여러 번 서므로 움직임은 명단 한 자리에만 두고, 나머지(is-still)는 --state-motion 을 꺼 얼굴과 배지로만 상태를 말한다. */
 .objectives-avatar { width: 20px; height: 20px; }

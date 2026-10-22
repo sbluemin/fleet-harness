@@ -9,6 +9,7 @@ import { usePluginRegistry } from "../../../../core/client/src/integration/plugi
 import { describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { LaunchConfigurationMark } from "@fleet-console/sdk/components/launch-configuration-mark";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkLabel, type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationAvatar, mongleStateOfMark } from "../avatars.js";
@@ -120,6 +121,7 @@ export function OperationsSideBarChip({
   onRename,
 }: SideBarChipProps) {
   const t = useT();
+  const locale = useConsoleLocale();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
   // 터치 탭은 고르기 모드에서도 연다 — 클릭 사건이 포인터 종류를 싣지 않는 환경이 있어 누를 때 기록해 둔다.
@@ -387,6 +389,8 @@ export function OperationsSideBarChip({
             <>
               <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : renameOnNameDoubleClick}>{title}</span>
               {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
+              {/* 업데이트 전 구성으로 계속 도는 세션 — 상태가 아니라 사실이라 아바타 칸이 아니라 이름 줄의 표식 자리에 선다. */}
+              <LaunchConfigurationMark state={session?.configurationState} release={session?.configurationRelease} locale={locale} />
             </>
           )}
         </span>

@@ -21,6 +21,7 @@ import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurn
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
+import type { LaunchConfiguration, LaunchFingerprint } from "./launch-fingerprint.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -56,6 +57,8 @@ export interface TerminalLaunchResolverDeps {
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  /** 시작 구성 지문을 찍는 자리. 없으면 세션의 구성 판정은 unknown 이다. */
+  readonly launchConfiguration?: LaunchConfiguration;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
@@ -74,6 +77,8 @@ export interface ConsoleRuntimeSessionInfo {
    * 여기서 이미 확정이다 — capture hook이 오기 전에도 호스트가 그 세션의 좌표를 안다.
    */
   readonly claudeSessionId?: string;
+  /** 이 런치가 실제로 실은 구성의 지문 — 서버 전용. 시작에 한 번 찍고 다시 찍지 않는다. */
+  readonly launchFingerprint?: LaunchFingerprint;
 }
 
 export type GatewayLaunchOptionErrorCode = "gateway_model_not_enabled" | "invalid_effort";
@@ -213,6 +218,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       createSessionCaptureHookExec,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
+      ...(deps.launchConfiguration ? { launchConfiguration: deps.launchConfiguration } : {}),
       bindWorkspaceHook: deps.bindWorkspaceHook,
       resolveProfile,
       cliId: context?.cliId,
@@ -252,6 +258,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  readonly launchConfiguration?: LaunchConfiguration;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
@@ -359,6 +366,13 @@ async function createAgentCliLaunchSpec(options: {
           }
         : {}),
     });
+    // 지문은 프롬프트·도구를 실제로 실은 바로 이 자리에서 찍는다 — 같은 Theater 설정·도구 목록을 읽는다.
+    const launchFingerprint = options.launchConfiguration?.capture({
+      surface: "pty",
+      theaterId: options.theaterId ?? null,
+      subagentsBlocked: options.disableSubagents === true,
+      autoMemoryDisabled: options.disableAutoMemory === true,
+    });
     options.onRuntimeSessionStart?.({
       cliId: injectedProfile.id,
       cliLabel: injectedProfile.label,
@@ -366,6 +380,7 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
       claudeSessionId: injectedProfile.session.sessionId,
+      ...(launchFingerprint ? { launchFingerprint } : {}),
     });
     let launchProfile: AgentCliProfile = injectedProfile;
     if (injectedProfile.id === "claude") {

@@ -302,7 +302,10 @@
 /* 이름을 걷어도 pill 안의 동작은 남는다. 표식과 동작의 폭만큼만 쓰는 마지막 축약 단계다. */
 .conversation-column > .conversation-pill-row > .conversation-pill[data-compact="true"] { flex: none; }
 .conversation-pill[data-compact="true"] .conversation-pill-details { flex: none; }
-.conversation-pill[data-compact="true"] :is(.conversation-pill-title, .conversation-pill-sub) { display: none; }
+.conversation-pill[data-compact="true"] :is(.conversation-pill-title, .conversation-pill-sub, .launch-configuration-mark) { display: none; }
+/* 머리 pill 의 제목은 13px bold — 시작 구성 표식도 한 단 크게 선다. 제목과 부제 사이 간격은 pill 의 gap 이 진다. */
+.conversation-pill .launch-configuration-mark,
+.conversation-pill .launch-configuration-mark svg { width: 13px; height: 13px; }
 
 .conversation-pill-controls,
 .conversation-caption-shelf {

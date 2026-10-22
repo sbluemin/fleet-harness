@@ -6,6 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import { LaunchConfigurationMark } from "@fleet-console/sdk/components/launch-configuration-mark";
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
@@ -411,7 +412,16 @@ function LedgerMark({ rootId, operationId, name, open, available, t, children }:
 }
 
 /** 구성원 탭의 명단 — 머리(셈·일괄 설정) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
-function MemberRoster({ objective, t, call, request, operationState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
+/**
+ * 업데이트 전 구성으로 계속 도는 구성원·지휘관 세션의 표식 — 사이드바 행·채팅 머리와 같은 호스트 부품·같은 문구다.
+ * 판정은 호스트가 Operation 요약에 싣는다(구버전 호스트는 싣지 않아 아무것도 서지 않는다).
+ */
+function SessionConfigurationMark({ operationId, language }: { operationId: string; language: "en" | "ko" }) {
+  const summary = useOperationSummaries().find((candidate) => candidate.id === operationId);
+  return <LaunchConfigurationMark state={summary?.configurationState} release={summary?.configurationRelease} locale={language} />;
+}
+
+function MemberRoster({ objective, t, language, call, request, operationState, rows, touchable, lead }: { objective: Objective; t: T; language: "en" | "ko"; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
   const ledger = useLedgerOperation(objective.id);
   const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
@@ -666,6 +676,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
                   onKeyDown={inlineKeys(member.role)} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== member.role) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { role: value } }); else { event.target.value = member.role; event.target.parentElement!.dataset.value = member.role; } }} />
               </span>
               {member.by === "commander" ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
+              {member.sessionName !== null ? <SessionConfigurationMark operationId={member.id} language={language} /> : null}
             </span>
             <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
@@ -1434,7 +1445,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
         <CommanderMark objective={objective} operationState={operationState} size={28} />
       </LedgerMark>
       <div className="objectives-member-body">
-        <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span></span>
+        <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span><SessionConfigurationMark operationId={objective.id} language={language} /></span>
         <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>
       </div>
       <div className="objectives-member-meta">
@@ -1445,7 +1456,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   );
   const sCrew = (
       <div className="objectives-group objectives-crew-group">
-        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} lead={commanderRow} />
+        <MemberRoster objective={objective} t={t} language={language} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} lead={commanderRow} />
       </div>
   );
   const sOrigin = (<>

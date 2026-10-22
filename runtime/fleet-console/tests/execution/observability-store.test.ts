@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sessionActivity } from "../../features/execution/client/agent/connection.js";
 import { createConsoleObservabilityStore } from "../../features/execution/host/agent/observability-store.js";
+import { createLaunchConfiguration } from "../../features/execution/host/agent/launch-fingerprint.js";
 import { projectWorkspace } from "../../features/execution/host/agent/workspace-context.js";
 import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 
@@ -45,6 +46,44 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("transcript");
     expect(serialized).not.toContain("providerSession");
     expect(serialized).not.toContain("token");
+  });
+
+  it("projects a live session's launch configuration as a verdict only, and keeps the start fingerprint after the setup changes", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-store-"));
+    tempDirs.push(cwd);
+    let prompt: { mode: string; body: string } | null = { mode: "append", body: "launch-prompt-secret" };
+    const configuration = createLaunchConfiguration({
+      consoleVersion: "1.251.0",
+      executionBuildId: () => "build-a",
+      readTheaterPrompt: () => prompt,
+      listTools: () => [],
+      hookEntry: { entryPath: path.join(cwd, "hook-entry.mjs"), execPath: "/usr/bin/node" },
+      disabledTools: [],
+      expectedTtlMs: 0,
+    });
+    const store = createConsoleObservabilityStore({
+      canonicalizeTheaterPath: (value) => fs.realpathSync.native(value),
+      workspaceHash: () => "theater-a",
+      describeLaunchConfiguration: (fingerprint) => configuration.describe(fingerprint),
+    });
+    store.createPendingTerminalSession({ sessionId: "session-b", cwd, cliId: "claude" });
+    const launchFingerprint = configuration.capture({ surface: "pty", theaterId: "theater-a", subagentsBlocked: false, autoMemoryDisabled: false });
+    const started = store.registerTerminalRuntimeSession({ sessionId: "session-b", cliId: "claude", label: "Claude", mcpToolCount: 0, launchFingerprint });
+    expect(started?.configurationState).toBe("current");
+
+    // 새 세션부터 적용되는 설정이 바뀌었다 — 이미 도는 세션의 지문은 그대로이고 판정만 이전 구성이 된다.
+    prompt = { mode: "append", body: "changed-prompt" };
+    configuration.invalidate();
+    const after = store.getTerminalSessionInfo("session-b");
+    expect(after?.configurationState).toBe("previous");
+    expect(after?.configurationRelease).toBeUndefined();
+
+    const serialized = JSON.stringify({ after, sessions: store.listTerminalSessions() });
+    expect(serialized).not.toContain(launchFingerprint.digest);
+    expect(serialized).not.toContain(launchFingerprint.effectivePromptHash);
+    expect(serialized).not.toContain("launch-prompt-secret");
+    expect(serialized).not.toContain("hook-entry");
+    expect(serialized).not.toContain("Fingerprint");
   });
 
   it("projects the Operation location as Theater-relative folder and branch, never an absolute path", () => {

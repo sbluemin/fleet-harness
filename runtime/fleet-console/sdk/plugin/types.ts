@@ -713,6 +713,14 @@ export interface ConsoleOperationSummary {
    * 부모 자신의 대기·실행을 구성원 것과 가를 때 쓴다(`ownActivity ?? activity`). `activity` 와 같은 규칙으로 센다.
    */
   readonly ownActivity?: "idle" | "running" | "awaiting" | "background" | "ended";
+  /**
+   * 살아 있는 세션이 시작할 때 실은 구성의 판정 — `previous` 면 업데이트 전 구성(도구·프롬프트)으로 계속 도는 중이다.
+   * 오류가 아니라 조용한 사실이다. 휴면·세션 없는 Operation 과 구버전 호스트에는 없다. 표시는
+   * `@fleet-console/sdk/components/launch-configuration-mark` 를 쓴다.
+   */
+  readonly configurationState?: "current" | "previous" | "unknown";
+  /** `previous` 이고 시작 release 가 지금과 다를 때만 그 version. */
+  readonly configurationRelease?: string;
 }
 
 /**

@@ -22,9 +22,15 @@ import type {
   AgentTurnState,
   AgentWorkStep,
 } from "./types.js";
+import type { LaunchConfigurationProjection, LaunchFingerprint } from "./launch-fingerprint.js";
 
 export interface ConsoleObservabilityStoreDeps {
   readonly canonicalizeTheaterPath?: (cwd: string) => string;
+  /**
+   * 보관한 시작 지문을 지금의 기대 구성과 비교한다. 투영은 그 판정만 싣는다 — 지문 원문은 이 저장소 밖으로 나가지 않는다.
+   * 없으면 구성 판정을 싣지 않는다.
+   */
+  readonly describeLaunchConfiguration?: (fingerprint: LaunchFingerprint | undefined) => LaunchConfigurationProjection;
   readonly now?: () => number;
   readonly nowIso?: () => string;
   readonly workspaceHash?: (canonicalCwd: string) => string;
@@ -85,6 +91,11 @@ interface PendingTerminalSessionState {
    * 새 PTY를 가르는 유일한 값이다. 휴면 투영에는 싣지 않는다(살아 있는 생산자가 없다).
    */
   terminalGeneration?: string;
+  /**
+   * 지금 살아 있는 생산자(PTY 또는 Chat SDK)가 시작할 때 실은 구성의 지문. 서버 전용이다 — 투영은 판정만 싣는다.
+   * 새 생산자가 설 때만 바뀐다. 같은 세션을 다시 관측하는 것은 시작이 아니므로 덮어쓰지 않는다.
+   */
+  launchFingerprint?: LaunchFingerprint;
 }
 
 type DormantOperationInput = AgentDurableOperation;
@@ -125,8 +136,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const workspacesByRegistrationId = new Map<string, WorkspaceState>();
   const terminalSessionsById = new Map<string, PendingTerminalSessionState>();
   const allListeners = new Set<AgentAllEventListener>();
+  const describeLaunchConfiguration = deps.describeLaunchConfiguration;
+  const toTerminalSessionInfo = (state: PendingTerminalSessionState): AgentTerminalSessionInfo => projectTerminalSession(state, describeLaunchConfiguration);
 
-  function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly cliId?: string; readonly cliLabel?: string; readonly label: string; readonly mcpToolCount: number }): AgentTerminalSessionInfo | null {
+  function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly cliId?: string; readonly cliLabel?: string; readonly label: string; readonly mcpToolCount: number; readonly launchFingerprint?: LaunchFingerprint }): AgentTerminalSessionInfo | null {
     const terminalSession = terminalSessionsById.get(input.sessionId);
     if (!terminalSession) return null;
     const previous = workspacesByCliRunId.get(input.sessionId);
@@ -146,6 +159,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       terminalSessionId: terminalSession.terminalSessionId,
     };
     terminalSession.status = "registered";
+    // 등록은 새 PTY 런치 하나에 한 번이다 — 그 런치가 찍은 지문이 이 생산자의 것이다. 없으면 모르는 구성이다.
+    if (input.launchFingerprint) terminalSession.launchFingerprint = input.launchFingerprint;
+    else delete terminalSession.launchFingerprint;
     terminalSession.cliId = input.cliId;
     terminalSession.cliLabel = input.cliLabel;
     terminalSession.registrationId = session.registrationId;
@@ -394,6 +410,17 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * (`modelActivity`·`attentionPending`)에 쓰고, 읽는 쪽은 그 한 벌만 해석한다 — 표면마다
    * 평행한 필드를 두면 같은 개념이 두 이름으로 갈라지고, 읽는 쪽이 어느 쪽을 볼지 매번 고른다.
    */
+  /**
+   * Chat SDK 생산자가 새로 섰을 때 그 시작 지문을 싣는다. 레지스트리가 세션을 새로 세울 때만 부른다 —
+   * 이미 선 세션에 다시 붙는 것은 시작이 아니다.
+   */
+  function setTerminalSessionLaunchFingerprint(sessionId: string, fingerprint: LaunchFingerprint): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    session.launchFingerprint = fingerprint;
+    return toTerminalSessionInfo(session);
+  }
+
   function setTerminalSessionChatActive(sessionId: string, active: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
@@ -604,6 +631,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     listTerminalSessions,
     listWorkspaces,
     createPendingTerminalSession,
+    setTerminalSessionLaunchFingerprint,
     getTerminalSessionInfo,
     injectDormantOperation,
     notifySessionAttention,
@@ -639,7 +667,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 }
 
-function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTerminalSessionInfo {
+function projectTerminalSession(state: PendingTerminalSessionState, describe: ConsoleObservabilityStoreDeps["describeLaunchConfiguration"]): AgentTerminalSessionInfo {
+  // 구성 판정은 살아 있는 생산자에만 싣는다 — 휴면에는 지금 도는 구성이 없다. Chat 이 인수한 세션은 PTY 가 접혀
+  // `dormant` 여도 SDK 생산자가 살아 있으므로, PTY 의 휴면 가드가 아니라 `chatActive` 가 먼저 말한다.
+  const live = state.chatActive === true || state.status !== "dormant";
+  const configuration = describe && live ? describe(state.launchFingerprint) : undefined;
   return {
     sessionId: state.sessionId,
     terminalSessionId: state.terminalSessionId,
@@ -663,6 +695,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     tenantId: state.cliRunId,
     resumeAvailable: state.session !== undefined,
     ...(state.terminalGeneration && state.status !== "dormant" ? { generation: state.terminalGeneration } : {}),
+    ...(configuration ? { configurationState: configuration.state } : {}),
+    ...(configuration?.release ? { configurationRelease: configuration.release } : {}),
   };
 }
 

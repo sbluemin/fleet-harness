@@ -22,6 +22,7 @@ import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSett
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, isExpandedSurfaceShown, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationRuntimeActivity } from "../../../../features/execution/client/operation-activity.js";
+import { getAgentState, subscribe as subscribeAgentState } from "../../../../features/execution/client/agent/store.js";
 import { AgentChatTranscript, AgentConversation, AgentDecisionCard, AgentLedger, ComposerTopEntries } from "../../../../features/execution/client/agent/index.js";
 import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
@@ -227,6 +228,8 @@ export function createHostCapabilities(
         const operations = nested ? [...snapshot.operations, ...snapshot.nestedOperations] : snapshot.operations;
         const parents = nested ? new Set(snapshot.nestedOperations.map((operation) => operation.parentOperationId)) : null;
         const own = parents && parents.size > 0 ? ownOperationRuntime() : null;
+        // 구성 판정은 세션 축의 사실이다 — 판정과 release 표기만 옮기고, 세션 DTO 의 나머지는 넘기지 않는다.
+        const sessions = getAgentState().sessions;
         return operations.map((operation) => ({
           id: operation.id,
           theaterId: operation.theaterId,
@@ -235,6 +238,8 @@ export function createHostCapabilities(
           activity: resolveOperationRuntimeActivity(operation, snapshot.operationRuntime),
           ...(nested && operation.parentOperationId ? { parentOperationId: operation.parentOperationId } : {}),
           ...(own && parents!.has(operation.id) ? { ownActivity: resolveOperationRuntimeActivity(operation, own) } : {}),
+          ...(sessions[operation.id]?.configurationState ? { configurationState: sessions[operation.id]!.configurationState } : {}),
+          ...(sessions[operation.id]?.configurationRelease ? { configurationRelease: sessions[operation.id]!.configurationRelease } : {}),
         }));
       },
       getActiveTheaterId: getViewedTheaterId,
@@ -245,7 +250,18 @@ export function createHostCapabilities(
       getOperationRuntimeHydration: () => getState().operationRuntimeHydration,
       getSelectedOperationId: () => getState().selectedOperationId,
       setActiveTheater: viewTheaterInbox,
-      subscribe: subscribeViewedTheater,
+      // 구성 판정은 활동 축 밖의 사실이라 런타임 축이 같으면 코어 상태가 울리지 않는다 — 판정이 바뀐 때만 함께 깨운다.
+      subscribe: (listener) => {
+        const offViewed = subscribeViewedTheater(listener);
+        let last = sessionConfigurationSignature();
+        const offAgent = subscribeAgentState(() => {
+          const next = sessionConfigurationSignature();
+          if (next === last) return;
+          last = next;
+          listener();
+        });
+        return () => { offViewed(); offAgent(); };
+      },
       // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
       getMapInsets: () => {
         const settled = getArenaInsets();
@@ -361,4 +377,13 @@ export function createHostCapabilities(
     },
   };
   return capabilities;
+}
+
+/** 세션별 구성 판정의 요약 문자열 — 바뀐 때만 플러그인 구독을 깨우는 비교 키다. */
+function sessionConfigurationSignature(): string {
+  const parts: string[] = [];
+  for (const session of Object.values(getAgentState().sessions)) {
+    if (session.configurationState) parts.push(`${session.sessionId}:${session.configurationState}:${session.configurationRelease ?? ""}`);
+  }
+  return parts.sort().join("|");
 }

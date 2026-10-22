@@ -19,6 +19,8 @@ import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark 
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
+import { useAgentState } from "../../../execution/client/agent/store.js";
+import { LaunchConfigurationMark } from "@fleet-console/sdk/components/launch-configuration-mark";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사이드바 그룹 트리에 서는 한 줄.
@@ -256,6 +258,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const locale = useConsoleLocale();
   const registry = usePluginRegistry();
   const { layout, row, anchor } = item;
+  const rootSession = useAgentState().sessions[layout.cluster.root ?? ""];
   // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
   const state = rowGlyphState(item);
@@ -466,6 +469,8 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       >
         <span className="side-bar-cluster-row-head">
             {rename.renaming ? renameInput : titleNode}
+            {/* 지휘관(묶음 뿌리) 세션이 업데이트 전 구성으로 계속 도는 중 — Operation 칩과 같은 표식·같은 자리다. */}
+            {rename.renaming ? null : <LaunchConfigurationMark state={rootSession?.configurationState} release={rootSession?.configurationRelease} locale={locale} />}
             {headMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}

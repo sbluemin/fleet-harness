@@ -119,6 +119,14 @@ export interface AgentTerminalSessionInfo {
    * 방금 선 PTY를 가르고, 값이 바뀌면 터미널 표면을 새로 붙인다. provider 신원이 아니다.
    */
   readonly generation?: string;
+  /**
+   * 살아 있는 생산자가 시작할 때 실은 구성을 지금의 기대 구성과 비교한 판정. 휴면이면 없다.
+   * `previous` 는 새 도구·프롬프트가 이 세션에 실리지 않았다는 조용한 사실이다(오류가 아니다).
+   * 지문 원문·프롬프트·경로는 싣지 않는다 — 판정과 아래 release 표기만 나간다.
+   */
+  readonly configurationState?: "current" | "previous" | "unknown";
+  /** `previous` 이고 시작 release 가 지금과 다를 때만 그 version. */
+  readonly configurationRelease?: string;
 }
 
 export interface AgentObservedWorkspace {

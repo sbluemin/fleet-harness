@@ -33,6 +33,7 @@ import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-co
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { LaunchConfigurationMark } from "@fleet-console/sdk/components/launch-configuration-mark";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -1235,6 +1236,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const t = useT();
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
+  const agentSessions = useAgentState().sessions;
   const bodyRenderer = useConversationBodyRenderer();
   const captionRenderer = useConversationCaptionRenderer();
   // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 내용 교체와 폭 전환은 pill-takeover 가 진다.
@@ -1381,7 +1383,10 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
           >
             <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{operation.title}</span>
+            {/* 업데이트 전 구성으로 계속 도는 세션 — 사이드바 행과 같은 표식이 그 세션 이름 바로 뒤에 선다. */}
+            <LaunchConfigurationMark state={agentSessions[operation.id]?.configurationState} release={agentSessions[operation.id]?.configurationRelease} locale={language} />
             {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
+            {bodyOwner !== operation ? <LaunchConfigurationMark state={agentSessions[bodyOwner.id]?.configurationState} release={agentSessions[bodyOwner.id]?.configurationRelease} locale={language} /> : null}
             {memberCount > 0 ? (
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}

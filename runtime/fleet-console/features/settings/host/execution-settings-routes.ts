@@ -45,6 +45,11 @@ interface TerminalSettingsRouteDeps {
   };
   /** AI Gateway 설정을 쓴 직후. 모델 로스터가 그 파일에서 투영되므로 열린 화면에 다시 읽으라고 알린다. */
   readonly onAiGatewayChanged?: () => void;
+  /**
+   * Theater 시스템 프롬프트를 저장한 직후. 새 세션부터 적용되는 설정이라, 실행 기능이 이미 도는 세션을
+   * 이전 구성으로 다시 판정하게 알린다.
+   */
+  readonly onTheaterSystemPromptChanged?: (theaterId: string) => void;
 }
 
 interface TerminalSettingsBody {
@@ -238,6 +243,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       return true;
     }
     const saved = deps.theaterSystemPrompts.save(theaterId, prompt);
+    deps.onTheaterSystemPromptChanged?.(theaterId);
     ctx.host.http.writeJson(res, 200, { theaterId, prompt: saved });
     return true;
   }, [

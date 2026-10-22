@@ -22,7 +22,7 @@ import type { TheaterSystemPromptService } from "../../../features/settings/host
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist", "launchKey"] as const;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"], theaterSystemPrompts: TheaterSystemPromptService) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"], theaterSystemPrompts: TheaterSystemPromptService, consoleVersion: string) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -41,12 +41,17 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
   const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
   const modelRoster = registerModelRosterRoutes(ctx, models);
+  // 새 세션의 구성을 바꾸는 설정 저장 → 실행 기능의 구성 판정. 설정 라우트와 실행 라우트를 여기서 잇는다.
+  const launchConfigurationListeners = new Set<(theaterId: string) => void>();
   registerTerminalSettingsRoutes(ctx, {
     theaterSystemPrompts,
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
     onAiGatewayChanged: () => { modelRoster.notify(); void aiGatewayRuntime.configure().catch((error) => ctx.recordFailure?.("session_gateway_configure_failed", error)); },
+    onTheaterSystemPromptChanged: (theaterId) => {
+      for (const listener of launchConfigurationListeners) listener(theaterId);
+    },
   });
   const runtime = createTerminalRuntime(ctx);
   // Operation Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
@@ -78,6 +83,11 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     organize,
     agentOptionsService: ctx.agentOptions,
     theaterSystemPrompts,
+    consoleVersion,
+    subscribeLaunchConfigurationChanged: (listener) => {
+      launchConfigurationListeners.add(listener);
+      return () => { launchConfigurationListeners.delete(listener); };
+    },
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {

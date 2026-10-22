@@ -259,6 +259,12 @@
       "import": "./components/launch-provider-glyphs.tsx",
       "default": "./components/launch-provider-glyphs.tsx"
     },
+    "./components/launch-configuration-mark": {
+      "types": "./components/launch-configuration-mark.tsx",
+      "browser": "./components/launch-configuration-mark.tsx",
+      "import": "./components/launch-configuration-mark.tsx",
+      "default": "./components/launch-configuration-mark.tsx"
+    },
     "./components/archive-glyph": {
       "types": "./components/archive-glyph.tsx",
       "browser": "./components/archive-glyph.tsx",

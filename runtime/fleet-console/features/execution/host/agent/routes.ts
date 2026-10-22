@@ -27,9 +27,11 @@ import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveOperationLabel } from "./auto-name.js";
 import { readBackgroundHookReport } from "./background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./launch.js";
+import { CONSOLE_DISABLED_TOOLS, createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./launch-attachments.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
+import { createLaunchConfiguration, type LaunchFingerprint, type LaunchIntent } from "./launch-fingerprint.js";
+import { buildConsoleHookEntry } from "./host-hooks.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSession, readProviderSession, type CapturedProviderSession } from "./provider-session.js";
@@ -71,6 +73,13 @@ interface AgentRouteDeps {
    * 받는 쪽은 멱등이어야 한다. 에이전트 사용 표식을 내리는 자리다.
    */
   readonly onTurnSettled?: (operationId: string) => void;
+  /** 이 Console 의 release(package version). 세션 시작 지문에 실려, 업데이트 전 구성으로 도는 세션을 가른다. */
+  readonly consoleVersion?: string;
+  /**
+   * 새 세션의 구성을 바꾸는 설정(Theater 시스템 프롬프트)이 저장됐다는 알림. 받으면 기대 구성을 다시 계산하고
+   * 그 Theater 의 살아 있는 세션 판정을 다시 알린다.
+   */
+  readonly subscribeLaunchConfigurationChanged?: (listener: (theaterId: string) => void) => () => void;
 }
 
 const AGENT_OPERATION_TYPE = "agent";
@@ -182,10 +191,31 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
     onFailure: ctx.recordFailure,
   });
+  // 세션 시작 구성의 지문 — 계산과 비교는 여기 한 곳이다. PTY 런치와 Chat 생성이 찍고, 투영은 판정만 싣는다.
+  const launchConfiguration = createLaunchConfiguration({
+    consoleVersion: deps.consoleVersion ?? "",
+    readTheaterPrompt: (theaterId) => deps.theaterSystemPrompts?.read(theaterId) ?? null,
+    listTools: () => runtime.mcpRegistry.getAllAgentTools(),
+    hookEntry: buildConsoleHookEntry({}),
+    disabledTools: CONSOLE_DISABLED_TOOLS,
+  });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
     workspaceHash: ctx.host.paths.workspaceHash,
+    describeLaunchConfiguration: (fingerprint) => launchConfiguration.describe(fingerprint),
   });
+  if (deps.subscribeLaunchConfigurationChanged) {
+    const unsubscribeLaunchConfiguration = deps.subscribeLaunchConfigurationChanged((theaterId) => {
+      launchConfiguration.invalidate();
+      // 판정은 투영 때 다시 계산된다 — 그 Theater 의 살아 있는 세션만 새 투영을 내보낸다.
+      for (const session of observability.listTerminalSessions()) {
+        if (session.configurationState === undefined) continue;
+        if (ctx.host.operations.get(session.sessionId)?.theaterId !== theaterId) continue;
+        observability.notifySessionUpdated(session);
+      }
+    });
+    ctx.host.lifecycle.registerCleanup(unsubscribeLaunchConfiguration);
+  }
   // "지금 어디" 축 — 세션 생성·재개·턴 경계가 cwd를 알리고, 휴면·삭제가 감시를 거둔다.
   const workspaceContext = createWorkspaceContextTracker({
     resolveTheaterPath: (theaterId) => ctx.host.paths.resolveTheaterPath(theaterId),
@@ -235,7 +265,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         return { error: "chat_not_active" };
       }
       try {
-        return await chatRegistry.ensure(sessionId, () => seed.seed);
+        return await ensureChatSession(sessionId, seed);
       } catch {
         return { error: "chat_unavailable" };
       }
@@ -255,6 +285,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
+    launchConfiguration,
     bindWorkspaceHook: (operationId, providerSessionId) => workspaceHooks.bind(operationId, providerSessionId, () => {
       const session = observability.getTerminalSessionInfo(operationId);
       return !!session && session.chatActive !== true && session.status !== "dormant";
@@ -458,7 +489,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (!seed.ok) return { error: seed.error };
       if (ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { error: "chat_not_active" };
       let chat;
-      try { chat = await chatRegistry.ensure(operationId, () => seed.seed); } catch { return { error: "chat_unavailable" }; }
+      try { chat = await ensureChatSession(operationId, seed); } catch { return { error: "chat_unavailable" }; }
       const catalog = await chat.readCatalog();
       if (!catalog) return { error: "chat_catalog_unavailable" };
       return { commands: catalog.commands, skills: catalog.skills, agents: catalog.agents };
@@ -1097,7 +1128,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (!seed.ok) return rollback(seed.status, seed.error);
     let chat;
     try {
-      chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+      chat = await ensureChatSession(sessionId, seed);
     } catch {
       return rollback(503, "chat_unavailable");
     }
@@ -1524,7 +1555,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 채팅은 언제나 같은 대화에 전달한다. 자식이 없어도 어댑터의 소유권은 유지된다.
       assertCurrent();
       try {
-        const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        const chat = await ensureChatSession(sessionId, seed);
         if (!chat.canReportActivity()) {
           settleAttachments(false);
           reply(503, { error: "chat_activity_unavailable" });
@@ -1642,7 +1673,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const seed = await resolveChatSeed(node);
     if (!seed.ok) throw new ConsoleControlError(seed.error);
     if (chatRegistry.generation(operationId) !== generation || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.operations.isTransitioning?.(operationId)) throw new ConsoleControlError("operation_busy");
-    const chat = await chatRegistry.ensure(operationId, () => seed.seed);
+    const chat = await ensureChatSession(operationId, seed);
     await chat.prepare();
   }
 
@@ -1723,7 +1754,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (!node || !stillAdopted()) return;
     const seed = await resolveChatSeed(node);
     if (!seed.ok || !stillAdopted()) return;
-    const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+    const chat = await ensureChatSession(sessionId, seed);
     if (stillAdopted()) chat.open();
   }
 
@@ -1863,7 +1894,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { ok: false, error: "coordinates_apply_failed", cause: { message: seed.error } };
       if (chatRegistry.generation(operationId) !== generation || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.operations.isTransitioning?.(operationId)) return { ok: false, error: "chat_not_active" };
-      try { chat = await chatRegistry.ensure(operationId, () => seed.seed); }
+      try { chat = await ensureChatSession(operationId, seed); }
       catch { return { ok: false, error: "coordinates_apply_failed", cause: { message: "chat_unavailable" } }; }
     }
     if (unstartedOwner !== undefined) {
@@ -2058,7 +2089,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     let chat;
     try {
-      chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+      chat = await ensureChatSession(sessionId, seed);
     } catch {
       ctx.host.http.writeJson(res, 503, { error: "chat_unavailable" });
       return true;
@@ -2089,8 +2120,25 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   type ChatSeedResolution =
-    | { readonly ok: true; readonly seed: AgentChatSessionSeed }
+    | { readonly ok: true; readonly seed: AgentChatSessionSeed; readonly intent: LaunchIntent }
     | { readonly ok: false; readonly status: number; readonly error: string };
+
+  /**
+   * 채팅 세션을 세우거나 이미 선 것을 받는다. 레지스트리가 새로 세울 때(seed 팩토리를 부를 때)만 시작 지문을
+   * 찍는다 — 이미 선 세션에 다시 붙는 것은 시작이 아니므로 지문을 덮어쓰지 않는다.
+   */
+  async function ensureChatSession(operationId: string, resolution: Extract<ChatSeedResolution, { readonly ok: true }>): ReturnType<AgentChatRegistry["ensure"]> {
+    let started: LaunchFingerprint | undefined;
+    const chat = await chatRegistry.ensure(operationId, () => {
+      started = launchConfiguration.capture(resolution.intent);
+      return resolution.seed;
+    });
+    if (started) {
+      const updated = observability.setTerminalSessionLaunchFingerprint(operationId, started);
+      if (updated) observability.notifySessionUpdated(updated);
+    }
+    return chat;
+  }
 
   async function resolveChatSeed(node: OperationNode): Promise<ChatSeedResolution> {
     if (!readAgentSession(node.payload)) {
@@ -2159,6 +2207,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
+      intent: {
+        surface: "chat",
+        theaterId: node.theaterId,
+        subagentsBlocked: chatClaudeCodeDisabledAgents.length > 0,
+        autoMemoryDisabled: chatDisableAutoMemory,
+      },
       seed: {
         hostedExecution: ctx.hostedExecution,
         resolveExecutablePath: async () => {

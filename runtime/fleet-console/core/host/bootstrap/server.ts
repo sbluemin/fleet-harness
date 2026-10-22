@@ -2873,7 +2873,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         hostedExecution,
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
+      }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts, version);
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;

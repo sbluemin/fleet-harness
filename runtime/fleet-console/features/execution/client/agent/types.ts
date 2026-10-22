@@ -59,6 +59,13 @@ export interface SessionInfo {
    * 종료(4001)는 같은 세대의 항목만 지운다. 옛 서버는 싣지 않는다.
    */
   readonly generation?: string;
+  /**
+   * 살아 있는 세션이 시작할 때 실은 구성의 판정. `previous` 면 업데이트 전 구성으로 계속 도는 중이다(조용한 사실).
+   * 휴면 세션과 옛 서버에는 없다.
+   */
+  readonly configurationState?: "current" | "previous" | "unknown";
+  /** `previous` 이고 시작 release 가 지금과 다를 때만 그 version. */
+  readonly configurationRelease?: string;
 }
 
 export interface AgentClientState {
