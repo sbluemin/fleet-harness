@@ -26,7 +26,7 @@ export const clockTime = (at: number): string => new Date(at).toLocaleTimeString
 
 /** 그 Theater 의 자율 운영이 켜져 있는가 — 아직 설정을 읽지 않았으면 꺼짐이다. 입출력 없음. */
 function autonomyOn(theaterId: string): boolean {
-  return readCommodoreExperiment().enabled && readCommodore(theaterId).view?.state.autonomy === true;
+  return readCommodoreExperiment().enabled && readCommodore(theaterId).view?.active === true;
 }
 
 function subscribeCommodoreFace(listener: () => void): () => void {
@@ -50,7 +50,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
       if (!readCommodoreExperiment().enabled) return null;
       const view = readCommodore(theaterId).view;
       // 꺼짐은 머리 표식이 회색을 정하는 조건(commodoreSummary 의 on 이 아님)과 같다.
-      return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.state.autonomy !== true };
+      return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.active !== true };
     },
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
     // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
@@ -68,11 +68,14 @@ export const commodoreTheaterContribution: TheaterContribution = {
         void loadCommodore(theaterId);
         return null;
       }
+      if (!view.boardReady) return null;
       const t = getT(language);
-      return { label: t(view.state.autonomy ? "commodore.menu.turnOff" : "commodore.menu.turnOn"), icon: <CommodoreMobileRowGlyph /> };
+      return { label: t(view.active ? "commodore.menu.turnOff" : "commodore.menu.turnOn"), icon: <CommodoreMobileRowGlyph /> };
     },
     run: (theaterId) => {
-      const on = readCommodore(theaterId).view?.state.autonomy === true;
+      const view = readCommodore(theaterId).view;
+      if (!view?.boardReady) return;
+      const on = view.active;
       void setCommodoreAutonomy(theaterId, !on).catch(() => undefined);
     },
   },
@@ -118,7 +121,7 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (busy || !view) return;
+    if (busy || !view || !view.boardReady) return;
     setBusy(true);
     void setCommodoreAutonomy(theater.id, !on).catch(() => undefined).finally(() => setBusy(false));
   };
@@ -130,7 +133,7 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
       aria-pressed={on}
       aria-busy={busy || undefined}
       aria-disabled={busy || undefined}
-      disabled={!view}
+      disabled={!view || !view.boardReady}
       title={[theater.label, status, asksWord, t(on ? "commodore.mark.onTitle" : "commodore.mark.offTitle")].filter(Boolean).join("\n")}
       onClick={toggleAutonomy}
       onMouseEnter={peek(true)}
@@ -150,13 +153,13 @@ function CommodoreAutonomyMenuItem({ theater, language, onClose }: TheaterMenuCo
   const { view } = useCommodore(theater.id);
   noteCommodoreLanguage(language);
   useEffect(() => { void loadCommodore(theater.id); }, [theater.id]);
-  const on = view?.state.autonomy === true;
+  const on = view?.active === true;
   return (
     <button
       type="button"
       role="menuitem"
       className="theater-menu-item objectives-commodore-menu-item"
-      disabled={!view}
+      disabled={!view || !view.boardReady}
       onClick={() => {
         onClose();
         void setCommodoreAutonomy(theater.id, !on).catch(() => undefined);
@@ -176,7 +179,7 @@ type CommodoreView = ReturnType<typeof useCommodore>["view"];
  * 목표가 사람을 기다리면 대기, 아니면 쉼이다.
  */
 export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[]): MongleState {
-  if (view?.state.autonomy !== true) return "idle";
+  if (view?.active !== true) return "idle";
   if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
   const waiting = objectives.some((objective) => isCommodoreWaiting(objective));
   return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle" });
@@ -188,7 +191,7 @@ export type CommodoreMetaPart = { readonly key: string; readonly text: string; r
  * 켜져 있으면 자율·응답 중·재시도·오류·진행·처리, 꺼져 있으면 수동·대기. 다음 순찰과 오류 사유는 따로 돌려준다.
  */
 export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly patrol: string | null; readonly errorReason: string | null } {
-  const on = view?.state.autonomy === true;
+  const on = view?.active === true;
   const run = view?.run;
   const running = objectives.filter(isRunningObjective).length;
   // 대기는 사령관이 운영하는 목표의, 사람에게 넘기지 않은 항목만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).

@@ -49,7 +49,7 @@ export interface CommodoreBoardClient {
   renderObjectiveAvatar(theaterId: string, objectiveId: string, size: number): ReactNode;
 }
 export interface CommodoreClientSnapshot {
-  readonly commodoreId: string;
+  readonly commodoreId: string | null;
   readonly active: boolean;
   readonly stalled: readonly string[];
   readonly enabled: boolean;

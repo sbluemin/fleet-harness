@@ -93,7 +93,7 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
     const view = readCommodore(theaterId).view;
     if (!view) return null;
     const t = getT(commodoreLanguage());
-    if (view.state.autonomy !== true) return { text: t("commodore.mobile.off"), tone: "faint" };
+    if (!view.active) return { text: t("commodore.mobile.off"), tone: "faint" };
     const run = view.run;
     if (run.phase === "turn") return { text: t("commodore.meta.turn") };
     if (run.phase === "retrying" && run.nextWakeAt) return { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) };
@@ -140,7 +140,7 @@ function CommodoreDisabled({ t }: { readonly t: T }) {
 /** 대화 pill 의 보조 줄 — 자율 운영과 지금의 실행 상태를 한 줄로(켜면 다음 순찰, 도는 중·재시도·오류는 그 사실). */
 function commodorePillStatus(t: T, view: CommodoreView | null): string {
   if (!view) return "";
-  if (view.state.autonomy !== true) return t("commodore.mobile.autonomyOff");
+  if (!view.active) return t("commodore.mobile.autonomyOff");
   const run = view.run;
   const autonomy = t("commodore.settings.autonomy");
   if (run.phase === "turn") return `${autonomy} · ${t("commodore.meta.turn")}`;
@@ -189,7 +189,7 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
   const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
-  const on = view?.state.autonomy === true;
+  const on = view?.active === true;
   const run = view?.run;
   const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
     { id: "log", label: t("commodore.tabs.log") },
@@ -302,14 +302,15 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
   const parts = meta.filter((part) => part.key === "running" || part.key === "handled").map((part) => part.text).join(" · ");
   let status: ReactNode = null;
   if (busy) status = t("commodore.mobile.switching");
-  else if (view && !on) status = meta.map((part) => part.text).join(" · ");
+  else if (view && !view.boardReady) status = t("commodore.failed.boardUnavailable");
+  else if (view && !view.active) status = meta.map((part) => part.text).join(" · ");
   else if (view && run?.phase === "turn") status = <>{t("commodore.meta.turn")} · {parts}</>;
   else if (view && run?.phase === "retrying" && run.nextWakeAt) status = <>{t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })} · {parts}</>;
   else if (view && run?.phase === "error") status = <><span className="is-danger">{t("commodore.meta.error")}</span> · {parts}</>;
   else if (view) status = <>{[run?.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null, parts].filter(Boolean).join(" · ")}</>;
   const toggle = () => {
     // 바꾸는 동안의 두 번째 누름은 버린다 — 서버 결과가 진실이다.
-    if (busy || !view || !online) return;
+    if (busy || !view || !view.boardReady || !online) return;
     onClear();
     setBusy(true);
     void setCommodoreAutonomy(theaterId, !on).catch(onFail).finally(() => setBusy(false));
@@ -325,11 +326,11 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
         aria-busy={busy || undefined}
         aria-label={t("commodore.settings.autonomy")}
         aria-describedby={status !== null ? statusId : undefined}
-        disabled={!view || !online}
+        disabled={!view || !view.boardReady || !online}
         onClick={toggle}
       >
         {/* 머리는 이 Theater 사령관의 아바타다 — 사이드바 머리 표식과 같은 얼굴(작업 중·대기·오류·쉼)로 상태를 말하고, 상태 줄은 글이 맡는다. */}
-        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
+        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} off={!view?.active} label="" decorative /></span>
         <span className="objectives-cm-trow-tx">
           <b>{t("commodore.settings.autonomy")}</b>
           {status !== null ? <span id={statusId} className="objectives-cm-trow-ds">{status}</span> : null}
@@ -378,7 +379,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
       ...(pending.images.length > 0 ? { attachments: pending.images.map((image) => ({ preview: { id: image.key, url: image.url } })) } : {}),
     }];
   }, [t, entries, live, confirmed, pending]);
-  const turning = view?.state.autonomy === true && view.run.phase === "turn";
+  const turning = view?.active === true && view.run.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
@@ -459,7 +460,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const pinned = useRef(true);
   const programmaticTop = useRef<number | null>(null);
   const olderAnchor = useRef<number | null>(null);
-  const on = view?.state.autonomy === true;
+  const on = view?.active === true;
   const run = view?.run;
   const turn = on && run?.phase === "turn";
 

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@fleet-console/agent-runtime/claude";
+import { createConsoleResidentAgentHost } from "../features/execution/host/agent/console-resident.js";
 import { createPluginAgentHost } from "../features/execution/host/agent/plugin-agent.js";
 import type { AgentEvent } from "@fleet-console/sdk/agent";
 
@@ -90,8 +91,8 @@ describe("Console-owned plugin Agent", () => {
     await host.dispose();
   });
 
-  it("keeps a persisted resident conversation: steers a running turn, resumes after host restart, and forgets on request", async () => {
-    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-persist-")); roots.push(dataRoot);
+  it("owns a nonpersistent resident conversation: steers, resumes only a live instance and removes scratch without deleting cwd", async () => {
+    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-resident-cwd-")); roots.push(dataRoot);
     const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
     // 자식 하나 — 보낸 말마다 스크립트가 답한다. 트랜스크립트는 Claude Code처럼 홈의 projects 아래에 쌓인다.
     let reply: (text: string, messageId?: string) => void = () => undefined;
@@ -107,20 +108,18 @@ describe("Console-owned plugin Agent", () => {
       return { send: (input: unknown, options?: { messageId?: string }) => reply(typeof input === "string" ? input : JSON.stringify(input), options?.messageId), close: () => closeChild(),
         async *[Symbol.asyncIterator]() { for (;;) { while (queue.length) yield queue.shift()!; if (done) return; await new Promise<void>((r) => { wake = r; }); wake = null; } } };
     }) } as unknown as ClaudeGatewaySdk; };
-    const hostFor = () => createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, persistRoot: () => dataRoot, createSdk: async (sdkOptions) => { homes.push(sdkOptions.home); return engine((sdkOptions.home as { configDir: string }).configDir); } });
-    const persist = { key: "commodore:t1" };
+    const hostFor = () => createConsoleResidentAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { expect(sdkOptions.executablePath).toBe("/installed/claude"); homes.push(sdkOptions.home); return engine((sdkOptions.home as { configDir: string }).configDir); } });
+    const cwd = dataRoot;
     const events: AgentEvent[] = [];
     const host = hostFor();
-    const session = await host.createSession({ ...options, persist, onEvent: (event) => events.push(event) });
-    await expect(host.createSession({ ...options, persist })).rejects.toThrow("agent_persist_busy");
-    expect(session.resumed).toBe(false);
-    expect(homes[0]).toMatchObject({ kind: "persistent", configDir: expect.stringContaining(dataRoot) });
+    const session = await host.createSession({ ...options, cwd, onEvent: (event) => events.push(event) });
+    expect(homes[0]).toMatchObject({ kind: "persistent", configDir: expect.stringContaining("fleet-commodore-") });
 
     // 턴 중 건넨 말 — 턴이 그 말을 집기 전에 닫히려 하면 결말을 쥐고, 집힌 뒤의 결말과 합쳐 한 턴으로 낸다.
     let steered: string | undefined;
     reply = (text, messageId) => {
       if (messageId) { steered = messageId; return; }
-      push({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: `on ${text}` } } });
+      push({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: `on ${text} at ${cwd} with ${(homes[0] as { configDir: string }).configDir}` } } });
       queueMicrotask(() => {
         expect(session.steer!("also this", "m1")).toBe(true);
         push({ type: "result", is_error: false, total_cost_usd: 0.1, usage: { input_tokens: 10, output_tokens: 1 } });
@@ -138,6 +137,8 @@ describe("Console-owned plugin Agent", () => {
     expect(opened[0]).toMatchObject({ sessionId: expect.any(String) });
     expect(opened[0]).not.toHaveProperty("resume");
     expect(JSON.stringify(events)).not.toContain(dataRoot);
+    expect(JSON.stringify(events)).not.toContain(path.dirname((homes[0] as { configDir: string }).configDir));
+    expect(events).toContainEqual({ kind: "text", text: "on first at [workspace] with [workspace]/claude" });
 
     // 중지는 자식을 접고, 집히지 않은 말은 호출자에게 돌려준다.
     reply = (_text, messageId) => { if (!messageId) queueMicrotask(() => expect(session.steer!("never read", "m3")).toBe(true)); };
@@ -145,75 +146,30 @@ describe("Console-owned plugin Agent", () => {
     expect(events.at(-1)).toEqual({ kind: "cancelled" });
     expect(events).toContainEqual({ kind: "input-cancelled", id: "m3" });
 
-    // Console 재시작 — 같은 key는 같은 대화를 resume한다. 자리는 폐기가 지우지 않는다.
-    await host.dispose();
-    const restarted = hostFor();
-    const resumed = await restarted.createSession({ ...options, persist, onEvent: () => undefined });
-    expect(resumed.resumed).toBe(true);
+    // 같은 살아 있는 세션은 중지 뒤 자기 scratch의 대화만 다시 연다.
     reply = () => push({ type: "result", is_error: false });
-    await resumed.send("third");
+    await session.send("third");
     expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
     // 자식이 스스로 죽었다(close 없이 스트림이 끝남) — 다음 턴은 슬롯을 되찾아 같은 대화를 다시 resume한다.
     dieChild(); await new Promise((r) => setTimeout(r, 0));
     const before = opened.length;
-    await resumed.send("after a crash");
+    await session.send("after a crash");
     expect(opened).toHaveLength(before + 1);
     expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
-    // 버리기 — 열린 세션을 닫고 자리를 지운다. 다음은 새 대화다.
-    await restarted.forget!(persist.key);
-    const fresh = await restarted.createSession({ ...options, persist });
-    expect(fresh.resumed).toBe(false);
+    // 폐기는 CLI 홈·좌표를 지우되 제품 cwd는 보존한다. 새 호스트는 언제나 새 UUID 대화다.
+    const scratch = path.dirname((homes[0] as { configDir: string }).configDir);
+    await host.dispose();
+    await expect(fs.stat(scratch)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await fs.stat(cwd)).isDirectory()).toBe(true);
+    const restarted = hostFor();
+    const fresh = await restarted.createSession({ ...options, cwd });
+    await fresh.send("fresh conversation");
+    expect(opened.at(-1)).not.toHaveProperty("resume");
+    expect(opened.at(-1)).toMatchObject({ cwd, sessionId: expect.any(String) });
+    expect(opened.at(-1)!.sessionId).not.toBe(opened[0]!.sessionId);
     await restarted.dispose();
-  });
+    await expect(fs.stat(path.dirname((homes.at(-1) as { configDir: string }).configDir))).rejects.toMatchObject({ code: "ENOENT" });
 
-  it("shares only opted-in peer registries while preserving isolated history and safe forget", async () => {
-    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-peers-")); roots.push(dataRoot);
-    const homes: string[] = []; const requests: Record<string, unknown>[] = [];
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, persistRoot: () => dataRoot,
-      createSdk: async ({ home }) => {
-        const configDir = (home as { configDir: string }).configDir; homes.push(configDir); await fs.mkdir(configDir, { recursive: true });
-        return { configDir, dispose: async () => undefined, openSession: async (request: Record<string, unknown>) => {
-          requests.push(request); let close!: () => void; let sent!: () => void;
-          const closed = new Promise<void>((resolve) => { close = resolve; }); const input = new Promise<void>((resolve) => { sent = resolve; });
-          return { send: sent, close, async *[Symbol.asyncIterator]() { await input; yield { type: "result", is_error: false }; await closed; } };
-        } } as unknown as ClaudeGatewaySdk;
-      },
-    });
-    try {
-      // 이미 쓰던 대화: 등록부가 생기기 전의 projects 와 로컬 등록부를 남긴다.
-      const a = { key: "commodore:a" }; const old = await host.createSession({ ...options, persist: a }); await old.send("first");
-      const firstHome = homes[0]!;
-      const history = path.join(firstHome, "projects", "-cwd", `${requests[0]!.sessionId}.jsonl`);
-      await fs.mkdir(path.dirname(history), { recursive: true }); await fs.writeFile(history, "history\n");
-      await fs.mkdir(path.join(firstHome, "sessions")); await fs.writeFile(path.join(firstHome, "sessions", "stale.json"), "old registry");
-      await old.dispose();
-      const tools = { builtins: ["SendMessage", "ListAgents"] as const };
-      const first = await host.createSession({ ...options, persist: a, sessionName: "commodore-a", tools });
-      expect(first.resumed).toBe(true); await first.send("after upgrade");
-      expect(requests.at(-1)).toMatchObject({ sessionName: "commodore-a", tools: ["SendMessage", "ListAgents"], allowedTools: ["SendMessage", "ListAgents"], permissionMode: "dontAsk", resume: requests[0]!.sessionId });
-      const second = await host.createSession({ ...options, persist: { key: "commodore:b" }, sessionName: "commodore-b", tools });
-      const secondHome = homes.at(-1)!;
-      const plain = await host.createSession({ ...options, persist: { key: "plain" } }); const plainHome = homes.at(-1)!; await plain.send("ordinary");
-      expect(requests.at(-1)).toMatchObject({ tools: [], allowedTools: [] }); expect(requests.at(-1)).not.toHaveProperty("sessionName");
-      expect(firstHome).not.toBe(secondHome);
-      expect(await fs.realpath(path.join(firstHome, "sessions"))).toBe(await fs.realpath(path.join(secondHome, "sessions")));
-      await expect(fs.lstat(path.join(plainHome, "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
-      expect(await fs.readFile(history, "utf8")).toBe("history\n");
-      const backup = (await fs.readdir(firstHome)).find((entry) => entry.startsWith("sessions.isolated-"))!;
-      expect(await fs.readFile(path.join(firstHome, backup, "stale.json"), "utf8")).toBe("old registry");
-      await fs.writeFile(path.join(secondHome, "sessions", "peer.json"), "peer remains");
-      await host.forget!(a.key);
-      expect(await fs.readFile(path.join(secondHome, "sessions", "peer.json"), "utf8")).toBe("peer remains");
-      const shared = await fs.realpath(path.join(secondHome, "sessions"));
-      await second.dispose(); await host.createSession({ ...options, persist: { key: "commodore:b" } });
-      expect((await fs.lstat(path.join(secondHome, "sessions"))).isSymbolicLink()).toBe(false);
-      expect(await fs.readFile(path.join(shared, "peer.json"), "utf8")).toBe("peer remains");
-      // 모르는 목적지를 가리키는 기존 링크는 덮거나 따라가 공유 등록부로 삼지 않는다.
-      await plain.dispose(); const outside = path.join(dataRoot, "outside"); await fs.mkdir(outside);
-      await fs.symlink(outside, path.join(plainHome, "sessions"), process.platform === "win32" ? "junction" : "dir");
-      await expect(host.createSession({ ...options, persist: { key: "plain" }, tools })).rejects.toThrow("agent_peer_registry_conflict");
-      expect(await fs.realpath(path.join(plainHome, "sessions"))).toBe(await fs.realpath(outside));
-    } finally { await host.dispose(); }
   });
 
   it("rejects unavailable gateways and rolls back SDK creation racing host disposal", async () => {

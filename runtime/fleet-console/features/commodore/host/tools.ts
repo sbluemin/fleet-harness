@@ -40,7 +40,7 @@ const defaultExecute: CommandExecute = async (file, args, options) => {
 };
 
 export interface CommodoreToolsOptions {
-  readonly theaterId: string;
+  readonly commodoreId: string;
   /** Theater 루트의 실경로 — 읽기 도구의 담김 경계. */
   readonly theaterRoot: string;
   readonly store: CommodoreStore;
@@ -56,7 +56,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
   const now = options.now ?? Date.now;
   const run = options.execute ?? defaultExecute;
   const state = () => {
-    const current = options.store.read(options.theaterId);
+    const current = options.store.read(options.commodoreId);
     if (!current) throw new Error("theater_unavailable");
     return current;
   };
@@ -141,39 +141,39 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
     }).strict(), ({ questions, reason, objectiveId }) => {
       const objective = objectiveId ? options.objective?.(objectiveId) ?? null : null;
       if (objectiveId && !objective) throw new Error("unknown_objective");
-      const { ask, reused } = options.store.askAdd(options.theaterId, { questions, reason, objective: objective ? { id: objective.id, title: objective.title } : null });
+      const { ask, reused } = options.store.askAdd(options.commodoreId, { questions, reason, objective: objective ? { id: objective.id, title: objective.title } : null });
       return { askId: ask.id, reused, open: openCount() };
     }),
     tool("withdraw_ask", "Withdraw a question you asked the person that is still open (it no longer needs their answer).", z.object({ askId: z.string().min(1).max(128) }).strict(), ({ askId }) => {
-      const { withdrawn } = options.store.askWithdraw(options.theaterId, askId);
+      const { withdrawn } = options.store.askWithdraw(options.commodoreId, askId);
       return { askId, withdrawn, open: openCount() };
     }),
     tool("asks", "Your questions to the person: open ones, and answered or withdrawn ones with the person's answers, newest first. Reading an answer marks it read.", z.object({ limit: z.number().int().min(1).max(20).optional() }).strict(), ({ limit }) => {
       const asks = [...(state().asks ?? [])].reverse().slice(0, limit ?? 20);
       const answered = asks.filter((ask) => ask.settled?.outcome === "answered" && ask.readAt === undefined).map((ask) => ask.id);
-      if (answered.length) options.store.askRead(options.theaterId, answered);
+      if (answered.length) options.store.askRead(options.commodoreId, answered);
       return { asks: asks.map(askView), open: openCount() };
     }),
     // fleet-memory — 사령관만 쓰는 기억. 화면은 사람에게 읽기만 보여 준다. 쓰기마다 인덱스가 다시 만들어지고 다음 깨움에 실린다.
     tool("memory_view", "Your fleet-memory. Without ref: every entry as ref, title, description, updated and verified, with stale: true when it was last verified over 30 days ago. With ref (branch/topic/slug): the whole entry, including why, how, sources and links. An entry records what was true when written; confirm it before you rely on it.", z.object({ ref: memoryRefSchema.optional() }).strict(), ({ ref }) => {
       if (ref) {
-        const entry = options.store.memory.read(options.theaterId, ref);
+        const entry = options.store.memory.read(options.commodoreId, ref);
         return { ...memoryView(entry), why: entry.why, how: entry.how, sources: entry.sources, links: entry.links, created: stamp(entry.created) };
       }
-      return { entries: options.store.memory.list(options.theaterId).map(memoryView) };
+      return { entries: options.store.memory.list(options.commodoreId).map(memoryView) };
     }),
     tool("memory_save", "Save one new fact to your fleet-memory. branch: person (the person's preferences, decisions and ways of working), theater (facts about the Theater and its environment), lessons (what objectives taught) or crew (lineups, models and verification). topic groups related entries and is shown as written (letters, digits, spaces, . _ -). slug is the entry's lowercase-hyphen name, unique in its topic. why says why it matters, how says how to apply it. sourceObjectiveIds names this Theater's objectives it came from; links names related entries by ref. why and how are plain text: a line starting with '## ' is refused as memory_heading. An existing ref is refused as memory_exists: update it instead. Secrets anywhere, including the slug and links, are refused as memory_secret.", z.object({ branch: memoryBranchSchema, topic: z.string().min(1).max(40), slug: z.string().min(1).max(64), ...memoryText, sourceObjectiveIds: memoryText.sourceObjectiveIds.optional(), links: memoryText.links.optional() }).strict(), ({ branch, topic, slug, title, description, why, how, sourceObjectiveIds, links }) => {
       const sources = memorySources(sourceObjectiveIds);
-      const entry = options.store.memory.save(options.theaterId, { branch, topic, slug, title, description, why, how, ...(sources ? { sources } : {}), ...(links ? { links } : {}) });
+      const entry = options.store.memory.save(options.commodoreId, { branch, topic, slug, title, description, why, how, ...(sources ? { sources } : {}), ...(links ? { links } : {}) });
       return memoryView(entry);
     }),
     tool("memory_update", "Change an entry of your fleet-memory by ref: the fields you pass replace the old ones, and its updated and verified times become now. Call it with ref alone to record that you checked the entry again and it still holds.", z.object({ ref: memoryRefSchema, title: memoryText.title.optional(), description: memoryText.description.optional(), why: memoryText.why.optional(), how: memoryText.how.optional(), sourceObjectiveIds: memoryText.sourceObjectiveIds.optional(), links: memoryText.links.optional() }).strict(), ({ ref, sourceObjectiveIds, ...fields }) => {
       const sources = memorySources(sourceObjectiveIds);
-      const { entry, change } = options.store.memory.update(options.theaterId, ref, { ...fields, ...(sources ? { sources } : {}) });
+      const { entry, change } = options.store.memory.update(options.commodoreId, ref, { ...fields, ...(sources ? { sources } : {}) });
       return { ...memoryView(entry), change };
     }),
     tool("memory_delete", "Delete an entry of your fleet-memory that turned out wrong or no longer applies, with a one-line reason.", z.object({ ref: memoryRefSchema, reason: z.string().trim().min(1).max(200) }).strict(), ({ ref }) => {
-      options.store.memory.remove(options.theaterId, ref);
+      options.store.memory.remove(options.commodoreId, ref);
       return { ref, deleted: true };
     }),
     tool("read_file", "Read a UTF-8 text file of the Theater (repository) by path relative to its root, read-only. Large files are cut at 64 KiB with truncated: true. Symbolic links that leave the Theater are refused.", z.object({ path: z.string().min(1).max(1_024), offset: z.number().int().nonnegative().optional() }).strict(), async ({ path: requested, offset }) => {

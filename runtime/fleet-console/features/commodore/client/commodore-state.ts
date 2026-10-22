@@ -10,7 +10,7 @@ import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 import type { MemoryEntry } from "@fleet-console/sdk/commodore";
 import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
-import { post } from "./request.js";
+import { postCommodore as post } from "./request.js";
 export { askObjectiveTitle } from "@fleet-console/sdk/commodore";
 
 /**
@@ -108,7 +108,7 @@ export function commodoreBoardOf(theaterId: string): { readonly active: boolean;
   if (!enabledSnapshot) return DISABLED_BOARD;
   const view = theaters.get(theaterId)?.view;
   const peek = peekTheater === theaterId;
-  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: view?.state.autonomy === true, peek };
+  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: false, peek };
   return { active: true, stalled: view.run.stalled ?? [], enabled: true, autonomy: true, peek };
 }
 const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false };
@@ -189,55 +189,59 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     }
     notify();
   });
-  const applyEvent = (event: CommodoreEvent) => {
+  const applyEvent = (event: CommodoreEvent, theaterId: string) => {
     if (event.op === "memory") {
       // 기억 칸을 연 적 있는 Theater 만 다시 읽는다 — 사건은 무엇이 바뀌었는지만 말하고 목록은 서버가 준다.
-      if (memories.has(event.theaterId)) void loadCommodoreMemory(event.theaterId);
+      if (memories.has(theaterId)) void loadCommodoreMemory(theaterId);
       return;
     }
-    if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
-    const current = theaters.get(event.theaterId);
+    if (event.op === "state" && event.change === "clear") setTheater(theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
+    const current = theaters.get(theaterId);
     if (event.op === "transcript") {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
       if (!current?.transcriptLoaded) return;
       if (current.entries.some((entry) => entry.seq === event.entry.seq)) return;
-      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
+      setTheater(theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
       return;
     }
     if (event.op === "live") {
       // 기록을 열지 않은 Theater 의 흐름은 버린다 — 그릴 화면이 없고, 열 때는 확정 줄을 읽는다.
       if (!current?.transcriptLoaded) return;
-      setTheater(event.theaterId, { live: appendLive(current.live, event.live) }, false);
+      setTheater(theaterId, { live: appendLive(current.live, event.live) }, false);
       return;
     }
     if (!current?.view) {
-      void loadCommodore(event.theaterId, true);
+      void loadCommodore(theaterId, true);
       return;
     }
     if (event.op === "state") {
       const autonomy = event.state.autonomy;
-      setTheater(event.theaterId, { view: { ...current.view, state: event.state, active: current.view.enabled && autonomy } }, false);
+      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && autonomy } }, false);
       return;
     }
-    if (event.op === "run") setTheater(event.theaterId, { view: { ...current.view, run: event.run } }, false);
+    if (event.op === "run") {
+      setTheater(theaterId, { view: { ...current.view, run: event.run, active: event.run.phase !== "off" && current.view.boardReady && current.view.enabled && current.view.state.autonomy } }, false);
+      // 어댑터 수명이 바뀐 경우 저장 상태 사건만으로는 준비 여부를 알 수 없다. 서버 view로 다시 수렴한다.
+      if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(theaterId, true);
+    }
   };
   const stream = createConversationStream<CommodoreEvent>({
-    delta: (event) => event.op === "live" && event.live.kind === "text-delta" ? { key: event.theaterId, text: event.live.text } : null,
-    withText: (event, text) => ({ op: "live", theaterId: event.theaterId, live: { kind: "text-delta", text } }),
+    delta: (event) => event.op === "live" && event.live.kind === "text-delta" ? { key: event.commodoreId, text: event.live.text } : null,
+    withText: (event, text) => ({ op: "live", commodoreId: event.commodoreId, theaterIds: event.theaterIds, live: { kind: "text-delta", text } }),
     apply: (events) => {
       let changed = false;
-      for (const event of events) {
-        const before = theaters.get(event.theaterId);
-        applyEvent(event);
-        changed ||= before !== theaters.get(event.theaterId);
+      for (const event of events) for (const theaterId of event.theaterIds) {
+        const before = theaters.get(theaterId);
+        applyEvent(event, theaterId);
+        changed ||= before !== theaters.get(theaterId);
       }
       if (changed) notify();
     },
   });
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
-    if (!event || typeof event.theaterId !== "string") return;
-    if (event.op === "live" && !theaters.get(event.theaterId)?.transcriptLoaded) return;
+    if (!event || typeof event.commodoreId !== "string" || !Array.isArray(event.theaterIds)) return;
+    if (event.op === "live" && !event.theaterIds.some((id) => theaters.get(id)?.transcriptLoaded)) return;
     stream.push(event);
   });
   // 단절 중의 사건은 다시 오지 않는다 — 읽어 둔 Theater 를 처음부터 다시 읽는다.

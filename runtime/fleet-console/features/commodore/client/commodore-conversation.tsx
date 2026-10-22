@@ -425,7 +425,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     if (!params) return null;
     // 플릿 브라우저의 주석·스크린샷은 이 대화의 사령관 입력창에 붙는다 — 읽기 전용(보관) 대화에는 입력창이 없다.
     const { theaterId } = params;
-    return { scopeId: `commodore:${theaterId}`, ...(params.readOnly ? {} : { attach: (files: readonly File[]) => attachToCommodoreComposer(theaterId, files) }) };
+    const commodoreId = readCommodore(theaterId).view?.commodoreId;
+    if (!commodoreId) return null;
+    return { scopeId: `commodore:${commodoreId}`, ...(params.readOnly ? {} : { attach: (files: readonly File[]) => attachToCommodoreComposer(theaterId, files) }) };
   },
   actions: (ctx) => {
     const params = readParams(ctx.params);

@@ -50,7 +50,7 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     read(theaterId) {
       const revision = commodoreRevision();
       const hit = snapshots.get(theaterId); if (hit?.revision === revision) return hit.value;
-      const value = { commodoreId: theaterId, ...commodoreBoardOf(theaterId), view: readCommodore(theaterId).view, asks: openAsks(theaterId) };
+      const value = { commodoreId: readCommodore(theaterId).view?.commodoreId ?? null, ...commodoreBoardOf(theaterId), view: readCommodore(theaterId).view, asks: openAsks(theaterId) };
       snapshots.set(theaterId, { revision, value }); return value;
     },
     subscribe: subscribeCommodore,

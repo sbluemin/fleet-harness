@@ -35,7 +35,7 @@ import {
 } from "./types.js";
 
 /**
- * 사령관 상태 저장소 — Theater 의 목표 폴더 안 `commodore/` 하나.
+ * 사령관 상태 저장소 — Console 데이터의 `commodore/<UUID>/` 하나.
  *
  * ```
  * commodore/state.json         자율 운영·지시·정보·정보 출처·Theater 별 좌표
@@ -49,9 +49,11 @@ import {
  */
 
 export interface CommodoreStoreOptions {
-  /** Theater 의 목표 디렉터리(`workspaces/<프로젝트>/objectives`). Theater 경로를 모르면 null. */
-  readonly dirOf: (theaterId: string) => string | null;
-  readonly theaterIds?: () => readonly string[];
+  /** 사령관 엔티티 디렉터리. UUID를 모르거나 안전하게 읽을 수 없으면 null. */
+  readonly dirOf: (commodoreId: string) => string | null;
+  readonly commodoreIds?: () => readonly string[];
+  readonly theatersOf: (commodoreId: string) => readonly { readonly path: string }[];
+  readonly theaterIdsOf: (commodoreId: string) => readonly string[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   /** 기록 사본의 Theater 별 총량 — 생략하면 제품 기본 상한이다. */
@@ -67,49 +69,49 @@ export interface CommodoreTranscriptPage {
 
 export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
-  read(theaterId: string): CommodoreState | null;
-  setAutonomy(theaterId: string, autonomy: boolean): CommodoreState;
+  read(commodoreId: string): CommodoreState | null;
+  setAutonomy(commodoreId: string, autonomy: boolean): CommodoreState;
   /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
-  setStopAt(theaterId: string, stopAt: number | null): CommodoreState;
+  setStopAt(commodoreId: string, stopAt: number | null): CommodoreState;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
-  setDirective(theaterId: string, text: string): CommodoreState;
-  addIntel(theaterId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
+  setDirective(commodoreId: string, text: string): CommodoreState;
+  addIntel(commodoreId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
   /** 사람이 항목 본문을 고친다 — id·출처·자리는 그대로, `editedAt` 이 남는다. 본문이 그대로면 사건도 없다(사령관을 헛되이 깨우지 않는다). */
-  editIntel(theaterId: string, intelId: string, text: string): { readonly state: CommodoreState; readonly item: CommodoreIntel };
-  removeIntel(theaterId: string, intelId: string): CommodoreState;
-  setSources(theaterId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
-  setCoordinates(theaterId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
+  editIntel(commodoreId: string, intelId: string, text: string): { readonly state: CommodoreState; readonly item: CommodoreIntel };
+  removeIntel(commodoreId: string, intelId: string): CommodoreState;
+  setSources(commodoreId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
+  setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
-  setCommander(theaterId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
+  setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
   /** 순찰 간격 — null 은 기본(60분)으로 되돌린다. 같으면 아무 일도 없다. */
-  setPatrol(theaterId: string, minutes: CommodorePatrolMinutes | null): CommodoreState;
+  setPatrol(commodoreId: string, minutes: CommodorePatrolMinutes | null): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
-  setLanguage(theaterId: string, language: "en" | "ko"): CommodoreState;
+  setLanguage(commodoreId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
-  addRunTotals(theaterId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
+  addRunTotals(commodoreId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
   /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 지시·인텔·설정은 보존한다. */
-  transcriptClear(theaterId: string): CommodoreState;
+  transcriptClear(commodoreId: string): CommodoreState;
   readonly images: ReturnType<typeof createCommodoreImages>;
   /** fleet-memory — 쓰기는 사령관 도구만, 화면은 읽기만 한다. 바뀌면 `memory` 사건이 나간다. */
   readonly memory: CommodoreMemory;
-  transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
-  transcriptRead(theaterId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
+  transcriptAppend(commodoreId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
+  transcriptRead(commodoreId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
   /**
    * 사람에게 묻는다 — 기록에 `ask` 줄을 남긴다. 같은 목표에 같은 질문이 이미 서 있으면 그 질문을 그대로 둔다(reused).
    * 서 있는 질문이 상한(`MAX_OPEN_ASKS`)이면 `too_many_asks`.
    */
-  askAdd(theaterId: string, input: { readonly questions: readonly AskQuestionInput[]; readonly reason: string; readonly objective: { readonly id: string; readonly title: string } | null }): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly reused: boolean };
+  askAdd(commodoreId: string, input: { readonly questions: readonly AskQuestionInput[]; readonly reason: string; readonly objective: { readonly id: string; readonly title: string } | null }): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly reused: boolean };
   /** 사령관이 질문을 거둔다. 이미 거둔 질문은 그대로(withdrawn false), 답한 질문은 `ask_already_answered`. */
-  askWithdraw(theaterId: string, askId: string): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly withdrawn: boolean };
+  askWithdraw(commodoreId: string, askId: string): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly withdrawn: boolean };
   /**
    * 사람의 답 — 모든 질문에 한 번에. 기록에 `ask-answered` 줄을 남긴다. 같은 답의 재전송은 그 결과를 그대로(repeated),
    * 다른 답은 `ask_already_answered`, 거둔 질문은 `ask_withdrawn`, 모르는 질문은 `unknown_ask`, 어긋난 답은 `invalid_answers`.
    */
-  askAnswer(theaterId: string, askId: string, answers: readonly AskAnswerInput[]): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly repeated: boolean };
+  askAnswer(commodoreId: string, askId: string, answers: readonly AskAnswerInput[]): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly repeated: boolean };
   /** 사령관이 답을 읽었다 — 답한 질문에 읽은 시각을 남긴다. */
-  askRead(theaterId: string, askIds: readonly string[]): CommodoreState;
+  askRead(commodoreId: string, askIds: readonly string[]): CommodoreState;
   /** 저장된 상태가 자율 운영을 켠 Theater — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
-  autonomousTheaters(): readonly string[];
+  autonomousCommodores(): readonly string[];
   /** 서버 안 구독 — 감독자가 지시·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
   subscribe(listener: (event: CommodoreEvent) => void): () => void;
 }
@@ -153,31 +155,31 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   const lastSeq = new Map<string, number>();
   const listeners = new Set<(event: CommodoreEvent) => void>();
 
-  const dirFor = (theaterId: string): string => {
-    const dir = options.dirOf(theaterId);
+  const dirFor = (commodoreId: string): string => {
+    const dir = options.dirOf(commodoreId);
     if (!dir) throw new CommodoreStoreError("theater_unavailable");
-    return path.join(dir, "commodore");
+    return dir;
   };
-  const images = createCommodoreImages((theaterId) => {
-    const dir = options.dirOf(theaterId);
+  const images = createCommodoreImages((commodoreId) => {
+    const dir = options.dirOf(commodoreId);
     if (!dir) throw new CommodoreStoreError("theater_unavailable");
     return dir;
   }, {
     maxBytes: options.maxRetainedImageBytes,
-    messageSeqs: (theaterId) => new Map(readTranscriptFile(path.join(dirFor(theaterId), TRANSCRIPT_FILE)).flatMap((entry) => entry.kind === "message" && entry.messageId ? [[entry.messageId, entry.seq] as const] : [])),
+    messageSeqs: (commodoreId) => new Map(readTranscriptFile(path.join(dirFor(commodoreId), TRANSCRIPT_FILE)).flatMap((entry) => entry.kind === "message" && entry.messageId ? [[entry.messageId, entry.seq] as const] : [])),
   });
-  const pruneImages = (theaterId: string, kept?: ReadonlySet<string>) => {
-    try { images.prune(theaterId, kept); }
+  const pruneImages = (commodoreId: string, kept?: ReadonlySet<string>) => {
+    try { images.prune(commodoreId, kept); }
     catch { console.warn("[objectives] commodore image cleanup failed; retained copies will be retried on the next cleanup"); }
   };
-  const stateFile = (theaterId: string) => path.join(dirFor(theaterId), STATE_FILE);
-  const transcriptFile = (theaterId: string) => path.join(dirFor(theaterId), TRANSCRIPT_FILE);
+  const stateFile = (commodoreId: string) => path.join(dirFor(commodoreId), STATE_FILE);
+  const transcriptFile = (commodoreId: string) => path.join(dirFor(commodoreId), TRANSCRIPT_FILE);
 
-  const load = (theaterId: string): CommodoreState => {
-    const cached = states.get(theaterId);
+  const load = (commodoreId: string): CommodoreState => {
+    const cached = states.get(commodoreId);
     if (cached) return cached;
-    const state = readStateFile(stateFile(theaterId));
-    states.set(theaterId, state);
+    const state = readStateFile(stateFile(commodoreId));
+    states.set(commodoreId, state);
     return state;
   };
 
@@ -189,37 +191,37 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   };
 
   /** 상태 한 건을 검증해 쓰고, 성공한 뒤에만 캐시를 갈고 방송한다. */
-  const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">): CommodoreState => {
+  const commit = (commodoreId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">): CommodoreState => {
     const parsed = commodoreStateSchema.safeParse(next);
     if (!parsed.success) throw new CommodoreStoreError("invalid_request");
-    const file = stateFile(theaterId);
+    const file = stateFile(commodoreId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    writeFileAtomic(file, JSON.stringify(parsed.data));
-    states.set(theaterId, parsed.data);
-    broadcast({ op: "state", theaterId, state: parsed.data, change, ...(intelId ? { intelId } : {}), ...(removedIntel ? { removedIntel } : {}) });
+    writeFileAtomic(file, JSON.stringify({ ...parsed.data, theaters: options.theatersOf(commodoreId) }));
+    states.set(commodoreId, parsed.data);
+    broadcast({ op: "state", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), state: parsed.data, change, ...(intelId ? { intelId } : {}), ...(removedIntel ? { removedIntel } : {}) });
     return parsed.data;
   };
 
-  const seqOf = (theaterId: string): number => {
-    const known = lastSeq.get(theaterId);
+  const seqOf = (commodoreId: string): number => {
+    const known = lastSeq.get(commodoreId);
     if (known !== undefined) return known;
-    const entries = readTranscriptFile(transcriptFile(theaterId));
-    const seq = Math.max(load(theaterId).transcriptClearedThrough ?? 0, entries.length ? entries[entries.length - 1]!.seq : 0);
-    lastSeq.set(theaterId, seq);
+    const entries = readTranscriptFile(transcriptFile(commodoreId));
+    const seq = Math.max(load(commodoreId).transcriptClearedThrough ?? 0, entries.length ? entries[entries.length - 1]!.seq : 0);
+    lastSeq.set(commodoreId, seq);
     return seq;
   };
 
-  const append = (theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry => {
-    const entry = { ...input, seq: seqOf(theaterId) + 1, at: now() } as CommodoreTranscriptEntry;
+  const append = (commodoreId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry => {
+    const entry = { ...input, seq: seqOf(commodoreId) + 1, at: now() } as CommodoreTranscriptEntry;
     const parsed = commodoreTranscriptEntrySchema.safeParse(entry);
     if (!parsed.success) throw new CommodoreStoreError("invalid_request");
-    const file = transcriptFile(theaterId);
+    const file = transcriptFile(commodoreId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
-    lastSeq.set(theaterId, parsed.data.seq);
+    lastSeq.set(commodoreId, parsed.data.seq);
     const kept = compactIfLarge(file);
-    if (kept) pruneImages(theaterId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
-    broadcast({ op: "transcript", theaterId, entry: parsed.data });
+    if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
+    broadcast({ op: "transcript", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), entry: parsed.data });
     return parsed.data;
   };
 
@@ -227,125 +229,125 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     dirFor,
     now,
     writeFile: writeFileAtomic,
-    onChange: (theaterId, change, ref) => broadcast({ op: "memory", theaterId, change, ref }),
+    onChange: (commodoreId, change, ref) => broadcast({ op: "memory", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), change, ref }),
   });
 
   return {
-    read(theaterId) {
-      try { return load(theaterId); }
+    read(commodoreId) {
+      try { return load(commodoreId); }
       catch (error) {
         if (error instanceof CommodoreStoreError && error.code === "theater_unavailable") return null;
         throw error;
       }
     },
-    setAutonomy(theaterId, autonomy) {
-      const current = load(theaterId);
+    setAutonomy(commodoreId, autonomy) {
+      const current = load(commodoreId);
       if (current.autonomy === autonomy && (autonomy || current.stopAt === undefined)) return current;
       const { stopAt: _stopAt, ...withoutSchedule } = current;
-      return commit(theaterId, { ...(autonomy ? current : withoutSchedule), autonomy }, "autonomy");
+      return commit(commodoreId, { ...(autonomy ? current : withoutSchedule), autonomy }, "autonomy");
     },
-    setStopAt(theaterId, stopAt) {
-      const current = load(theaterId);
+    setStopAt(commodoreId, stopAt) {
+      const current = load(commodoreId);
       if (!current.autonomy) throw new CommodoreStoreError("commodore_inactive");
       const at = now();
       if (current.stopAt !== undefined && current.stopAt <= at) throw new CommodoreStoreError("commodore_stopping");
       if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new CommodoreStoreError("invalid_request");
       if ((current.stopAt ?? null) === stopAt) return current;
       const { stopAt: _stopAt, ...rest } = current;
-      return commit(theaterId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
+      return commit(commodoreId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
     },
-    setDirective(theaterId, text) {
+    setDirective(commodoreId, text) {
       if (text.length > MAX_DIRECTIVE) throw new CommodoreStoreError("invalid_request");
-      const current = load(theaterId);
+      const current = load(commodoreId);
       if (current.directive.text === text) return current;
-      return commit(theaterId, { ...current, directive: { text, rev: current.directive.rev + 1, updatedAt: now() } }, "directive");
+      return commit(commodoreId, { ...current, directive: { text, rev: current.directive.rev + 1, updatedAt: now() } }, "directive");
     },
-    addIntel(theaterId, input) {
+    addIntel(commodoreId, input) {
       const text = input.text.trim();
       if (!text || text.length > MAX_INTEL_TEXT) throw new CommodoreStoreError("invalid_request");
-      const current = load(theaterId);
+      const current = load(commodoreId);
       const item: CommodoreIntel = { id: `i_${randomUUID().slice(0, 8)}`, at: now(), source: input.source?.trim() || "person", text };
       // 최신이 앞이다 — 사령관 도구가 "지난번 이후" 를 앞에서부터 읽는다. 상한을 넘으면 가장 오래된 것이 떨어진다.
       const intel = [item, ...current.intel].slice(0, MAX_INTEL_ITEMS);
-      return { state: commit(theaterId, { ...current, intel }, "intel", item.id), item };
+      return { state: commit(commodoreId, { ...current, intel }, "intel", item.id), item };
     },
-    editIntel(theaterId, intelId, input) {
+    editIntel(commodoreId, intelId, input) {
       const text = input.trim();
       if (!text || text.length > MAX_INTEL_TEXT) throw new CommodoreStoreError("invalid_request");
-      const current = load(theaterId);
+      const current = load(commodoreId);
       const index = current.intel.findIndex((entry) => entry.id === intelId);
       if (index < 0) throw new CommodoreStoreError("unknown_intel");
       const existing = current.intel[index]!;
       if (existing.text === text) return { state: current, item: existing };
       const item: CommodoreIntel = { ...existing, text, editedAt: now() };
       const intel = current.intel.map((entry, at) => (at === index ? item : entry));
-      return { state: commit(theaterId, { ...current, intel }, "intel-edited", intelId), item };
+      return { state: commit(commodoreId, { ...current, intel }, "intel-edited", intelId), item };
     },
-    removeIntel(theaterId, intelId) {
-      const current = load(theaterId);
+    removeIntel(commodoreId, intelId) {
+      const current = load(commodoreId);
       const item = current.intel.find((entry) => entry.id === intelId);
       if (!item) throw new CommodoreStoreError("unknown_intel");
       const intel = current.intel.filter((entry) => entry.id !== intelId);
-      return commit(theaterId, { ...current, intel }, "intel-removed", intelId, { id: item.id, text: item.text });
+      return commit(commodoreId, { ...current, intel }, "intel-removed", intelId, { id: item.id, text: item.text });
     },
-    setSources(theaterId, sources) {
+    setSources(commodoreId, sources) {
       if (sources.length > MAX_SOURCES) throw new CommodoreStoreError("invalid_request");
-      const current = load(theaterId);
+      const current = load(commodoreId);
       // 같은 종류·위치의 출처는 id 를 잇는다 — 정보 항목의 source 가 가리키는 자리가 바뀌지 않게.
       const next = sources.map((source) => ({ id: current.sources.find((known) => known.kind === source.kind && known.locator === source.locator)?.id ?? `s_${randomUUID().slice(0, 8)}`, ...source }));
-      return commit(theaterId, { ...current, sources: next }, "sources");
+      return commit(commodoreId, { ...current, sources: next }, "sources");
     },
-    setCoordinates(theaterId, coordinates) {
-      const current = load(theaterId);
+    setCoordinates(commodoreId, coordinates) {
+      const current = load(commodoreId);
       const { model: _model, effort: _effort, ...rest } = current;
-      return commit(theaterId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
+      return commit(commodoreId, coordinates ? { ...rest, model: coordinates.model, effort: coordinates.effort } : rest, "coordinates");
     },
-    setCommander(theaterId, commander) {
-      const current = load(theaterId);
+    setCommander(commodoreId, commander) {
+      const current = load(commodoreId);
       const { commanderModel: _model, commanderEffort: _effort, ...rest } = current;
-      return commit(theaterId, commander ? { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}) } : rest, "commander");
+      return commit(commodoreId, commander ? { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}) } : rest, "commander");
     },
-    setPatrol(theaterId, minutes) {
-      const current = load(theaterId);
+    setPatrol(commodoreId, minutes) {
+      const current = load(commodoreId);
       if ((current.patrolMinutes ?? null) === minutes) return current;
       const { patrolMinutes: _patrol, ...rest } = current;
-      return commit(theaterId, minutes === null ? rest : { ...rest, patrolMinutes: minutes }, "patrol");
+      return commit(commodoreId, minutes === null ? rest : { ...rest, patrolMinutes: minutes }, "patrol");
     },
-    setLanguage(theaterId, language) {
-      const current = load(theaterId);
+    setLanguage(commodoreId, language) {
+      const current = load(commodoreId);
       if (current.language === language) return current;
-      return commit(theaterId, { ...current, language }, "language");
+      return commit(commodoreId, { ...current, language }, "language");
     },
-    addRunTotals(theaterId, delta) {
-      const current = load(theaterId);
+    addRunTotals(commodoreId, delta) {
+      const current = load(commodoreId);
       const run = current.run ?? EMPTY_RUN_TOTALS;
-      return commit(theaterId, { ...current, run: { session: run.session + (delta.session ?? 0), costUsd: run.costUsd + (delta.costUsd ?? 0), actions: run.actions + (delta.actions ?? 0) } }, "run");
+      return commit(commodoreId, { ...current, run: { session: run.session + (delta.session ?? 0), costUsd: run.costUsd + (delta.costUsd ?? 0), actions: run.actions + (delta.actions ?? 0) } }, "run");
     },
-    transcriptClear(theaterId) {
-      const current = load(theaterId);
-      const clearedThrough = seqOf(theaterId) + 1;
+    transcriptClear(commodoreId) {
+      const current = load(commodoreId);
+      const clearedThrough = seqOf(commodoreId) + 1;
       // 삭제 도중 프로세스가 내려가도 남은 파일의 옛 줄을 읽지 않게 경계를 먼저 영속한다.
-      const state = commit(theaterId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
-      lastSeq.set(theaterId, clearedThrough);
-      fs.rmSync(transcriptFile(theaterId), { force: true });
-      pruneImages(theaterId);
+      const state = commit(commodoreId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
+      lastSeq.set(commodoreId, clearedThrough);
+      fs.rmSync(transcriptFile(commodoreId), { force: true });
+      pruneImages(commodoreId);
       return state;
     },
     images,
     memory,
-    transcriptAppend: (theaterId, input) => append(theaterId, input),
-    transcriptRead(theaterId, pageOptions) {
+    transcriptAppend: (commodoreId, input) => append(commodoreId, input),
+    transcriptRead(commodoreId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
-      const clearedThrough = load(theaterId).transcriptClearedThrough ?? 0;
-      const entries = readTranscriptFile(transcriptFile(theaterId)).filter((entry) => entry.seq > clearedThrough);
+      const clearedThrough = load(commodoreId).transcriptClearedThrough ?? 0;
+      const entries = readTranscriptFile(transcriptFile(commodoreId)).filter((entry) => entry.seq > clearedThrough);
       const before = pageOptions?.before;
       const scoped = before === undefined ? entries : entries.filter((entry) => entry.seq < before);
       return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit, clearedThrough };
     },
-    askAdd(theaterId, input) {
+    askAdd(commodoreId, input) {
       const reason = input.reason.trim();
       if (!reason || reason.length > MAX_ASK_REASON) throw new CommodoreStoreError("invalid_request");
-      const current = load(theaterId);
+      const current = load(commodoreId);
       const asks = current.asks ?? [];
       // 저장될 모양 그대로 비교한다 — 같은 목표에 같은 질문이 서 있으면 다시 묻지 않는다.
       const shape = (questions: readonly AskQuestionInput[]) =>
@@ -358,22 +360,22 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
         id: `a_${randomUUID()}`, at: now(), reason, objectiveId,
         questions: shape(input.questions).map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),
       };
-      const state = commit(theaterId, { ...current, asks: keptAsks([...asks, ask]) }, "asks");
-      append(theaterId, { kind: "ask", askId: ask.id, reason, questions: ask.questions.map((question) => ({ text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })), ...(input.objective ? { objective: { id: input.objective.id, title: input.objective.title.slice(0, 200) } } : {}) });
+      const state = commit(commodoreId, { ...current, asks: keptAsks([...asks, ask]) }, "asks");
+      append(commodoreId, { kind: "ask", askId: ask.id, reason, questions: ask.questions.map((question) => ({ text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })), ...(input.objective ? { objective: { id: input.objective.id, title: input.objective.title.slice(0, 200) } } : {}) });
       return { state, ask, reused: false };
     },
-    askWithdraw(theaterId, askId) {
-      const current = load(theaterId);
+    askWithdraw(commodoreId, askId) {
+      const current = load(commodoreId);
       const ask = (current.asks ?? []).find((entry) => entry.id === askId);
       if (!ask) throw new CommodoreStoreError("unknown_ask");
       if (ask.settled?.outcome === "answered") throw new CommodoreStoreError("ask_already_answered");
       if (ask.settled) return { state: current, ask, withdrawn: false };
       const withdrawn: CommodoreAsk = { ...ask, settled: { at: now(), by: "commodore", outcome: "withdrawn" } };
-      const state = commit(theaterId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? withdrawn : entry))) }, "asks");
+      const state = commit(commodoreId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? withdrawn : entry))) }, "asks");
       return { state, ask: withdrawn, withdrawn: true };
     },
-    askAnswer(theaterId, askId, input) {
-      const current = load(theaterId);
+    askAnswer(commodoreId, askId, input) {
+      const current = load(commodoreId);
       const ask = (current.asks ?? []).find((entry) => entry.id === askId);
       if (!ask) throw new CommodoreStoreError("unknown_ask");
       if (ask.settled?.outcome === "withdrawn") throw new CommodoreStoreError("ask_withdrawn");
@@ -394,22 +396,22 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
         return { state: current, ask, repeated: true };
       }
       const answered: CommodoreAsk = { ...ask, settled: { at: now(), by: "human", outcome: "answered", answers } };
-      const state = commit(theaterId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? answered : entry))) }, "asks");
-      append(theaterId, { kind: "ask-answered", askId, answers: askAnswerLines(answered) });
+      const state = commit(commodoreId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? answered : entry))) }, "asks");
+      append(commodoreId, { kind: "ask-answered", askId, answers: askAnswerLines(answered) });
       return { state, ask: answered, repeated: false };
     },
-    askRead(theaterId, askIds) {
-      const current = load(theaterId);
+    askRead(commodoreId, askIds) {
+      const current = load(commodoreId);
       const unread = new Set(askIds);
       if (!(current.asks ?? []).some((ask) => unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined)) return current;
       const at = now();
-      return commit(theaterId, { ...current, asks: (current.asks ?? []).map((ask) => (unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined ? { ...ask, readAt: at } : ask)) }, "asks");
+      return commit(commodoreId, { ...current, asks: (current.asks ?? []).map((ask) => (unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined ? { ...ask, readAt: at } : ask)) }, "asks");
     },
-    autonomousTheaters() {
-      const ids = new Set<string>([...states.keys(), ...(options.theaterIds?.() ?? [])]);
+    autonomousCommodores() {
+      const ids = new Set<string>([...states.keys(), ...(options.commodoreIds?.() ?? [])]);
       const result: string[] = [];
-      for (const theaterId of ids) {
-        try { if (load(theaterId).autonomy) result.push(theaterId); }
+      for (const commodoreId of ids) {
+        try { if (load(commodoreId).autonomy) result.push(commodoreId); }
         catch { /* 읽을 수 없는 Theater 는 복원 대상이 아니다 — 폴더가 돌아오면 다음 읽기가 다시 푼다. */ }
       }
       return result;
@@ -437,7 +439,8 @@ function readStateFile(file: string): CommodoreState {
     throw error;
   }
   try {
-    const parsed = commodoreStateSchema.safeParse(JSON.parse(raw));
+    const { theaters: _theaters, ...state } = JSON.parse(raw);
+    const parsed = commodoreStateSchema.safeParse(state);
     if (parsed.success) return foldCommodoreModels(parsed.data);
   } catch { /* 아래에서 치운다 */ }
   console.warn(`[objectives] commodore state unreadable, set aside: ${file}`);

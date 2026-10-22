@@ -1,5 +1,6 @@
+import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
 import { Buffer } from "node:buffer";
-import type { AgentHost, AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import type { AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
 import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
@@ -7,7 +8,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "@fleet-console/sdk/commodore";
 import { CommodoreStoreError } from "./errors.js";
-import { commodorePersistKey, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
+import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
@@ -16,13 +17,13 @@ import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_
 import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "./types.js";
 
 /**
- * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
+ * 감독자 — 사령관 UUID마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
  *
  * 깨울 이유(보드 사건·지시·정보·사람의 메시지·정체·순찰·빈 보드·재시작)를 모아 몇 초 뒤 한 턴으로 보내고, 턴 중에 온 이유는
  * 다음 턴 하나로 합친다. 턴 중에 온 사람의 말은 예외다 — 도는 턴에 건네 같은 턴이 읽는다(채팅·지휘관과 같다). 순찰은 사령관이
  * `next_wake` 로 예약하되 사람이 고른 순찰 간격(기본 60분)을 넘지 않고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분 간격으로 계속한다
- * (자율 운영은 꺼지지 않는다). 문맥이 길어지면 같은 세션이 압축해 잇고, 대화는 호스트에 남아 Console 재시작·자율 운영 재개 뒤에도
- * 같은 대화를 이어 받는다. 좌표·언어·이미지 예산이 바뀔 때만 교대한다(새 세션 + 최근 행위 요약). Console 조합이 모든 플러그인을 붙인 뒤 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
+ * (자율 운영은 꺼지지 않는다). 문맥이 길어지면 같은 세션이 압축해 잇고, Console 재시작·자율 운영 재개는
+ * 기록 꼬리의 최근 행위 요약을 받는 새 대화다. 좌표·언어·이미지 예산이 바뀔 때만 교대한다(새 세션 + 최근 행위 요약). Console 조합이 모든 플러그인을 붙인 뒤 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
  *
  * 순찰 간격만 사람의 노브다(서랍). 재시도 간격·모으는 시간·교대 비율은 감독자 내부 값이다.
  */
@@ -37,7 +38,9 @@ const RECENT_ACTIONS = 12;
 
 export interface CommodoreSupervisorDeps {
   readonly store: CommodoreStore;
-  readonly agent: AgentHost;
+  readonly theaterIds: (commodoreId: string) => readonly string[];
+  readonly cwd: (commodoreId: string) => string | null;
+  readonly agent: ConsoleResidentAgentHost;
   readonly attachments?: PluginAttachmentHost;
   readonly experiments: () => ConsoleExperimentSettings;
   readonly subscribeExperiments?: (listener: () => void) => () => void;
@@ -47,10 +50,10 @@ export interface CommodoreSupervisorDeps {
    */
   readonly models?: Pick<FleetPluginModelsHost, "resolve" | "pinClaudeVersion">;
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
-  readonly theater: (theaterId: string) => { readonly label: string; readonly root: string } | null;
+  readonly theater: (commodoreId: string) => { readonly label: string; readonly root: string } | null;
   readonly board: () => CommodoreBoardAdapter | null;
   /** 호스트가 이 Theater 루트에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
-  readonly knowledgeTools?: (theaterId: string) => readonly PluginMcpServerTools[];
+  readonly knowledgeTools?: (commodoreId: string) => readonly PluginMcpServerTools[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -65,11 +68,11 @@ interface RunCoordinates extends CommodoreSessionCoordinates {
 
 export interface CommodoreSupervisor {
   /** 지금 상태 — 감독자가 모르는 Theater(돌지 않는)는 null. */
-  status(theaterId: string): Omit<CommodoreRunStatus, "totals"> | null;
+  status(commodoreId: string): Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
-  retry(theaterId: string): Promise<void>;
+  retry(commodoreId: string): Promise<void>;
   /** 진행 턴·대기 메시지를 거두고 요약 없이 새 문맥으로 시작한다. 기록 파일도 지운다. */
-  clear(theaterId: string): Promise<void>;
+  clear(commodoreId: string): Promise<void>;
   /** 실험 기능·자율 운영을 다시 읽어 돌아야 할 Theater 를 세우고 아닌 것을 멈춘다. */
   sync(reason?: string): void;
   dispose(): Promise<void>;
@@ -147,7 +150,7 @@ interface QueuedMessage {
 }
 
 interface Runner {
-  readonly theaterId: string;
+  readonly commodoreId: string;
   session: CommodoreSession | null;
   phase: Phase;
   reason?: string;
@@ -187,6 +190,8 @@ interface Runner {
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
+  /** 실제 첫 턴까지 붙든다 — 보드 사유가 사라져 방금 연 세션이 쉬어도 요약을 잃지 않는다. */
+  replacementSummary?: readonly string[];
   board: CommodoreBoardWatch | null;
   stalledReported: Set<string>;
   emptyReported: boolean;
@@ -194,6 +199,7 @@ interface Runner {
 
 export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): CommodoreSupervisor {
   const now = deps.now ?? Date.now;
+  const theaterIdOf = (id: string) => deps.theaterIds(id)[0] ?? "";
   const runners = new Map<string, Runner>();
   const clears = new Map<string, Promise<void>>();
   const stops = new Map<string, Promise<void>>();
@@ -201,7 +207,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   let disposed = false;
 
   const releaseMessages = (runner: Runner, messages: readonly QueuedMessage[]) => {
-    for (const message of messages) if (message.messageId) deps.attachments?.release(runner.theaterId, message.messageId);
+    for (const message of messages) if (message.messageId) deps.attachments?.release(runner.commodoreId, message.messageId);
   };
   const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
     const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
@@ -213,7 +219,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     });
     const messages = new Map<string, ReturnType<PluginAttachmentHost["read"]>>();
     for (const { messageId } of selected) if (!messages.has(messageId)) {
-      try { messages.set(messageId, deps.attachments.read(runner.theaterId, messageId)); }
+      try { messages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
       catch { throw unavailable(); }
     }
     return selected.map(({ id, messageId }) => {
@@ -228,7 +234,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       hasPersonMessage: () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0,
       stopping: () => disposed || runner.stopping || runner.ending || deadlineReached(runner),
     };
-    return (deps.board()?.tools(runner.theaterId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
+    return (deps.board()?.tools(theaterIdOf(runner.commodoreId), turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
   };
 
   const takeUndelivered = (runner: Runner) => {
@@ -237,11 +243,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return messages.map((message) => message.seq);
   };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
-  const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null && deps.board() !== null;
-  const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.board()?.language?.(theaterId) ?? "en";
+  const shouldRun = (commodoreId: string) => settings().commodore && deps.store.read(commodoreId)?.autonomy === true && deps.theater(theaterIdOf(commodoreId)) !== null && deps.board() !== null;
+  const resolveLanguage = (commodoreId: string): "en" | "ko" => deps.store.read(commodoreId)?.language ?? deps.board()?.language?.(theaterIdOf(commodoreId)) ?? "en";
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
-  const resolveCoordinates = (theaterId: string): RunCoordinates => {
-    const state = deps.store.read(theaterId);
+  const resolveCoordinates = (commodoreId: string): RunCoordinates => {
+    const state = deps.store.read(commodoreId);
     const stored = state?.model && state.effort ? { model: state.model, effort: state.effort } : experimentAideSelection(settings(), "commodore");
     if (!deps.models) return { model: stored.model, effort: stored.effort, contextWindow: contextWindow(stored.model) };
     const resolved = deps.models.resolve(stored, "agent");
@@ -256,8 +262,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
   const publish = (runner: Runner) => {
-    const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
-    deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
+    const totals = deps.store.read(runner.commodoreId)?.run ?? EMPTY_RUN_TOTALS;
+    deps.emit({ op: "run", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), run: { ...statusOf(runner), totals } });
   };
   const setPhase = (runner: Runner, phase: Phase, reason?: string) => {
     runner.phase = phase;
@@ -265,7 +271,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     publish(runner);
   };
   const record = (runner: Runner, entry: Parameters<CommodoreStore["transcriptAppend"]>[1]) => {
-    try { deps.store.transcriptAppend(runner.theaterId, entry); }
+    try { deps.store.transcriptAppend(runner.commodoreId, entry); }
     catch (error) { console.warn(`[objectives] commodore log failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
   const clearTimer = (runner: Runner, key: "coalesce" | "patrol" | "retry" | "stopTimer") => {
@@ -295,10 +301,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
   };
 
-  const patrolInterval = (theaterId: string) => patrolIntervalMs(deps.store.read(theaterId));
+  const patrolInterval = (commodoreId: string) => patrolIntervalMs(deps.store.read(commodoreId));
   const schedulePatrol = (runner: Runner, at: number, reason: string) => {
     if (runner.stopping || runner.ending) return;
-    const bounded = Math.max(now(), Math.min(at, now() + patrolInterval(runner.theaterId)));
+    const bounded = Math.max(now(), Math.min(at, now() + patrolInterval(runner.commodoreId)));
     runner.nextWakeAt = bounded;
     schedule(runner, "patrol", bounded - now(), () => { runner.nextWakeAt = undefined; runner.patrolRequest = null; wake(runner, "patrol", reason ? { detail: reason } : {}); });
     publish(runner);
@@ -315,22 +321,24 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
 
   const openSession = async (runner: Runner, event: "opened" | "replaced" | "restarted"): Promise<CommodoreSession> => {
-    const theater = deps.theater(runner.theaterId);
+    const theater = deps.theater(theaterIdOf(runner.commodoreId));
     if (!theater) throw new Error("theater_unavailable");
-    const coordinates = resolveCoordinates(runner.theaterId);
-    const language = resolveLanguage(runner.theaterId);
+    const cwd = deps.cwd(runner.commodoreId);
+    if (!cwd) throw new Error("commodore_unavailable");
+    const coordinates = resolveCoordinates(runner.commodoreId);
+    const language = resolveLanguage(runner.commodoreId);
     // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
     // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
     const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
-      ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.theaterId) } : {}),
-      objective: (objectiveId) => { const objective = deps.board()?.objective(runner.theaterId, objectiveId); return objective && !objective.removed ? objective : null; },
+      ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(theaterIdOf(runner.commodoreId)) } : {}),
+      objective: (objectiveId) => { const objective = deps.board()?.objective(theaterIdOf(runner.commodoreId), objectiveId); return objective && !objective.removed ? objective : null; },
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
-      onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
+      onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
       onInput: ({ id, state }) => {
         const message = runner.hosted.get(id);
         if (!message) return;
@@ -348,6 +356,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     });
     await session.start();
     runner.session = session;
+    runner.replacementSummary = runner.recentActions.length ? runner.recentActions.slice(-RECENT_ACTIONS) : undefined;
     runner.coordinates = coordinates;
     runner.language = language;
     runner.contextWindow = coordinates.contextWindow;
@@ -355,15 +364,21 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
-    // 이어 받은 대화는 새 세션이 아니다 — 세션 번호를 올리지 않고 「이어 받음」 줄만 남긴다.
-    if (!session.resumed) deps.store.addRunTotals(runner.theaterId, { session: 1 });
-    record(runner, { kind: "session", event: session.resumed ? "resumed" : event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) });
+    // 세션을 열 때마다 새 대화다.
+    deps.store.addRunTotals(runner.commodoreId, { session: 1 });
+    record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
     return session;
   };
 
+  const firstTurnSummary = (runner: Runner) => {
+    const summary = runner.replacementSummary;
+    runner.replacementSummary = undefined;
+    return summary ? { replacementSummary: summary } : {};
+  };
+
   const deadlineReached = (runner: Runner) => {
-    const at = deps.store.read(runner.theaterId)?.stopAt;
+    const at = deps.store.read(runner.commodoreId)?.stopAt;
     return at !== undefined && at <= now();
   };
 
@@ -390,25 +405,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const timeout = setTimeout(() => session.cancel(), 30_000);
         timeout.unref?.();
         try {
-          const outcome = await session.turn({ reasons: ["scheduled-stop"], sentences: ["The scheduled end time has arrived. Autonomous operation is now ending. Do not patrol, schedule another wake, or change the board. Acknowledge the stop briefly; pending work returns to the person."] });
+          const outcome = await session.turn({ ...firstTurnSummary(runner), reasons: ["scheduled-stop"], sentences: ["The scheduled end time has arrived. Autonomous operation is now ending. Do not patrol, schedule another wake, or change the board. Acknowledge the stop briefly; pending work returns to the person."] });
           noteOutcome(runner, outcome);
         } finally { clearTimeout(timeout); }
       } catch (error) {
         record(runner, { kind: "error", code: failureCode(error, "session_failed") });
       } finally {
         // Console 종료 중이면 예약을 남겨 재시작에서 처리한다. 사람이 이미 끈 새 상태는 건드리지 않는다.
-        if (!runner.stopping && !disposed) deps.store.setAutonomy(runner.theaterId, false);
+        if (!runner.stopping && !disposed) deps.store.setAutonomy(runner.commodoreId, false);
       }
     })().catch((error) => {
       console.warn(`[objectives] commodore scheduled stop failed: ${error instanceof Error ? error.message : String(error)}`);
-      void stop(runner.theaterId, "scheduled stop failed");
+      void stop(runner.commodoreId, "scheduled stop failed");
     }).finally(() => { runner.inflight = null; });
   };
 
   const scheduleStop = (runner: Runner) => {
     clearTimer(runner, "stopTimer");
     if (runner.stopping || runner.ending) return;
-    const at = deps.store.read(runner.theaterId)?.stopAt;
+    const at = deps.store.read(runner.commodoreId)?.stopAt;
     if (at === undefined) return;
     if (at <= now()) { endScheduled(runner); return; }
     // Node 타이머 상한을 넘는 날짜도 일찍 실행하지 않고, 남은 기간을 다시 예약한다.
@@ -419,8 +434,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.stopping || runner.ending || disposed) return;
     if (deadlineReached(runner)) { endScheduled(runner); return; }
     if (runner.inflight) return runner.inflight;
-    // 재시작 직후에는 이유가 없어도 세션을 연다 — 같은 대화를 이어 받으면 조용히 쉬고, 못 받으면 재시작으로 깨운다.
-    if (!runner.pending.size && runner.rotateNext !== "restarted") return;
+    if (!runner.pending.size) return;
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
@@ -435,14 +449,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const selected = runner.messages.slice(0, batchCount);
       let preparedMessages: (string | { text: string; images: Extract<AgentInputBlock, { type: "image" }>[] })[] = [];
       let session = runner.session;
-      let replacementSummary: readonly string[] | undefined;
       try {
         // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
         // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다.
         preparedMessages = selected.map((message) => {
           if (!message.attachments?.length) return message.text;
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
-          const images = deps.attachments.read(runner.theaterId, message.messageId);
+          const images = deps.attachments.read(runner.commodoreId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
           return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
@@ -451,16 +464,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
-          // 교대는 지난 대화를 버린다 — 남겨 둔 대화를 지워야 새 세션이 그것을 이어 받지 않는다.
-          if (event === "replaced") await deps.agent.forget?.(commodorePersistKey(runner.theaterId));
           session = await openSession(runner, event);
           runner.rotateNext = null;
-          // 같은 대화를 이어 받았으면 요약도 깨움도 없다(채팅이 재시작 뒤 같은 세션으로 돌아오는 것과 같다).
-          if (event !== "opened" && !session.resumed) {
-            replacementSummary = runner.recentActions.slice(-RECENT_ACTIONS);
-            wake(runner, event === "restarted" ? "restart" : "rotated");
-            if (event === "restarted" && !runner.emptyReported && runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
-          }
+          if (event === "replaced") wake(runner, "rotated");
         }
       } catch (error) {
         if (runner.stopping || runner.ending) return;
@@ -486,13 +492,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const scope = runner.board?.scope(new Map(pending.map(([code, reason]) => [code, [...(reason.ids?.keys() ?? [])]])));
       setPhase(runner, "turn");
       runner.patrolSet = false;
-      // 실패한 턴도 CLI resume 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
+      // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
       runner.sessionImageBytes += batchBytes;
       runner.sessionImageBase64Bytes += batchBase64Bytes;
       runner.turnMessages = messages;
       let outcome: CommodoreTurnOutcome;
       try {
-        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: preparedMessages } : {}) });
+        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}) });
       } finally { runner.turnMessages = []; }
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
@@ -517,7 +523,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.lastTurnAt = now();
       setPhase(runner, "idle");
       // 이번 턴이 순찰을 예약하지 않았으면 기본 순찰은 이 턴 끝에서 한 간격 뒤다 — 앞 턴의 타이머를 남기지 않는다.
-      if (!runner.patrolSet) { runner.patrolRequest = null; schedulePatrol(runner, now() + patrolInterval(runner.theaterId), ""); }
+      if (!runner.patrolSet) { runner.patrolRequest = null; schedulePatrol(runner, now() + patrolInterval(runner.commodoreId), ""); }
     })().finally(() => {
       // 종료 알림이 이 턴을 기다리는 중이면 그 promise를 덮지 않는다.
       if (runner.ending) return;
@@ -539,22 +545,47 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     // 교대 요약의 재료 — 이 턴의 보드 행위 수와 결말만. 내용은 사령관이 도구로 다시 읽는다.
     const at = new Date(now()).toISOString();
-    runner.recentActions.push(`${at}: ${outcome.outcome}${outcome.actions ? `, ${outcome.actions} board action${outcome.actions === 1 ? "" : "s"}` : ""}`);
+    runner.recentActions.push(`${at}: ${outcome.outcome}${outcome.error ? ` (${outcome.error})` : ""}, ${outcome.actions} board action${outcome.actions === 1 ? "" : "s"}`.slice(0, 200));
     if (runner.recentActions.length > RECENT_ACTIONS * 2) runner.recentActions.splice(0, runner.recentActions.length - RECENT_ACTIONS);
   };
 
   const coordinatesChanged = (runner: Runner) => {
-    const coordinates = resolveCoordinates(runner.theaterId);
-    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId);
+    const coordinates = resolveCoordinates(runner.commodoreId);
+    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.commodoreId);
   };
 
-  const start = (theaterId: string, reason: WakeCode, wakeImmediately = true) => {
-    if (disposed || clears.has(theaterId)) return;
-    let runner = runners.get(theaterId);
+  /** clear 경계 뒤 최근 결말과 같은 턴의 성공한 보드 쓰기만 복원한다. 원시 대화는 읽지 않는다. */
+  const restoreRecentActions = (id: string): string[] => {
+    const results: string[] = [];
+    let before: number | undefined;
+    let chunks: CommodoreTranscriptEntry[][] = [];
+    // 결과 12개를 포함하는 턴의 시작까지 읽는다. 파일 자체는 저장소의 4MiB 보관 상한 안이다.
+    for (;;) {
+      const page = deps.store.transcriptRead(id, { limit: MAX_TRANSCRIPT_PAGE, ...(before === undefined ? {} : { before }) });
+      chunks.unshift([...page.entries]);
+      if (!page.hasMore || chunks.flat().filter((entry) => entry.kind === "result").length > RECENT_ACTIONS) break;
+      before = page.entries[0]?.seq;
+      if (before === undefined) break;
+    }
+    let actions = 0;
+    for (const entry of chunks.flat()) {
+      if (entry.kind === "wake") actions = 0;
+      else if (entry.kind === "tool" && entry.action && entry.ok !== false && (entry.name === "console_objectives" || entry.name === "console_objectives_detail")) actions += 1;
+      else if (entry.kind === "result") {
+        results.push(`${new Date(entry.at).toISOString()}: ${entry.outcome}${entry.error ? ` (${entry.error})` : ""}, ${actions} board action${actions === 1 ? "" : "s"}`.slice(0, 200));
+        actions = 0;
+      }
+    }
+    return results.slice(-RECENT_ACTIONS);
+  };
+
+  const start = (commodoreId: string, reason: WakeCode, wakeImmediately = true) => {
+    if (disposed || clears.has(commodoreId)) return;
+    let runner = runners.get(commodoreId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], board: null, stalledReported: new Set(), emptyReported: false };
+    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
     const current = runner;
-    current.board = deps.board()?.watch(theaterId, {
+    current.board = deps.board()?.watch(theaterIdOf(commodoreId), {
       wake: (code, input) => {
         wake(current, code, input);
         if (input?.objectiveId && input.detail) noteIds(current, code, input.objectiveId, input.detail);
@@ -562,30 +593,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       forget: (objectiveId) => forgetStatus(current, objectiveId),
       stalledChanged: (ids) => { current.stalledReported = new Set(ids); publish(current); },
     }) ?? null;
-    runners.set(theaterId, runner);
+    runners.set(commodoreId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
     // Clear 직후는 빈 기록을 유지한다. 다음 메시지·사건·순찰에서 새 세션을 연다.
-    if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(theaterId), ""); return; }
+    if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(commodoreId), ""); return; }
     requeueUndelivered(runner);
-    if (reason === "restart") {
-      // 재시작은 그 자체로 깨울 일이 아니다 — 세션을 열어 같은 대화를 이어 받으면 쉬고, 못 받을 때만 재시작·빈 보드로 깨운다(runTurn).
-      schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
-    } else {
-      wake(runner, reason);
-      if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
-    }
+    wake(runner, reason);
+    if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
-    for (const ask of deps.store.read(theaterId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
+    for (const ask of deps.store.read(commodoreId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
   };
 
   /**
-   * 지난번 끌 때 「전달되지 않음」으로 남은 사람의 메시지를 대기열에 다시 싣는다 — 같은 대화가 이어지므로 그 말을 잃지 않는다.
+   * 지난번 끌 때 「전달되지 않음」으로 남은 사람의 메시지를 대기열에 다시 싣는다 — 새 대화에서도 그 말을 잃지 않는다.
    * 이미지가 붙은 말은 끌 때 보관이 풀려 다시 싣지 못한다(그대로 「전달되지 않음」이다).
    */
   const requeueUndelivered = (runner: Runner) => {
     let entries: readonly CommodoreTranscriptEntry[];
-    try { entries = deps.store.transcriptRead(runner.theaterId, { limit: MAX_TRANSCRIPT_PAGE }).entries; }
+    try { entries = deps.store.transcriptRead(runner.commodoreId, { limit: MAX_TRANSCRIPT_PAGE }).entries; }
     catch { return; }
     const waiting = undeliveredMessageSeqs(entries);
     const messages = entries.flatMap((entry) => (entry.kind === "message" && waiting.has(entry.seq) && !entry.attachments?.length ? [entry] : []));
@@ -595,18 +621,18 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     wake(runner, "message");
   };
 
-  const stop = (theaterId: string, reason: string): Promise<void> => {
-    const previous = stops.get(theaterId);
-    const runner = runners.get(theaterId);
+  const stop = (commodoreId: string, reason: string): Promise<void> => {
+    const previous = stops.get(commodoreId);
+    const runner = runners.get(commodoreId);
     if (!runner) return previous ?? Promise.resolve();
     runner.stopping = true;
     runner.board?.dispose();
-    runners.delete(theaterId);
+    runners.delete(commodoreId);
     clearTimer(runner, "stopTimer");
     clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
     runner.pending.clear();
     // 모으는 중·재시도 대기뿐 아니라 취소된 진행 중 턴도, 결말을 기다린 뒤 아래에서 함께 표시한다.
-    // 표시한 메시지는 다음에 자율 운영이 설 때 다시 실린다(requeueUndelivered) — 이어 받는 대화가 그 말을 잃지 않는다.
+    // 표시한 메시지는 다음에 자율 운영이 설 때 다시 실린다(requeueUndelivered) — 새 대화에도 그 말을 싣는다.
     runner.nextWakeAt = undefined;
     runner.session?.cancel();
     setPhase(runner, "off", reason);
@@ -623,22 +649,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       record(runner, { kind: "session", event: "stopped", reason });
       await session?.dispose();
       if (opened && opened !== session) await opened.dispose();
-    })().finally(() => { if (stops.get(theaterId) === work) stops.delete(theaterId); });
-    stops.set(theaterId, work);
+    })().finally(() => { if (stops.get(commodoreId) === work) stops.delete(commodoreId); });
+    stops.set(commodoreId, work);
     return work;
   };
 
   const sync = (reason: WakeCode = "autonomy") => {
     if (disposed) return;
     const wanted = new Set<string>();
-    for (const theaterId of deps.store.autonomousTheaters()) if (shouldRun(theaterId)) wanted.add(theaterId);
-    for (const theaterId of [...runners.keys()]) if (!wanted.has(theaterId)) void stop(theaterId, settings().commodore ? "autonomy off" : "experiment off");
-    for (const theaterId of wanted) start(theaterId, reason);
+    for (const commodoreId of deps.store.autonomousCommodores()) if (shouldRun(commodoreId)) wanted.add(commodoreId);
+    for (const commodoreId of [...runners.keys()]) if (!wanted.has(commodoreId)) void stop(commodoreId, settings().commodore ? "autonomy off" : "experiment off");
+    for (const commodoreId of wanted) start(commodoreId, reason);
   };
 
   // 지시·정보·메시지·좌표 — 저장소 사건이 깨움 이유다.
   cleanups.push(deps.store.subscribe((event) => {
-    const runner = runners.get(event.theaterId);
+    const runner = runners.get(event.commodoreId);
     if (event.op === "state") {
       if (event.change === "autonomy") { sync(); return; }
       if (!runner) return;
@@ -674,7 +700,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       else if (event.change === "patrol" && runner.patrol) {
         // 잡혀 있는 순찰을 새 간격에 다시 맞춘다 — 사령관이 고른 시각은 그대로 두되 새 간격을 넘지 않게, 기본 순찰은 마지막 턴에서 한 간격 뒤로.
         const request = runner.patrolRequest;
-        schedulePatrol(runner, request ? request.at : runner.lastTurnAt + patrolInterval(runner.theaterId), request?.reason ?? "");
+        schedulePatrol(runner, request ? request.at : runner.lastTurnAt + patrolInterval(runner.commodoreId), request?.reason ?? "");
       }
       return;
     }
@@ -714,12 +740,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
 
   return {
-    status(theaterId) {
-      const runner = runners.get(theaterId);
+    status(commodoreId) {
+      const runner = runners.get(commodoreId);
       return runner ? statusOf(runner) : null;
     },
-    async retry(theaterId) {
-      const runner = runners.get(theaterId);
+    async retry(commodoreId) {
+      const runner = runners.get(commodoreId);
       if (!runner || (runner.phase !== "retrying" && runner.phase !== "error")) throw new Error("commodore_not_retrying");
       clearTimer(runner, "retry");
       runner.nextWakeAt = undefined;
@@ -727,27 +753,26 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       clearTimer(runner, "coalesce");
       await runTurn(runner);
     },
-    clear(theaterId) {
-      const pending = clears.get(theaterId);
+    clear(commodoreId) {
+      const pending = clears.get(commodoreId);
       if (pending) return pending;
       if (disposed) return Promise.reject(new Error("commodore_inactive"));
       const work = (async () => {
-        await stop(theaterId, "cleared");
-        // 새 문맥 — 남겨 둔 대화도 지운다. 다음 세션은 요약 없이 처음부터다.
-        await deps.agent.forget?.(commodorePersistKey(theaterId));
-        deps.store.transcriptClear(theaterId);
+        await stop(commodoreId, "cleared");
+        // 새 문맥 — 제품 기록을 지우므로 다음 세션에는 요약도 없다.
+        deps.store.transcriptClear(commodoreId);
       })().finally(() => {
-        clears.delete(theaterId);
-        if (!disposed && shouldRun(theaterId)) start(theaterId, "autonomy", false);
+        clears.delete(commodoreId);
+        if (!disposed && shouldRun(commodoreId)) start(commodoreId, "autonomy", false);
       });
-      clears.set(theaterId, work);
+      clears.set(commodoreId, work);
       return work;
     },
     sync,
     async dispose() {
       disposed = true;
       for (const cleanup of cleanups.splice(0)) cleanup();
-      await Promise.all([...clears.values(), ...stops.values(), ...[...runners.keys()].map((theaterId) => stop(theaterId, "Console stopping"))]);
+      await Promise.all([...clears.values(), ...stops.values(), ...[...runners.keys()].map((commodoreId) => stop(commodoreId, "Console stopping"))]);
     },
   };
 

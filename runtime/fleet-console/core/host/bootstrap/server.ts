@@ -660,7 +660,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored" | "updated", theaterId: string): void {
     publishPluginEvent(`theater:${event}`, { theaterId });
-    if (event === "restored") commodore?.sync();
+    if (event === "registered" || event === "restored" || event === "forgotten") commodore?.sync();
   }
   // 브라우저도 같은 순간을 들어야 한다 — 다른 창·API·Console Use가 잊거나 되돌린 Theater는 이 스트림이
   // 아니면 다음 재수화까지 사이드바에 남는다. 싣는 것은 theaterId뿐이라 그대로 내보낸다.
@@ -1266,9 +1266,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");
         return executable;
-      }, compactCeiling: () => readGatewayCompactCeiling?.(),
-      // 플러그인이 `persist`로 남기는 대화는 그 플러그인의 Console 데이터 자리에 산다 — 채널마다 갈린 데이터 루트를 따른다.
-      persistRoot: () => path.join(durablePaths.dir, "plugins", pluginId, "agent-sessions") });
+      }, compactCeiling: () => readGatewayCompactCeiling?.() });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },

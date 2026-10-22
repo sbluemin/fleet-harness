@@ -59,23 +59,23 @@ export type MemoryChange = "save" | "update" | "verify" | "delete";
 
 export interface CommodoreMemory {
   /** 갈래·주제·제목 순. 사령관 폴더를 모르면 `theater_unavailable`. */
-  list(theaterId: string): readonly MemoryEntry[];
+  list(commodoreId: string): readonly MemoryEntry[];
   /** 없으면 `unknown_memory`, 이름이 규칙 밖이면 `invalid_ref`. */
-  read(theaterId: string, ref: string): MemoryEntry;
+  read(commodoreId: string, ref: string): MemoryEntry;
   /** 이미 있으면 `memory_exists`, 상한이면 `too_many_memories`, 비밀 값 모양이면(이름·연결 포함) `memory_secret`, 본문에 `## ` 줄이 있으면 `memory_heading`. */
-  save(theaterId: string, input: MemorySaveInput): MemoryEntry;
+  save(commodoreId: string, input: MemorySaveInput): MemoryEntry;
   /** 준 필드만 바꾸고 갱신·검증 시각을 지금으로. 필드가 없으면 검증 시각만 지금으로(다시 확인함). */
-  update(theaterId: string, ref: string, patch: MemoryPatch): { readonly entry: MemoryEntry; readonly change: "update" | "verify" };
-  remove(theaterId: string, ref: string): void;
+  update(commodoreId: string, ref: string, patch: MemoryPatch): { readonly entry: MemoryEntry; readonly change: "update" | "verify" };
+  remove(commodoreId: string, ref: string): void;
   /** MEMORY.md 본문 — 항목이 없으면 빈 문자열. */
-  index(theaterId: string): string;
+  index(commodoreId: string): string;
 }
 
 export interface CommodoreMemoryOptions {
-  /** Theater 의 사령관 폴더(`objectives/commodore`). 모르면 `theater_unavailable` 을 던진다. */
-  readonly dirFor: (theaterId: string) => string;
+  /** Console 데이터의 사령관 폴더(`commodore/<UUID>`). 모르면 `theater_unavailable` 을 던진다. */
+  readonly dirFor: (commodoreId: string) => string;
   readonly now: () => number;
-  readonly onChange: (theaterId: string, change: MemoryChange, ref: string) => void;
+  readonly onChange: (commodoreId: string, change: MemoryChange, ref: string) => void;
   readonly writeFile: (file: string, data: string) => void;
 }
 
@@ -111,7 +111,7 @@ export function parseMemoryRef(ref: string): { readonly branch: MemoryBranch; re
 const refOf = (branch: string, topic: string, slug: string) => `${branch}/${topic}/${slug}`;
 
 export function createCommodoreMemory(options: CommodoreMemoryOptions): CommodoreMemory {
-  const rootFor = (theaterId: string) => path.join(options.dirFor(theaterId), "memory");
+  const rootFor = (commodoreId: string) => path.join(options.dirFor(commodoreId), "memory");
 
   /** 실경로가 기억 폴더 안인지 — 밖을 가리키는 링크로 된 갈래·주제·파일은 없는 것으로 본다. */
   const contained = (root: string, target: string): boolean => {
@@ -123,8 +123,8 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     } catch { return false; }
   };
 
-  const list = (theaterId: string): MemoryEntry[] => {
-    const root = rootFor(theaterId);
+  const list = (commodoreId: string): MemoryEntry[] => {
+    const root = rootFor(commodoreId);
     if (!fs.existsSync(root)) return [];
     const entries: MemoryEntry[] = [];
     for (const branch of MEMORY_BRANCHES) {
@@ -150,15 +150,15 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     return entries.sort(compareEntries);
   };
 
-  const fileOf = (theaterId: string, ref: string) => {
+  const fileOf = (commodoreId: string, ref: string) => {
     const { branch, topic, slug } = parseMemoryRef(ref);
-    const root = rootFor(theaterId);
+    const root = rootFor(commodoreId);
     return { root, branch, topic, slug, file: path.join(root, branch, topic, `${slug}.md`) };
   };
 
-  const find = (theaterId: string, ref: string): MemoryEntry => {
+  const find = (commodoreId: string, ref: string): MemoryEntry => {
     const { branch, topic, slug } = parseMemoryRef(ref);
-    const found = list(theaterId).find((entry) => entry.branch === branch && entry.topic === topic && entry.slug === slug);
+    const found = list(commodoreId).find((entry) => entry.branch === branch && entry.topic === topic && entry.slug === slug);
     if (!found) throw new CommodoreStoreError("unknown_memory");
     return found;
   };
@@ -177,17 +177,17 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
   };
 
   /** 항목을 쓰고 인덱스를 다시 만든다. */
-  const write = (theaterId: string, entry: MemoryEntry) => {
-    const { root, branch, topic, file } = fileOf(theaterId, entry.ref);
+  const write = (commodoreId: string, entry: MemoryEntry) => {
+    const { root, branch, topic, file } = fileOf(commodoreId, entry.ref);
     prepareDir(root, [path.join(root, branch), path.join(root, branch, topic)]);
     options.writeFile(file, serializeEntry(entry));
-    rebuildIndex(theaterId);
+    rebuildIndex(commodoreId);
   };
 
-  const rebuildIndex = (theaterId: string) => {
-    const root = rootFor(theaterId);
+  const rebuildIndex = (commodoreId: string) => {
+    const root = rootFor(commodoreId);
     prepareDir(root, []);
-    options.writeFile(path.join(root, INDEX_FILE), renderIndex(list(theaterId)));
+    options.writeFile(path.join(root, INDEX_FILE), renderIndex(list(commodoreId)));
   };
 
   const checkText = (fields: readonly (string | undefined)[]) => {
@@ -198,7 +198,7 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     if (fields.some((field) => field !== undefined && BODY_HEADING.test(field))) throw new CommodoreStoreError("memory_heading");
   };
 
-  const checkLinks = (theaterId: string, self: string, links: readonly string[] | undefined): string[] | undefined => {
+  const checkLinks = (commodoreId: string, self: string, links: readonly string[] | undefined): string[] | undefined => {
     if (links === undefined) return undefined;
     const normalized = [...new Set(links.map((link) => { const { branch, topic, slug } = parseMemoryRef(link); return refOf(branch, topic, slug); }))].filter((link) => link !== self);
     if (normalized.length > MAX_MEMORY_LINKS) throw new CommodoreStoreError("invalid_request");
@@ -208,12 +208,12 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
   return {
     list,
     read: find,
-    save(theaterId, input) {
+    save(commodoreId, input) {
       const { branch, topic, slug } = parseMemoryRef(refOf(input.branch, input.topic, input.slug));
       const ref = refOf(branch, topic, slug);
       checkText([input.title, input.description, input.why, input.how, topic, slug, ...(input.links ?? []), ...(input.sources ?? []).map((source) => source.title)]);
       checkBody([input.why, input.how]);
-      const existing = list(theaterId);
+      const existing = list(commodoreId);
       if (existing.some((entry) => entry.ref === ref)) throw new CommodoreStoreError("memory_exists");
       if (existing.length >= MAX_MEMORY_ENTRIES) throw new CommodoreStoreError("too_many_memories");
       const at = options.now();
@@ -221,18 +221,18 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
         ref, branch, topic, slug,
         title: input.title, description: input.description, why: input.why, how: input.how,
         sources: (input.sources ?? []).slice(0, MAX_MEMORY_SOURCES),
-        links: checkLinks(theaterId, ref, input.links) ?? [],
+        links: checkLinks(commodoreId, ref, input.links) ?? [],
         created: at, updated: at, verified: at,
       };
-      write(theaterId, entry);
-      options.onChange(theaterId, "save", ref);
+      write(commodoreId, entry);
+      options.onChange(commodoreId, "save", ref);
       return entry;
     },
-    update(theaterId, ref, patch) {
-      const current = find(theaterId, ref);
+    update(commodoreId, ref, patch) {
+      const current = find(commodoreId, ref);
       checkText([patch.title, patch.description, patch.why, patch.how, ...(patch.links ?? []), ...(patch.sources ?? []).map((source) => source.title)]);
       checkBody([patch.why, patch.how]);
-      const links = checkLinks(theaterId, current.ref, patch.links);
+      const links = checkLinks(commodoreId, current.ref, patch.links);
       const changed = Object.values(patch).some((value) => value !== undefined);
       const at = options.now();
       const entry: MemoryEntry = {
@@ -246,23 +246,23 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
         ...(changed ? { updated: at } : {}),
         verified: at,
       };
-      write(theaterId, entry);
+      write(commodoreId, entry);
       const change = changed ? "update" : "verify";
-      options.onChange(theaterId, change, current.ref);
+      options.onChange(commodoreId, change, current.ref);
       return { entry, change };
     },
-    remove(theaterId, ref) {
-      const current = find(theaterId, ref);
-      const { root, file } = fileOf(theaterId, current.ref);
+    remove(commodoreId, ref) {
+      const current = find(commodoreId, ref);
+      const { root, file } = fileOf(commodoreId, current.ref);
       if (!contained(root, file)) throw new CommodoreStoreError("unknown_memory");
       fs.unlinkSync(file);
       // 빈 주제 디렉터리는 함께 걷는다 — 화면의 빈 주제가 남지 않게. 갈래 디렉터리는 고정이라 둔다.
       try { fs.rmdirSync(path.dirname(file)); } catch { /* 비어 있지 않으면 그대로 */ }
-      rebuildIndex(theaterId);
-      options.onChange(theaterId, "delete", current.ref);
+      rebuildIndex(commodoreId);
+      options.onChange(commodoreId, "delete", current.ref);
     },
-    index(theaterId) {
-      const file = path.join(rootFor(theaterId), INDEX_FILE);
+    index(commodoreId) {
+      const file = path.join(rootFor(commodoreId), INDEX_FILE);
       try { return fs.readFileSync(file, "utf8"); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";

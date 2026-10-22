@@ -6,6 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { undeliveredMessageSeqs } from "@fleet-console/sdk/commodore";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
 import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
+import { readCommodore } from "./commodore-state.js";
 import { clockTime } from "./commodore-header.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
 
@@ -138,7 +139,7 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
 /** 미리보기는 기록 사본만 가리킨다 — 사본을 만들기 전의 옛 기록은 전달용 미리보기를 열지 않는다. */
 function messageImages(theaterId: string, entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>): readonly AgentChatTranscriptAttachment[] {
   return entry.attachments?.map(({ id, preview }) => preview && entry.messageId
-    ? { preview: { id, url: `/api/v1/commodore/attachment?${new URLSearchParams({ theaterId, messageId: entry.messageId, attachmentId: id })}` } }
+    ? { preview: { id, url: `/api/v1/commodore/attachment?${new URLSearchParams({ commodoreId: readCommodore(theaterId).view?.commodoreId ?? "", messageId: entry.messageId, attachmentId: id })}` } }
     : { reference: id }) ?? [];
 }
 
