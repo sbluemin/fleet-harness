@@ -72,6 +72,7 @@ import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
+import { readLaunchFingerprint, type LaunchFingerprint } from "./launch-fingerprint.js";
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -114,6 +115,7 @@ export type AgentChatCoordinatesResult =
 
 export interface AgentChatSessionSeed {
   readonly hostedExecution?: HostedExecution;
+  readonly launchFingerprint?: LaunchFingerprint;
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
@@ -1041,6 +1043,12 @@ class AgentChatSession {
   private hostCursor = 0;
   private hostCheckpointFlight: Promise<void> = Promise.resolve();
   private readonly removeHostFlush: (() => void) | undefined;
+
+  /** 살아 있는 runner의 원 지문이 권위다. 읽을 수 없는 값은 현재 구성으로 덮지 않는다. */
+  get launchFingerprint(): LaunchFingerprint | undefined {
+    const hosted = this.seed.hostedExecution?.get(`chat:${this.operationId}`);
+    return hosted?.state === "live" ? readLaunchFingerprint(hosted.launchFingerprint) ?? undefined : this.seed.launchFingerprint;
+  }
 
   get busy(): boolean {
     return this.pendingTurns > 0 || this.turnOpen;
@@ -2617,6 +2625,7 @@ class AgentChatSession {
           });
           const createSdk: CreateChatSdk = this.seed.hostedExecution ? async (options) => createHostedSdk(this.seed.hostedExecution!, options, {
             key: `chat:${this.operationId}`,
+            ...(this.launchFingerprint ? { launchFingerprint: { ...this.launchFingerprint } } : {}),
             observer: {
               afterSeq: this.hostCursor,
               consumed: async (event) => { this.hostCursor = event.seq; await this.flushHostedCheckpoint(); },

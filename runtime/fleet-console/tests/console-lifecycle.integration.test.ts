@@ -25,6 +25,8 @@ import { createWindowsSessionPlatform } from "../core/host/bootstrap/windows-ses
 import { HostedExecution } from "../features/execution/host/session-host/adapters.js";
 import { createHostedSdk } from "../features/execution/host/session-host/sdk-proxy.js";
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../features/execution/host/agent/chat-session.js";
+import { createLaunchConfiguration } from "../features/execution/host/agent/launch-fingerprint.js";
+import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 import { createConsoleUpdateApplyService } from "../features/updates/host/update-apply.js";
 import { readConsoleUpdateProgress, writeConsoleUpdateProgress } from "../features/updates/host/update-progress.js";
@@ -237,10 +239,14 @@ describe("Console session-host lifecycle integration", () => {
     let execution: HostedExecution | null = null; let registry = new AgentChatRegistry();
     const id = "11111111-2222-4333-8444-555555555555";
     const executablePath = fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url));
-    const seed = (): AgentChatSessionSeed => ({
+    const configurationFor = (consoleVersion: string) => createLaunchConfiguration({ consoleVersion, executionBuildId: () => `build-${consoleVersion}`, readTheaterPrompt: () => ({ mode: "append", body: "private fixture prompt" }), listTools: () => [], hookEntry: { entryPath: path.join(root, "hook.mjs"), execPath: process.execPath }, disabledTools: [] });
+    let configuration = configurationFor("1.0.0");
+    const intent = { surface: "chat" as const, theaterId: "fixture", subagentsBlocked: false, autoMemoryDisabled: false };
+    const seed = (sessionId = id): AgentChatSessionSeed => ({
+      launchFingerprint: configuration.capture(intent),
       hostedExecution: execution!, baseUrl: "http://127.0.0.1:1", model: "opus", cwd: root, claudeConfigDir: env.CLAUDE_CONFIG_DIR, origin: { kind: "fresh" },
       resolveExecutablePath: async () => executablePath,
-      resolveClaudeSession: async () => ({ sessionId: id, coordinate: { kind: "new", sessionId: id }, pluginUrl: "", claudeCodeSystemPrompt: "off", sdk: { options: { pluginUrl: "", settingSources: [], allowAmbientMcpServers: false }, request: { sessionId: id, permissionMode: "bypassPermissions" } } }),
+      resolveClaudeSession: async () => ({ sessionId, coordinate: { kind: "new", sessionId }, pluginUrl: "", claudeCodeSystemPrompt: "off", sdk: { options: { pluginUrl: "", settingSources: [], allowAmbientMcpServers: false }, request: { sessionId, permissionMode: "bypassPermissions" } } }),
       onProviderSessionUpdate: () => {}, reportActivity: () => true, canReportActivity: () => true, reportAwaiting: () => {}, reportBackgroundPending: () => {},
     });
     try {
@@ -262,8 +268,17 @@ describe("Console session-host lifecycle integration", () => {
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 2, endpoint: "http://127.0.0.1:2/", version: "successor" });
       client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       execution = await HostedExecution.attach(client, () => {}, env); registry = new AgentChatRegistry();
+      configuration = configurationFor("1.0.1");
       const adopted = await registry.ensure(id, seed); await execution.ready();
       expect(execution.get(`chat:${id}`)!.runtime.pid).toBe(before.runtime.pid);
+      expect(adopted.launchFingerprint).toEqual(before.launchFingerprint);
+      const observed = createConsoleObservabilityStore({ canonicalizeTheaterPath: (value) => value, workspaceHash: () => "fixture", describeLaunchConfiguration: (fingerprint) => configuration.describe(fingerprint) });
+      observed.createPendingTerminalSession({ sessionId: id, cwd: root, cliId: "claude" });
+      observed.setTerminalSessionChatActive(id, true);
+      const previous = observed.setTerminalSessionLaunchFingerprint(id, adopted.launchFingerprint);
+      expect(previous).toMatchObject({ configurationState: "previous", configurationRelease: "1.0.0" });
+      expect(JSON.stringify(previous)).not.toContain(before.launchFingerprint!.digest);
+      expect(JSON.stringify(previous)).not.toContain("private fixture prompt");
       await vi.waitFor(() => expect(adopted.listPendingAsks()).toHaveLength(1));
       const events = () => fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string });
       expect(events().filter((event) => event.event === "launch")).toHaveLength(1);
@@ -272,6 +287,13 @@ describe("Console session-host lifecycle integration", () => {
       await vi.waitFor(() => expect(events().some((event) => event.event === "ask-answered")).toBe(true));
       await vi.waitFor(() => expect(registry.isBusy(id)).toBe(false));
       expect(events().filter((event) => event.event === "launch")).toHaveLength(1);
+      const freshId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+      const fresh = await registry.ensure(freshId, () => seed(freshId)); await fresh.attachHosted();
+      expect(execution.get(`chat:${freshId}`)!.runtime.pid).not.toBe(before.runtime.pid);
+      expect(fresh.launchFingerprint?.consoleVersion).toBe("1.0.1");
+      observed.createPendingTerminalSession({ sessionId: freshId, cwd: root, cliId: "claude" });
+      observed.setTerminalSessionChatActive(freshId, true);
+      expect(observed.setTerminalSessionLaunchFingerprint(freshId, fresh.launchFingerprint)).toMatchObject({ configurationState: "current" });
     } finally { execution?.detach(); registry.detachAll(); keeper?.close(); client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
   }, 60_000);
 

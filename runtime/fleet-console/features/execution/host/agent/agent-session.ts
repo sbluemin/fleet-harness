@@ -30,10 +30,12 @@ export interface AgentSessionHostDeps {
 }
 
 export interface InternalAgentSession extends AgentSession {
+  readonly launchFingerprint?: Readonly<Record<string, unknown>> | null;
   steer?(input: AgentInput, id: string): boolean;
   waitForTurn?(): Promise<void>;
 }
 export interface InternalSessionOptions extends AgentSessionOptions {
+  readonly launchFingerprint?: Readonly<Record<string, unknown>>;
   readonly cwd?: string;
   readonly orchestration?: { capture(): unknown; restore(state: unknown): void };
 }

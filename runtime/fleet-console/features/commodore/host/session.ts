@@ -1,5 +1,6 @@
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "@fleet-console/sdk/agent";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
+import type { ResidentSessionFingerprints } from "../../execution/host/agent/launch-fingerprint.js";
 import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
@@ -20,6 +21,7 @@ export interface CommodoreSessionCoordinates {
 export interface CommodoreSessionOptions {
   readonly commodoreId: string;
   readonly checkpoint?: { capture(): unknown; restore(state: unknown): void };
+  readonly setupFingerprints?: ResidentSessionFingerprints;
   readonly cwd: string;
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
@@ -99,6 +101,7 @@ export function commodoreSessionSetup(input: {
 export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
   readonly attached?: boolean;
+  readonly launchFingerprint?: Readonly<Record<string, unknown>> | null;
   continueTurn?(): Promise<CommodoreTurnOutcome>;
   /** 이 세션이 열릴 때 실은 구성. 아직 열리지 않았으면 null — 같은 세션에서 다시 짓지 않는다. */
   setup(): CommodoreSessionSetup | null;
@@ -123,6 +126,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const boardWrites = new Map(options.boardTools.map((tool) => [tool.name, new Set(Object.entries(tool.actionSchema?.actions ?? {}).flatMap(([action, info]) => (info.kind === "write" ? [action] : [])))]));
   let session: ConsoleResidentSession | null = null;
   let openedSetup: CommodoreSessionSetup | null = null;
+  let openedFingerprint: Readonly<Record<string, unknown>> | null = null;
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
@@ -220,8 +224,11 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const open = async () => {
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const setup = commodoreSessionSetup({ theaterLabel: options.theaterLabel, ...(options.language ? { language: options.language } : {}), commodoreTools: tools, boardTools: options.boardTools, ...(options.knowledgeTools ? { knowledgeTools: options.knowledgeTools } : {}) });
+    const liveKey = `commodore:${options.commodoreId}`;
+    const launchFingerprint = options.agent.hasLiveSession?.(liveKey) ? undefined : options.setupFingerprints?.capture(setup);
     const created = await options.agent.createSession({
-      liveKey: `commodore:${options.commodoreId}`,
+      liveKey,
+      ...(launchFingerprint ? { launchFingerprint } : {}),
       orchestration: {
         capture: () => ({ schema: 1, textBuffer, thinkingBuffer, pendingTools: [...pendingTools], toolErrors: [...toolErrors], turnActions, turnResult, turnFinalized, compactionFailed, turnActive, supervisor: options.checkpoint?.capture() }),
         restore: (raw) => {
@@ -256,7 +263,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     });
     if (disposed) { await created.dispose(); return; }
     session = created;
-    openedSetup = setup;
+    openedSetup = created.attached ? null : setup;
+    openedFingerprint = created.attached ? created.launchFingerprint ?? null : created.launchFingerprint ?? launchFingerprint ?? null;
   };
 
   const finishOutcome = (): CommodoreTurnOutcome => {
@@ -273,6 +281,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   return {
     coordinates: options.coordinates,
     get attached() { return session?.attached === true; },
+    get launchFingerprint() { return openedFingerprint; },
     async continueTurn() {
       await this.start();
       if (!session?.attached || !session.waitForTurn) throw new Error("commodore_live_turn_unavailable");

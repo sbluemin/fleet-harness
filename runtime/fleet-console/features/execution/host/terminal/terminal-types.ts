@@ -1,7 +1,10 @@
 import type { CliMessagePolicy } from "@fleet-console/agent-runtime/fleet";
 import type { SessionIdentityResolver } from "../agent/session-identity.js";
+import type { LaunchFingerprint } from "../agent/launch-fingerprint.js";
 
 export interface TerminalLaunchSpec {
+  /** 서버 전용 시작 구성. host snapshot에 동결하며 브라우저 티켓에는 싣지 않는다. */
+  readonly launchFingerprint?: LaunchFingerprint;
   readonly bin: string;
   readonly args: readonly string[];
   readonly cleanup?: () => void | Promise<void>;

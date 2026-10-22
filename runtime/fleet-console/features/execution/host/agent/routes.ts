@@ -30,7 +30,7 @@ import { readBackgroundHookReport } from "./background-report.js";
 import { CONSOLE_DISABLED_TOOLS, createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./launch-attachments.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
-import { createLaunchConfiguration, type LaunchFingerprint, type LaunchIntent } from "./launch-fingerprint.js";
+import { createLaunchConfiguration, readLaunchFingerprint, type LaunchIntent } from "./launch-fingerprint.js";
 import { buildConsoleHookEntry } from "./host-hooks.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
@@ -286,6 +286,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       pendingRuntimeSessions.set(session.sessionId, session);
     },
     launchConfiguration,
+    readLiveLaunchFingerprint: (id) => {
+      const live = ctx.hostedExecution?.get(`pty:${id}`);
+      return live?.state === "live" ? readLaunchFingerprint(live.launchFingerprint) : undefined;
+    },
     bindWorkspaceHook: (operationId, providerSessionId) => workspaceHooks.bind(operationId, providerSessionId, () => {
       const session = observability.getTerminalSessionInfo(operationId);
       return !!session && session.chatActive !== true && session.status !== "dormant";
@@ -2128,15 +2132,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 찍는다 — 이미 선 세션에 다시 붙는 것은 시작이 아니므로 지문을 덮어쓰지 않는다.
    */
   async function ensureChatSession(operationId: string, resolution: Extract<ChatSeedResolution, { readonly ok: true }>): ReturnType<AgentChatRegistry["ensure"]> {
-    let started: LaunchFingerprint | undefined;
     const chat = await chatRegistry.ensure(operationId, () => {
-      started = launchConfiguration.capture(resolution.intent);
-      return resolution.seed;
+      const hosted = ctx.hostedExecution?.get(`chat:${operationId}`);
+      const started = hosted?.state === "live" ? readLaunchFingerprint(hosted.launchFingerprint) : launchConfiguration.capture(resolution.intent);
+      return { ...resolution.seed, ...(started ? { launchFingerprint: started } : {}) };
     });
-    if (started) {
-      const updated = observability.setTerminalSessionLaunchFingerprint(operationId, started);
-      if (updated) observability.notifySessionUpdated(updated);
-    }
+    const updated = observability.setTerminalSessionLaunchFingerprint(operationId, chat.launchFingerprint);
+    if (updated) observability.notifySessionUpdated(updated);
     return chat;
   }
 
@@ -2781,12 +2783,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (livePty?.state === "live") {
         injectOperation(operation);
         observability.updateTerminalSessionStatus(operation.id, "terminal-only");
+        observability.setTerminalSessionLaunchFingerprint(operation.id, readLaunchFingerprint(livePty.launchFingerprint) ?? undefined);
         continue;
       }
       const live = ctx.hostedExecution?.get(`chat:${operation.id}`);
       if (live?.state === "live") {
         injectOperation(operation);
         observability.setTerminalSessionChatActive(operation.id, true);
+        observability.setTerminalSessionLaunchFingerprint(operation.id, readLaunchFingerprint(live.launchFingerprint) ?? undefined);
         continue;
       }
       // 채팅 표면에 있는 Operation은 첫 턴 전에는 providerSession이 없다 — 채팅으로 태어났든
@@ -2822,7 +2826,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (!operation || operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) throw new Error("session_operation_scope_missing");
       const seed = await resolveChatSeed(operation);
       if (!seed.ok) throw new Error(seed.error);
-      await chatRegistry.ensure(id, () => seed.seed);
+      await ensureChatSession(id, seed);
     }
   }
 

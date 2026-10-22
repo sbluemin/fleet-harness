@@ -59,6 +59,8 @@ export interface TerminalLaunchResolverDeps {
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   /** 시작 구성 지문을 찍는 자리. 없으면 세션의 구성 판정은 unknown 이다. */
   readonly launchConfiguration?: LaunchConfiguration;
+  /** undefined는 새 런치, null은 살아 있지만 원 지문을 읽을 수 없는 세션이다. */
+  readonly readLiveLaunchFingerprint?: (sessionId: string) => LaunchFingerprint | null | undefined;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
@@ -219,6 +221,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       ...(deps.launchConfiguration ? { launchConfiguration: deps.launchConfiguration } : {}),
+      readLiveLaunchFingerprint: deps.readLiveLaunchFingerprint,
       bindWorkspaceHook: deps.bindWorkspaceHook,
       resolveProfile,
       cliId: context?.cliId,
@@ -259,6 +262,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly launchConfiguration?: LaunchConfiguration;
+  /** undefined는 새 런치, null은 살아 있지만 원 지문을 읽을 수 없는 세션이다. */
+  readonly readLiveLaunchFingerprint?: (sessionId: string) => LaunchFingerprint | null | undefined;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
@@ -367,12 +372,13 @@ async function createAgentCliLaunchSpec(options: {
         : {}),
     });
     // 지문은 프롬프트·도구를 실제로 실은 바로 이 자리에서 찍는다 — 같은 Theater 설정·도구 목록을 읽는다.
-    const launchFingerprint = options.launchConfiguration?.capture({
+    const liveFingerprint = options.readLiveLaunchFingerprint?.(options.sessionId);
+    const launchFingerprint = liveFingerprint === undefined ? options.launchConfiguration?.capture({
       surface: "pty",
       theaterId: options.theaterId ?? null,
       subagentsBlocked: options.disableSubagents === true,
       autoMemoryDisabled: options.disableAutoMemory === true,
-    });
+    }) : liveFingerprint;
     options.onRuntimeSessionStart?.({
       cliId: injectedProfile.id,
       cliLabel: injectedProfile.label,
@@ -404,11 +410,11 @@ async function createAgentCliLaunchSpec(options: {
       launchProfile = { ...launchProfile, env: { ...launchProfile.env, ...workspaceHook.env } };
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
-    return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
+    return { ...toLaunchSpec(launchProfile, createOnceCleanup(async () => {
       for (const cleanup of [...cleanupStack].reverse()) {
         await cleanup();
       }
-    }), sessionIdentityResolver);
+    }), sessionIdentityResolver), ...(launchFingerprint ? { launchFingerprint } : {}) };
   } catch (error) {
     for (const cleanup of [...cleanupStack].reverse()) {
       try {

@@ -414,10 +414,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * Chat SDK 생산자가 새로 섰을 때 그 시작 지문을 싣는다. 레지스트리가 세션을 새로 세울 때만 부른다 —
    * 이미 선 세션에 다시 붙는 것은 시작이 아니다.
    */
-  function setTerminalSessionLaunchFingerprint(sessionId: string, fingerprint: LaunchFingerprint): AgentTerminalSessionInfo | null {
+  function setTerminalSessionLaunchFingerprint(sessionId: string, fingerprint: LaunchFingerprint | undefined): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
-    session.launchFingerprint = fingerprint;
+    if (fingerprint) session.launchFingerprint = fingerprint;
+    else delete session.launchFingerprint;
     return toTerminalSessionInfo(session);
   }
 

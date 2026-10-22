@@ -352,7 +352,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const captureRunner = (runner: Runner) => ({
     schema: 1,
-    scalars: { phase: runner.phase, reason: runner.reason, nextWakeAt: runner.nextWakeAt, messages: runner.messages, turnMessages: runner.turnMessages, sessionImageBytes: runner.sessionImageBytes, sessionImageBase64Bytes: runner.sessionImageBase64Bytes, retryAttempt: runner.retryAttempt, ending: runner.ending, patrolSet: runner.patrolSet, patrolRequest: runner.patrolRequest, lastTurnAt: runner.lastTurnAt, lastInputTokens: runner.lastInputTokens, contextWindow: runner.contextWindow, compactAt: runner.compactAt, coordinates: runner.coordinates, language: runner.language, rotateNext: runner.rotateNext, recentActions: runner.recentActions, replacementSummary: runner.replacementSummary, emptyReported: runner.emptyReported },
+    scalars: { setupFingerprint: runner.setupFingerprint, phase: runner.phase, reason: runner.reason, nextWakeAt: runner.nextWakeAt, messages: runner.messages, turnMessages: runner.turnMessages, sessionImageBytes: runner.sessionImageBytes, sessionImageBase64Bytes: runner.sessionImageBase64Bytes, retryAttempt: runner.retryAttempt, ending: runner.ending, patrolSet: runner.patrolSet, patrolRequest: runner.patrolRequest, lastTurnAt: runner.lastTurnAt, lastInputTokens: runner.lastInputTokens, contextWindow: runner.contextWindow, compactAt: runner.compactAt, coordinates: runner.coordinates, language: runner.language, rotateNext: runner.rotateNext, recentActions: runner.recentActions, replacementSummary: runner.replacementSummary, emptyReported: runner.emptyReported },
     pending: [...runner.pending].map(([code, reason]) => [code, { ...reason, ids: reason.ids ? [...reason.ids] : undefined }] as const),
     hosted: [...runner.hosted], stalledReported: [...runner.stalledReported],
   });
@@ -381,6 +381,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
+      ...(deps.setupFingerprints ? { setupFingerprints: deps.setupFingerprints } : {}),
       checkpoint: { capture: () => captureRunner(runner), restore: (state) => restoreRunner(runner, state) },
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(theaterIdOf(runner.commodoreId), objectiveId); return objective && !objective.removed ? objective : null; },
@@ -403,10 +404,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     });
     await session.start();
     runner.session = session;
-    if (session.attached) return session;
-    // 시작 구성은 세션을 연 이 순간 한 번 찍는다 — 같은 세션에서 다시 찍으면 이전 구성으로 돈다는 사실이 지워진다.
-    const opened = session.setup();
-    runner.setupFingerprint = opened && deps.setupFingerprints ? deps.setupFingerprints.capture(opened) : undefined;
+    // host의 원 지문을 우선한다. 구 snapshot에 지문이 없으면 orchestration checkpoint의 원값을 유지한다.
+    if (session.attached) { runner.setupFingerprint = session.launchFingerprint ?? runner.setupFingerprint; return session; }
+    runner.setupFingerprint = session.launchFingerprint;
     runner.replacementSummary = runner.recentActions.length ? runner.recentActions.slice(-RECENT_ACTIONS) : undefined;
     runner.coordinates = coordinates;
     runner.language = language;

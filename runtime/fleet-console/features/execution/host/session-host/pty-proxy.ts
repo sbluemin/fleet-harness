@@ -26,7 +26,7 @@ export async function openHostedPty(execution: HostedExecution, context: Termina
   }
   const tools = await bindServedTools(execution, key, internal);
   const port = `${key}:launch`;
-  const { cleanup: _cleanup, sessionIdentityResolver: _identity, ...wireLaunch } = launch;
+  const { cleanup: _cleanup, sessionIdentityResolver: _identity, launchFingerprint, ...wireLaunch } = launch;
   wireLaunch.env = { ...wireLaunch.env };
   for (const name of ["ANTHROPIC_BASE_URL", "FLEET_COMPACT_BASE_URL", "FLEET_MOD_BASE_URL"]) if (wireLaunch.env[name] && execution.get("gateway:console")) wireLaunch.env[name] = hostedGatewayUrl(execution, wireLaunch.env[name]!);
   execution.bind(port, (call) => {
@@ -45,7 +45,7 @@ export async function openHostedPty(execution: HostedExecution, context: Termina
     const original = await execution.describe(key);
     if (original.kind !== "pty" || JSON.stringify(original.mcpTools ?? []) !== JSON.stringify(tools)) throw new Error("session_pty_schema_incompatible");
   }
-  const snapshot = await execution.open({ sessionKey: key, kind: "pty", generation: execution.client.generation, launch: wireLaunch, size, mcpTools: tools, launchPort: port, hookPolicyPort: "execution:agent-policy" });
+  const snapshot = await execution.open({ sessionKey: key, kind: "pty", generation: execution.client.generation, ...(launchFingerprint ? { launchFingerprint: { ...launchFingerprint } } : {}), launch: wireLaunch, size, mcpTools: tools, launchPort: port, hookPolicyPort: "execution:agent-policy" });
   const dataListeners = new Set<(data: string) => void>();
   const exitListeners = new Set<() => void>();
   let stopped = false;

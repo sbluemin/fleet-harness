@@ -130,7 +130,7 @@ export async function createHostedPluginSession(deps: AgentSessionHostDeps, opti
   removeFlush = execution.beforeUpdate(() => flush(true));
   const env = stripConsoleInternalEnv(execution.environment); delete env.FLEET_CONSOLE_SESSION_ID;
   const executablePath = await deps.resolveExecutablePath?.();
-  const sdk = createHostedSdk(execution, { baseUrl: deps.baseUrl()!, modelPolicy: claudeGatewayModelPolicy, models: [options.model], env, ...(resources?.resident ? { home: { kind: "persistent", configDir: path.join(ownedScratch, "claude") } } : { tempRoot: ownedScratch }), ...(resources?.autoCompactWindow ? { autoCompactWindow: resources.autoCompactWindow } : {}), ...(executablePath ? { executablePath } : {}) }, { key, tools: groups, observer: { afterSeq: cursor, consumed: async (event) => { cursor = event.seq; await flush(); }, gap: () => { throw new Error("agent_live_replay_gap"); } } });
+  const sdk = createHostedSdk(execution, { baseUrl: deps.baseUrl()!, modelPolicy: claudeGatewayModelPolicy, models: [options.model], env, ...(resources?.resident ? { home: { kind: "persistent", configDir: path.join(ownedScratch, "claude") } } : { tempRoot: ownedScratch }), ...(resources?.autoCompactWindow ? { autoCompactWindow: resources.autoCompactWindow } : {}), ...(executablePath ? { executablePath } : {}) }, { key, launchFingerprint: options.launchFingerprint, tools: groups, observer: { afterSeq: cursor, consumed: async (event) => { cursor = event.seq; await flush(); }, gap: () => { throw new Error("agent_live_replay_gap"); } } });
   const builtins = options.tools?.builtins ?? [];
   const session = await sdk.openSession({ model: options.model, ...(options.effort ? { effort: options.effort } : {}), systemPrompt: { mode: "replace", text: options.systemPrompt }, cwd, sessionName: options.sessionName, tools: builtins, allowedTools: [...builtins, ...extraAllowed, ...groups.flatMap((group) => group.tools.map((tool) => `mcp__${group.name}__${tool.name}`))], servedMcpServers: served, permissionMode: "dontAsk", includePartialMessages: true, maxTurns: options.maxTurns, maxBudgetUsd: options.maxBudgetUsd });
   const scheduleWatchdog = () => {
@@ -184,6 +184,7 @@ export async function createHostedPluginSession(deps: AgentSessionHostDeps, opti
   let tail: Promise<void> = turn.catch(() => {});
   return {
     attached: previous !== undefined,
+    launchFingerprint: execution.get(key)?.launchFingerprint ?? null,
     waitForTurn: () => turn,
     ...(resources?.resident ? {
       steer(input: AgentInput, id: string) {

@@ -6,6 +6,7 @@ import { createAgentSessionHost, type AgentSessionHostDeps, type InternalSession
 import { hostedPluginPrefix } from "../session-host/plugin-proxy.js";
 
 export interface ConsoleResidentSession extends AgentSession {
+  readonly launchFingerprint?: Readonly<Record<string, unknown>> | null;
   steer(input: AgentInput, id: string): boolean;
   waitForTurn?(): Promise<void>;
 }

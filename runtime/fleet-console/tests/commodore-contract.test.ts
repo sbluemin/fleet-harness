@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
+import { createResidentSessionFingerprints } from "../features/execution/host/agent/launch-fingerprint.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "@fleet-console/sdk/commodore";
 import type { AgentEvent, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
@@ -785,7 +786,7 @@ describe("commodore supervisor", () => {
       const root = path.join(h.objectivesDir, "..", "..", "..", "theater"); fs.mkdirSync(root, { recursive: true });
       type Options = import("../features/execution/host/agent/console-resident.js").ConsoleResidentOptions;
       let saved: unknown; let current: Options | undefined; let finish!: () => void;
-      let sent = 0; let created = 0;
+      let sent = 0; let created = 0; let version = "1.0.0";
       const agent: AgentHost = {
         hasLiveSession: () => saved !== undefined,
         createSession: async (options) => {
@@ -795,16 +796,21 @@ describe("commodore supervisor", () => {
           return { attached, send: async () => { sent += 1; await new Promise<void>(() => {}); }, waitForTurn: () => new Promise<void>((resolve) => { finish = resolve; }), steer: () => false, cancel() {}, dispose: async () => undefined };
         },
       };
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, setupFingerprints: createResidentSessionFingerprints({ consoleVersion: version, executionBuildId: () => version }), experiments: () => h.experiments(), theater: () => ({ label: "x", root }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
       let supervisor = make(); supervisor.sync("autonomy"); await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sent).toBe(1);
+      expect(supervisor.status("t1")).toMatchObject({ configurationState: "current" });
+      expect(current!.launchFingerprint).toMatchObject({ schema: 1, kind: "resident", consoleVersion: "1.0.0" });
+      const startedFingerprint = current!.launchFingerprint!;
       const nextWake = current!.tools!.custom!.find((group) => group.name === "commodore")!.tools.find((tool) => tool.name === "next_wake")!;
       await nextWake.execute({ inMinutes: 1, reason: "continue the same patrol" }, { cwd: root });
       saved = current!.orchestration!.capture();
       const sessionsBefore = h.store.read("t1")!.run!.session;
-      await supervisor.detach(); supervisor = make(); await supervisor.reattach(); supervisor.sync("restart");
+      await supervisor.detach(); version = "1.0.1"; supervisor = make(); await supervisor.reattach(); supervisor.sync("restart");
+      expect(current!.launchFingerprint).toBeUndefined();
       expect(created).toBe(2); expect(sent).toBe(1); expect(h.store.read("t1")!.run!.session).toBe(sessionsBefore);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "turn" });
+      expect(supervisor.status("t1")).toMatchObject({ phase: "turn", configurationState: "previous", configurationRelease: "1.0.0" });
+      expect(JSON.stringify(supervisor.status("t1"))).not.toContain(startedFingerprint.digest);
       current!.onEvent?.({ kind: "result", source: "message", isError: false }); finish();
       await vi.advanceTimersByTimeAsync(10);
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
