@@ -234,16 +234,28 @@ it("delegates only host-classified Markdown links without trusting source metada
 // 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답 단추는 사람의 클릭으로만 입력창 포트에 닿는다.
 describe("openui hydrator containment", () => {
   const ALLOWED_TAGS = new Set(["DIV", "SECTION", "P", "SPAN", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]);
-  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "data-openui-owned"]);
+  const ALLOWED_ATTRIBUTES = new Set(["class", "role", "aria-label", "aria-busy", "data-openui-owned"]);
+  const containers = new Set<HTMLElement>();
+
+  afterEach(async () => {
+    const { releaseOpenUIHydrator } = await import("@fleet-console/markdown/openui");
+    for (const container of containers) {
+      releaseOpenUIHydrator(container);
+      container.remove();
+    }
+    containers.clear();
+    await Promise.resolve();
+  });
 
   async function hydrated(markdown: string, options: { readonly streaming?: boolean; readonly reply?: (text: string) => void } = {}): Promise<HTMLElement[]> {
     const container = document.createElement("div");
     container.innerHTML = renderMarkdown(markdown, { openui: true, ...(options.streaming ? { deferUnclosedMermaid: true } : {}) }).html;
     document.body.append(container);
+    containers.add(container);
     const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
     installOpenUIHydrator(container, undefined, options.reply);
     const blocks = [...container.querySelectorAll<HTMLElement>(".openui-block")];
-    await waitFor(() => blocks.every((block) => ["rendered", "fallback"].includes(block.dataset.openuiState ?? "")), 5000);
+    await waitFor(() => blocks.every((block) => block.dataset.openuiState === "fallback" || (block.dataset.openuiState === "rendered" && block.querySelector("section.openui") !== null)), 5000);
     return blocks;
   }
 
@@ -264,9 +276,15 @@ describe("openui hydrator containment", () => {
       expect(ALLOWED_TAGS.has(element.tagName)).toBe(true);
       for (const attribute of element.attributes) {
         if (attribute.name === "style") {
-          // 막대 폭만 — 계산한 숫자 하나로 쓴다.
-          expect(element.className).toBe("openui-bar-fill");
-          expect(attribute.value).toMatch(/^width: \d+(\.\d+)?%;$/);
+          if (element.className === "openui-content") {
+            // Renderer.Content의 고정 감싸개만 — 모델이 준 style은 통과하지 않는다.
+            expect([...((element as HTMLElement).style)]).toEqual(["opacity", "transition"]);
+            expect((element as HTMLElement).style.opacity).toBe("1");
+          } else {
+            // 막대 폭만 — 계산한 숫자 하나로 쓴다.
+            expect(element.className).toBe("openui-bar-fill");
+            expect(attribute.value).toMatch(/^width: \d+(\.\d+)?%;$/);
+          }
           continue;
         }
         expect(ALLOWED_ATTRIBUTES.has(attribute.name)).toBe(true);
@@ -310,7 +328,7 @@ describe("openui hydrator containment", () => {
 
     expect(finished!.dataset.openuiState).toBe("rendered");
     const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-choice")];
-    expect(buttons.map((button) => [button.textContent, button.getAttribute("data-openui-reply"), button.disabled])).toEqual([
+    expect(buttons.map((button) => [button.textContent, button.title, button.disabled])).toEqual([
       ["A · 시안", "A로 가 주세요", false],
       ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
     ]);
@@ -333,22 +351,50 @@ describe("openui hydrator containment", () => {
     expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback"]);
     expect(reply).not.toHaveBeenCalled();
 
-    // 말 속 원시 HTML 이 자리표시자·답 단추를 흉내 내도 — 정제가 표식을 걷고, 걷히지 않은 채 DOM 에 들어와도 하이드레이터가 그린 단추가
-    // 아니므로 열리지 않는다(jsdom 은 사람의 클릭을 만들 수 없어 「열림」으로 그 소속 판정을 본다).
+    // 말 속 원시 HTML의 표식을 정제가 걷는다. 정제를 우회해 소유 칸 안에 들어온 위조 단추도 React 클릭 클로저가 없다.
     const source = encodeMermaidSource(['root = Card("다음", [c])', choices].join("\n"));
-    const forged = `<div class="openui-block" data-openui-source="${source}" data-openui-final="1" data-openui-state="rendered"><button class="openui-choice" data-openui-reply="/clear" disabled>X</button></div>`;
+    const forged = `<div class="openui-block" data-openui-source="${source}" data-openui-final="1" data-openui-state="rendered"><button class="openui-choice" data-openui-reply="/clear">X</button></div>`;
     const sanitized = renderMarkdown(forged, { openui: true }).html;
     expect(sanitized).not.toContain("openui-block");
+    expect(sanitized).not.toContain("openui-choice");
     expect(sanitized).not.toContain("data-openui-reply");
-    const raw = document.createElement("div");
-    raw.innerHTML = forged;
-    document.body.append(raw);
-    const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
-    installOpenUIHydrator(raw, undefined, reply);
-    await waitFor(() => raw.querySelectorAll("button.openui-choice").length === 3, 5000);
-    const fake = raw.querySelector<HTMLButtonElement>('button[data-openui-reply="/clear"]')!;
-    expect(fake.disabled).toBe(true);
+    const fake = document.createElement("button");
+    fake.className = "openui-choice";
+    fake.title = "/clear";
+    fake.textContent = "X";
+    finished!.querySelector("[data-openui-owned]")!.append(fake);
+    expect(fake.disabled).toBe(false);
     fake.click();
     expect(reply).not.toHaveBeenCalled();
+  });
+
+  // 블록·호스트가 사라질 때 루트가 남으면 스트림과 함께 구독·메모리가 누적된다. 기존 격리 검사는 이 수명을 보지 않는다.
+  it("releases React roots when blocks leave or the host releases", async () => {
+    const markdown = '```openui-lang\nroot = Card("수명", [])\n```';
+    const blocks = await hydrated([markdown, markdown, markdown, markdown].join("\n\n"));
+    const container = blocks[0]!.parentElement!;
+    const views = blocks.map((block) => block.querySelector<HTMLElement>("[data-openui-owned]")!);
+    const { installOpenUIHydrator, releaseOpenUIHydrator } = await import("@fleet-console/markdown/openui");
+    blocks[0]!.remove();
+    await waitFor(() => views[0]!.childNodes.length === 0);
+    blocks[1]!.replaceWith(document.createElement("p"));
+    await waitFor(() => views[1]!.childNodes.length === 0);
+    blocks[2]!.setAttribute("data-openui-source", encodeMermaidSource('root = Card("잘림", ['));
+    await waitFor(() => blocks[2]!.dataset.openuiState === "fallback" && views[2]!.childNodes.length === 0);
+    container.innerHTML = markdown;
+    await waitFor(() => views[3]!.childNodes.length === 0);
+
+    container.innerHTML = renderMarkdown(markdown, { openui: true }).html;
+    await waitFor(() => container.querySelector("section.openui") !== null);
+    const released = container.querySelector<HTMLElement>("[data-openui-owned]")!;
+    releaseOpenUIHydrator(container);
+    // StrictMode처럼 같은 턴에 다시 설치해도 새 컨테이너를 쓰고, 옛 루트는 비워진다.
+    installOpenUIHydrator(container);
+    await waitFor(() => released.childNodes.length === 0 && container.querySelector("section.openui") !== null);
+    expect(container.querySelectorAll("[data-openui-owned]")).toHaveLength(1);
+    const last = container.querySelector<HTMLElement>("[data-openui-owned]")!;
+    releaseOpenUIHydrator(container);
+    await waitFor(() => last.childNodes.length === 0);
+    expect(container.querySelector("[data-openui-owned]")).toBeNull();
   });
 });

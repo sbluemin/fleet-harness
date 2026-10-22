@@ -164,6 +164,9 @@ importers:
       '@openuidev/lang-core':
         specifier: 1.0.1
         version: 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
+      '@openuidev/react-lang':
+        specifier: 1.0.1
+        version: 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.1)
       '@types/node':
         specifier: ^24.10.0
         version: 24.12.2
@@ -359,6 +362,9 @@ importers:
       '@openuidev/lang-core':
         specifier: 1.0.1
         version: 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
+      '@openuidev/react-lang':
+        specifier: 1.0.1
+        version: 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)(zod@4.4.1)
       dompurify:
         specifier: ^3.2.7
         version: 3.4.2
@@ -378,6 +384,18 @@ importers:
       '@types/node':
         specifier: ^24.10.0
         version: 24.12.2
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.8)
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
@@ -1881,6 +1899,17 @@ packages:
     resolution: {integrity: sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==}
     engines: {node: '>= 20.19.0'}
 
+  '@openuidev/devtools@0.3.0':
+    resolution: {integrity: sha512-eT6+IUWNBL4k5JANAgKC03tQwutafBdTrAwTfVhhTherllk0R+5W/E4j64j1oBnNSlReRDwETyrGwyhHAwiMfA==}
+    peerDependencies:
+      '@openuidev/observability': '>=0.0.4 <0.1.0'
+      '@openuidev/react-lang': '>=1.0.0 <2.0.0'
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@openuidev/react-lang':
+        optional: true
+
   '@openuidev/lang-core@1.0.1':
     resolution: {integrity: sha512-4vBa7FRM6C4v4aCvBAmAtTgFWiEQiNTazG9h4Xy9fC6P/p6+9kZu4RdTyLToBEvdxrYn/gDy/PakEH8PU3lUcw==}
     peerDependencies:
@@ -1888,6 +1917,22 @@ packages:
       zod: ^3.25.0 || ^4.0.0
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
+        optional: true
+
+  '@openuidev/observability@0.0.4':
+    resolution: {integrity: sha512-4fjIrWu3TqTlfDE/m7cG10CH1vV7wQk5GPwMOmXeF9vJtkg92dg4Bdk3AjKgud7H7Xypwwjgt52VcLGZCE2CJQ==}
+
+  '@openuidev/react-lang@1.0.1':
+    resolution: {integrity: sha512-jt5AKWyKe73BjD+bRC2kKerHCeAurI/D9KMQvbi736963D2lehpPGAvVGoxAN4MG6sM/7OOlfWvErQBPPPx30A==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': '>=1.0.0'
+      react: '*'
+      react-dom: '*'
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
+      react-dom:
         optional: true
 
   '@peculiar/asn1-cms@2.8.0':
@@ -4356,6 +4401,11 @@ packages:
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+
+  lucide-react@0.575.0:
+    resolution: {integrity: sha512-VuXgKZrk0uiDlWjGGXmKV6MSk9Yy4l10qgVvzGn2AWBx1Ylt0iBexKOAoA6I7JO3m+M9oeovJd3yYENfkUbOeg==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -7333,12 +7383,54 @@ snapshots:
 
   '@noble/hashes@2.2.0': {}
 
+  '@openuidev/devtools@0.3.0(@openuidev/observability@0.0.4)(@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@openuidev/observability': 0.0.4
+      lucide-react: 0.575.0(react@19.2.7)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+    optionalDependencies:
+      '@openuidev/react-lang': 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.1)
+
+  '@openuidev/devtools@0.3.0(@openuidev/observability@0.0.4)(@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@openuidev/observability': 0.0.4
+      lucide-react: 0.575.0(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.7(react@19.2.8)
+    optionalDependencies:
+      '@openuidev/react-lang': 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)(zod@4.4.1)
+
   '@openuidev/lang-core@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)':
     dependencies:
       ci-info: 4.4.0
       zod: 4.4.1
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.30.0(zod@4.4.1)
+
+  '@openuidev/observability@0.0.4': {}
+
+  '@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.1)':
+    dependencies:
+      '@openuidev/devtools': 0.3.0(@openuidev/observability@0.0.4)(@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@openuidev/lang-core': 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
+      '@openuidev/observability': 0.0.4
+      react: 19.2.7
+      zod: 4.4.1
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.30.0(zod@4.4.1)
+      react-dom: 19.2.7(react@19.2.7)
+
+  '@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)(zod@4.4.1)':
+    dependencies:
+      '@openuidev/devtools': 0.3.0(@openuidev/observability@0.0.4)(@openuidev/react-lang@1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)(zod@4.4.1))(react-dom@19.2.7(react@19.2.8))(react@19.2.8)
+      '@openuidev/lang-core': 1.0.1(@modelcontextprotocol/sdk@1.30.0(zod@4.4.1))(zod@4.4.1)
+      '@openuidev/observability': 0.0.4
+      react: 19.2.8
+      zod: 4.4.1
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.30.0(zod@4.4.1)
+      react-dom: 19.2.7(react@19.2.8)
 
   '@peculiar/asn1-cms@2.8.0':
     dependencies:
@@ -10164,6 +10256,14 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lucide-react@0.575.0(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+
+  lucide-react@0.575.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
 
   magic-string@0.30.21:
     dependencies:

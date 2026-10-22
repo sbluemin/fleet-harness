@@ -1,7 +1,7 @@
 import { useMarkdownLinkResolver } from "./markdown-link-boundary.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
-import { installOpenUIHydrator } from "@fleet-console/markdown/openui";
+import { installOpenUIHydrator, releaseOpenUIHydrator } from "@fleet-console/markdown/openui";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
@@ -202,6 +202,11 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
     if (!target || !openui) return;
     installOpenUIHydrator(target, openUIHydratorLabels(language), hasReply ? replyPort : null);
   }, [openui, language, hasReply, replyPort]);
+  React.useEffect(() => {
+    const target = root.current;
+    if (!target || !openui) return;
+    return () => releaseOpenUIHydrator(target);
+  }, [openui]);
   return manageDom
     ? <div ref={root} className={streamingClass} />
     : <div ref={root} className={streamingClass} dangerouslySetInnerHTML={{ __html: html }} />;
