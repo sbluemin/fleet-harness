@@ -44,6 +44,15 @@ jobs:
           import path from 'node:path';
           import { createWindowsSessionPlatform } from './core/host/bootstrap/windows-session-platform.ts';
           console.log('native-preflight: starting');
+          const { createRequire } = await import('node:module');
+          const koffi = createRequire(import.meta.url)('koffi'); const kernel = koffi.load('kernel32.dll');
+          const current = kernel.func('__stdcall', 'GetCurrentProcess', 'void *', []);
+          const inJob = kernel.func('__stdcall', 'IsProcessInJob', 'int', ['void *', 'void *', koffi.pointer('uint8')]);
+          const query = kernel.func('__stdcall', 'QueryInformationJobObject', 'int', ['void *', 'int', koffi.pointer('uint8'), 'uint32', 'void *']);
+          const member = Buffer.alloc(4); const limits = Buffer.alloc(144);
+          if (!inJob(current(), null, member)) throw new Error('probe_job_query_failed');
+          const queried = query(null, 9, limits, limits.length, null); const flags = queried ? limits.readUInt32LE(16) : null;
+          console.log(JSON.stringify({ stage: 'runner-job', inJob: member.readUInt32LE(0) !== 0, flags, breakaway: flags === null ? null : Boolean(flags & 0x800), silentBreakaway: flags === null ? null : Boolean(flags & 0x1000) }));
           const platform = createWindowsSessionPlatform();
           if (!platform) throw new Error('windows_platform_missing');
           console.log('native-preflight: token SID decoded');
@@ -53,16 +62,16 @@ jobs:
           if (!platform.owns(directory) || !platform.owns(file)) throw new Error('native_owner_unverified');
           console.log('native-preflight: user/SYSTEM DACL and current-token ownership verified');
           JS
-      # -t would pass with zero matching tests, so the step also requires at least two passed tests in the summary.
-      - name: Session host representative cases (named pipe, job containment, same runner PID)
+      # A restrictive runner job proves normal execution/cleanup, not preservation.
+      - name: Console-owned fallback inside the runner job
         run: |
           set -o pipefail
-          pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts --reporter=verbose -t "Console session-host lifecycle integration" 2>&1 | tee session-host.log
+          FORCE_COLOR=0 pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts --reporter=verbose -t "runs Console-owned sessions" 2>&1 | tee session-host.log
           grep -E "Tests +[0-9]+ passed" session-host.log
           passed=$(grep -oE "Tests +[0-9]+ passed" session-host.log | grep -oE "[0-9]+" | head -1)
-          test "${passed:-0}" -ge 2
-      # Informational: the whole lifecycle integration file on Windows, without gating the probe.
-      - name: Full lifecycle integration file (informational)
+          test "${passed:-0}" -ge 1
+      # Keep every preservation/authentication/job-zero assertion; run the driver outside the CI-owned job.
+      - name: Session host representative cases outside the runner job
         if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts
+        shell: pwsh
+        run: ./.github/scripts/session-host-windows-outside-job.ps1

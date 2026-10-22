@@ -57,7 +57,8 @@ export const DESKTOP_SESSION_UPDATE_PATH = "/api/v1/desktop/session-update";
 export const DESKTOP_SESSION_UPDATE_OWNER_HEADER = "x-fleet-desktop-owner";
 export type DesktopSessionUpdateIntent = { readonly intent: "prepare" | "commit" | "cancel"; readonly updateId: string };
 export interface DesktopSessionUpdatePrepared {
-  readonly ref: import("../lifecycle/index.js").SessionUpdateRef;
+  /** Null means a Console-owned host: update proceeds without preserving its sessions. */
+  readonly ref: import("../lifecycle/index.js").SessionUpdateRef | null;
   readonly nodePath: string;
 }
 export const DESKTOP_RESOURCE_ROOT_ENV = "FLEET_CONSOLE_RESOURCE_ROOT";

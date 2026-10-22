@@ -48,10 +48,10 @@ export function reclaimDeadSessionHost(dataDir: string): void {
   fs.unlinkSync(paths.manifest);
   if (process.platform !== "win32") { try { fs.unlinkSync(current.socket); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
 }
-export function publishSessionHost(dataDir: string, socket?: string): SessionHostManifest {
+export function publishSessionHost(dataDir: string, socket?: string, preservesUpdates = true): SessionHostManifest {
   const p = sessionHostPaths(dataDir);
   privateSessionDirectory(p.dir);
-  const manifest: SessionHostManifest = { v: SESSION_HOST_WIRE, hostId: randomUUID(), pid: process.pid, startedAt: Date.now(), slotKey: p.slotKey, socket: socket ?? p.socket, capability: randomUUID() + randomUUID() };
+  const manifest: SessionHostManifest = { v: SESSION_HOST_WIRE, hostId: randomUUID(), pid: process.pid, startedAt: Date.now(), slotKey: p.slotKey, socket: socket ?? p.socket, capability: randomUUID() + randomUUID(), preservesUpdates };
   const staging = `${p.manifest}.${process.pid}.${randomUUID()}`;
   try { fs.writeFileSync(staging, JSON.stringify(manifest), { flag: "wx", mode: 0o600 }); fs.linkSync(staging, p.manifest); }
   finally { fs.rmSync(staging, { force: true }); }

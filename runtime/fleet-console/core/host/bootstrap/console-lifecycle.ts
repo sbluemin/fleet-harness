@@ -59,6 +59,7 @@ import type { ConsoleLockPayload } from "../transport/console-contract-types.js"
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
 import { createConsoleFailureLog } from "./failure-log.js";
 import { createWindowsJobContainment, loadWindowsJobBindings } from "./windows-job-containment.js";
+import { createWindowsSessionPlatform } from "./windows-session-platform.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
   command,
@@ -360,7 +361,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     // Why this instance's shutdown runs: the first accepted stop request names it, and the exit record keeps it, so a
     // token-authenticated stop request reads apart from an OS signal.
     let stopReason: ConsoleStopReason | null = null;
-    const sessionHost = new ConsoleSessionHostOwner(createConsoleDataPaths({ env }).dir);
+    const sessionHost = new ConsoleSessionHostOwner(createConsoleDataPaths({ env }).dir, undefined, createWindowsSessionPlatform(ownedProcesses), env);
     const lifecycle = createConsoleServeLifecycle({
       onEveryStopRequested: (reason) => sessionHost.requestStop(reason),
       // Only the lock owner starts a reaper, before any owned child exists (a lock loser starts nothing).

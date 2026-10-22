@@ -22,10 +22,18 @@ export class SessionHostClient {
       const diagnostics = fs.openSync(path.join(path.dirname(path.dirname(generation.root)), "broker.stderr.log"), "a", 0o600);
       let child: SessionHostProcess;
       const bootEnv = { ...env, FLEET_SESSION_BROKER_BOOT: JSON.stringify({ dataDir, generation }) };
-      try { child = process.platform === "win32"
-        ? platform!.spawnIndependent(generation.node, [generation.broker], bootEnv, diagnostics)
-        : spawn(generation.node, [generation.broker], { detached: true, stdio: ["ignore", "ignore", diagnostics], windowsHide: true, env: bootEnv }); }
-      finally { fs.closeSync(diagnostics); }
+      try {
+        if (platform) {
+          try { child = platform.spawnIndependent(generation.node, [generation.broker], bootEnv, diagnostics); }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "SESSION_INDEPENDENCE_UNAVAILABLE") throw error;
+            const boundEnv = { ...env, FLEET_SESSION_BROKER_BOOT: JSON.stringify({ dataDir, generation, preservesUpdates: false }) };
+            child = platform.spawnConsoleOwned(generation.node, [generation.broker], boundEnv, diagnostics);
+            try { fs.appendFileSync(path.join(sessionHostPaths(dataDir).dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_update_preservation_unavailable", reason: "independent_host_unavailable", mode: "console-owned" }) + "\n", { mode: 0o600 }); }
+            catch { /* Diagnostic IO must not prevent an otherwise contained session launch. */ }
+          }
+        } else child = spawn(generation.node, [generation.broker], { detached: true, stdio: ["ignore", "ignore", diagnostics], windowsHide: true, env: bootEnv });
+      } finally { fs.closeSync(diagnostics); }
       let spawnError: Error | null = null;
       child.once("exit", () => { spawnError ??= new Error("session_host_exited_during_start"); });
       child.on("error", (error) => { spawnError = error; }); child.unref();
@@ -43,6 +51,7 @@ export class SessionHostClient {
       return new SessionHostClient(manifest, generation, peer, snapshot.epoch);
     } catch (error) { peer.close(); throw error; }
   }
+  get preservesUpdates(): boolean { return this.manifest.preservesUpdates !== false; }
   bindBusiness(handler: (call: SessionBusinessCall) => Promise<unknown> | unknown): Promise<boolean> {
     this.peer.bind((method, body) => { if (method !== "business") throw new Error("session_client_method_denied"); return handler(body as SessionBusinessCall); });
     return this.peer.call("backend-ready", { epoch: this.epoch });

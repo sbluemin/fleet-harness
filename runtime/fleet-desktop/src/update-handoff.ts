@@ -21,6 +21,11 @@ export async function prepareDesktopSessionUpdate(options: { lockFile: string; o
     return response.json() as Promise<T>;
   };
   const prepared = await request<DesktopSessionUpdatePrepared>("prepare");
+  if (prepared.ref === null) {
+    try { await request("commit"); }
+    catch (error) { await request("cancel").catch(() => undefined); throw error; }
+    return;
+  }
   let dir: string | undefined;
   let child: ReturnType<typeof spawn> | undefined;
   try {

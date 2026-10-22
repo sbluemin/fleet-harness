@@ -12,7 +12,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
-import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
+import { ConsoleSessionHostOwner } from "../core/host/bootstrap/session-host-owner.js";
+import type { SessionHostPlatform } from "@fleet-console/lifecycle/session-host";
+import { createWindowsJobContainment, loadWindowsJobBindings, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
 import { describeReplacedLockAuthor, HEALTH_PROBE_TIMEOUT_MS, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
 
 import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
@@ -52,6 +54,40 @@ afterEach(async () => {
 });
 
 describe("Console session-host lifecycle integration", () => {
+  // A restricted Windows job must disable preservation, not session execution or owned-tree cleanup.
+  it("runs Console-owned sessions when independence is unavailable and ends them on update", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-bound-")); TEMP_DIRS.push(root);
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude") };
+    const held = await createConsoleLock().acquireLock({ dir: root, lockFile: path.join(root, "console.lock"), pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
+    const containment = process.platform === "win32" ? createWindowsJobContainment(loadWindowsJobBindings(), () => {}) : undefined;
+    const registry = createOwnedProcessRegistry({ containment });
+    const native = createWindowsSessionPlatform(registry);
+    const platform: SessionHostPlatform = {
+      ...(native ?? { assertIndependent() {}, protectDirectory() {}, owns: () => true, spawnConsoleOwned(command, args, childEnv) {
+        const child = registry.spawn({ command, args, env: childEnv, owner: "session-host" }); child.stdout?.resume(); child.stderr?.resume(); return child;
+      } }),
+      spawnIndependent() { throw Object.assign(new Error("fixture_restricted_job"), { code: "SESSION_INDEPENDENCE_UNAVAILABLE" }); },
+    };
+    const owner = new ConsoleSessionHostOwner(root, fileURLToPath(new URL("../", import.meta.url)), platform, env);
+    try {
+      const client = await owner.start(held.payload);
+      expect(client.preservesUpdates).toBe(false);
+      await client.bindBusiness(() => null);
+      const terminal = await client.open({ kind: "pty", sessionKey: "bound", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data',b=>process.stdout.write(b));setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
+      await client.command({ sessionKey: "bound", commandId: "write", sequence: 1, kind: "write", body: { data: "bound-still-runs\n" } });
+      await vi.waitFor(async () => expect((await client.readEvents("bound", 0)).events.some((event) => event.kind === "pty-data" && String(event.data).includes("bound-still-runs"))).toBe(true));
+      await expect(client.prepareUpdate("forged-keeper")).rejects.toThrow("session_update_preservation_unavailable");
+      expect(await owner.prepareUpdate("bound-update")).toBe(null);
+      await owner.commitUpdate("bound-update"); expect(owner.preservingUpdate).toBe(false);
+      owner.requestStop("update"); await owner.settleStop();
+      for (const pid of [terminal.runtime.pid, terminal.runtime.runnerPid, client.manifest.pid]) {
+        expect(pid).toBeTypeOf("number"); await vi.waitFor(() => expect(isRunning(pid as number)).toBe(false), { timeout: 15_000 });
+      }
+      if (process.platform === "win32") expect(registry.groups()).toHaveLength(0);
+      expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain('"kind":"session_update_preservation_unavailable"');
+    } finally { owner.requestStop("api"); await owner.settleStop().catch(() => {}); held.release(); }
+  }, 60_000);
+
   // The old representative suite only proved child death. This boundary must also prove same-child update continuity.
   it("keeps SDK and PTY execution through an authenticated update, rejects duplicate input, then stops the whole host", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-handoff-")); TEMP_DIRS.push(root);

@@ -41,6 +41,7 @@ export interface SessionBrokerOptions {
   readonly generation: SessionGeneration;
   readonly containment?: ProcessContainmentPort;
   readonly platform?: SessionHostPlatform;
+  readonly preservesUpdates?: boolean;
   readonly onFailure?: (kind: string, error: unknown) => void;
 }
 const equal = (a: unknown, b: string) => typeof a === "string" && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -49,7 +50,7 @@ const equal = (a: unknown, b: string) => typeof a === "string" && Buffer.byteLen
 export async function runSessionBroker(options: SessionBrokerOptions): Promise<void> {
   if (process.platform === "win32") {
     if (!options.platform || !options.containment) throw new Error("session_windows_platform_required");
-    options.platform.assertIndependent();
+    if (options.preservesUpdates !== false) options.platform.assertIndependent();
   }
   const paths = sessionHostPaths(options.dataDir);
   privateSessionDirectory(paths.dir);
@@ -298,6 +299,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         catch (error) { s.snapshot = { ...s.snapshot, state: "lost" }; publish(s, "lost", null); throw error; }
       }
       if (method === "prepare-update") {
+        if (options.preservesUpdates === false) throw new Error("session_update_preservation_unavailable");
         options.platform?.assertIndependent();
         if (update) throw new Error("session_update_busy");
         if ([...business.values()].some((p) => p.dispatched)) throw new Error("session_business_not_drained");
@@ -352,7 +354,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
   const socketName = process.platform === "win32" ? `${paths.socket}-${randomUUID()}` : paths.socket;
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketName, resolve); });
   if (process.platform !== "win32") fs.chmodSync(socketName, 0o600);
-  try { manifest = publishSessionHost(options.dataDir, socketName); } catch (error) { server.close(); throw error; }
+  try { manifest = publishSessionHost(options.dataDir, socketName, options.preservesUpdates !== false); } catch (error) { server.close(); throw error; }
   if (process.platform !== "win32" && paths.relocatedSocketNamespace) {
     try { fs.appendFileSync(path.join(paths.dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_socket_namespace_relocated", reason: "temporary_path_length", transport: "unix" }) + "\n", { mode: 0o600 }); } catch { /* Diagnostic failure cannot widen the transport. */ }
   }

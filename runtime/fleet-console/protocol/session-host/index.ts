@@ -32,6 +32,8 @@ export interface SessionHostManifest {
   readonly slotKey: string;
   readonly socket: string;
   readonly capability: string;
+  /** False only for a broker whose lifetime is contained by the replacing Console. */
+  readonly preservesUpdates?: boolean;
 }
 export interface SessionHostEvent {
   readonly sessionKey: string;

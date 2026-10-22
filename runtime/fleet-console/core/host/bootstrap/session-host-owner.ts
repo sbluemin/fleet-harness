@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConsoleStopReason } from "@fleet-console/protocol/lifecycle";
 import type { SessionOwner, SessionUpdateRef } from "@fleet-console/protocol/session-host";
+import type { SessionHostPlatform } from "@fleet-console/lifecycle/session-host";
 import { SessionHostClient, stopSlotSessionHost } from "../../../features/execution/host/session-host/client.js";
 
 /** Composition port; product adapters consume get(), never discover a module singleton. */
@@ -13,9 +14,9 @@ export class ConsoleSessionHostOwner {
   private updateId: string | null = null;
   private committed = false;
   private terminateRequested = false;
-  constructor(private readonly dataDir: string, private readonly packageRoot = ownPackageRoot()) {}
+  constructor(private readonly dataDir: string, private readonly packageRoot = ownPackageRoot(), private readonly platform?: SessionHostPlatform, private readonly env: NodeJS.ProcessEnv = process.env) {}
   start(identity: SessionOwner): Promise<SessionHostClient> {
-    return this.attached ??= SessionHostClient.attach(this.dataDir, this.packageRoot, identity, process.env, createWindowsSessionPlatform()).then((client) => {
+    return this.attached ??= SessionHostClient.attach(this.dataDir, this.packageRoot, identity, this.env, this.platform ?? createWindowsSessionPlatform()).then((client) => {
       if (this.terminateRequested) this.requestStop("signal");
       return client;
     });
@@ -26,21 +27,30 @@ export class ConsoleSessionHostOwner {
   private readonly updateCancelled = new Set<() => void>();
   subscribeUpdateCancelled(resume: () => void): () => void { this.updateCancelled.add(resume); return () => this.updateCancelled.delete(resume); }
   subscribeBeforePrepare(flush: () => Promise<void>): () => void { this.beforePrepare.add(flush); return () => this.beforePrepare.delete(flush); }
-  async prepareUpdate(updateId: string): Promise<SessionUpdateRef> {
+  async prepareUpdate(updateId: string): Promise<SessionUpdateRef | null> {
     try {
       for (const flush of this.beforePrepare) await flush();
-      const ref = await (await this.get()).prepareUpdate(updateId);
+      const client = await this.get();
+      if (!client.preservesUpdates) {
+        this.updateId = updateId;
+        console.warn("[fleet-console] This environment cannot preserve sessions during an update; sessions will end normally.");
+        return null;
+      }
+      const ref = await client.prepareUpdate(updateId);
       this.updateId = updateId; return ref;
     } catch (error) { for (const resume of this.updateCancelled) resume(); throw error; }
   }
   async commitUpdate(expectedId?: string): Promise<void> {
     if (expectedId !== undefined && expectedId !== this.updateId) throw new Error("session_update_mismatch");
     if (!this.updateId || this.terminateRequested) throw new Error("session_update_not_prepared");
-    await (await this.get()).commitUpdate(this.updateId); this.committed = true;
+    const client = await this.get();
+    if (client.preservesUpdates) { await client.commitUpdate(this.updateId); this.committed = true; }
   }
   async cancelUpdate(expectedId?: string): Promise<void> {
     if (expectedId !== undefined && expectedId !== this.updateId) throw new Error("session_update_mismatch");
-    if (this.updateId && !this.terminateRequested) await (await this.get()).cancelUpdate(this.updateId);
+    if (this.updateId && !this.terminateRequested) {
+      const client = await this.get(); if (client.preservesUpdates) await client.cancelUpdate(this.updateId);
+    }
     this.updateId = null; this.committed = false;
     for (const resume of this.updateCancelled) resume();
   }

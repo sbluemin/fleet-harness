@@ -7,6 +7,8 @@ export interface SessionHostProcess {
 /** 커널별 행동은 조합부가 제공한다. foundation은 native binding을 import하지 않는다. */
 export interface SessionHostPlatform {
   spawnIndependent(command: string, args: readonly string[], env: NodeJS.ProcessEnv, diagnostics: number): SessionHostProcess;
+  /** Must register the broker in a job held by the Console; this mode never permits update survival. */
+  spawnConsoleOwned(command: string, args: readonly string[], env: NodeJS.ProcessEnv, diagnostics: number): SessionHostProcess;
   protectDirectory(file: string): void;
   assertIndependent(): void;
   owns(file: string): boolean;

@@ -57,7 +57,7 @@ export type ConsoleUpdateApplyStartResult = PreparedUpdateWorker;
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly sessionHost?: {
-    prepareUpdate(updateId: string): Promise<SessionUpdateRef>;
+    prepareUpdate(updateId: string): Promise<SessionUpdateRef | null>;
     commitUpdate(): Promise<void>;
     cancelUpdate(): Promise<void>;
   };

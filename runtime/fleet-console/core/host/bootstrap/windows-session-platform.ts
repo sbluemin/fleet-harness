@@ -2,7 +2,8 @@ import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import type { SessionHostPlatform, SessionHostProcess } from "@fleet-console/lifecycle/session-host";
 import { SESSION_HOST_POLL_MS } from "@fleet-console/protocol/session-host";
-import { loadWindowsJobBindings } from "./windows-job-containment.js";
+import { createOwnedProcessRegistry, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
+import { createWindowsJobContainment, loadWindowsJobBindings } from "./windows-job-containment.js";
 
 interface NativeLibrary { func(convention: string, name: string, result: unknown, args: readonly unknown[]): (...args: unknown[]) => unknown; }
 interface NativeModule {
@@ -17,9 +18,10 @@ const CREATE_BREAKAWAY_FROM_JOB = 0x01000000;
 const STILL_ACTIVE = 259;
 
 /** Win64 전용 조합부. 독립성을 증명하지 못한 child는 첫 instruction 전에 종료한다. */
-export function createWindowsSessionPlatform(): SessionHostPlatform | undefined {
+export function createWindowsSessionPlatform(consoleProcesses?: OwnedProcessRegistry): SessionHostPlatform | undefined {
   if (process.platform !== "win32") return undefined;
-  loadWindowsJobBindings(); // 기존 native 버전·구조 검증과 같은 pin을 적용한다.
+  const bindings = loadWindowsJobBindings(); // 기존 native 버전·구조 검증과 같은 pin을 적용한다.
+  const boundProcesses = consoleProcesses ?? createOwnedProcessRegistry({ containment: createWindowsJobContainment(bindings, () => {}) });
   const koffi = createRequire(import.meta.url)("koffi") as NativeModule;
   const kernel = koffi.load("kernel32.dll"); const advapi = koffi.load("advapi32.dll");
   const ptr = "void *"; const byte = koffi.pointer("uint8");
@@ -66,6 +68,14 @@ export function createWindowsSessionPlatform(): SessionHostPlatform | undefined 
   return {
     assertIndependent: () => independent(current()),
     owns,
+    spawnConsoleOwned(command, args, env) {
+      const child = boundProcesses.spawn({ command, args, env, owner: "session-host" });
+      child.stdout?.resume(); child.stderr?.resume();
+      if (!boundProcesses.groups().some((group) => group.pgid === child.pid)) {
+        child.kill("SIGKILL"); throw new Error("session_console_containment_unavailable");
+      }
+      return child;
+    },
     protectDirectory(file) {
       if (!owns(file)) throw new Error("session_directory_owner_unverified");
       const descriptor = Buffer.alloc(8);
@@ -88,12 +98,15 @@ export function createWindowsSessionPlatform(): SessionHostPlatform | undefined 
       if (!child) {
         // breakaway 거부 후에도 silent-breakaway 여부를 suspended child에서 증명한다.
         child = spawn(false);
-        if (!child) throw error("session_independent_create_failed");
+        if (!child) throw Object.assign(error("session_independent_create_failed"), { code: "SESSION_INDEPENDENCE_UNAVAILABLE" });
       }
       try {
         independent(child.handle);
         if (Number(resume(child.thread)) === 0xffffffff) throw error("session_independent_resume_failed");
-      } catch (failure) { terminate(child.handle, 1); close(child.thread); close(child.handle); throw failure; }
+      } catch (failure) {
+        terminate(child.handle, 1); close(child.thread); close(child.handle);
+        throw Object.assign(failure instanceof Error ? failure : new Error("session_independent_proof_failed"), { code: "SESSION_INDEPENDENCE_UNAVAILABLE" });
+      }
       close(child.thread);
       class NativeChild extends EventEmitter implements SessionHostProcess {
         readonly pid = child!.pid;
