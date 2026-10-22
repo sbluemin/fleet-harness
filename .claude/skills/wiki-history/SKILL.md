@@ -5,7 +5,7 @@ description: Preserve the rationale of an already-approved decision and its prio
 
 # Wiki History
 
-Preserve **why an already-made decision was made** when code/git history cannot explain it. Deliver a reviewable Wiki patch; permanent registration requires explicit approval.
+Preserve **why an already-made decision was made** when code/git history cannot explain it. Wiki writes apply directly to the entry; an overwritten or deleted version stays recoverable through `wiki_edit` history.
 
 ## Inputs and evidence
 
@@ -14,17 +14,17 @@ Resolve `<feature-or-decision-topic>` and raw decision evidence from the request
 ## Procedure
 
 1. Call `wiki_orient` for current PRD structure, tags, and naming. Find same-area records: update a duplicate; retain adjacent entries as `related` candidates.
-2. Before writing, read [Format and exclusions](references/format.md), then read the workspace's PRD template (`wiki_schema_read` or `wiki_orient`). The template's level-2 headings are the required sections, in its order; staging refuses an entry that misses one, and `wiki_drydock` reports it. The host authors them directly and includes only WHY and user-facing contracts.
-3. Check current Wiki tool schemas, then stage create/update through `wiki_ingest`. Use `prd-<area>-<topic>` and put raw decision evidence in `source`. Read the actual preview through `wiki_patch_queue(action:"show")` and present it to the user.
-4. Verify every statement below is true. Correct violations through `wiki_patch_edit` or re-staging, then inspect the new preview.
+2. Before writing, read [Format and exclusions](references/format.md), then read the workspace's PRD template (`wiki_schema_read` or `wiki_orient`). The template's level-2 headings are the required sections, in its order; writing refuses an entry that misses one, and `wiki_drydock` reports it. The host authors them directly and includes only WHY and user-facing contracts.
+3. Draft the entry and verify every statement below is true before writing.
    - The body has no source paths, symbols, line numbers, code, build commands, or dependency graphs.
    - It has no future plans, TODOs, roadmaps, or implementation-action sentences.
-   - It does not duplicate patch-envelope metadata in body YAML.
+   - It does not duplicate entry frontmatter metadata in body YAML.
    - It uses exactly the template's required sections, with a structural cause in Problem.
    - User Stories and Acceptance Criteria describe actual user experience and directly verifiable conditions.
    - Related links are evidence-backed, and the decision rationale is understandable in isolation.
-5. Register with `wiki_patch_queue(action:"approve")` **only after explicit user approval of that preview**. Do not reuse approval if revisions change its meaning.
+4. Check current Wiki tool schemas, then write create/update through `wiki_ingest`. Use `prd-<area>-<topic>` and put raw decision evidence in `source`; when updating, pass the `base_version` you read so a concurrent change is refused instead of overwritten.
+5. Read the written entry back through `wiki_read`, recheck the list above, and fix any violation through `wiki_edit` (or a new `wiki_ingest` update).
 
 ## Completion and blocks
 
-Without approval, deliver patch id/preview for review and stop. After approval, confirm registration from the tool result and report entry id/outcome. Never replace unavailable tools/schemas or missing evidence with claimed success. General model-prompting advice does not relax Wiki formatting rules.
+Confirm the write from the tool result and report the entry id, version, and that earlier versions are restorable through `wiki_edit` history. Never replace unavailable tools/schemas or missing evidence with claimed success. General model-prompting advice does not relax Wiki formatting rules.

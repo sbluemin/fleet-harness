@@ -10,7 +10,7 @@ Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTY
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
 - Console-spawned Agent CLI PTYs with in-process observation.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
-- Codex quotes: select a passage in a Wiki entry and attach it as a comment or question chip to a chat-mode commander's or the Theater Commodore's composer. Attaching never sends; the conversation continues in that chat, and any revision arrives as a Wiki patch that changes nothing until you approve it.
+- Codex quotes: select a passage in a Wiki entry and attach it as a comment or question chip to a chat-mode commander's or the Theater Commodore's composer. Attaching never sends; the conversation continues in that chat, and any revision updates the entry directly, with earlier versions kept so they can be restored.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 

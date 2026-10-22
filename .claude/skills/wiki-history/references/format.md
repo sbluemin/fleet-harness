@@ -18,7 +18,7 @@
 - Implementation actions such as "changed X to Y", "added to module Z", "refactored A into B"
 - "Here is how to implement it" style implementation guidance
 - Build/test commands, directory trees, package dependency graphs
-- Duplicated frontmatter inside the body (e.g., `id:`, `title:`, `tags:`, `created:`, `updated:`, `version:`, `feature_area:`, `lifecycle:` YAML blocks that repeat metadata already carried in the patch envelope)
+- Duplicated frontmatter inside the body (e.g., `id:`, `title:`, `tags:`, `created:`, `updated:`, `version:`, `feature_area:`, `lifecycle:` YAML blocks that repeat metadata already carried in the entry frontmatter)
 - Sections the workspace PRD template does not define (e.g., "Future Considerations")
 
 ## Output Format
