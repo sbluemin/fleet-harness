@@ -251,7 +251,7 @@ describe("Console session-host lifecycle integration", () => {
         expect(journal).not.toContain('"kind":"session_host_stop_deadline"');
         expect(journal).not.toContain('"kind":"session_runner_stop_deadline"');
         const drained = journal.trim().split("\n").map((line) => JSON.parse(line) as { kind: string; reason?: string }).find((row) => row.kind === "session_host_jobs_drained")!;
-        console.info("session-host-windows-proof", JSON.stringify({ runnerBefore: sdk.runtime.runnerPid, runnerAfter: after.sessions.find((s) => s.sessionKey === "chat")!.runtime.runnerPid, remainingJobs: Number(drained.reason!.split("=")[1]) }));
+        console.info("session-host-windows-proof", JSON.stringify({ runnerBefore: sdk.runtime.runnerPid, runnerAfter: after.sessions.find((s) => s.sessionKey === sdk.sessionKey)!.runtime.runnerPid, remainingJobs: Number(drained.reason!.split("=")[1]) }));
       }
       recordSessionUpdateIncompatibility(root, "1.0.0", "1.0.1");
       writeConsoleUpdateProgress(root, { phase: "completed", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), fromVersion: "1.0.0", targetVersion: "1.0.1" });
