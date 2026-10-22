@@ -66,6 +66,65 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
   const generations = new WeakMap<HTMLElement, number>();
   // 제거된 블록도 찾을 수 있도록 설치마다 소유 블록을 추적한다. 전역 맵은 약한 참조만 갖는다.
   const mine = new Set<HTMLElement>();
+  const settling = new Map<HTMLElement, { h: Animation; o: Animation; from: number }>();
+
+  const endSettle = (block: HTMLElement) => {
+    settling.delete(block);
+    block.removeAttribute("data-openui-settling");
+  };
+  const stopSettle = (block: HTMLElement) => {
+    const current = settling.get(block);
+    if (!current) return;
+    // 늦게 오는 취소 이벤트가 다음 보간을 지우지 않도록 먼저 연결을 끊는다.
+    current.h.onfinish = current.h.oncancel = null;
+    endSettle(block);
+    current.h.cancel();
+    current.o.cancel();
+  };
+  const startSettle = (block: HTMLElement, from: number) => {
+    const view = block.ownerDocument.defaultView;
+    if (typeof block.animate !== "function" || typeof view?.matchMedia !== "function"
+      || view.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const pre = block.querySelector<HTMLElement>(":scope > pre");
+    if (!pre || typeof pre.animate !== "function") return;
+    const style = view.getComputedStyle(block);
+    const duration = (token: string) => {
+      const value = style.getPropertyValue(token).trim();
+      const match = /^(\d+(?:\.\d+)?|\.\d+)(ms|s)$/.exec(value);
+      return match ? Number(match[1]) * (match[2] === "s" ? 1000 : 1) : 0;
+    };
+    const slow = duration("--duration-slow");
+    const fast = duration("--duration-fast");
+    const glide = style.getPropertyValue("--ease-glide").trim();
+    const spring = style.getPropertyValue("--ease-spring").trim();
+    if (!(slow > 0 && fast > 0) || !glide || !spring) return;
+    let h: Animation | undefined;
+    let o: Animation | undefined;
+    try {
+      const to = pre.getBoundingClientRect().height;
+      block.setAttribute("data-openui-settling", "");
+      h = block.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: slow, easing: glide });
+      o = pre.animate([{ opacity: 0 }, { opacity: 1 }], { duration: fast, easing: spring });
+      settling.set(block, { h, o, from });
+      h.onfinish = h.oncancel = () => stopSettle(block);
+    } catch {
+      // 호스트 토큰이나 애니메이션을 쓸 수 없으면 원문 전체를 자연 높이로 보인다.
+      h?.cancel();
+      o?.cancel();
+      endSettle(block);
+    }
+  };
+  const retargetSettle = (block: HTMLElement) => {
+    const current = settling.get(block);
+    if (!current) return;
+    const pre = block.querySelector<HTMLElement>(":scope > pre");
+    try {
+      if (!pre || !(current.h.effect instanceof KeyframeEffect)) return stopSettle(block);
+      current.h.effect.setKeyframes([{ height: `${current.from}px` }, { height: `${pre.getBoundingClientRect().height}px` }]);
+    } catch {
+      stopSettle(block);
+    }
+  };
 
   const release = (block: HTMLElement) => {
     const mounted = roots.get(block);
@@ -82,9 +141,13 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
     mounted.root.render(createElement(library.OpenUIView, { source: mounted.source, final: mounted.final, labels, send: port, open: openPort }));
   };
   const fallback = (block: HTMLElement) => {
+    const wasCard = block.getAttribute("data-openui-state") === "rendered";
+    const from = wasCard ? block.getBoundingClientRect().height : 0;
     release(block);
     block.querySelector(OWNED_SELECTOR)?.remove();
     block.setAttribute("data-openui-state", "fallback");
+    if (wasCard) startSettle(block, from);
+    else retargetSettle(block);
   };
   async function hydrate(block: HTMLElement): Promise<void> {
     const generation = (generations.get(block) ?? 0) + 1;
@@ -103,6 +166,7 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
     const verdict = library.judge(source, final);
     if (verdict.kind === "fallback") return fallback(block);
     if (verdict.kind === "hold") return; // 지난 그림(또는 보조 글자)을 지킨다.
+    stopSettle(block);
     const mounted = roots.get(block);
     if (!mounted) {
       const view = owned(block);
@@ -136,6 +200,7 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
       }
     }
     for (const block of mine) if (!root.contains(block) || !block.isConnected) release(block);
+    for (const block of settling.keys()) if (!root.contains(block) || !block.isConnected) stopSettle(block);
     for (const block of touched) if (root.contains(block) && block.isConnected) void hydrate(block);
   });
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-openui-source", "data-openui-final"] });
@@ -157,6 +222,7 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
       disposed = true;
       observer.disconnect();
       for (const block of mine) release(block);
+      for (const block of settling.keys()) stopSettle(block);
     },
   });
   for (const block of root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)) void hydrate(block);

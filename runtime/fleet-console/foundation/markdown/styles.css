@@ -949,6 +949,7 @@ code.hljs {
 /* 보조 잉크는 다크 말풍선·줄무늬 위의 판독 하한을 넘되 2단 라벨보다 낮게 둔다. 라이트는 기존 3단을 보존한다. */
 .openui-block, .openui { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 70%, var(--text-secondary))); }
 .openui-block { min-width: 0; }
+.openui-block[data-openui-settling] { overflow: clip; }
 .openui-block:not([data-openui-state="fallback"]) > pre { display: none; }
 .openui-block > .code-block { margin: 0; }
 .openui-pending { margin: 0; font-size: var(--t-sm); color: var(--openui-muted); }
