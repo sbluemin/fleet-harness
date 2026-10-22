@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
+import path from "node:path";
 import type { SessionHostPlatform, SessionHostProcess } from "@fleet-console/lifecycle/session-host";
 import { SESSION_HOST_POLL_MS } from "@fleet-console/protocol/session-host";
 import { createOwnedProcessRegistry, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
@@ -64,8 +65,9 @@ export function createWindowsSessionPlatform(consoleProcesses?: OwnedProcessRegi
   };
   const owns = (file: string): boolean => {
     const owner = Buffer.alloc(8); const descriptor = Buffer.alloc(8);
-    const result = Number(security(wide(file), 1, 1, owner, null, null, null, descriptor));
-    if (result !== 0) return false;
+    // SDK/native dependency closure는 MAX_PATH를 넘는다. Node와 같은 Win32 namespace를 사용한다.
+    const result = Number(security(wide(path.toNamespacedPath(file)), 1, 1, owner, null, null, null, descriptor));
+    if (result !== 0) throw new Error(`session_file_owner_query_failed:${result}`);
     // elevated token의 기본 owner는 Administrators일 수 있다. 임의 group이 아니라 현재 TokenOwner만 허용한다.
     try { return Boolean(equalSid(pointer(owner), pointer(user))) || Boolean(equalSid(pointer(owner), pointer(defaultOwner))); }
     finally { localFree(pointer(descriptor)); }
@@ -79,14 +81,21 @@ export function createWindowsSessionPlatform(consoleProcesses?: OwnedProcessRegi
       if (!boundProcesses.groups().some((group) => group.pgid === child.pid)) {
         child.kill("SIGKILL"); throw new Error("session_console_containment_unavailable");
       }
-      return child;
+      return Object.assign(child, { async drain(timeoutMs: number) {
+        const until = performance.now() + timeoutMs;
+        boundProcesses.killGroup(child, "SIGKILL");
+        while (boundProcesses.groups().some((group) => group.pgid === child.pid)) {
+          if (performance.now() >= until) throw new Error("session_console_job_drain_timeout");
+          await new Promise((resolve) => setTimeout(resolve, SESSION_HOST_POLL_MS));
+        }
+      } });
     },
     protectDirectory(file) {
       if (!owns(file)) throw new Error("session_directory_owner_unverified");
       const descriptor = Buffer.alloc(8);
       // 현재 사용자와 SYSTEM만 접근하고, 하위 파일·디렉터리도 같은 DACL을 상속한다.
       if (!convertSecurity(wide(`D:P(A;OICI;FA;;;${sid})(A;OICI;FA;;;SY)`), 1, descriptor, null)) throw error("session_directory_acl_build");
-      try { if (!setSecurity(wide(file), 0x80000004, pointer(descriptor))) throw error("session_directory_acl_set"); }
+      try { if (!setSecurity(wide(path.toNamespacedPath(file)), 0x80000004, pointer(descriptor))) throw error("session_directory_acl_set"); }
       finally { localFree(pointer(descriptor)); }
     },
     spawnIndependent(command, args, env) {

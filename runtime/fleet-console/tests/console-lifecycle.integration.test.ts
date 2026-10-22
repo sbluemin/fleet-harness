@@ -258,7 +258,10 @@ describe("Console session-host lifecycle integration", () => {
       expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-bridge-incompatible", description: expect.stringContaining("ready for new sessions") });
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 3, endpoint: "http://127.0.0.1:3/", version: "gc-successor" });
       client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
-      await vi.waitFor(() => expect(fs.existsSync(retiredRoot)).toBe(false), { timeout: 15_000 });
+      await vi.waitFor(() => {
+        const deferred = fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { kind: string; reason?: string }).filter((row) => row.kind === "session_generation_gc_deferred").map((row) => row.reason);
+        expect(fs.existsSync(retiredRoot), `generation collection diagnostics: ${JSON.stringify(deferred)}`).toBe(false);
+      }, { timeout: 15_000 });
       expect(fs.existsSync(client.generation.root)).toBe(true);
       expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
       if (process.platform === "win32") console.info("session-host-windows-gc-proof", JSON.stringify({ retiredCollected: !fs.existsSync(retiredRoot), currentRetained: fs.existsSync(client.generation.root), outsideSentinelPreserved: fs.readFileSync(path.join(outside, "keep"), "utf8") === "untouched" }));

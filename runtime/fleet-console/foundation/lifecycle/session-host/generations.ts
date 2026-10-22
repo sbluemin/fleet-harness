@@ -102,9 +102,13 @@ export function collectSessionGenerations(options: SessionGenerationGcOptions): 
           const proof = JSON.parse(readPrivate(proofFile)) as { v: number; generation: string; hostId: string; pid: number };
           if (proof.v !== 1 || proof.generation !== id || !Number.isSafeInteger(proof.pid) || proof.pid <= 1 || typeof proof.hostId !== "string") throw new Error("invalid_retirement_proof");
           const localProof = proof.pid === process.pid && proof.hostId === options.hostId && options.retired.has(id);
-          if (!localProof && isPidAlive(proof.pid)) continue;
+          if (!localProof && isPidAlive(proof.pid)) { options.diagnostic("session_generation_gc_deferred", id, "retirement_owner_alive"); continue; }
           const pin = path.join(root, ".pin");
-          if (fs.existsSync(pin)) { const value = JSON.parse(readPrivate(pin)) as { pid: number }; if (!Number.isSafeInteger(value.pid) || value.pid <= 1 || isPidAlive(value.pid)) continue; }
+          if (fs.existsSync(pin)) {
+            const value = JSON.parse(readPrivate(pin)) as { pid: number };
+            if (!Number.isSafeInteger(value.pid) || value.pid <= 1) throw new Error("generation_pin_unverified");
+            if (isPidAlive(value.pid)) { options.diagnostic("session_generation_gc_deferred", id, "generation_pin_alive"); continue; }
+          }
           const inspect = (entry: string): void => {
             const stat = fs.lstatSync(entry);
             if (stat.isSymbolicLink() || (process.platform !== "win32" && stat.uid !== process.getuid?.()) || (options.owns && !options.owns(entry))) throw new Error("untrusted_generation_tree");

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createWindowsSessionPlatform } from "./windows-session-platform.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ConsoleStopReason } from "@fleet-console/protocol/lifecycle";
+import { CONSOLE_STOP_DEADLINE_MS, type ConsoleStopReason } from "@fleet-console/protocol/lifecycle";
 import type { SessionOwner, SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import type { SessionHostPlatform } from "@fleet-console/lifecycle/session-host";
 import { SessionHostClient, stopSlotSessionHost } from "../../../features/execution/host/session-host/client.js";
@@ -14,6 +14,7 @@ export class ConsoleSessionHostOwner {
   private updateId: string | null = null;
   private committed = false;
   private terminateRequested = false;
+  private stopStarted = 0;
   constructor(private readonly dataDir: string, private readonly packageRoot = ownPackageRoot(), private readonly platform?: SessionHostPlatform, private readonly env: NodeJS.ProcessEnv = process.env) {}
   start(identity: SessionOwner): Promise<SessionHostClient> {
     return this.attached ??= SessionHostClient.attach(this.dataDir, this.packageRoot, identity, this.env, this.platform ?? createWindowsSessionPlatform()).then((client) => {
@@ -56,6 +57,7 @@ export class ConsoleSessionHostOwner {
   }
   requestStop(reason: ConsoleStopReason): void {
     if (reason === "update" && this.preservingUpdate) return;
+    if (!this.terminateRequested) this.stopStarted = performance.now();
     this.terminateRequested = true;
     this.stopFlight = this.get().catch(() => null).then(() => stopSlotSessionHost(this.dataDir));
     void this.stopFlight.catch(() => {});
@@ -63,6 +65,7 @@ export class ConsoleSessionHostOwner {
   async settleStop(): Promise<void> {
     await this.stopFlight;
     const client = await this.attached?.catch(() => null);
+    if (this.terminateRequested) await client?.drainConsoleOwnership(Math.max(0, CONSOLE_STOP_DEADLINE_MS - (performance.now() - this.stopStarted)));
     client?.closeObserver();
   }
 }

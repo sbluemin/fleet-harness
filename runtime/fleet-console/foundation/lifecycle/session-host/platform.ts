@@ -3,6 +3,8 @@ export interface SessionHostProcess {
   on(event: "error", listener: (error: Error) => void): unknown;
   once(event: "exit", listener: () => void): unknown;
   unref(): void;
+  /** Console-owned mode: finish the held outer job, not merely the broker leader. */
+  drain?(timeoutMs: number): Promise<void>;
 }
 /** 커널별 행동은 조합부가 제공한다. foundation은 native binding을 import하지 않는다. */
 export interface SessionHostPlatform {

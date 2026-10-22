@@ -8,7 +8,7 @@ import { SESSION_ATTACH_POLL_MS, SESSION_HOST_WIRE, SESSION_HOST_START_MS, type 
 import type { HostedSessionLaunch, SessionCheckpoint } from "./contracts.js";
 
 export class SessionHostClient {
-  private constructor(readonly manifest: SessionHostManifest, readonly generation: SessionGeneration, private readonly peer: SessionRpcPeer, readonly epoch: number) {}
+  private constructor(readonly manifest: SessionHostManifest, readonly generation: SessionGeneration, private readonly peer: SessionRpcPeer, readonly epoch: number, private readonly ownedProcess?: SessionHostProcess) {}
   static async attach(dataDir: string, packageRoot: string, owner: SessionOwner, env: NodeJS.ProcessEnv = process.env, platform?: SessionHostPlatform): Promise<SessionHostClient> {
     if (process.platform === "win32") {
       if (!platform) throw new Error("session_windows_platform_required");
@@ -16,6 +16,7 @@ export class SessionHostClient {
       privateSessionDirectory(directory); platform.protectDirectory(directory);
     }
     const generation = prepareSessionGeneration(dataDir, packageRoot, { packages: [...claudeRuntimePackages(), "node-pty", "koffi", "ws", "fflate"] });
+    let ownedProcess: SessionHostProcess | undefined;
     let manifest = readSessionHostManifest(dataDir);
     if (manifest && !isPidAlive(manifest.pid)) { reclaimDeadSessionHost(dataDir); manifest = null; }
     if (!manifest) {
@@ -29,6 +30,7 @@ export class SessionHostClient {
             if ((error as NodeJS.ErrnoException).code !== "SESSION_INDEPENDENCE_UNAVAILABLE") throw error;
             const boundEnv = { ...env, FLEET_SESSION_BROKER_BOOT: JSON.stringify({ dataDir, generation, preservesUpdates: false }) };
             child = platform.spawnConsoleOwned(generation.node, [generation.broker], boundEnv, diagnostics);
+            ownedProcess = child;
             try { fs.appendFileSync(path.join(sessionHostPaths(dataDir).dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_update_preservation_unavailable", reason: "independent_host_unavailable", mode: "console-owned" }) + "\n", { mode: 0o600 }); }
             catch { /* Diagnostic IO must not prevent an otherwise contained session launch. */ }
           }
@@ -48,9 +50,10 @@ export class SessionHostClient {
     const peer = await connectSessionRpc(manifest.socket);
     try {
       const snapshot = await authenticateSessionPeer<SessionHostSnapshot>(peer, { wire: SESSION_HOST_WIRE, role: "console", hostId: manifest.hostId, owner: { pid: owner.pid, startedAt: owner.startedAt }, generation: generation.id }, manifest.capability, owner.token);
-      return new SessionHostClient(manifest, generation, peer, snapshot.epoch);
+      return new SessionHostClient(manifest, generation, peer, snapshot.epoch, ownedProcess);
     } catch (error) { peer.close(); throw error; }
   }
+  async drainConsoleOwnership(timeoutMs: number): Promise<void> { await this.ownedProcess?.drain?.(timeoutMs); }
   get preservesUpdates(): boolean { return this.manifest.preservesUpdates !== false; }
   bindBusiness(handler: (call: SessionBusinessCall) => Promise<unknown> | unknown): Promise<boolean> {
     this.peer.bind((method, body) => { if (method !== "business") throw new Error("session_client_method_denied"); return handler(body as SessionBusinessCall); });
