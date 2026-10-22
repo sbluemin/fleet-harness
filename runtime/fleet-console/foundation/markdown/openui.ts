@@ -7,6 +7,7 @@
 
 import { decodeMermaidSource } from "@fleet-console/markdown/core";
 import { createElement } from "react";
+import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import type { OpenUIRenderLabels, OpenUIState, OpenUITone } from "./openui-library.js";
@@ -100,17 +101,22 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
     const verdict = library.judge(source, final);
     if (verdict.kind === "fallback") return fallback(block);
     if (verdict.kind === "hold") return; // 지난 그림(또는 보조 글자)을 지킨다.
-    let mounted = roots.get(block);
+    const mounted = roots.get(block);
     if (!mounted) {
       const view = owned(block);
       view.replaceChildren();
-      mounted = { root: createRoot(view, { identifierPrefix: "openui-" }), view, source, final };
-      roots.set(block, mounted);
+      const created: Mounted = { root: createRoot(view, { identifierPrefix: "openui-" }), view, source, final };
+      roots.set(block, created);
       mine.add(block);
+      // await loadLibrary() 뒤라 설치 effect·옵저버의 호출 스택(React 커밋 포함)을 이미 벗어났다.
+      // 첫 그림은 브라우저가 빈 칸을 그리기 전에 커밋하고, 그 뒤에만 rendered 표식을 세운다.
+      flushSync(() => paint(created, library));
+    } else {
+      mounted.source = source;
+      mounted.final = final;
+      // 살아 있는 루트는 이전 DOM이 남아 있으므로 흐르는 중 갱신을 동기로 강제하지 않는다.
+      paint(mounted, library);
     }
-    mounted.source = source;
-    mounted.final = final;
-    paint(mounted, library);
     block.setAttribute("data-openui-state", "rendered");
   }
 
