@@ -9,6 +9,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { REAPER_DRAIN_MAX_MS } from "@fleet-console/lifecycle";
+import { connectSessionUpdateKeeper } from "@fleet-console/lifecycle/session-host";
+import { DESKTOP_SESSION_UPDATE_PATH, DESKTOP_SESSION_UPDATE_OWNER_HEADER } from "@fleet-console/protocol/desktop";
+import type { SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import { CONSOLE_SERVE_EXIT_LOCK_HELD, CONSOLE_STOP_DEADLINE_MS, CONSOLE_STOP_REQUEST_REVISION, ESCALATION_MARGIN_MS, EXTERNAL_ESCALATION_MS, OWNED_GROUP_TERM_GRACE_MS, PROCESS_TABLE_TIMEOUT_MS, consoleExitRecordPath, parseConsoleExitRecord } from "@fleet-console/protocol/lifecycle";
 
 import { resolveSiblingConsoleCliPath } from "../../cli/update/stop-console.js";
@@ -232,6 +235,56 @@ afterEach(async () => {
     expect(readRunLock(run)).toBeNull();
     expect(await survivors(run, started)).toEqual([]);
   }, 60_000);
+
+  // Source host fixtures do not cross Console's pre-ready MCP gate. Exercise a real built successor,
+  // then a distinct isolation failure: one unreadable Chat checkpoint must not take its healthy PTY down.
+  it.skipIf(process.platform === "win32")("keeps live Chat and PTY through built Console reattachment and isolates one failed session", async () => {
+    const run = createRun("reattach");
+    const ownerId = crypto.randomUUID();
+    const owner = { FLEET_CONSOLE_OWNER_KIND: "desktop", FLEET_CONSOLE_OWNER_ID: ownerId, FLEET_CONSOLE_PROTOCOL_VERSION: "1", FLEET_CONSOLE_RESOURCE_ROOT: packageRoot, FLEET_CONSOLE_DESKTOP_DEVELOPMENT: "1" };
+    let current = spawnConsole(run, { env: owner });
+    let endpoint = await waitForReady(run, current.pid!);
+    await openWorkload(run, endpoint, { terminal: true });
+    const agents = agentProcs(run).filter(({ role }) => role === "chat" || role === "terminal");
+    for (const agent of agents) ownRecorded(agent);
+    const chat = agents.find(({ role }) => role === "chat")!;
+    const terminal = agents.find(({ role }) => role === "terminal")!;
+    const update = async (preload?: string) => {
+      const lock = JSON.parse(fs.readFileSync(run.lockFile, "utf8")) as { token: string };
+      const updateId = crypto.randomUUID();
+      const call = async (intent: string) => {
+        const response = await fetch(new URL(DESKTOP_SESSION_UPDATE_PATH, endpoint), { method: "POST", headers: { authorization: `Bearer ${lock.token}`, [DESKTOP_SESSION_UPDATE_OWNER_HEADER]: ownerId, "content-type": "application/json" }, body: JSON.stringify({ intent, updateId }) });
+        expect(response.ok).toBe(true); return response.json();
+      };
+      const prepared = await call("prepare") as { ref: SessionUpdateRef | null };
+      expect(prepared.ref).not.toBeNull();
+      const keeper = await connectSessionUpdateKeeper(prepared.ref!);
+      try {
+        await call("commit"); expect(await exitOf(current, 20_000)).toEqual({ code: 0, signal: null });
+        current = spawnConsole(run, { env: owner, ...(preload ? { preload } : {}) });
+        endpoint = await waitForReady(run, current.pid!);
+      } finally { keeper.close(); }
+    };
+    await update();
+    expect(isAlive(chat.pid)).toBe(true); expect(isAlive(terminal.pid)).toBe(true);
+    expect(agentProcs(run).filter(({ role }) => role === "chat" || role === "terminal")).toHaveLength(2);
+    const injected = path.join(run.dir, "checkpoint-injected");
+    const preload = writePreload(run, "bad-checkpoint.mjs", [
+      "import fs from 'node:fs'; const parse = JSON.parse; let injected = false;",
+      "JSON.parse = function (...args) { const value = parse.apply(this, args); const rows = value?.value?.sessions;",
+      "if (!injected && Array.isArray(rows)) { const chat = rows.find(s => s.kind === 'sdk' && s.sessionKey.startsWith('chat:') && s.checkpoint);",
+      `if (chat) { chat.checkpoint.state = { schema: 999 }; injected = true; fs.writeFileSync(${JSON.stringify(injected)}, ''); } } return value; };`,
+    ]);
+    await update(preload);
+    expect(fs.existsSync(injected)).toBe(true);
+    await waitUntil(() => !isAlive(chat.pid), 15_000, "failed Chat runner was not retired");
+    expect(isAlive(terminal.pid)).toBe(true);
+    expect(failureKinds(run)).toContain("session_reattach_failed");
+    const lock = JSON.parse(fs.readFileSync(run.lockFile, "utf8")) as { token: string };
+    const stopped = fetch(new URL("/api/v1/lifecycle/stop", endpoint), { method: "POST", headers: { authorization: `Bearer ${lock.token}` } });
+    expect((await stopped).status).toBe(202); expect(await exitOf(current, 20_000)).toEqual({ code: 0, signal: null });
+    await waitUntil(() => !isAlive(terminal.pid), 15_000, "healthy PTY survived explicit stop");
+  }, 100_000);
 
   // L11 (#1543, #1565; I2). Repeated signals are harmless in both stretches of a shutdown: mid-cleanup with the lock held,
   // and after the lock is released while the SDK still reaps an agent that ignored SIGTERM. A serve that died in the second

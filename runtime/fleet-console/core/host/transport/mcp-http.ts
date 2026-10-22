@@ -1,9 +1,10 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
-import type { McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
+import type { McpHttpTransport, McpCatalogReader } from "@fleet-console/agent-runtime/mcp";
 
 export function createMcpHttpTransport(origin?: () => string | null) {
   const handlers = new Map<string, (req: http.IncomingMessage, res: http.ServerResponse) => void>();
+  const catalogs = new Map<string, McpCatalogReader>();
   let server: http.Server | undefined;
   let starting: Promise<string> | undefined;
   let closed = false;
@@ -37,16 +38,29 @@ export function createMcpHttpTransport(origin?: () => string | null) {
     return starting;
   };
   const transport: McpHttpTransport = {
-    mount(handler) {
+    mount(handler, catalog) {
       if (closed) throw new Error("MCP transport is closed");
       const path = `${prefix}${randomUUID()}`;
       handlers.set(path, handler);
-      return { url: async () => `${await getOrigin()}${path}`, dispose: () => { handlers.delete(path); } };
+      if (catalog) catalogs.set(path, catalog);
+      return { url: async () => `${await getOrigin()}${path}`, dispose: () => { handlers.delete(path); catalogs.delete(path); } };
     },
   };
-  return { transport, handle, async dispose() {
+  const readCatalog = async (url: string, request: Parameters<McpCatalogReader>[0]): Promise<unknown> => {
+    const endpoint = new URL(url);
+    const currentOrigin = await getOrigin();
+    const read = catalogs.get(endpoint.pathname);
+    if (endpoint.origin !== new URL(currentOrigin).origin || endpoint.search || endpoint.hash || !read) throw new Error("mcp_catalog_scope_unavailable");
+    return read(request);
+  };
+  const ownsCatalog = (url: string): boolean => {
+    if (closed || !origin?.()) return false;
+    const endpoint = new URL(url);
+    return endpoint.origin === new URL(origin()!).origin && !endpoint.search && !endpoint.hash && catalogs.has(endpoint.pathname);
+  };
+  return { transport, handle, readCatalog, catalog: { owns: ownsCatalog, read: readCatalog }, async dispose() {
     closed = true;
-    handlers.clear();
+    handlers.clear(); catalogs.clear();
     if (starting) await starting.catch(() => {});
     if (server) await new Promise<void>((resolve) => { server!.close(() => resolve()); server!.closeAllConnections(); });
   } };

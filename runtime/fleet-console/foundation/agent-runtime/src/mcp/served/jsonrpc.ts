@@ -23,8 +23,11 @@ export interface CreateServedMcpEndpointDeps {
   readonly port?: number;
 }
 
+export type McpCatalogReader = (request: { readonly token: string; readonly method: "initialize" | "tools/list" | "resources/list"; readonly params?: unknown }) => Promise<unknown>;
+
 export interface McpHttpTransport {
-  mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): { url(): Promise<string>; dispose(): void };
+  /** 서버 내부 catalog 관찰만 주입한다. 업무 호출·HTTP 입장 관문을 대신하지 않는다. */
+  mount(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void, catalog?: McpCatalogReader): { url(): Promise<string>; dispose(): void };
 }
 
 export type ToolCallArrivedCallback = (
@@ -356,7 +359,13 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       if (activeStartPromise) return activeStartPromise;
 
       if (deps.transport) {
-        hosted ??= deps.transport.mount((req, res) => handleAuthorizedRequest(req, res, processJsonRpc));
+        hosted ??= deps.transport.mount((req, res) => handleAuthorizedRequest(req, res, processJsonRpc), async ({ token, method, params }) => {
+          if (!snapshotStore.hasSession(token)) throw new Error("mcp_catalog_unauthorized");
+          if (method !== "initialize" && method !== "tools/list" && method !== "resources/list") throw new Error("mcp_catalog_method_denied");
+          const result = await processJsonRpc({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }, token);
+          if (!result || "error" in result) throw new Error("mcp_catalog_unavailable");
+          return result.result;
+        });
         return hosted.url();
       }
       activeOpaquePath = `/${crypto.randomUUID()}`;

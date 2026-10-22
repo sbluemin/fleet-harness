@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { McpCatalogReader } from "@fleet-console/agent-runtime/mcp";
 import type { SessionBusinessCall, SessionHostEvent, SessionSnapshot } from "@fleet-console/protocol/session-host";
 import type { SessionHostClient } from "./client.js";
 import type { HostedSessionLaunch, SessionCheckpoint } from "./contracts.js";
@@ -14,6 +15,14 @@ export class HostedExecution {
   private readonly commandTails = new Map<string, Promise<unknown>>();
   private readonly checkpointTails = new Map<string, Promise<void>>();
   private readonly observers = new Set<AbortController>();
+  private readonly failedSessions = new Set<string>();
+  /** A failed reattachment retires only this session, never its healthy peers or Console startup. */
+  failSession(key: string, error: unknown): void {
+    this.failedSessions.add(key);
+    this.releaseBindings(key);
+    this.failure("session_reattach_failed", error);
+    void this.command(key, "close").catch((cause) => this.failure("session_reattach_close_failed", cause));
+  }
   private readonly readerFlights = new Set<Promise<void>>();
   private detached = false;
   private updating = false;
@@ -36,10 +45,10 @@ export class HostedExecution {
     await Promise.all([...this.commandTails.values()]);
     for (const flush of this.flushers) await flush();
   }
-  private constructor(readonly client: SessionHostClient, private readonly onFailure: (kind: string, error: unknown) => void, readonly environment: NodeJS.ProcessEnv) {}
+  private constructor(readonly client: SessionHostClient, private readonly onFailure: (kind: string, error: unknown) => void, readonly environment: NodeJS.ProcessEnv, readonly catalog?: { owns(url: string): boolean; read(url: string, request: Parameters<McpCatalogReader>[0]): Promise<unknown> }) {}
 
-  static async attach(client: SessionHostClient, onFailure: (kind: string, error: unknown) => void, environment: NodeJS.ProcessEnv = process.env): Promise<HostedExecution> {
-    const execution = new HostedExecution(client, onFailure, environment);
+  static async attach(client: SessionHostClient, onFailure: (kind: string, error: unknown) => void, environment: NodeJS.ProcessEnv = process.env, catalog?: { owns(url: string): boolean; read(url: string, request: Parameters<McpCatalogReader>[0]): Promise<unknown> }): Promise<HostedExecution> {
+    const execution = new HostedExecution(client, onFailure, environment, catalog);
     for (const snapshot of (await client.listSessions()).sessions) {
       execution.sessions.set(snapshot.sessionKey, snapshot);
       const key = execution.logical(snapshot.sessionKey);
@@ -50,8 +59,11 @@ export class HostedExecution {
     return execution;
   }
   get isDetached(): boolean { return this.detached; }
-  inventory(): readonly SessionSnapshot[] { return [...this.aliases].map(([key, actual]) => ({ ...this.sessions.get(actual)!, sessionKey: key })); }
-  get(key: string): SessionSnapshot | undefined { return this.sessions.get(this.actual(key)); }
+  inventory(): readonly SessionSnapshot[] { return [...this.aliases].map(([key]) => ({ ...this.get(key)!, sessionKey: key })); }
+  get(key: string): SessionSnapshot | undefined {
+    const snapshot = this.sessions.get(this.actual(key));
+    return snapshot && this.failedSessions.has(key) ? { ...snapshot, state: "lost" } : snapshot;
+  }
   bind(port: string, handler: (call: SessionBusinessCall) => unknown | Promise<unknown>): () => void {
     if (this.ports.has(port)) throw new Error("session_business_port_conflict");
     this.ports.set(port, handler);
@@ -66,6 +78,7 @@ export class HostedExecution {
     });
   }
   async open(launch: HostedSessionLaunch): Promise<SessionSnapshot> {
+    if (this.failedSessions.has(launch.sessionKey)) throw new Error("session_reattach_failed");
     const previous = this.get(launch.sessionKey);
     if (previous?.state === "live") {
       if (previous.kind !== launch.kind) throw new Error("session_kind_conflict");
@@ -107,7 +120,7 @@ export class HostedExecution {
       }
       if (record.state === "failed") throw new Error(record.error ?? "session_command_failed");
       await this.refresh(key);
-      if (kind === "close") this.releaseBindings(key);
+      if (kind === "close") { this.releaseBindings(key); this.failedSessions.delete(key); }
       return record.value as T;
     });
     return work;

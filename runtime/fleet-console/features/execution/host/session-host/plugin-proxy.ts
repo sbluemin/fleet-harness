@@ -232,6 +232,7 @@ export async function createHostedPluginSession(deps: AgentSessionHostDeps, opti
     await Promise.allSettled(cleanup.map(async (dispose) => dispose()));
     // A rejected successor must not delete the still-running old runner's scratch tree.
     if (!descriptor) await releaseResources();
+    if (previous) execution.failSession(key, error);
     throw error;
   }
 }

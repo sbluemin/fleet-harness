@@ -116,10 +116,12 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
       for (const snapshot of host.inventory()) {
         if (snapshot.kind !== "pty" || snapshot.state !== "live" || !snapshot.sessionKey.startsWith("pty:")) continue;
         const id = snapshot.sessionKey.slice(4);
-        const original = await host.describe(snapshot.sessionKey);
-        if (original.kind !== "pty") throw new Error("terminal_host_kind_conflict");
-        const operation = ctx.host.operations.get(id);
-        await sessions.createSession({ sessionId: id, cwd: original.launch.cwd, ...(operation ? { operationId: id, operationType: operation.type, pluginId: operation.pluginId, theaterId: operation.theaterId } : { operationType: SHELL_OPERATION_TYPE, kind: "shell" as const }) });
+        try {
+          const original = await host.describe(snapshot.sessionKey);
+          if (original.kind !== "pty") throw new Error("terminal_host_kind_conflict");
+          const operation = ctx.host.operations.get(id);
+          await sessions.createSession({ sessionId: id, cwd: original.launch.cwd, ...(operation ? { operationId: id, operationType: operation.type, pluginId: operation.pluginId, theaterId: operation.theaterId } : { operationType: SHELL_OPERATION_TYPE, kind: "shell" as const }) });
+        } catch (error) { host.failSession(snapshot.sessionKey, error); }
       }
     },
     issueTicket: (context) => tickets.issue(context),

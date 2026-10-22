@@ -3754,8 +3754,10 @@ export class AgentChatRegistry {
       const sessionSeed = seed();
       const session = new AgentChatSession(operationId, sessionSeed, this.createSdk);
       const hosted = sessionSeed.hostedExecution?.get(`chat:${operationId}`);
-      if (hosted?.state === "live") await session.adoptHosted(hosted);
-      else await session.replayTranscript();
+      try {
+        if (hosted?.state === "live") await session.adoptHosted(hosted);
+        else await session.replayTranscript();
+      } catch (error) { session.detachHosted(); throw error; }
       this.sessions.set(operationId, session);
       return session;
     })().finally(() => {

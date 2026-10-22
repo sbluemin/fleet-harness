@@ -44,6 +44,7 @@ export {
 export {
   createServedMcpEndpoint,
   type McpHttpTransport,
+  type McpCatalogReader,
 } from "../mcp/served/jsonrpc.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,

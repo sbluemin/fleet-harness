@@ -120,6 +120,10 @@ describe("plugin host", () => {
       const one = first.issueSessionToken({ label: "op-1", cwd: "/first" })[0]!;
       const two = second.issueSessionToken({ label: "op-1", cwd: "/second" })[0]!;
       const ghost = first.issueSessionToken({ label: "ghost", cwd: "/ghost" })[0]!;
+      // 초기화 catalog port도 발급 token과 읽기 전용 방법을 검증한다. HTTP 업무 입장을 우회하지 않는다.
+      expect(await transport.readCatalog(endpoint.servers[0]!.url, { token: one.token, method: "tools/list" })).toMatchObject({ tools: [{ name: "project" }] });
+      await expect(transport.readCatalog(endpoint.servers[0]!.url, { token: "fake", method: "tools/list" })).rejects.toThrow("mcp_catalog_unauthorized");
+      await expect(transport.readCatalog(endpoint.servers[0]!.url, { token: one.token, method: "tools/call" as never })).rejects.toThrow("mcp_catalog_method_denied");
       const call = async (token: string, args: Record<string, unknown> = {}) => {
         const response = await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "project", arguments: args } }),
@@ -141,6 +145,7 @@ describe("plugin host", () => {
       expect(rejected).toEqual({ content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: [{ path: ["text"], code: "too_big", maximum: 50 }] }) }], isError: true });
       expect(JSON.stringify(rejected)).not.toContain(oversized);
       first.cleanup();
+      await expect(transport.readCatalog(endpoint.servers[0]!.url, { token: one.token, method: "tools/list" })).rejects.toThrow("mcp_catalog_unauthorized");
       expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1|cmd-a" }] } });
       for (const cleanup of cleanups) await cleanup();

@@ -2822,11 +2822,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     for (const snapshot of ctx.hostedExecution?.inventory() ?? []) {
       if (snapshot.kind !== "sdk" || snapshot.state !== "live" || !snapshot.sessionKey.startsWith("chat:")) continue;
       const id = snapshot.sessionKey.slice(5);
-      const operation = ctx.host.operations.get(id);
-      if (!operation || operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) throw new Error("session_operation_scope_missing");
-      const seed = await resolveChatSeed(operation);
-      if (!seed.ok) throw new Error(seed.error);
-      await ensureChatSession(id, seed);
+      try {
+        const operation = ctx.host.operations.get(id);
+        if (!operation || operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) throw new Error("session_operation_scope_missing");
+        const seed = await resolveChatSeed(operation);
+        if (!seed.ok) throw new Error(seed.error);
+        await ensureChatSession(id, seed);
+      } catch (error) { ctx.hostedExecution!.failSession(snapshot.sessionKey, error); }
     }
   }
 

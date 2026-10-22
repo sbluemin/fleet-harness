@@ -18,7 +18,12 @@ export interface HostedSdkBinding {
   readonly observer?: RemoteObserver;
 }
 
-async function mcp(server: ClaudeGatewayServedMcpServer, method: string, params?: unknown): Promise<unknown> {
+async function mcp(execution: HostedExecution, server: ClaudeGatewayServedMcpServer, method: string, params?: unknown): Promise<unknown> {
+  if (execution.catalog?.owns(server.url) && (method === "initialize" || method === "tools/list" || method === "resources/list")) {
+    const auth = server.headers?.find(({ name }) => name.toLowerCase() === "authorization")?.value;
+    if (!auth?.startsWith("Bearer ")) throw new Error("session_mcp_catalog_token_missing");
+    return execution.catalog.read(server.url, { token: auth.slice(7), method, params });
+  }
   const response = await fetch(server.url, { method: "POST", headers: { ...Object.fromEntries((server.headers ?? []).map(({ name, value }) => [name, value])), "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: randomUUID(), method, ...(params ? { params } : {}) }) });
   if (!response.ok) throw new Error(`session_mcp_backend_${response.status}`);
   const text = await response.text();
@@ -30,11 +35,11 @@ async function mcp(server: ClaudeGatewayServedMcpServer, method: string, params?
 /** Converts session-scoped served MCP endpoints to frozen runner fronts and replaceable business handlers. */
 export async function bindServedTools(execution: HostedExecution, key: string, servers: readonly ClaudeGatewayServedMcpServer[]): Promise<HostedToolGroup[]> {
   return Promise.all(servers.map(async (server) => {
-    const initialized = await mcp(server, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "fleet-session-host", version: "1" } }) as { instructions?: string; capabilities?: { resources?: Record<string, unknown> } };
-    const listed = await mcp(server, "tools/list") as { tools: HostedToolGroup["tools"] };
+    const initialized = await mcp(execution, server, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "fleet-session-host", version: "1" } }) as { instructions?: string; capabilities?: { resources?: Record<string, unknown> } };
+    const listed = await mcp(execution, server, "tools/list") as { tools: HostedToolGroup["tools"] };
     // Resources are optional in MCP. Tool-only Console endpoints reject resources/list.
     const resourceList = initialized.capabilities?.resources
-      ? await mcp(server, "resources/list") as { resources?: HostedToolGroup["resources"] }
+      ? await mcp(execution, server, "resources/list") as { resources?: HostedToolGroup["resources"] }
       : {};
     if (!Array.isArray(listed.tools)) throw new Error("session_mcp_schema_invalid");
     const port = `${key}:mcp:${server.name}`;
@@ -42,12 +47,12 @@ export async function bindServedTools(execution: HostedExecution, key: string, s
       if (call.sessionKey !== key) throw new Error("session_mcp_scope");
       const body = call.body as { server: string; tool: string; args: unknown; resource?: string };
       if (body.server === server.name && body.resource && resourceList.resources?.some((resource) => resource.uri === body.resource)) {
-        const read = await mcp(server, "resources/read", { uri: body.resource }) as { contents?: { text?: string }[] };
+        const read = await mcp(execution, server, "resources/read", { uri: body.resource }) as { contents?: { text?: string }[] };
         if (typeof read.contents?.[0]?.text !== "string") throw new Error("session_mcp_resource_invalid");
         return read.contents[0].text;
       }
       if (body.server !== server.name || !listed.tools.some((tool) => tool.name === body.tool)) throw new Error("session_mcp_tool_denied");
-      return mcp(server, "tools/call", { name: body.tool, arguments: body.args });
+      return mcp(execution, server, "tools/call", { name: body.tool, arguments: body.args });
     });
     return { name: server.name, port, tools: listed.tools, ...(initialized.instructions ? { instructions: initialized.instructions } : {}), ...(resourceList.resources?.length ? { resources: resourceList.resources } : {}) };
   }));

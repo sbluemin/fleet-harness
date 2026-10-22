@@ -826,8 +826,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         start(id, "restart", false);
         const runner = runners.get(id)!;
         clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
-        const session = await openSession(runner, "opened");
-        if (!session.attached) throw new Error("commodore_live_attach_missing");
+        let session: CommodoreSession;
+        try {
+          session = await openSession(runner, "opened");
+          if (!session.attached) throw new Error("commodore_live_attach_missing");
+        } catch (error) {
+          const code = failureCode(error, "session_reattach_failed");
+          record(runner, { kind: "error", code }); setPhase(runner, "error", code);
+          continue;
+        }
         const scheduleRestored = () => {
           if (disposed || runner.stopping) return;
           if (runner.pending.size) schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));

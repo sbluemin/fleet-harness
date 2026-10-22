@@ -2809,7 +2809,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
       lifecycle.lockAcquired(lockHandle.payload);
       if (deps.sessionHost) {
-        hostedExecution = await HostedExecution.attach(await deps.sessionHost.start(lockHandle.payload), recordFailure);
+        hostedExecution = await HostedExecution.attach(await deps.sessionHost.start(lockHandle.payload), recordFailure, process.env, mcpHttp.catalog);
         deps.sessionHost.subscribeBeforePrepare(async () => { hostedExecution!.setUpdating(true); await hostedExecution!.flush(); });
         deps.sessionHost.subscribeUpdateCancelled(() => hostedExecution!.setUpdating(false));
       }
@@ -2915,7 +2915,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await pluginHost.boot();
       await execution.reattach();
       await commodore.reattach();
-      await hostedExecution?.ready();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
       announceRestoredTheaters();
@@ -2930,6 +2929,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 인증서·페어링·공표 endpoint를 쓰는 원격 활성화는 lock 소유자만 한다.
       await startRemoteAccessGuarded(result.actualPort);
       lifecycle.activated();
+      // 이 ack가 보류된 업무 호출을 풀므로 HTTP 업무 경로가 ready가 된 뒤에만 보낸다.
+      await hostedExecution?.ready();
       // 실패 가능한 준비가 성공한 뒤에만 자동 정리를 시작한다. 그 전 실패의 cleanup은 이미 한 commit을 되돌리지 못한다.
       operationArchive.startRetention();
     } catch (error) {
