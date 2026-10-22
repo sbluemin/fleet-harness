@@ -1034,6 +1034,11 @@ class AgentChatSession {
     return this.pendingTurns > 0;
   }
 
+  /** 호스트 내부의 자원 사실이다. 관측 DTO나 플러그인 상태에는 노출하지 않는다. */
+  get hasChild(): boolean {
+    return this.session !== null || this.sessionFlight !== null || this.sdkFlight !== null;
+  }
+
   async replayTranscript(): Promise<void> {
     // 재생 경계는 과거가 0턴이어도 남긴다. 같은 서버 안에서 브라우저만 다시 연결하면 이 저널이
     // chat-born 세션의 첫 턴들을 되쓰는데, 경계가 없으면 과거 Answer를 새 도착으로 알릴 수 있다.
@@ -2590,7 +2595,13 @@ class AgentChatSession {
    */
   open(): void {
     if (this.disposed) return;
-    void this.ensureSession().catch(() => undefined);
+    void this.prepare().catch(() => undefined);
+  }
+
+  /** 명시적으로 SDK 주소를 준비한다. 실패는 muster 호출자에게 그대로 돌아간다. */
+  async prepare(): Promise<void> {
+    if (this.disposed) throw new Error("chat_session_disposed");
+    await this.ensureSession();
   }
 
   /**

@@ -139,8 +139,10 @@ const NEXT_ACTION: Record<string, string> = {
   not_launched_by_caller: "Only Operations this caller launched can be answered. Ask the person instead.",
   unsupported_ask: "Plan approvals and permission prompts are for the person. Do not answer them.",
   target_busy: "The Operation is working and was not launched by you. Do not close it; ask the person.",
-  not_dormant: "Only a dormant Operation can be resumed. A live one is already there; console_operation send reaches it.",
-  already_dormant: "The Operation is already dormant. Nothing to do; console_operation resume wakes it.",
+  not_dormant: "Only a dormant terminal Operation can be resumed. A live one is already there; console_operation send reaches it.",
+  chat_sleep_unsupported: "Chats do not sleep. Use Stop to interrupt the turn, or archive the conversation when you are done.",
+  chat_resume_unsupported: "Chats do not need resume. console_operation send continues the same conversation.",
+  already_dormant: "The terminal Operation is already dormant. Nothing to do; console_operation resume wakes it.",
   not_idle: "Only an idle Operation can be put to sleep. Wait for its turn and background work to end, or press Stop with console_operation stop first.",
   chat_not_active: "That Operation is not on the chat surface. console_operation switch moves it there.",
   not_resumable: "This Operation has no captured provider session, so ending its process would delete it rather than park it. console_operation close is the way to remove it.",
@@ -573,6 +575,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         return { action: "send", ...await control!.request(me, { kind: "send", operationId: op.id, text: call.text }) };
       }
       case "resume": {
+        if (op.payload.chatMode === true) throw new ConsoleControlError("chat_resume_unsupported");
         // 휴면 대상만 재개한다 — 살아 있는 채팅·터미널에 재개 경로를 태우면 진행 중 턴을 접고 표면을 갈아 끼운다.
         if (control?.observe(op.id)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
         gesture(ctx, "console_operation", `${op.title} 재개`, "press", opTarget(op.id));
@@ -581,6 +584,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         return { operationId: op.id, action: "resume", status: result.status };
       }
       case "sleep": {
+        if (op.payload.chatMode === true) throw new ConsoleControlError("chat_sleep_unsupported");
         // 유휴 청소기와 같은 문턱이다 — 도는 턴·입력 대기·백그라운드 작업이 있으면 프로세스째 죽이므로 거절한다.
         if (me.kind === "operation" && me.operationId === op.id) throw new ConsoleControlError("cannot_sleep_self");
         const obs = control?.observe(op.id);

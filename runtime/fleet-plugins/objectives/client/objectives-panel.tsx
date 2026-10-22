@@ -1419,6 +1419,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const memberStateWord = (state: string, outcome?: string) => {
     const isWorkingOrAwaiting = state === "running" || state === "awaiting";
     if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
+    if (state === "archived") return t("objectives.members.archived");
     if (state === "ended") return t("objectives.members.dormant");
     if (state === "running") return t("objectives.members.working");
     if (state === "awaiting") return t("objectives.awaiting.word");

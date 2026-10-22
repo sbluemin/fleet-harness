@@ -34,16 +34,15 @@ describe("agent dormant ticket guards", () => {
     expect(harness.responses.at(-1)?.status).toBe(200);
   });
 
-  it("creates a dormant Console launch without a process and starts fresh on first send with its saved settings", async () => {
+  it("creates a dormant terminal launch without a process and starts fresh on first send with its saved settings", async () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
+    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
     expect(harness.attach).not.toHaveBeenCalled();
-    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "chat", supportedActions: ["send", "resume"] });
+    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send", "resume"] });
     const operation = harness.operations.find((op) => op.id === id)!;
-    expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
-    expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true });
+    expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "terminal", started: false });
     expect(harness.operations).toHaveLength(1);
     await expect(control.request(caller, { kind: "send", operationId: id, text: "Do not wake", liveOnly: true })).rejects.toThrow("session_not_live");
     expect(control.observe(id)?.lifecycle).toBe("dormant");

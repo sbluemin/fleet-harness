@@ -54,7 +54,7 @@ export interface ConsoleActionInput {
   readonly disableAutoMemory?: boolean;
   /** @deprecated launch 전용 — 받아들이되 무시한다. Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 뺀다. */
   readonly disableUserQuestions?: boolean;
-  /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
+  /** launch 전용 — 자식 없이 등록한다. 터미널은 dormant, 채팅은 live/idle로 서며 첫 send가 자식을 연다. */
   readonly dormant?: boolean;
   /**
    * launch 전용 — 태어날 때부터 이 Operation 아래 선다(목표의 구성원 → 지휘관). 같은 Theater 의, 부모가 없는 Operation 이어야 한다.
@@ -163,7 +163,7 @@ export interface ConsoleActionResult {
 /**
  * 떠 있는 채팅 세션의 모델·강도 변경 결말. `now` 는 자식에 적용됐고, `scheduled` 는 도는 턴이 닫히는 경계에서 적용된다 —
  * 그 예약은 호스트 메모리에만 있고 세션 좌표(payload)는 적용될 때 고쳐진다. `unchanged` 는 이미 그 값이라 예약도 거뒀다는 뜻이다.
- * `chat_not_active` 는 떠 있는 채팅이 아니다(휴면·터미널·아직 세션 없음).
+ * 자식이 없는 채팅은 저장 좌표를 바꾸고 다음 기동에 적용한다. `chat_not_active` 는 터미널이거나 표면 전환 중이다.
  */
 export type ConsoleCoordinatesResult =
   | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }

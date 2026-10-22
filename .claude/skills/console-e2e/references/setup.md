@@ -177,9 +177,9 @@ Before cleanup, remove this run's control files and disable autonomy. Stop only 
 
 ### UI-only Operation fixtures
 
-For proposal/audit screens that need Operations but no model turn, prefer a dormant fixture in the **owned, stopped runtime's** `state.json`, using the current durable schema and restore tests as the source of truth. Never copy user state or overwrite a running server's state. Inspect `features/workspace/host/durable-state.ts` and the terminal restore contract for the current `payload.session` shape before authoring a fixture. Resume affordances require supported session identity; a fabricated identity is not proof that resume works. Verify the restored Operations through the API and UI without launching a provider.
+For proposal/audit screens that need Operations but no model turn, prefer a durable fixture in the **owned, stopped runtime's** `state.json` (restored chats are live/idle without an SDK child; restored terminals are dormant), using the current durable schema and restore tests as the source of truth. Never copy user state or overwrite a running server's state. Inspect `features/workspace/host/durable-state.ts` and the terminal restore contract for the current `payload.session` shape before authoring a fixture. Resume affordances require supported session identity; a fabricated identity is not proof that resume works. Verify the restored Operations through the API and UI without launching a provider.
 
-Do not assume restored Operations are expanded or visible. Dormant fixtures may restore with no panel open or inside a collapsed group or Theater, and opening a dormant Operation from the sidebar resumes it; inspect the actual presentation, open/arrange it through real UI actions, and confirm the intended cards/tiles in screenshots before a visual sweep. If the scenario truly requires a live terminal body, use the owned Console's Shell surface (toolbar **Shell**) or a [fake Claude](#no-cost-fake-claude) terminal Operation and the current layout controls rather than launching an unnecessary paid agent. A missing fixture or hidden tile is not product-defect evidence.
+Do not assume restored Operations are expanded or visible. Fixtures may restore with no panel open or inside a collapsed group or Theater. Opening a dormant terminal from the sidebar resumes it; a chat simply shows the conversation without opening an SDK child; inspect the actual presentation, open/arrange it through real UI actions, and confirm the intended cards/tiles in screenshots before a visual sweep. If the scenario truly requires a live terminal body, use the owned Console's Shell surface (toolbar **Shell**) or a [fake Claude](#no-cost-fake-claude) terminal Operation and the current layout controls rather than launching an unnecessary paid agent. A missing fixture or hidden tile is not product-defect evidence.
 
 ### Objective member child-session fixture
 
@@ -200,6 +200,8 @@ For an Objectives roster with existing member sessions but no model turn, seed *
       "pluginId": null,
       "payload": {
         "cwd": "<absolute-worktree>",
+        "chatMode": true,
+        "chatBorn": true,
         "session": {
           "harness": "claude-code",
           "sessionName": "fixture-cmdr"
@@ -210,6 +212,8 @@ For an Objectives roster with existing member sessions but no model turn, seed *
           "id": "fixture-member",
           "payload": {
             "cwd": "<absolute-worktree>",
+            "chatMode": true,
+            "chatBorn": true,
             "session": {
               "harness": "claude-code",
               "sessionName": "fixture-member-1"
@@ -236,13 +240,13 @@ The generated objective record lives under the **isolated Console slot's** `work
 }
 ```
 
-Restart the same owned runtime. Read `POST /plugins/objectives/state` with `{ "theaterId": "<registered-theater-id>" }` through the authorized local page/API and confirm `objectives[].members[].sessionName` is `fixture-member-1` for that objective/member. Confirm the roster/session surface in the UI too. Top-level Operation lists contain the commander only; the member is derived from `childSessions`. Do not click resume to make the fixture visible: these restored sessions are dormant, and the names above are display/session-routing names, **not** provider resume identities.
+Restart the same owned runtime. Read `POST /plugins/objectives/state` with `{ "theaterId": "<registered-theater-id>" }` through the authorized local page/API and confirm `objectives[].members[].sessionName` is `fixture-member-1` for that objective/member. Confirm the roster/session surface in the UI too. Top-level Operation lists contain the commander only; the member is derived from `childSessions`. Do not click resume to make the fixture visible: restored chats are already live/idle without SDK children, while restored terminals remain dormant. The names above are display/session-routing names, **not** provider resume identities.
 
-This fixture proves identity projection and dormant presentation, not a live member's idle/working/permission-pending state. If a UI-only scenario needs one of those API snapshots, use the [pre-navigation fetch wrapper](agent-browser.md#mock-page-api-responses-before-navigation), record the mocked endpoint/fields, and do not describe it as live-agent verification. Recheck the current durable reader in `runtime/fleet-console/features/workspace/host/durable-state.ts`, the member projection in `runtime/fleet-plugins/objectives/server/store.ts`, and the existing child-session restore example in `runtime/fleet-console/tests/server.test.ts` when these contracts change.
+This fixture proves identity projection and restored presentation (chat live/idle, terminal dormant), not a running SDK member's working/permission-pending state. If a UI-only scenario needs one of those API snapshots, use the [pre-navigation fetch wrapper](agent-browser.md#mock-page-api-responses-before-navigation), record the mocked endpoint/fields, and do not describe it as live-agent verification. Recheck the current durable reader in `runtime/fleet-console/features/workspace/host/durable-state.ts`, the member projection in `runtime/fleet-plugins/objectives/server/store.ts`, and the existing child-session restore example in `runtime/fleet-console/tests/server.test.ts` when these contracts change.
 
 **Time-dependent state has no clock hook in a running Console.** `now` is injectable only through the Objectives store and supervisor constructor options that contract tests use. Do not shift the clock with a `Date.now` preload or `libfaketime`: timers keep the monotonic clock, and the offset also moves stored timestamps and reaches child processes.
 
-The 30-minute all-resting stall counts from the objective's `boardUpdatedAt` (epoch ms, falling back to `createdAt`). `stalledObjectives` in `runtime/fleet-plugins/objectives/server/board-state.ts` owns that branch: a commenced objective with an open mission, no decision or criteria hold, and every observed session dormant or idle. The roster fixture above is neither commenced nor given a mission, so it never stalls. Use an objective that is commenced with an open mission and whose sessions restart dormant, such as a fake Commander that [survives a restart](#no-cost-fake-claude), stop its owned runtime, set `boardUpdatedAt` to more than 30 minutes ago, and restart. That recipe does not exercise the commander-rest branch below. The stall shows in the Objectives inbox view and the board's cluster note, not in the `/plugins/objectives/state` response. The next board write clears it.
+The 30-minute all-resting stall counts from the objective's `boardUpdatedAt` (epoch ms, falling back to `createdAt`). `stalledObjectives` in `runtime/fleet-plugins/objectives/server/board-state.ts` owns that branch: a commenced objective with an open mission, no decision or criteria hold, and every observed session dormant or idle. The roster fixture above is neither commenced nor given a mission, so it never stalls. Use an objective that is commenced with an open mission and whose sessions restart resting (chat idle or terminal dormant), such as a fake Commander that [survives a restart](#no-cost-fake-claude), stop its owned runtime, set `boardUpdatedAt` to more than 30 minutes ago, and restart. That recipe does not exercise the commander-rest branch below. The stall shows in the Objectives inbox view and the board's cluster note, not in the `/plugins/objectives/state` response. The next board write clears it.
 
 The commander-rest stall (`COMMANDER_REST_MS`, 15 minutes) is not `boardUpdatedAt` and is not durable. `restingSince` lives only in the process-local rest clock. A stopped runtime, a rewritten `boardUpdatedAt`, or a dormant member never enters it: one member must be live and `running` or `background`, and the commander must be observed resting for 15 minutes in that same process. The supervisor samples every `STALL_CHECK_MS` (5 minutes) and wakes once, so the wake lands on the first tick at which the observed rest is at least 15 minutes (15–20 minutes after that observation; later if nothing observed the rest before the first tick). Do not shorten those constants to make the wait fit a run. A fixture that only holds a member turn open is not a measurement of the product constant.
 

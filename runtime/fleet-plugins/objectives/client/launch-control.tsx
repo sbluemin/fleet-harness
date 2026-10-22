@@ -371,6 +371,7 @@ export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): 
  */
 export function memberActivityWord(state: string, t: Translate<ObjectiveMessageKey>): string | null {
   if (state === "closed") return null;
+  if (state === "archived") return t("objectives.members.archived");
   if (state === "ended") return t("objectives.members.dormant");
   if (state === "awaiting") return t("objectives.awaiting.word");
   return state === "running" ? t("objectives.members.working") : t("objectives.members.idle");

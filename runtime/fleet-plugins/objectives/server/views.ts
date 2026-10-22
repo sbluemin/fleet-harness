@@ -66,7 +66,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const reference = ctx.host.operations.describe?.(operationId);
     const node = reference?.operation ?? ctx.host.operations.get(operationId);
     if (!node) return { operationId, title: null, state: "closed" };
-    if (reference?.location === "archived") return { operationId, title: node.title, state: "dormant" };
+    if (reference?.location === "archived") return { operationId, title: node.title, state: "archived" };
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
     const state = observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown";
     const outcome = deriveFailedOutcome(observation);

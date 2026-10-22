@@ -9,13 +9,13 @@ export const OPERATION_ARCHIVE_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/operations/:operationId/describe", summary: "Read Operation metadata in either location.", category: "Operations", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/operations/:operationId/archive", summary: "Archive an Operation and its descendants without purging data.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/operations/:operationId/access", summary: "Restore the complete Cluster for explicit use.", category: "Operations", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/operations/:operationId/restore", summary: "Restore the complete Cluster dormant.", category: "Operations", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/operations/:operationId/restore", summary: "Restore the complete Cluster without starting processes; chats are live/idle and terminals are dormant.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/operations/archive/undo", summary: "Undo the matching archive receipt.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/operations/archive/:operationId/purge-preview", summary: "Read the exact archived deletion set and revision.", category: "Operations", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/operations/archive/purge", summary: "Schedule the confirmed archived set for deletion after a 10-second undo window.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/operations/archive/purge-preview", summary: "Read the exact archived batch and revision.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/operations/archive/purge-undo", summary: "Cancel a pending archive deletion.", category: "Operations", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/operations/archive/restore", summary: "Restore the confirmed archived batch dormant, atomically.", category: "Operations", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/operations/archive/restore", summary: "Restore the confirmed archived batch atomically, without starting processes.", category: "Operations", gate: "origin-write", transport: "http" },
 ];
 
 export function createOperationArchiveRouter(deps: {

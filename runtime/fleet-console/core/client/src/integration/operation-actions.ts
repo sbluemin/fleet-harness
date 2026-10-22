@@ -60,6 +60,7 @@ export function resumeOperationInPlace(
 ): void {
   if (getState().operationRuntimeHydration === "pending") return;
   const operation = operations.find((candidate) => candidate.id === operationId);
+  if (operation?.payload.chatMode === true) { focusFallback(operationId); return; }
   const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
   if (plugin?.resumeOperation) {
     void Promise.resolve(plugin.resumeOperation(operationId))

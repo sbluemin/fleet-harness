@@ -36,7 +36,7 @@ export function resolveOperationRuntimeActivity(
 }
 
 function isRestoredAbsentOperation(operation: OperationNode): boolean {
-  return operation.payload?.restoredDormant === true || operation.payload?.resumeAvailable === true;
+  return operation.payload?.chatMode !== true && (operation.payload?.restoredDormant === true || operation.payload?.resumeAvailable === true);
 }
 
 // 런타임 상태 → 표시 어휘. 프로세스 없음은 활동값을 가지지 않으므로 여기서만 두 축이 만난다.

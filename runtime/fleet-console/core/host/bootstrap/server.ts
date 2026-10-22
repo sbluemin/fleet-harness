@@ -1228,6 +1228,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
         const observation = consoleControl.observe(operationId);
         if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
+        if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
         if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
         // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
         const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
@@ -1252,6 +1253,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
       setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
       coordinates: (operationId) => consoleControl.readCoordinates(operationId),
+      prepareChat: (operationId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, operationId),
+      setUnstartedPreset: (operationId, input) => consoleControl.unstartedPreset({ kind: "plugin", pluginId }, operationId, input),
       advertisedTools: (operationId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, operationId),
       // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
       transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),

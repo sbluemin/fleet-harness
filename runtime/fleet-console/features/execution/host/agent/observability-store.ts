@@ -287,6 +287,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function updateTerminalSessionStatus(sessionId: string, status: AgentSessionStatus): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
+    // PTY의 늦은 종료가 채팅 어댑터의 상태나 진행 중 활동을 덮지 않는다.
+    if (session.chatActive === true) return toTerminalSessionInfo(session);
     session.status = status;
     if (status === "starting" || status === "dormant") {
       delete session.modelActivity;
@@ -312,7 +314,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function setTerminalSessionTurnState(sessionId: string, turnState: AgentTurnState): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
-    if (!session) return null;
+    if (!session || session.chatActive === true) return null;
     session.turnState = turnState;
     delete session.modelActivity;
     delete session.attentionPending;
@@ -336,7 +338,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (!session) return null;
     // dormant/closed/error 세션에 뒤늦게 도착한 best-effort hook은 무시한다 — 라이프사이클 정리
     // (clearTerminalSessionBackgroundPending) 뒤에 상태·타이머를 되살리면 resume 후 거짓 배지가 남는다.
-    if (session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
+    if (session.chatActive === true || session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
     if (!pending) {
       // 꺼질 때는 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 false→false notify를 남기지 않는다.
       // 기억은 그 정리 뒤에 심는다 — pending이 꺼졌다고 stop 보고까지 잊으면 상주 항목이 다음 턴에 되살아난다.
@@ -358,7 +360,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function setTerminalSessionModelActivity(sessionId: string, modelActivity: AgentModelActivity): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
-    if (!session) return null;
+    if (!session || session.chatActive === true) return null;
     const clearsAttention = modelActivity === "working" && session.attentionPending === true;
     if (session.modelActivity === modelActivity && !clearsAttention) return null;
     session.modelActivity = modelActivity;
@@ -374,8 +376,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       removeWorkspaceIndexes(workspace);
       workspacesByCliRunId.delete(sessionId);
     }
-    session.status = "dormant";
     session.session = providerSession;
+    if (session.chatActive === true) return toTerminalSessionInfo(session);
+    session.status = "dormant";
     delete session.modelActivity;
     delete session.step;
     clearTerminalSessionBackgroundPending(session);
@@ -395,8 +398,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     if ((session.chatActive === true) === active) return null;
-    if (active) session.chatActive = true;
-    else delete session.chatActive;
+    if (active) {
+      session.chatActive = true;
+      session.status = "registered";
+    } else {
+      delete session.chatActive;
+      session.status = "dormant";
+    }
     // 표면이 바뀌면 앞 표면이 남긴 값은 더 이상 아무것도 말하지 않는다. 지우지 않으면 인수
     // 직후 첫 프레임이 옛 표면의 마지막 상태로 그려진다.
     delete session.modelActivity;
@@ -450,9 +458,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * 채팅 표면의 백그라운드 대기 보고. 필드는 PTY 쪽과 같은 하나지만, 그 setter를 그대로 쓸 수 없는
    * 이유가 둘이다.
    *
-   * 하나는 라이프사이클이다. 채팅이 인수한 세션은 PTY가 없어 status가 dormant로 남는다 — 채팅에서
-   * 태어난 Operation과 복원된 Operation이 모두 그렇다. 그 status로 보고를 막으면 이 축은 채팅에서
-   * 영영 서지 못한다. 활동 해석도 chatActive를 status보다 앞세우므로, 여기서도 문지기는 chatActive다.
+   * 하나는 소유권이다. 채팅에서 태어나거나 복원된 세션은 자식이 없어도 registered/live다.
+   * PTY의 훅은 그 활동축에 쓸 수 없고, 여기서는 chatActive가 채팅 보고의 소유권을 확인한다.
    *
    * 다른 하나는 TTL이다. hook 전달은 best-effort라 잃어버린 stop 하나가 배지를 영영 켜 둘 수 있어 PTY
    * 쪽은 시한을 둔다. 채팅의 원장은 세션 스트림 자체이고 세션이 사라지면 반드시 걷히므로, 여기에 시한을

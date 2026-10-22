@@ -83,8 +83,7 @@
   overflow-y: auto;
   /* 위쪽 34px은 떠 있던 전환 칩 줄의 몫이었다 — 그 줄이 캡션으로 옮겨 간 지금, 로그는 패널
      상단에서 바로 시작한다. 아래 45px도 같은 길을 갔다: 그 자리를 상주로 쥐던 잡 스트립이
-     컴포저 표시줄의 가운데 칸으로 내려가면서, 남은 부유물은 Follow 칩과 Ctrl+C 안내 둘뿐이고
-     **둘 다 일시적**이다. Follow는 바닥을 놓친 동안에만 서고 바닥에 닿는 순간 사라지므로
+     컴포저 표시줄의 가운데 칸으로 내려가면서, 남은 부유물은 일시적인 Follow 칩뿐이다. Follow는 바닥을 놓친 동안에만 서고 바닥에 닿는 순간 사라지므로
      마지막 줄이 그 뒤에 갇히는 일이 없다 — 갇힘을 막던 여백이 이제는 아무도 서지 않는 45px의
      빈 띠로만 남아, 마지막 답과 그 답에 이어 쓰는 자리를 메신저 한 화면보다 멀리 떼어 놓았다.
      바닥 여백은 읽는 여백 하나로 돌아간다(위와 같은 값). 가로는 늘리지 않는다 — 모든 줄의
@@ -2395,42 +2394,6 @@
    로그는 더 이상 이 칩 몫의 바닥 띠를 비워 두지 않는다 — 칩은 바닥을 놓친 동안에만 서고
    바닥에 닿으면 사라지는 일시적 문이라, 서 있는 동안 마지막 줄 위에 겹쳐도 그 줄은 한 번의
    스크롤로 칩과 함께 풀려난다. 상주하던 스트립이었다면 같은 겹침이 영구 가림이었다. */
-/* Ctrl+C 한 번이 세우는 안내. Follow 칩과 같은 부유층·같은 자리를 쓴다 — 대화를 밀어내지
-   않고 컴포저 바로 위에 서서, 두 번째 누름이 무엇을 할지 두 줄로 말한다. 버튼이 없는 이유는
-   이것이 컨트롤이 아니라 지금 키보드가 어떤 상태인지에 대한 안내이기 때문이다. */
-.agent-chat-sleep-hint {
-  position: absolute;
-  left: 50%;
-  bottom: var(--space-3);
-  z-index: 4;
-  transform: translateX(-50%);
-  /* 로그가 자기 바닥을 부유물에 내주지 않게 된 뒤로 이 안내는 마지막 답 위에 겹친다 — 겹침 자체는
-     받아들인다(밀어내지 않는 것이 이 안내의 요점이다). 겹친 동안 아래의 글과 링크까지 죽는 것은
-     별개이고, 그건 받아들이지 않는다: 이것은 컨트롤이 아니라 문장이므로 포인터를 통과시킨다. */
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: min(92%, 34rem);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  border: 1px solid color-mix(in oklab, var(--warn) 45%, var(--hairline-strong));
-  box-shadow: var(--shadow-soft);
-  font-family: var(--font-ui);
-  text-align: center;
-}
-
-.agent-chat-sleep-hint-line {
-  font-size: var(--t-xs);
-  color: var(--warn-ink);
-}
-
-.agent-chat-sleep-hint-fine {
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-}
-
 .agent-chat-follow {
   position: absolute;
   left: 50%;

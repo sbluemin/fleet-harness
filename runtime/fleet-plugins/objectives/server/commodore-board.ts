@@ -288,7 +288,7 @@ function waitingReasons(objective: Objective, observe: BoardObserver | undefined
 /** 지휘관이 일하는 중인가(턴 또는 백그라운드 작업) — 관측이 없으면 아니다. */
 function commanderWorking(observe: BoardObserver | undefined, objectiveId: string): boolean {
   const observation = observe?.(objectiveId);
-  return !!observation && observation.lifecycle !== "dormant" && (observation.activity === "running" || observation.activity === "background");
+  return !!observation && observation.lifecycle === "live" && (observation.activity === "running" || observation.activity === "background");
 }
 
 /**
