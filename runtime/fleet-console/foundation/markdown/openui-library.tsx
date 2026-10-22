@@ -277,7 +277,8 @@ function runtimeAction(value: unknown, label: unknown): SafeAction | null {
   if (value == null) return sourceAction(value, label);
   const plan = z.object({ steps: z.tuple([z.union([
     z.object({ type: z.literal("open_url"), url: z.string() }).strict(),
-    z.object({ type: z.literal("continue_conversation"), message: z.string() }).strict(),
+    // 업스트림은 context를 생략해도 undefined 키를 붙인다. 정의된 숨은 값은 여전히 거절한다.
+    z.object({ type: z.literal("continue_conversation"), message: z.string(), context: z.undefined().optional() }).strict(),
   ])]) }).strict().safeParse(value);
   if (!plan.success) return null;
   const step = plan.data.steps[0];

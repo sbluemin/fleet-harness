@@ -1076,6 +1076,9 @@ code.hljs {
 
 /* 태그 warn 잉크는 밝은 테마에서도 작은 글자의 대비를 확보하도록 본문 잉크를 섞는다. 틴트 바탕은 원래 신호 토큰이다. */
 .openui-tag.is-warn { color: color-mix(in oklch, var(--tone) 75%, var(--text-primary)); }
+/* 라이트의 작은 tone 글자는 태그 틴트·표 줄무늬 위에서도 읽히도록 잉크를 섞는다. 다크의 기존 색은 보존한다. */
+:is(:root[data-theme="light"]:not([data-view-mode="mobile"]), :root[data-view-mode="mobile"][data-mobile-scheme="light"]) .openui :is(.openui-tag, .openui-fact-value, .openui-delta-after):is(.is-good, .is-warn, .is-bad),
+:is(:root[data-theme="light"]:not([data-view-mode="mobile"]), :root[data-view-mode="mobile"][data-mobile-scheme="light"]) .openui .openui-stat:is(.is-good, .is-warn, .is-bad) .openui-stat-value { color: color-mix(in oklch, var(--tone) 75%, var(--text-primary)); }
 .openui-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .markdown-body .openui table.openui-table { display: table; width: 100%; max-width: none; margin: 0; border-radius: 0; background: none; }
 .markdown-body .openui .openui-table th { background: none; }

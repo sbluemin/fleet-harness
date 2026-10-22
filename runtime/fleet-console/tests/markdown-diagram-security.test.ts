@@ -352,17 +352,19 @@ describe("openui hydrator containment", () => {
   it("lets answer buttons reach the reply port only through a person's click on a finished block", async () => {
     const reply = vi.fn();
     const choices = 'c = Choices([Choice("A · 시안", "A로 가 주세요"), Choice("<b>B</b>", "<img src=x onerror=alert(1)>")])';
-    const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"), { reply });
+    const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c, Button("요약 요청", @ToAssistant("요약해 주세요"))])', choices, "```"].join("\n"), { reply });
 
     expect(finished!.dataset.openuiState).toBe("rendered");
     const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-button")];
     expect(buttons.map((button) => [button.textContent, button.title, button.disabled])).toEqual([
       ["A · 시안", "A로 가 주세요", false],
       ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
+      ["요약 요청", "요약해 주세요", false],
     ]);
     expect(finished!.querySelector("b, img")).toBeNull();
     buttons[0]!.click();
     buttons[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    buttons[2]!.click();
     expect(reply).not.toHaveBeenCalled();
 
     // 입력창이 없는 자리(포트 없음)는 정적 칩, 흐르는 중인 블록은 잠긴다.
@@ -383,6 +385,8 @@ describe("openui hydrator containment", () => {
       ["```openui-lang", `root = Card("x", [Choices([Choice("A", "A", "${"가".repeat(121)}"), Choice("B", "B")])])`, "```"].join("\n"),
       ["```openui-lang", `root = Card("x", [Choices([Choice("긴 답", "${"가".repeat(201)}"), Choice("B", "B")])])`, "```"].join("\n"),
     ].join("\n\n"));
+    const [hidden] = await hydrated(['```openui-lang', 'root = Card("x", [Button("요약", @ToAssistant("요약해 주세요", "숨은 문맥"))])', '```'].join("\n"), { reply });
+    expect(hidden!.dataset.openuiState).toBe("fallback");
     expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback", "fallback", "fallback"]);
     expect(reply).not.toHaveBeenCalled();
 
