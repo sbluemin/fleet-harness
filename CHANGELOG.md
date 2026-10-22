@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.253.0] - 2026-10-22
+
+### fleet-console
+
+#### Added
+- The Commodore and Commanders can now answer with small visual summaries such as metric tiles, status lists, progress bars, detail lists, highlighted notes, bar and trend charts, timelines, before-and-after comparisons, tags and tables drawn right in the conversation; anything that cannot be drawn stays a readable code block.
+- When the Commodore or a Commander asks you to pick a next step, tapping one of its answer buttons, decision options or short forms sends that answer right away as your message, once per card.
+- Their answers can also include link buttons that open a web page or jump to an objective or mission, showing where each one leads before you tap it.
+
+#### Changed
+- Commodores start fresh conversations after Console or autonomy restarts, avoiding first-turn usage spikes from reloading the previous conversation while keeping recent-activity summaries and memory.
+- Continue chat conversations with your next message, including after restarting Console, without a sleep or resume step. Terminal sessions keep sleep and resume; stop a chat turn with Esc or Stop instead of pressing Ctrl+C twice.
+
+#### Removed
+- Removed the Skills panel for browsing and installing skills. Skills you already installed stay where they are and keep working in agent sessions; Console clears only the skills tool it had downloaded for the panel.
+
 ## [1.252.0] - 2026-10-22
 
 ### fleet-console
