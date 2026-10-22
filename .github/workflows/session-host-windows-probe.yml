@@ -1,0 +1,45 @@
+name: Session Host Windows Probe
+
+# Temporary, branch-only probe for objective 86fc3ff0 (session host kept across Console updates).
+# The person asked for no canary merge, and Windows CI was removed from the permanent suite on 2026-10-16,
+# so this file lives only on feat/session-keep. Delete it before this branch is ever proposed for canary.
+on:
+  push:
+    branches:
+      - feat/session-keep
+
+permissions:
+  contents: read
+
+jobs:
+  session-host-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @fleet-console/agent-runtime build
+      - run: pnpm --filter @dotobokuri/fleet-console build
+      # -t would pass with zero matching tests, so the step also requires at least two passed tests in the summary.
+      - name: Session host representative cases (named pipe, job containment, same runner PID)
+        run: |
+          set -o pipefail
+          pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts -t "Console session-host lifecycle integration" 2>&1 | tee session-host.log
+          grep -E "Tests +[0-9]+ passed" session-host.log
+          passed=$(grep -oE "Tests +[0-9]+ passed" session-host.log | grep -oE "[0-9]+" | head -1)
+          test "${passed:-0}" -ge 2
+      # Informational: the whole lifecycle integration file on Windows, without gating the probe.
+      - name: Full lifecycle integration file (informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: pnpm --filter @dotobokuri/fleet-console exec vitest run tests/console-lifecycle.integration.test.ts
