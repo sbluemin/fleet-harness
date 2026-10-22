@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createWindowsSessionPlatform } from "./windows-session-platform.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConsoleStopReason } from "@fleet-console/protocol/lifecycle";
@@ -14,7 +15,7 @@ export class ConsoleSessionHostOwner {
   private terminateRequested = false;
   constructor(private readonly dataDir: string, private readonly packageRoot = ownPackageRoot()) {}
   start(identity: SessionOwner): Promise<SessionHostClient> {
-    return this.attached ??= SessionHostClient.attach(this.dataDir, this.packageRoot, identity).then((client) => {
+    return this.attached ??= SessionHostClient.attach(this.dataDir, this.packageRoot, identity, process.env, createWindowsSessionPlatform()).then((client) => {
       if (this.terminateRequested) this.requestStop("signal");
       return client;
     });

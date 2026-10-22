@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createCipheriv, createDecipheriv } from "node:crypto";
 import { Socket } from "node:net";
 import { SESSION_FRAME_MAX_BYTES, SESSION_RPC_TIMEOUT_MS } from "@fleet-console/protocol/session-host";
 
@@ -10,6 +10,15 @@ export class SessionRpcPeer {
   private closed = false;
   private readonly pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> | undefined }>();
   private readonly closeListeners = new Set<() => void>();
+  private sendKey: Buffer | null = null;
+  private receiveKey: Buffer | null = null;
+  private sendSequence = 0;
+  private receiveSequence = 0;
+  /** 인증 완료 후에는 방향별 AEAD key로 business 결과와 keeper ref도 보호한다. */
+  secure(sendKey: Buffer, receiveKey: Buffer): void {
+    if (this.sendKey || this.receiveKey) throw new Error("session_rpc_already_secure");
+    this.sendKey = sendKey; this.receiveKey = receiveKey;
+  }
   private handler: RpcHandler = () => { throw new Error("session_rpc_unbound"); };
   constructor(readonly socket: Socket) {
     socket.on("data", (chunk: Buffer) => {
@@ -52,11 +61,30 @@ export class SessionRpcPeer {
     this.closeListeners.clear();
   }
   private send(frame: Frame): void {
-    const bytes = Buffer.from(JSON.stringify(frame) + "\n");
-    if (this.closed || bytes.length > SESSION_FRAME_MAX_BYTES || this.socket.writableLength > SESSION_FRAME_MAX_BYTES) throw new Error("session_rpc_frame_limit");
+    let serialized = JSON.stringify(frame);
+    if (this.sendKey) {
+      if (this.sendSequence >= 0xffffffff) { this.close(); throw new Error("session_rpc_key_limit"); }
+      const sequence = ++this.sendSequence;
+      const nonce = Buffer.alloc(12); nonce.writeBigUInt64BE(BigInt(sequence), 4);
+      const cipher = createCipheriv("aes-256-gcm", this.sendKey, nonce); cipher.setAAD(Buffer.from(String(sequence)));
+      const data = Buffer.concat([cipher.update(serialized, "utf8"), cipher.final()]);
+      serialized = JSON.stringify({ secure: true, sequence, tag: cipher.getAuthTag().toString("hex"), data: data.toString("base64") });
+    }
+    const bytes = Buffer.from(serialized + "\n");
+    if (this.closed || bytes.length > SESSION_FRAME_MAX_BYTES || this.socket.writableLength > SESSION_FRAME_MAX_BYTES) { this.close(); throw new Error("session_rpc_frame_limit"); }
     this.socket.write(bytes);
   }
   private async receive(frame: Frame): Promise<void> {
+    try {
+      if (this.receiveKey) {
+        const envelope = frame as unknown as { secure: boolean; sequence: number; tag: string; data: string };
+        if (!envelope || envelope.secure !== true || !Number.isSafeInteger(envelope.sequence) || envelope.sequence > 0xffffffff || envelope.sequence !== this.receiveSequence + 1 || !/^[a-f0-9]{32}$/.test(envelope.tag) || typeof envelope.data !== "string") throw new Error("invalid_session_envelope");
+        const nonce = Buffer.alloc(12); nonce.writeBigUInt64BE(BigInt(envelope.sequence), 4);
+        const cipher = createDecipheriv("aes-256-gcm", this.receiveKey, nonce); cipher.setAAD(Buffer.from(String(envelope.sequence))); cipher.setAuthTag(Buffer.from(envelope.tag, "hex"));
+        frame = JSON.parse(Buffer.concat([cipher.update(Buffer.from(envelope.data, "base64")), cipher.final()]).toString("utf8")) as Frame;
+        this.receiveSequence = envelope.sequence;
+      }
+    } catch { this.close(); return; }
     if (!frame || typeof frame !== "object") { this.close(); return; }
     if ("reply" in frame) {
       const pending = this.pending.get(frame.reply);

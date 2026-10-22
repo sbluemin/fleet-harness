@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { performance } from "node:perf_hooks";
 import type { ChildProcess } from "node:child_process";
 import { createOwnedProcessRegistry, isPidAlive, observeConsoleLockFile, startConsoleReaper, type ConsoleReaperLink, type ProcessContainmentPort } from "@fleet-console/lifecycle";
-import { SessionRpcPeer, privateSessionDirectory, publishSessionHost, removeOwnSessionManifest, sessionHostPaths, withSessionGenerationLock, activateSessionGeneration, retireSessionGeneration, collectSessionGenerations } from "@fleet-console/lifecycle/session-host";
+import { SessionRpcPeer, privateSessionDirectory, publishSessionHost, removeOwnSessionManifest, sessionHostPaths, withSessionGenerationLock, activateSessionGeneration, retireSessionGeneration, collectSessionGenerations, sessionNonce, sessionProof, sessionChannelKeys, verifySessionProof, validSessionNonce, type SessionAuthChallenge, type SessionHostPlatform } from "@fleet-console/lifecycle/session-host";
 import { OWNED_GROUP_TERM_GRACE_MS, CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
 import { assertSessionKey, SESSION_HOST_POLL_MS, SESSION_RPC_TIMEOUT_MS, SESSION_HOST_WIRE, SESSION_RUNNER_WIRE, SESSION_BUSINESS_MAX, SESSION_COMMAND_MAX, SESSION_HOST_START_MS, SESSION_KEEPER_LOSS_MS, SESSION_OWNER_LOSS_MS, SESSION_REPLAY_MAX_BYTES, SESSION_UPDATE_MAX_MS, type SessionBusinessCall, type SessionCommand, type SessionCommandRecord, type SessionGeneration, type SessionHostEvent, type SessionHostManifest, type SessionHostSnapshot, type SessionOwner, type SessionReplay, type SessionSnapshot, type SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import type { HostedSessionLaunch, SessionCheckpoint } from "./contracts.js";
@@ -40,12 +40,17 @@ export interface SessionBrokerOptions {
   readonly dataDir: string;
   readonly generation: SessionGeneration;
   readonly containment?: ProcessContainmentPort;
+  readonly platform?: SessionHostPlatform;
   readonly onFailure?: (kind: string, error: unknown) => void;
 }
 const equal = (a: unknown, b: string) => typeof a === "string" && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /** One slot's ownership policy. Actual feature execution remains in versioned runners. */
 export async function runSessionBroker(options: SessionBrokerOptions): Promise<void> {
+  if (process.platform === "win32") {
+    if (!options.platform || !options.containment) throw new Error("session_windows_platform_required");
+    options.platform.assertIndependent();
+  }
   const paths = sessionHostPaths(options.dataDir);
   privateSessionDirectory(paths.dir);
   if (process.platform !== "win32") privateSessionDirectory(paths.sockets);
@@ -63,7 +68,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
   const diagnostic = (kind: string, generation: string | null, reason: string) => {
     try { fs.appendFileSync(path.join(paths.dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind, generation, reason }) + "\n", { mode: 0o600 }); } catch { /* GC 진단 실패도 실행을 막지 않는다. */ }
   };
-  const collect = () => collectSessionGenerations({ dataDir: options.dataDir, hostId: manifest.hostId, keep: new Set([options.generation.id, currentGeneration, ...[...runners].filter(([, r]) => r.child && r.child.exitCode === null && r.child.signalCode === null).map(([id]) => id)]), retired: retiredGenerations, diagnostic });
+  const collect = () => collectSessionGenerations({ dataDir: options.dataDir, hostId: manifest.hostId, keep: new Set([options.generation.id, currentGeneration, ...[...runners].filter(([, r]) => r.child && r.child.exitCode === null && r.child.signalCode === null).map(([id]) => id)]), retired: retiredGenerations, diagnostic, owns: options.platform?.owns });
   function retire(id: string): void {
     try { withSessionGenerationLock(options.dataDir, () => retireSessionGeneration(options.dataDir, id, manifest.hostId)); retiredGenerations.add(id); }
     catch (error) { diagnostic("session_generation_gc_deferred", id, error instanceof Error ? error.message : "retirement_failed"); }
@@ -127,7 +132,11 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         if (r.peer) await r.peer.call("shutdown", undefined, CONSOLE_STOP_DEADLINE_MS - 1_000).catch(() => {});
         await exited;
       }));
-      await reaper?.drain();
+      if (process.platform === "win32") {
+        registry.killAll();
+        while (registry.groups().length > 0) await new Promise((resolve) => setTimeout(resolve, SESSION_HOST_POLL_MS));
+        diagnostic("session_host_jobs_drained", null, "remainingJobs=0");
+      } else await reaper?.drain();
       for (const id of new Set([options.generation.id, currentGeneration, ...runners.keys()])) retire(id);
       collect();
       for (const peer of peers) peer.close();
@@ -155,13 +164,16 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
     void ready.then(() => clearTimeout(timer), () => clearTimeout(timer));
     record.child = withSessionGenerationLock(options.dataDir, () => {
       activateSessionGeneration(options.dataDir, generation.id);
-      return registry.spawn({ command: generation.node, args: [generation.runner], env: process.env });
+      return registry.spawn({ command: generation.node, args: [generation.runner], env: process.env, detached: true });
     });
+    if (process.platform === "win32" && !registry.groups().some((g) => g.pgid === record.child?.pid)) {
+      record.child.stdin?.destroy(); record.child.kill("SIGKILL"); reject(new Error("session_runner_containment_failed")); return ready;
+    }
+    // The runner waits for this stdin payload before it can create agent/PTY/reaper children.
     record.child.stdin?.on("error", () => reject(new Error("session_runner_boot_pipe_failed")));
-    record.child.stdin?.end(JSON.stringify({ socket: manifest.socket, capability: manifest.capability, runnerCapability: record.capability, generation, hostId: manifest.hostId }));
+    record.child.stdin?.end(JSON.stringify({ socket: manifest.socket, runnerCapability: record.capability, generation, hostId: manifest.hostId }));
     let stderr = "";
     record.child.stdout?.resume(); record.child.stderr?.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-4_096); });
-    if (process.platform === "win32" && !registry.groups().some((g) => g.pgid === record.child?.pid)) { record.child.kill("SIGKILL"); reject(new Error("session_runner_containment_failed")); }
     record.child.once("error", reject);
     record.child.once("exit", (code, signal) => {
       if (!stopping && (code !== 0 || signal)) {
@@ -180,24 +192,50 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
     const peer = new SessionRpcPeer(socket); peers.add(peer);
     let role: "console" | "control" | "keeper" | "runner" | null = null;
     let generationId: string | null = null;
+    let auth: { challenge: SessionAuthChallenge; serverNonce: string; secret: string; at: number; ownerToken?: string } | null = null;
     peer.onClose(() => { peers.delete(peer); if (owner?.peer === peer) { owner = null; ownerLostAt = performance.now(); } });
     peer.bind(async (method, raw) => {
       const body = (raw ?? {}) as Record<string, unknown>;
-      if (method === "hello") {
-        if (role || body.wire !== SESSION_HOST_WIRE || body.hostId !== manifest.hostId || (body.role !== "keeper" && !equal(body.capability, manifest.capability))) throw new Error("session_host_auth_failed");
+      if (method === "auth-challenge") {
+        const challenge = body as unknown as SessionAuthChallenge; const identity = challenge.identity;
+        if (role || !identity || identity.wire !== SESSION_HOST_WIRE || identity.hostId !== manifest.hostId || !validSessionNonce(challenge.clientNonce) || Buffer.byteLength(JSON.stringify(identity)) > 8192) throw new Error("session_host_auth_failed");
+        let secret = manifest.capability; let ownerToken: string | undefined;
+        if (identity.role === "runner") { const runner = runners.get(String(identity.generation)); if (!runner) throw new Error("session_host_auth_failed"); secret = runner.capability; }
+        else if (identity.role === "keeper") { if (!update || identity.updateId !== update.id) throw new Error("session_host_auth_failed"); secret = update.capability; }
+        else if (identity.role === "console") {
+          const requestOwner = identity.owner as Pick<SessionOwner, "pid" | "startedAt">; const lock = observeConsoleLockFile(paths.lockFile);
+          if (!requestOwner || lock.kind !== "owner" || lock.untrusted || !lock.alive || lock.instance.pid !== requestOwner.pid || lock.instance.payload.startedAt !== requestOwner.startedAt || !lock.instance.payload.token) throw new Error("session_owner_auth_failed");
+          ownerToken = lock.instance.payload.token;
+        } else if (identity.role !== "control") throw new Error("session_host_auth_failed");
+        auth = { challenge, serverNonce: sessionNonce(), secret, at: performance.now(), ownerToken };
+        return { serverNonce: auth.serverNonce, proof: sessionProof(secret, "server", [challenge, auth.serverNonce]) };
+      }
+      if (method === "auth-finish") {
+        const response = (raw ?? {}) as Record<string, unknown>;
+        const handshake = auth; auth = null;
+        if (!handshake || role || performance.now() - handshake.at > SESSION_HOST_START_MS) throw new Error("session_host_auth_failed");
+        const context = [handshake.challenge, handshake.serverNonce];
+        if (!verifySessionProof(response.proof, handshake.secret, "client", context) || (handshake.ownerToken && !verifySessionProof(response.ownerProof, handshake.ownerToken, "owner", context))) throw new Error("session_host_auth_failed");
+        const accepted = (value: unknown) => {
+          const keys = sessionChannelKeys(handshake.secret, context); peer.secure(keys.server, keys.client);
+          return { value, proof: sessionProof(handshake.secret, "accepted", context) };
+        };
+        const authIdentity = handshake.challenge.identity;
+        const body = authIdentity as Record<string, unknown>;
         if (body.role === "runner") {
           const generation = String(body.generation);
           const runner = runners.get(generation);
-          if (!runner || body.runnerWire !== SESSION_RUNNER_WIRE || !equal(body.runnerCapability, runner.capability) || runner.peer) throw new Error("session_runner_auth_failed");
+          if (!runner || body.runnerWire !== SESSION_RUNNER_WIRE || runner.peer) throw new Error("session_runner_auth_failed");
           role = "runner"; generationId = generation; runner.peer = peer; runner.resolve(peer);
-          return { epoch };
+          return accepted({ epoch });
         }
         if (body.role === "keeper") {
-          if (!update || body.updateId !== update.id || !equal(body.keeperCapability, update.capability)) throw new Error("session_keeper_auth_failed");
-          role = "keeper"; update.keeper = peer; update.heartbeat = performance.now(); return { epoch };
+          if (!update || body.updateId !== update.id) throw new Error("session_keeper_auth_failed");
+          role = "keeper"; update.keeper = peer; update.heartbeat = performance.now(); return accepted({ epoch });
         }
-        if (body.role === "control") { role = "control"; return { epoch }; }
-        const identity = body.owner as SessionOwner;
+        if (body.role === "control") { role = "control"; return accepted({ epoch }); }
+        const ownerIdentity = body.owner as Pick<SessionOwner, "pid" | "startedAt">;
+        const identity: SessionOwner = { ...ownerIdentity, token: handshake.ownerToken ?? "" };
         if (body.role !== "console" || !identity || !validOwner(identity)) throw new Error("session_owner_auth_failed");
         if (owner && owner.peer !== peer && validOwner(owner.identity)) throw new Error("session_owner_still_attached");
         if (!owner && epoch > 0 && !update?.committed) throw new Error("session_owner_not_in_update");
@@ -206,7 +244,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         const previousGeneration = currentGeneration; currentGeneration = nextGeneration;
         role = "console"; owner = { peer, identity, ready: false }; epoch += 1; ownerLostAt = performance.now(); update = null;
         if (previousGeneration !== currentGeneration && !runners.has(previousGeneration)) retire(previousGeneration);
-        setImmediate(collect); return hostSnapshot();
+        setImmediate(collect); return accepted(hostSnapshot());
       }
       if (!role) throw new Error("session_host_auth_required");
       if (method === "terminate-all" && (role === "console" || role === "control")) { setImmediate(() => { void stop(); }); return true; }
@@ -256,10 +294,11 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         if (fingerprint && Buffer.byteLength(JSON.stringify(fingerprint)) > 4_096) throw new Error("session_fingerprint_limit");
         const s: LiveSession = { launch: JSON.parse(JSON.stringify(launch)) as HostedSessionLaunch, snapshot: { sessionKey: launch.sessionKey, kind: launch.kind, generation: launch.generation.id, startedAt: Date.now(), state: "starting", seq: 0, runtime: {}, checkpoint: null, lastCommandSequence: 0, commands: [], launchFingerprint: fingerprint }, events: [], bytes: 0, commands: new Map(), lastCommandSequence: 0 };
         sessions.set(launch.sessionKey, s);
-        try { const runner = await runnerFor(launch.generation); const runtime = await runner.call<Record<string, unknown>>("open", launch); s.snapshot = { ...s.snapshot, state: "live", runtime: { ...s.snapshot.runtime, ...runtime } }; publish(s, "opened", null); return s.snapshot; }
+        try { const runner = await runnerFor(launch.generation); const runtime = await runner.call<Record<string, unknown>>("open", launch); s.snapshot = { ...s.snapshot, state: "live", runtime: { ...s.snapshot.runtime, ...runtime, runnerPid: runners.get(launch.generation.id)?.child?.pid } }; publish(s, "opened", null); return s.snapshot; }
         catch (error) { s.snapshot = { ...s.snapshot, state: "lost" }; publish(s, "lost", null); throw error; }
       }
       if (method === "prepare-update") {
+        options.platform?.assertIndependent();
         if (update) throw new Error("session_update_busy");
         if ([...business.values()].some((p) => p.dispatched)) throw new Error("session_business_not_drained");
         const now = performance.now();
@@ -310,14 +349,15 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       return record;
     });
   });
-  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(paths.socket, resolve); });
-  if (process.platform !== "win32") fs.chmodSync(paths.socket, 0o600);
-  try { manifest = publishSessionHost(options.dataDir); } catch (error) { server.close(); throw error; }
+  const socketName = process.platform === "win32" ? `${paths.socket}-${randomUUID()}` : paths.socket;
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketName, resolve); });
+  if (process.platform !== "win32") fs.chmodSync(socketName, 0o600);
+  try { manifest = publishSessionHost(options.dataDir, socketName); } catch (error) { server.close(); throw error; }
   if (process.platform !== "win32" && paths.relocatedSocketNamespace) {
     try { fs.appendFileSync(path.join(paths.dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_socket_namespace_relocated", reason: "temporary_path_length", transport: "unix" }) + "\n", { mode: 0o600 }); } catch { /* Diagnostic failure cannot widen the transport. */ }
   }
   collect();
-  reaper = startConsoleReaper({ script: options.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: paths.manifest, lockStartedAt: manifest.startedAt }, groups: () => registry.groups(), onDegraded: (e) => options.onFailure?.("session_host_reaper_degraded", e) });
+  if (process.platform !== "win32") reaper = startConsoleReaper({ script: options.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: paths.manifest, lockStartedAt: manifest.startedAt }, groups: () => registry.groups(), onDegraded: (e) => options.onFailure?.("session_host_reaper_degraded", e) });
   const watchdog = setInterval(() => {
     const now = performance.now();
     if (stopping) return;

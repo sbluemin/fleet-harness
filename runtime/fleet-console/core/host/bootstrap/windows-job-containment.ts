@@ -9,8 +9,8 @@ import type { ProcessContainmentPort, ProcessGroupContainment } from "@fleet-con
  * The Windows half of an owned group (docs/console-lifecycle-contract.md, "Children").
  *
  * One unnamed, non-inheritable job per group, `KILL_ON_JOB_CLOSE` only, no breakaway flag. The Console process is the
- * only holder of the job handle. koffi is required here, inside the load, and nowhere else: foundation stays free of
- * native bindings, and macOS and Linux never call this module's load.
+ * only holder of the job handle. Native loads stay in Windows bootstrap adapters, including the independent session-host
+ * adapter: foundation stays free of native bindings, and macOS and Linux never call these loads.
  *
  * The pinned version is the one the Windows gates measured (M13, run 37373327684). A different installed version refuses
  * to load and the Console falls back to libuv; it does not run unmeasured bindings.

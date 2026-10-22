@@ -7,7 +7,7 @@ import { assertInternalMcpTokensNotShared, createExecutorSessionManager, createS
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
 import { claudeGatewayModelPolicy, createAiGatewayRouter, type AiGatewayRouteDeps, type AiGatewayRouter } from "@fleet-console/ai-gateway";
 import { createOwnedProcessRegistry, startConsoleReaper, type ConsoleReaperLink, type ProcessContainmentPort, type ProcessGroupContainment, type OwnedProcessGroup } from "@fleet-console/lifecycle";
-import { connectSessionRpc, type SessionRpcPeer } from "@fleet-console/lifecycle/session-host";
+import { authenticateSessionPeer, connectSessionRpc, type SessionRpcPeer } from "@fleet-console/lifecycle/session-host";
 import { CONSOLE_STOP_DEADLINE_MS, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { SESSION_ATTACH_POLL_MS, SESSION_HOST_WIRE, SESSION_RUNNER_WIRE, SESSION_REPLAY_MAX_BYTES, type SessionBusinessCall, type SessionGeneration, type SessionCommand } from "@fleet-console/protocol/session-host";
 import { z } from "zod";
@@ -32,7 +32,6 @@ interface Runtime {
 }
 export interface SessionRunnerBoot {
   readonly socket: string;
-  readonly capability: string;
   readonly runnerCapability: string;
   readonly generation: SessionGeneration;
   readonly hostId: string;
@@ -45,7 +44,7 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
   let reaper: ConsoleReaperLink | null = null;
   const ptyGroups = new Map<number, OwnedProcessGroup>();
   const registry = createOwnedProcessRegistry({ ...(containment ? { containment } : {}), onRegistered: (g) => reaper?.registered(g), onLeaderExited: (g) => reaper?.leaderExited(g), onRemoved: (g) => reaper?.removed(g) });
-  reaper = startConsoleReaper({ script: boot.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: path.join(path.dirname(path.dirname(boot.generation.root)), `runner-${process.pid}.lock`), lockStartedAt: Date.now() }, groups: () => { const registered = registry.groups(); const ids = new Set(registered.map((g) => g.pgid)); return [...registered, ...[...ptyGroups.values()].filter((g) => !ids.has(g.pgid))]; } });
+  if (process.platform !== "win32") reaper = startConsoleReaper({ script: boot.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: path.join(path.dirname(path.dirname(boot.generation.root)), `runner-${process.pid}.lock`), lockStartedAt: Date.now() }, groups: () => { const registered = registry.groups(); const ids = new Set(registered.map((g) => g.pgid)); return [...registered, ...[...ptyGroups.values()].filter((g) => !ids.has(g.pgid))]; } });
   let stopping = false;
   const emit = (r: Runtime, kind: string, data: unknown) => peer.call("event", { sessionKey: r.launch.sessionKey, kind, data });
   const snapshot = (r: Runtime) => {
@@ -83,7 +82,10 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
     while ([...runtimes.values()].some((r) => r.pty && !r.data.ptyExited) && performance.now() < ptyUntil) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
     const flushUntil = performance.now() + CONSOLE_STOP_DEADLINE_MS - OWNED_GROUP_TERM_GRACE_MS;
     while (registry.groups().some((g) => g.leaderExitedAt === null) && performance.now() < flushUntil) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
-    await reaper?.drain();
+    if (process.platform === "win32") {
+      registry.killAll();
+      while (registry.groups().length > 0) await new Promise((resolve) => setTimeout(resolve, SESSION_ATTACH_POLL_MS));
+    } else await reaper?.drain();
     peer.close();
   }
   async function toolGroups(r: Runtime, groups: readonly HostedToolGroup[]): Promise<{ embedded: Record<string, ClaudeGatewayMcpServer>; served: { name: string; url: string; headers: { name: string; value: string }[] }[] }> {
@@ -281,7 +283,7 @@ export async function runSessionRunner(boot: SessionRunnerBoot, containment?: Pr
     throw new Error("session_command_unsupported");
   });
   peer.onClose(() => { void shutdown(); });
-  await peer.call("hello", { wire: SESSION_HOST_WIRE, runnerWire: SESSION_RUNNER_WIRE, role: "runner", capability: boot.capability, hostId: boot.hostId, generation: boot.generation.id, runnerCapability: boot.runnerCapability });
+  await authenticateSessionPeer(peer, { wire: SESSION_HOST_WIRE, runnerWire: SESSION_RUNNER_WIRE, role: "runner", hostId: boot.hostId, generation: boot.generation.id }, boot.runnerCapability);
   process.on("SIGTERM", () => { void shutdown(); }); process.on("SIGINT", () => { void shutdown(); });
   process.on("uncaughtException", () => process.exit(1));
 }

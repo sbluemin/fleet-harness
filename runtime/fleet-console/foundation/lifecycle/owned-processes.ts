@@ -24,6 +24,8 @@ export interface OwnedProcessSpawnRequest {
   readonly signal?: AbortSignal;
   /** `ignore` gives the child no stdin, for tools that would otherwise wait for its end. Default `pipe`. */
   readonly stdin?: "pipe" | "ignore";
+  /** Explicit host-owned job is required for a detached Windows child; there is no libuv fallback. */
+  readonly detached?: boolean;
   readonly owner?: string;
 }
 
@@ -88,7 +90,8 @@ export interface OwnedProcessRegistry {
   /**
    * Spawns `command` with piped stdio as the leader of an owned group and registers that group. On POSIX the group is a
    * process group (`detached`). On Windows, when a containment port is injected, the group is a job and the child stays
-   * non-detached so libuv's job remains the fallback. Without the port on Windows the child is not registered.
+   * non-detached by default so libuv's job remains the fallback. An explicit detached request requires the host's job
+   * port and has no libuv fallback. Without the port on Windows the default child is not registered.
    */
   spawn(request: OwnedProcessSpawnRequest): ChildProcess;
   groups(): readonly OwnedProcessGroup[];
@@ -219,14 +222,15 @@ export function createOwnedProcessRegistry(options: OwnedProcessRegistryOptions 
     },
     spawn(request) {
       prune();
+      if (process.platform === "win32" && request.detached && !containment) throw new Error("detached_windows_containment_required");
       const spawnedAt = Date.now();
       const child = spawn(request.command, [...request.args], {
         ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
         env: { ...request.env },
         stdio: [request.stdin ?? "pipe", "pipe", "pipe"],
         // A group of its own lets the deadline and the watcher end the child together with everything it started.
-        // Windows stays non-detached: libuv's job remains the fallback when this group's own job cannot be assigned.
-        detached: process.platform !== "win32",
+        // An independent broker explicitly detaches its job-owned runner so libuv cannot put the broker itself in a job.
+        detached: process.platform !== "win32" || request.detached === true,
         windowsHide: true,
         ...(request.signal === undefined ? {} : { signal: request.signal }),
       });

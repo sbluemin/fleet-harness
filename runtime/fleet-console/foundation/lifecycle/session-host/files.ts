@@ -34,7 +34,7 @@ export function readSessionHostManifest(dataDir: string): SessionHostManifest | 
   let value: SessionHostManifest;
   try { value = JSON.parse(fs.readFileSync(paths.manifest, "utf8")) as SessionHostManifest; }
   catch { throw new Error("invalid_session_manifest"); }
-  if (!value || typeof value !== "object" || value.v !== SESSION_HOST_WIRE || value.slotKey !== paths.slotKey || typeof value.socket !== "string" || (process.platform === "win32" ? value.socket !== paths.socket : (path.basename(value.socket) !== `${paths.slotKey}.sock` || path.basename(path.dirname(value.socket)) !== `fs${process.getuid?.() ?? os.userInfo().username}` || !path.isAbsolute(value.socket))) || !Number.isSafeInteger(value.pid) || value.pid <= 1 || typeof value.capability !== "string" || value.capability.length < 32 || typeof value.hostId !== "string") throw new Error("invalid_session_manifest");
+  if (!value || typeof value !== "object" || value.v !== SESSION_HOST_WIRE || value.slotKey !== paths.slotKey || typeof value.socket !== "string" || (process.platform === "win32" ? !value.socket.startsWith(paths.socket + "-") || !/^[a-f0-9-]{36}$/.test(value.socket.slice(paths.socket.length + 1)) : (path.basename(value.socket) !== `${paths.slotKey}.sock` || path.basename(path.dirname(value.socket)) !== `fs${process.getuid?.() ?? os.userInfo().username}` || !path.isAbsolute(value.socket))) || !Number.isSafeInteger(value.pid) || value.pid <= 1 || typeof value.capability !== "string" || value.capability.length < 32 || typeof value.hostId !== "string") throw new Error("invalid_session_manifest");
   if (process.platform !== "win32") privateSessionDirectory(path.dirname(value.socket));
   return value;
 }
@@ -48,10 +48,10 @@ export function reclaimDeadSessionHost(dataDir: string): void {
   fs.unlinkSync(paths.manifest);
   if (process.platform !== "win32") { try { fs.unlinkSync(current.socket); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
 }
-export function publishSessionHost(dataDir: string): SessionHostManifest {
+export function publishSessionHost(dataDir: string, socket?: string): SessionHostManifest {
   const p = sessionHostPaths(dataDir);
   privateSessionDirectory(p.dir);
-  const manifest: SessionHostManifest = { v: SESSION_HOST_WIRE, hostId: randomUUID(), pid: process.pid, startedAt: Date.now(), slotKey: p.slotKey, socket: p.socket, capability: randomUUID() + randomUUID() };
+  const manifest: SessionHostManifest = { v: SESSION_HOST_WIRE, hostId: randomUUID(), pid: process.pid, startedAt: Date.now(), slotKey: p.slotKey, socket: socket ?? p.socket, capability: randomUUID() + randomUUID() };
   const staging = `${p.manifest}.${process.pid}.${randomUUID()}`;
   try { fs.writeFileSync(staging, JSON.stringify(manifest), { flag: "wx", mode: 0o600 }); fs.linkSync(staging, p.manifest); }
   finally { fs.rmSync(staging, { force: true }); }

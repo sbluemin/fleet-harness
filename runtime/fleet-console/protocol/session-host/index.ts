@@ -1,6 +1,6 @@
 /** Private local execution protocol. Never forward these server-side records to a browser. */
-export const SESSION_HOST_WIRE = 1;
-export const SESSION_RUNNER_WIRE = 1;
+export const SESSION_HOST_WIRE = 2;
+export const SESSION_RUNNER_WIRE = 2;
 export const SESSION_OWNER_LOSS_MS = 2_000;
 export const SESSION_HOST_START_MS = 15_000;
 export const SESSION_KEEPER_HEARTBEAT_MS = 10_000;

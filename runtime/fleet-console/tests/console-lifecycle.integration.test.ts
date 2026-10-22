@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
-import type { AddressInfo } from "node:net";
+import { createServer, type AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -19,7 +19,9 @@ import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 import { SessionHostClient, stopSlotSessionHost } from "../features/execution/host/session-host/client.js";
-import { connectSessionUpdateKeeper, connectSessionRpc } from "@fleet-console/lifecycle/session-host";
+import { authenticateSessionPeer, SessionRpcPeer, sessionNonce, connectSessionUpdateKeeper, connectSessionRpc } from "@fleet-console/lifecycle/session-host";
+import { SESSION_HOST_WIRE } from "@fleet-console/protocol/session-host";
+import { createWindowsSessionPlatform } from "../core/host/bootstrap/windows-session-platform.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
@@ -45,20 +47,44 @@ describe("Console session-host lifecycle integration", () => {
   it("keeps SDK and PTY execution through an authenticated update, rejects duplicate input, then stops the whole host", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-handoff-")); TEMP_DIRS.push(root);
     const home = path.join(root, "home"); fs.mkdirSync(home); const fake = path.join(root, "fake"); fs.mkdirSync(fake);
-    const env = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_DIR: fake };
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_DIR: fake };
     const lockFile = path.join(root, "console.lock");
     const lock = createConsoleLock();
     let held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
     let client: SessionHostClient | null = null;
     let keeper: { close(): void } | null = null;
     try {
-      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       const first = client;
       const unauthenticated = await connectSessionRpc(client.manifest.socket);
       try {
-        await expect(unauthenticated.call("hello", { wire: 1, role: "control", hostId: client.manifest.hostId, capability: "not-a-capability" })).rejects.toThrow("session_host_auth_failed");
+        await expect(authenticateSessionPeer(unauthenticated, { wire: SESSION_HOST_WIRE, role: "control", hostId: client.manifest.hostId }, "not-a-capability")).rejects.toThrow("session_auth_server_unverified");
         await expect(unauthenticated.call("terminate-all")).rejects.toThrow("session_host_auth_required");
       } finally { unauthenticated.close(); }
+      // 위조 endpoint에는 서버 검증 이전의 challenge만 전송하며 원문 secret/proof는 누출하지 않는다.
+      const impostorPath = process.platform === "win32" ? `\\\\.\\pipe\\fleet-impostor-${sessionNonce()}` : path.join(root, "impostor.sock");
+      const observed: string[] = []; const impostorPeers = new Set<SessionRpcPeer>();
+      const impostor = createServer((socket) => {
+        socket.on("data", (data) => observed.push(data.toString()));
+        const peer = new SessionRpcPeer(socket); impostorPeers.add(peer);
+        peer.bind(() => ({ serverNonce: sessionNonce(), proof: "0".repeat(64) }));
+      });
+      await new Promise<void>((resolve, reject) => { impostor.once("error", reject); impostor.listen(impostorPath, resolve); });
+      const fakePeer = await connectSessionRpc(impostorPath);
+      try {
+        await expect(authenticateSessionPeer(fakePeer, { wire: SESSION_HOST_WIRE, role: "console", hostId: client.manifest.hostId }, client.manifest.capability, held.payload.token)).rejects.toThrow("session_auth_server_unverified");
+        expect(observed.join("")).not.toContain(client.manifest.capability);
+        expect(observed.join("")).not.toContain(held.payload.token);
+        expect(observed.join("")).not.toContain("auth-finish");
+      } finally { fakePeer.close(); for (const peer of impostorPeers) peer.close(); await new Promise<void>((resolve) => impostor.close(() => resolve())); }
+      const tampered = await connectSessionRpc(client.manifest.socket);
+      try {
+        await authenticateSessionPeer(tampered, { wire: SESSION_HOST_WIRE, role: "control", hostId: client.manifest.hostId }, client.manifest.capability);
+        const closed = new Promise<void>((resolve) => tampered.onClose(resolve));
+        tampered.socket.write(JSON.stringify({ secure: true, sequence: 1, tag: "0".repeat(32), data: "" }) + "\n");
+        await closed;
+        expect(tampered.isClosed).toBe(true);
+      } finally { tampered.close(); }
       let toolCalls = 0;
       client.bindBusiness(() => ({ content: [{ type: "text", text: `call-${++toolCalls}` }] }));
       const executablePath = fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url));
@@ -103,7 +129,7 @@ describe("Console session-host lifecycle integration", () => {
       client.closeObserver(); held.release();
       const duringGap = callTool();
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 2, endpoint: "http://127.0.0.1:2/", version: "successor" });
-      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       client.bindBusiness(() => ({ content: [{ type: "text", text: `successor-${++toolCalls}` }] }));
       const after = await client.listSessions();
       expect((await client.describe("chat")).kind).toBe("sdk");
@@ -118,6 +144,8 @@ describe("Console session-host lifecycle integration", () => {
       expect(await callTool()).toMatchObject({ result: { content: [{ text: "successor-3" }] } });
       expect(after.hostId).toBe(before.hostId); expect(after.epoch).toBeGreaterThan(before.epoch);
       expect(after.sessions.find((s) => s.sessionKey === "chat")?.runtime.pid).toBe(sdk.runtime.pid);
+      expect(sdk.runtime.runnerPid).toBeTypeOf("number");
+      expect(after.sessions.find((s) => s.sessionKey === "chat")?.runtime.runnerPid).toBe(sdk.runtime.runnerPid);
       expect(after.sessions.find((s) => s.sessionKey === "terminal")?.runtime.pid).toBe(terminal.runtime.pid);
       expect(after.sessions.find((s) => s.sessionKey === "chat")?.launchFingerprint).toEqual({ schema: 1, digest: "fixture" });
       expect(after.sessions.find((s) => s.sessionKey === "chat")?.lastCommandSequence).toBe(1);
@@ -143,9 +171,10 @@ describe("Console session-host lifecycle integration", () => {
       client.closeObserver(); held.release();
       expect(fs.existsSync(lockFile)).toBe(false);
       await stopSlotSessionHost(root);
-      for (const pid of [before.sessions[0]?.runtime.pid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
+      for (const pid of [before.sessions[0]?.runtime.pid, sdk.runtime.runnerPid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
+      if (process.platform === "win32") expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain('"kind":"session_host_jobs_drained","generation":null,"reason":"remainingJobs=0"');
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 3, endpoint: "http://127.0.0.1:3/", version: "gc-successor" });
-      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       await vi.waitFor(() => expect(fs.existsSync(retiredRoot)).toBe(false), { timeout: 15_000 });
       expect(fs.existsSync(client.generation.root)).toBe(true);
       expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
@@ -157,10 +186,10 @@ describe("Console session-host lifecycle integration", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-crash-")); TEMP_DIRS.push(root);
     const held = await createConsoleLock().acquireLock({ dir: root, lockFile: path.join(root, "console.lock"), pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
     const ownedTmp = path.join(root, "long-owned-temporary-namespace-".repeat(3)); fs.mkdirSync(ownedTmp);
-    const env = { PATH: process.env.PATH, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude"), TMPDIR: ownedTmp, TMP: ownedTmp, TEMP: ownedTmp };
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude"), TMPDIR: ownedTmp, TMP: ownedTmp, TEMP: ownedTmp };
     let client: SessionHostClient | null = null;
     try {
-      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       if (process.platform !== "win32") {
         expect(client.manifest.socket).not.toContain(ownedTmp);
         expect(fs.lstatSync(client.manifest.socket).isSocket()).toBe(true);
@@ -579,6 +608,7 @@ function isRunning(pid: number): boolean {
   } catch {
     return false;
   }
+  if (process.platform === "win32") return true;
   const state = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
   return state.length > 0 && !state.startsWith("Z");
 }

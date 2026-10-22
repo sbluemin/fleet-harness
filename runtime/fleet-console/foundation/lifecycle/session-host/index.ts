@@ -1,3 +1,5 @@
+export type { SessionHostPlatform, SessionHostProcess } from "./platform.js";
+export { authenticateSessionPeer, sessionNonce, sessionProof, sessionChannelKeys, verifySessionProof, validSessionNonce, type SessionAuthIdentity, type SessionAuthChallenge } from "./auth.js";
 export { withSessionGenerationLock, pinSessionGeneration, activateSessionGeneration, retireSessionGeneration, collectSessionGenerations, type SessionGenerationGcOptions } from "./generations.js";
 export { terminateSessionHost } from "./control.js";
 export { connectSessionUpdateKeeper } from "./keeper.js";
