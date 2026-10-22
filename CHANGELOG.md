@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.252.0] - 2026-10-22
+
+### fleet-console
+
+#### Added
+- Let the Commodore directly inspect evidence files, screenshots, and logs without a Theater path restriction.
+
+#### Changed
+- Wiki changes from agents now go straight into the entry instead of waiting in a review queue. Overwritten and deleted versions are kept so they can be restored, and deleting an entry in Codex offers an immediate undo.
+
+#### Removed
+- The Codex review queue and conflict screens are gone, along with the agent tools for approving or editing pending wiki patches. Patches still pending from earlier versions are kept on disk but never applied.
+
 ## [1.251.0] - 2026-10-21
 
 ### fleet-console
