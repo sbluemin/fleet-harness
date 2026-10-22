@@ -5,11 +5,11 @@ import { z } from "zod";
 import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
 
 /**
- * 사령관(Commodore) — Theater 마다 하나, Console feature가 소유하는 자율 운영 세션의 Theater 상태.
+ * 사령관(Commodore) — UUID마다 하나, Console feature가 소유하는 자율 운영 상태의 브라우저 투영.
  *
- * 보드와 같은 Theater 작업 디렉터리에 `objectives/commodore/` 로 산다: `state.json` 한 건(자율 운영·지시·정보·정보 출처·
+ * Console 데이터의 `commodore/<UUID>/`에 산다: `state.json` 한 건(자율 운영·지시·정보·정보 출처·
  * Theater 별 모델 좌표)과 `transcript.jsonl`(사령관 기록). 사람의 「지시」와 「정보」는 사령관 전용 도구로만 읽히고 시스템
- * 프롬프트나 깨움 턴에는 실리지 않는다 — 그래서 상태의 진실은 이 파일이고, 세션은 매번 여기서 다시 읽는다.
+ * 프롬프트나 깨움 턴에는 실리지 않는다 — 그래서 상태의 진실은 이 파일이고, 세션은 매번 여기서 다시 읽는다. 서버 전용 `theaters: [{ path }]` 연결은 이 DTO에 실리지 않는다.
  */
 
 export const COMMODORE_CHANNEL = "commodore";
@@ -292,12 +292,12 @@ export type CommodoreLiveEvent =
 
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `commodore` 채널. */
 export type CommodoreEvent =
-  | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
-  | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
-  | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
-  | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus }
+  | { readonly op: "live"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly live: CommodoreLiveEvent }
+  | { readonly op: "state"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
+  | { readonly op: "transcript"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly entry: CommodoreTranscriptEntry }
+  | { readonly op: "run"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly run: CommodoreRunStatus }
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
-  | { readonly op: "memory"; readonly theaterId: string; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
+  | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
 export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
@@ -307,7 +307,8 @@ export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | 
 }
 
 export interface CommodoreStateView {
-  readonly theaterId: string;
+  readonly commodoreId: string;
+  readonly theaterIds: readonly string[];
   readonly state: CommodoreState;
   /** 실험 기능 「자율 운영」. 꺼져 있으면 Theater 머리의 사령관 글리프·서랍이 서지 않는다. */
   readonly enabled: boolean;

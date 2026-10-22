@@ -42,7 +42,7 @@ export type AgentEvent =
   /** 세션이 대화를 요약하려다 실패했다 — 대화는 줄지 않았다. 창을 넘긴 세션이면 이어지는 턴이 오류로 끝난다. 모르는 소비자는 무시한다. */
   | { readonly kind: "compact-failed" }
   /**
-   * {@link AgentSession.steer}로 건넨 말을 도는 턴이 집어갔다 — 그 말은 이 턴의 입력이 됐고, 이 턴의 결말이 그 말의 결말이다.
+   * 호스트가 건넨 말을 도는 턴이 집어갔다 — 그 말은 이 턴의 입력이 됐고, 이 턴의 결말이 그 말의 결말이다.
    * 턴이 그 말을 집기 전에 끝나려 하면 호스트가 결말을 미루고 그 말까지 같은 턴으로 잇는다.
    */
   | { readonly kind: "input-started"; readonly id: string }
@@ -73,17 +73,8 @@ export interface AgentSessionOptions {
    * 이 값을 적용하지 않는다.
    */
   readonly compactAt?: number;
-  /**
-   * `conversation` 세션을 Console 데이터 루트에 남긴다. 같은 플러그인이 같은 `key`로 다시 열면(Console 재시작 뒤에도) 같은 대화를
-   * resume한다. 자식은 턴 사이에도 살아 있어 {@link AgentSession.steer}로 도는 턴에 말을 건넬 수 있다.
-   *
-   * 자리와 세션 식별자는 호스트가 소유한다 — 플러그인은 `key`만 알고, 이어 받았는지는 {@link AgentSession.resumed}로 안다.
-   * 남긴 대화를 버리려면 {@link AgentHost.forget}을 부른다. `key`는 `[A-Za-z0-9:_-]{1,128}`이다.
-   */
-  readonly persist?: { readonly key: string };
   /** 내장 Read는 요청한 세션에만 실린다. 셸·하위 Agent는 제공하지 않는다. */
   readonly tools?: {
-    /** 메시징 도구를 고른 persist 세션은 같은 플러그인의 발견 등록부만 공유한다. 대화 홈·기록은 계속 분리된다. */
     readonly builtins?: readonly ("WebSearch" | "WebFetch" | "SendMessage" | "ListAgents" | "Read")[];
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
@@ -108,14 +99,6 @@ export interface AgentSession {
   send(input: AgentInput): Promise<void>;
   /** 현재 턴만 취소한다. 대기 턴과 다음 메시지는 유지한다. */
   cancel(): void;
-  /** `persist` 세션이 남아 있던 대화를 이어 받아 열렸는가. `persist`가 없는 세션에는 없다. */
-  readonly resumed?: boolean;
-  /**
-   * 도는 턴에 말 하나를 건넨다 — 자식이 다음 도구 라운드 경계에서 집어가 같은 턴 안에서 읽는다(Claude Code CLI가 사람이 친 말에
-   * 쓰는 자리). 건넸으면 true이고, 그 말의 행방은 `input-started`·`input-cancelled` 사건이 `id`로 말한다. 도는 턴이 없으면
-   * false — 호출자는 평소처럼 다음 `send`에 싣는다. `persist` 세션에만 있다.
-   */
-  steer?(input: AgentInput, id: string): boolean;
   /**
    * 컴퓨터 사용 허용을 거둔 순간 부른다 — 이 세션의 진행 중 기기 호출을 끊고 잡고 있던 기기를 놓는다.
    * 다음 호출은 `enabled()`가 거부한다. 컴퓨터 사용을 싣지 않은 세션에서는 아무 일도 하지 않는다.
@@ -128,6 +111,4 @@ export interface AgentSession {
 /** Console이 호출 플러그인에 바인딩한다. 다른 소유자나 provider 주소를 지정할 수 없다. */
 export interface AgentHost {
   createSession(options: AgentSessionOptions): Promise<AgentSession>;
-  /** 이 플러그인이 `persist.key`로 남긴 대화를 지운다. 그 key로 열린 세션은 먼저 닫는다. 없으면 아무 일도 하지 않는다. */
-  forget?(key: string): Promise<void>;
 }

@@ -1,4 +1,5 @@
-import type { AgentEffort, AgentEvent, AgentInputBlock, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
+import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "@fleet-console/sdk/agent";
+import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
@@ -6,23 +7,7 @@ import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
 
-/**
- * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
- *
- * 시스템 프롬프트는 베이스뿐이고(replace), 도구는 사령관 전용 `commodore` + 이 Theater 에 묶인 보드 도구(`console_objectives`·
- * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + 호스트가 이 Theater 루트에 묶어 준 지식 도구
- * (`fleet-codex` 의 Wiki 도구 — Operation 이 받는 것과 같은 이름·같은 Theater 판정) + WebSearch·WebFetch·SendMessage·ListAgents·Read 다. Console Use 연결은 쓰지 않는다 — 플러그인
- * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
- * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
- *
- * 세션은 Theater 마다 하나의 `persist` 대화다(`commodorePersistKey`). Console 이 다시 서거나 자율 운영이 다시 켜져도 같은 대화를
- * 이어 받고(`resumed`), 턴이 도는 중에 온 사람의 말은 그 턴에 건넨다(`steer`) — 채팅·지휘관 세션과 같은 자리다.
- */
-
-/** 이 Theater 의 사령관 대화 — 호스트가 이 key 의 자리에 대화를 남긴다. 세션 id·경로는 플러그인이 모른다. */
-export function commodorePersistKey(theaterId: string): string {
-  return `commodore:${theaterId}`;
-}
+/** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
 
 /** 세션이 여는 좌표 — `model`은 Agent SDK wire id다. 강도를 받지 않는 모델이면 강도가 없다. */
 export interface CommodoreSessionCoordinates {
@@ -33,12 +18,13 @@ export interface CommodoreSessionCoordinates {
 }
 
 export interface CommodoreSessionOptions {
-  readonly theaterId: string;
+  readonly commodoreId: string;
+  readonly cwd: string;
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
   readonly theaterRoot: string;
-  readonly agent: AgentHost;
+  readonly agent: ConsoleResidentAgentHost;
   readonly store: CommodoreStore;
   readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
@@ -81,8 +67,6 @@ export interface CommodoreTurnOutcome {
 
 export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
-  /** `start()` 뒤 — 남아 있던 같은 대화를 이어 받았는가. */
-  readonly resumed: boolean;
   start(): Promise<void>;
   /** 도는 턴에 사람의 말을 건넨다. 도는 턴이 없거나 건넬 수 없으면 false — 부른 쪽이 다음 턴에 싣는다. */
   steer(message: string, id: string): boolean;
@@ -102,7 +86,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const now = options.now ?? Date.now;
   // 보드 도구마다 쓰기 action — 호출의 action 이 이 중 하나면 보드 행위로 기록하고 센다. 나머지는 읽기다.
   const boardWrites = new Map(options.boardTools.map((tool) => [tool.name, new Set(Object.entries(tool.actionSchema?.actions ?? {}).flatMap(([action, info]) => (info.kind === "write" ? [action] : [])))]));
-  let session: AgentSession | null = null;
+  let session: ConsoleResidentSession | null = null;
   let starting: Promise<void> | null = null;
   let disposed = false;
   let turnActive = false;
@@ -118,7 +102,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let compactionFailed = false;
 
   const record = (entry: CommodoreTranscriptInput) => {
-    try { options.store.transcriptAppend(options.theaterId, entry); }
+    try { options.store.transcriptAppend(options.commodoreId, entry); }
     catch (error) { console.warn(`[objectives] commodore transcript append failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
   const flushText = () => {
@@ -192,25 +176,25 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
 
   /** 턴마다 싣는 기억 인덱스 — 대화가 접혀도(compaction) 사령관이 무엇을 기억하는지 다시 본다. 읽지 못하면 비운 채로 간다. */
   const readMemoryIndex = (): string => {
-    try { return options.store.memory.index(options.theaterId); }
+    try { return options.store.memory.index(options.commodoreId); }
     catch (error) { console.warn(`[objectives] commodore memory index unreadable: ${error instanceof Error ? error.message : String(error)}`); return ""; }
   };
 
   const open = async () => {
-    const tools = createCommodoreTools({ theaterId: options.theaterId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
-      // 전체 Theater id 가 이름 충돌을 가른다. 앞부분은 발견 목록에서 사람이 알아볼 라벨이다.
-      sessionName: `commodore-${options.theaterLabel.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.theaterId.replaceAll("-", "")}`,
+      // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
+      sessionName: `commodore-${options.theaterLabel.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
       systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",
-      persist: { key: commodorePersistKey(options.theaterId) },
+      cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
-        builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"],
-        browser: { scopeId: `commodore:${options.theaterId}` },
+        builtins: ["WebSearch", "WebFetch", "Read"],
+        browser: { scopeId: `commodore:${options.commodoreId}` },
         custom: [
           { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
           ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : []),
@@ -226,7 +210,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
 
   return {
     coordinates: options.coordinates,
-    get resumed() { return session?.resumed === true; },
     steer(message, id) {
       if (disposed || !turnActive || !session?.steer) return false;
       // 깨움 턴의 메시지와 같은 머리로 건넨다 — 모델에게는 「사람의 말」 한 덩이로 읽힌다.
@@ -270,7 +253,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       } finally { turnActive = false; }
       const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
-      try { options.store.addRunTotals(options.theaterId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
+      try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
       catch (error) { console.warn(`[objectives] commodore totals failed: ${error instanceof Error ? error.message : String(error)}`); }
       return result;
     },

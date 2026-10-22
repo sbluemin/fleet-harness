@@ -31,20 +31,25 @@ function contained(root: string, relative: string): string {
 
 /** 전달 바이트와 독립된 대화 기록 사본. 경로는 서버에만 남고 메시지·첨부 UUID로만 찾는다. */
 export function createCommodoreImages(
-  objectivesDir: (theaterId: string) => string,
+  entityDir: (commodoreId: string) => string,
   options: {
     readonly maxBytes?: number | undefined;
-    readonly messageSeqs: (theaterId: string) => ReadonlyMap<string, number>;
+    readonly messageSeqs: (commodoreId: string) => ReadonlyMap<string, number>;
   },
 ) {
   const maxBytes = options.maxBytes ?? MAX_COMMODORE_RETAINED_IMAGE_BYTES;
-  const root = (theaterId: string) => contained(contained(objectivesDir(theaterId), "commodore"), "images");
-  const messageDir = (theaterId: string, messageId: string) => {
-    if (!ID.test(messageId)) throw new Error("attachment_not_available");
-    return contained(root(theaterId), messageId);
+  const root = (commodoreId: string) => {
+    const base = contained(entityDir(commodoreId), "images");
+    try { if (fs.lstatSync(base).isSymbolicLink()) throw new Error("attachment_not_available"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    return base;
   };
-  const trim = (theaterId: string, newestId: string) => {
-    const base = root(theaterId);
+  const messageDir = (commodoreId: string, messageId: string) => {
+    if (!ID.test(messageId)) throw new Error("attachment_not_available");
+    return contained(root(commodoreId), messageId);
+  };
+  const trim = (commodoreId: string, newestId: string) => {
+    const base = root(commodoreId);
     if (!fs.lstatSync(base).isDirectory()) throw new Error("attachment_not_available");
     const messages: { id: string; bytes: number; mtime: number }[] = [];
     for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
@@ -65,7 +70,7 @@ export function createCommodoreImages(
     if (total <= maxBytes) return;
     const candidates = messages.filter((message) => message.id !== newestId);
     let seqs: ReadonlyMap<string, number> | undefined;
-    try { seqs = options.messageSeqs(theaterId); } catch { /* 기록을 읽지 못하면 디렉터리 시각으로 되돌아간다. */ }
+    try { seqs = options.messageSeqs(commodoreId); } catch { /* 기록을 읽지 못하면 디렉터리 시각으로 되돌아간다. */ }
     // 모든 후보의 seq 를 알면 기록 순서, 아니면 모두 mtime 순서다 — 비교 기준을 섞지 않는다.
     const sequenced = seqs && candidates.every((message) => seqs.has(message.id));
     candidates.sort((a, b) => (sequenced ? seqs!.get(a.id)! - seqs!.get(b.id)! : a.mtime - b.mtime) || a.id.localeCompare(b.id));
@@ -76,14 +81,14 @@ export function createCommodoreImages(
     }
   };
   return {
-    save(theaterId: string, messageId: string, images: readonly Image[]): boolean {
+    save(commodoreId: string, messageId: string, images: readonly Image[]): boolean {
       let dir: string | undefined;
       try {
         if (!images.length || images.length > 4 || new Set(images.map((image) => image.id)).size !== images.length
           || images.some((image) => !ID.test(image.id) || !(image.mime in EXTENSIONS))
           || images.reduce((sum, image) => sum + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return false;
-        const target = messageDir(theaterId, messageId);
-        fs.mkdirSync(root(theaterId), { recursive: true, mode: 0o700 });
+        const target = messageDir(commodoreId, messageId);
+        fs.mkdirSync(root(commodoreId), { recursive: true, mode: 0o700 });
         fs.mkdirSync(target, { mode: 0o700 });
         dir = target;
         for (const image of images) fs.writeFileSync(contained(dir, `${image.id}.${EXTENSIONS[image.mime]}`), image.bytes, { flag: "wx", mode: 0o600 });
@@ -91,14 +96,14 @@ export function createCommodoreImages(
         if (dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 다음 정리 때 다시 거둔다. */ } }
         return false;
       }
-      try { trim(theaterId, messageId); }
+      try { trim(commodoreId, messageId); }
       catch { console.warn("[objectives] commodore image budget cleanup failed; retained copies will be retried on the next cleanup"); }
       return true;
     },
-    read(theaterId: string, messageId: string, attachmentId: string): Image | null {
+    read(commodoreId: string, messageId: string, attachmentId: string): Image | null {
       if (!ID.test(messageId) || !ID.test(attachmentId)) return null;
       try {
-        const dir = messageDir(theaterId, messageId);
+        const dir = messageDir(commodoreId, messageId);
         for (const [mime, extension] of Object.entries(EXTENSIONS)) {
           const file = contained(dir, `${attachmentId}.${extension}`);
           let fd: number;
@@ -113,9 +118,9 @@ export function createCommodoreImages(
       } catch { /* 사본이 없거나 안전하게 읽을 수 없으면 회수된 자리다. */ }
       return null;
     },
-    remove(theaterId: string, messageId: string) { fs.rmSync(messageDir(theaterId, messageId), { recursive: true, force: true }); },
-    prune(theaterId: string, kept?: ReadonlySet<string>) {
-      const base = root(theaterId);
+    remove(commodoreId: string, messageId: string) { fs.rmSync(messageDir(commodoreId, messageId), { recursive: true, force: true }); },
+    prune(commodoreId: string, kept?: ReadonlySet<string>) {
+      const base = root(commodoreId);
       if (!kept) { fs.rmSync(base, { recursive: true, force: true }); return; }
       let names: string[];
       try { names = fs.readdirSync(base); }

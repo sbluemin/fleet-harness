@@ -1,6 +1,26 @@
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { serverReached } from "./board.js";
 
+const resolutions = new WeakMap<ClientApiCapability, Map<string, Promise<string>>>();
+
+/** Theater 머리에서 UUID를 풀고, 제품 요청에는 UUID만 싣는다. 경로는 브라우저로 오지 않는다. */
+export async function postCommodore<T>(api: ClientApiCapability, path: string, body: Record<string, unknown> & { readonly theaterId: string }): Promise<T> {
+  let cache = resolutions.get(api);
+  if (!cache) { cache = new Map(); resolutions.set(api, cache); }
+  let resolving = cache.get(body.theaterId);
+  if (!resolving) {
+    resolving = post<{ readonly commodoreId: string | null }>(api, "/commodore/resolve", { theaterId: body.theaterId }).then((result) => {
+      if (!result.commodoreId) throw new Error("commodore_unavailable");
+      return result.commodoreId;
+    });
+    cache.set(body.theaterId, resolving);
+    void resolving.catch(() => { if (cache!.get(body.theaterId) === resolving) cache!.delete(body.theaterId); });
+  }
+  const commodoreId = await resolving;
+  const { theaterId: _theaterId, ...payload } = body;
+  return post<T>(api, path, { ...payload, commodoreId });
+}
+
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
   let response: Response;
   try { response = await api.fetch(null, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }

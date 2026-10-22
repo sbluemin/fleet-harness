@@ -3,10 +3,12 @@ import type { CommodoreBoardAdapter, CommodoreEvent, FleetPluginCommodoreHost } 
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { PluginMcpServerTools } from "@fleet-console/sdk/mcp";
-import { createPluginAgentHost, type PluginAgentDeps } from "../../execution/host/agent/plugin-agent.js";
+import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
 import { createCommodoreSupervisor } from "./supervisor.js";
+import { createCommodoreEntities } from "./entities.js";
+import { CommodoreStoreError } from "./errors.js";
 import { COMMODORE_CHANNEL } from "./types.js";
 
 export interface CommodoreFeatureDeps {
@@ -17,43 +19,35 @@ export interface CommodoreFeatureDeps {
   readonly attachments: FleetPluginHostCapabilities["attachments"];
   readonly http: FleetPluginHostCapabilities["http"];
   readonly security: FleetPluginHostCapabilities["security"];
-  readonly agent: Omit<PluginAgentDeps, "persistRoot">;
+  readonly agent: ConsoleResidentAgentDeps;
   readonly knowledgeTools: (theaterId: string) => readonly PluginMcpServerTools[];
 }
 
-/** Console 조합이 소유하는 사령관. PR-A에서는 기존 데이터·대화 자리를 그대로 이어 읽는다. */
+/** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
 export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let board: CommodoreBoardAdapter | null = null;
   let restored = false;
   let disposed = false;
-  const dirs = new Map<string, string>();
-  const unreadable = new Set<string>();
-  const dirOf = (theaterId: string): string | null => {
-    const cached = dirs.get(theaterId);
-    if (cached) return cached;
+  // 레거시 마이그레이션은 반드시 이 색인 스캔·선제 발급보다 먼저 실행한다.
+  const entities = createCommodoreEntities(path.join(deps.paths.consoleDataDir, "commodore"), deps.paths.workspaceHash);
+  const create = (theaterId: string) => {
     const root = deps.paths.resolveTheaterPath(theaterId);
-    if (!root) return null;
-    try {
-      const dir = path.join(deps.paths.ensureWorkspaceDirectory(root).path, "objectives");
-      unreadable.delete(theaterId);
-      dirs.set(theaterId, dir);
-      return dir;
-    } catch (error) {
-      if (!unreadable.has(theaterId)) console.warn(`[commodore] theater ${theaterId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
-      unreadable.add(theaterId);
-      return null;
+    if (!root) throw new CommodoreStoreError("theater_unavailable");
+    return entities.create(root);
+  };
+  const ensureRegistered = () => {
+    for (const theaterId of deps.paths.listTheaterIds?.() ?? []) {
+      try { create(theaterId); }
+      catch { console.warn(`[commodore] registered theater ${theaterId}: entity unavailable`); }
     }
   };
+  ensureRegistered();
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
-  const agent = createPluginAgentHost({
-    ...deps.agent,
-    // 소유 feature가 바뀌어도 기존 key 해시의 홈·cwd·session.json을 재개한다.
-    persistRoot: () => path.join(deps.paths.consoleDataDir, "plugins", "objectives", "agent-sessions"),
-  });
+  const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => deps.events.publish(COMMODORE_CHANNEL, event);
-  const store = createCommodoreStore({ dirOf, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], emit });
+  const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit });
   const supervisor = createCommodoreSupervisor({
-    store, agent, board: () => board,
+    store, agent, board: () => board, theaterIds: entities.theaterIds, cwd: entities.dirOf,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),
     experiments: () => deps.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
     ...(deps.experiments?.subscribe ? { subscribeExperiments: deps.experiments.subscribe } : {}),
@@ -71,15 +65,15 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       return () => { if (board === adapter) { board = null; supervisor.sync(); } };
     },
     commander(theaterId) {
-      const state = store.read(theaterId);
+      const id = entities.resolve(theaterId);
+      const state = id ? store.read(id) : null;
       return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null;
     },
   };
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const routes = createCommodoreRoutes(context, store, {
-    run: (theaterId) => supervisor.status(theaterId),
-    retry: (theaterId) => supervisor.retry(theaterId),
-    clear: (theaterId) => supervisor.clear(theaterId),
+    resolve: entities.resolve, create, theaterIds: entities.theaterIds,
+    run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,
     objective: (id) => {
       for (const theaterId of deps.paths.listTheaterIds?.() ?? []) {
@@ -92,8 +86,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   return {
     host,
     routes,
-    active: (theaterId: string) => board !== null && commodoreActive(context, store, theaterId),
-    sync: () => { restored = true; supervisor.sync("restart"); },
+    active: (theaterId: string) => { const id = entities.resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
+    sync: () => { ensureRegistered(); restored = true; supervisor.sync("restart"); },
     async dispose() {
       if (disposed) return;
       disposed = true;

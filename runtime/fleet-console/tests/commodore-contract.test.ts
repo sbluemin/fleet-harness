@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "@fleet-console/sdk/commodore";
-import type { AgentEvent, AgentHost, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import type { AgentEvent, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
@@ -14,8 +14,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
+import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
+import { createCommodoreEntities } from "../features/commodore/host/entities.js";
+import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
-import { createCommodoreStore } from "../features/commodore/host/store.js";
+import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../../fleet-plugins/objectives/server/board-state.js";
 import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/host/types.js";
@@ -24,11 +27,16 @@ import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@f
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../../fleet-plugins/objectives/server/commodore-board.js";
 
+/** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */
+function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" | "theaterIdsOf">) {
+  return createHostStore({ ...options, theatersOf: (id) => [{ path: options.dirOf(id) ?? "/unavailable" }], theaterIdsOf: () => ["t1"] });
+}
+
 /** 기존 대표 시나리오는 실제 보드 어댑터와 feature의 SDK 경계를 함께 검증한다. */
-function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board"> & CommodoreBoardWatchDeps & {
+function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" | "theaterIds" | "cwd"> & CommodoreBoardWatchDeps & {
   boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly PluginMcpTool[];
 }) {
-  return createHostSupervisor({ ...deps, board: () => ({
+  return createHostSupervisor({ ...deps, theaterIds: () => ["t1"], cwd: (id) => deps.store.read(id) ? deps.theater("t1")?.root ?? null : null, board: () => ({
     tools: (theaterId, turn) => deps.boardTools(theaterId, turn.readAttachments, turn.hasPersonMessage),
     watch: (theaterId, sink) => createCommodoreBoardWatch(deps, theaterId, sink),
     objective: (theaterId, id) => {
@@ -68,7 +76,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
   const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}, method?: string) => {
     routeBody = body;
     routeResult = { status: 0, value: null };
-    const target = createCommodoreRoutes(ctx, store, hooks).find((entry) => entry.name === name)!;
+    const target = createCommodoreRoutes(ctx, store, { theaterIds: () => ["t1"], ...hooks }).find((entry) => entry.name === name)!;
     const query = new URLSearchParams(Object.entries(body).map(([key, value]) => [key, String(value)]));
     const res = {
       writeHead: (status: number, headers: unknown) => { routeResult = { status, value: { headers } }; },
@@ -81,59 +89,101 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
 }
 
 describe("commodore theater state", () => {
-  it("persists per-Theater autonomy, directive and intel beside the board", async () => {
+  it("persists UUID entities with canonical single-Theater links and isolated autonomy, directive and intel", async () => {
     const h = harness();
-    const stateFile = path.join(h.objectivesDir, "commodore", "state.json");
+    // 엔티티 저장 무결성: id는 폴더에만, 연결은 path 하나만 남기고 색인은 재구성한다.
+    const root = path.join(h.objectivesDir, "entities");
+    const theater = path.join(h.objectivesDir, "theater");
+    fs.mkdirSync(theater, { recursive: true });
+    const canonical = fs.realpathSync.native(theater);
+    const entities = createCommodoreEntities(root, workspaceHash);
+    const id = entities.create(theater);
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(entities.create(theater)).toBe(id);
+    const entityFile = path.join(root, id, "state.json");
+    const disk = JSON.parse(fs.readFileSync(entityFile, "utf8"));
+    expect(disk.theaters).toEqual([{ path: canonical }]);
+    expect(disk).not.toHaveProperty("id");
+    expect(entities.resolve(workspaceHash(canonical))).toBe(id);
+    const entityEvents: CommodoreEvent[] = [];
+    const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: (event) => entityEvents.push(event) });
+    entityStore.setDirective(id, "Keep entity links intact.");
+    expect(JSON.parse(fs.readFileSync(entityFile, "utf8")).theaters).toEqual([{ path: canonical }]);
+    expect(entityEvents[0]).toMatchObject({ commodoreId: id, theaterIds: [workspaceHash(canonical)] });
+    expect(JSON.stringify(entityEvents)).not.toContain(canonical);
+    const secondTheater = path.join(h.objectivesDir, "second");
+    fs.mkdirSync(secondTheater);
+    const secondId = entities.create(secondTheater);
+    expect(() => entities.link(secondId, theater)).toThrow("theater_already_linked");
+    // 손편집 중복과 링크·손상은 원본을 건드리지 않고 경고와 함께 제외한다.
+    const loser = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    fs.mkdirSync(path.join(root, loser));
+    const preserved = fs.readFileSync(entityFile, "utf8");
+    fs.writeFileSync(path.join(root, loser, "state.json"), preserved);
+    fs.symlinkSync(path.join(root, id), path.join(root, "00000000-0000-0000-0000-000000000000"));
+    fs.mkdirSync(path.join(root, "invalid-id"));
+    fs.writeFileSync(path.join(root, secondId, "state.json"), "broken");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const restored = createCommodoreEntities(root, workspaceHash);
+      expect(restored.resolve(workspaceHash(canonical))).toBe(id);
+      expect(restored.ids()).toEqual([id]);
+      expect(fs.readFileSync(path.join(root, loser, "state.json"), "utf8")).toBe(preserved);
+      expect(warn).toHaveBeenCalled();
+      fs.rmSync(theater, { recursive: true });
+      expect(createCommodoreEntities(root, workspaceHash).resolve(workspaceHash(canonical))).toBe(id);
+    } finally { warn.mockRestore(); }
+    const stateFile = path.join(h.objectivesDir, "state.json");
 
     h.setExperiments({ commodore: false }); // 옛 저장값은 사령관 표면을 숨기지 않는다.
-    expect((await h.route("commodore/state", { theaterId: "t1" })).value).toMatchObject({ enabled: true, active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { autonomy: false, directive: { text: "", rev: 0 }, intel: [] } });
-    expect((await h.route("commodore/state", { theaterId: "unknown" })).status).toBe(404);
+    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ enabled: true, active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { autonomy: false, directive: { text: "", rev: 0 }, intel: [] } });
+    expect((await h.route("commodore/state", { commodoreId: "unknown" })).status).toBe(404);
     expect(fs.existsSync(stateFile)).toBe(false);
 
     // 옛 Settings 좌표는 무시하지만 Theater 별 선택은 아래 경로에서 유지된다.
     h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
-    expect((await h.route("commodore/autonomy", { theaterId: "t1", autonomy: true })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
+    expect((await h.route("commodore/autonomy", { commodoreId: "t1", autonomy: true })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     // 서랍의 요청이 사람의 언어를 남긴다 — 사령관 기록의 언어가 된다.
-    expect((await h.route("commodore/state", { theaterId: "t1", language: "ko" })).value.state).toMatchObject({ language: "ko" });
+    expect((await h.route("commodore/state", { commodoreId: "t1", language: "ko" })).value.state).toMatchObject({ language: "ko" });
 
     // 지시 — 본문이 바뀔 때만 개정이 오르고, 같은 본문은 사건도 내지 않는다(사령관을 헛되이 깨우지 않는다).
-    expect((await h.route("commodore/directive", { theaterId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { text: "Fix remote first.", rev: 1 } });
+    expect((await h.route("commodore/directive", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { text: "Fix remote first.", rev: 1 } });
     const before = h.events.length;
-    expect((await h.route("commodore/directive", { theaterId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { rev: 1 } });
+    expect((await h.route("commodore/directive", { commodoreId: "t1", text: "Fix remote first." })).value.state).toMatchObject({ directive: { rev: 1 } });
     expect(h.events.length).toBe(before);
 
     // 정보 — 최신이 앞이고 출처는 사람이다.
-    await h.route("commodore/intel/add", { theaterId: "t1", text: "Users report dropped remote sessions." });
-    const added = await h.route("commodore/intel/add", { theaterId: "t1", text: "Pairing fails after sleep." });
+    await h.route("commodore/intel/add", { commodoreId: "t1", text: "Users report dropped remote sessions." });
+    const added = await h.route("commodore/intel/add", { commodoreId: "t1", text: "Pairing fails after sleep." });
     expect(added.value.state!.intel).toMatchObject([{ source: "person", text: "Pairing fails after sleep." }, { source: "person", text: "Users report dropped remote sessions." }]);
-    expect((await h.route("commodore/intel/remove", { theaterId: "t1", intelId: "nope" })).status).toBe(404);
+    expect((await h.route("commodore/intel/remove", { commodoreId: "t1", intelId: "nope" })).status).toBe(404);
     // 수정 — 그 자리에서 본문만 바뀌고 id·출처·자리·추가 시각은 그대로, editedAt 이 남는다. 같은 본문은 사건을 내지 않는다.
     const older = (added.value.state!.intel as { id: string; at: number }[])[1]!;
-    const edited = await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "  Users report dropped remote sessions on Wi-Fi.  " });
+    const edited = await h.route("commodore/intel/edit", { commodoreId: "t1", intelId: older.id, text: "  Users report dropped remote sessions on Wi-Fi.  " });
     expect(edited.value.state!.intel).toMatchObject([{ text: "Pairing fails after sleep." }, { id: older.id, at: older.at, source: "person", text: "Users report dropped remote sessions on Wi-Fi.", editedAt: expect.any(Number) }]);
     const eventsBeforeSame = h.events.length;
-    await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "Users report dropped remote sessions on Wi-Fi." });
+    await h.route("commodore/intel/edit", { commodoreId: "t1", intelId: older.id, text: "Users report dropped remote sessions on Wi-Fi." });
     expect(h.events.length).toBe(eventsBeforeSame);
-    expect((await h.route("commodore/intel/edit", { theaterId: "t1", intelId: "nope", text: "x" })).status).toBe(404);
-    expect((await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "   " })).status).toBe(400);
-    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: null })).status).toBe(400);
+    expect((await h.route("commodore/intel/edit", { commodoreId: "t1", intelId: "nope", text: "x" })).status).toBe(404);
+    expect((await h.route("commodore/intel/edit", { commodoreId: "t1", intelId: older.id, text: "   " })).status).toBe(400);
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "sonnet", effort: null })).status).toBe(400);
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
-    expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
     expect(saved).toMatchObject({ autonomy: true, directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
-    expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);
+    expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).autonomousCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
 
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
-    expect((await h.route("commodore/state", { theaterId: "t1" })).status).toBe(401);
+    expect((await h.route("commodore/state", { commodoreId: "t1" })).status).toBe(401);
   });
 
   it("refuses messages a stopped Commodore would never read, appends the log in order and pages it from the newest end", async () => {
@@ -142,15 +192,15 @@ describe("commodore theater state", () => {
     h.store.transcriptAppend("t1", { kind: "wake", reasons: ["directive changed"] });
     h.store.transcriptAppend("t1", { kind: "tool", name: "console_objectives", action: "complete", objectiveId: "o1", title: "Remote pairing" });
     // 그 Theater 의 자율 운영이 꺼져 있으면 메시지는 거절되고 기록에 남지 않는다.
-    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(await h.route("commodore/message", { commodoreId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
     h.store.setAutonomy("t1", true);
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
-    expect(await h.route("commodore/message", { theaterId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(await h.route("commodore/message", { commodoreId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
     const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: id === "o1" ? "Small scope" : `Scope ${id}`, ...(id === "gone" ? { removed: { at: 1 } } : {}) } };
-    expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
-    expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
+    expect((await h.route("commodore/message", { commodoreId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
+    expect((await h.route("commodore/message", { commodoreId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
     // 본문 속 지휘관 참조 — 같은 Theater 의 지운 적 없는 목표만, 셋까지, 본문의 표식 글자 수와 짝이 맞을 때만 기록한다. 참조와 짝이 맞지
     // 않는 표식 글자는 거절한다(검증하지 않은 참조가 서지 않는다).
     for (const [body, error] of [
@@ -161,31 +211,31 @@ describe("commodore theater state", () => {
       [{ text: `typed ${MARK} by hand ${MARK}`, references: ["o2"] }, "invalid_request"],
       [{ text: MARK, references: ["o2", "o3"] }, "invalid_request"],
       [{ text: `${MARK}${MARK}`, references: ["o2", "o2"] }, "invalid_request"],
-    ] as const) expect((await h.route("commodore/message", { theaterId: "t1", ...body }, hooks)).value).toMatchObject({ error });
+    ] as const) expect((await h.route("commodore/message", { commodoreId: "t1", ...body }, hooks)).value).toMatchObject({ error });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
     // 참조 없는 본문의 표식 글자(이미지 섞인 서식 글을 붙여 넣으면 브라우저가 만든다)는 지우고 받는다 — 참조는 서지 않는다.
-    expect((await h.route("commodore/message", { theaterId: "t1", text: `pasted ${MARK} note` }, hooks)).value.entry).toEqual(expect.objectContaining({ seq: 4, text: "pasted  note" }));
+    expect((await h.route("commodore/message", { commodoreId: "t1", text: `pasted ${MARK} note` }, hooks)).value.entry).toEqual(expect.objectContaining({ seq: 4, text: "pasted  note" }));
     expect(h.store.transcriptRead("t1").entries.at(-1)).not.toHaveProperty("references");
     const text = `Compare ${MARK} with ${MARK}${MARK}; prefer small objectives.`;
-    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text, references: ["o2", "o3", "o4"] }, hooks);
+    const sent = await h.route("commodore/message", { commodoreId: "t1", objectiveId: "o1", text, references: ["o2", "o3", "o4"] }, hooks);
     const references = [{ id: "o2", title: "Scope o2" }, { id: "o3", title: "Scope o3" }, { id: "o4", title: "Scope o4" }];
     expect(sent.value.entry).toMatchObject({ seq: 5, kind: "message", text, objective: { id: "o1", title: "Small scope" }, references });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" }, references });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(5);
     h.store.setAutonomy("t1", false);
-    expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
+    expect(await h.route("commodore/message", { commodoreId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
 
-    const page = (await h.route("commodore/transcript", { theaterId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
+    const page = (await h.route("commodore/transcript", { commodoreId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
     expect(page.entries.map((entry) => entry.seq)).toEqual([4, 5]);
     expect(page.hasMore).toBe(true);
-    const older = (await h.route("commodore/transcript", { theaterId: "t1", limit: 3, before: 4 })).value as { entries: { seq: number }[]; hasMore: boolean };
+    const older = (await h.route("commodore/transcript", { commodoreId: "t1", limit: 3, before: 4 })).value as { entries: { seq: number }[]; hasMore: boolean };
     expect(older.entries.map((entry) => entry.seq)).toEqual([1, 2, 3]);
     expect(older.hasMore).toBe(false);
 
     // 재기동 뒤에도 seq 는 이어진다 — 기록 파일이 커서의 진실이다.
     const reopened = createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined });
     expect(reopened.transcriptAppend("t1", { kind: "result", outcome: "ok", costUsd: 0.2 }).seq).toBe(6);
-    expect((await h.route("commodore/retry", { theaterId: "t1" }))).toMatchObject({ status: 409, value: { error: "commodore_not_retrying" } });
+    expect((await h.route("commodore/retry", { commodoreId: "t1" }))).toMatchObject({ status: 409, value: { error: "commodore_not_retrying" } });
   });
   it("contains message previews and bounds copies by retained bytes and transcript history", async () => {
     const png = Buffer.from("iVBORw0KGgo=", "base64");
@@ -197,10 +247,10 @@ describe("commodore theater state", () => {
     const hooks = { run: () => ({ phase: "idle" as const }) };
     const send = async () => {
       const { id } = files.save(png);
-      const result = await h.route("commodore/message", { theaterId: "t1", text: "Image", attachmentIds: [id] }, hooks);
+      const result = await h.route("commodore/message", { commodoreId: "t1", text: "Image", attachmentIds: [id] }, hooks);
       expect(result.status).toBe(200);
       const entry = result.value.entry as { messageId: string; attachments: { id: string; preview?: true }[] };
-      return { entry, query: { theaterId: "t1", messageId: entry.messageId, attachmentId: id } };
+      return { entry, query: { commodoreId: "t1", messageId: entry.messageId, attachmentId: id } };
     };
     try {
       const old = await send();
@@ -208,9 +258,9 @@ describe("commodore theater state", () => {
       expect((await h.route("commodore/attachment", old.query)).status).toBe(401);
       h.setAuthorized(true);
       expect((await h.route("commodore/attachment", old.query, {}, "POST")).status).toBe(405);
-      expect((await h.route("commodore/attachment", { ...old.query, theaterId: "t2" })).status).toBe(404);
+      expect((await h.route("commodore/attachment", { ...old.query, commodoreId: "t2" })).status).toBe(404);
       expect((await h.route("commodore/attachment", { ...old.query, attachmentId: "../state" })).status).toBe(400);
-      const images = path.join(h.objectivesDir, "commodore", "images");
+      const images = path.join(h.objectivesDir, "images");
       const file = path.join(images, old.entry.messageId, `${old.query.attachmentId}.png`);
       const outside = path.join(h.objectivesDir, "outside");
       fs.mkdirSync(outside);
@@ -260,7 +310,7 @@ describe("commodore fleet-memory", () => {
   it("keeps entries in a contained three-level tree, rebuilds the index on every write and refuses secrets", async () => {
     let clock = 1_000;
     const h = harness(() => clock);
-    const root = path.join(h.objectivesDir, "commodore", "memory");
+    const root = path.join(h.objectivesDir, "memory");
     const entry = { branch: "theater", topic: "실행 환경", slug: "isolated-console-env", title: "Isolated Console env", description: "Unset FLEET_* hijacks the live Console.", why: "The launcher honored inherited roots.", how: "Pass FLEET_DATA_DIR explicitly.", sources: [{ objectiveId: "o1", title: "Console e2e isolation" }] } as const;
 
     const saved = h.store.memory.save("t1", entry);
@@ -269,8 +319,8 @@ describe("commodore fleet-memory", () => {
     expect(fs.readFileSync(file, "utf8")).toContain('title: "Isolated Console env"');
     expect(fs.readFileSync(path.join(root, "MEMORY.md"), "utf8")).toContain("Unset FLEET_* hijacks the live Console.");
     // 화면의 읽기 — 같은 항목 전체가 온다. 쓰기 라우트는 없다.
-    expect((await h.route("commodore/memory", { theaterId: "t1" })).value).toMatchObject({ entries: [{ ref: saved.ref, why: entry.why, how: entry.how, sources: entry.sources }] });
-    expect((await h.route("commodore/memory", { theaterId: "unknown" })).status).toBe(404);
+    expect((await h.route("commodore/memory", { commodoreId: "t1" })).value).toMatchObject({ entries: [{ ref: saved.ref, why: entry.why, how: entry.how, sources: entry.sources }] });
+    expect((await h.route("commodore/memory", { commodoreId: "unknown" })).status).toBe(404);
 
     // 같은 자리·규칙 밖 이름·비밀 값은 쓰기 전에 거절된다.
     expect(() => h.store.memory.save("t1", entry)).toThrow("memory_exists");
@@ -320,7 +370,7 @@ describe("commodore session", () => {
         emit = options.onEvent;
         return {
           send: async (text) => { if (typeof text !== "string") throw new Error("Expected text-only turn"); sent.push(text); await script(text); },
-          cancel: () => undefined,
+          steer: () => false, cancel: () => undefined,
           dispose: async () => { disposed += 1; },
         };
       },
@@ -346,7 +396,7 @@ describe("commodore session", () => {
     const wakes: { at: number; reason: string }[] = [];
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
-      theaterId: "t1", theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
+      commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
       coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [
         defineConsoleTool({ name: "console_objectives", description: "list", actions: { inbox: { kind: "read", input: z.object({}) } } }).plugin({ execute: async () => ({ content: [] }) }),
         defineConsoleTool({ name: "console_objectives_detail", description: "objective", actions: { complete: { kind: "write", input: z.object({ objectiveId: z.string() }) } } })
@@ -381,7 +431,7 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"], browser: { scopeId: "commodore:t1" } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read"], browser: { scopeId: "commodore:t1" } });
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
@@ -477,7 +527,7 @@ describe("commodore supervisor", () => {
         }
         options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
       },
-      cancel() {}, dispose: async () => undefined,
+      steer: () => false, cancel() {}, dispose: async () => undefined,
     }); } };
     const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, read) => { readTurnAttachments = read; return []; }, emit: () => undefined });
     const hooks = { run: (id: string) => supervisor.status(id), clear: (id: string) => supervisor.clear(id) };
@@ -485,7 +535,7 @@ describe("commodore supervisor", () => {
     const sendImage = async (bytes = png) => {
       const { id } = files.save(bytes);
       activeId = id;
-      const result = await h.route("commodore/message", { theaterId: "t1", text: "Look at this", attachmentIds: [id] }, hooks);
+      const result = await h.route("commodore/message", { commodoreId: "t1", text: "Look at this", attachmentIds: [id] }, hooks);
       return { id, result, entry: result.value.entry as { messageId: string } };
     };
     try {
@@ -494,7 +544,7 @@ describe("commodore supervisor", () => {
       expect(accepted.result.status).toBe(200);
       files.discard(accepted.id); // 브라우저의 늦은 제거는 서버가 수락한 메시지를 건드리지 못한다.
       expect(files.forPlugin("other").read("t1", accepted.entry.messageId)).toEqual([]);
-      expect((await h.route("commodore/message", { theaterId: "t1", text: "again", attachmentIds: [accepted.id] }, hooks)).status).toBe(400);
+      expect((await h.route("commodore/message", { commodoreId: "t1", text: "again", attachmentIds: [accepted.id] }, hooks)).status).toBe(400);
       await vi.advanceTimersByTimeAsync(31 * 60_000);
       files.assertSaveCapacity();
       expect(attachments.read("t1", accepted.entry.messageId)[0]!.bytes).toEqual(png);
@@ -507,7 +557,7 @@ describe("commodore supervisor", () => {
       expect(delivered).toEqual(expect.arrayContaining([{ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } }]));
       expect(attachments.read("t1", accepted.entry.messageId)).toEqual([]);
       // 전달 원본은 거뒀어도 기록 사본은 재시작 뒤까지 남고, 브라우저는 경로 없이 같은 출처 라우트로 읽는다.
-      const previewQuery = { theaterId: "t1", messageId: accepted.entry.messageId, attachmentId: accepted.id };
+      const previewQuery = { commodoreId: "t1", messageId: accepted.entry.messageId, attachmentId: accepted.id };
       expect(await h.route("commodore/attachment", previewQuery)).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } } });
       expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).images.read("t1", accepted.entry.messageId, accepted.id)?.bytes).toEqual(png);
       expect(JSON.stringify(accepted.result.value)).not.toContain(h.objectivesDir);
@@ -519,7 +569,7 @@ describe("commodore supervisor", () => {
       // raw 12 MiB와 같아도 파일마다 붙는 padding으로 base64 16 MiB를 넘기 전에 교대한다.
       await supervisor.clear("t1");
       expect((await h.route("commodore/attachment", previewQuery)).status).toBe(404);
-      expect(fs.existsSync(path.join(h.objectivesDir, "commodore", "images"))).toBe(false);
+      expect(fs.existsSync(path.join(h.objectivesDir, "images"))).toBe(false);
       const beforeBudget = created;
       const fourMiB = Buffer.alloc(4 * 1024 * 1024); png.copy(fourMiB);
       for (let index = 0; index < 3; index += 1) {
@@ -552,7 +602,7 @@ describe("commodore supervisor", () => {
       const entry = { options, sent: [] as string[], disposed: false }; sessions.push(entry);
       return {
         send: async (text) => { if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text); if (hold) await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); else options.onEvent?.({ kind: "result", isError: false, source: "message" }); },
-        cancel: () => cancel?.(), dispose: async () => { entry.disposed = true; },
+        steer: () => false, cancel: () => cancel?.(), dispose: async () => { entry.disposed = true; },
       };
     } };
     const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
@@ -571,13 +621,13 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       h.store.transcriptAppend("t1", { kind: "message", text: "Old queued instruction." });
       const before = h.store.read("t1")!;
-      const file = path.join(h.objectivesDir, "commodore", "transcript.jsonl");
+      const file = path.join(h.objectivesDir, "transcript.jsonl");
       const oldRaw = fs.readFileSync(file, "utf8");
-      expect((await h.route("commodore/clear", { theaterId: "t1" }, hooks)).status).toBe(400);
+      expect((await h.route("commodore/clear", { commodoreId: "t1" }, hooks)).status).toBe(400);
       h.setAuthorized(false);
-      expect((await h.route("commodore/clear", { theaterId: "t1", confirm: true }, hooks)).status).toBe(401);
+      expect((await h.route("commodore/clear", { commodoreId: "t1", confirm: true }, hooks)).status).toBe(401);
       h.setAuthorized(true);
-      expect((await h.route("commodore/clear", { theaterId: "t1", confirm: true }, hooks)).status).toBe(200);
+      expect((await h.route("commodore/clear", { commodoreId: "t1", confirm: true }, hooks)).status).toBe(200);
       expect(sessions[0]!.disposed).toBe(true);
       expect(h.store.read("t1")).toEqual({ ...before, transcriptClearedThrough: expect.any(Number) });
       expect(fs.existsSync(file)).toBe(false);
@@ -632,7 +682,7 @@ describe("commodore supervisor", () => {
             await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); cancel = undefined; resolve(); }; });
           } else options.onEvent?.({ kind: "result", isError: false, source: "message" });
         },
-        cancel: () => cancel?.(),
+        steer: () => false, cancel: () => cancel?.(),
         dispose: async () => { entry.disposed = true; },
       };
     } };
@@ -643,7 +693,7 @@ describe("commodore supervisor", () => {
     });
     let supervisor = makeSupervisor();
     const hooks = { run: (id: string) => supervisor.status(id) };
-    const schedule = (stopAt: number | null) => h.route("commodore/stop-at", { theaterId: "t1", stopAt }, hooks);
+    const schedule = (stopAt: number | null) => h.route("commodore/stop-at", { commodoreId: "t1", stopAt }, hooks);
     try {
       expect((await schedule(Date.now() + 60_000)).status).toBe(409);
       h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
@@ -673,7 +723,7 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(3);
       expect(sessions[0]!.sent.at(-1)).toContain("The scheduled end time has arrived");
       expect(sessions[0]!.sent.at(-1)).not.toContain("Return me to the person.");
-      expect((await h.route("commodore/message", { theaterId: "t1", text: "Too late." }, hooks)).value.error).toBe("commodore_stopping");
+      expect((await h.route("commodore/message", { commodoreId: "t1", text: "Too late." }, hooks)).value.error).toBe("commodore_stopping");
       expect((await schedule(null)).value.error).toBe("commodore_stopping");
       const tool = sessions[0]!.options.tools!.custom!.flatMap((group) => group.tools).find((tool) => tool.name === "console_objectives_detail")!;
       expect(await tool.execute({ action: "complete" }, { cwd: h.objectivesDir })).toMatchObject({ isError: true });
@@ -707,13 +757,14 @@ describe("commodore supervisor", () => {
       await schedule(Date.now() + 60_000);
       await supervisor.dispose();
       await vi.advanceTimersByTimeAsync(60_001);
-      const restored = createCommodoreStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], emit: () => undefined });
+      const restored = createCommodoreStore({ dirOf: () => h.objectivesDir, commodoreIds: () => ["t1"], emit: () => undefined });
       failNotice = true;
       supervisor = makeSupervisor(restored);
       supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(1);
       expect(sessions.at(-1)!.sent).toHaveLength(1);
       expect(sessions.at(-1)!.sent[0]).toContain("The scheduled end time has arrived");
+      expect(sessions.at(-1)!.sent[0]).toContain("board actions");
       expect(sessions.at(-1)!.sent[0]).not.toContain("Console restarted;");
       expect(restored.read("t1")!.autonomy).toBe(false);
       expect(restored.read("t1")!.stopAt).toBeUndefined();
@@ -723,7 +774,7 @@ describe("commodore supervisor", () => {
       expect(sessions.at(-1)!.sent).toHaveLength(1);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
-  it("hands messages to the running turn, returns unread ones to the queue, and resumes the same conversation across restarts", async () => {
+  it("hands messages to the running turn, returns unread ones to the queue, and opens a fresh conversation with a transcript summary across restarts", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
     try {
@@ -733,24 +784,20 @@ describe("commodore supervisor", () => {
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
       fs.mkdirSync(theaterRoot, { recursive: true });
       // 남는 대화를 흉내 내는 호스트 — key 마다 대화가 남고, 같은 key 로 다시 열면 이어 받는다. 도는 턴은 건넨 말을 받는다.
-      const kept = new Set<string>(); const forgotten: string[] = [];
-      const sessions: { sent: string[]; steered: { text: string; id: string }[]; resumed: boolean; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
+      const sessions: { sent: string[]; steered: { text: string; id: string }[]; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
       const agent: AgentHost = {
         createSession: async (options) => {
-          const key = options.persist!.key; const resumed = kept.has(key); kept.add(key);
           let finish = () => {};
-          const entry = { sent: [] as string[], steered: [] as { text: string; id: string }[], resumed, emit: (event: AgentEvent) => options.onEvent?.(event), finish: () => finish() };
+          const entry = { sent: [] as string[], steered: [] as { text: string; id: string }[], emit: (event: AgentEvent) => options.onEvent?.(event), finish: () => finish() };
           sessions.push(entry);
           let turning = false; let cancelled = false;
           return {
-            resumed,
             send: async (text) => { entry.sent.push(text as string); turning = true; cancelled = false; await new Promise<void>((resolve) => { finish = resolve; }); turning = false; options.onEvent?.(cancelled ? { kind: "cancelled" } : { kind: "result", isError: false, source: "message" }); },
             steer: (text, id) => { if (!turning) return false; entry.steered.push({ text: text as string, id }); return true; },
             cancel: () => { for (const { id } of entry.steered) options.onEvent?.({ kind: "input-cancelled", id }); cancelled = true; finish(); },
             dispose: async () => undefined,
           };
         },
-        forget: async (key) => { kept.delete(key); forgotten.push(key); },
       };
       let hasPersonMessage: (() => boolean) | undefined;
       const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, emit: () => undefined });
@@ -780,17 +827,21 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(10);
       expect(hasPersonMessage!()).toBe(false);
 
-      // Console 재시작 — 같은 대화를 이어 받는다. 재시작만으로는 깨우지 않고 「이어 받음」 줄만 남는다.
+      // Console 재시작 — 새 대화의 첫 턴은 제품 기록의 최근 결과 요약과 restart·empty 깨움이다.
       await supervisor.dispose();
       supervisor = make();
       supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(2);
-      expect(sessions[1]!.resumed).toBe(true);
-      expect(sessions[1]!.sent).toHaveLength(0);
-      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "session", event: "resumed" });
+      expect(sessions[1]!.sent).toHaveLength(1);
+      expect(sessions[1]!.sent[0]).toContain("Console restarted");
+      expect(sessions[1]!.sent[0]).toContain("2026-10-17T12:");
+      expect(sessions[1]!.sent[0]).toContain("board actions");
+      expect(h.store.read("t1")!.run!.session).toBe(2);
+      sessions[1]!.finish();
+      await vi.advanceTimersByTimeAsync(10);
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
-      // 남는 대화라도 끊긴 턴의 말이 닿았는지는 모른다 — 성공을 듣기 전에 끄면 「전달되지 않음」이고 다시 실린다.
+      // 끊긴 턴의 말은 새 대화에 다시 싣는다.
       const cut = h.store.transcriptAppend("t1", { kind: "message", text: "Recheck the roster." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions.at(-1)!.sent.at(-1)).toContain("Recheck the roster.");
@@ -807,7 +858,11 @@ describe("commodore supervisor", () => {
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
       // Clear 는 남은 대화를 버린다 — 다음 세션은 새 대화다.
       await supervisor.clear("t1");
-      expect(forgotten).toEqual(["commodore:t1"]);
+      h.store.transcriptAppend("t1", { kind: "message", text: "After clear." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions.at(-1)!.sent[0]).not.toContain("board actions");
+      sessions.at(-1)!.finish();
+      await vi.advanceTimersByTimeAsync(10);
       await supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });
@@ -823,7 +878,7 @@ describe("commodore supervisor", () => {
     const agent: AgentHost = {
       createSession: async () => {
         await new Promise<void>((resolve) => { release = resolve; });
-        return { send: async () => { opened.sent += 1; }, cancel: () => undefined, dispose: async () => { opened.disposed = true; } };
+        return { send: async () => { opened.sent += 1; }, steer: () => false, cancel: () => undefined, dispose: async () => { opened.disposed = true; } };
       },
     };
     const supervisor = createCommodoreSupervisor({
@@ -891,7 +946,7 @@ describe("commodore supervisor", () => {
               // 턴 합계(inputTokens)는 도구 호출마다 다시 더해진 값이고, 대화 크기는 마지막 호출의 입력(contextTokens)이다.
               options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens: inputTokens * 2, outputTokens: 10, costUsd: 0.01, contextTokens: inputTokens } });
             },
-            cancel: () => cancelTurn?.(),
+            steer: () => false, cancel: () => cancelTurn?.(),
             dispose: async () => { entry.disposed = true; },
           };
         },
@@ -1145,7 +1200,7 @@ describe("commodore supervisor", () => {
       const asked = await useTool("ask_person", { questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });
       const ask = h.store.read("t1")!.asks!.find((entry) => entry.id === asked.askId)!;
-      const answer = (optionIndex: number) => h.route("commodore/ask/answer", { theaterId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });
+      const answer = (optionIndex: number) => h.route("commodore/ask/answer", { commodoreId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });
       expect((await answer(1)).status).toBe(200);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["answered:1"]);
@@ -1181,7 +1236,7 @@ describe("commodore supervisor", () => {
       completeOnCancel = true;
       h.store.setAutonomy("t1", true);
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "requeued", seqs: [activeMessage.seq, pendingMessage.seq] });
-      const delivered = await h.route("commodore/message", { theaterId: "t1", text: "Already received." }, { run: (id) => supervisor.status(id) });
+      const delivered = await h.route("commodore/message", { commodoreId: "t1", text: "Already received." }, { run: (id) => supervisor.status(id) });
       expect(delivered.status).toBe(200);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(3);
