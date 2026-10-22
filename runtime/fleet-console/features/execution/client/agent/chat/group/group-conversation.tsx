@@ -118,6 +118,44 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   // 사람이 이 기록을 스크롤한 마지막 입력 시각 — 그 직후의 scroll 사건은 사람의 뜻으로 읽는다.
   const userScrollAt = React.useRef(-Infinity);
   const markUserScroll = React.useCallback(() => { userScrollAt.current = performance.now(); }, []);
+  // 스크롤바를 누른 뒤 한참 있다 움직일 수도 있다 — 누르는 동안은 250ms 창과 별개로 사람의 입력이다.
+  const scrollPointers = React.useRef(new Set<number>());
+  const autoScrolling = React.useRef(false);
+  React.useEffect(() => {
+    const endAutoScroll = () => { autoScrolling.current = false; };
+    const release = (event: PointerEvent) => {
+      if (scrollPointers.current.delete(event.pointerId)) markUserScroll();
+    };
+    const blur = () => {
+      if (scrollPointers.current.size > 0) markUserScroll();
+      scrollPointers.current.clear();
+      endAutoScroll();
+    };
+    const find = (event: KeyboardEvent) => {
+      endAutoScroll();
+      // 브라우저 찾기는 페이지 밖에서 움직인다 — 찾기를 열거나 다음 결과로 가면 먼저 읽기로 전환한다.
+      if (!((event.metaKey || event.ctrlKey) && ["f", "g"].includes(event.key.toLowerCase())) && event.key !== "F3") return;
+      const log = logRef.current;
+      if (log && !log.closest("[inert]") && log.clientHeight > 0) setFollowing(log, false);
+    };
+    // 기록 밖에서 놓거나 창을 떠나도 드래그가 남지 않게 한다. 기본 단축키·포인터 동작은 가로채지 않는다.
+    window.addEventListener("pointerdown", endAutoScroll, true);
+    window.addEventListener("wheel", endAutoScroll, true);
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", blur);
+    window.addEventListener("keydown", find, true);
+    return () => {
+      window.removeEventListener("pointerdown", endAutoScroll, true);
+      window.removeEventListener("wheel", endAutoScroll, true);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", blur);
+      window.removeEventListener("keydown", find, true);
+      scrollPointers.current.clear();
+      endAutoScroll();
+    };
+  }, [markUserScroll, setFollowing]);
   const last = entries[entries.length - 1];
   const first = entries[0]?.id;
   const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${snapshot.decision?.id ?? ""}:${snapshot.holds.map((hold) => hold.id).join(",")}`;
@@ -208,22 +246,38 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         aria-busy={snapshot.loading}
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
-        onPointerDown={markUserScroll}
+        onPointerDown={(event) => {
+          markUserScroll();
+          scrollPointers.current.add(event.pointerId);
+          // 가운데 버튼 자동 스크롤은 버튼을 놓은 뒤에도 이어진다 — 다음 클릭·wheel·키 입력까지 읽기를 유지한다.
+          if (event.button === 1) {
+            autoScrolling.current = true;
+            setFollowing(event.currentTarget, false);
+          }
+        }}
+        // Tab·프로그램 포커스 이동이 일으키는 scroll 도 사람의 읽기 위치를 지킨다.
+        onFocusCapture={markUserScroll}
         onKeyDown={(event) => { if (SCROLL_KEYS.has(event.key)) markUserScroll(); }}
         onScroll={(event) => {
           const log = event.currentTarget;
-          if (log.closest("[inert]") || log.clientHeight === 0) return;
-          // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 다음 조각이 먼저 자라도 따라가기를 끊지 않는다.
+          if (log.closest("[inert]") || log.clientHeight === 0 || autoScrolling.current) return;
+          const now = performance.now();
+          const gesture = scrollPointers.current.size > 0 || now - userScrollAt.current < USER_SCROLL_MS;
+          // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 포인터 해제가 누락돼도 이 기존 방어는 유지한다.
           if (log.scrollTop === programmaticTop.current) return;
+          // 손을 놓은 뒤의 관성 scroll 은 창을 연장하되, 우리가 쓴 좌표의 사건으로는 사슬을 잇지 않는다.
+          if (gesture) userScrollAt.current = now;
           programmaticTop.current = null;
-          // 따라가는 중이면 판정 높이는 지금 높이와 마지막 RO 높이 중 작은 쪽이다. 복귀·폭 전이로 줄면 브라우저가 먼저 scrollTop을
-          // 제한하므로 지금 높이로 재고(RO 전의 cached 높이는 위로 읽기로 오인한다), 원장 재생처럼 clamp·anchoring 사건이 닿기 전에
-          // 칼럼이 먼저 자라면 RO 전 높이로 잰다(그 성장을 사람이 위로 올린 것으로 오인하지 않는다 — 다음 RO 가 따라간다).
-          // 위로 올려 읽는 중이거나 사람의 스크롤 입력 직후이면 지금 높이로만 잰다 — 보이는 줄 위가 자라 anchoring 이 올린 scrollTop 을
-          // 짧은 cached 높이와 견주면 바닥에 닿은 것으로 오인해, 읽거나 위로 올리던 사람을 바닥으로 끌어내린다.
-          const cached = placed.current?.height;
-          const gesture = performance.now() - userScrollAt.current < USER_SCROLL_MS;
-          const height = cached && nearBottomRef.current && !gesture ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
+          const height = log.scrollHeight;
+          if (nearBottomRef.current && !gesture) {
+            // 입력 없는 clamp 는 따라가기 의도를 바꾸지 않는다. 줄었다 같은 크기로 돌아오면 RO 가 침묵할 수 있으므로
+            // 다음 RO 를 기다리지 않고 여기서 바닥을 복구한다. 복귀·폭 전이의 축소와 원장 재생 성장도 같은 길이다.
+            log.scrollTop = height;
+            programmaticTop.current = log.scrollTop;
+            return;
+          }
+          // 위로 읽는 중이거나 사람 입력 뒤에는 지금 높이로만 잰다 — 위쪽 성장에 anchoring 된 좌표를 cached 높이와
+          // 견줘 바닥으로 오인하지 않는다. 높이는 RO·scroll 때만 읽고 글자 조각의 렌더에서는 읽지 않는다.
           setFollowing(log, height - log.scrollTop - log.clientHeight < 60);
         }}
       >
