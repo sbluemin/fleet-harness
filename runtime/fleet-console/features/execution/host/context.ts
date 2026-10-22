@@ -51,6 +51,8 @@ export interface ConsoleRuntimeContext {
    * Console owns. Required: an SDK user without it would spawn children the Console's deadline never ends.
    */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
+  /** 살아 있는 실행의 관찰·명령 포트. 제품 상태 writer는 Console에 남는다. */
+  readonly hostedExecution?: import("./session-host/adapters.js").HostedExecution;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   /**

@@ -9,7 +9,7 @@ export default defineConfig({
   banner: { js: 'import { createRequire as __fleetCreateRequire } from "node:module";\nconst require = __fleetCreateRequire(import.meta.url);' },
   clean: true,
   dts: false,
-  entry: { main: "src/main.ts" },
+  entry: { main: "src/main.ts", "update-keeper": "src/update-keeper.ts" },
   external: ["electron"],
   format: ["esm"],
   noExternal: [/^@fleet-console\/protocol(\/|$)/, /^@fleet-console\/lifecycle$/],

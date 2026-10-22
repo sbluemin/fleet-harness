@@ -161,7 +161,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
+  return { reattach: api.reattach, launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -583,7 +583,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 표면은 마커가 말한다. 채팅은 자식 없이도 접근 가능하고 산출은 현재 원장을 따른다.
       const chatSurface = session.chatActive === true || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       // 세대는 소유권을 따른다 — 살아 있는 생산자가 채팅이면 그 인스턴스, 아니면 마지막 PTY 기동.
-      const generation = runtime.lifecycle !== "live" ? undefined : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : observability.getTerminalGeneration(operationId);
+      const hosted = ctx.hostedExecution?.get(`${session.chatActive === true ? "chat" : "pty"}:${operationId}`);
+      const generation = runtime.lifecycle !== "live" ? undefined : hosted?.state === "live" ? hosted.sessionKey : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : observability.getTerminalGeneration(operationId);
       return {
         activity: runtime.lifecycle === "dormant" ? "ended" : runtime.activity,
         lifecycle: runtime.lifecycle, ...(generation ? { generation } : {}), observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
@@ -2159,6 +2160,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return {
       ok: true,
       seed: {
+        hostedExecution: ctx.hostedExecution,
         resolveExecutablePath: async () => {
           const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: await readAgentCliPaths() });
           if (!resolution.resolved || resolution.error) throw new Error("chat_cli_unavailable");
@@ -2599,7 +2601,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   async function cleanup(): Promise<void> {
-    // 종료는 자원 회수다. 터미널은 exit로 휴면이 되고, 채팅은 다음 부팅에서 live/idle로 복원된다.
+    // 종료는 자원 회수다. 인증된 업데이트는 live 실행에 다시 붙고, 그 외 채팅은 다음 부팅에서 live/idle로 복원된다.
     consoleTerminal.dispose();
     reminderWriter.cancelAll();
     unsubscribeRename();
@@ -2608,7 +2610,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     unsubscribeChatDelete();
     unsubscribePurge();
     unsubscribeTitle();
-    await chatRegistry.disposeAll();
+    if (ctx.hostedExecution) chatRegistry.detachAll();
+    else await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
     workspaceHooks.dispose();
@@ -2720,6 +2723,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     for (const operation of sessions) {
       if (operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) continue;
       const providerSession = readProviderSession(operation.payload);
+      const livePty = ctx.hostedExecution?.get(`pty:${operation.id}`);
+      if (livePty?.state === "live") {
+        injectOperation(operation);
+        observability.updateTerminalSessionStatus(operation.id, "terminal-only");
+        continue;
+      }
+      const live = ctx.hostedExecution?.get(`chat:${operation.id}`);
+      if (live?.state === "live") {
+        injectOperation(operation);
+        observability.setTerminalSessionChatActive(operation.id, true);
+        continue;
+      }
       // 채팅 표면에 있는 Operation은 첫 턴 전에는 providerSession이 없다 — 채팅으로 태어났든
       // 첫 턴 전에 터미널에서 넘어왔든 마찬가지다. 여기서 걸러 내면 그 Operation은 관측 세션
       // 없이 남아 활동 보고를 받을 자리가 사라지고, 첫 메시지가 chat_activity_unavailable로
@@ -2745,7 +2760,19 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeOperation, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
+  async function reattach(): Promise<void> {
+    for (const snapshot of ctx.hostedExecution?.inventory() ?? []) {
+      if (snapshot.kind !== "sdk" || snapshot.state !== "live" || !snapshot.sessionKey.startsWith("chat:")) continue;
+      const id = snapshot.sessionKey.slice(5);
+      const operation = ctx.host.operations.get(id);
+      if (!operation || operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) throw new Error("session_operation_scope_missing");
+      const seed = await resolveChatSeed(operation);
+      if (!seed.ok) throw new Error(seed.error);
+      await chatRegistry.ensure(id, () => seed.seed);
+    }
+  }
+
+  return { cleanup, reattach, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeOperation, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });

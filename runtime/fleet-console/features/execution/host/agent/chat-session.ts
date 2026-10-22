@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import { createInterface } from "node:readline";
 import path from "node:path";
+import { createHostedSdk } from "../session-host/sdk-proxy.js";
+import type { HostedExecution } from "../session-host/adapters.js";
+import type { SessionSnapshot } from "@fleet-console/protocol/session-host";
+import type { SessionCheckpoint } from "../session-host/contracts.js";
 
 import {
   createClaudeGatewaySdk,
@@ -109,6 +113,7 @@ export type AgentChatCoordinatesResult =
   | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause };
 
 export interface AgentChatSessionSeed {
+  readonly hostedExecution?: HostedExecution;
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
@@ -774,6 +779,8 @@ class AgentChatSession {
    * 몫이므로 두 문이 같은 지시를 두고 겹치지 않는다.
    */
   private readonly queuedDispatches = new Map<string, QueuedDispatch>();
+  private readonly dispatching = new Map<string, QueuedDispatch>();
+  private readonly dispatchCommandIds = new Map<string, string>();
   private queueSeq = 0;
   /**
    * 이미 자식에게 건넨 말(자식의 좌표 → 이 세션의 좌표와 표시 문면).
@@ -1016,6 +1023,7 @@ class AgentChatSession {
     this.operationId = operationId;
     this.seed = seed;
     this.createSdk = createSdk;
+    this.removeHostFlush = seed.hostedExecution?.beforeUpdate(() => this.flushHostedCheckpoint(true));
     this.stepReporter = seed.reportStep ? createChatStepReporter(seed.reportStep) : null;
     this.coordinates = {
       model: seed.model,
@@ -1030,8 +1038,88 @@ class AgentChatSession {
       : null;
   }
 
+  private hostCursor = 0;
+  private hostCheckpointFlight: Promise<void> = Promise.resolve();
+  private readonly removeHostFlush: (() => void) | undefined;
+
   get busy(): boolean {
-    return this.pendingTurns > 0;
+    return this.pendingTurns > 0 || this.turnOpen;
+  }
+
+  /** 실행 관찰 상태만 남긴다. 제품 파일·provider transcript의 두 번째 writer가 아니다. */
+  private captureHostedState(): Record<string, unknown> {
+    const scalars = { journal: this.journal, seq: this.seq, queueSeq: this.queueSeq, latestSessionId: this.latestSessionId, reportedSessionId: this.reportedSessionId, reportedCwd: this.reportedCwd, peerScanSince: this.peerScanSince, coordinates: this.coordinates, pendingCoordinates: this.pendingCoordinates, turnOpen: this.turnOpen, turnReachedChild: this.turnReachedChild, settlingStoppedTurn: this.settlingStoppedTurn, observedTurns: this.observedTurns, commandLane: this.commandLane, stopEpoch: this.stopEpoch, turnByPerson: this.turnByPerson, turnSentTo: this.turnSentTo, turnScheduledWake: this.turnScheduledWake, endedTurnReport: this.endedTurnReport, turnRawAnswer: this.turnRawAnswer, turnApiError: this.turnApiError, contextGeneration: this.contextGeneration, liveContextTotal: this.liveContextTotal, lastContextTotal: this.lastContextTotal, observedClaudeCoordinate: this.observedClaudeCoordinate, rawCommands: this.rawCommands, rawAgents: this.rawAgents, fleetPluginVerified: this.fleetPluginVerified };
+    return { schema: 1, scalars, queuedDispatches: [...this.queuedDispatches], hostedDispatches: [...this.hostedDispatches].map(([id, { onSettled: _callback, ...value }]) => [id, value]), pendingSentMessages: [...this.pendingSentMessages], receivedMessageIds: [...this.receivedMessageIds], reportedPeerMessages: [...this.reportedPeerMessages], pendingWakeCalls: [...this.pendingWakeCalls], liveJobs: [...this.liveJobs], settledJobs: [...this.settledJobs], toolNames: [...this.toolNames], toolTitles: [...this.toolTitles], jobKinds: [...this.jobKinds], jobOutputs: [...this.jobOutputs], workflowJobs: [...this.workflowJobs], skillNames: [...this.skillNames] };
+  }
+
+  private async flushHostedCheckpoint(requireAdmission = false): Promise<void> {
+    const host = this.seed.hostedExecution;
+    if (!host || host.isDetached) return;
+    if (requireAdmission) {
+      await this.sessionFlight;
+      if (this.dispatching.size) {
+        const snapshot = await host.refresh(`chat:${this.operationId}`);
+        for (const id of this.dispatching.keys()) {
+          const commandId = this.dispatchCommandIds.get(id);
+          if (!commandId || !snapshot.commands.some((record) => record.commandId === commandId)) throw new Error("chat_input_admission_pending");
+        }
+      }
+    }
+    if (!host.get(`chat:${this.operationId}`)) return;
+    this.hostCheckpointFlight = this.hostCheckpointFlight.then(async () => {
+      const key = `chat:${this.operationId}`;
+      const snapshot = await host.refresh(key);
+      const state = this.captureHostedState();
+      // 저널 앞부분은 transcript로 다시 읽을 수 있다. 실행 상태를 버리거나 seq를 되돌리지는 않는다.
+      const scalars = state.scalars as { journal: AgentChatJournalEvent[] };
+      scalars.journal = [...scalars.journal];
+      while (scalars.journal.length && Buffer.byteLength(JSON.stringify(state)) > 3 * 1024 * 1024) scalars.journal.shift();
+      await host.checkpoint(key, { lastConsumedSeq: this.hostCursor, activeCommandId: typeof snapshot.runtime.activeCommandId === "string" ? snapshot.runtime.activeCommandId : null, pendingInputs: [...this.queuedDispatches], pendingAsks: this.listPendingAsks(), jobs: this.listJobs(), queuedWakes: [], state });
+    });
+    return this.hostCheckpointFlight;
+  }
+
+  async adoptHosted(snapshot: SessionSnapshot): Promise<void> {
+    const checkpoint = snapshot.checkpoint as SessionCheckpoint | null;
+    if (checkpoint) {
+      const state = checkpoint.state as ReturnType<AgentChatSession["captureHostedState"]>;
+      if (state?.schema !== 1 || !state.scalars || typeof state.scalars !== "object") throw new Error("chat_host_checkpoint_incompatible");
+      const scalars = state.scalars as Record<string, unknown>;
+      const target = this as unknown as Record<string, unknown>;
+      // 명시적으로 캡처한 키만 복원한다. 실행 객체·콜백·임의 prototype 필드는 받지 않는다.
+      for (const key of Object.keys(this.captureHostedState().scalars as object)) if (Object.hasOwn(scalars, key)) target[key] = scalars[key];
+      for (const key of ["queuedDispatches", "hostedDispatches", "pendingSentMessages", "toolNames", "toolTitles", "jobKinds", "jobOutputs", "workflowJobs"] as const) {
+        const map = this[key] as Map<unknown, unknown>; map.clear();
+        for (const [id, value] of state[key] as [unknown, unknown][]) map.set(id, value);
+      }
+      for (const key of ["receivedMessageIds", "reportedPeerMessages", "pendingWakeCalls", "liveJobs", "settledJobs", "skillNames"] as const) {
+        const set = this[key] as Set<unknown>; set.clear();
+        for (const value of state[key] as unknown[]) set.add(value);
+      }
+      this.hostCursor = checkpoint.lastConsumedSeq;
+    } else if (snapshot.seq > 0) {
+      // 아직 첫 체크포인트가 없으면 retained SDK 이벤트를 처음부터 읽는다. gap은 명시적으로 거절한다.
+      this.hostCursor = 0;
+    }
+    this.seed.reportActivity(this.turnOpen);
+    this.seed.reportBackgroundPending(this.liveJobs.size > 0);
+    await this.ensureSession();
+    // 호스트에 건넨 메시지는 절대로 재전송하지 않는다. Console에만 있던 예약만 다시 건다.
+    const hosted = new Set([...this.hostedDispatches.values()].map((value) => value.queueId));
+    for (const [id, queued] of [...this.queuedDispatches]) {
+      if (hosted.has(id)) continue;
+      this.queuedDispatches.delete(id);
+      this.send(queued.text, { display: queued.display, format: queued.format, attachments: queued.attachments }, undefined, queued.by);
+    }
+  }
+
+  async attachHosted(): Promise<void> { await this.ensureSession(); }
+
+  detachHosted(): void {
+    this.removeHostFlush?.();
+    this.listeners.clear();
+    this.stepReporter?.dispose();
+    this.workspaceHook?.dispose();
   }
 
   /** 호스트 내부의 자원 사실이다. 관측 DTO나 플러그인 상태에는 노출하지 않는다. */
@@ -1184,7 +1272,7 @@ class AgentChatSession {
    * 떠났으므로, 거절은 요청 경계에서만 시끄러울 수 있다.
    */
   canReportActivity(): boolean {
-    return this.seed.canReportActivity();
+    return this.seed.hostedExecution?.isUpdating !== true && this.seed.canReportActivity();
   }
 
   private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] } | undefined;
@@ -1257,14 +1345,18 @@ class AgentChatSession {
       // 이미 접수된 다음 지시까지 취소하지 않는다 — 그 문은 `cancelQueued`가 따로 연다.
       // dispatch는 앞 턴이 닫힐 때까지 기다린 뒤 자기 세대를 잡으므로 중단 result가 늦게 와도
       // 새 지시의 결말로 읽히지 않는다.
-      .then(() => {
+      .then(async () => {
+        await this.seed.hostedExecution?.waitForAdmission();
         // 자기 차례에 자리가 비어 있으면 그 사이 취소된 것이다. 취소는 좌표를 지우는 것이
         // 전부이고, 판정은 이 한 줄이 진다 — 별도의 취소 집합을 두면 그것이 영원히 자란다.
-        if (!this.queuedDispatches.delete(id)) { onSettled?.("interrupted"); return; }
+        const queued = this.queuedDispatches.get(id);
+        if (!queued || !this.queuedDispatches.delete(id)) { onSettled?.("interrupted"); return; }
+        this.dispatching.set(id, queued);
+        const commandId = randomUUID(); this.dispatchCommandIds.set(id, commandId);
         // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
         this.pushQueue();
         const before = this.seq;
-        return this.dispatch(text, { display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [] }, by).then(() => {
+        return this.dispatch(text, { display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [] }, by, commandId).then(() => {
           const endingKind = readChatCommandLaneName(text) === null ? "turn-end" : "command-end";
           const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === endingKind)?.event;
           onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : end?.kind === "command-end" ? end.ok ? "succeeded" : "failed" : "unknown");
@@ -1273,6 +1365,7 @@ class AgentChatSession {
       .catch(() => undefined)
       .finally(() => {
         this.pendingTurns -= 1;
+        this.dispatching.delete(id); this.dispatchCommandIds.delete(id);
       });
   }
 
@@ -2264,7 +2357,7 @@ class AgentChatSession {
           this.pendingAsks.delete(id);
         },
       });
-      this.push(ask);
+      if (!this.journal.some(({ event }) => event.kind === "ask" && event.id === id)) this.push(ask);
       this.seed.reportAwaiting(true);
     });
   }
@@ -2511,7 +2604,15 @@ class AgentChatSession {
             this.push({ kind: "error", code: "chat_cli_unavailable" });
             throw error;
           });
-          const sdk = await this.createSdk({
+          const createSdk: CreateChatSdk = this.seed.hostedExecution ? async (options) => createHostedSdk(this.seed.hostedExecution!, options, {
+            key: `chat:${this.operationId}`,
+            observer: {
+              afterSeq: this.hostCursor,
+              consumed: async (event) => { this.hostCursor = event.seq; await this.flushHostedCheckpoint(); },
+              gap: () => { throw new Error("chat_host_replay_gap"); },
+            },
+          }) : this.createSdk;
+          const sdk = await createSdk({
       modelPolicy: claudeGatewayModelPolicy,
             ...(executablePath === undefined ? {} : { executablePath }),
             baseUrl: this.seed.baseUrl,
@@ -2866,11 +2967,13 @@ class AgentChatSession {
       }
     } catch {
       // 자식이 끊겼다. 다음 디스패치가 새 자식을 세우고 마지막 좌표로 이어붙인다.
-      if (!this.disposed) this.push({ kind: "error", code: "chat_session_lost" });
+      if (!this.disposed && !this.seed.hostedExecution?.isDetached) this.push({ kind: "error", code: "chat_session_lost" });
     } finally {
-      // 끊긴 자식의 오류 코드가 다음 자식의 턴 결말로 넘어가지 않게 한다.
-      this.turnApiError = undefined;
-      this.retireSession(session);
+      // 관찰 연결 종료는 실행 턴 종료가 아니다.
+      if (!this.seed.hostedExecution?.isDetached) {
+        this.turnApiError = undefined;
+        this.retireSession(session);
+      }
     }
   }
 
@@ -3393,7 +3496,7 @@ class AgentChatSession {
    * 기다리는 이유는 자식의 사정이 아니라 화면의 사정이다 — 자식은 자기 큐를 갖고 있어 턴 중에
    * 받아도 잃지 않지만, 원장은 턴 하나씩 그리므로 앞 턴이 닫힌 뒤 다음 디스패치를 세운다.
    */
-  private async dispatch(text: string, presentation: { readonly display: string; readonly format?: "markdown"; readonly attachments: readonly ChatAttachment[] }, by?: ChatOrigin): Promise<void> {
+  private async dispatch(text: string, presentation: { readonly display: string; readonly format?: "markdown"; readonly attachments: readonly ChatAttachment[] }, by?: ChatOrigin, commandId?: string): Promise<void> {
     if (this.disposed) return;
     // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
     // "실패가 아니라 중지"라는 판정이다.
@@ -3462,7 +3565,7 @@ class AgentChatSession {
         return;
       }
       if (lane === null) this.requestContextSnapshot(session, "start");
-      session.send(tagChatOrigin(text, by, presentation.display, presentation.format));
+      session.send(tagChatOrigin(text, by, presentation.display, presentation.format), commandId ? { messageId: commandId } : undefined);
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
       this.turnReachedChild = true;
       await settled;
@@ -3625,8 +3728,11 @@ export class AgentChatRegistry {
     const flight = (async () => {
       // 터미널에서 넘어온 세션은 옛 CLI 가 실제로 사라진 뒤에만 선다 — 호출자는 chat_unavailable 로 답한다.
       if (this.awaitPriorWriterExit && !await this.awaitPriorWriterExit(operationId)) throw new Error("chat_prior_writer_alive");
-      const session = new AgentChatSession(operationId, seed(), this.createSdk);
-      await session.replayTranscript();
+      const sessionSeed = seed();
+      const session = new AgentChatSession(operationId, sessionSeed, this.createSdk);
+      const hosted = sessionSeed.hostedExecution?.get(`chat:${operationId}`);
+      if (hosted?.state === "live") await session.adoptHosted(hosted);
+      else await session.replayTranscript();
       this.sessions.set(operationId, session);
       return session;
     })().finally(() => {
@@ -3669,6 +3775,11 @@ export class AgentChatRegistry {
     } finally {
       this.disposals.delete(operationId);
     }
+  }
+
+  detachAll(): void {
+    for (const session of this.sessions.values()) session.detachHosted();
+    this.sessions.clear();
   }
 
   async disposeAll(): Promise<void> {

@@ -4,6 +4,7 @@ import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";
+import { openHostedPty } from "../session-host/pty-proxy.js";
 import os from "node:os";
 
 import { createPluginTerminalTicketRegistry } from "./tickets.js";
@@ -50,6 +51,7 @@ export interface TerminalRuntime {
    * 등록 전 채팅 업그레이드는 소켓을 거절한다.
    */
   bindChatAttach(attach: (socket: TerminalSocket, context: TerminalTicketContext, lifetime: RequestLifetime) => void): () => void;
+  reattach?(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -69,6 +71,10 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
   const sessions = createTerminalSessionManager({
     launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
     startShell: startTerminalShell,
+    ...(ctx.hostedExecution ? {
+      startHosted: (context: TerminalTicketContext, launch: TerminalLaunchSpec, size: { cols: number; rows: number }) => openHostedPty(ctx.hostedExecution!, context, launch, size, new URL(ctx.host.server.origin()!).origin),
+      detachOnly: () => true,
+    } : {}),
     resolveTitleListener: (context) => {
       const operationType = context.operationType;
       if (!operationType || !terminalTitleListeners.has(operationType)) return undefined;
@@ -104,6 +110,18 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
 
   return {
     handleUpgrade: upgrade.handleUpgrade,
+    reattach: async () => {
+      const host = ctx.hostedExecution;
+      if (!host) return;
+      for (const snapshot of host.inventory()) {
+        if (snapshot.kind !== "pty" || snapshot.state !== "live" || !snapshot.sessionKey.startsWith("pty:")) continue;
+        const id = snapshot.sessionKey.slice(4);
+        const original = await host.describe(snapshot.sessionKey);
+        if (original.kind !== "pty") throw new Error("terminal_host_kind_conflict");
+        const operation = ctx.host.operations.get(id);
+        await sessions.createSession({ sessionId: id, cwd: original.launch.cwd, ...(operation ? { operationId: id, operationType: operation.type, pluginId: operation.pluginId, theaterId: operation.theaterId } : { operationType: SHELL_OPERATION_TYPE, kind: "shell" as const }) });
+      }
+    },
     issueTicket: (context) => tickets.issue(context),
     renegotiateSockets: () => sessions.renegotiateSockets(),
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),

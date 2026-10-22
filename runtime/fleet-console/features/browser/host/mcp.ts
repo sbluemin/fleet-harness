@@ -93,6 +93,7 @@ export interface BrowserPluginOptions {
 }
 
 export interface BrowserPluginConnection {
+  readonly businessTools?: readonly import("@fleet-console/sdk/mcp").PluginMcpTool[];
   readonly embeddedServer: ClaudeGatewayMcpServer;
   readonly toolNames: readonly string[];
   endTurn(): void;
@@ -183,9 +184,10 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         deps.service.interrupt(owner);
         deps.service.endAgentSession(owner, "turn");
       };
+      const businessTools: import("@fleet-console/sdk/mcp").PluginMcpTool[] = [];
       const tools = createBrowserToolSpecs({ ...deps, screenshotDelivery: "inline" }).map((spec) => {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
-        return defineTool(spec.id, spec.description, schema.shape, async (args) => {
+        const execute = async (args: Record<string, unknown>) => {
           if (closed || controller.signal.aborted || !options.enabled()) return refuse("caller_unresolved", null, language());
           const availability = deps.service.availability();
           if (!availability.available) return refuse(availability.reason === "shared" ? "shared" : "desktop_required", owner, language());
@@ -199,9 +201,12 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
             if (closed || call.signal.aborted || !options.enabled()) return refuse("caller_unresolved", null, language());
             return result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean };
           } finally { calls.delete(call); }
-        });
+        };
+        businessTools.push({ name: spec.id, description: spec.description, inputSchema: spec.parameters as Record<string, unknown>, execute });
+        return defineTool(spec.id, spec.description, schema.shape, execute);
       });
       const connection: BrowserPluginConnection = {
+        businessTools,
         embeddedServer: createEmbeddedMcpServer({ name: FLEET_BROWSER_MCP_SERVER, tools }),
         toolNames: specs.map((spec) => spec.id),
         endTurn,

@@ -16,6 +16,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly agentCliPlugin: AgentCliPlugin;
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   readonly spawnAgentProcess: ClaudeProcessSpawner;
+  readonly hostedExecution?: import("../../../features/execution/host/session-host/adapters.js").HostedExecution;
   readonly routes: RouteRegistry;
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
@@ -41,6 +42,7 @@ export function createConsoleRuntimeContext(deps: {
     agentCliPlugin: deps.agentCliPlugin,
     ...(deps.launchPromptDirectories ? { launchPromptDirectories: deps.launchPromptDirectories } : {}),
     spawnAgentProcess: deps.spawnAgentProcess,
+    ...(deps.hostedExecution ? { hostedExecution: deps.hostedExecution } : {}),
     basePath,
     wsBasePath,
     registerRouter: (value, handler, catalog) => {

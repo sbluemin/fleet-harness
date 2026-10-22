@@ -22,6 +22,9 @@ import { SessionHostClient, stopSlotSessionHost } from "../features/execution/ho
 import { authenticateSessionPeer, SessionRpcPeer, sessionNonce, connectSessionUpdateKeeper, connectSessionRpc } from "@fleet-console/lifecycle/session-host";
 import { SESSION_HOST_WIRE } from "@fleet-console/protocol/session-host";
 import { createWindowsSessionPlatform } from "../core/host/bootstrap/windows-session-platform.js";
+import { HostedExecution } from "../features/execution/host/session-host/adapters.js";
+import { createHostedSdk } from "../features/execution/host/session-host/sdk-proxy.js";
+import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
@@ -86,9 +89,15 @@ describe("Console session-host lifecycle integration", () => {
         expect(tampered.isClosed).toBe(true);
       } finally { tampered.close(); }
       let toolCalls = 0;
-      client.bindBusiness(() => ({ content: [{ type: "text", text: `call-${++toolCalls}` }] }));
+      let execution = await HostedExecution.attach(client, (_kind, error) => { throw error; });
+      execution.bind("fixture-tools", () => ({ content: [{ type: "text", text: `call-${++toolCalls}` }] }));
+      await execution.ready();
       const executablePath = fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url));
-      const sdk = await client.open({ kind: "sdk", sessionKey: "chat", generation: client.generation, launchFingerprint: { schema: 1, digest: "fixture" }, sdk: { baseUrl: "http://127.0.0.1:1", models: ["opus"], executablePath, env, home: { kind: "isolated" } }, request: { model: "opus", cwd: root, permissionMode: "dontAsk" }, embeddedTools: [{ name: "fleet-fixture", port: "fixture-tools", tools: [{ name: "effect", description: "Fixture effect", inputSchema: { type: "object", properties: {} } }] }] });
+      const sdkOptions = { baseUrl: "http://127.0.0.1:1", models: ["opus"], executablePath, env, home: { kind: "isolated" as const }, modelPolicy: claudeGatewayModelPolicy };
+      const binding = { key: "chat", launchFingerprint: { schema: 1, digest: "fixture" }, tools: [{ name: "fleet-fixture", port: "fixture-tools", tools: [{ name: "effect", description: "Fixture effect", inputSchema: { type: "object", properties: {} } }] }] };
+      const proxy = createHostedSdk(execution, sdkOptions, binding);
+      await proxy.openSession({ model: "opus", cwd: root, permissionMode: "dontAsk" });
+      const sdk = execution.get("chat")!;
       const [mcp] = sdk.runtime.mcpServers as { name: string; url: string; headers: { name: string; value: string }[] }[];
       const callTool = async () => {
         const response = await fetch(mcp!.url, { method: "POST", headers: { "content-type": "application/json", Authorization: mcp!.headers[0]!.value }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "effect", arguments: {} } }) });
@@ -104,8 +113,8 @@ describe("Console session-host lifecycle integration", () => {
       const outside = path.join(root, "outside"); fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, "keep"), "untouched");
       const escape = path.join(retiredRoot, "outside-link"); fs.symlinkSync(outside, escape, process.platform === "win32" ? "junction" : "dir");
       const terminal = await client.open({ kind: "pty", sessionKey: "terminal", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data', b => process.stdout.write(b)); setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
-      const send = { sessionKey: "chat", commandId: "send-one", sequence: 1, kind: "send", body: { input: "SLOW" } };
-      await client.command(send);
+      const send = { sessionKey: sdk.sessionKey, commandId: "send-one", sequence: 1, kind: "send", body: { input: "SLOW" } };
+      await execution.command("chat", "send", send.body, send.commandId);
       await vi.waitFor(() => expect(fs.readFileSync(path.join(fake, "log.jsonl"), "utf8")).toContain('"event":"turn-start"'), { timeout: 10_000 });
       let finishMutation!: (value: unknown) => void;
       client.bindBusiness(() => new Promise((resolve) => { finishMutation = resolve; }));
@@ -119,36 +128,41 @@ describe("Console session-host lifecycle integration", () => {
       let pendingRequestId = "";
       await vi.waitFor(async () => {
         const snap = await client!.listSessions();
-        const pending = snap.sessions.find((s) => s.sessionKey === "chat")!.runtime.pendingBusiness as { requestId: string; deferred?: unknown }[];
+        const pending = snap.sessions.find((s) => s.sessionKey === sdk.sessionKey)!.runtime.pendingBusiness as { requestId: string; deferred?: unknown }[];
         expect(pending[0]?.deferred).toBeTruthy(); pendingRequestId = pending[0]!.requestId;
       });
       const before = await client.listSessions();
       const ref = await client.prepareUpdate("update-one");
       expect(JSON.stringify(ref)).not.toContain(client.manifest.capability);
       keeper = await connectSessionUpdateKeeper(ref); await client.commitUpdate("update-one");
-      client.closeObserver(); held.release();
+      execution.detach(); client.closeObserver(); held.release();
       const duringGap = callTool();
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 2, endpoint: "http://127.0.0.1:2/", version: "successor" });
       client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
-      client.bindBusiness(() => ({ content: [{ type: "text", text: `successor-${++toolCalls}` }] }));
+      execution = await HostedExecution.attach(client, (_kind, error) => { throw error; });
+      execution.bind("fixture-tools", () => ({ content: [{ type: "text", text: `successor-${++toolCalls}` }] }));
+      const successorSdk = createHostedSdk(execution, sdkOptions, binding);
+      const adopted = await successorSdk.openSession({ model: "opus", cwd: root, permissionMode: "dontAsk" });
+      await execution.ready();
+      const continued = (async () => { for await (const message of adopted) if (message.type === "result") return message; throw new Error("proxy result missing"); })();
       const after = await client.listSessions();
-      expect((await client.describe("chat")).kind).toBe("sdk");
-      const frozen = await client.describe("chat");
+      expect((await client.describe(sdk.sessionKey)).kind).toBe("sdk");
+      const frozen = await client.describe(sdk.sessionKey);
       expect(frozen.kind === "sdk" && frozen.embeddedTools?.[0]?.port).toBe("fixture-tools");
       expect(frozen.kind === "sdk" && frozen.request.model).toBe("opus");
-      expect((after.sessions.find((s) => s.sessionKey === "chat")!.runtime.pendingBusiness as { deferred: { lifetime: string; expiresAt: null } }[])[0]?.deferred).toMatchObject({ lifetime: "turn", expiresAt: null });
+      expect((after.sessions.find((s) => s.sessionKey === sdk.sessionKey)!.runtime.pendingBusiness as { deferred: { lifetime: string; expiresAt: null } }[])[0]?.deferred).toMatchObject({ lifetime: "turn", expiresAt: null });
       await expect(client.answerBusiness(pendingRequestId, 8, {})).rejects.toThrow("session_permission_stale");
       await client.answerBusiness(pendingRequestId, 7, { content: [{ type: "text", text: "approved-after-update" }] });
       expect(await pendingTool).toMatchObject({ result: { content: [{ text: "approved-after-update" }] } });
       expect(await duringGap).toMatchObject({ result: { content: [{ text: "successor-2" }] } });
       expect(await callTool()).toMatchObject({ result: { content: [{ text: "successor-3" }] } });
       expect(after.hostId).toBe(before.hostId); expect(after.epoch).toBeGreaterThan(before.epoch);
-      expect(after.sessions.find((s) => s.sessionKey === "chat")?.runtime.pid).toBe(sdk.runtime.pid);
+      expect(after.sessions.find((s) => s.sessionKey === sdk.sessionKey)?.runtime.pid).toBe(sdk.runtime.pid);
       expect(sdk.runtime.runnerPid).toBeTypeOf("number");
-      expect(after.sessions.find((s) => s.sessionKey === "chat")?.runtime.runnerPid).toBe(sdk.runtime.runnerPid);
+      expect(after.sessions.find((s) => s.sessionKey === sdk.sessionKey)?.runtime.runnerPid).toBe(sdk.runtime.runnerPid);
       expect(after.sessions.find((s) => s.sessionKey === "terminal")?.runtime.pid).toBe(terminal.runtime.pid);
-      expect(after.sessions.find((s) => s.sessionKey === "chat")?.launchFingerprint).toEqual({ schema: 1, digest: "fixture" });
-      expect(after.sessions.find((s) => s.sessionKey === "chat")?.lastCommandSequence).toBe(1);
+      expect(after.sessions.find((s) => s.sessionKey === sdk.sessionKey)?.launchFingerprint).toEqual({ schema: 1, digest: "fixture" });
+      expect(after.sessions.find((s) => s.sessionKey === sdk.sessionKey)?.lastCommandSequence).toBe(1);
       expect(fs.existsSync(retiredRoot)).toBe(true); // 살아 있는 old runner는 업데이트 뒤에도 보호한다.
       await client.command({ sessionKey: "retiring", commandId: "close-old", sequence: 1, kind: "close" });
       await vi.waitFor(() => expect(fs.existsSync(path.join(retiredRoot, ".retired"))).toBe(true), { timeout: 15_000 });
@@ -160,7 +174,8 @@ describe("Console session-host lifecycle integration", () => {
       await expect(client.command({ ...send, body: { input: "different" } })).rejects.toThrow("session_command_id_conflict");
       await expect(first.command({ ...send, commandId: "stale", sequence: 2 })).rejects.toThrow();
       fs.writeFileSync(path.join(fake, "release"), "go");
-      await vi.waitFor(async () => expect((await client!.readEvents("chat", 0)).events.some((e) => e.kind === "sdk-message" && (e.data as { type?: string }).type === "result")).toBe(true), { timeout: 10_000 });
+      await expect(continued).resolves.toMatchObject({ type: "result" });
+      await vi.waitFor(async () => expect((await client!.readEvents(sdk.sessionKey, 0)).events.some((e) => e.kind === "sdk-message" && (e.data as { type?: string }).type === "result")).toBe(true), { timeout: 10_000 });
       const launches = fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string });
       expect(launches.filter((e) => e.event === "launch")).toHaveLength(1);
       expect(launches.filter((e) => e.event === "turn-start")).toHaveLength(1);

@@ -2,12 +2,24 @@ import type { App } from "electron";
 
 import type { DesktopShellWindow } from "./shell-window.js";
 
-export interface DesktopLifecycle { attachWindow(window: DesktopShellWindow): void; start(): Promise<void>; show(): Promise<DesktopShellWindow>; prepareToQuit(): Promise<void>; quit(): Promise<void>; }
+export interface DesktopLifecycle { attachWindow(window: DesktopShellWindow): void; start(): Promise<void>; show(): Promise<DesktopShellWindow>; prepareToQuit(): Promise<void>; prepareToUpdate(): Promise<void>; quitForUpdate(): void; quit(): Promise<void>; }
 
-export function createDesktopLifecycle(app: App, createWindow: () => Promise<DesktopShellWindow>, stopSidecar: () => Promise<void>): DesktopLifecycle {
+export function createDesktopLifecycle(app: App, createWindow: () => Promise<DesktopShellWindow>, stopSidecar: () => Promise<void>, updateSidecar?: () => Promise<void>): DesktopLifecycle {
   let window: DesktopShellWindow | null = null;
   let windowCreation: Promise<DesktopShellWindow> | null = null;
   let quitPreparation: Promise<void> | null = null;
+  let updatePreparation: Promise<void> | null = null;
+  let updateQuit = false;
+  const prepareToUpdate = (): Promise<void> => {
+    if (quitPreparation) return Promise.reject(new Error("desktop_quit_requested"));
+    if (!updateSidecar) return Promise.reject(new Error("desktop_update_handoff_unavailable"));
+    updatePreparation ??= updateSidecar().catch((error: unknown) => { updatePreparation = null; throw error; });
+    return updatePreparation.then(() => { if (quitPreparation) throw new Error("desktop_quit_requested"); });
+  };
+  const quitForUpdate = (): void => {
+    if (quitPreparation || !updatePreparation) return;
+    updateQuit = true; app.quit();
+  };
   const closeGuardAttached = new WeakSet<DesktopShellWindow>();
 
   const attachWindow = (created: DesktopShellWindow): void => {
@@ -15,7 +27,7 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Des
     if (closeGuardAttached.has(created)) return;
     closeGuardAttached.add(created);
     created.base.on("close", (event) => {
-      if (!quitPreparation && process.platform !== "darwin") {
+      if (!quitPreparation && !updateQuit && process.platform !== "darwin") {
         event.preventDefault();
         created.hide();
       }
@@ -62,13 +74,13 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Des
       app.quit();
     });
     app.on("before-quit", (event) => {
-      if (quitPreparation) return;
+      if (quitPreparation || updateQuit) return;
       event.preventDefault();
       void prepareToQuit().then(() => app.quit()).catch(() => undefined);
     });
     await ensureWindow();
   };
-  return { attachWindow, start, show, prepareToQuit, quit };
+  return { attachWindow, start, show, prepareToQuit, prepareToUpdate, quitForUpdate, quit };
 }
 
 function revealWindow(window: DesktopShellWindow): void {

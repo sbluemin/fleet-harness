@@ -55,6 +55,8 @@ export interface AgentToolGroup {
 }
 
 export interface AgentSessionOptions {
+  /** 살아 있는 실행만 다시 붙일 플러그인 내부 키. host loss 뒤 transcript resume를 뜻하지 않는다. */
+  readonly liveKey?: string;
   readonly model: string;
   readonly effort?: AgentEffort;
   readonly systemPrompt: string;
@@ -95,6 +97,8 @@ export interface AgentSessionOptions {
 }
 
 export interface AgentSession {
+  /** 이전 Console에서 시작한 동일 live 실행에 붙었는가. 새 프로세스 resume가 아니다. */
+  readonly attached?: boolean;
   /** 같은 세션의 턴은 순서대로 실행한다. */
   send(input: AgentInput): Promise<void>;
   /** 현재 턴만 취소한다. 대기 턴과 다음 메시지는 유지한다. */

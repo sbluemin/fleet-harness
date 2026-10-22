@@ -11,6 +11,8 @@ import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 import { autoUpdater } from "electron-updater";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { terminateSessionHost } from "@fleet-console/lifecycle";
+import { prepareDesktopSessionUpdate } from "./update-handoff.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
@@ -725,13 +727,17 @@ async function boot(): Promise<void> {
       startOrAdopt: (report) => supervisor.startOrAdopt(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
+  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); await terminateSessionHost(environment.dataDir); }), async () => {
+    await prepareDesktopSessionUpdate({ lockFile: path.join(environment.consoleDir, "console.lock"), ownerId: environment.ownerId, helperRoot: app.getPath("userData"), env: environment.serviceEnv });
+    bridge.dispose();
+  });
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
       prepareToQuit: () => lifecycle.prepareToQuit(),
+      prepareToUpdate: () => lifecycle.prepareToUpdate(),
       relaunch: () => app.relaunch(),
-      quit: () => app.quit(),
+      quit: () => lifecycle.quitForUpdate(),
     })
     : createNoopConsoleRelaunchController();
   // 종료 준비가 실패하면 앱은 그대로 남고 다음 요청을 다시 받는다. 그 실패는 진단 기록에만 남긴다.

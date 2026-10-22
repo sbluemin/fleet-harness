@@ -52,6 +52,14 @@ export interface ResolveCanonicalLocalConsolePathsInput {
 }
 
 export const DESKTOP_PROTOCOL_VERSION = 1;
+/** Private native-shell update handoff. Requires the current Console lock and Desktop owner. */
+export const DESKTOP_SESSION_UPDATE_PATH = "/api/v1/desktop/session-update";
+export const DESKTOP_SESSION_UPDATE_OWNER_HEADER = "x-fleet-desktop-owner";
+export type DesktopSessionUpdateIntent = { readonly intent: "prepare" | "commit" | "cancel"; readonly updateId: string };
+export interface DesktopSessionUpdatePrepared {
+  readonly ref: import("../lifecycle/index.js").SessionUpdateRef;
+  readonly nodePath: string;
+}
 export const DESKTOP_RESOURCE_ROOT_ENV = "FLEET_CONSOLE_RESOURCE_ROOT";
 export const DESKTOP_OWNER_ID_ENV = "FLEET_CONSOLE_OWNER_ID";
 export const DESKTOP_OWNER_KIND_ENV = "FLEET_CONSOLE_OWNER_KIND";

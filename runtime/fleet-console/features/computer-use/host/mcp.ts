@@ -192,6 +192,7 @@ export interface ComputerUseMcpConnection extends AdmiralMcpSession {
 
 /** 플러그인 에이전트 세션 하나에 묻어 들어가는 기기 조작 서버 — Operation 신원이 없는 호출자용. */
 export interface ComputerUsePluginConnection {
+  readonly businessTools?: readonly import("@fleet-console/sdk/mcp").PluginMcpTool[];
   readonly embeddedServer: ClaudeGatewayMcpServer;
   readonly toolNames: readonly string[];
   /** 허용을 거둔 순간 — 진행 중 호출을 끊고 잡고 있던 기기를 놓는다. 다음 호출은 `enabled()`가 거부한다. */
@@ -385,9 +386,10 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const calls = new Set<AbortController>();
       let closed = false;
       const language = () => options.language?.() ?? deps.language?.() ?? "en";
+      const businessTools: import("@fleet-console/sdk/mcp").PluginMcpTool[] = [];
       const tools = deps.service.specs().map((spec) => {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
-        return defineTool(spec.id, spec.description, schema.shape, async (args) => {
+        const execute = async (args: Record<string, unknown>) => {
           if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
           // 허용은 도구 호출마다 다시 읽는다 — 부관의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
@@ -404,7 +406,9 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           } finally {
             calls.delete(call);
           }
-        });
+        };
+        businessTools.push({ name: spec.id, description: spec.description, inputSchema: spec.parameters as Record<string, unknown>, execute });
+        return defineTool(spec.id, spec.description, schema.shape, execute);
       });
       const embeddedServer = createEmbeddedMcpServer({ name: FLEET_COMPUTER_USE_MCP_SERVER, tools });
       const revoke = () => {
@@ -413,6 +417,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         deps.service.release(owner);
       };
       const connection: ComputerUsePluginConnection = {
+        businessTools,
         embeddedServer,
         toolNames: deps.service.specs().map((spec) => spec.id),
         revoke,

@@ -6,6 +6,7 @@ interface GatewayHostContext {
     readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
   };
   readonly dataDir: string;
+  readonly gatewayExecution?: GatewayExecutionPort;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 import { randomUUID } from "node:crypto";
@@ -25,6 +26,11 @@ import type { AiGatewayRouteDeps } from "@fleet-console/ai-gateway";
 
 export { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 
+export interface GatewayExecutionPort {
+  readonly tokens?: { readonly compactHookToken: string; readonly modHookToken: string };
+  connect(deps: AiGatewayRouteDeps, tokens: { compactHookToken: string; modHookToken: string }): Promise<{ readonly origin: string; readonly handle: RouteHandler; configure(): Promise<void> }>;
+}
+
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
   "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
@@ -33,7 +39,7 @@ export type ConsoleAiGatewayRouteDeps = Omit<
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
-): { readonly compactHookToken: string; readonly modHookToken: string } {
+): { readonly compactHookToken: string; readonly modHookToken: string; readonly ready: Promise<void>; readonly origin: () => string | null; readonly configure: () => Promise<void> } {
   const ownedDiagnostics = deps.cursorDiagnostics
     ? undefined
     : createCursorDiagnosticLog(path.join(
@@ -60,12 +66,12 @@ export function registerAiGatewayRoutes(
           "request-timing.jsonl",
         ),
       });
-  const compactHookToken = randomUUID();
-  const modHookToken = randomUUID();
+  const compactHookToken = ctx.gatewayExecution?.tokens?.compactHookToken ?? randomUUID();
+  const modHookToken = ctx.gatewayExecution?.tokens?.modHookToken ?? randomUUID();
   const compactionStore = createClaudeCodexCompactionStore({
     directory: path.join(ctx.dataDir, "ai-gateway"),
   });
-  const router = createAiGatewayRouter({
+  const routerDeps: AiGatewayRouteDeps = {
     ...deps,
     originator: "fleet-console",
     compactionStore,
@@ -85,7 +91,11 @@ export function registerAiGatewayRoutes(
       ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
-  });
+  };
+  const remote = ctx.gatewayExecution?.connect(routerDeps, { compactHookToken, modHookToken });
+  let remoteOrigin: string | null = null;
+  const ready = remote?.then((runtime) => { remoteOrigin = runtime.origin; }) ?? Promise.resolve();
+  const router = remote ? { handle: (async (request) => (await remote).handle(request)) as RouteHandler, dispose: () => {} } : createAiGatewayRouter(routerDeps);
   ctx.host.lifecycle.registerCleanup(async () => {
     router.dispose();
     await ownedDiagnostics?.flush();
@@ -99,5 +109,5 @@ export function registerAiGatewayRoutes(
     { method: "POST", path: "/v1/compact-events", summary: "Receive a Claude compact lifecycle event.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/v1/fleet/routing/assign", summary: "Assign a model and reasoning effort to one delegated run.", category: "Console Execution", gate: "lock-token", transport: "http" },
   ]);
-  return { compactHookToken, modHookToken };
+  return { compactHookToken, modHookToken, ready, origin: () => remoteOrigin, configure: async () => { await (await remote)?.configure(); } };
 }

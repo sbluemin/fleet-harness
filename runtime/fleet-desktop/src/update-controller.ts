@@ -11,6 +11,7 @@ import type { ShellUpdateStage } from "./shell-update.js";
 export interface ConsoleRelaunchOptions {
   readonly currentVersion: () => string;
   readonly prepareToQuit: () => Promise<void>;
+  readonly prepareToUpdate?: () => Promise<void>;
   readonly relaunch: () => void;
   readonly quit: () => void;
 }
@@ -31,7 +32,7 @@ export function createConsoleRelaunchController(options: ConsoleRelaunchOptions)
       if (relaunching) return;
       relaunching = true;
       try {
-        await options.prepareToQuit();
+        await (options.prepareToUpdate ?? options.prepareToQuit)();
       } catch (error) {
         relaunching = false;
         throw error;

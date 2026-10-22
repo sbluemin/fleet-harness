@@ -39,6 +39,7 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 interface GatewayStartContext {
   readonly basePath: string;
   readonly dataDir: string;
+  readonly gatewayExecution?: import("./routes.js").GatewayExecutionPort;
   readonly legacyDataDir: string;
   readonly host: {
     readonly paths: Pick<FleetPluginHostCapabilities["paths"], "consoleDataDir" | "fleetDataDir">;

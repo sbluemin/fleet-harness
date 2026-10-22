@@ -17,6 +17,7 @@ import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
 import { createPluginAgentHost } from "../../../features/execution/host/agent/plugin-agent.js";
+import { HostedExecution } from "../../../features/execution/host/session-host/adapters.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -42,7 +43,7 @@ import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../featur
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_SESSION_UPDATE_PATH, DESKTOP_SESSION_UPDATE_OWNER_HEADER, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
@@ -536,6 +537,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let stopForArchive: ((operation: OperationNode) => Promise<void>) | null = null;
   let purgeCoreOperation: ((operation: OperationNode) => void) | null = null;
   let resumeArchivedOperation: ConsoleUseActions["resume"];
+  let hostedExecution: HostedExecution | undefined;
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   const avatarStore = createAvatarStore(durablePaths.dir);
   const conversationWorkbenchStore = createConversationWorkbenchStore(durablePaths.dir);
@@ -1275,7 +1277,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }),
     createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
+      const agent = createPluginAgentHost({ hostedExecution, pluginId, baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
         // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");
@@ -1755,6 +1757,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleStopRequest(req, res);
       return;
     }
+    if (pathname === DESKTOP_SESSION_UPDATE_PATH) {
+      void handleDesktopSessionUpdate(req, res).catch((error) => { recordFailure("desktop_session_update_failed", error); if (!res.headersSent) writeJson(res, 409, { error: "session_update_unavailable" }); });
+      return;
+    }
     if (pathname === "/api/v1/access-grants") {
       handleAccessGrantIssue(req, res);
       return;
@@ -1929,6 +1935,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * (401). Like an accepted update's self-stop, the shutdown starts only after the 202 response is finished: a
    * connection lost before then stops nothing. Every accepted request joins the one shutdown.
    */
+  async function handleDesktopSessionUpdate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!isLoopbackListener(req) || req.headers.origin !== undefined || !desktop || !deps.sessionHost || req.headers[DESKTOP_SESSION_UPDATE_OWNER_HEADER] !== desktop.owner.id || !isLockAuthorized(req)) { writeJson(res, 403, { error: "forbidden" }); return; }
+    if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return; }
+    const body = await readJsonBody<{ intent?: unknown; updateId?: unknown }>(req);
+    if (!body || typeof body.updateId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(body.updateId)) { writeJson(res, 400, { error: "invalid_update_id" }); return; }
+    if (body.intent === "prepare") {
+      const ref = await deps.sessionHost.prepareUpdate(body.updateId);
+      writeJson(res, 200, { ref, nodePath: (await deps.sessionHost.get()).generation.node });
+    } else if (body.intent === "commit") {
+      await deps.sessionHost.commitUpdate(body.updateId);
+      writeJson(res, 202, { accepted: true });
+      res.once("finish", () => { void lifecycle.requestStop("update").catch((error) => recordFailure("desktop_update_stop_failed", error)); });
+    } else if (body.intent === "cancel") {
+      await deps.sessionHost.cancelUpdate(body.updateId); writeJson(res, 200, { cancelled: true });
+    } else writeJson(res, 400, { error: "invalid_update_intent" });
+  }
+
   function handleStopRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (listenerForRequest(req)?.audience !== "local") {
       writeJson(res, 404, { error: "not_found" });
@@ -2193,6 +2216,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // The single shutdown and a failed start each run this once and release the lock at its end; nothing else releases it.
     if (consoleResourcesDisposed) return;
     consoleResourcesDisposed = true;
+    hostedExecution?.detach();
     await deps.sessionHost?.settleStop();
     // 원격 리스너를 남겨 두면 콘솔이 내려간 뒤에도 포트가 열려 있는 것처럼 보인다.
     const closingRemote = remoteServer;
@@ -2777,11 +2801,41 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 실제 포트만 먼저 확보한다. 패자는 제품 상태를 읽어 복원하거나 플러그인을 실행하기 전에 끝난다.
       lockHandle = await lock.acquireLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version, ...(desktop ? { owner: desktop.owner } : {}) });
       lifecycle.lockAcquired(lockHandle.payload);
-      await deps.sessionHost?.start(lockHandle.payload);
+      if (deps.sessionHost) {
+        hostedExecution = await HostedExecution.attach(await deps.sessionHost.start(lockHandle.payload), recordFailure);
+        deps.sessionHost.subscribeBeforePrepare(async () => { hostedExecution!.setUpdating(true); await hostedExecution!.flush(); });
+        deps.sessionHost.subscribeUpdateCancelled(() => hostedExecution!.setUpdating(false));
+      }
       // Earlier instances' exit records are pruned only by the lock owner, after it took the lock (I3).
       pruneConsoleExitRecords(lockPaths.lockFile);
       activeLockFile = lockPaths.lockFile;
       activeEndpoint = result.endpoint;
+      hostedExecution?.setHookHandler(async (key, data, at) => {
+        const id = /^(?:chat|pty):(.+)$/.exec(key)?.[1];
+        const operation = id ? operations.get(id) : null;
+        const hook = data as { path?: string; body?: { command?: string; args?: unknown; input?: string } };
+        if (!id || !operation || operation.pluginId !== null || operation.type !== "agent") {
+          if (hook.path === "/agent-call") return { reason: "Fleet could not verify the live Operation." };
+          return { accepted: false };
+        }
+        const command = hook.body?.command;
+        if (!command) throw new Error("session_hook_payload_invalid");
+        const action = command === "capture-session" ? "capture" : command.startsWith("turn-") ? "turn" : command.startsWith("background-") ? "background" : command;
+        if (!["capture", "turn", "background", "attention", "workspace", "auto-name", "agent-call"].includes(action)) throw new Error("session_hook_command_denied");
+        const body: Record<string, unknown> = { input: hook.body?.input ?? "" };
+        if (action === "turn") body.phase = command === "turn-start" ? "start" : "end";
+        if (action === "capture") body.provider = "claude";
+        if (command === "background-spawn" || command === "background-stop") body.event = command === "background-spawn" ? "spawn" : "stop";
+        if (action === "workspace") {
+          const descriptor = await hostedExecution!.describe(key);
+          const env = descriptor.kind === "sdk" ? descriptor.sdk.env : descriptor.kind === "pty" ? descriptor.launch.env : undefined;
+          body.runId = env?.FLEET_CONSOLE_WORKSPACE_RUN_ID; body.observedAt = at;
+        }
+        const response = await fetch(new URL(`api/v1/agent/sessions/${encodeURIComponent(id)}/${action}`, result.endpoint), { method: "POST", headers: { authorization: `Bearer ${lockHandle!.payload.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+        if (!response.ok) throw new Error(`session_hook_backend_${response.status}`);
+        const text = await response.text();
+        return text ? JSON.parse(text) : { accepted: true };
+      });
       // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
       adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
       reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
@@ -2791,7 +2845,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await rehydrateDurableState();
       // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
       // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
-      const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
+      const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport, ...(hostedExecution ? { entryPath: hostedExecution.client.generation.hook, execPath: hostedExecution.client.generation.node } : {}) });
       // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
       const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
       const execution = await startConsoleExecution(createConsoleRuntimeContext({
@@ -2811,6 +2865,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agentCliPlugin,
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
+        hostedExecution,
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
       }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
@@ -2848,6 +2903,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
       }
       await pluginHost.boot();
+      await execution.reattach();
+      await hostedExecution?.ready();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
       announceRestoredTheaters();

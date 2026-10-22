@@ -1,4 +1,5 @@
 import { startAiGateway } from "../../../features/ai-gateway/host/start.js";
+import { hostedGatewayPort } from "../../../features/execution/host/session-host/gateway-proxy.js";
 
 /** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
 const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
@@ -33,7 +34,10 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
     resolveClaudeExecutable,
+    ...(ctx.hostedExecution ? { gatewayExecution: hostedGatewayPort(ctx.hostedExecution) } : {}),
   });
+  await aiGatewayRuntime.ready;
+  await aiGatewayRuntime.configure();
   // 모든 모델 선택지가 읽는 로스터 — 같은 Gateway 설정 파일의 투영이다. 저장 직후 열린 화면 전부에 다시 읽으라고 알린다.
   const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
   const modelRoster = registerModelRosterRoutes(ctx, models);
@@ -42,7 +46,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
-    onAiGatewayChanged: modelRoster.notify,
+    onAiGatewayChanged: () => { modelRoster.notify(); void aiGatewayRuntime.configure().catch((error) => ctx.recordFailure?.("session_gateway_configure_failed", error)); },
   });
   const runtime = createTerminalRuntime(ctx);
   // Operation Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
@@ -97,6 +101,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     },
   });
   return {
+    reattach: async () => { await runtime.reattach?.(); await agent.reattach(); },
     launchKinds: agent.launchKinds,
     attachmentsForPlugin: agent.attachmentsForPlugin,
     /** 설치된 Claude Code 실행 파일. 풀 수 없으면 `undefined`다. 플러그인 에이전트가 SDK 동봉본 대신 이것을 쓴다. */

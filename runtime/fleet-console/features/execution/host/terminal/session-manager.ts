@@ -11,6 +11,8 @@ import type { TerminalCwdListener, TerminalPtyHandle, TerminalSessionManager, Te
 export interface TerminalSessionManagerDeps {
   readonly launch: TerminalLaunchResolver;
   readonly startShell?: typeof startTerminalShell;
+  readonly startHosted?: (context: TerminalTicketContext, launch: import("./terminal-types.js").TerminalLaunchSpec, size: { cols: number; rows: number }) => Promise<TerminalPtyHandle>;
+  readonly detachOnly?: () => boolean;
   // DI 계약 유지용으로 받지만 더 이상 동시 세션 상한을 강제하지 않는다(상한 해제됨).
   readonly maxSessions?: number;
   readonly scrollbackLimit?: number;
@@ -307,8 +309,9 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     for (const result of launched) {
       if (result.status === "fulfilled") sessionsToKill.add(result.value);
     }
-    await Promise.all([...sessionsToKill].map((session) => killSession(session)));
-    await Promise.all([...sessionsToKill].map((session) => notifySessionExit(session.id)));
+    const detachOnly = deps.detachOnly?.() === true;
+    await Promise.all([...sessionsToKill].map((session) => killSession(session, { killPty: !detachOnly })));
+    if (!detachOnly) await Promise.all([...sessionsToKill].map((session) => notifySessionExit(session.id)));
     sessions.clear();
   }
 
@@ -362,9 +365,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     let pty: TerminalPtyHandle;
     let ptyFds: readonly number[] = [];
     try {
-      const beforePtyFds = readOpenCharacterDeviceFds();
-      pty = startShell(launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
-      ptyFds = readSpawnedPtyFds(beforePtyFds, pty);
+      if (deps.startHosted) pty = await deps.startHosted(context, launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+      else {
+        const beforePtyFds = readOpenCharacterDeviceFds();
+        pty = startShell(launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+        ptyFds = readSpawnedPtyFds(beforePtyFds, pty);
+      }
     } catch (error) {
       await runLaunchCleanup(launch.cleanup);
       throw error;
