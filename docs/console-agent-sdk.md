@@ -56,7 +56,15 @@ await session.dispose();
 - `conversation` 세션은 문맥이 차면 같은 세션 안에서 대화를 요약해 이어 가고 그때 `compacted`(압축 전후 토큰)를 낸다. 요약에 실패하면 `compact-failed`를 내고 대화는 줄지 않는다 — 창을 넘긴 세션이면 이어지는 턴이 오류로 끝나므로, 오래 가는 세션의 소유자는 그때 세션을 바꾼다. `compactAt`(토큰)은 그 지점을 정한다. 호스트가 실행기의 자동 압축 창으로 옮기며, 네이티브 Claude 모델에만 적용된다 — Gateway 모델(비-Claude)은 Gateway의 compact 정책을 따른다. 그런 세션에서 호스트는 `contextTokens`와 `compacted`의 토큰을 공급자의 실제 토큰으로 되돌리고, 같은 단위의 창과 실제 압축 지점을 `usage.context`로 싣는다(모르면 `null`). 생략하면 실행기의 기본 지점이다.
 - 이 SDK는 same-process 플러그인을 샌드박싱하지 않는다. 플러그인의 업무 권한과 사용자의 최종 승인 규칙은 바뀌지 않는다.
 
+## 사령관 보드 통합
+
+사령관은 `features/commodore`의 Console 기능이다. 보드 플러그인은 `@fleet-console/sdk/commodore`의 계약으로만 연결하며, 사령관 세션·화면 구현을 가져오거나 직접 띄우지 않는다.
+
+- 서버의 선택 능력 `ctx.host.commodore.registerBoard(adapter)`로 보드 도구·관측·목표 조회·언어를 등록하고, 반환된 해제 함수를 플러그인 수명에 묶는다. 대기·운영 주체·정체·자기 쓰기 판정은 보드 어댑터가 소유한다. `ctx.host.commodore.commander(theaterId)`는 사령관이 만드는 목표의 지휘관 좌표를 읽기만 한다. 보드 어댑터가 없으면 사령관은 실행하지 않고 기존 데이터를 유지한다.
+- 클라이언트의 선택 능력 `PluginInstallContext.commodore`(`ctx.commodore`)로 상태·구독·열기·언어·행 글리프를 사용한다. 반대 방향은 `FleetClientPlugin.commodoreBoard`가 보드 투영·구독·목표 열기·아바타 렌더러를 제공한다. 공유 상태·기록·질문·기억 DTO도 같은 SDK 경계에 있다.
+- 사령관 HTTP는 `/api/v1/commodore/*`, SSE 채널은 `commodore`다. 요청은 현재 `theaterId`를 사용한다. 클라이언트 제공자 id는 `commodore`지만 저장된 대화 표면 id `commodore`는 그대로 유지한다.
+
 ## 소비자
 
 - Scuttlebutt: 대화 연속성, 웹 도구, grant로 허용하는 Console 관측·실행·자동 운영과 Wiki 읽기. 페르소나·제품 세션·SSE 표현은 플러그인 소유.
-- Objectives 사령관: Theater마다 `persist` 대화 하나(`commodore:<theaterId>`). Console 재시작·자율 운영 재개 뒤 같은 대화를 잇고, 턴 중 사람의 말은 `steer`로 그 턴에 건넨다. 교대(좌표·언어·이미지 예산)와 Clear는 `forget` 뒤 새 대화다.
+- Console 사령관 기능: Theater마다 `persist` 대화 하나(`commodore:<theaterId>`). Console 재시작·자율 운영 재개 뒤 같은 대화를 잇고, 턴 중 사람의 말은 `steer`로 그 턴에 건넨다. 교대(좌표·언어·이미지 예산)와 Clear는 `forget` 뒤 새 대화다. 기존 대화를 읽기 위해 저장 위치는 `plugins/objectives/agent-sessions/`를 유지한다.
