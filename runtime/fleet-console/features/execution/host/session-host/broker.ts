@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { performance } from "node:perf_hooks";
 import type { ChildProcess } from "node:child_process";
 import { createOwnedProcessRegistry, isPidAlive, observeConsoleLockFile, startConsoleReaper, type ConsoleReaperLink, type ProcessContainmentPort } from "@fleet-console/lifecycle";
-import { SessionRpcPeer, privateSessionDirectory, publishSessionHost, removeOwnSessionManifest, sessionHostPaths } from "@fleet-console/lifecycle/session-host";
+import { SessionRpcPeer, privateSessionDirectory, publishSessionHost, removeOwnSessionManifest, sessionHostPaths, withSessionGenerationLock, activateSessionGeneration, retireSessionGeneration, collectSessionGenerations } from "@fleet-console/lifecycle/session-host";
 import { OWNED_GROUP_TERM_GRACE_MS, CONSOLE_STOP_DEADLINE_MS } from "@fleet-console/protocol/lifecycle";
 import { assertSessionKey, SESSION_HOST_POLL_MS, SESSION_RPC_TIMEOUT_MS, SESSION_HOST_WIRE, SESSION_RUNNER_WIRE, SESSION_BUSINESS_MAX, SESSION_COMMAND_MAX, SESSION_HOST_START_MS, SESSION_KEEPER_LOSS_MS, SESSION_OWNER_LOSS_MS, SESSION_REPLAY_MAX_BYTES, SESSION_UPDATE_MAX_MS, type SessionBusinessCall, type SessionCommand, type SessionCommandRecord, type SessionGeneration, type SessionHostEvent, type SessionHostManifest, type SessionHostSnapshot, type SessionOwner, type SessionReplay, type SessionSnapshot, type SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import type { HostedSessionLaunch, SessionCheckpoint } from "./contracts.js";
@@ -23,6 +23,8 @@ interface Runner {
   capability: string;
   peer: SessionRpcPeer | null;
   ready: Promise<SessionRpcPeer>;
+  exited: Promise<void>;
+  closing: boolean;
   resolve(peer: SessionRpcPeer): void;
   reject(error: Error): void;
 }
@@ -56,6 +58,16 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
   const business = new Map<string, Business>();
   let owner: { peer: SessionRpcPeer; identity: SessionOwner; ready: boolean } | null = null;
   let epoch = 0;
+  let currentGeneration = options.generation.id;
+  const retiredGenerations = new Set<string>();
+  const diagnostic = (kind: string, generation: string | null, reason: string) => {
+    try { fs.appendFileSync(path.join(paths.dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind, generation, reason }) + "\n", { mode: 0o600 }); } catch { /* GC 진단 실패도 실행을 막지 않는다. */ }
+  };
+  const collect = () => collectSessionGenerations({ dataDir: options.dataDir, hostId: manifest.hostId, keep: new Set([options.generation.id, currentGeneration, ...[...runners].filter(([, r]) => r.child && r.child.exitCode === null && r.child.signalCode === null).map(([id]) => id)]), retired: retiredGenerations, diagnostic });
+  function retire(id: string): void {
+    try { withSessionGenerationLock(options.dataDir, () => retireSessionGeneration(options.dataDir, id, manifest.hostId)); retiredGenerations.add(id); }
+    catch (error) { diagnostic("session_generation_gc_deferred", id, error instanceof Error ? error.message : "retirement_failed"); }
+  }
   let stopping: Promise<void> | null = null;
   let ownerLostAt = performance.now();
   let update: { id: string; capability: string; committed: boolean; started: number; heartbeat: number; keeper: SessionRpcPeer | null } | null = null;
@@ -116,6 +128,8 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         await exited;
       }));
       await reaper?.drain();
+      for (const id of new Set([options.generation.id, currentGeneration, ...runners.keys()])) retire(id);
+      collect();
       for (const peer of peers) peer.close();
       server.close();
       removeOwnSessionManifest(options.dataDir, manifest.hostId);
@@ -125,6 +139,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
   }
   async function runnerFor(generation: SessionGeneration): Promise<SessionRpcPeer> {
     let runner = runners.get(generation.id);
+    if (runner?.closing) { await runner.exited; runner = undefined; }
     if (runner) return runner.ready;
     // Never execute a controller-supplied arbitrary path outside this slot's completed generation.
     if (!/^[a-f0-9]{64}$/.test(generation.id)) throw new Error("untrusted_session_generation");
@@ -132,11 +147,16 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
     if (fs.lstatSync(generation.root).isSymbolicLink() || fs.realpathSync(generation.root) !== expected || fs.readFileSync(path.join(expected, ".complete"), "utf8") !== generation.id || generation.node !== path.join(expected, process.platform === "win32" ? "node.exe" : "node") || generation.runner !== path.join(expected, "dist/session-runner.mjs") || generation.reaper !== path.join(expected, "dist/console-reaper.mjs") || generation.hook !== path.join(expected, "dist/session-hook.mjs")) throw new Error("untrusted_session_generation");
     let resolve!: Runner["resolve"]; let reject!: Runner["reject"];
     const ready = new Promise<SessionRpcPeer>((yes, no) => { resolve = yes; reject = no; });
-    const record: Runner = { child: null, peer: null, capability: randomUUID() + randomUUID(), ready, resolve, reject };
+    let finishExit!: () => void;
+    const exited = new Promise<void>((done) => { finishExit = done; });
+    const record: Runner = { child: null, peer: null, capability: randomUUID() + randomUUID(), ready, exited, closing: false, resolve, reject };
     runners.set(generation.id, record);
     const timer = setTimeout(() => { if (record.child) registry.killGroup(record.child, "SIGKILL"); reject(new Error("session_runner_start_timeout")); }, SESSION_HOST_START_MS); timer.unref();
     void ready.then(() => clearTimeout(timer), () => clearTimeout(timer));
-    record.child = registry.spawn({ command: generation.node, args: [generation.runner], env: process.env });
+    record.child = withSessionGenerationLock(options.dataDir, () => {
+      activateSessionGeneration(options.dataDir, generation.id);
+      return registry.spawn({ command: generation.node, args: [generation.runner], env: process.env });
+    });
     record.child.stdin?.on("error", () => reject(new Error("session_runner_boot_pipe_failed")));
     record.child.stdin?.end(JSON.stringify({ socket: manifest.socket, capability: manifest.capability, runnerCapability: record.capability, generation, hostId: manifest.hostId }));
     let stderr = "";
@@ -149,6 +169,10 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
       }
       reject(new Error("session_runner_exited")); record.peer?.close();
       for (const s of sessions.values()) if (s.snapshot.generation === generation.id && s.snapshot.state !== "ended") { s.snapshot = { ...s.snapshot, state: "lost" }; publish(s, "lost", null); }
+      retire(generation.id);
+      if (runners.get(generation.id) === record) runners.delete(generation.id);
+      finishExit();
+      collect();
     });
     return ready;
   }
@@ -177,7 +201,12 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         if (body.role !== "console" || !identity || !validOwner(identity)) throw new Error("session_owner_auth_failed");
         if (owner && owner.peer !== peer && validOwner(owner.identity)) throw new Error("session_owner_still_attached");
         if (!owner && epoch > 0 && !update?.committed) throw new Error("session_owner_not_in_update");
-        role = "console"; owner = { peer, identity, ready: false }; epoch += 1; ownerLostAt = performance.now(); update = null; return hostSnapshot();
+        const nextGeneration = String(body.generation);
+        withSessionGenerationLock(options.dataDir, () => activateSessionGeneration(options.dataDir, nextGeneration));
+        const previousGeneration = currentGeneration; currentGeneration = nextGeneration;
+        role = "console"; owner = { peer, identity, ready: false }; epoch += 1; ownerLostAt = performance.now(); update = null;
+        if (previousGeneration !== currentGeneration && !runners.has(previousGeneration)) retire(previousGeneration);
+        setImmediate(collect); return hostSnapshot();
       }
       if (!role) throw new Error("session_host_auth_required");
       if (method === "terminate-all" && (role === "console" || role === "control")) { setImmediate(() => { void stop(); }); return true; }
@@ -189,7 +218,14 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         if (method === "event") {
           const kind = String(body.kind);
           if (kind === "runtime") session.snapshot = { ...session.snapshot, runtime: { ...session.snapshot.runtime, ...body.data as Record<string, unknown> } };
-          else if (kind === "ended") session.snapshot = { ...session.snapshot, state: "ended" };
+          else if (kind === "ended") {
+            session.snapshot = { ...session.snapshot, state: "ended" };
+            const runner = runners.get(generationId!);
+            if (runner && !runner.closing && [...sessions.values()].every((s) => s.snapshot.generation !== generationId || s.snapshot.state === "ended" || s.snapshot.state === "lost")) {
+              runner.closing = true;
+              void peer.call("shutdown").catch(() => {});
+            }
+          }
           else if (kind === "pty-modes") session.snapshot = { ...session.snapshot, runtime: { ...session.snapshot.runtime, modes: body.data } };
           else if (kind === "pty-data") session.snapshot = { ...session.snapshot, runtime: { ...session.snapshot.runtime, scrollback: (String(session.snapshot.runtime.scrollback ?? "") + String(body.data)).slice(-SESSION_REPLAY_MAX_BYTES / 2) } };
           publish(session, kind, body.data); return true;
@@ -280,6 +316,7 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
   if (process.platform !== "win32" && paths.relocatedSocketNamespace) {
     try { fs.appendFileSync(path.join(paths.dir, "failures.jsonl"), JSON.stringify({ at: Date.now(), kind: "session_socket_namespace_relocated", reason: "temporary_path_length", transport: "unix" }) + "\n", { mode: 0o600 }); } catch { /* Diagnostic failure cannot widen the transport. */ }
   }
+  collect();
   reaper = startConsoleReaper({ script: options.generation.reaper, env: process.env, instance: { consolePid: process.pid, lockFile: paths.manifest, lockStartedAt: manifest.startedAt }, groups: () => registry.groups(), onDegraded: (e) => options.onFailure?.("session_host_reaper_degraded", e) });
   const watchdog = setInterval(() => {
     const now = performance.now();

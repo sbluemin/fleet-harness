@@ -69,6 +69,14 @@ describe("Console session-host lifecycle integration", () => {
         expect(response.status).toBe(200); return await response.json();
       };
       expect(await callTool()).toMatchObject({ result: { content: [{ text: "call-1" }] } });
+      const retiredId = "b".repeat(64);
+      const retiredRoot = path.join(path.dirname(client.generation.root), retiredId);
+      fs.cpSync(client.generation.root, retiredRoot, { recursive: true });
+      fs.writeFileSync(path.join(retiredRoot, ".complete"), retiredId, { mode: 0o600 });
+      const oldGeneration = { ...client.generation, id: retiredId, root: retiredRoot, node: path.join(retiredRoot, path.basename(client.generation.node)), broker: path.join(retiredRoot, "dist/session-host.mjs"), runner: path.join(retiredRoot, "dist/session-runner.mjs"), hook: path.join(retiredRoot, "dist/session-hook.mjs"), reaper: path.join(retiredRoot, "dist/console-reaper.mjs") };
+      await client.open({ kind: "pty", sessionKey: "retiring", generation: oldGeneration, launch: { bin: process.execPath, args: ["-e", "setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
+      const outside = path.join(root, "outside"); fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, "keep"), "untouched");
+      const escape = path.join(retiredRoot, "outside-link"); fs.symlinkSync(outside, escape, process.platform === "win32" ? "junction" : "dir");
       const terminal = await client.open({ kind: "pty", sessionKey: "terminal", generation: client.generation, launch: { bin: process.execPath, args: ["-e", "process.stdin.on('data', b => process.stdout.write(b)); setInterval(()=>{},1<<30)"], cwd: root, env }, size: { cols: 80, rows: 24 } });
       const send = { sessionKey: "chat", commandId: "send-one", sequence: 1, kind: "send", body: { input: "SLOW" } };
       await client.command(send);
@@ -113,6 +121,13 @@ describe("Console session-host lifecycle integration", () => {
       expect(after.sessions.find((s) => s.sessionKey === "terminal")?.runtime.pid).toBe(terminal.runtime.pid);
       expect(after.sessions.find((s) => s.sessionKey === "chat")?.launchFingerprint).toEqual({ schema: 1, digest: "fixture" });
       expect(after.sessions.find((s) => s.sessionKey === "chat")?.lastCommandSequence).toBe(1);
+      expect(fs.existsSync(retiredRoot)).toBe(true); // 살아 있는 old runner는 업데이트 뒤에도 보호한다.
+      await client.command({ sessionKey: "retiring", commandId: "close-old", sequence: 1, kind: "close" });
+      await vi.waitFor(() => expect(fs.existsSync(path.join(retiredRoot, ".retired"))).toBe(true), { timeout: 15_000 });
+      expect(fs.existsSync(retiredRoot)).toBe(true); // symlink가 있는 tree는 종료 증명이 있어도 회수하지 않는다.
+      expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
+      await vi.waitFor(() => expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain("untrusted_generation_tree"));
+      fs.unlinkSync(escape);
       await client.command(send);
       await expect(client.command({ ...send, body: { input: "different" } })).rejects.toThrow("session_command_id_conflict");
       await expect(first.command({ ...send, commandId: "stale", sequence: 2 })).rejects.toThrow();
@@ -129,6 +144,12 @@ describe("Console session-host lifecycle integration", () => {
       expect(fs.existsSync(lockFile)).toBe(false);
       await stopSlotSessionHost(root);
       for (const pid of [before.sessions[0]?.runtime.pid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
+      held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 3, endpoint: "http://127.0.0.1:3/", version: "gc-successor" });
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env);
+      await vi.waitFor(() => expect(fs.existsSync(retiredRoot)).toBe(false), { timeout: 15_000 });
+      expect(fs.existsSync(client.generation.root)).toBe(true);
+      expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
+      await stopSlotSessionHost(root);
     } finally { keeper?.close(); client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
   }, 60_000);
 

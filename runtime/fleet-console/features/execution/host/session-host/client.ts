@@ -31,7 +31,7 @@ export class SessionHostClient {
     }
     const peer = await connectSessionRpc(manifest.socket);
     try {
-      const snapshot = await peer.call<SessionHostSnapshot>("hello", { wire: SESSION_HOST_WIRE, role: "console", capability: manifest.capability, hostId: manifest.hostId, owner });
+      const snapshot = await peer.call<SessionHostSnapshot>("hello", { wire: SESSION_HOST_WIRE, role: "console", capability: manifest.capability, hostId: manifest.hostId, owner, generation: generation.id });
       return new SessionHostClient(manifest, generation, peer, snapshot.epoch);
     } catch (error) { peer.close(); throw error; }
   }

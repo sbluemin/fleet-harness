@@ -6,6 +6,7 @@ import path from "node:path";
 import { SESSION_HOST_WIRE, type SessionGeneration, type SessionHostManifest } from "@fleet-console/protocol/session-host";
 import { isPidAlive } from "../process.js";
 import { resolveRealPath } from "../temp-namespace.js";
+import { withSessionGenerationLock, pinSessionGeneration } from "./generations.js";
 
 export function privateSessionDirectory(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -66,6 +67,13 @@ export function removeOwnSessionManifest(dataDir: string, hostId: string): void 
 
 /** Copy the actual external package closure, not links into an installation an updater will replace. */
 export function prepareSessionGeneration(dataDir: string, packageRoot: string, options: { readonly packages: readonly string[]; readonly execPath?: string }): SessionGeneration {
+  return withSessionGenerationLock(dataDir, () => {
+    const generation = prepareGeneration(dataDir, packageRoot, options);
+    pinSessionGeneration(dataDir, generation.id);
+    return generation;
+  }, true);
+}
+function prepareGeneration(dataDir: string, packageRoot: string, options: { readonly packages: readonly string[]; readonly execPath?: string }): SessionGeneration {
   const execPath = options.execPath ?? process.execPath;
   const names = ["session-host.mjs", "session-runner.mjs", "session-hook.mjs", "console-reaper.mjs"];
   const hash = createHash("sha256");

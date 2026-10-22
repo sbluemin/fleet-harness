@@ -1,3 +1,4 @@
+export { withSessionGenerationLock, pinSessionGeneration, activateSessionGeneration, retireSessionGeneration, collectSessionGenerations, type SessionGenerationGcOptions } from "./generations.js";
 export { terminateSessionHost } from "./control.js";
 export { connectSessionUpdateKeeper } from "./keeper.js";
 export { SessionRpcPeer, connectSessionRpc, type RpcHandler } from "./rpc.js";
