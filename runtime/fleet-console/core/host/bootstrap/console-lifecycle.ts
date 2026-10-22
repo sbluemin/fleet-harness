@@ -76,6 +76,7 @@ import { createConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { ConsoleSessionHostOwner } from "./session-host-owner.js";
 import { stopSlotSessionHost } from "../../../features/execution/host/session-host/client.js";
 import { createConsoleServer } from "./server.js";
+import { recordSessionUpdateIncompatibility } from "../../../features/updates/host/session-update-notice.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 
@@ -333,7 +334,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const health: ConsoleLockHealthProbe = deps.health ?? createConsoleHealthClient();
   const stale = createConsoleStalePolicy();
 
-  async function runServer(): Promise<void> {
+  async function runServer(recoveredIncompatibleHost = false): Promise<void> {
     let recordFailure: (kind: string, error: unknown) => void = (kind, error) => {
       try { process.stderr.write(`${JSON.stringify({ ts: new Date().toISOString(), kind, message: String(error), stack: null })}\n`); } catch { /* No diagnostic channel remains. */ }
     };
@@ -440,14 +441,15 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     } catch (error) { recordFailure("handler_install_failed", error); }
     // The instance that held the lock says how it ended, beside that lock, as the process exits. A serve that never took
     // the lock writes nothing into a slot another Console owns.
-    process.on("exit", (code) => {
+    const onExit = (code: number) => {
       const instance = lifecycle.lockInstance();
       if (!instance) return;
       const ended = exitOutcome ?? { outcome: code === 0 ? "clean" : "failed", killed: 0 };
       try {
         writeConsoleExitRecord(paths.lockFile, { v: CONSOLE_EXIT_RECORD_VERSION, pid: instance.pid, lockStartedAt: instance.startedAt, outcome: ended.outcome, killed: ended.killed, at: Date.now(), ...(stopReason === null ? {} : { stopReason }) });
       } catch (error) { recordFailure("exit_record_failed", error); }
-    });
+    };
+    process.on("exit", onExit);
     const server = createConsoleServer({ lifecycle, ownedProcesses, sessionHost });
     // Signals are accepted before the lock is published; a stop requested during startup waits for it to settle.
     const onSignal = () => { void lifecycle.requestStop("signal").catch(() => { /* Recorded by onShutdownFailed. */ }); };
@@ -458,6 +460,21 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
     } catch (error) {
       // A start that failed after it took the lock ends this instance with an error; a lost lock never had an instance.
       if (lifecycle.lockInstance()) exitOutcome ??= { outcome: "failed", killed: 0 };
+      // A schema mismatch is not a provider resume opportunity. The failed server has already
+      // released its resources and lock; retire the entire old host before one clean boot.
+      const incompatible = error instanceof Error && ["session_tool_schema_incompatible", "session_pty_schema_incompatible", "chat_host_checkpoint_incompatible", "agent_live_checkpoint_incompatible", "commodore_live_checkpoint_incompatible", "commodore_runner_checkpoint_incompatible"].includes(error.message);
+      if (incompatible && !recoveredIncompatibleHost && !lifecycle.stopRequested()) {
+        sessionHost.requestStop("api");
+        await sessionHost.settleStop();
+        await (reaper as ConsoleReaperLink | null)?.drain();
+        if (lifecycle.stopRequested()) { await lifecycle.whenStopped(); throw error; }
+        recordSessionUpdateIncompatibility(createConsoleDataPaths({ env }).dir, "previous", readFleetCliRelease().version);
+        onExit(1);
+        process.off("SIGTERM", onSignal); process.off("SIGINT", onSignal);
+        process.off("unhandledRejection", onRejection); process.off("uncaughtException", onException); process.off("exit", onExit);
+        clearTimeout(deadline);
+        return runServer(true);
+      }
       if (lifecycle.stopRequested()) await lifecycle.whenStopped();
       throw error;
     }

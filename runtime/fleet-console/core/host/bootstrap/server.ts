@@ -1941,8 +1941,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const body = await readJsonBody<{ intent?: unknown; updateId?: unknown }>(req);
     if (!body || typeof body.updateId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(body.updateId)) { writeJson(res, 400, { error: "invalid_update_id" }); return; }
     if (body.intent === "prepare") {
-      const ref = await deps.sessionHost.prepareUpdate(body.updateId);
-      writeJson(res, 200, { ref, nodePath: (await deps.sessionHost.get()).generation.node });
+      try {
+        const ref = await deps.sessionHost.prepareUpdate(body.updateId);
+        writeJson(res, 200, { ref, nodePath: (await deps.sessionHost.get()).generation.node });
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "session_business_not_drained") throw error;
+        cancelDesktopUpdate("session-business-pending");
+        writeJson(res, 409, { error: "session_business_pending" });
+      }
     } else if (body.intent === "commit") {
       await deps.sessionHost.commitUpdate(body.updateId);
       writeJson(res, 202, { accepted: true });
@@ -2772,7 +2778,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore } = createWorkspaceRoutes({ theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState, migrateLegacyCaptureState });
 
-  const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
+  const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply, cancelDesktopUpdate } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
   const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
 
@@ -2885,6 +2891,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
         knowledgeTools: (commodoreId) => pluginHostCapabilities.admiralMcp.bindCommodore?.(commodoreId) ?? [],
         agent: {
+          hostedExecution, pluginId: "commodore",
           baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
           consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,
           browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "commodore" }) },
@@ -2904,6 +2911,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       await pluginHost.boot();
       await execution.reattach();
+      await commodore.reattach();
       await hostedExecution?.ready();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.

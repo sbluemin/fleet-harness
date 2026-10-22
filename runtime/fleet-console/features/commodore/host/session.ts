@@ -19,6 +19,7 @@ export interface CommodoreSessionCoordinates {
 
 export interface CommodoreSessionOptions {
   readonly commodoreId: string;
+  readonly checkpoint?: { capture(): unknown; restore(state: unknown): void };
   readonly cwd: string;
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
@@ -67,6 +68,8 @@ export interface CommodoreTurnOutcome {
 
 export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
+  readonly attached?: boolean;
+  continueTurn?(): Promise<CommodoreTurnOutcome>;
   start(): Promise<void>;
   /** 도는 턴에 사람의 말을 건넨다. 도는 턴이 없거나 건넬 수 없으면 false — 부른 쪽이 다음 턴에 싣는다. */
   steer(message: string, id: string): boolean;
@@ -99,6 +102,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const toolErrors = new Map<string, string>();
   let turnActions = 0;
   let turnResult: CommodoreTurnOutcome | null = null;
+  let turnFinalized = false;
   let compactionFailed = false;
 
   const record = (entry: CommodoreTranscriptInput) => {
@@ -183,6 +187,18 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const open = async () => {
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
+      liveKey: `commodore:${options.commodoreId}`,
+      orchestration: {
+        capture: () => ({ schema: 1, textBuffer, thinkingBuffer, pendingTools: [...pendingTools], toolErrors: [...toolErrors], turnActions, turnResult, turnFinalized, compactionFailed, turnActive, supervisor: options.checkpoint?.capture() }),
+        restore: (raw) => {
+          const saved = raw as { schema: number; textBuffer: string; thinkingBuffer: string; pendingTools: [string, { name: string; input: unknown }][]; toolErrors: [string, string][]; turnActions: number; turnResult: CommodoreTurnOutcome | null; turnFinalized: boolean; compactionFailed: boolean; turnActive: boolean; supervisor?: unknown };
+          if (saved?.schema !== 1) throw new Error("commodore_live_checkpoint_incompatible");
+          textBuffer = saved.textBuffer; thinkingBuffer = saved.thinkingBuffer; turnActions = saved.turnActions; turnResult = saved.turnResult; turnFinalized = saved.turnFinalized; compactionFailed = saved.compactionFailed; turnActive = saved.turnActive;
+          pendingTools.clear(); for (const [id, value] of saved.pendingTools) pendingTools.set(id, value);
+          toolErrors.clear(); for (const [id, value] of saved.toolErrors) toolErrors.set(id, value);
+          if (saved.supervisor !== undefined) options.checkpoint?.restore(saved.supervisor);
+        },
+      },
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
       sessionName: `commodore-${options.theaterLabel.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
@@ -208,8 +224,26 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     session = created;
   };
 
+  const finishOutcome = (): CommodoreTurnOutcome => {
+    const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
+    if (!turnFinalized) {
+      if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
+      try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
+      catch (error) { console.warn(`[objectives] commodore totals failed: ${error instanceof Error ? error.message : String(error)}`); }
+      turnFinalized = true;
+    }
+    return result;
+  };
+
   return {
     coordinates: options.coordinates,
+    get attached() { return session?.attached === true; },
+    async continueTurn() {
+      await this.start();
+      if (!session?.attached || !session.waitForTurn) throw new Error("commodore_live_turn_unavailable");
+      try { await session.waitForTurn(); } finally { turnActive = false; }
+      return finishOutcome();
+    },
     steer(message, id) {
       if (disposed || !turnActive || !session?.steer) return false;
       // 깨움 턴의 메시지와 같은 머리로 건넨다 — 모델에게는 「사람의 말」 한 덩이로 읽힌다.
@@ -224,7 +258,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
+      turnActions = 0; turnResult = null; turnFinalized = false; compactionFailed = false; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.
@@ -251,11 +285,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         const code = failureCode(error);
         if (!turnResult) { turnResult = { outcome: "error", error: code, actions: turnActions }; record({ kind: "result", outcome: "error", error: code }); }
       } finally { turnActive = false; }
-      const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
-      if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
-      try { options.store.addRunTotals(options.commodoreId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
-      catch (error) { console.warn(`[objectives] commodore totals failed: ${error instanceof Error ? error.message : String(error)}`); }
-      return result;
+      return finishOutcome();
     },
     cancel() { if (turnActive) session?.cancel(); },
     async dispose() {

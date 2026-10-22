@@ -22,6 +22,29 @@ describe("desktop lifecycle", () => {
     expect(app.quit).toHaveBeenCalledOnce();
   });
 
+  // 업데이트 인계와 명시 Quit은 서로 다른 프로세스 수명 계약이다. UI 타이밍을 고정하는 테스트가 아니다.
+  it("keeps an update handoff separate and lets explicit Quit override an in-flight handoff", async () => {
+    const app = { on: vi.fn(), quit: vi.fn() };
+    const stop = vi.fn(async () => undefined);
+    const update = vi.fn(async () => undefined);
+    const lifecycle = createDesktopLifecycle(app as never, async () => ({}) as never, stop, update);
+    await lifecycle.prepareToUpdate();
+    lifecycle.quitForUpdate();
+    expect(update).toHaveBeenCalledOnce(); expect(stop).not.toHaveBeenCalled(); expect(app.quit).toHaveBeenCalledOnce();
+
+    let finish!: () => void;
+    const racingApp = { on: vi.fn(), quit: vi.fn() };
+    const racingStop = vi.fn(async () => undefined);
+    const racing = createDesktopLifecycle(racingApp as never, async () => ({}) as never, racingStop, () => new Promise<void>((resolve) => { finish = resolve; }));
+    const handoff = racing.prepareToUpdate();
+    void handoff.catch(() => {});
+    await racing.quit();
+    finish();
+    await expect(handoff).rejects.toThrow("desktop_quit_requested");
+    racing.quitForUpdate();
+    expect(racingStop).toHaveBeenCalledOnce(); expect(racingApp.quit).toHaveBeenCalledOnce();
+  });
+
   it("attaches the non-macOS close guard before procurement resolves", async () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });

@@ -124,11 +124,13 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     knowledge,
     routes,
     active: (theaterId: string) => { const id = entities.resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
+    reattach: () => supervisor.reattach(),
     sync: () => { ensureRegistered(); restored = true; supervisor.sync("restart"); },
     async dispose() {
       if (disposed) return;
       disposed = true;
-      try { await supervisor.dispose(); } finally { await agent.dispose(); releaseChannel(); }
+      try { if (deps.agent.hostedExecution?.isDetached) await supervisor.detach(); else await supervisor.dispose(); }
+      finally { await agent.dispose(); releaseChannel(); }
     },
   };
 }

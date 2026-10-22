@@ -1057,12 +1057,13 @@ class AgentChatSession {
     if (!host || host.isDetached) return;
     if (requireAdmission) {
       await this.sessionFlight;
-      if (this.dispatching.size) {
+      if (this.dispatching.size || this.hostedDispatches.size) {
         const snapshot = await host.refresh(`chat:${this.operationId}`);
         for (const id of this.dispatching.keys()) {
           const commandId = this.dispatchCommandIds.get(id);
           if (!commandId || !snapshot.commands.some((record) => record.commandId === commandId)) throw new Error("chat_input_admission_pending");
         }
+        for (const messageId of this.hostedDispatches.keys()) if (!snapshot.commands.some((record) => record.commandId === messageId)) throw new Error("chat_handover_admission_pending");
       }
     }
     if (!host.get(`chat:${this.operationId}`)) return;
@@ -2573,6 +2574,16 @@ class AgentChatSession {
     if (this.claudeSession) return this.claudeSession;
     if (!this.claudeSessionFlight) {
       this.claudeSessionFlight = (async () => {
+        const host = this.seed.hostedExecution;
+        if (host?.get(`chat:${this.operationId}`)?.state === "live") {
+          const original = await host.describe(`chat:${this.operationId}`);
+          if (original.kind !== "sdk") throw new Error("chat_host_kind_conflict");
+          const sessionId = original.request.sessionId ?? String(host.get(`chat:${this.operationId}`)?.runtime.providerSessionId ?? this.operationId);
+          const pluginUrl = original.sdk.pluginUrl ?? "";
+          const handle: ClaudeSessionHandle = { sessionId, coordinate: { kind: "new", sessionId }, pluginUrl, claudeCodeSystemPrompt: original.request.systemPrompt ? "on" : "off", sdk: { options: { ...original.sdk, pluginUrl, settingSources: original.sdk.settingSources ?? [], allowAmbientMcpServers: original.sdk.allowAmbientMcpServers ?? false }, request: { ...original.request, permissionMode: "bypassPermissions" } } };
+          this.claudeSession = handle;
+          return handle;
+        }
         const resolve = this.seed.resolveClaudeSession;
         if (!resolve) throw new Error("Fleet plugin session resolver is unavailable");
         const handle = await resolve();
@@ -2627,7 +2638,7 @@ class AgentChatSession {
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
-              ...chatChildEnv(process.env),
+              ...chatChildEnv(this.seed.hostedExecution?.environment ?? process.env),
               ...this.workspaceHook?.env,
               // 서브에이전트 호출 hook만 이 세션의 Operation을 안다. 턴·주의 hook의 식별자와 이름을 나눠
               // 그 hook들이 채팅 자식에서 남의 축이 아니라 아예 침묵하는 지금 동작을 그대로 둔다.

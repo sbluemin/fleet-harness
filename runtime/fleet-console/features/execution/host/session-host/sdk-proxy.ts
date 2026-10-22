@@ -57,6 +57,9 @@ export function createHostedSdk(execution: HostedExecution, options: ClaudeGatew
   let closed = false;
   let opened: ClaudeGatewaySession | null = null;
   let closeWork: Promise<unknown> | null = null;
+  let failSend!: (error: Error) => void;
+  const sendFailed = new Promise<never>((_resolve, reject) => { failSend = reject; });
+  void sendFailed.catch(() => {});
   const configDir = () => String(current?.runtime.configDir ?? (options.home && options.home.kind !== "isolated" && "configDir" in options.home ? options.home.configDir : options.tempRoot ?? ""));
   const command = <T>(kind: string, body?: unknown) => execution.command<T>(key, kind, body);
   const permissionPort = `${key}:permission`;
@@ -115,7 +118,11 @@ export function createHostedSdk(execution: HostedExecution, options: ClaudeGatew
       const session: ClaudeGatewaySession = {
         send(input, sendOptions) {
           const messageId = sendOptions?.messageId ?? randomUUID();
-          void execution.waitForAdmission().then(() => execution.command(key, "send", { input, messageId }, messageId)).catch((error) => execution.failure("session_send_failed", error));
+          void execution.waitForAdmission().then(() => execution.command(key, "send", { input, messageId }, messageId)).catch((error) => {
+            if (execution.isDetached) return;
+            failSend(error instanceof Error ? error : new Error("session_send_failed"));
+            execution.failure("session_send_failed", error);
+          });
         },
         interrupt: () => command<void>("interrupt"),
         stopTask: (taskId) => command<void>("stopTask", { taskId }),
@@ -128,12 +135,18 @@ export function createHostedSdk(execution: HostedExecution, options: ClaudeGatew
         applySessionSettings: (settings) => command<void>("applySessionSettings", settings),
         close() { if (closed) return; closed = true; for (const controller of pendingControllers) controller.abort(); closeWork = command("close"); void closeWork.catch((error) => execution.failure("session_close_failed", error)); },
         async *[Symbol.asyncIterator]() {
-          for await (const event of execution.events(key, binding.observer?.afterSeq ?? 0, binding.observer?.gap)) {
-            if (closed) return;
-            if (event.kind === "sdk-error") throw new Error(String(event.data));
-            if (event.kind === "sdk-message") yield event.data as ClaudeGatewayMessage;
-            await binding.observer?.consumed(event);
-          }
+          const observer = new AbortController();
+          const events = execution.events(key, binding.observer?.afterSeq ?? 0, binding.observer?.gap, observer.signal);
+          try {
+            while (!closed) {
+              const next = await Promise.race([events.next(), sendFailed]);
+              if (next.done || closed) return;
+              const event = next.value;
+              if (event.kind === "sdk-error") throw new Error(String(event.data));
+              if (event.kind === "sdk-message") yield event.data as ClaudeGatewayMessage;
+              await binding.observer?.consumed(event);
+            }
+          } finally { observer.abort(); void events.return(undefined).catch(() => {}); }
         },
       };
       opened = session;

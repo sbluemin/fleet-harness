@@ -778,6 +778,43 @@ describe("commodore supervisor", () => {
       expect(sessions.at(-1)!.sent).toHaveLength(1);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
+  it("adopts a live turn and its queued patrol without sending a restart turn or counting a new conversation", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+    try {
+      const h = harness(Date.now); h.setExperiments({ commodore: true }); h.store.setAutonomy("t1", true);
+      const root = path.join(h.objectivesDir, "..", "..", "..", "theater"); fs.mkdirSync(root, { recursive: true });
+      type Options = import("../features/execution/host/agent/console-resident.js").ConsoleResidentOptions;
+      let saved: unknown; let current: Options | undefined; let finish!: () => void;
+      let sent = 0; let created = 0;
+      const agent: AgentHost = {
+        hasLiveSession: () => saved !== undefined,
+        createSession: async (options) => {
+          current = options; created += 1;
+          const attached = saved !== undefined;
+          if (attached) options.orchestration?.restore(saved);
+          return { attached, send: async () => { sent += 1; await new Promise<void>(() => {}); }, waitForTurn: () => new Promise<void>((resolve) => { finish = resolve; }), steer: () => false, cancel() {}, dispose: async () => undefined };
+        },
+      };
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+      let supervisor = make(); supervisor.sync("autonomy"); await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sent).toBe(1);
+      const nextWake = current!.tools!.custom!.find((group) => group.name === "commodore")!.tools.find((tool) => tool.name === "next_wake")!;
+      await nextWake.execute({ inMinutes: 1, reason: "continue the same patrol" }, { cwd: root });
+      saved = current!.orchestration!.capture();
+      const sessionsBefore = h.store.read("t1")!.run!.session;
+      await supervisor.detach(); supervisor = make(); await supervisor.reattach(); supervisor.sync("restart");
+      expect(created).toBe(2); expect(sent).toBe(1); expect(h.store.read("t1")!.run!.session).toBe(sessionsBefore);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "turn" });
+      current!.onEvent?.({ kind: "result", source: "message", isError: false }); finish();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      await vi.advanceTimersByTimeAsync(60_000 + COALESCE_MS);
+      expect(sent).toBe(2);
+      // 새로 예약된 다음 턴은 mock에서 끝나지 않으므로 관찰만 분리해 정리한다.
+      await supervisor.detach();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("hands messages to the running turn, returns unread ones to the queue, and opens a fresh conversation with a transcript summary across restarts", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));

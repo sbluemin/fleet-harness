@@ -24,7 +24,11 @@ import { SESSION_HOST_WIRE } from "@fleet-console/protocol/session-host";
 import { createWindowsSessionPlatform } from "../core/host/bootstrap/windows-session-platform.js";
 import { HostedExecution } from "../features/execution/host/session-host/adapters.js";
 import { createHostedSdk } from "../features/execution/host/session-host/sdk-proxy.js";
+import { AgentChatRegistry, type AgentChatSessionSeed } from "../features/execution/host/agent/chat-session.js";
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
+import { createConsoleUpdateApplyService } from "../features/updates/host/update-apply.js";
+import { readConsoleUpdateProgress, writeConsoleUpdateProgress } from "../features/updates/host/update-progress.js";
+import { recordSessionUpdateIncompatibility } from "../features/updates/host/session-update-notice.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
@@ -120,7 +124,18 @@ describe("Console session-host lifecycle integration", () => {
       client.bindBusiness(() => new Promise((resolve) => { finishMutation = resolve; }));
       const mutation = callTool();
       await vi.waitFor(() => expect(finishMutation).toBeTypeOf("function"));
-      await expect(client.prepareUpdate("unsafe-update")).rejects.toThrow("session_business_not_drained");
+      const filesBeforeRefusal = fs.readdirSync(root);
+      const update = createConsoleUpdateApplyService({
+        fleetDataDir: root, tmpDir: root, workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
+        preflightInstall: () => ({ bin: process.execPath, command: "npm", globalRoot: root, prefixArgs: [] }),
+        downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "candidate.tgz") }),
+        sessionHost: { prepareUpdate: (id) => client!.prepareUpdate(id), cancelUpdate: async () => {}, commitUpdate: async () => {} },
+        spawnWorker: () => { throw new Error("A pending permission must not launch an installer."); },
+      });
+      await expect(update.start({ currentEndpoint: held.payload.endpoint, currentLockToken: held.payload.token, currentLockStartedAt: held.payload.startedAt, currentPackageRoot: root, currentPid: process.pid, dataDir: root, fromVersion: "1.0.0", lockFile, release: { schema: 1, package: "@dotobokuri/fleet-console", version: "1.0.1", tag: "v1.0.1", tarball: { name: "fleet-console-1.0.1.tgz", size: 1, sha256: "0".repeat(64) } } })).rejects.toMatchObject({ progress: { state: "failed", reason: "session-business-pending" } });
+      expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-business-pending", description: expect.stringContaining("still running") });
+      expect(fs.readdirSync(root).filter((name) => !filesBeforeRefusal.includes(name))).toEqual(["update-progress.json"]);
+      expect((await client.listSessions()).sessions.find((item) => item.sessionKey === sdk.sessionKey)?.runtime.pid).toBe(sdk.runtime.pid);
       finishMutation({ content: [{ type: "text", text: "drained" }] });
       expect(await mutation).toMatchObject({ result: { content: [{ text: "drained" }] } });
       client.bindBusiness(() => ({ $sessionHostDeferred: true, turnId: "turn-one", permissionEpoch: 7, lifetime: "turn", expiresAt: null, presentation: { kind: "approval" } }));
@@ -181,6 +196,9 @@ describe("Console session-host lifecycle integration", () => {
       expect(launches.filter((e) => e.event === "turn-start")).toHaveLength(1);
       await client.command({ sessionKey: "terminal", commandId: "write-one", sequence: 1, kind: "write", body: { data: "continued\n" } });
       await vi.waitFor(async () => expect((await client!.readEvents("terminal", 0)).events.some((e) => e.kind === "pty-data" && String(e.data).includes("continued"))).toBe(true));
+      const incompatibleExecution = await HostedExecution.attach(client, () => {}, env);
+      const incompatible = createHostedSdk(incompatibleExecution, sdkOptions, { ...binding, tools: [{ ...binding.tools[0]!, tools: [{ ...binding.tools[0]!.tools[0]!, inputSchema: { type: "object", properties: { changed: { type: "string" } } } }] }] });
+      await expect(incompatible.openSession({ model: "opus", cwd: root })).rejects.toThrow("session_tool_schema_incompatible");
       keeper.close();
       const stoppingGap = await client.prepareUpdate("update-stop-gap"); keeper = await connectSessionUpdateKeeper(stoppingGap); await client.commitUpdate("update-stop-gap");
       client.closeObserver(); held.release();
@@ -188,13 +206,73 @@ describe("Console session-host lifecycle integration", () => {
       await stopSlotSessionHost(root);
       for (const pid of [before.sessions[0]?.runtime.pid, sdk.runtime.runnerPid, terminal.runtime.pid, before.hostId === after.hostId ? client.manifest.pid : 0]) if (typeof pid === "number" && pid > 1) await vi.waitFor(() => expect(isRunning(pid)).toBe(false), { timeout: 15_000 });
       if (process.platform === "win32") expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain('"kind":"session_host_jobs_drained","generation":null,"reason":"remainingJobs=0"');
+      recordSessionUpdateIncompatibility(root, "1.0.0", "1.0.1");
+      writeConsoleUpdateProgress(root, { phase: "completed", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), fromVersion: "1.0.0", targetVersion: "1.0.1" });
+      expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-bridge-incompatible", description: expect.stringContaining("ready for new sessions") });
       held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 3, endpoint: "http://127.0.0.1:3/", version: "gc-successor" });
       client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
       await vi.waitFor(() => expect(fs.existsSync(retiredRoot)).toBe(false), { timeout: 15_000 });
       expect(fs.existsSync(client.generation.root)).toBe(true);
       expect(fs.readFileSync(path.join(outside, "keep"), "utf8")).toBe("untouched");
+      execution = await HostedExecution.attach(client, () => {}, env);
+      const cleanSdk = createHostedSdk(execution, sdkOptions, { key: "chat" });
+      const freshSession = await cleanSdk.openSession({ model: "opus", cwd: root });
+      await execution.ready(); freshSession.send("after incompatible update");
+      const freshResult = (async () => { for await (const message of freshSession) if (message.type === "result") return message; throw new Error("fresh result missing"); })();
+      await expect(freshResult).resolves.toMatchObject({ type: "result" });
+      expect(execution.get("chat")!.runtime.pid).not.toBe(sdk.runtime.pid);
+      await cleanSdk.dispose(); execution.detach();
       await stopSlotSessionHost(root);
     } finally { keeper?.close(); client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
+  }, 60_000);
+
+  // Raw host transport coverage cannot prove a replacement Chat controller can answer a still-running SDK ask.
+  it("reattaches Chat state and a turn-bound person request without a new CLI or an automatic answer", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-chat-controller-")); TEMP_DIRS.push(root);
+    const home = path.join(root, "home"); fs.mkdirSync(home); const fake = path.join(root, "fake"); fs.mkdirSync(fake);
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), FAKE_CLAUDE_DIR: fake };
+    const lockFile = path.join(root, "console.lock"); const lock = createConsoleLock();
+    let held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
+    let client: SessionHostClient | null = null; let keeper: { close(): void } | null = null;
+    let execution: HostedExecution | null = null; let registry = new AgentChatRegistry();
+    const id = "11111111-2222-4333-8444-555555555555";
+    const executablePath = fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url));
+    const seed = (): AgentChatSessionSeed => ({
+      hostedExecution: execution!, baseUrl: "http://127.0.0.1:1", model: "opus", cwd: root, claudeConfigDir: env.CLAUDE_CONFIG_DIR, origin: { kind: "fresh" },
+      resolveExecutablePath: async () => executablePath,
+      resolveClaudeSession: async () => ({ sessionId: id, coordinate: { kind: "new", sessionId: id }, pluginUrl: "", claudeCodeSystemPrompt: "off", sdk: { options: { pluginUrl: "", settingSources: [], allowAmbientMcpServers: false }, request: { sessionId: id, permissionMode: "bypassPermissions" } } }),
+      onProviderSessionUpdate: () => {}, reportActivity: () => true, canReportActivity: () => true, reportAwaiting: () => {}, reportBackgroundPending: () => {},
+    });
+    try {
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
+      execution = await HostedExecution.attach(client, () => {}, env); await execution.ready();
+      const firstChat = await registry.ensure(id, seed); await firstChat.attachHosted();
+      firstChat.send("fixture warmup");
+      await vi.waitFor(() => expect(fs.readFileSync(path.join(fake, "log.jsonl"), "utf8")).toContain('"event":"turn-end"'), { timeout: 10_000 });
+      await vi.waitFor(() => expect(registry.isBusy(id)).toBe(false));
+      fs.writeFileSync(path.join(fake, `ask-${id}`), "");
+      await vi.waitFor(() => {
+        const rows = fs.existsSync(path.join(fake, "log.jsonl")) ? fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string; sessionIdArg?: string }) : [];
+        expect(firstChat.listPendingAsks(), JSON.stringify(rows.map(({ event, sessionIdArg }) => ({ event, sessionIdArg })))).toHaveLength(1);
+      }, { timeout: 10_000 });
+      execution.setUpdating(true); await execution.flush();
+      const before = execution.get(`chat:${id}`)!;
+      const ref = await client.prepareUpdate("chat-controller-update"); keeper = await connectSessionUpdateKeeper(ref); await client.commitUpdate("chat-controller-update");
+      execution.detach(); registry.detachAll(); client.closeObserver(); held.release();
+      held = await lock.acquireLock({ dir: root, lockFile, pid: process.pid, port: 2, endpoint: "http://127.0.0.1:2/", version: "successor" });
+      client = await SessionHostClient.attach(root, fileURLToPath(new URL("../", import.meta.url)), held.payload, env, createWindowsSessionPlatform());
+      execution = await HostedExecution.attach(client, () => {}, env); registry = new AgentChatRegistry();
+      const adopted = await registry.ensure(id, seed); await execution.ready();
+      expect(execution.get(`chat:${id}`)!.runtime.pid).toBe(before.runtime.pid);
+      await vi.waitFor(() => expect(adopted.listPendingAsks()).toHaveLength(1));
+      const events = () => fs.readFileSync(path.join(fake, "log.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { event: string });
+      expect(events().filter((event) => event.event === "launch")).toHaveLength(1);
+      expect(events().some((event) => event.event === "ask-answered")).toBe(false);
+      expect(adopted.answer(adopted.listPendingAsks()[0]!.id, { approve: true })).toMatchObject({ ok: true });
+      await vi.waitFor(() => expect(events().some((event) => event.event === "ask-answered")).toBe(true));
+      await vi.waitFor(() => expect(registry.isBusy(id)).toBe(false));
+      expect(events().filter((event) => event.event === "launch")).toHaveLength(1);
+    } finally { execution?.detach(); registry.detachAll(); keeper?.close(); client?.closeObserver(); await stopSlotSessionHost(root).catch(() => {}); held.release(); }
   }, 60_000);
 
   it("ends an unapproved observer loss instead of leaving a headless session orphan", async () => {

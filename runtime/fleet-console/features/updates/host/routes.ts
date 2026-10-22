@@ -1,7 +1,8 @@
 import type * as http from "node:http";
 import crypto from "node:crypto";
 import { ConsoleReleaseNotesUnavailableError, type ConsoleReleaseNotesService, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
-import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
+import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, writeConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
+import { clearSessionUpdateNotice } from "./session-update-notice.js";
 import type { ConsoleUpdateCheckService, ConsoleUpdateStatus } from "./update-check.js";
 import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
 import { ConsoleUpdateApplyPreflightError, isManagedRuntimePackageRoot, type ConsoleUpdateApplyService, type ConsoleUpdateApplyStartResult } from "./update-apply.js";
@@ -177,6 +178,7 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
       }
       // 요청표 하나가 셸의 재시작 한 번이다. 셸이 재시작하는 사이 다른 탭이 누르면 새 표 대신
       // 이미 진행 중이라는 답을 받는다.
+      clearSessionUpdateNotice(durablePaths.dir);
       delegatedAt = now();
       publishDesktopUpdateRequest({ requestedVersion: freshStatus.latestVersion, requestId: crypto.randomUUID() });
       const delegated: ConsoleUpdateApplyAcceptedResponse = { status: "delegated" };
@@ -260,7 +262,12 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
     return true;
   }
 
-  return { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply };
+  function cancelDesktopUpdate(reason: "session-business-pending"): void {
+    delegatedAt = null;
+    const timestamp = new Date(now()).toISOString();
+    writeConsoleUpdateProgress(durablePaths.dir, { phase: "failed", startedAt: timestamp, updatedAt: timestamp, fromVersion: version, targetVersion: updateCheck.latestRelease?.()?.version ?? version, reason, failureStage: "preflight" });
+  }
+  return { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply, cancelDesktopUpdate };
 }
 function requestHasBody(req: http.IncomingMessage): boolean {
   const contentLength = req.headers["content-length"];

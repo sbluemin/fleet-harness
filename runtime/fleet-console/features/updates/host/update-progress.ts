@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { readSessionUpdateNotice } from "./session-update-notice.js";
 
 import { isPidAlive } from "@fleet-console/lifecycle";
 import {
@@ -118,6 +119,8 @@ export interface ReadConsoleUpdateProgressDeps {
 export function readConsoleUpdateProgress(dataDir: string, deps: ReadConsoleUpdateProgressDeps = {}): ConsoleUpdateProgressStatus {
   const readFile = deps.readFile ?? ((filePath: string) => fs.readFileSync(filePath, "utf8"));
   const now = deps.now ?? Date.now;
+  const notice = readSessionUpdateNotice(dataDir, now(), CONSOLE_UPDATE_OUTCOME_TTL_MS);
+  if (notice) return notice;
   const pidAlive = deps.isPidAlive ?? isPidAlive;
   let raw: string;
   try {

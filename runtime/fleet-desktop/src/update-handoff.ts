@@ -13,14 +13,19 @@ export async function prepareDesktopSessionUpdate(options: { lockFile: string; o
   const updateId = randomUUID();
   const request = async <T>(intent: "prepare" | "commit" | "cancel"): Promise<T> => {
     const response = await fetch(new URL(DESKTOP_SESSION_UPDATE_PATH, lock.endpoint), { method: "POST", headers: { Authorization: `Bearer ${lock.token}`, [DESKTOP_SESSION_UPDATE_OWNER_HEADER]: options.ownerId, "content-type": "application/json" }, body: JSON.stringify({ intent, updateId }), signal: AbortSignal.timeout(30_000) });
-    if (!response.ok) throw new Error(`desktop_update_handoff_${response.status}`);
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as { error?: string } | null;
+      if (response.status === 409 && failure?.error === "session_business_pending") throw new Error("session_business_pending");
+      throw new Error(`desktop_update_handoff_${response.status}`);
+    }
     return response.json() as Promise<T>;
   };
   const prepared = await request<DesktopSessionUpdatePrepared>("prepare");
-  await fs.mkdir(options.helperRoot, { recursive: true, mode: 0o700 });
-  const dir = await fs.mkdtemp(path.join(options.helperRoot, ".session-keeper-"));
+  let dir: string | undefined;
   let child: ReturnType<typeof spawn> | undefined;
   try {
+    await fs.mkdir(options.helperRoot, { recursive: true, mode: 0o700 });
+    dir = await fs.mkdtemp(path.join(options.helperRoot, ".session-keeper-"));
     if (!path.isAbsolute(prepared.nodePath)) throw new Error("desktop_keeper_node_invalid");
     const entry = path.join(dir, "update-keeper.mjs");
     await fs.writeFile(entry, await fs.readFile(new URL("./update-keeper.mjs", import.meta.url)), { mode: 0o600, flag: "wx" });
@@ -47,7 +52,7 @@ export async function prepareDesktopSessionUpdate(options: { lockFile: string; o
     // The helper has heartbeat-only rights. Cancellation is still decided by the original Console owner.
     await request("cancel").catch(() => undefined);
     child?.kill("SIGTERM");
-    await fs.rm(dir, { recursive: true, force: true });
+    if (dir) await fs.rm(dir, { recursive: true, force: true });
     throw error;
   }
 }

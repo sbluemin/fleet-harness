@@ -14,6 +14,7 @@ export class HostedExecution {
   private readonly commandTails = new Map<string, Promise<unknown>>();
   private readonly checkpointTails = new Map<string, Promise<void>>();
   private readonly observers = new Set<AbortController>();
+  private readonly readerFlights = new Set<Promise<void>>();
   private detached = false;
   private updating = false;
   private readonly admissionWaiters = new Set<() => void>();
@@ -31,13 +32,14 @@ export class HostedExecution {
   private readonly flushers = new Set<() => Promise<void>>();
   beforeUpdate(flush: () => Promise<void>): () => void { this.flushers.add(flush); return () => this.flushers.delete(flush); }
   async flush(): Promise<void> {
+    await Promise.all([...this.readerFlights]);
     await Promise.all([...this.commandTails.values()]);
     for (const flush of this.flushers) await flush();
   }
-  private constructor(readonly client: SessionHostClient, private readonly onFailure: (kind: string, error: unknown) => void) {}
+  private constructor(readonly client: SessionHostClient, private readonly onFailure: (kind: string, error: unknown) => void, readonly environment: NodeJS.ProcessEnv) {}
 
-  static async attach(client: SessionHostClient, onFailure: (kind: string, error: unknown) => void): Promise<HostedExecution> {
-    const execution = new HostedExecution(client, onFailure);
+  static async attach(client: SessionHostClient, onFailure: (kind: string, error: unknown) => void, environment: NodeJS.ProcessEnv = process.env): Promise<HostedExecution> {
+    const execution = new HostedExecution(client, onFailure, environment);
     for (const snapshot of (await client.listSessions()).sessions) {
       execution.sessions.set(snapshot.sessionKey, snapshot);
       const key = execution.logical(snapshot.sessionKey);
@@ -114,15 +116,18 @@ export class HostedExecution {
     const work = (this.checkpointTails.get(key) ?? Promise.resolve()).then(async () => {
       const current = await this.refresh(key);
       const previous = current.checkpoint as SessionCheckpoint | null;
-      const checkpoint = { ...state, lastConsumedSeq: Math.max(state.lastConsumedSeq, previous?.lastConsumedSeq ?? 0), version: (previous?.version ?? 0) + 1 };
-      await this.client.checkpoint(this.actual(key), checkpoint);
+      if (state.lastConsumedSeq < (previous?.lastConsumedSeq ?? 0)) throw new Error("session_checkpoint_stale_capture");
+      const checkpoint = { ...state, version: (previous?.version ?? 0) + 1 };
+      if (!await this.client.checkpoint(this.actual(key), checkpoint)) throw new Error("session_checkpoint_conflict");
       this.sessions.set(this.actual(key), { ...current, checkpoint });
     });
     this.checkpointTails.set(key, work);
     return work;
   }
-  async *events(key: string, afterSeq: number, onGap?: (snapshot: SessionSnapshot) => void): AsyncGenerator<SessionHostEvent> {
+  async *events(key: string, afterSeq: number, onGap?: (snapshot: SessionSnapshot) => void, signal?: AbortSignal): AsyncGenerator<SessionHostEvent> {
     const controller = new AbortController(); this.observers.add(controller);
+    const abort = () => controller.abort();
+    if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
     let cursor = afterSeq;
     try {
       while (!controller.signal.aborted && !this.detached) {
@@ -133,11 +138,16 @@ export class HostedExecution {
           onGap(replay.snapshot); cursor = replay.snapshot.seq;
         } else for (const event of replay.events) {
           if (controller.signal.aborted || this.detached) return;
-          if (event.kind === "hook" && (event.data as { path?: string })?.path !== "/agent-call") {
-            try { await this.hookHandler?.(key, event.data, event.at); }
-            catch (error) { this.failure("session_observation_hook_failed", error); }
-          }
-          yield event; cursor = event.seq;
+          await this.waitForAdmission();
+          let finish!: () => void;
+          const reading = new Promise<void>((resolve) => { finish = resolve; }); this.readerFlights.add(reading);
+          try {
+            if (event.kind === "hook" && (event.data as { path?: string })?.path !== "/agent-call") {
+              try { await this.hookHandler?.(key, event.data, event.at); }
+              catch (error) { this.failure("session_observation_hook_failed", error); }
+            }
+            yield event; cursor = event.seq;
+          } finally { this.readerFlights.delete(reading); finish(); }
         }
         if (replay.snapshot.state === "ended" || replay.snapshot.state === "lost") return;
         await new Promise<void>((resolve) => {
@@ -145,7 +155,7 @@ export class HostedExecution {
           const timer = setTimeout(done, 50); controller.signal.addEventListener("abort", done, { once: true });
         });
       }
-    } finally { this.observers.delete(controller); }
+    } finally { signal?.removeEventListener("abort", abort); this.observers.delete(controller); }
   }
   failure(kind: string, error: unknown): void { if (!this.detached) this.onFailure(kind, error); }
   /** Detach only. The lifecycle owner, not each feature, chooses preserve or terminate. */

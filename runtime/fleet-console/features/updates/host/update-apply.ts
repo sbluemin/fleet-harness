@@ -21,6 +21,7 @@ import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, CONSOLE_UPDATE_OUTCOME_TTL_MS, writeConsoleUpdateProgress } from "./update-progress.js";
 import { prepareUpdateWorker, type PreparedUpdateWorker, type UpdateWorkerChild } from "./update-worker-handoff.js";
+import { clearSessionUpdateNotice } from "./session-update-notice.js";
 import type { SessionUpdateRef } from "@fleet-console/protocol/session-host";
 
 export interface ConsoleUpdateApplyService {
@@ -204,6 +205,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     // release channel. The managed runtime is updated only by Desktop's hardened
     // entry-flow transaction until a recoverable same-window handoff exists.
     if (isManagedRuntimePackageRoot(request.currentPackageRoot)) throw new Error("managed_runtime_update_requires_relaunch");
+    clearSessionUpdateNotice(request.dataDir);
     lastFailure = null;
     lastStartedAt = Math.max(now(), lastStartedAt + 1);
     const startedAt = new Date(lastStartedAt).toISOString();
@@ -224,7 +226,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     } catch (error) {
       try { removeFile(download.tarballPath); } catch { /* 실패 결론을 정리 오류로 덮지 않는다. */ }
       if (error instanceof ConsoleUpdateApplyPreflightError) throw error;
-      throw recordFailure(request, startedAt, "preflight-failed", "preflight");
+      throw recordFailure(request, startedAt, error instanceof Error && error.message === "session_business_not_drained" ? "session-business-pending" : "preflight-failed", "preflight");
     }
   }
 
@@ -252,8 +254,8 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     }
     const lifecycleRuntimePath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${RUNTIME_FILE_SUFFIX}`);
     writeFile(lifecycleRuntimePath, runtime, { mode: TEMP_FILE_MODE });
-    const sessionHostUpdate = await deps.sessionHost?.prepareUpdate(runId);
     try {
+    const sessionHostUpdate = await deps.sessionHost?.prepareUpdate(runId);
     const script = emitConsoleUpdateWorkerScript({
       runId,
       ...(sessionHostUpdate ? { sessionHostUpdate } : {}),
@@ -304,7 +306,11 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       },
       async abort() { try { await prepared.abort(); } finally { await deps.sessionHost?.cancelUpdate(); } },
     };
-    } catch (error) { await deps.sessionHost?.cancelUpdate(); throw error; }
+    } catch (error) {
+      await deps.sessionHost?.cancelUpdate();
+      for (const file of [workerPath, lifecycleRuntimePath]) { try { removeFile(file); } catch { /* Keep the original failure. */ } }
+      throw error;
+    }
   }
 
   return { start, getFailure: () => now() - failedAt <= CONSOLE_UPDATE_OUTCOME_TTL_MS ? lastFailure : null };

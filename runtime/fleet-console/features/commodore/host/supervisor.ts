@@ -75,6 +75,8 @@ export interface CommodoreSupervisor {
   clear(commodoreId: string): Promise<void>;
   /** 실험 기능·자율 운영을 다시 읽어 돌아야 할 Theater 를 세우고 아닌 것을 멈춘다. */
   sync(reason?: string): void;
+  reattach(): Promise<void>;
+  detach(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -320,6 +322,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     schedule(runner, "retry", delay, () => { runner.nextWakeAt = undefined; void runTurn(runner); });
   };
 
+  const captureRunner = (runner: Runner) => ({
+    schema: 1,
+    scalars: { phase: runner.phase, reason: runner.reason, nextWakeAt: runner.nextWakeAt, messages: runner.messages, turnMessages: runner.turnMessages, sessionImageBytes: runner.sessionImageBytes, sessionImageBase64Bytes: runner.sessionImageBase64Bytes, retryAttempt: runner.retryAttempt, ending: runner.ending, patrolSet: runner.patrolSet, patrolRequest: runner.patrolRequest, lastTurnAt: runner.lastTurnAt, lastInputTokens: runner.lastInputTokens, contextWindow: runner.contextWindow, compactAt: runner.compactAt, coordinates: runner.coordinates, language: runner.language, rotateNext: runner.rotateNext, recentActions: runner.recentActions, replacementSummary: runner.replacementSummary, emptyReported: runner.emptyReported },
+    pending: [...runner.pending].map(([code, reason]) => [code, { ...reason, ids: reason.ids ? [...reason.ids] : undefined }] as const),
+    hosted: [...runner.hosted], stalledReported: [...runner.stalledReported],
+  });
+  const restoreRunner = (runner: Runner, raw: unknown) => {
+    const saved = raw as ReturnType<typeof captureRunner>;
+    if (saved?.schema !== 1 || !saved.scalars) throw new Error("commodore_runner_checkpoint_incompatible");
+    const target = runner as unknown as Record<string, unknown>;
+    for (const key of Object.keys(captureRunner(runner).scalars)) if (Object.hasOwn(saved.scalars, key)) target[key] = (saved.scalars as unknown as Record<string, unknown>)[key];
+    runner.pending.clear(); for (const [code, reason] of saved.pending) runner.pending.set(code, { ...reason, ...(reason.ids ? { ids: new Map(reason.ids) } : { ids: undefined }) });
+    runner.hosted.clear(); for (const [id, message] of saved.hosted) runner.hosted.set(id, message);
+    runner.stalledReported = new Set(saved.stalledReported);
+  };
+
   const openSession = async (runner: Runner, event: "opened" | "replaced" | "restarted"): Promise<CommodoreSession> => {
     const theater = deps.theater(theaterIdOf(runner.commodoreId));
     if (!theater) throw new Error("theater_unavailable");
@@ -335,6 +353,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
+      checkpoint: { capture: () => captureRunner(runner), restore: (state) => restoreRunner(runner, state) },
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(theaterIdOf(runner.commodoreId), objectiveId); return objective && !objective.removed ? objective : null; },
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
@@ -356,6 +375,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     });
     await session.start();
     runner.session = session;
+    if (session.attached) return session;
     runner.replacementSummary = runner.recentActions.length ? runner.recentActions.slice(-RECENT_ACTIONS) : undefined;
     runner.coordinates = coordinates;
     runner.language = language;
@@ -769,6 +789,49 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return work;
     },
     sync,
+    async reattach() {
+      for (const id of deps.store.autonomousCommodores()) {
+        if (!shouldRun(id) || !deps.agent.hasLiveSession?.(`commodore:${id}`)) continue;
+        start(id, "restart", false);
+        const runner = runners.get(id)!;
+        clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
+        const session = await openSession(runner, "opened");
+        if (!session.attached) throw new Error("commodore_live_attach_missing");
+        const scheduleRestored = () => {
+          if (disposed || runner.stopping) return;
+          if (runner.pending.size) schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
+          else schedulePatrol(runner, runner.nextWakeAt ?? now() + patrolInterval(id), runner.patrolRequest?.reason ?? "");
+        };
+        if (runner.phase === "turn") {
+          runner.inflight = (async () => {
+            const outcome = await session.continueTurn!();
+            const messages = runner.turnMessages; runner.turnMessages = [];
+            if (outcome.outcome === "ok") releaseMessages(runner, messages);
+            noteOutcome(runner, outcome);
+            if (disposed || runner.stopping) return;
+            if (runner.ending) { deps.store.setAutonomy(id, false); return; }
+            if (outcome.outcome !== "ok") {
+              runner.messages.unshift(...messages); scheduleRetry(runner, outcome.error ?? "turn_failed"); return;
+            }
+            runner.retryAttempt = 0; runner.lastTurnAt = now(); setPhase(runner, "idle");
+            if (!runner.patrolSet) runner.nextWakeAt = now() + patrolInterval(id);
+          })().finally(() => { runner.inflight = null; if (runner.phase !== "retrying" && runner.phase !== "error") scheduleRestored(); });
+          void runner.inflight.catch((error) => { if (!disposed) scheduleRetry(runner, failureCode(error, "session_failed")); });
+        } else if (runner.phase === "retrying" || runner.phase === "error") schedule(runner, "retry", Math.max(0, (runner.nextWakeAt ?? now()) - now()), () => { runner.nextWakeAt = undefined; void runTurn(runner); });
+        else scheduleRestored();
+      }
+    },
+    async detach() {
+      disposed = true;
+      for (const cleanup of cleanups.splice(0)) cleanup();
+      const sessions: Promise<void>[] = [];
+      for (const runner of runners.values()) {
+        runner.board?.dispose();
+        for (const key of ["coalesce", "patrol", "retry", "stopTimer"] as const) clearTimer(runner, key);
+        if (runner.session) sessions.push(runner.session.dispose());
+      }
+      runners.clear(); await Promise.all(sessions);
+    },
     async dispose() {
       disposed = true;
       for (const cleanup of cleanups.splice(0)) cleanup();

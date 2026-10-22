@@ -4,11 +4,15 @@ import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResident
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
+import type { HostedExecution } from "../session-host/adapters.js";
+import { createHostedPluginSession } from "../session-host/plugin-proxy.js";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { FLEET_BROWSER_MCP_SERVER, type BrowserPluginConnection, type BrowserPluginOptions } from "../../../browser/host/mcp.js";
 import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type ComputerUsePluginOptions } from "../../../computer-use/host/mcp.js";
 
 export interface AgentSessionHostDeps {
+  readonly hostedExecution?: HostedExecution;
+  readonly pluginId?: string;
   readonly baseUrl: () => string | null;
   readonly consoleUse: ConsoleUseMcpHost;
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
@@ -27,8 +31,12 @@ export interface AgentSessionHostDeps {
 
 export interface InternalAgentSession extends AgentSession {
   steer?(input: AgentInput, id: string): boolean;
+  waitForTurn?(): Promise<void>;
 }
-export interface InternalSessionOptions extends AgentSessionOptions { readonly cwd?: string }
+export interface InternalSessionOptions extends AgentSessionOptions {
+  readonly cwd?: string;
+  readonly orchestration?: { capture(): unknown; restore(state: unknown): void };
+}
 interface SessionResources {
   readonly cwd: string;
   readonly scratch: string;
@@ -57,6 +65,18 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     if (!baseUrl) throw new Error("agent_gateway_unavailable");
     if (disposed) throw new Error("agent_host_disposed");
     const resources = await prepare(options);
+    if (deps.hostedExecution) {
+      const gateway = gatewayModelWindow(options.model);
+      const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
+      const hosted = await createHostedPluginSession(deps, { ...options, onEvent: (event) => {
+        const reframes = event.kind === "compacted" || (event.kind === "result" && event.usage !== undefined);
+        options.onEvent?.(gateway === undefined || !reframes ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null));
+      } }, { ...resources, autoCompactWindow });
+      const wrapped: InternalAgentSession = { ...hosted, dispose: async () => { try { await hosted.dispose(); } finally { sessions.delete(wrapped); } } };
+      if (disposed) { await wrapped.dispose(); throw new Error("agent_host_disposed"); }
+      sessions.add(wrapped);
+      return wrapped;
+    }
     const { cwd, scratch } = resources;
     const releaseCwd = () => resources.release();
     if (disposed) { await releaseCwd(); throw new Error("agent_host_disposed"); }
