@@ -184,17 +184,9 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
   const t = useT();
   const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
   const pluginRows = useTheaterSheetPluginRows(theater ? theater.id : null);
-  const [clearing, setClearing] = useState(false);
   // 빼기·다른 창의 잊기로 Theater가 사라지면 시트도 걷는다.
   useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
   if (!theater) return null;
-  const clearAlias = () => {
-    if (clearing) return;
-    setClearing(true);
-    void saveTheaterAlias(theater.id, null)
-      .then(() => { popMobileSheet(); showMobileToast(t("mobile.toast.aliasCleared")); })
-      .catch(() => setClearing(false));
-  };
   return (
     <MobileSheet title={theater.alias ?? theater.label} onClose={popMobileSheet}>
       {theater.alias ? <p className="mobile-sheet-lead">{theater.label}</p> : null}
@@ -202,12 +194,6 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
         <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
       </button>
-      {theater.alias ? (
-        <button type="button" className="mobile-sheet-row" onClick={clearAlias} disabled={clearing}>
-          <span className="mobile-sheet-row-glyph"><MobileIcon name="x" /></span>
-          <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.clear")}</strong></span>
-        </button>
-      ) : null}
       <div className="mobile-sheet-sep" role="separator" />
       <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(theater, null)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
