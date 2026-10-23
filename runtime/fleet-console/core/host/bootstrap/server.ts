@@ -1,3 +1,4 @@
+import { createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -650,6 +651,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let desktopUpdateRequestedAt = 0;
   const pluginSseChannels = new Set<string>();
   let commodore: CommodoreFeature | null = null;
+  let objectives: ObjectivesFeature | null = null;
+  let releaseObjectivesBoard: (() => void) | null = null;
   const pluginTheaterFlags = new Map<string, (theaterId: string) => boolean>();
 
   /**
@@ -1197,6 +1200,56 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
   };
+  const createFeatureConsoleControl = (pluginId: string): NonNullable<FleetPluginHostCapabilities["consoleControl"]> => ({
+    request: async (input) => {
+      consoleAgentOwners.add(pluginId);
+      // 전달이 끝날 때까지 기다린다 — 결과는 남지 않는다. 멈춘 전달이 플러그인을 붙잡지 않게 시한을 둔다(전달 자체는 계속된다).
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("request_timeout")), 20_000); });
+      try { return await Promise.race([consoleControl.request({ kind: "plugin", pluginId }, input), timeout]); }
+      finally { clearTimeout(timer); }
+    },
+    observe: (operationId) => consoleControl.observe(operationId),
+    subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
+    subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
+    launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
+    reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
+    launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),
+    sleep: async (operationId, options) => {
+      if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
+      const observation = consoleControl.observe(operationId);
+      if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
+      if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
+      if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
+      // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
+      const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
+      if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
+      return sleepOperation(operationId);
+    },
+    // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
+    // 플러그인 operations.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
+    setSubagentSpawn: (operationId, policy) => {
+      if (policy !== "blocked" && policy !== "default") return;
+      const node = operations.get(operationId);
+      if (!node) return;
+      const next = withSubagentSpawn(node.payload, policy);
+      if (next === node.payload) return;
+      pluginHostCapabilities.operations.patch(operationId, { payload: next });
+    },
+    // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
+    // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
+    redirectAgentCalls: (reason) => {
+      agentCallRedirects.set(pluginId, reason);
+      return () => { if (agentCallRedirects.get(pluginId) === reason) agentCallRedirects.delete(pluginId); };
+    },
+    setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
+    coordinates: (operationId) => consoleControl.readCoordinates(operationId),
+    prepareChat: (operationId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, operationId),
+    setUnstartedPreset: (operationId, input) => consoleControl.unstartedPreset({ kind: "plugin", pluginId }, operationId, input),
+    advertisedTools: (operationId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, operationId),
+    // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
+    transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
+  });
   // 번들 캐시가 durable dir(FLEET_CONSOLE_DIR 추종)로 이동해 번들 파일 위치 기준의 조상 탐색으로는
   // 콘솔 패키지를 찾지 못할 수 있다 — 플러그인 external(node-pty·ws) 해석용 패키지 루트를 명시로 전달한다.
   process.env.FLEET_CONSOLE_PACKAGE_ROOT = release.packageRoot;
@@ -1207,7 +1260,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     routes: routeRegistry,
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
-    registerAdmiralMcp: (pluginId, tools, options) => pluginMcp.register(pluginId, tools, options),
+    registerAdmiralMcp: (pluginId, tools, options) => pluginMcp.register(`fleet-${pluginId}`, tools, options),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
     spawnOwnedProcess: (pluginId, request) => {
@@ -1222,56 +1275,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
     },
     // Console 제어 — `console_launcher`·`console_operation` send 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
-    consoleControlFor: (pluginId) => ({
-      request: async (input) => {
-        consoleAgentOwners.add(pluginId);
-        // 전달이 끝날 때까지 기다린다 — 결과는 남지 않는다. 멈춘 전달이 플러그인을 붙잡지 않게 시한을 둔다(전달 자체는 계속된다).
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("request_timeout")), 20_000); });
-        try { return await Promise.race([consoleControl.request({ kind: "plugin", pluginId }, input), timeout]); }
-        finally { clearTimeout(timer); }
-      },
-      observe: (operationId) => consoleControl.observe(operationId),
-      subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
-      subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
-      launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
-      reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
-      launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),
-      sleep: async (operationId, options) => {
-        if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
-        const observation = consoleControl.observe(operationId);
-        if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
-        if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
-        if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
-        // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
-        const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
-        if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
-        return sleepOperation(operationId);
-      },
-      // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
-      // 플러그인 operations.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
-      setSubagentSpawn: (operationId, policy) => {
-        if (policy !== "blocked" && policy !== "default") return;
-        const node = operations.get(operationId);
-        if (!node) return;
-        const next = withSubagentSpawn(node.payload, policy);
-        if (next === node.payload) return;
-        pluginHostCapabilities.operations.patch(operationId, { payload: next });
-      },
-      // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
-      // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
-      redirectAgentCalls: (reason) => {
-        agentCallRedirects.set(pluginId, reason);
-        return () => { if (agentCallRedirects.get(pluginId) === reason) agentCallRedirects.delete(pluginId); };
-      },
-      setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
-      coordinates: (operationId) => consoleControl.readCoordinates(operationId),
-      prepareChat: (operationId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, operationId),
-      setUnstartedPreset: (operationId, input) => consoleControl.unstartedPreset({ kind: "plugin", pluginId }, operationId, input),
-      advertisedTools: (operationId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, operationId),
-      // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
-      transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
-    }),
+    consoleControlFor: createFeatureConsoleControl,
     createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
@@ -2201,6 +2205,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     access.revokeAllSessions();
     await closeHttpServer(closingRemote);
     try { await commodore?.dispose(); } catch (error) { console.warn("[fleet-console] Commodore cleanup failed:", error); }
+    releaseObjectivesBoard?.();
+    objectives?.dispose();
+    consoleAgentOwners.delete("objectives");
     consoleAgentOwners.delete("commodore");
     // SDK는 동기 cleanup도 허용한다 — async 래퍼가 동기 throw를 그 cleanup 하나의 reject로 바꿔, 나머지 정리와 lock 해제를 막지 않는다.
     const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map(async (cleanup) => cleanup()));
@@ -2843,6 +2850,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const routePath = `/api/v1/${route.name}`;
         routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
+      }
+      objectives = createObjectivesFeature({
+        paths: pluginHostCapabilities.paths, events: pluginHostCapabilities.events,
+        operations: { ...pluginHostCapabilities.operations, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
+        consoleControl: createFeatureConsoleControl("objectives"),
+        server: pluginHostCapabilities.server, http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+        consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
+        commodoreCommander: commodore.host.commander,
+      });
+      consoleAgentOwners.add("objectives");
+      releaseObjectivesBoard = commodore.host.registerBoard(objectives.board);
+      for (const route of objectives.routes) {
+        const routePath = `/api/v1/objectives/${route.name}`;
+        routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
+        executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Objectives", gate: "origin-write", transport: "http" });
       }
       await pluginHost.boot();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면

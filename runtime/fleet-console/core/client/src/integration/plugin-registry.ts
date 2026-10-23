@@ -1,3 +1,4 @@
+import { createObjectivesClient, objectivesCommodoreBoard } from "../../../../features/objectives/client/index.js";
 import { createCommodoreClient } from "../../../../features/commodore/client/index.js";
 import type { CommodoreClientHost } from "@fleet-console/sdk/commodore";
 import { consoleExecution } from "./execution.js";
@@ -102,7 +103,7 @@ export const PluginRegistryProvider = PluginRegistryContext.Provider;
 
 export async function loadPluginRegistry(): Promise<PluginRegistry> {
   const plugins = [...builtInPlugins];
-  const pluginIds = new Set(["terminal", "commodore", ...plugins.map((plugin) => plugin.id)]);
+  const pluginIds = new Set(["terminal", "commodore", "objectives", ...plugins.map((plugin) => plugin.id)]);
   const { entries, skipped } = await loadPluginRuntimeManifest();
   const failures: PluginLoadFailure[] = [...skipped];
   for (const entry of entries) {
@@ -165,8 +166,8 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ 
 }
 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
-  const commodore = createCommodoreClient(plugins.find((plugin) => plugin.commodoreBoard)?.commodoreBoard ?? null);
-  const providers: readonly ClientExecutionProvider[] = [consoleExecution, commodore.plugin, ...plugins];
+  const commodore = createCommodoreClient(objectivesCommodoreBoard);
+  const providers: readonly ClientExecutionProvider[] = [consoleExecution, commodore.plugin, ...plugins, createObjectivesClient(commodore.host)];
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고

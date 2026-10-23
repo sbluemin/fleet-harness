@@ -102,7 +102,7 @@ describe("plugin host", () => {
     const cleanups: Array<() => void | Promise<void>> = [];
     const host = createFleetPluginHost({
       cwd: dir, homeDir: "/missing", routes: new RouteRegistry(), upgrades: new UpgradeRegistry(),
-      registerAdmiralMcp: (id, tools, options) => mcp.register(id, tools, options),
+      registerAdmiralMcp: (id, tools, options) => mcp.register(`fleet-${id}`, tools, options),
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
         ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: { text: { type: "string", maxLength: 50 } } },

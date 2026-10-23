@@ -724,7 +724,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const origin = new URL(fixture.endpoint).origin;
-    const response = await fetch(`${origin}/plugins/objectives/member/patch`, {
+    const response = await fetch(`${origin}/api/v1/objectives/member/patch`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ objectiveId: "commander-1", memberId: "member-1", patch: { subagents: false } }),

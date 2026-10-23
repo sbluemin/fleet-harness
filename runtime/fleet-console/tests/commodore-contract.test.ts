@@ -20,12 +20,12 @@ import { workspaceHash } from "../features/workspace/host/theaters/theater-domai
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
-import { COMMANDER_REST_MS, restClock } from "../../fleet-plugins/objectives/server/board-state.js";
+import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
 import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/host/types.js";
-import type { Objective, ObjectiveEvent } from "../../fleet-plugins/objectives/server/types.js";
+import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../../fleet-plugins/objectives/server/commodore-board.js";
+import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
 
 /** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */
 function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" | "theaterIdsOf">) {
