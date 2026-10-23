@@ -1,5 +1,6 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
 import { createObjectiveRecordsStore } from "../features/objectives/host/records/objective-records-domain.js";
+import { createObjectiveStore } from "../features/objectives/host/store.js";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { ensureWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { DurableConsoleState } from "../features/workspace/host/durable-state.js";
@@ -47,7 +48,7 @@ describe("durable console state", () => {
     fs.writeFileSync(path.join(directory, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "a1", archivedAt: 3, operation: { ...node, id: "archived", childSessions: [] } }], deletions: [], events: [] }));
     for (const id of ["active", "archived"]) {
       fs.mkdirSync(path.join(objectiveRoot, id, "shared"), { recursive: true });
-      fs.writeFileSync(path.join(objectiveRoot, id, "objective.json"), JSON.stringify({ operationId: id, rank: 10, note: `Board ${id}`, missions: [], addedBy: { kind: "commodore", theaterId: "t1" } }));
+      fs.writeFileSync(path.join(objectiveRoot, id, "objective.json"), JSON.stringify({ operationId: id, rank: 10, note: `Board ${id}`, missions: [], ...(id === "active" ? { members: [{ id: "child", role: "Member", by: "human" }] } : {}), addedBy: { kind: "commodore", theaterId: "t1" } }));
       fs.writeFileSync(path.join(objectiveRoot, id, "shared", "proof.txt"), `bytes ${id}`);
     }
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
@@ -91,11 +92,23 @@ describe("durable console state", () => {
     moved.save(state);
     const restarted = open(); const restored = restarted.load(); expect(restored.objectiveRecords).toHaveLength(1);
     const records = createObjectiveRecordsStore(); records.replace(restored.objectiveRecords);
+    const boardStore = createObjectiveStore({ storage: restarted.board, dirOf: restarted.board.directory, theaterIds: () => ["t1"], objectiveRecords: records, emit: () => {} });
+    expect(boardStore.find("active")?.members).toHaveLength(1);
     expect(() => records.deleteChild("child", "another-feature")).toThrow("child_delete_forbidden");
     expect(records.getChild("child")).not.toBeNull();
     expect(records.deleteChild("child", "objectives")).toBe(true);
-    expect(restarted.board.list("t1").find((board) => board.id === "active")?.note).toBe("Edited");
-    expect(restarted.entries()).toHaveLength(1);
+    // 실제 구성원 제거 순서: 세션 저장 → 캐시된 보드에서 명단 제거 → 다음 실행 저장.
+    restarted.save({ ...restored, objectiveRecords: records.list() });
+    expect(boardStore.memberRemove("active", "child").objective.members).toHaveLength(0);
+    expect(JSON.parse(fs.readFileSync(activeFile, "utf8")).sessions ?? []).toHaveLength(0);
+    restarted.save({ ...restored, objectiveRecords: records.list() });
+    const afterRemoval = open(); const persisted = afterRemoval.load();
+    expect(persisted.objectiveRecords[0]?.sessions ?? []).toHaveLength(0);
+    const savedBoard = afterRemoval.board.list("t1").find((board) => board.id === "active")!;
+    expect(savedBoard.members ?? []).toHaveLength(0);
+    expect(savedBoard.memberHistory?.map((entry) => entry.kind)).toEqual(["left"]);
+    expect(savedBoard.note).toBe("Edited");
+    expect(afterRemoval.entries()).toHaveLength(1);
   });
 
   it("keeps a Theater alias across reload and still reads records saved without one", () => {

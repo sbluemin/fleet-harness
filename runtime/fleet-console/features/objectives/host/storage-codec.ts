@@ -38,11 +38,16 @@ function actors(value: unknown, theaterId?: string): unknown {
   return out;
 }
 export function documentFromBoard(board: StoredObjective, previous?: ObjectiveDocument): ObjectiveDocument {
-  const result = { title: board.id, ts: { createdAt: 0, updatedAt: 0 }, ...previous, ...actors(board) as object,
-    ...(previous && !board.pending ? pick(previous, surfaceKeys) : {}),
-  } as ObjectiveDocument;
-  if (!board.pending) delete (result as Record<string, unknown>).pending;
-  return result;
+  const result = actors(board) as Record<string, unknown>;
+  // 보드는 패치가 아니라 완전한 스냅샷이다. compact가 생략한 필드는 삭제이며, 옛 문서에서 되살리지 않는다.
+  if (previous && (!board.pending || !previous.pending)) {
+    // 실행 필드의 부재도 최신 상태다. 캐시된 보드의 세션·프리셋을 먼저 비운 뒤 실행 소유 필드만 보존한다.
+    for (const key of surfaceKeys) delete result[key];
+    Object.assign(result, pick(previous, surfaceKeys));
+    // 실행 레코드가 생긴 뒤의 늦은 보드 쓰기가 다시 초안으로 되돌리지 않는다.
+    delete result.pending;
+  }
+  return { title: board.id, ts: { createdAt: 0, updatedAt: 0 }, ...result } as ObjectiveDocument;
 }
 export function boardFromDocument(doc: ObjectiveDocument, theaterId: string): StoredObjective {
   return { ...actors(doc, theaterId) as object, id: doc.id, theaterId, rank: typeof doc.rank === "number" ? doc.rank : 0,
