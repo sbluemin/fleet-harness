@@ -29,7 +29,8 @@ async function fixture() {
   const knowledge = {
     root: (id: string) => (id === OWNER ? destination : null),
     ids: () => [OWNER],
-    legacyKnowledgeSources: () => [{ path: source, label: "theater" }],
+    // 호스트(knowledge-sources.ts)처럼 지금 존재하는 원본만 돌려준다 — 옮겨진 뒤의 원본은 목록에서 사라진다.
+    legacyKnowledgeSources: () => (fs.existsSync(source) ? [{ path: source, label: "theater" }] : []),
   };
   const resolver = (hooks?: Hooks) => hooks
     ? createWikiWorkspaceResolverForTest({ knowledge, warn }, hooks)
@@ -74,6 +75,12 @@ const exdevOnce = (source: string): Hooks["rename"] => (from, to) => {
   fs.renameSync(from, to);
 };
 
+/** rename이 디스크에 끝난 직후, 저널을 고치기 전에 죽는다. */
+const crashAfterRename = (matches: (from: string, to: string) => boolean, base?: Hooks["rename"]): Hooks["rename"] => (from, to) => {
+  (base ?? ((a: string, b: string) => fs.renameSync(a, b)))(from, to);
+  if (matches(from, to)) throw new Error("crash after rename");
+};
+
 describe("createWikiWorkspaceResolver", () => {
   it("moves the old workspace wiki into the commodore knowledge root once, ignores old lock residue, and converges after every interruption", async () => {
     const state = await fixture();
@@ -95,21 +102,30 @@ describe("createWikiWorkspaceResolver", () => {
     expect(state.resolver().resolve(OWNER).root).toBe(state.destination);
     expect(() => state.resolver().resolve("00000000-0000-4000-8000-000000000000")).toThrow(/knowledge owner unavailable/);
 
-    // 저널을 쓴 뒤·커밋 뒤·원본을 치우기 직전 중단, 같은 기기와 다른 기기(EXDEV 복사) 모두에서 다음 실행이 같은 트리로 수렴한다.
-    const cases: Array<{ readonly point: "afterJournal" | "afterCommit" | "beforeRetire"; readonly exdev: boolean }> = [
-      { point: "afterJournal", exdev: false }, { point: "afterCommit", exdev: false },
-      { point: "afterCommit", exdev: true }, { point: "beforeRetire", exdev: true },
+    // 저널을 쓴 뒤·커밋 rename 직후·커밋 기록 뒤·원본을 치우는 rename 직후와 그 직전 중단, 같은 기기와 다른 기기(EXDEV 복사)
+    // 모두에서 다음 실행이 같은 트리로 수렴한다. 원본이 이미 옮겨져 호스트 목록에서 사라진 상태도 저널이 가진 결과로 마무리한다.
+    const toRoot = (destination: string) => (_from: string, to: string) => to === destination;
+    const cases: Array<{ readonly name: string; readonly hooks: (state: Awaited<ReturnType<typeof fixture>>) => Hooks; readonly exdev: boolean }> = [
+      { name: "after journal", exdev: false, hooks: () => ({ afterJournal: () => { throw new Error("crash"); } }) },
+      { name: "after rename commit", exdev: false, hooks: (state) => ({ rename: crashAfterRename(toRoot(state.destination)) }) },
+      { name: "after commit record", exdev: false, hooks: () => ({ afterCommit: () => { throw new Error("crash"); } }) },
+      { name: "after copy commit", exdev: true, hooks: (state) => ({ rename: crashAfterRename(toRoot(state.destination), exdevOnce(state.source)) }) },
+      { name: "after copy commit record", exdev: true, hooks: () => ({ afterCommit: () => { throw new Error("crash"); } }) },
+      { name: "before retire", exdev: true, hooks: () => ({ beforeRetire: () => { throw new Error("crash"); } }) },
+      { name: "after retire rename", exdev: true, hooks: (state) => ({ rename: crashAfterRename((_from, to) => to.includes("knowledge.retired-"), exdevOnce(state.source)) }) },
     ];
-    for (const { point, exdev } of cases) {
+    for (const { name, hooks, exdev } of cases) {
       const interrupted = await fixture();
       await seedLegacyWiki(interrupted.source);
-      const hooks: Hooks = { [point]: () => { throw new Error(`crash at ${point}`); }, ...(exdev ? { rename: exdevOnce(interrupted.source) } : {}) };
-      expect(() => interrupted.resolver(hooks).resolve(OWNER)).toThrow(`crash at ${point}`);
-      expect(fs.existsSync(path.join(interrupted.owner, "knowledge.migration.json"))).toBe(true);
+      const planted = hooks(interrupted);
+      const rename = planted.rename ?? (exdev ? exdevOnce(interrupted.source) : undefined);
+      expect(() => interrupted.resolver({ ...planted, ...(rename ? { rename } : {}) }).resolve(OWNER), name).toThrow(/crash/);
+      expect(fs.existsSync(path.join(interrupted.owner, "knowledge.migration.json")), name).toBe(true);
       interrupted.resolver(exdev ? { rename: exdevOnce(interrupted.source) } : undefined).migrateAll();
-      expect(tree(interrupted.destination), `${point}/${exdev}`).toEqual(original);
-      expect(fs.readdirSync(interrupted.owner), `${point}/${exdev}`).toEqual(["knowledge"]);
-      expect(fs.readdirSync(interrupted.workspace), `${point}/${exdev}`).toEqual([]);
+      expect(interrupted.warn, name).not.toHaveBeenCalled();
+      expect(tree(interrupted.destination), name).toEqual(original);
+      expect(fs.readdirSync(interrupted.owner), name).toEqual(["knowledge"]);
+      expect(fs.readdirSync(interrupted.workspace), name).toEqual([]);
     }
   });
 

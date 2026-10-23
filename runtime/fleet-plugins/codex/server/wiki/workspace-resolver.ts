@@ -103,9 +103,14 @@ function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWor
     const sources = knowledge.legacyKnowledgeSources(owner);
 
     if (journal) {
-      // 저널이 가리키는 원본은 지금도 호스트가 이 사령관의 원본이라고 말하는 경로여야 한다 — 저널만으로 임의 경로를 지우지 않는다.
+      // 저널이 가리키는 원본이 남아 있으면, 그 경로는 지금도 호스트가 이 사령관의 원본이라고 말하는 경로여야 한다 — 저널만으로
+      // 임의 경로를 지우지 않는다. 원본이 이미 옮겨져(rename 커밋, 또는 retired로 치움) 호스트 목록에서 사라졌다면, 저널이 소유한
+      // 결과인 내용 있는 root가 있을 때만 마무리한다. 그때 지울 수 있는 것은 원본의 형제 retired-<tx>와 이 디렉터리의 staging뿐이다.
       const source = journal.source;
-      if (!sources.some((candidate) => candidate.path === source)) throw new WikiMigrationError("journal_source_unknown");
+      if (!sources.some((candidate) => candidate.path === source)) {
+        if (exists(source)) throw new WikiMigrationError("journal_source_unknown");
+        if (rootState !== "content") throw new WikiMigrationError("journal_source_missing");
+      }
       if (journal.phase === "prepared" && rootState !== "content") journal = commit(journal, root, journalPath, true);
       finalize(owner, journal, root, journalPath);
       return;
@@ -165,7 +170,7 @@ function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWor
     if (recheck === "content") throw new WikiMigrationError("destination_race");
     if (recheck === "unsafe") throw new WikiMigrationError("unsafe_destination");
     removeEmptyDirectories(root);
-    fs.renameSync(staging, root);
+    renameDirectory(staging, root);
     syncDirectory(directory);
     return markCommitted(current, journalPath);
   }
@@ -182,7 +187,8 @@ function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWor
     const retired = path.join(path.dirname(journal.source), `${RETIRED_PREFIX}${journal.transactionId}`);
     let current = journal;
     // 복사로 옮긴 원본만 여기서 지운다 — 커밋된 사본과 바이트까지 같을 때만. rename은 원본이 이미 사라졌다.
-    if (current.method === "copy" && current.phase === "committed" && exists(current.source)) {
+    // 여기 오는 저널은 커밋을 지났다(root가 채워졌다). 커밋 기록 전에 멈춘 복사(phase=prepared)도 같은 검증으로 원본을 치운다.
+    if (current.method === "copy" && current.phase !== "source-retiring" && exists(current.source)) {
       if (sameInventory(inventory(current.source), inventory(root))) {
         current = { ...current, phase: "source-retiring" };
         writeAtomic(journalPath, current);
@@ -192,7 +198,11 @@ function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWor
     if (current.phase === "source-retiring") {
       // 반쯤 지운 원본을 다시 검증하지 않도록 먼저 옆 자리로 원자적으로 치운다.
       if (exists(current.source) && !exists(retired)) renameDirectory(current.source, retired);
-      if (exists(retired)) fs.rmSync(retired, { recursive: true, force: true });
+      if (exists(retired)) {
+        const retiredStat = fs.lstatSync(retired);
+        if (!retiredStat.isDirectory() || retiredStat.isSymbolicLink()) throw new WikiMigrationError("unsafe_retired_source");
+        fs.rmSync(retired, { recursive: true, force: true });
+      }
     }
     const staging = path.join(directory, `${STAGING_PREFIX}${current.transactionId}`);
     if (exists(staging)) fs.rmSync(staging, { recursive: true, force: true });
