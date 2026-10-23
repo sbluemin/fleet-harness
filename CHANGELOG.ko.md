@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.2] - 2026-10-23
+
+### fleet-console
+
+#### Breaking Changes
+- 대화와 보드를 목표로 통합하고, 세션·그룹·보관 기록·공유 파일을 사령관 아래에 함께 보관합니다. Console Use 세션 제어는 이제 `console_objective_session`이며, 외부 연동은 목표 기준 API와 이벤트 이름으로 바꿔야 합니다.
+
+### fleet-desktop
+
+#### Breaking Changes
+- 새 목표 이벤트 스트림에서도 내장 브라우저 뷰가 올바르게 인식되도록 Console과 Fleet Desktop을 함께 업데이트해야 합니다.
+
 ## [1.254.1] - 2026-10-23
 
 ### fleet-console

@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.2] - 2026-10-23
+
+### fleet-console
+
+#### Breaking Changes
+- Unify conversations and their boards as Objectives, keeping their sessions, groups, archives, and shared files under their Commodore. Console Use session control is now `console_objective_session`; integrations must use the Objective API and event names.
+
+### fleet-desktop
+
+#### Breaking Changes
+- Update Fleet Desktop together with Console to keep embedded browser views recognized on the new Objective event stream.
+
 ## [1.254.1] - 2026-10-23
 
 ### fleet-console
