@@ -25,6 +25,7 @@ Wiki 도구 동작·저장 형식·스키마를 변경할 때 해당 절을 읽�
 - `history.ts`: overwritten/deleted snapshot의 생성·검증·최신 목록·읽기. 보관 실패 시 변경을 중단한다.
 - `store.ts`: 엔트리·raw 저장과 index.json·wiki/index.md 생성. index가 낡으면 재귀 검색한다. writeWikiEntry는 본문 선두 중복 frontmatter를 제거한다. canonical `[[wiki:id]]` 파싱과 retrieval/raw boundary의 단일 원천이다.
 - `paths.ts`: MemoryPaths 해석·초기화와 lexical/realpath containment·symlink 검사. 새 root는 raw·wiki·schema·history만 만든다.
+- `workspace-resolver.ts`: 사령관 id → 지식 root 해석과 옛 workspace 위키의 저널 기반 이주(아래 "사령관 지식 위치와 이주").
 - `log.ts`: append-only log.md. multiline 값은 escape하므로 사용자 입력이 단일 bullet을 깨지 못한다. 과거 patch/conflict 이벤트는 계속 읽힌다.
 - `schema.ts`: schema bootstrap·catalog·읽기·create-only template 검증. 누락 기본 파일을 만든다. a96db4cf 기본값의 SHA-256과 기존 바이트가 일치할 때만 세 기본 문서를 교체하고 `schema default upgraded`를 기록한다. 사용자가 고친 문서는 보존한다.
 - `claims.ts`: 선택적 wiki/.claims/{id}.json provenance. resolve는 sidecar가 없으면 summary로 fallback한다.
@@ -49,12 +50,13 @@ Console 삭제는 POST /api/entry/:id/delete의 expectedHash 필수, 선택적 r
 
 기존 queue/·archive/·conflicts/는 옮기거나 지우거나 자동 적용하지 않는다. 레거시 데이터가 존재해도 정상 엔트리 작업은 이 디렉터리를 열지 않는다.
 
-## 이주 사본 표식
+## 사령관 지식 위치와 이주
 
-- canonical Wiki 이주는 기존 private `knowledge.migrated.json`의 copied commit과 staging 복구·rename 완료를 기준으로 한다. 완료된 Theater의 옛 `.fleet/knowledge/`에는 `.codex-migration.json`만 원자적으로 추가하며 옛 파일 자체는 삭제·수정하지 않는다.
-- 공개 파일 계약은 UTF-8 최대 1MiB의 `{ "schemaVersion": 1, "entries": { "wiki/<상대 파일>.md": "entryId" } }`이다. 키는 옛 knowledge 루트 기준 POSIX 상대 경로, 값은 `/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`이며 카탈로그 index는 제외한다. 절대경로·private 저장 위치·본문은 저장하지 않는다.
-- 처음 매핑할 때는 옛 파일의 유효한 ID가 현재 canonical Wiki에도 있는 경우만 포함한다. 이미 이주된 Theater는 다음 Codex resolve에서 표식을 보충한다. 기존 표식은 덮지 않으며, 제목·위치 변경 후에도 ID 링크를 유지하고 삭제·ID 변경 뒤에는 역사 표식으로 남긴다. 현재 대상의 존재는 보장하지 않는다.
-- Files는 자신의 containment·bounded JSON 검사 후 해당 파일 키를 exact match해 `{ entryId }`만 반환하고 `openWikiEntry`로 연결한다. 읽기 전용 소스·잘못된 표식·쓰기 실패는 canonical Wiki 열기를 막지 않는다. 표식은 사용자 Theater 안의 새 파일이므로 그 Theater의 `.gitignore`에 따라 git status에 나타날 수 있다. 자동으로 `.gitignore`를 고치지 않는다.
+- Wiki 위치의 정체성은 사령관 id 하나다. root는 호스트가 주입한 `ctx.host.knowledge.root(commodoreId)` = `<consoleDataDir>/commodore/{uuid}/knowledge`다. Codex는 Theater·cwd를 위치 입력으로 받지 않는다. MCP 도구는 호스트가 실어 준 `context.commodoreId`(Operation 세션은 세션 소속의 사령관, 사령관 세션은 `bindCommodore`)만 쓰고, 없으면 `knowledge_unavailable`이다. 화면 맥락→사령관 대응(`commodoreForContext`)과 발급은 호스트가 한다.
+- 옛 위키(`workspaces/<cwd 키>/knowledge`)는 `legacyKnowledgeSources(commodoreId)`가 내는 원본 중 내용이 있는 첫 것 하나만 옮긴다. 이 대응은 이주에만 쓴다. 기동 시 Codex 등록 첫머리의 `migrateAll()`이 모든 사령관을 옮기고, resolve는 프로세스에서 처음 볼 때 같은 절차를 한 번 더 확인한다.
+- 디렉터리 lock은 쓰지 않는다. 슬롯 writer는 `console.lock` 소유 프로세스 하나이고 이주는 동기다. 중단 재개는 `<사령관 디렉터리>/knowledge.migration.json` 저널(`prepared`→`committed`→`source-retiring`)이 맡고 커밋점은 rename 한 번이다. EXDEV에서는 `knowledge.migrating-<tx>`로 복사·인벤토리 대조 후 rename하고, 커밋된 사본과 바이트가 같을 때만 원본을 `knowledge.retired-<tx>`로 치운 뒤 지운다.
+- 새 root에 이미 내용이 있으면 옛 원본은 건드리지 않고 경고만 남긴다. 원본·대상에 절대·탈출·dangling·디렉터리 링크나 특수 파일이 있으면 아무것도 쓰기 전에 그 사령관을 fail-closed로 막는다. 트리 안 일반 파일을 가리키는 상대 링크는 링크로 옮긴다.
+- 프로젝트 안 옛 `.fleet/knowledge/`는 이주하지 않고 표식도 쓰지 않는다. 옛 workspace에 남은 `knowledge.migration.lock`·`knowledge.migrating-*`·`knowledge.migrated.json` 잔재는 읽지도 지우지도 않는다.
 
 ## Schema & Documentation
 

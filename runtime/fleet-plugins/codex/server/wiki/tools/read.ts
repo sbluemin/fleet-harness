@@ -1,7 +1,7 @@
 import { wrapWikiEntryBoundary, wrapWikiRawSourceBoundary, FLEET_WIKI_BOUNDARY_GUIDELINES } from "../store.js";
 import { dedupeStrings, estimateTokens } from "../briefing.js";
 import { extractWikiLinks } from "../store.js";
-import { resolveToolMemoryPaths } from "../paths.js";
+
 import {
   WIKI_READ_DESCRIPTION,
   WIKI_READ_GUIDELINES,
@@ -70,7 +70,7 @@ export function buildReadToolConfig() {
       ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeReadInput(params);
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const graph = await buildLinkGraph(paths);
       const entries: Array<WikiReadEntryResult | WikiReadMissingResult> = [];
 

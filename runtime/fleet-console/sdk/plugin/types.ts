@@ -1303,6 +1303,11 @@ export interface FleetPluginHostCapabilities {
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
   readonly theaterFlags: FleetPluginTheaterFlagsHost;
+  /**
+   * 사령관이 하나씩 갖는 지식(Wiki)의 자리. 지식의 정체성은 사령관 id 하나다. 없는 호스트(구버전·테스트 스텁)에서는
+   * 지식 기능을 거부한다 — 옛 위치로 되돌아가지 않는다.
+   */
+  readonly knowledge?: FleetPluginKnowledgeHost;
   /** Console Use 와 같은 길로 Operation 을 시작·메시지하는 능력. 없는 호스트에서는 없다. */
   readonly consoleControl?: FleetPluginConsoleControlHost;
   /**
@@ -1523,6 +1528,36 @@ export interface FleetPluginConsoleControlHost {
   reserveLaunchKeys?(input: { readonly theaterId: string; readonly keys: readonly string[] }): void;
   /** 이 플러그인이 쓴 키 수와 상한. */
   launchKeyUsage?(): { readonly used: number; readonly limit: number };
+}
+
+/** 화면 맥락을 사령관으로 푼 결과. 맥락 자체를 모르면 `unknown_context`, 사령관을 만들 수 없으면 `unavailable`. */
+export type FleetPluginKnowledgeOwnerResult =
+  | { readonly ok: true; readonly commodoreId: string }
+  | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" };
+
+/** 옛 위치에 남은 지식 원본 하나 — 사령관 지식으로 한 번 옮길 때만 쓴다. */
+export interface FleetPluginLegacyKnowledgeSource {
+  /** 옛 지식 디렉터리의 절대 경로(`…/knowledge`). */
+  readonly path: string;
+  /** 진단 문구에 쓰는 짧은 이름. 경로를 싣지 않는다. */
+  readonly label: string;
+}
+
+export interface FleetPluginKnowledgeHost {
+  /** 사령관 id → 그 사령관의 지식 root(`<consoleDataDir>/commodore/{id}/knowledge`). 모르는 id·손상된 엔티티면 null. 부작용 없음. */
+  root(commodoreId: string): string | null;
+  /** 존재하는 사령관 id 전부. 기동 이주가 순회한다. */
+  ids(): readonly string[];
+  /**
+   * 사람이 지금 보는 화면 맥락(그 화면이 고른 맥락 id)의 사령관. 사령관이 아직 없으면 호스트가 발급해 연결한다.
+   * 맥락과 사령관의 대응은 호스트만 안다 — 플러그인은 맥락 id를 해석하지 않는다.
+   */
+  commodoreForContext(contextId: string): FleetPluginKnowledgeOwnerResult;
+  /**
+   * 이주 전용 입력: 이 사령관에 대응하는 옛 지식 원본. 아무것도 만들지 않는다. 런타임 위치 해석에는 쓰지 않는다 —
+   * 옛 원본은 사령관 이전 시절의 키로 저장되어 있어, 그 대응은 이주 한 번에만 필요하다.
+   */
+  legacyKnowledgeSources(commodoreId: string): readonly FleetPluginLegacyKnowledgeSource[];
 }
 
 /**

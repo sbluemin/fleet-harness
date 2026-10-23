@@ -4,7 +4,6 @@ import path from "node:path";
 import { ensureWorkspaceDoctrine, ensureWorkspaceSchema } from "./schema.js";
 import type { MemoryPaths } from "./types.js";
 
-export const KNOWLEDGE_ROOT_DIRNAME = ".fleet/knowledge";
 export const RAW_DIRNAME = "raw";
 export const WIKI_DIRNAME = "wiki";
 export const SCHEMA_DIRNAME = "schema";
@@ -12,10 +11,6 @@ export const INDEX_FILENAME = "index.json";
 export const INDEX_MD_FILENAME = "index.md";
 export const LOG_MD_FILENAME = "log.md";
 export const REQUIRED_WIKI_FRONTMATTER_KEYS = ["id", "title", "tags", "created", "updated", "version"] as const;
-
-export function resolveMemoryPaths(cwd: string): MemoryPaths {
-  return createMemoryPaths(path.join(cwd, KNOWLEDGE_ROOT_DIRNAME));
-}
 
 /** Build paths for an already-selected knowledge root. */
 export function createMemoryPaths(root: string): MemoryPaths {
@@ -28,11 +23,6 @@ export function createMemoryPaths(root: string): MemoryPaths {
     historyDir: path.join(root, "history"),
     indexFile: path.join(root, INDEX_FILENAME),
   };
-}
-
-/** Retains direct-library callers while registered tools receive injected paths. */
-export function resolveToolMemoryPaths(ctx: { cwd: string; paths?: MemoryPaths }): MemoryPaths {
-  return ctx.paths ?? resolveMemoryPaths(ctx.cwd);
 }
 
 /** Reject lexical escapes and every symlink component, including the final file. */

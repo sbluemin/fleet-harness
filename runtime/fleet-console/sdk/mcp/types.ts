@@ -144,18 +144,24 @@ export interface PluginMcpTool {
      * 플러그인 MCP(`fleet-{pluginId}`) 도구는 세션이 묶인 Operation 이다. 풀리지 않으면 비어 있다(fail-closed).
      */
     readonly caller?: ConsoleCaller;
+    /**
+     * 이 호출이 속한 사령관 — `commodoreScoped` 서버의 도구만 받는다. 사령관 세션은 묶인 사령관, Operation 세션은 호스트가
+     * 세션 소속으로 찾은 사령관이다. 모델 인자로 바뀌지 않으며, 풀리지 않으면 비어 있다(fail-closed).
+     */
+    readonly commodoreId?: string;
   }): Promise<unknown>;
 }
 
 export interface PluginAdmiralMcpRegistration {
   /**
-   * 이 서버의 도구가 닿는 곳은 `context.cwd` 가 가리키는 Theater 뿐이다(인자로 다른 루트를 고를 수 없다) — 그래서 호스트가
-   * Operation 이 아닌 Theater 단위 세션(사령관)에게도 그 Theater 루트에 묶어 내줄 수 있다(`bindTheater`). 아니면 생략한다.
+   * 이 서버의 도구가 닿는 곳은 `context.commodoreId` 가 가리키는 사령관 하나뿐이다(인자로 다른 사령관을 고를 수 없다) — 그래서
+   * 호스트가 Operation 세션에는 세션 소속 사령관을 싣고, 사령관 세션에는 그 사령관에 묶어 내줄 수 있다(`bindCommodore`).
+   * 아니면 생략한다.
    */
-  readonly theaterScoped?: boolean;
+  readonly commodoreScoped?: boolean;
 }
 
-/** `bindTheater` 가 내주는 서버 하나 — `tools.custom` 의 그룹으로 그대로 싣는다. 이름은 Operation 세션이 보는 서버 이름(`fleet-{pluginId}`)이다. */
+/** `bindCommodore` 가 내주는 서버 하나 — `tools.custom` 의 그룹으로 그대로 싣는다. 이름은 Operation 세션이 보는 서버 이름(`fleet-{pluginId}`)이다. */
 export interface PluginMcpServerTools {
   readonly name: string;
   readonly tools: readonly PluginMcpTool[];
@@ -171,11 +177,11 @@ export interface PluginAdmiralMcpHost {
   /** 등록 순서와 무관하게 세션을 만들 때 활성 플러그인의 MCP를 연결한다. */
   connect(): AdmiralMcpSession;
   /**
-   * `theaterScoped` 로 등록된 서버들의 도구를 그 Theater 루트에 묶어 돌려준다 — Operation 이 그 루트에서 받는 것과 같은 도구·같은
-   * Theater 판정이다. 루트는 호스트가 등록된 Theater 에서 정하고, 호출의 `context.cwd` 는 무시한다. 호출자(`caller`)는 없다.
-   * 모르는 Theater 면 빈 목록. 서버가 내려간 뒤의 호출은 오류로 돌아온다. 구버전 호스트에는 없다.
+   * `commodoreScoped` 로 등록된 서버들의 도구를 그 사령관에 묶어 돌려준다 — Operation 이 받는 것과 같은 도구·같은 검증이다.
+   * `context.commodoreId` 는 이 사령관으로 고정되고 `context.cwd` 는 사령관 디렉터리다. 호출자(`caller`)는 없다.
+   * 모르는 사령관이면 빈 목록. 서버가 내려간 뒤의 호출은 오류로 돌아온다. 구버전 호스트에는 없다.
    */
-  bindTheater?(theaterId: string): readonly PluginMcpServerTools[];
+  bindCommodore?(commodoreId: string): readonly PluginMcpServerTools[];
 }
 
 export interface ConsoleUseMcpHost {

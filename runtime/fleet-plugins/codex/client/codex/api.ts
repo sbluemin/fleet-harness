@@ -99,7 +99,7 @@ export async function restoreEntry(theaterId: string | null, id: string, history
 function apiPath(theaterId: string | null, path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return theaterId
-    ? `/console/codex/w/${encodeURIComponent(theaterId)}/api${normalized}`
+    ? `/console/codex/c/${encodeURIComponent(theaterId)}/api${normalized}`
     : `/console/codex/api${normalized}`;
 }
 

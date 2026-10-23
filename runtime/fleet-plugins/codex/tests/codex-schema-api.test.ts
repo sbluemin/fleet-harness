@@ -57,7 +57,6 @@ describe("Codex schema API", () => {
       end(body?: string) { result.body = body ?? ""; return this; },
     } as unknown as ServerResponse;
     await handleApiRequest(request, response, {
-      cwd: root,
       knowledgeRoot: paths.root,
       paths,
       port: 0,

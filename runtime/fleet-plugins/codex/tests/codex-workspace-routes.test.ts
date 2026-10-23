@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { mkdtemp, mkdir, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
@@ -15,36 +14,33 @@ import { createCodexFileRouter } from "../server/codex/file-routes.js";
 // 실행 계정/플랫폼과 무관하게 OS의 권한 거부를 대표 라우트 경계에 주입한다.
 vi.mock("node:fs/promises", { spy: true });
 
-const WORKSPACE_ID = "0123456789ab";
+const WORKSPACE_ID = "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00";
 
-describe("Codex Theater-root workspace resolution", () => {
+describe("Codex commodore workspace resolution", () => {
   let tmpDir = "";
   let theaterRoot = "";
-  let resolve: ReturnType<typeof vi.fn<(cwd: string) => MemoryPaths>>;
+  let resolve: ReturnType<typeof vi.fn<(commodoreId: string) => MemoryPaths>>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "fleet-codex-workspace-"));
     theaterRoot = path.join(tmpDir, "theater");
     await mkdir(theaterRoot);
-    resolve = vi.fn((cwd: string) => createMemoryPaths(path.join(cwd, "fleet-data", "knowledge")));
+    resolve = vi.fn((commodoreId: string) => createMemoryPaths(path.join(tmpDir, "commodore", commodoreId, "knowledge")));
   });
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  const identityHash = (cwd: string): string => cwd;
-
   function createGateway() {
     const wikiWorkspaceResolver: WikiWorkspaceResolver = { resolve };
     return createCodexGateway({
-      cwd: theaterRoot,
       host: "127.0.0.1",
       version: "0.0.0",
       getPort: () => 0,
       wikiWorkspaceResolver,
       allowedOriginsFor: () => ["http://127.0.0.1:0"],
-      theaterPaths: { canonicalize: (cwd: string) => realpathSync(cwd), hash: (cwd: string) => cwd },
+      hasCommodore: (commodoreId) => commodoreId === WORKSPACE_ID,
       security: { validateHost: () => true, isWriteAdmitted: () => true },
     });
   }
@@ -104,29 +100,26 @@ describe("Codex Theater-root workspace resolution", () => {
     expect((await call("file-refs", { paths: ["source.ts"] }))[1]).toBe(403);
   });
 
-  it("registers and resolves the canonical Theater root", async () => {
+  it("opens only commodores the host knows and resolves the wiki by commodore id", async () => {
     const gateway = createGateway();
-    const result = await gateway.resolveWorkspaceForTheater("theater", theaterRoot);
-    expect(result).toEqual({ hasWiki: true, id: identityHash(await realpath(theaterRoot)) });
-    expect(resolve).toHaveBeenCalledWith(await realpath(theaterRoot));
-  });
-
-  it("forgets only the registered Theater-root workspace", async () => {
-    const gateway = createGateway();
-    const resolved = await gateway.resolveWorkspaceForTheater("theater-a", theaterRoot);
-
-    gateway.unregisterTheaterWorkspaces("theater-a");
-
-    expect(resolved.id).not.toBeNull();
-    expect(gateway.getWorkspace(resolved.id!)).toBeNull();
+    expect(gateway.resolveWorkspace(WORKSPACE_ID)).toEqual({ hasWiki: true, id: WORKSPACE_ID });
+    expect(resolve).toHaveBeenCalledWith(WORKSPACE_ID);
+    const unknown = "00000000-0000-4000-8000-000000000000";
+    expect(gateway.resolveWorkspace(unknown)).toEqual({ hasWiki: false, id: null });
+    expect(gateway.getWorkspace(unknown)).toBeNull();
+    let status = 0;
+    const response = { writeHead(code: number) { status = code; return this; }, end() { return this; } } as unknown as ServerResponse;
+    await gateway.handle({ method: "GET", url: `/console/codex/c/${unknown}/api/health`, headers: {} } as IncomingMessage, response);
+    expect(status).toBe(404);
+    expect(resolve).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("Codex Theater-root workspace route", () => {
-  function routerFor(body: unknown, resolveWorkspace = vi.fn().mockResolvedValue({ hasWiki: true, id: WORKSPACE_ID })) {
+describe("Codex workspace route", () => {
+  function routerFor(body: unknown, resolveWorkspace = vi.fn().mockReturnValue({ hasWiki: true, id: WORKSPACE_ID })) {
     const writeJson = vi.fn();
     const router = createCodexWorkspaceRouter({
-      getTheater: () => ({ id: "theater", path: "/tmp/theater", realpath: "/tmp/theater", label: "theater", registeredAt: "1", lastOpenedAt: "1" }),
+      resolveContext: () => ({ ok: true, commodoreId: WORKSPACE_ID }),
       isAuthorized: () => true,
       readJsonBody: async <T>() => body as T,
       resolveWorkspace,

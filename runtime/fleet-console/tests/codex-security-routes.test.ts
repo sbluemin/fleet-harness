@@ -7,7 +7,7 @@ import type { ServerResponse } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { startCodexTestServer } from "./codex-test-server.js";
+import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import { buildAllowedAccessSets } from "../../fleet-plugins/codex/server/codex/gateway.js";
 import { handleApiRequest } from "../../fleet-plugins/codex/server/codex/routes.js";
 import type { CodexTestServer } from "./codex-test-server.js";
@@ -19,8 +19,8 @@ let tempDir = "";
 describe("security routes", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-console-codex-routes-"));
-    const wikiDir = path.join(tempDir, ".fleet", "knowledge", "wiki");
-    const rawDir = path.join(tempDir, ".fleet", "knowledge", "raw");
+    const wikiDir = path.join(legacyKnowledgeRoot(tempDir, tempDir), "wiki");
+    const rawDir = path.join(legacyKnowledgeRoot(tempDir, tempDir), "raw");
     await mkdir(wikiDir, { recursive: true });
     await mkdir(rawDir, { recursive: true });
     await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body", "raw/sample.md");
@@ -86,7 +86,7 @@ describe("loopback-only origin check", () => {
 
   beforeEach(async () => {
     loopbackTempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-console-codex-loopback-"));
-    const wikiDir = path.join(loopbackTempDir, ".fleet", "knowledge", "wiki");
+    const wikiDir = path.join(legacyKnowledgeRoot(loopbackTempDir, loopbackTempDir), "wiki");
     await mkdir(wikiDir, { recursive: true });
     await writeEntry(wikiDir, "wc-entry", "Wildcard Entry", "Body");
     const lockPath = path.join(loopbackTempDir, "server.lock");
@@ -210,7 +210,6 @@ function createMinimalRouteContext(
   overrides: { admitted?: boolean; allowedOrigins?: Set<string> } = {},
 ): Parameters<typeof handleApiRequest>[2] {
   return {
-    cwd: tempDir || "/tmp/fleet-console-codex-test",
     knowledgeRoot: path.join(tempDir || "/tmp/fleet-console-codex-test", ".fleet", "knowledge"),
     paths: {
       root: "",

@@ -28,7 +28,7 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
     surfaces: { open },
     rail: { open: openRail },
   } as unknown as Parameters<typeof bindCodexHost>[0]);
-  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ hasWiki: true, id: "abcdef123456" })));
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ hasWiki: true, id: "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00" })));
   vi.stubGlobal("fetch", fetcher);
   const node = document.createElement("div");
   document.body.append(node);
@@ -39,7 +39,7 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
     expect(getReaderState().codexReader).toBeNull();
     await act(async () => { root.render(codexReadingSurface.render(ctx)); });
     expect(getReaderState()).toMatchObject({ codexReader: { kind: "schema", templateId: "initial-template" }, codexReaderExpanded: true });
-    expect(resolvedCodexWorkspaceIdFor("theater-a")).toBe("abcdef123456");
+    expect(resolvedCodexWorkspaceIdFor("theater-a")).toBe("6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00");
     expect(open).not.toHaveBeenCalled();
     expect(openRail).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();

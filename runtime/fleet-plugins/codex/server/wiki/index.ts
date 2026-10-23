@@ -1,6 +1,7 @@
-export { createWikiWorkspaceResolver } from "./workspace-resolver.js";
+export { createWikiWorkspaceResolver, WikiKnowledgeUnavailableError } from "./workspace-resolver.js";
 export type {
-  WikiWorkspace,
+  WikiKnowledgeHost,
+  WikiKnowledgeResolver,
   WikiWorkspaceResolver,
   WikiWorkspaceResolverDependencies,
 } from "./workspace-resolver.js";

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CONTENT_SECURITY_POLICY } from "../../fleet-plugins/codex/server/codex/contracts.js";
-import { startCodexTestServer } from "./codex-test-server.js";
+import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 
 let server: CodexTestServer | null = null;
@@ -15,8 +15,8 @@ let tempDir = "";
 describe("security headers", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-console-codex-headers-"));
-    const wikiDir = path.join(tempDir, ".fleet", "knowledge", "wiki");
-    const rawDir = path.join(tempDir, ".fleet", "knowledge", "raw");
+    const wikiDir = path.join(legacyKnowledgeRoot(tempDir, tempDir), "wiki");
+    const rawDir = path.join(legacyKnowledgeRoot(tempDir, tempDir), "raw");
     await mkdir(wikiDir, { recursive: true });
     await mkdir(rawDir, { recursive: true });
     await writeFile(path.join(rawDir, "sample.md"), "raw body", "utf8");

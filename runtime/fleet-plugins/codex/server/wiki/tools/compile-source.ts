@@ -1,3 +1,4 @@
+import type { MemoryPaths } from "../types.js";
 import path from "node:path";
 
 import { wrapWikiRawSourceBoundary } from "../store.js";
@@ -6,7 +7,7 @@ import { mergeRawSourceRefs, normalizeComparableText, truncateSummary } from "..
 import { extractWikiLinks } from "../store.js";
 import { appendLog } from "../log.js";
 import { prepareEntry, withWikiWriteLock, writeEntry } from "../write.js";
-import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
+
 import {
   WIKI_COMPILE_SOURCE_DESCRIPTION,
   WIKI_COMPILE_SOURCE_GUIDELINES,
@@ -104,7 +105,7 @@ export function buildCompileSourceToolConfig() {
       ctx: WikiToolExecutionContext,
     ) {
       const now = new Date().toISOString();
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const input = normalizeCompileSourceInput(params as WikiCompileSourceInput);
       const output = input.mode === "write"
         ? await withWikiWriteLock(paths, () => writeSourceCompile(input, paths, now))
@@ -119,7 +120,7 @@ export function buildCompileSourceToolConfig() {
 
 async function compileSourcePreview(
   input: NormalizedCompileSourceInput,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
   now: string,
 ): Promise<WikiCompileSourceOutput> {
   const resolvedSource = await resolveCompileSource(input, paths, now);
@@ -132,7 +133,7 @@ async function compileSourcePreview(
   };
 }
 
-async function writeSourceCompile(input: NormalizedCompileSourceInput, paths: ReturnType<typeof resolveMemoryPaths>, now: string): Promise<WikiCompileSourceOutput> {
+async function writeSourceCompile(input: NormalizedCompileSourceInput, paths: MemoryPaths, now: string): Promise<WikiCompileSourceOutput> {
   const source = await resolveCompileSource(input, paths, now);
   const proposals = await buildCompileProposals(input, paths, now, source);
   const options = { actor: "tool:wiki_compile_source", tool: "wiki_compile_source" };
@@ -181,7 +182,7 @@ function normalizeCompileSourceInput(params: WikiCompileSourceInput): Normalized
 
 async function resolveCompileSource(
   input: NormalizedCompileSourceInput,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
   now: string,
 ): Promise<ResolvedCompileSource> {
   if (input.sourceRef) {
@@ -212,7 +213,7 @@ async function resolveCompileSource(
 
 async function buildCompileProposals(
   input: NormalizedCompileSourceInput,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
   now: string,
   resolvedSource: ResolvedCompileSource,
 ): Promise<CompileSourceProposal[]> {
@@ -272,7 +273,7 @@ async function buildCompileProposals(
 }
 
 async function discoverRelatedEntryCandidates(
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
   sourceContent: string,
   sourceTitle: string | undefined,
 ): Promise<RelatedEntryCandidate[]> {

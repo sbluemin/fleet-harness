@@ -2,16 +2,6 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
-// workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지
-export interface WorkspaceMetadata {
-  id: string;
-  cwd: string;
-  label: string;
-  registeredAt: string;
-  lastOpenedAt: string;
-  urlPath: string;
-}
-
 export interface FilePeekResponse {
   readonly path: string;
   readonly language: string;

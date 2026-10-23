@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { briefingQuery } from "../../server/wiki/briefing.js";
 import { getClaimsFile, writeClaims } from "../../server/wiki/claims.js";
-import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { createMemoryPaths } from "../../server/wiki/paths.js";
 import { listDirectoryNames, pathExists, readWikiEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildQueryToolConfig } from "../../server/wiki/tools/query.js";
 
@@ -18,7 +18,7 @@ afterEach(async () => {
 describe("wiki query", () => {
   it("returns context_pack, citations, and no mutations in answer mode", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const tool = buildQueryToolConfig();
     await writeWikiEntry({
       id: "alpha",
@@ -38,7 +38,7 @@ describe("wiki query", () => {
     const result = await tool.execute("tool-call", {
       question: "alpha",
       mode: "answer",
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       ok: boolean;
       question: string;
@@ -60,7 +60,7 @@ describe("wiki query", () => {
 
   it("saves a query page without claim sidecar sync and save_good_answer aliases the same path", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const tool = buildQueryToolConfig();
     await writeWikiEntry({
       id: "alpha",
@@ -81,7 +81,7 @@ describe("wiki query", () => {
       target_type: "query",
       target_id: "alpha-answer",
       title: "Alpha Answer",
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       saved_entry_id: string;
       deferred: string[];

@@ -8,11 +8,11 @@
 //   pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
 //     --console-dir "$E2E_DIR/console" [--keep <key> ...] \
-//     [--deputy <id> ...] [--wiki <entry-id> --theater <theater-id> --theater-dir <path>] [--dry-run]
+//     [--deputy <id> ...] [--wiki <entry-id> --theater <theater-id>] [--dry-run]
 //
 // --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
 // --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the plugin's settings route.
-// --wiki writes one Wiki entry through the product's wiki_ingest tool for the Theater registered from --theater-dir.
+// --wiki writes one Wiki entry through the product's wiki_ingest tool into the knowledge of the --theater's commodore.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { createRequire, register } from "node:module";
@@ -37,10 +37,9 @@ const deputies = repeated("--deputy");
 const consoleDir = option("--console-dir");
 const wikiId = option("--wiki");
 const theaterId = option("--theater");
-const theaterDir = option("--theater-dir");
 const dryRun = args.includes("--dry-run");
 if (!consoleDir && !dryRun) throw new Error("Pass --console-dir <owned FLEET_CONSOLE_DATA_DIR> or --dry-run.");
-if (wikiId && (!theaterId || !theaterDir)) throw new Error("--wiki needs --theater <id> and --theater-dir <the folder that Theater was added from>.");
+if (wikiId && !theaterId) throw new Error("--wiki needs --theater <id>.");
 
 // Plugin client entries import their stylesheets and some compile JSX in classic mode under tsx; neither
 // matters for reading their exports, so stylesheets resolve to an empty module and React is made global.
@@ -81,16 +80,6 @@ const { getScuttlebuttSettings } = await load(join(pluginsDir, "scuttlebutt/clie
 const deputyIds = Object.keys(getScuttlebuttSettings().docked);
 const unknownDeputies = deputies.filter((id) => !deputyIds.includes(id));
 if (unknownDeputies.length > 0) throw new Error(`Unknown deputy: ${unknownDeputies.join(", ")} (known: ${deputyIds.join(", ")}).`);
-
-// A wrong --theater-dir would let the Wiki resolver migrate that folder's .fleet/knowledge and label it, so the folder
-// must hash to the registered Theater id (the id rule in features/workspace/host/theaters/theater-domain.ts) before
-// anything is written.
-let wikiCwd: string | null = null;
-if (wikiId) {
-  const { canonicalizeTheaterPathSync, workspaceHash } = await load(join(consoleSrc, "features/workspace/host/theaters/theater-domain.ts"));
-  wikiCwd = canonicalizeTheaterPathSync(theaterDir!) as string;
-  if (workspaceHash(wikiCwd) !== theaterId) throw new Error(`--theater-dir ${wikiCwd} is not the folder of Theater ${theaterId}; nothing was written.`);
-}
 
 if (dryRun) {
   console.log(JSON.stringify({
@@ -139,24 +128,21 @@ if (deputies.length > 0) {
   if (off.length > 0) throw new Error(`Deputy settings did not keep: ${off.join(", ")}.`);
 }
 
-// The fixture writes one entry with the product's wiki_ingest tool in the knowledge root that Codex resolves
-// for this Theater. Reading it back through the Theater's Codex route proves the server serves the same root.
+// The fixture writes one entry with the product's wiki_ingest tool in the knowledge root of the commodore that Codex
+// resolves for this Theater. Reading it back through that commodore's Codex route proves the server serves the same root.
 let wiki: { entry: string; version: number; reused: boolean } | null = null;
 if (wikiId) {
   const theaters = (await getJson<{ theaters: { id: string }[] }>("/api/v1/theaters")).theaters;
   if (!theaters.some((theater) => theater.id === theaterId)) throw new Error(`Theater ${theaterId} is not registered in the owned Console.`);
-  await send("POST", "/api/v1/plugins/codex/workspace", { theaterId });
-  const { ensureWorkspaceDirectory, withDirectoryLock } = await load(join(consoleSrc, "foundation/infra/src/index.ts"));
-  const { createWikiWorkspaceResolver } = await load(join(pluginsDir, "codex/server/wiki/workspace-resolver.ts"));
+  // Opening the workspace lets the Console issue the commodore and finish any old-wiki migration; the script only writes
+  // into the resulting root and never migrates on its own.
+  const workspace = await send<{ hasWiki: boolean; id: string | null }>("POST", "/api/v1/plugins/codex/workspace", { theaterId });
+  if (!workspace.hasWiki || !workspace.id) throw new Error(`Theater ${theaterId} has no commodore knowledge root.`);
+  const commodoreId = workspace.id;
+  const { createMemoryPaths } = await load(join(pluginsDir, "codex/server/wiki/paths.ts"));
   const { buildIngestToolConfig } = await load(join(pluginsDir, "codex/server/wiki/tools/ingest.ts"));
   const { readWikiEntry } = await load(join(pluginsDir, "codex/server/wiki/store.ts"));
-  // Same injected ports as the Codex plugin's register() in runtime/fleet-plugins/codex/routes.ts (MIGRATION_LOCK).
-  const cwd = wikiCwd!;
-  const paths = createWikiWorkspaceResolver({
-    ensureWorkspace: (dir: string) => ensureWorkspaceDirectory(consoleDir, dir),
-    withMigrationLock: <T,>(workspace: { path: string }, operation: () => T): T =>
-      withDirectoryLock({ lockDir: join(workspace.path, "knowledge.migration.lock") }, operation),
-  }).resolve(cwd);
+  const paths = createMemoryPaths(join(consoleDir!, "commodore", commodoreId, "knowledge"));
   const reused = Boolean(await readWikiEntry(wikiId, paths));
   if (!reused) {
     const written = await buildIngestToolConfig().execute("console-e2e-seed", {
@@ -171,12 +157,12 @@ if (wikiId) {
       source: "console-e2e seed-onboarding fixture",
       proposer: "console-e2e:seed-onboarding",
       mode: "create",
-    }, undefined, undefined, { cwd, paths });
+    }, undefined, undefined, { paths });
     const result = JSON.parse(written.content[0].text) as { entry_id?: string; version?: number };
     if (!result.entry_id || !result.version) throw new Error(`wiki_ingest wrote no entry: ${written.content[0].text}`);
   }
-  const served = await fetch(`${origin}/console/codex/w/${encodeURIComponent(theaterId!)}/api/entry/${encodeURIComponent(wikiId)}`);
-  if (!served.ok) throw new Error(`The Theater's Codex route does not serve ${wikiId} (${served.status}); --theater-dir may not be that Theater's folder.`);
+  const served = await fetch(`${origin}/console/codex/c/${encodeURIComponent(commodoreId)}/api/entry/${encodeURIComponent(wikiId)}`);
+  if (!served.ok) throw new Error(`The commodore's Codex route does not serve ${wikiId} (${served.status}).`);
   wiki = { entry: wikiId, version: (await readWikiEntry(wikiId, paths))!.version, reused };
 }
 

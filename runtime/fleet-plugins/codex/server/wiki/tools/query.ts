@@ -1,8 +1,9 @@
+import type { MemoryPaths } from "../types.js";
 import path from "node:path";
 
 import { dedupeStrings } from "../briefing.js";
 import { withWikiWriteLock, writeEntry } from "../write.js";
-import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
+
 import {
   WIKI_QUERY_DESCRIPTION,
   WIKI_QUERY_GUIDELINES,
@@ -85,7 +86,7 @@ export function buildQueryToolConfig() {
       _onUpdate: unknown,
       ctx: WikiToolExecutionContext,
     ) {
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const input = normalizeQueryInput(params as unknown as WikiQueryInput);
       const resolvePayload = await resolveWikiContext({
         query: input.question,
@@ -161,7 +162,7 @@ function normalizeCitationInput(value: QueryCitationInput): QueryCitationInput {
 
 async function buildCitations(
   resolvePayload: WikiResolvePayload,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
   includeRawRefs: boolean,
 ): Promise<WikiQueryOutputCitation[]> {
   const citations: WikiQueryOutputCitation[] = [];
@@ -182,7 +183,7 @@ async function buildCitations(
 async function normalizeSaveCitations(
   input: NormalizedWikiQueryInput,
   resolvePayload: WikiResolvePayload,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
 ): Promise<WikiQueryOutputCitation[]> {
   if (!input.answer) {
     throw new Error("[fleet-wiki] wiki_query save_answer_page requires non-empty answer");
@@ -222,7 +223,7 @@ async function normalizeSaveCitations(
 async function saveAnswerPage(
   input: NormalizedWikiQueryInput,
   citations: WikiQueryOutputCitation[],
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
 ) {
   const now = new Date().toISOString();
   const targetId = input.targetId?.length

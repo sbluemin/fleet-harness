@@ -1061,7 +1061,6 @@ export function handleFilesWatch(
 
   const directory = url.searchParams.get("directory");
   if (directory !== null) void watcherRegistry.trackDirectory(theaterId, theaterPath, directory);
-  if (url.searchParams.get("metadataDirectory") === ".fleet/knowledge") void watcherRegistry.trackDirectory(theaterId, theaterPath, ".fleet/knowledge");
 
   req.on("close", () => {
     unsubscribe();

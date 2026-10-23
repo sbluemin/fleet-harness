@@ -527,7 +527,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
       admiralMcp: {
         connect: () => deps.host.admiralMcp.connect(),
         register: (tools, options) => deps.registerAdmiralMcp(plugin.manifest.id, tools, options),
-        ...(deps.host.admiralMcp.bindTheater ? { bindTheater: deps.host.admiralMcp.bindTheater } : {}),
+        ...(deps.host.admiralMcp.bindCommodore ? { bindCommodore: deps.host.admiralMcp.bindCommodore } : {}),
       },
       consoleUse: {
         ...deps.host.consoleUse,
@@ -636,7 +636,7 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities, 
         },
       } } : {}),
       admiralMcp: {
-        ...(host.admiralMcp.bindTheater ? { bindTheater: host.admiralMcp.bindTheater } : {}),
+        ...(host.admiralMcp.bindCommodore ? { bindCommodore: host.admiralMcp.bindCommodore } : {}),
         register: (tools, options) => {
           const unregister = track(host.admiralMcp.register(tools, options));
           trackCleanup(unregister);

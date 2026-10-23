@@ -29,7 +29,7 @@ export interface CommodoreSessionOptions {
   readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly PluginMcpTool[];
-  /** 호스트가 이 Theater 루트에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindTheater`) — 서버 이름 그대로 도구 그룹이 된다. */
+  /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
   readonly knowledgeTools?: readonly PluginMcpServerTools[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */

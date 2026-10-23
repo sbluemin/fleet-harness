@@ -18,12 +18,11 @@ import {
   buildIngestToolConfig, buildOrientToolConfig, buildEditToolConfig,
   buildQueryToolConfig, buildReadToolConfig, buildResolveToolConfig,
   buildSchemaCreateToolConfig, buildSchemaListToolConfig, buildSchemaReadToolConfig,
-  type MemoryPaths, type WikiWorkspaceResolver,
+  type MemoryPaths, type WikiWorkspaceResolver, WikiKnowledgeUnavailableError,
 } from "./wiki/index.js";
 
 export interface WikiToolExecutionContext {
-  readonly cwd: string;
-  readonly paths?: MemoryPaths;
+  readonly paths: MemoryPaths;
 }
 
 interface WikiAgentToolConfig {
@@ -222,13 +221,16 @@ function buildWikiToolSpec(
     usageGuidelines: config.promptGuidelines,
     parameters: config.parameters as Record<string, unknown>,
     execute: async (args: unknown, ctx: Parameters<PluginMcpTool["execute"]>[1]) => {
-      const { content } = await config.execute(
-        "",
-        args as Record<string, unknown>,
-        ctx.signal,
-        undefined,
-        { cwd: ctx.cwd, paths: resolver ? await resolver.resolve(ctx.cwd) : undefined },
-      );
+      // 위키는 호스트가 실어 준 사령관의 것뿐이다 — cwd나 모델 인자로 다른 위키를 고를 수 없다.
+      let paths: MemoryPaths;
+      try {
+        if (!resolver || !ctx.commodoreId) throw new WikiKnowledgeUnavailableError();
+        paths = resolver.resolve(ctx.commodoreId);
+      } catch (error) {
+        if (!(error instanceof WikiKnowledgeUnavailableError)) throw error;
+        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "knowledge_unavailable" }) }], isError: true };
+      }
+      const { content } = await config.execute("", args as Record<string, unknown>, ctx.signal, undefined, { paths });
       return { content, isError: false };
     },
   };

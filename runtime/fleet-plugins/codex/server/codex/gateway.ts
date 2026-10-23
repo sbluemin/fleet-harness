@@ -3,73 +3,50 @@ import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
 import net from "node:net";
 
+import { WikiKnowledgeUnavailableError } from "../wiki/index.js";
 import type { MemoryPaths, WikiWorkspaceResolver } from "../wiki/index.js";
 
 import { handleApiRequest } from "./routes.js";
 import type { AllowedAccessSets } from "./contracts.js";
-import type { TheaterPathResolver } from "./theater-paths.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
 import { withSecurityHeaders } from "./contracts.js";
 
 interface CodexGatewayDeps {
-  /**
-   * 등록된 워크스페이스가 하나도 없을 때 쓸 기본 프로젝트. 플러그인에는 그런 것이
-   * 없으므로 생략한다 — 프로세스의 cwd를 기본값으로 삼으면 콘솔 패키지 자신이
-   * 워크스페이스가 되어, 사용자가 연 적 없는 빈 위키를 MRU로 돌려준다.
-   */
-  readonly cwd?: string;
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
-  /**
-   * 요청이 도착한 리스너. Codex는 코어 Host 게이트보다 앞에서 분기하므로 자기 게이트가 유일한
-   * 경계인데, 그 경계는 바인드 호스트가 아니라 리스너마다 다르다. 원격 리스너를 모르는 게이트는
-   * 원격에서 연 Wiki를 전부 host_mismatch로 되돌린다.
-   */
   /**
    * 경계 판정은 호스트가 내린다. 리스너 신원을 받아 스스로 Host/Origin 집합을 짜던 자리다 —
    * 어느 리스너로 들어왔는지, 그 리스너가 지금 무엇을 허용하는지는 Console만 안다.
    */
   /** 쓰기를 허용할 Origin 집합. 호스트의 `server.origin()`이 원본이다. */
   readonly allowedOriginsFor: (request: IncomingMessage) => readonly string[];
-  readonly theaterPaths: TheaterPathResolver;
-  /**
-   * 아직 등록되지 않은 워크스페이스를 요청받았을 때 그 뿌리를 찾아 준다.
-   *
-   * 등록을 이벤트에 맡기면 "Theater를 더한 직후의 요청"이 등록을 앞지른다 — 방금 만든
-   * Theater의 위키가 없다고 답하는 창이 생긴다. 순서를 맞추는 대신 순서 의존을 없앤다:
-   * 필요할 때 열고, 이벤트는 미리 데워 두는 역할만 한다.
-   */
-  readonly resolveWorkspaceRoot?: (workspaceId: string) => string | null;
-  /**
-   * 아직 끝나지 않은 등록이 있으면 그것을 기다린다.
-   *
-   * Theater 등록은 이벤트로 도착하고 그 처리는 비동기다. MRU 경로에는 되찾을 id조차
-   * 없으므로, 답하기 전에 진행 중인 등록을 한 번 기다리는 것이 순서 의존을 없애는
-   * 유일한 지점이다.
-   */
-  readonly whenRegistrationsSettle?: () => Promise<void>;
   readonly security: {
     readonly validateHost: (request: IncomingMessage) => boolean;
     readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
   };
+  /** 사령관 id → 지식 root. Codex workspace의 정체성은 사령관 id 하나다. */
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
-  readonly dataDir?: string;
+  /** 호스트가 아는 사령관인가 — 모르는 id로는 workspace를 열지 않는다. */
+  readonly hasCommodore: (commodoreId: string) => boolean;
+  /**
+   * 옛 주소(`/w/<옛 id>/`)의 id를 그 맥락의 사령관 id로 바꾼다. 공유된 옛 링크를 새 주소로 넘기는 데만 쓴다.
+   * 대응은 호스트가 정하고, 모르면 null이다.
+   */
+  readonly resolveLegacyWorkspace?: (legacyId: string) => string | null;
   /**
    * 지식 루트가 해석될 때마다 불린다(멱등). 호스트는 이 신호로 감시를 시작해, 화면이
    * 열려 있는 워크스페이스만 지켜본다.
    */
   readonly onKnowledgeRootResolved?: (workspaceId: string, knowledgeRoot: string) => void;
-  /** 워크스페이스 등록이 풀렸다 — 감시도 함께 끝나야 한다. */
-  readonly onWorkspaceReleased?: (workspaceId: string) => void;
 }
 
 type WorkspaceSelection =
   | { kind: "workspace"; workspace: WorkspaceRegistration | null; rewrittenUrl?: string }
-  | { kind: "missing-workspace" }
+  | { kind: "commodore"; commodoreId: string; suffix: string; search: string }
+  | { kind: "legacy"; legacyId: string; suffix: string; search: string }
   | { kind: "redirect"; location: string }
-  | { kind: "no-workspace" }
   | { kind: "not-codex" };
 
 type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
@@ -77,10 +54,8 @@ type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
 export interface CodexGateway {
   getWorkspace(id: string): WorkspaceRegistration | null;
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
-  listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
-  registerWorkspace(cwd: string, lastOpenedAt?: string, ownerTheaterId?: string): Promise<WorkspaceRegistration>;
-  resolveWorkspaceForTheater(theaterId: string, theaterRoot: string): Promise<CodexWorkspaceResolution>;
-  unregisterTheaterWorkspaces(theaterId: string): void;
+  /** 사령관 id의 workspace를 열고 지식 root를 해석한다(첫 해석이 옛 위키 이주를 마친다). */
+  resolveWorkspace(commodoreId: string): CodexWorkspaceResolution;
 }
 
 export interface CodexWorkspaceResolution {
@@ -95,40 +70,17 @@ const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
 const LOOPBACK_HOST = "127.0.0.1";
 
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
-  const workspaces = new WorkspaceRegistry(deps.theaterPaths);
-  const workspaceOwners = new Map<string, Set<string>>();
-  let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
-  let initialWorkspaceId: string | null = null;
+  const workspaces = new WorkspaceRegistry();
 
-  /**
-   * 주소가 가리키는 워크스페이스를 지금 연다. 이미 열려 있거나 뿌리를 못 찾으면 false.
-   * 등록은 멱등이므로 이벤트 경로와 겹쳐도 두 벌이 생기지 않는다.
-   */
-  async function openMissingWorkspace(requestUrl: string): Promise<boolean> {
-    const resolveRoot = deps.resolveWorkspaceRoot;
-    if (!resolveRoot) return false;
-    const match = new URL(requestUrl, "http://127.0.0.1").pathname
-      .slice(CODEX_BASE.length)
-      .match(/^\/w\/([^/]+)(?:\/.*)?$/);
-    const workspaceId = match ? decodeURIComponent(match[1] ?? "") : null;
-    if (!workspaceId || workspaces.get(workspaceId)) return false;
-    const root = resolveRoot(workspaceId);
-    if (!root) return false;
-    await registerWorkspace(root, undefined, workspaceId);
-    return workspaces.get(workspaceId) !== null;
+  /** 주소가 가리키는 사령관 workspace를 연다. 호스트가 모르는 사령관이면 열지 않는다. */
+  function openWorkspace(commodoreId: string): WorkspaceRegistration | null {
+    return workspaces.get(commodoreId) ?? (deps.hasCommodore(commodoreId) ? workspaces.register(commodoreId) : null);
   }
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
-    await deps.whenRegistrationsSettle?.();
     let selected: WorkspaceSelection;
     try {
-      selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd ?? "");
-      // 모르는 워크스페이스라면 한 번은 열어 보고 다시 고른다.
-      if (selected.kind === "missing-workspace" || selected.kind === "redirect" || selected.kind === "no-workspace") {
-        if (await openMissingWorkspace(request.url ?? "/")) {
-          selected = await selectWorkspace(request.url ?? "/", workspaces, deps.cwd ?? "");
-        }
-      }
+      selected = selectWorkspace(request.url ?? "/", workspaces);
     } catch (error) {
       if (error instanceof URIError) {
         sendJson(response, 400, { error: "bad request" });
@@ -150,21 +102,27 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       redirect(response, `${CODEX_BASE}${selected.location}`);
       return true;
     }
-    if (selected.kind === "missing-workspace") {
-      sendJson(response, 404, { error: "workspace_not_found" });
+    // 주소의 id로 workspace를 열거나 옛 id를 사령관으로 바꾸는 일은 Host 검증을 지난 요청만 한다(호스트가 사령관을 발급할 수 있다).
+    if (selected.kind === "legacy") {
+      // 옛 주소는 그 맥락의 사령관 주소로 넘긴다 — 공유된 링크가 계속 열리게. 307은 POST 본문도 그대로 넘긴다.
+      const commodoreId = deps.resolveLegacyWorkspace?.(selected.legacyId) ?? null;
+      if (commodoreId) redirect(response, `${CODEX_BASE}/c/${encodeURIComponent(commodoreId)}${selected.suffix}${selected.search}`, 307);
+      else if (selected.suffix.startsWith("/api/")) sendJson(response, 404, { error: "workspace_not_found" });
+      else redirect(response, `${CODEX_BASE}/`);
       return true;
     }
-    if (selected.kind === "no-workspace") {
-      if (isJsonRequest(request)) {
-        sendJson(response, 404, { error: "no_workspace_registered" });
+    if (selected.kind === "commodore") {
+      const opened = openWorkspace(selected.commodoreId);
+      if (!opened) {
+        if (selected.suffix.startsWith("/api/")) sendJson(response, 404, { error: "workspace_not_found" });
+        else redirect(response, `${CODEX_BASE}/`);
         return true;
       }
-      redirect(response, CODEX_BASE);
-      return true;
+      selected = { kind: "workspace", workspace: opened, rewrittenUrl: `${selected.suffix}${selected.search}` };
     }
-    const workspace = selected.workspace ?? await ensureInitialWorkspace();
+    const workspace = selected.workspace;
     if (!workspace) {
-      // 열린 Theater가 없으면 보여 줄 위키도 없다 — 없는 것을 지어내지 않는다.
+      // 열린 위키가 없으면 보여 줄 위키도 없다 — 없는 것을 지어내지 않는다.
       // 화면 요청은 콘솔 SPA가 답한다: 여기서 CODEX_BASE로 되돌리면 이미 그 주소에
       // 있는 요청이 자기 자신으로 무한히 튕긴다.
       // 쓰기는 화면 이동이 아니다 — SPA로 흘려보내면 코어가 "Method not allowed"로
@@ -180,13 +138,13 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     if (selected.rewrittenUrl) request.url = selected.rewrittenUrl;
     let paths: MemoryPaths;
     try {
-      paths = deps.wikiWorkspaceResolver.resolve(workspace.realpath);
-    } catch {
-      sendJson(response, 500, { error: "internal_error" });
+      paths = deps.wikiWorkspaceResolver.resolve(workspace.id);
+    } catch (error) {
+      request.url = originalUrl;
+      sendJson(response, error instanceof WikiKnowledgeUnavailableError ? 404 : 500, { error: error instanceof WikiKnowledgeUnavailableError ? "knowledge_unavailable" : "internal_error" });
       return true;
     }
     const handled = await handleApiRequest(request, response, {
-      cwd: workspace.cwd,
       knowledgeRoot: paths.root,
       paths,
       host: deps.host,
@@ -205,75 +163,19 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     return handled;
   }
 
-  /**
-   * 루프백 리스너와 리스너를 찾지 못한 요청은 바인드 호스트에서 파생한 기존 집합을 그대로 쓴다 —
-   * wildcard 바인드가 열어 두던 LAN 주소 집합을 좁히지 않기 위해서다. 원격 리스너는 그와 달리
-   * 자기 주소 하나만 연다.
-   */
-
-
-  async function ensureInitialWorkspace(): Promise<WorkspaceRegistration | null> {
-    if (!deps.cwd) return null;
-    initialWorkspace ??= workspaces.register(deps.cwd);
-    const workspace = await initialWorkspace;
-    initialWorkspaceId = workspace.id;
-    return workspace;
-  }
-
-  async function registerWorkspace(
-    cwd: string,
-    lastOpenedAt?: string,
-    ownerTheaterId?: string,
-  ): Promise<WorkspaceRegistration> {
-    const workspace = await workspaces.register(cwd, lastOpenedAt);
-    if (ownerTheaterId) {
-      const owners = workspaceOwners.get(workspace.id) ?? new Set<string>();
-      owners.add(ownerTheaterId);
-      workspaceOwners.set(workspace.id, owners);
-    }
-    return workspace;
-  }
-
-  async function resolveWorkspaceForTheater(
-    theaterId: string,
-    theaterRoot: string,
-  ): Promise<CodexWorkspaceResolution> {
-    const workspace = await registerWorkspace(theaterRoot, undefined, theaterId);
-    // 여기서는 감시를 걸지 않는다. 이 경로는 워크스페이스를 해석만 하고 지식 루트를 만들지
-    // 않으므로, 한 번도 열린 적 없는 Theater라면 아직 그 디렉토리가 없다. 패널은 곧바로
-    // 카탈로그를 요청하고, 그 요청이 루트를 만든 뒤 감시가 시작된다.
-    deps.wikiWorkspaceResolver.resolve(workspace.realpath);
+  function resolveWorkspace(commodoreId: string): CodexWorkspaceResolution {
+    const workspace = openWorkspace(commodoreId);
+    if (!workspace) return { hasWiki: false, id: null };
+    // 여기서는 감시를 걸지 않는다. 해석은 이주를 마칠 뿐 지식 루트를 만들지 않으므로, 한 번도 쓰인 적 없는
+    // 사령관이라면 아직 그 디렉터리가 없다. 패널은 곧바로 카탈로그를 요청하고, 그 요청이 루트를 만든 뒤 감시가 시작된다.
+    deps.wikiWorkspaceResolver.resolve(workspace.id);
     return { hasWiki: true, id: workspace.id };
-  }
-
-  function unregisterWorkspace(id: string): boolean {
-    // 캐시된 initial workspace가 해제 대상이면 캐시를 비워, 이후 비프리픽스 라우트가
-    // 레지스트리에서 사라진 등록을 계속 서빙하지 않게 한다(다음 접근 시 재평가).
-    if (initialWorkspaceId === id) {
-      initialWorkspace = null;
-      initialWorkspaceId = null;
-    }
-    deps.onWorkspaceReleased?.(id);
-    return workspaces.remove(id);
-  }
-
-  function unregisterTheaterWorkspaces(theaterId: string): void {
-    for (const [workspaceId, owners] of workspaceOwners) {
-      owners.delete(theaterId);
-      if (owners.size === 0) {
-        workspaceOwners.delete(workspaceId);
-        unregisterWorkspace(workspaceId);
-      }
-    }
   }
 
   return {
     getWorkspace: (id) => workspaces.get(id),
     handle,
-    listWorkspaceRegistrations: () => workspaces.listRegistrations(),
-    registerWorkspace,
-    resolveWorkspaceForTheater,
-    unregisterTheaterWorkspaces,
+    resolveWorkspace,
   };
 }
 
@@ -309,7 +211,7 @@ export function buildAllowedAccessSets(
  * 피어 주소를 다시 보면 원격은 세션이 있어도 영원히 읽기 전용이 된다.
  */
 
-function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd: string): WorkspaceSelection {
+function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry): WorkspaceSelection {
   const url = new URL(requestUrl, "http://127.0.0.1");
   decodeURI(url.pathname);
   if (url.pathname === CODEX_BASE || url.pathname === `${CODEX_BASE}/`) {
@@ -319,16 +221,10 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
   if (!url.pathname.startsWith(`${CODEX_BASE}/`)) return { kind: "not-codex" };
   const codexPath = url.pathname.slice(CODEX_BASE.length) || "/";
   url.pathname = codexPath;
-  const prefixed = url.pathname.match(/^\/w\/([^/]+)(\/.*)?$/);
-  if (prefixed) {
-    const workspace = workspaces.get(decodeURIComponent(prefixed[1] ?? ""));
-    const suffix = prefixed[2] ?? "/";
-    if (!workspace) {
-      return suffix.startsWith("/api/") ? { kind: "missing-workspace" } : { kind: "redirect", location: "/" };
-    }
-    url.pathname = suffix;
-    return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
-  }
+  const prefixed = url.pathname.match(/^\/c\/([^/]+)(\/.*)?$/);
+  if (prefixed) return { kind: "commodore", commodoreId: decodeURIComponent(prefixed[1] ?? ""), suffix: prefixed[2] ?? "/", search: url.search };
+  const legacy = url.pathname.match(/^\/w\/([^/]+)(\/.*)?$/);
+  if (legacy) return { kind: "legacy", legacyId: decodeURIComponent(legacy[1] ?? ""), suffix: legacy[2] ?? "/", search: url.search };
   if (url.pathname.startsWith("/api/")) {
     const workspace = workspaces.getMru();
     return { kind: "workspace", workspace, rewrittenUrl: `${url.pathname}${url.search}` };
@@ -337,10 +233,7 @@ function selectWorkspace(requestUrl: string, workspaces: WorkspaceRegistry, cwd:
   if (legacyTarget) {
     const workspace = workspaces.getMru();
     if (!workspace) return { kind: "redirect", location: "/" };
-    return { kind: "redirect", location: `/w/${encodeURIComponent(workspace.id)}${legacyTarget}` };
-  }
-  if (!workspaces.getMru()) {
-    void workspaces.register(cwd);
+    return { kind: "redirect", location: `/c/${encodeURIComponent(workspace.id)}${legacyTarget}` };
   }
   return { kind: "workspace", workspace: workspaces.getMru(), rewrittenUrl: `${url.pathname}${url.search}` };
 }
@@ -355,8 +248,8 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(JSON.stringify(body));
 }
 
-function redirect(response: ServerResponse, location: string): void {
-  response.writeHead(302, withSecurityHeaders({ location }));
+function redirect(response: ServerResponse, location: string, status: 302 | 307 = 302): void {
+  response.writeHead(status, withSecurityHeaders({ location }));
   response.end();
 }
 

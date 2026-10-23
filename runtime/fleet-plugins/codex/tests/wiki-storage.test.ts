@@ -1,84 +1,65 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { ensureWorkspaceDirectory, withDirectoryLock } from "@fleet-console/infra";
 import { createWikiWorkspaceResolver } from "../server/wiki/index.js";
 import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "../server/wiki-mcp.js";
 import { describe, expect, it } from "vitest";
 
-function createCodexWikiToolSpecs(fleetDataDir: string) {
+const COMMODORE = "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00";
+
+function createCodexWikiToolSpecs(dataDir: string) {
   return getWikiToolSpecs(createWikiWorkspaceResolver({
-    ensureWorkspace: (cwd) => ensureWorkspaceDirectory(fleetDataDir, cwd),
-    withMigrationLock: (workspace, operation) => withDirectoryLock({ lockDir: path.join(workspace.path, "knowledge.migration.lock") }, operation),
+    knowledge: {
+      root: (id) => (id === COMMODORE ? path.join(dataDir, "commodore", id, "knowledge") : null),
+      ids: () => [COMMODORE],
+      legacyKnowledgeSources: () => [],
+    },
   }));
 }
 
 const BODY = "A durable Terminal Wiki entry. ".repeat(12);
 
 describe("Codex Wiki storage composition", () => {
-  it("registers the direct-write catalog while a representative write resolves the Theater-root durable store", async () => {
-    await withFixture(async ({ fleetDataDir, theaterRoot }) => {
-      const sourceFile = path.join(theaterRoot, ".fleet", "knowledge", "legacy.md");
-      const legacy = "legacy source remains immutable\n";
-      await mkdir(path.dirname(sourceFile), { recursive: true });
-      await writeFile(sourceFile, legacy);
-
-      const specs = createCodexWikiToolSpecs(fleetDataDir);
+  it("registers the direct-write catalog and writes only to the knowledge root of the host-bound commodore", async () => {
+    await withFixture(async ({ dataDir }) => {
+      await mkdir(path.join(dataDir, "commodore", COMMODORE), { recursive: true });
+      const specs = createCodexWikiToolSpecs(dataDir);
       const bareSpecs = getWikiToolSpecs();
       expect(specs.map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
       expect(specs.map((spec) => spec.parameters)).toEqual(bareSpecs.map((spec) => spec.parameters));
 
-      await invoke(specs, "wiki_ingest", {
+      expect(await invoke(specs, "wiki_ingest", {
         id: "terminal-entry", title: "Terminal entry", body: BODY, tags: [], source: BODY,
-      }, theaterRoot);
-
-      const workspace = ensureWorkspaceDirectory(fleetDataDir, theaterRoot);
-      const knowledge = path.join(workspace.path, "knowledge");
-      expect(await readFile(sourceFile, "utf8")).toBe(legacy);
-      expect(await readFile(path.join(knowledge, "legacy.md"), "utf8")).toBe(legacy);
+      }, COMMODORE)).toMatchObject({ isError: false });
+      const knowledge = path.join(dataDir, "commodore", COMMODORE, "knowledge");
       expect(await readFile(path.join(knowledge, "wiki", "terminal-entry.md"), "utf8")).toContain(BODY.trim());
+
+      // 사령관이 실리지 않았거나 호스트가 모르는 사령관이면 어느 위키에도 닿지 않는다.
+      for (const commodoreId of [undefined, "00000000-0000-4000-8000-000000000000"]) {
+        expect(await invoke(specs, "wiki_orient", {}, commodoreId)).toEqual({ content: [{ type: "text", text: JSON.stringify({ error: "knowledge_unavailable" }) }], isError: true });
+      }
     });
   });
 
   it("keeps an empty store available until a tool actually resolves it", async () => {
-    await withFixture(async ({ fleetDataDir }) => {
-      expect(createCodexWikiToolSpecs(fleetDataDir).map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
-      await expect(stat(fleetDataDir)).rejects.toMatchObject({ code: "ENOENT" });
-    });
-  });
-
-  it("treats an existing destination regular file as a migration no-op", async () => {
-    await withFixture(async ({ fleetDataDir, theaterRoot }) => {
-      const sourceFile = path.join(theaterRoot, ".fleet", "knowledge", "legacy.md");
-      await mkdir(path.dirname(sourceFile), { recursive: true });
-      await writeFile(sourceFile, "legacy must not merge\n");
-      const workspace = ensureWorkspaceDirectory(fleetDataDir, theaterRoot);
-      const blockingFile = path.join(workspace.path, "knowledge", "schema", "wiki-schema.md");
-      await mkdir(path.dirname(blockingFile), { recursive: true });
-      await writeFile(blockingFile, "destination wins\n");
-
-      await invoke(createCodexWikiToolSpecs(fleetDataDir), "wiki_orient", {}, theaterRoot);
-
-      expect(await readFile(blockingFile, "utf8")).toBe("destination wins\n");
-      await expect(readFile(path.join(workspace.path, "knowledge", "legacy.md"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await withFixture(async ({ dataDir }) => {
+      expect(createCodexWikiToolSpecs(dataDir).map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
+      await expect(stat(dataDir)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 });
 
-async function invoke(specs: ReturnType<typeof createCodexWikiToolSpecs>, id: string, args: Record<string, unknown>, cwd: string): Promise<void> {
+async function invoke(specs: ReturnType<typeof createCodexWikiToolSpecs>, id: string, args: Record<string, unknown>, commodoreId: string | undefined): Promise<unknown> {
   const spec = specs.find((candidate) => candidate.id === id);
   if (!spec) throw new Error(`Missing ${id}`);
-  const result = await spec.execute(args, { cwd });
-  expect(result).toMatchObject({ isError: false });
+  return spec.execute(args, { cwd: "/ignored", ...(commodoreId ? { commodoreId } : {}) });
 }
 
-async function withFixture(run: (fixture: { fleetDataDir: string; theaterRoot: string }) => Promise<void>): Promise<void> {
+async function withFixture(run: (fixture: { dataDir: string }) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(os.tmpdir(), "terminal-agent-wiki-storage-"));
   try {
-    const theaterRoot = path.join(root, "theater");
-    await mkdir(theaterRoot);
-    await run({ fleetDataDir: path.join(root, "fleet-data"), theaterRoot });
+    await run({ dataDir: path.join(root, "console") });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

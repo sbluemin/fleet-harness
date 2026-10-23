@@ -1,5 +1,6 @@
+import type { MemoryPaths } from "../types.js";
 import { mergeRawSourceRefs, normalizeComparableText } from "../briefing.js";
-import { resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
+
 import { inferTemplateIdFromTarget, scanTemplates } from "../schema.js";
 import { WIKI_INGEST_DESCRIPTION, WIKI_INGEST_GUIDELINES, WIKI_INGEST_PROMPT_SNIPPET, buildWikiIngestSchema } from "../prompts.js";
 import { assertNoUnsafeSecret, findUnsafeMemoryText, assertSafeEntryId, computeContentHash, listWiki, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
@@ -31,7 +32,7 @@ export function buildIngestToolConfig() {
     name: "wiki_ingest", label: "Wiki Ingest", description: WIKI_INGEST_DESCRIPTION,
     promptSnippet: WIKI_INGEST_PROMPT_SNIPPET, promptGuidelines: [...WIKI_INGEST_GUIDELINES], parameters: buildWikiIngestSchema(),
     async execute(_id: string, params: Record<string, unknown>, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: WikiToolExecutionContext) {
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const input = parseIngestParams(params);
       const result = await withWikiWriteLock(paths, async () => {
         const now = new Date().toISOString();
@@ -90,7 +91,7 @@ function parseIngestParams(params: Record<string, unknown>): WikiIngestParams {
 
 async function findDuplicateMatch(
   input: WikiIngestParams,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
 ): Promise<{ message: string } | null> {
   const normalizedTitle = normalizeComparableText(input.title);
   for (const entry of await listWiki(paths)) {
@@ -113,7 +114,7 @@ async function detectRawSourceContradiction(
   input: WikiIngestParams,
   rawSource: RawSourceEntry,
   currentEntry: WikiEntry | null,
-  paths: ReturnType<typeof resolveMemoryPaths>,
+  paths: MemoryPaths,
 ): Promise<string | null> {
   if (!currentEntry?.rawSourceRef) return null;
   try {

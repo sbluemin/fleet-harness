@@ -10,6 +10,10 @@ export interface PluginAdmiralMcpHostOptions {
    * 모델 인자나 토큰 밖의 값으로 호출자를 정하지 않는다.
    */
   readonly resolveCaller?: (label: string) => ConsoleCaller | null;
+  /**
+   * `commodoreScoped` 서버 도구에 실을 사령관 — 세션 라벨로 푼 호출자의 소속을 호스트가 사령관으로 바꾼다. 못 풀면 null(fail-closed).
+   */
+  readonly resolveCommodore?: (caller: ConsoleCaller) => string | null;
   readonly onFailure?: (kind: string, error: unknown) => void;
 }
 
@@ -26,8 +30,8 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
   type Registration = {
     manager: ReturnType<typeof createExecutorSessionManager>;
     stop(): Promise<void>;
-    /** Theater 루트에 묶어 내줄 수 있는 서버면 그 도구 — 실행은 서빙 경로와 같은 검증을 지난다. 아니면 null. */
-    theaterTools: readonly ToolRunner[] | null;
+    /** 사령관에 묶어 내줄 수 있는 서버면 그 도구 — 실행은 서빙 경로와 같은 검증을 지난다. 아니면 null. */
+    commodoreTools: readonly ToolRunner[] | null;
   };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
@@ -46,7 +50,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
       for (const tool of tools) {
         if (!/^[a-zA-Z0-9_-]+$/.test(tool.name)) throw new Error("Invalid plugin MCP tool name");
         const schema = z.fromJSONSchema(tool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
-        // 서빙 경로와 Theater 묶음 경로가 같은 선검사(내려간 서버·인자 검증)를 지난다. 호출자·cwd 는 부르는 쪽이 정한다.
+        // 서빙 경로와 사령관 묶음 경로가 같은 선검사(내려간 서버·인자 검증)를 지난다. 호출자·cwd 는 부르는 쪽이 정한다.
         const run = async (args: unknown, context: Parameters<PluginMcpTool["execute"]>[1]) => {
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Plugin MCP is unavailable" }], isError: true };
           const parsed = schema.safeParse(args);
@@ -60,13 +64,15 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
           execute: async (args, context) => {
             const label = unscopedLabel(context.sessionLabel);
             const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
-            return run(args, { ...context, ...(caller ? { caller } : {}) });
+            // 사령관은 호출자 소속에서만 나온다 — 모델 인자로 고를 수 없다.
+            const commodoreId = registration.commodoreScoped && caller && options.resolveCommodore ? options.resolveCommodore(caller) : null;
+            return run(args, { ...context, ...(caller ? { caller } : {}), ...(commodoreId ? { commodoreId } : {}) });
           },
         });
       }
       const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
-      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, theaterTools: registration.theaterScoped ? runners : null };
+      const entry: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); }, commodoreTools: registration.commodoreScoped ? runners : null };
       registrations.set(name, entry);
       return () => {
         if (registrations.get(name) !== entry) return;
@@ -79,16 +85,16 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
       };
     },
     /**
-     * `theaterScoped` 서버들의 도구를 작업 디렉터리 하나(호스트가 정한 Theater 루트)에 묶는다. 부르는 쪽이 넘긴 cwd 는 버리고
-     * 이 루트로 부른다 — 모델이나 세션 자리가 다른 Theater 를 고를 수 없다. 호출자는 싣지 않는다(fail-closed).
+     * `commodoreScoped` 서버들의 도구를 사령관 하나(호스트가 정한 id와 그 디렉터리)에 묶는다. 부르는 쪽이 넘긴 cwd·사령관은 버리고
+     * 이 값으로 부른다 — 모델이나 세션 자리가 다른 사령관을 고를 수 없다. 호출자는 싣지 않는다(fail-closed).
      */
-    bindTheater(root: string): PluginMcpServerTools[] {
+    bindCommodore(commodoreId: string, directory: string): PluginMcpServerTools[] {
       if (disposed) return [];
-      return [...registrations].flatMap(([name, entry]) => entry.theaterTools ? [{
+      return [...registrations].flatMap(([name, entry]) => entry.commodoreTools ? [{
         name,
-        tools: entry.theaterTools.map(({ tool, run }): PluginMcpTool => ({
+        tools: entry.commodoreTools.map(({ tool, run }): PluginMcpTool => ({
           name: tool.name, description: tool.description, inputSchema: tool.inputSchema,
-          execute: (args, context) => run(args, { cwd: root, ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}), ...(context.signal ? { signal: context.signal } : {}) }),
+          execute: (args, context) => run(args, { cwd: directory, commodoreId, ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}), ...(context.signal ? { signal: context.signal } : {}) }),
         })),
       }] : []);
     },
