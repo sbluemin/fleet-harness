@@ -75,7 +75,7 @@ cd <worktree_path> && pnpm install --frozen-lockfile
 cd <worktree_path> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> build && pnpm --filter <pkg> test
 ```
 
-Disclose absent scripts. A failed check makes the resolution suspect; do not publish the rewritten tip. Before attributing the failure, run the same check alternately on a `git-worktree` baseline at `<upstream>` and on the rebased HEAD, at least three runs each, and report the pass/fail counts: a failure only on HEAD points at the rebase, one on both sides is pre-existing or intermittent. The counts do not lift the publishing block by themselves. For clean rebases, choose scoped checks and record why they suffice.
+Disclose absent scripts. A failed check makes the resolution suspect; do not publish the rewritten tip. Before attributing the failure, run the same check alternately on a `git-worktree` baseline at the recorded pre-rebase topic SHA and on the rebased HEAD, at least three runs each, and report the pass/fail counts: a failure only on HEAD points at the rebase, one on both sides predates it or is intermittent; a further baseline at `<upstream>` tells whether the base brought it. The counts do not lift the publishing block by themselves. For clean rebases, choose scoped checks and record why they suffice.
 
 When the branch contained a change that has since been merged into the base on its own — a stacked PR rebased after its lower PR landed — a file can merge without conflict and still hold both the base's copy of a block and the branch's revised copy. Compare every touched path, conflicted or not, against the pre-rebase tip: `git -C <worktree_path> diff <pre-rebase-tip> HEAD -- <path>` should show only the base's own later changes, never a duplicated declaration or block.
 
