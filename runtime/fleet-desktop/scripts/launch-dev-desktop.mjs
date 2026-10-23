@@ -60,7 +60,7 @@ export function createInfoPlist(sourceInfo, electronAppPath) {
     ),
     wrapperSourceKey,
     electronAppPath,
-  ), "NSAppleEventsUsageDescription", "Fleet Console Dev uses the Computer Use service to read and control apps when you allow an Operation.");
+  ), "NSAppleEventsUsageDescription", "Fleet Console Dev uses the Computer Use service to read and control apps when you allow an Objective.");
 }
 
 export function createMacDevLaunchArguments(wrapperPath, appPath, args = [], env = process.env) {

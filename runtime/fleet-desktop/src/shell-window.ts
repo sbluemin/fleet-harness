@@ -5,8 +5,8 @@ import { loadConsoleDocument } from "./console-handoff.js";
  * Fleet Desktop 의 창 골격 — BaseWindow 와 Console WebContentsView 를 한 몸으로 다룬다.
  *
  * BrowserWindow 의 내장 webContents 는 다른 WebContentsView 로 옮길 수 없다(already attached).
- * Console 은 명시적인 WebContentsView 로만 그리고, Operation 브라우저 뷰는 형제로 쌓는다.
- * Operation Browser 실험에서는 macOS CDP 가 hidden/0×0 에서 불안정해 보였으므로, 네이티브 뷰는
+ * Console 은 명시적인 WebContentsView 로만 그리고, Objective 브라우저 뷰는 형제로 쌓는다.
+ * Objective Browser 실험에서는 macOS CDP 가 hidden/0×0 에서 불안정해 보였으므로, 네이티브 뷰는
  * visible=true·nonzero bounds 를 유지하고 사용자 노출은 z-order(parking) 로 구분한다.
  */
 

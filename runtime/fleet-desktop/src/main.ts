@@ -64,7 +64,7 @@ const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
 const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
 /**
- * 영속 브라우저 프로필의 세션. 한 프로필은 앱 안에서 하나뿐이라 Operation 여럿이 같은 로그인을 함께 쓴다.
+ * 영속 브라우저 프로필의 세션. 한 프로필은 앱 안에서 하나뿐이라 Objective 여럿이 같은 로그인을 함께 쓴다.
  *
  * 콘솔은 **id 만** 보내고 경로는 여기서 만든다 — 임의 경로가 셸로 흘러들 길을 두지 않는다.
  * `fromPartition` 이 아니라 `fromPath` 인 것이 요점이다: 파티션은 앱의 `userData` 아래에 묶이는데,
@@ -81,7 +81,7 @@ function browserProfileSession(profile: string): Session {
   browserProfileSessions.set(profile, created);
   return created;
 }
-/** 쿠키가 들어갈 자리 — 영속 프로필이거나, 그 Operation 의 임시 파티션이거나. 둘 다 아니면 받지 않는다. */
+/** 쿠키가 들어갈 자리 — 영속 프로필이거나, 그 Objective 의 임시 파티션이거나. 둘 다 아니면 받지 않는다. */
 function browserTargetSession(params: Record<string, unknown>): { readonly session: Session; readonly label: string } | null {
   const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
   if (profile !== null) return DESKTOP_BROWSER_PROFILE_ID.test(profile) ? { session: browserProfileSession(profile), label: `profile ${profile}` } : null;
@@ -347,7 +347,7 @@ async function boot(): Promise<void> {
     await windowCommands.start(origin);
   };
   /**
-   * Operation 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
+   * Objective 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
@@ -355,7 +355,7 @@ async function boot(): Promise<void> {
     shell: () => window,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
-    // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Operation 의 메모리 파티션에 뷰를 연다.
+    // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
     createView: (partition, profile) => new WebContentsView({
       webPreferences: {
         ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),

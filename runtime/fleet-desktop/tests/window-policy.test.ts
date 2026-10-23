@@ -68,8 +68,8 @@ describe("secure window policy", () => {
   });
 
   it("allows only exact-origin Console routes", () => {
-    expect(isAllowedConsoleUrl("http://127.0.0.1:4310/console/operations", "http://127.0.0.1:4310")).toBe(true);
-    expect(isAllowedConsoleUrl("http://localhost:4310/console/operations", "http://127.0.0.1:4310")).toBe(false);
+    expect(isAllowedConsoleUrl("http://127.0.0.1:4310/console/objectives", "http://127.0.0.1:4310")).toBe(true);
+    expect(isAllowedConsoleUrl("http://localhost:4310/console/objectives", "http://127.0.0.1:4310")).toBe(false);
     expect(isAllowedConsoleUrl("http://127.0.0.1:4310/api/v1/status", "http://127.0.0.1:4310")).toBe(false);
   });
 
