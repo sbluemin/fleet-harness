@@ -2,7 +2,11 @@
 /**
  * Run one command with an owned HOME and Fleet/Claude state, never the real user's (references/setup.md#keep-the-real-home-out).
  *
- *   node isolated-env.mjs --run-dir <abs-owned-dir> [--canonical-console-dir <checkout>/.fleet/console] [--bin <name|abs-path>]... [--set NAME=VALUE]... [--check] -- <command> [args...]
+ *   node isolated-env.mjs --run-dir <abs-owned-dir> [--fresh] [--canonical-console-dir <checkout>/.fleet/console] [--bin <name|abs-path>]... [--set NAME=VALUE]... [--check] -- <command> [args...]
+ *
+ * --fresh refuses a run dir that already exists with any entry, so a measurement pass that must start from an empty
+ * slot cannot silently reuse an earlier pass's state; pass it on the pass's first call (its --check and its serve).
+ * It vouches only for the default <run-dir>/console slot, so it is refused together with --canonical-console-dir.
  *
  * --canonical-console-dir sets only FLEET_CONSOLE_DATA_DIR, to that checkout's local slot
  * (<checkout>/.fleet/console). listLocalConsoles reads that lock and no other isolated data dir
@@ -139,10 +143,11 @@ function parseArgs(argv) {
   const separator = argv.indexOf('--');
   const flags = separator === -1 ? argv : argv.slice(0, separator);
   const command = separator === -1 ? [] : argv.slice(separator + 1);
-  const options = { bins: [], sets: [], check: false, canonicalConsoleDir: null };
+  const options = { bins: [], sets: [], check: false, fresh: false, canonicalConsoleDir: null };
   for (let i = 0; i < flags.length; i += 1) {
     const flag = flags[i];
     if (flag === '--check') { options.check = true; continue; }
+    if (flag === '--fresh') { options.fresh = true; continue; }
     const value = flags[i + 1];
     if (value === undefined) fail(`${flag} needs a value`);
     if (flag === '--run-dir') options.runDir = value;
@@ -153,6 +158,9 @@ function parseArgs(argv) {
     i += 1;
   }
   if (!options.runDir) fail('--run-dir is required');
+  if (options.fresh && options.canonicalConsoleDir) {
+    fail('--fresh checks only the default <run-dir>/console slot; it cannot vouch for --canonical-console-dir, so do not combine them (references/setup.md#isolate-the-console)');
+  }
   if (command.length === 0 && !options.check) fail('expected -- <command> [args...]');
   return { options, command };
 }
@@ -280,6 +288,9 @@ function main() {
     return fail(`this --run-dir belongs to another session${lock.state === 'live' ? ` whose Console is running (pid ${lock.pid})` : ''}. Choose a different run directory name, e.g. <repo-root>/.fleet/e2e-<role>-<short-id>; do not stop that Console or delete its directory (references/setup.md#isolate-the-console)`);
   };
   let verdict = judge();
+  if (options.fresh && existsSync(runDir) && readdirSync(runDir).length > 0) {
+    fail('--fresh: this --run-dir already holds an earlier run; choose a new run directory name for this pass instead of reusing or emptying it (references/setup.md#isolate-the-console)');
+  }
 
   const plan = {
     runDir,
