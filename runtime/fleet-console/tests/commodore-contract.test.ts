@@ -36,8 +36,9 @@ function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" 
 /** 기존 대표 시나리오는 실제 보드 어댑터와 feature의 SDK 경계를 함께 검증한다. */
 function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" | "theaterIds" | "cwd"> & CommodoreBoardWatchDeps & {
   boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly PluginMcpTool[];
+  theaterIds?: CommodoreSupervisorDeps["theaterIds"];
 }) {
-  return createHostSupervisor({ ...deps, theaterIds: () => ["t1"], cwd: (id) => deps.store.read(id) ? deps.theater("t1")?.root ?? null : null, board: () => ({
+  return createHostSupervisor({ ...deps, theaterIds: deps.theaterIds ?? (() => ["t1"]), cwd: (id) => deps.store.read(id) ? deps.theater("t1")?.root ?? null : null, board: () => ({
     tools: (theaterId, turn) => deps.boardTools(theaterId, turn.readAttachments, turn.hasPersonMessage),
     watch: (theaterId, sink) => createCommodoreBoardWatch(deps, theaterId, sink),
     objective: (theaterId, id) => {
@@ -796,7 +797,7 @@ describe("commodore supervisor", () => {
           return { attached, send: async () => { sent += 1; await new Promise<void>(() => {}); }, waitForTurn: () => new Promise<void>((resolve) => { finish = resolve; }), steer: () => false, cancel() {}, dispose: async () => undefined };
         },
       };
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, setupFingerprints: createResidentSessionFingerprints({ consoleVersion: version, executionBuildId: () => version }), experiments: () => h.experiments(), theater: () => ({ label: "x", root }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, setupFingerprints: createResidentSessionFingerprints({ consoleVersion: version, executionBuildId: () => version }), experiments: () => h.experiments(), theater: () => ({ label: "x", root }), theaterIds: () => ["linked-theater"], knowledgeTools: (id) => id === "t1" ? [{ name: "knowledge", tools: [{ name: "read", description: "Read this Commodore's knowledge", inputSchema: { type: "object", properties: {} }, execute: async () => ({ content: [] }) }] }] : [], objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
       let supervisor = make(); supervisor.sync("autonomy"); await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sent).toBe(1);
       expect(supervisor.status("t1")).toMatchObject({ configurationState: "current" });

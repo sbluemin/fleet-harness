@@ -89,6 +89,7 @@ export type ConsoleUpdateFailureReason =
   | "lifecycle-runtime-mismatch"
   | "session-business-pending"
   | "session-bridge-incompatible"
+  | "session-preservation-unavailable"
   | "old-console-unverified"
   | "old-console-replaced"
   | "old-console-still-running"
@@ -105,6 +106,7 @@ const UPDATE_FAILURE_REASONS: readonly ConsoleUpdateFailureReason[] = [
   "lifecycle-runtime-mismatch",
   "session-business-pending",
   "session-bridge-incompatible",
+  "session-preservation-unavailable",
   "old-console-unverified",
   "old-console-replaced",
   "old-console-still-running",
@@ -155,6 +157,8 @@ export function describeConsoleUpdateFailure(reason: ConsoleUpdateFailureReason 
   switch (reason) {
     case "session-business-pending":
       return "The update was postponed because a session is waiting for a permission response or an in-flight Console tool. This Console and its sessions are still running. Finish the request, then retry the update.";
+    case "session-preservation-unavailable":
+      return "This environment cannot keep sessions running through an update, so the update ended them. Start new sessions to continue; previous model turns were not resumed or replayed.";
     case "session-bridge-incompatible":
       return "The updated Console could not safely attach to the previous sessions, so it ended them. The Console is ready for new sessions; previous model turns were not resumed or replayed.";
     case "preflight-failed":

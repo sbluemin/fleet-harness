@@ -6,6 +6,8 @@ import { CONSOLE_STOP_DEADLINE_MS, type ConsoleStopReason } from "@fleet-console
 import type { SessionOwner, SessionUpdateRef } from "@fleet-console/protocol/session-host";
 import type { SessionHostPlatform } from "@fleet-console/lifecycle/session-host";
 import { SessionHostClient, stopSlotSessionHost } from "../../../features/execution/host/session-host/client.js";
+import { readConsoleUpdateProgress } from "../../../features/updates/host/update-progress.js";
+import { recordSessionUpdateNotice } from "../../../features/updates/host/session-update-notice.js";
 
 /** Composition port; product adapters consume get(), never discover a module singleton. */
 export class ConsoleSessionHostOwner {
@@ -13,6 +15,7 @@ export class ConsoleSessionHostOwner {
   private stopFlight: Promise<unknown> = Promise.resolve();
   private updateId: string | null = null;
   private committed = false;
+  private endsSessionsOnUpdate = false;
   private terminateRequested = false;
   private stopStarted = 0;
   constructor(private readonly dataDir: string, private readonly packageRoot = ownPackageRoot(), private readonly platform?: SessionHostPlatform, private readonly env: NodeJS.ProcessEnv = process.env) {}
@@ -33,6 +36,7 @@ export class ConsoleSessionHostOwner {
       for (const flush of this.beforePrepare) await flush();
       const client = await this.get();
       if (!client.preservesUpdates) {
+        await client.prepareConsoleOwnedUpdate(updateId);
         this.updateId = updateId;
         console.warn("[fleet-console] This environment cannot preserve sessions during an update; sessions will end normally.");
         return null;
@@ -46,20 +50,29 @@ export class ConsoleSessionHostOwner {
     if (!this.updateId || this.terminateRequested) throw new Error("session_update_not_prepared");
     const client = await this.get();
     if (client.preservesUpdates) { await client.commitUpdate(this.updateId); this.committed = true; }
+    else this.endsSessionsOnUpdate = true;
   }
   async cancelUpdate(expectedId?: string): Promise<void> {
     if (expectedId !== undefined && expectedId !== this.updateId) throw new Error("session_update_mismatch");
     if (this.updateId && !this.terminateRequested) {
-      const client = await this.get(); if (client.preservesUpdates) await client.cancelUpdate(this.updateId);
+      const client = await this.get(); await client.cancelUpdate(this.updateId);
     }
-    this.updateId = null; this.committed = false;
+    this.updateId = null; this.committed = false; this.endsSessionsOnUpdate = false;
     for (const resume of this.updateCancelled) resume();
   }
   requestStop(reason: ConsoleStopReason): void {
     if (reason === "update" && this.preservingUpdate) return;
     if (!this.terminateRequested) this.stopStarted = performance.now();
     this.terminateRequested = true;
-    this.stopFlight = this.get().catch(() => null).then(() => stopSlotSessionHost(this.dataDir));
+    this.stopFlight = this.get().catch(() => null).then(async (client) => {
+      const endedForUpdate = reason === "update" && this.endsSessionsOnUpdate
+        && (await client?.listSessions().catch(() => null))?.sessions.some((session) => session.state === "live" || session.state === "starting");
+      await stopSlotSessionHost(this.dataDir);
+      if (endedForUpdate) {
+        const progress = readConsoleUpdateProgress(this.dataDir);
+        recordSessionUpdateNotice(this.dataDir, { reason: "session-preservation-unavailable", fromVersion: progress.fromVersion ?? "previous", targetVersion: progress.targetVersion ?? "current" });
+      }
+    });
     void this.stopFlight.catch(() => {});
   }
   async settleStop(): Promise<void> {

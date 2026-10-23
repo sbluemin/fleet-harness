@@ -57,7 +57,7 @@ describe("Console session-host lifecycle integration", () => {
   // A restricted Windows job must disable preservation, not session execution or owned-tree cleanup.
   it("runs Console-owned sessions when independence is unavailable and ends them on update", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-session-bound-")); TEMP_DIRS.push(root);
-    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude") };
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, ComSpec: process.env.ComSpec, HOME: root, USERPROFILE: root, CLAUDE_CONFIG_DIR: path.join(root, ".claude"), FAKE_CLAUDE_DIR: path.join(root, "fake") };
     const held = await createConsoleLock().acquireLock({ dir: root, lockFile: path.join(root, "console.lock"), pid: process.pid, port: 1, endpoint: "http://127.0.0.1:1/", version: "fixture" });
     const containment = process.platform === "win32" ? createWindowsJobContainment(loadWindowsJobBindings(), () => {}) : undefined;
     const registry = createOwnedProcessRegistry({ containment });
@@ -79,9 +79,44 @@ describe("Console session-host lifecycle integration", () => {
       await client.command({ sessionKey: "bound", commandId: "write", sequence: 1, kind: "write", body: { data: `bound-still-runs${process.platform === "win32" ? "\r" : "\n"}` } });
       await vi.waitFor(async () => expect(await output()).toContain("bound-still-runs"), { timeout: 10_000 });
       await expect(client.prepareUpdate("forged-keeper")).rejects.toThrow("session_update_preservation_unavailable");
+      const execution = await HostedExecution.attach(client, (_kind, error) => { throw error; }, env);
+      execution.bind("fixture-tools", () => null); await execution.ready();
+      const proxy = createHostedSdk(execution, { baseUrl: "http://127.0.0.1:1", models: ["opus"], executablePath: fileURLToPath(new URL("../../../.claude/skills/console-e2e/scripts/fake-claude.mjs", import.meta.url)), env, home: { kind: "isolated" }, modelPolicy: claudeGatewayModelPolicy }, { key: "bound-sdk", tools: [{ name: "fixture", port: "fixture-tools", tools: [{ name: "effect", description: "Fixture effect", inputSchema: { type: "object", properties: {} } }] }] });
+      await proxy.openSession({ model: "opus", cwd: root });
+      const [mcp] = execution.get("bound-sdk")!.runtime.mcpServers as { url: string; headers: { value: string }[] }[];
+      let finishBusiness!: (value: unknown) => void;
+      await client.bindBusiness(() => new Promise((resolve) => { finishBusiness = resolve; }));
+      const business = fetch(mcp!.url, { method: "POST", headers: { "content-type": "application/json", Authorization: mcp!.headers[0]!.value }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "effect", arguments: {} } }) }).then((response) => response.json());
+      await vi.waitFor(() => expect(finishBusiness).toBeTypeOf("function"));
+      const update = createConsoleUpdateApplyService({
+        fleetDataDir: root, tmpDir: root, workerRuntimePath: fileURLToPath(new URL("../dist/lifecycle-worker-runtime.mjs", import.meta.url)),
+        preflightInstall: () => ({ bin: process.execPath, command: "npm", globalRoot: root, prefixArgs: [] }),
+        downloadTarball: async () => ({ ok: true, tarballPath: path.join(root, "candidate.tgz") }),
+        sessionHost: owner,
+        spawnWorker: () => { throw new Error("A pending permission must not launch an installer."); },
+      });
+      await expect(update.start({ currentEndpoint: held.payload.endpoint, currentLockToken: held.payload.token, currentLockStartedAt: held.payload.startedAt, currentPackageRoot: root, currentPid: process.pid, dataDir: root, fromVersion: "1.0.0", lockFile: path.join(root, "console.lock"), release: { schema: 1, package: "@dotobokuri/fleet-console", version: "1.0.1", tag: "v1.0.1", tarball: { name: "fleet-console-1.0.1.tgz", size: 1, sha256: "0".repeat(64) } } })).rejects.toMatchObject({ progress: { reason: "session-business-pending" } });
+      expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-business-pending" });
+      expect(isRunning(terminal.runtime.pid as number)).toBe(true);
+      finishBusiness({ $sessionHostDeferred: true, turnId: "bound-turn", permissionEpoch: 1, lifetime: "turn", expiresAt: null, presentation: { kind: "approval" } });
+      let requestId = "";
+      await vi.waitFor(async () => {
+        const pending = (await client.listSessions()).sessions.find((session) => session.sessionKey === execution.get("bound-sdk")!.sessionKey)!.runtime.pendingBusiness as { requestId: string; deferred?: unknown }[];
+        expect(pending[0]?.deferred).toBeTruthy(); requestId = pending[0]!.requestId;
+      });
+      await expect(owner.prepareUpdate("pending-permission")).rejects.toThrow("session_business_not_drained");
+      await client.answerBusiness(requestId, 1, { content: [] }); await business;
+      expect(await owner.prepareUpdate("cancelled-update")).toBe(null);
+      await expect(client.command({ sessionKey: "bound", commandId: "blocked", sequence: 2, kind: "write", body: { data: "blocked" } })).rejects.toThrow("session_command_unavailable");
+      await owner.cancelUpdate("cancelled-update");
+      expect(fs.existsSync(path.join(root, "session-update-notice.json"))).toBe(false);
+      await client.command({ sessionKey: "bound", commandId: "resumed", sequence: 2, kind: "write", body: { data: "resumed\r" } });
       expect(await owner.prepareUpdate("bound-update")).toBe(null);
       await owner.commitUpdate("bound-update"); expect(owner.preservingUpdate).toBe(false);
       owner.requestStop("update"); await owner.settleStop();
+      writeConsoleUpdateProgress(root, { phase: "completed", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), fromVersion: "1.0.0", targetVersion: "1.0.1" });
+      expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-preservation-unavailable", fromVersion: "1.0.0", targetVersion: "1.0.1", description: expect.stringContaining("update ended them") });
+      execution.detach();
       for (const pid of [terminal.runtime.pid, terminal.runtime.runnerPid, client.manifest.pid]) {
         expect(pid).toBeTypeOf("number"); await vi.waitFor(() => expect(isRunning(pid as number)).toBe(false), { timeout: 15_000 });
       }

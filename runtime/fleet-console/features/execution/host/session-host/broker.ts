@@ -298,13 +298,15 @@ export async function runSessionBroker(options: SessionBrokerOptions): Promise<v
         try { const runner = await runnerFor(launch.generation); const runtime = await runner.call<Record<string, unknown>>("open", launch); s.snapshot = { ...s.snapshot, state: "live", runtime: { ...s.snapshot.runtime, ...runtime, runnerPid: runners.get(launch.generation.id)?.child?.pid } }; publish(s, "opened", null); return s.snapshot; }
         catch (error) { s.snapshot = { ...s.snapshot, state: "lost" }; publish(s, "lost", null); throw error; }
       }
-      if (method === "prepare-update") {
-        if (options.preservesUpdates === false) throw new Error("session_update_preservation_unavailable");
-        options.platform?.assertIndependent();
+      if (method === "prepare-update" || method === "prepare-console-owned-update") {
+        const consoleOwned = method === "prepare-console-owned-update";
+        if (consoleOwned !== (options.preservesUpdates === false)) throw new Error("session_update_preservation_unavailable");
+        if (!consoleOwned) options.platform?.assertIndependent();
         if (update) throw new Error("session_update_busy");
-        if ([...business.values()].some((p) => p.dispatched)) throw new Error("session_business_not_drained");
+        if ([...business.values()].some((p) => consoleOwned || p.dispatched)) throw new Error("session_business_not_drained");
         const now = performance.now();
         update = { id: String(body.updateId), capability: randomUUID() + randomUUID(), committed: false, started: now, heartbeat: now, keeper: null };
+        if (consoleOwned) return null;
         const { capability: _hostCapability, ...keeperHost } = manifest;
         const ref: SessionUpdateRef = { updateId: update.id, keeperCapability: update.capability, host: keeperHost, expiresAt: Date.now() + SESSION_UPDATE_MAX_MS };
         return ref;

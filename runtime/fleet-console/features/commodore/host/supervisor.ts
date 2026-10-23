@@ -275,7 +275,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const theater = deps.theater(theaterIdOf(runner.commodoreId));
     if (!theater) return null;
     const commodoreTools = createCommodoreTools({ commodoreId: runner.commodoreId, theaterRoot: theater.root, store: deps.store, onNextWake: () => undefined, objective: () => null, now, ...(deps.execute ? { execute: deps.execute } : {}) });
-    const knowledgeTools = deps.knowledgeTools?.(theaterIdOf(runner.commodoreId));
+    const knowledgeTools = deps.knowledgeTools?.(runner.commodoreId);
     return commodoreSessionSetup({ theaterLabel: theater.label, language: resolveLanguage(runner.commodoreId), commodoreTools, boardTools: boardTools(runner), ...(knowledgeTools ? { knowledgeTools } : {}) });
   };
   /** 열린 세션의 시작 구성 판정 — 판정과 이전 release 만 상태에 싣는다. 기대 구성을 짓지 못하면 최신이라 단정하지 않는다. */

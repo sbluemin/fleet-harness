@@ -70,6 +70,7 @@ export class SessionHostClient {
   answerBusiness(requestId: string, permissionEpoch: number, value: unknown): Promise<boolean> { return this.peer.call("answer-business", { epoch: this.epoch, requestId, permissionEpoch, value }); }
   revokeBusiness(requestId: string, permissionEpoch: number): Promise<boolean> { return this.peer.call("revoke-business", { epoch: this.epoch, requestId, permissionEpoch }); }
   prepareUpdate(updateId: string): Promise<SessionUpdateRef> { return this.peer.call("prepare-update", { epoch: this.epoch, updateId }); }
+  prepareConsoleOwnedUpdate(updateId: string): Promise<null> { return this.peer.call("prepare-console-owned-update", { epoch: this.epoch, updateId }); }
   commitUpdate(updateId: string): Promise<boolean> { return this.peer.call("commit-update", { epoch: this.epoch, updateId }); }
   cancelUpdate(updateId: string): Promise<boolean> { return this.peer.call("cancel-update", { epoch: this.epoch, updateId }); }
   terminateAll(): Promise<boolean> { return this.peer.call("terminate-all"); }
