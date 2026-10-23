@@ -1,0 +1,140 @@
+import { mkdtemp, mkdir, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import os from "node:os";
+import path from "node:path";
+
+import { createMemoryPaths } from "../host/wiki/index.js";
+import type { MemoryPaths, WikiWorkspaceResolver } from "../host/wiki/index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createCodexGateway } from "../host/codex/gateway.js";
+import { createCodexWorkspaceRouter } from "../host/codex/workspace-routes.js";
+import { createCodexFileRouter } from "../host/codex/file-routes.js";
+
+// 실행 계정/플랫폼과 무관하게 OS의 권한 거부를 대표 라우트 경계에 주입한다.
+vi.mock("node:fs/promises", { spy: true });
+
+const WORKSPACE_ID = "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00";
+
+describe("Codex commodore workspace resolution", () => {
+  let tmpDir = "";
+  let theaterRoot = "";
+  let resolve: ReturnType<typeof vi.fn<(commodoreId: string) => MemoryPaths>>;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), "fleet-codex-workspace-"));
+    theaterRoot = path.join(tmpDir, "theater");
+    await mkdir(theaterRoot);
+    resolve = vi.fn((commodoreId: string) => createMemoryPaths(path.join(tmpDir, "commodore", commodoreId, "knowledge")));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function createGateway() {
+    const wikiWorkspaceResolver: WikiWorkspaceResolver = { resolve };
+    return createCodexGateway({
+      host: "127.0.0.1",
+      version: "0.0.0",
+      getPort: () => 0,
+      wikiWorkspaceResolver,
+      allowedOriginsFor: () => ["http://127.0.0.1:0"],
+      hasCommodore: (commodoreId) => commodoreId === WORKSPACE_ID,
+      security: { validateHost: () => true, isWriteAdmitted: () => true },
+    });
+  }
+
+  it("bounds Theater previews and isolates unavailable references without disclosing outside paths or existence", async () => {
+    await writeFile(path.join(theaterRoot, "source.ts"), Array.from({ length: 260 }, (_, index) => `line ${index + 1}`).join("\n"));
+    await writeFile(path.join(tmpDir, "outside.ts"), "outside secret");
+    await symlink(path.join(tmpDir, "outside.ts"), path.join(theaterRoot, "escape.ts"));
+    await writeFile(path.join(theaterRoot, "binary.dat"), Buffer.from([0, 1, 2]));
+    await writeFile(path.join(theaterRoot, "large.ts"), "x".repeat(256 * 1024 + 1));
+    let body: unknown;
+    let authorized = true;
+    const writeJson = vi.fn();
+    const router = createCodexFileRouter({
+      getTheater: id => id === "theater" ? { realpath: theaterRoot } : null,
+      isAuthorized: () => authorized,
+      readJsonBody: async <T>() => body as T,
+      writeJson,
+    });
+    const call = async (endpoint: string, fields: Record<string, unknown>) => {
+      body = { theaterId: "theater", ...fields };
+      await router({ req: { method: "POST" } as IncomingMessage, res: {} as ServerResponse, pathname: `/api/v1/codex/${endpoint}` });
+      return writeJson.mock.lastCall!;
+    };
+    const preview = await call("file-peek", { path: "source.ts", line: 130 });
+    expect(preview[1]).toBe(200);
+    expect(preview[2]).toMatchObject({ path: "source.ts", startLine: 30, truncated: true });
+    expect(preview[2].lines).toHaveLength(200);
+    expect(JSON.stringify(preview[2])).not.toContain(theaterRoot);
+    const canonicalRoot = await realpath(theaterRoot);
+    const alias = path.join(tmpDir, "theater-alias");
+    await symlink(canonicalRoot, alias, "dir");
+    const absoluteRefs = await call("file-refs", { paths: [path.join(alias, "source.ts"), alias, path.join(alias, "missing", "leaf.ts")] });
+    expect(absoluteRefs.slice(1)).toEqual([200, [{ path: "source.ts", status: "file" }, { path: ".", status: "dir" }, { path: "missing/leaf.ts", status: "missing" }]]);
+    expect(JSON.stringify(absoluteRefs[2])).not.toContain(canonicalRoot);
+    expect(JSON.stringify(absoluteRefs[2])).not.toContain(alias);
+    for (const escaped of ["../outside.ts", "escape.ts"]) expect((await call("file-peek", { path: escaped }))[1]).toBe(403);
+    await symlink(path.join(tmpDir, "missing-outside.ts"), path.join(theaterRoot, "dangling.ts"));
+    const refs = await call("file-refs", { paths: ["source.ts", path.join(await realpath(tmpDir), "outside.ts"), path.join(tmpDir, "missing-outside", "leaf.ts"), path.join(alias, "escape.ts"), "../outside.ts", "dangling.ts", "missing.ts"] });
+    expect(refs.slice(1)).toEqual([200, [
+      { path: "source.ts", status: "file" },
+      ...Array.from({ length: 5 }, () => ({ path: "", status: "unavailable" })),
+      { path: "missing.ts", status: "missing" },
+    ]]);
+    expect(JSON.stringify(refs[2])).not.toContain(canonicalRoot);
+    expect(JSON.stringify(refs[2])).not.toContain(tmpDir);
+    expect((await call("file-peek", { path: "dangling.ts" }))[1]).toBe(403);
+    expect((await call("file-peek", { path: "missing.ts" }))[1]).toBe(404);
+    vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error("access denied"), { code: "EACCES" }));
+    expect((await call("file-peek", { path: "source.ts" })).slice(1)).toEqual([403, { error: "forbidden" }]);
+    expect((await call("file-peek", { path: "binary.dat" }))[1]).toBe(415);
+    expect((await call("file-peek", { path: "large.ts" }))[1]).toBe(413);
+    expect((await call("file-refs", { paths: Array(201).fill("source.ts") }))[1]).toBe(400);
+    expect((await call("file-refs", { paths: ["source.ts", 42] }))[1]).toBe(400);
+    authorized = false;
+    expect((await call("file-peek", { path: "source.ts" }))[1]).toBe(403);
+    expect((await call("file-refs", { paths: ["source.ts"] }))[1]).toBe(403);
+  });
+
+  it("opens only commodores the host knows and resolves the wiki by commodore id", async () => {
+    const gateway = createGateway();
+    expect(gateway.resolveWorkspace(WORKSPACE_ID)).toEqual({ hasWiki: true, id: WORKSPACE_ID });
+    expect(resolve).toHaveBeenCalledWith(WORKSPACE_ID);
+    const unknown = "00000000-0000-4000-8000-000000000000";
+    expect(gateway.resolveWorkspace(unknown)).toEqual({ hasWiki: false, id: null });
+    expect(gateway.getWorkspace(unknown)).toBeNull();
+    let status = 0;
+    const response = { writeHead(code: number) { status = code; return this; }, end() { return this; } } as unknown as ServerResponse;
+    await gateway.handle({ method: "GET", url: `/console/codex/c/${unknown}/api/health`, headers: {} } as IncomingMessage, response);
+    expect(status).toBe(404);
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Codex workspace route", () => {
+  function routerFor(body: unknown, resolveWorkspace = vi.fn().mockReturnValue({ hasWiki: true, id: WORKSPACE_ID })) {
+    const writeJson = vi.fn();
+    const router = createCodexWorkspaceRouter({
+      resolveContext: () => ({ ok: true, commodoreId: WORKSPACE_ID }),
+      isAuthorized: () => true,
+      readJsonBody: async <T>() => body as T,
+      resolveWorkspace,
+      writeJson,
+    });
+    return { router, resolveWorkspace, writeJson };
+  }
+
+  // Theater가 경로에서 본문으로 옮겨 왔으므로 "빈 본문만 허용"은 더 이상 계약이 아니다.
+  // 남는 계약은 하나다: Theater를 말하지 않은 요청은 워크스페이스를 열지 않는다.
+  it.each([null, [], {}, { theaterId: "" }, { theaterId: 7 }])("refuses a body that names no Theater", async (body) => {
+    const { router, resolveWorkspace, writeJson } = routerFor(body);
+    await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/codex/workspace" });
+    expect(resolveWorkspace).not.toHaveBeenCalled();
+    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_theater" });
+  });
+
+});

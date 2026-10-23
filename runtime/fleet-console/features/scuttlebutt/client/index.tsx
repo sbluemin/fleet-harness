@@ -1,0 +1,67 @@
+import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
+import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+
+import { connectConsoleRead } from "./console-read.js";
+import { grantCapabilityLabel, grantDescription } from "./grant-chips.js";
+import { getScuttlebuttSettings } from "./settings-store.js";
+
+import type { AdmiralId } from "./chat-session.js";
+import { DockGlyphs } from "./dock-glyphs.js";
+import { ScuttlebuttFlock } from "./flock.js";
+import { readScuttlebuttMentionBridge, subscribeScuttlebuttMentions } from "./mention-bridge.js";
+import { QUAKER_HEAD_VIEW_BOX, QuakerFigure } from "./quaker-figure.js";
+import { getT } from "./scuttlebutt-catalog.js";
+import { scuttlebuttSettingsSection } from "./settings-section.js";
+import { connectScuttlebuttSettings } from "./settings-store.js";
+import "@fleet-console/markdown/styles.css";
+import "./styles.css";
+
+/**
+ * 새 세션 컴포저 '@' 덱에 서는 부관들. 답은 부관 자기 카드에 선다.
+ *
+ * 근무 중인 부관만 낸다 — 꺼 둔 부관을 흐리게라도 세우면 덱에 고를 수 없는 줄이 생기고, 고르는
+ * 순간 켜 준다면 사용자가 꺼 둔 설정을 제품이 뒤집는다. 셋 다 꺼져 있으면 카테고리 자체가 서지
+ * 않는다: 이 기능의 발견은 설정 섹션이 지고, 덱은 이미 부관을 들인 사람의 지름길이다.
+ */
+function mentionTargets(): readonly MentionTargetDescriptor[] {
+  const bridge = readScuttlebuttMentionBridge();
+  if (!bridge) return [];
+  const t = getT(bridge.locale());
+  const locale = bridge.locale();
+  return bridge.onDuty().map((admiral) => {
+    // 권한은 부관마다 다르다 — 덱 행은 그 부관의 허용을 말한다(기능 이름이 아니라 무엇을 할 수 있는지).
+    const grants = getScuttlebuttSettings().grants[admiral];
+    return {
+      id: admiral,
+      label: bridge.label(admiral),
+      categoryLabel: t("mention.category"),
+      capabilityLabel: grantCapabilityLabel(grants, locale),
+      description: grantDescription(bridge.label(admiral), grants, locale),
+      renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
+    };
+  });
+}
+
+async function messageMentionTarget(targetId: string, text: string): Promise<void> {
+  const bridge = readScuttlebuttMentionBridge();
+  // 덱을 연 뒤 부관이 퇴근했을 수 있다 — 없는 대상에 보내는 것은 조용히 삼키지 않고 거절한다.
+  if (!bridge || !bridge.onDuty().includes(targetId as AdmiralId)) {
+    throw new Error("mention_target_gone");
+  }
+  await bridge.ask(targetId as AdmiralId, text);
+}
+
+export const scuttlebuttClient: FleetClientPlugin = {
+  id: "scuttlebutt",
+  floatingWidgets: [{ id: "mascot", render: (context) => <ScuttlebuttFlock context={context} /> }],
+  // 「사이드바에 두기」로 둔 부관의 글리프. 로케일은 무리가 독 스토어에 반응적으로 싣는다 — 호스트 슬롯은 문맥을 주지 않는다.
+  commandBandEntries: [{ id: "dock", render: () => <DockGlyphs /> }],
+  settingsSections: [scuttlebuttSettingsSection],
+  mentionTargets,
+  subscribeMentionTargets: subscribeScuttlebuttMentions,
+  messageMentionTarget,
+  install: (context) => {
+    connectConsoleRead(context);
+    return connectScuttlebuttSettings(context.settings);
+  },
+};

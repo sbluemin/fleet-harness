@@ -14,11 +14,8 @@ packages:
   - "runtime/fleet-console/foundation/lifecycle"
   - "runtime/fleet-console/features/computer-use/runtime"
   - "runtime/fleet-console/foundation/font-picker"
-  - "runtime/fleet-plugins/codex"
   - "runtime/fleet-plugins/repository"
   - "runtime/fleet-plugins/file-explorer"
-  - "runtime/fleet-plugins/quota"
-  - "runtime/fleet-plugins/scuttlebutt"
   - "runtime/fleet-plugins/objectives"
 allowBuilds:
   esbuild: true

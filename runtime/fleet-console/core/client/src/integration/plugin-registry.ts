@@ -12,7 +12,11 @@ import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
-import { plugins as builtInPlugins } from "virtual:fleet-plugins";
+import { plugins as remainingPlugins } from "virtual:fleet-plugins";
+import { codexClient } from "../../../../features/codex/client/index.js";
+import { quotaClient } from "../../../../features/quota/client/index.js";
+import { scuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
+const builtInPlugins = [codexClient, ...remainingPlugins, quotaClient, scuttlebuttClient];
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */

@@ -1,3 +1,6 @@
+import { createCodexFeature } from "../../../features/codex/host/index.js";
+import { createQuotaFeature } from "../../../features/quota/host/index.js";
+import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -2843,6 +2846,43 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const routePath = `/api/v1/${route.name}`;
         routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
+      }
+      const codexFeature = await createCodexFeature({
+        knowledge: pluginHostCapabilities.knowledge, paths: pluginHostCapabilities.paths,
+        events: pluginHostCapabilities.events, server: pluginHostCapabilities.server,
+        http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+        registerMcp: (name, tools, options) => pluginMcp.register(name.slice("fleet-".length), tools, options),
+      });
+      pluginCleanupCallbacks.add(() => codexFeature.dispose());
+      const quotaFeature = createQuotaFeature({
+        server: pluginHostCapabilities.server, storage: pluginHostCapabilities.storage,
+        http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+      });
+      const scuttlebuttAgent = createPluginAgentHost({
+        baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
+        consoleUse: consoleUse.forPlugin("scuttlebutt"), computerUseMcp,
+        browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "scuttlebutt" }) },
+        resolveExecutablePath: async () => {
+          const executable = await resolveClaudeExecutable?.();
+          if (!executable) throw new Error("agent_cli_unavailable");
+          return executable;
+        },
+        compactCeiling: () => readGatewayCompactCeiling?.(),
+      });
+      consoleAgentOwners.add("scuttlebutt");
+      pluginCleanupCallbacks.add(async () => { consoleAgentOwners.delete("scuttlebutt"); await scuttlebuttAgent.dispose(); });
+      const scuttlebuttFeature = await createScuttlebuttFeature({
+        paths: pluginHostCapabilities.paths, knowledge: pluginHostCapabilities.knowledge,
+        experiments: pluginHostCapabilities.experiments, models: pluginHostCapabilities.models,
+        http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+        agent: scuttlebuttAgent,
+      });
+      pluginCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
+      for (const feature of [codexFeature, quotaFeature, scuttlebuttFeature]) {
+        for (const route of feature.routes) {
+          routeRegistry.register(route.path, route.handler);
+          executionApiCatalog.push(...route.catalog);
+        }
       }
       await pluginHost.boot();
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면

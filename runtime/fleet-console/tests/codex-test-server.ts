@@ -67,7 +67,7 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
       theaterId = theaters.theaters?.find((theater) => theater.label === wanted)?.id ?? "";
     }
     // 화면이 하듯 그 맥락의 위키를 연다 — 사령관 workspace가 열리고 MRU가 된다.
-    await fetch(`${origin}/api/v1/plugins/codex/workspace`, {
+    await fetch(`${origin}/api/v1/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify({ theaterId }),
@@ -76,7 +76,7 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
   };
   const knowledgeRoot = async (theaterId: string): Promise<string> => {
     const origin = `http://127.0.0.1:${port}`;
-    const response = await fetch(`${origin}/api/v1/plugins/codex/workspace`, {
+    const response = await fetch(`${origin}/api/v1/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify({ theaterId }),

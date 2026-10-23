@@ -21,7 +21,7 @@ import type { AgentCliDetector } from "../features/execution/host/agent/agent-cl
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
 import { isClaudePathTrusted, trustClaudeTheater } from "../features/workspace/host/theaters/claude-trust.js";
-import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
+import { WorkspaceRegistry } from "../features/codex/host/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../features/execution/host/terminal/ws.js";
 
