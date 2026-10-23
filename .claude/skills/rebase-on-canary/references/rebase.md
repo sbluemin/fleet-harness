@@ -39,7 +39,7 @@ git -C <worktree_path> rev-list --left-right --count <base>...<upstream>
 git -C <worktree_path> merge-base --is-ancestor <upstream> HEAD
 ```
 
-Exit 0 means the topic already contains the remote base: do not run `rebase`, keep HEAD and its merge commits as they are, and go to the closing status/ancestry/count block at the end of Verification. Plain rebase does not stop there when the topic holds a merge commit; it drops the merge and replays the topic commits, so conflicts the merge resolved come back. Exit 1 continues below; any other code is an error to report.
+Exit 0 means the topic already contains the remote base: do not run `rebase`, keep HEAD and its merge commits as they are, and skip to the closing status/ancestry/count block at the end of Verification (entrypoint step 5); nothing was rewritten, so the checks before it do not apply. Plain rebase does not stop there when the topic holds a merge commit; it drops the merge and replays the topic commits, so conflicts the merge resolved come back. Exit 1 continues below; any other code is an error to report.
 
 ```bash
 git -C <worktree_path> merge-base <upstream> HEAD
