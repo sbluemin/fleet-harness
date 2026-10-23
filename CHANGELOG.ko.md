@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.1] - 2026-10-23
+
+### fleet-console
+
+#### Removed
+- Console은 더 이상 외부 플러그인을 불러오지 않습니다. 목표, 위키, File Explorer, Repository, Quota, Quaker Aides는 Console에 내장되어 기존 데이터와 설정 그대로 계속 동작합니다.
+
 ## [1.254.0] - 2026-10-23
 
 ### fleet-console

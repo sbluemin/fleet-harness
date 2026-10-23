@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.1] - 2026-10-23
+
+### fleet-console
+
+#### Removed
+- Console no longer loads third-party plugins. Objectives, Wiki, File Explorer, Repository, Quota, and Quaker Aides are now built into Console and keep working with your existing data and settings.
+
 ## [1.254.0] - 2026-10-23
 
 ### fleet-console
