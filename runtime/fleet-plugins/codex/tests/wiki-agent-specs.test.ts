@@ -39,7 +39,7 @@ describe("Wiki agent specs", () => {
     const specs = getWikiToolSpecs({ resolve: () => { calls += 1; return paths; } });
     expect(specs.map((spec) => spec.id)).toEqual(FLEET_WIKI_AGENT_TOOL_IDS);
     expect(specs.map((spec) => spec.parameters)).toEqual(expectedParameters);
-    const context = { cwd: "/theater", signal: undefined } as never;
+    const context = { cwd: "/ignored", commodoreId: "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00", signal: undefined } as never;
     const invoke = async (id: string, args: Record<string, unknown>) => {
       const before = calls;
       const result = await specs.find((spec) => spec.id === id)!.execute(args, context);

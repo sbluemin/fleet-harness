@@ -1,4 +1,4 @@
-import { resolveToolMemoryPaths } from "../paths.js";
+
 import { WIKI_EDIT_DESCRIPTION, WIKI_EDIT_GUIDELINES, WIKI_EDIT_PROMPT_SNIPPET, buildWikiEditSchema } from "../prompts.js";
 import { assertSafeEntryId, parseWikiEntry, wrapWikiEntryBoundary } from "../store.js";
 import { listHistory, readHistory } from "../history.js";
@@ -51,7 +51,7 @@ export function buildEditToolConfig() {
     name: "wiki_edit", label: "Wiki Edit", description: WIKI_EDIT_DESCRIPTION,
     promptSnippet: WIKI_EDIT_PROMPT_SNIPPET, promptGuidelines: [...WIKI_EDIT_GUIDELINES], parameters: buildWikiEditSchema(),
     async execute(_id: string, params: Record<string, unknown>, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: WikiToolExecutionContext) {
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const input = parseEntryEditParams(params);
       const action = params.action ?? "edit";
       const options = { actor: input.proposer, tool: "wiki_edit", base_hash: input.base_hash, base_version: input.base_version };

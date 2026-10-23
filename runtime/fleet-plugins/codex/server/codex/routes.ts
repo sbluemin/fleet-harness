@@ -12,7 +12,6 @@ import { withSecurityHeaders } from "./contracts.js";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RouteContext {
-  cwd: string;
   knowledgeRoot: string;
   paths: MemoryPaths;
   port: number;

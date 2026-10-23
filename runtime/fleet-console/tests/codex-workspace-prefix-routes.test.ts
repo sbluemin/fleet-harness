@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { startCodexTestServer } from "./codex-test-server.js";
+import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 
 let server: CodexTestServer | null = null;
@@ -23,8 +23,10 @@ describe("workspace-prefixed routes", () => {
     rootDir = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-prefix-root-"));
     workspaceA = path.join(rootDir, "workspace-a");
     workspaceB = path.join(rootDir, "workspace-b");
-    await createWorkspace(workspaceA, "shared", "Workspace A", "raw A");
-    await createWorkspace(workspaceB, "shared", "Workspace B", "raw B");
+    await mkdir(workspaceA, { recursive: true });
+    await mkdir(workspaceB, { recursive: true });
+    await createWorkspace(legacyKnowledgeRoot(workspaceA, rootDir), "shared", "Workspace A", "raw A");
+    await createWorkspace(legacyKnowledgeRoot(workspaceB, rootDir), "shared", "Workspace B", "raw B");
     const lockPath = path.join(rootDir, "daemon.lock");
     server = await startCodexTestServer({ cwd: workspaceA, lockPath, port: 0, host: "127.0.0.1" });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
@@ -39,6 +41,7 @@ describe("workspace-prefixed routes", () => {
     if (rootDir) await rm(rootDir, { recursive: true, force: true });
   });
 
+  // 옛 `/w/<맥락 id>/` 주소는 그 맥락 사령관의 `/c/<uuid>/`로 넘어가고, 사령관마다 자기 위키만 본다.
   it("serves selected workspace entry data through /w/:ws/api routes", async () => {
     const entryA = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsA}/api/entry/shared`);
     const entryB = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsB}/api/entry/shared`);
@@ -63,9 +66,9 @@ async function expectWorkspaceBody(route: string, expectedMarker: string, forbid
   expect(body).not.toContain(forbiddenMarker);
 }
 
-async function createWorkspace(cwd: string, id: string, title: string, raw: string): Promise<void> {
-  const wikiDir = path.join(cwd, ".fleet", "knowledge", "wiki");
-  const rawDir = path.join(cwd, ".fleet", "knowledge", "raw");
+async function createWorkspace(knowledge: string, id: string, title: string, raw: string): Promise<void> {
+  const wikiDir = path.join(knowledge, "wiki");
+  const rawDir = path.join(knowledge, "raw");
   const marker = title === "Workspace A" ? MARKER_A : MARKER_B;
   await mkdir(wikiDir, { recursive: true });
   await mkdir(rawDir, { recursive: true });
@@ -90,7 +93,7 @@ async function createWorkspace(cwd: string, id: string, title: string, raw: stri
   );
   await writeFile(path.join(wikiDir, "index.md"), `# Fleet Wiki Index\n\n- ${marker}\n`, "utf8");
   await writeFile(
-    path.join(cwd, ".fleet", "knowledge", "log.md"),
+    path.join(knowledge, "log.md"),
     `## 2026-05-19T00:00:00.000Z — drydock run\n- marker: \`${marker}\`\n\n`,
     "utf8",
   );

@@ -1,30 +1,59 @@
 import * as fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+
+import type { FleetPluginKnowledgeHost } from "@fleet-console/sdk/plugin";
 
 import { createMemoryPaths } from "./paths.js";
-import { markLegacyWikiCopy } from "./migration-label.js";
 import type { MemoryPaths } from "./types.js";
 
-export interface WikiWorkspace { readonly cwd: string; readonly path: string; }
+/** Wiki가 호스트에서 받는 것 — 사령관 id로 정해지는 root와, 이주 한 번에만 쓰는 옛 원본 목록. */
+export type WikiKnowledgeHost = Pick<FleetPluginKnowledgeHost, "root" | "ids" | "legacyKnowledgeSources">;
 export interface WikiWorkspaceResolverDependencies {
-  ensureWorkspace(cwd: string): WikiWorkspace;
-  withMigrationLock<T>(workspace: WikiWorkspace, operation: () => T): T;
+  /** 없는 호스트에서는 지식 기능을 거부한다 — 옛 위치로 되돌아가지 않는다. */
+  readonly knowledge: WikiKnowledgeHost | undefined;
+  readonly warn?: (message: string) => void;
 }
-export interface WikiWorkspaceResolver { resolve(cwd: string): MemoryPaths; }
+/** Wiki 위치의 정체성은 사령관 id 하나다. */
+export interface WikiWorkspaceResolver { resolve(commodoreId: string): MemoryPaths; }
+export interface WikiKnowledgeResolver extends WikiWorkspaceResolver {
+  /** 기동 시 모든 사령관의 옛 Wiki를 옮긴다. 한 사령관의 실패는 다른 사령관을 막지 않는다. */
+  migrateAll(): void;
+}
 interface WikiWorkspaceResolverTestHooks {
-  beforeMigrationCommit?(): void;
+  afterJournal?(): void;
+  afterCommit?(): void;
+  beforeRetire?(): void;
+  rename?(from: string, to: string): void;
   beforeCopyFile?(source: string, destination: string): void;
 }
-interface MigrationMarker { version: 1; outcome: "copied"; transactionId: string; completedAt: string; }
 
+/** 사령관이 없거나 지식 통로가 없는 호출. 저장 상태 오류와 구분한다. */
+export class WikiKnowledgeUnavailableError extends Error {
+  constructor() { super("Fleet Wiki knowledge owner unavailable"); this.name = "WikiKnowledgeUnavailableError"; }
+}
+class WikiMigrationError extends Error {
+  constructor(readonly code: string) { super(`Fleet Wiki migration blocked: ${code}`); this.name = "WikiMigrationError"; }
+}
+
+interface Journal {
+  readonly version: 1;
+  readonly transactionId: string;
+  readonly source: string;
+  readonly method: "rename" | "copy";
+  readonly phase: "prepared" | "committed" | "source-retiring";
+  readonly createdAt: string;
+}
+
+const JOURNAL_NAME = "knowledge.migration.json";
 const STAGING_PREFIX = "knowledge.migrating-";
-const MARKER_NAME = "knowledge.migrated.json";
-const MARKER_TEMP_REGEXP = /^knowledge\.migrated\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
+const RETIRED_PREFIX = "knowledge.retired-";
+const TRANSACTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const JOURNAL_TEMP = /^knowledge\.migration\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/i;
 const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
 
-/** 호스트가 주입하는 정규 workspace 경계. Wiki 저장 로직은 호스트 구현을 알지 못한다. */
-export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependencies): WikiWorkspaceResolver {
+/** 호스트가 주입하는 사령관 지식 경계. Wiki 저장 로직은 호스트 구현도, 옛 키의 뜻도 알지 못한다. */
+export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependencies): WikiKnowledgeResolver {
   return createResolver(deps);
 }
 
@@ -32,68 +61,166 @@ export function createWikiWorkspaceResolver(deps: WikiWorkspaceResolverDependenc
 export function createWikiWorkspaceResolverForTest(
   deps: WikiWorkspaceResolverDependencies,
   hooks: WikiWorkspaceResolverTestHooks,
-): WikiWorkspaceResolver {
+): WikiKnowledgeResolver {
   return createResolver(deps, hooks);
 }
 
-function createResolver(
-  deps: WikiWorkspaceResolverDependencies,
-  hooks?: WikiWorkspaceResolverTestHooks,
-): WikiWorkspaceResolver {
-  return { resolve: (cwd) => {
-    const workspace = deps.ensureWorkspace(cwd);
-    return deps.withMigrationLock(workspace, () => resolveLocked(workspace, hooks));
-  } };
-}
+/**
+ * 옛 원본(`legacyKnowledgeSources`)을 사령관 root로 한 번 옮긴다. 이 Console 슬롯의 writer는 하나이고 이 코드는 동기라
+ * 디렉터리 lock을 쓰지 않는다 — 중단 재개는 사령관 디렉터리의 저널이 맡고, 커밋점은 rename 한 번이다.
+ */
+function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWorkspaceResolverTestHooks): WikiKnowledgeResolver {
+  const settled = new Set<string>();
+  const warned = new Set<string>();
+  const renameDirectory = hooks?.rename ?? ((from: string, to: string) => fs.renameSync(from, to));
+  const warn = (owner: string, code: string): void => {
+    const key = `${owner}:${code}`;
+    if (warned.has(key)) return;
+    warned.add(key);
+    (deps.warn ?? ((message: string) => console.warn(message)))(`[codex] knowledge owner ${owner}: ${code}; data preserved`);
+  };
 
-function resolveLocked(workspace: WikiWorkspace, hooks?: WikiWorkspaceResolverTestHooks): MemoryPaths {
-  const destination = path.join(workspace.path, "knowledge");
-  const source = path.join(workspace.cwd, ".fleet", "knowledge");
-  const markerPath = path.join(workspace.path, MARKER_NAME);
-  const destinationState = inspectTree(destination, true);
-  // Destination content wins before source or control state is inspected.
-  if (destinationState === "content") {
-    // 기존 destination 우선 정책은 그대로다. 완료 기록이 있는 이주만 표식을 보충한다.
-    try { if (readMarker(markerPath)) markLegacyWikiCopy(workspace.cwd, destination); } catch { /* 부가 표식 실패는 열기를 막지 않는다. */ }
-    return createMemoryPaths(destination);
+  const resolve = (commodoreId: string): MemoryPaths => {
+    const knowledge = deps.knowledge;
+    const root = knowledge?.root(commodoreId) ?? null;
+    if (!knowledge || !root) throw new WikiKnowledgeUnavailableError();
+    if (!settled.has(commodoreId)) {
+      migrateOwner(knowledge, commodoreId, root);
+      settled.add(commodoreId);
+    }
+    return createMemoryPaths(root);
+  };
+
+  function migrateOwner(knowledge: WikiKnowledgeHost, owner: string, root: string): void {
+    const directory = path.dirname(root);
+    const directoryStat = fs.lstatSync(directory);
+    if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) throw new WikiMigrationError("unsafe_owner_directory");
+    removeJournalResidue(directory);
+    const journalPath = path.join(directory, JOURNAL_NAME);
+    let journal = readJournal(journalPath);
+    const rootState = inspectTree(root, true);
+    if (rootState === "unsafe") throw new WikiMigrationError("unsafe_destination");
+    const sources = knowledge.legacyKnowledgeSources(owner);
+
+    if (journal) {
+      // 저널이 가리키는 원본이 남아 있으면, 그 경로는 지금도 호스트가 이 사령관의 원본이라고 말하는 경로여야 한다 — 저널만으로
+      // 임의 경로를 지우지 않는다. 원본이 이미 옮겨져(rename 커밋, 또는 retired로 치움) 호스트 목록에서 사라졌다면, 저널이 소유한
+      // 결과인 내용 있는 root가 있을 때만 마무리한다. 그때 지울 수 있는 것은 원본의 형제 retired-<tx>와 이 디렉터리의 staging뿐이다.
+      const source = journal.source;
+      if (!sources.some((candidate) => candidate.path === source)) {
+        if (exists(source)) throw new WikiMigrationError("journal_source_unknown");
+        if (rootState !== "content") throw new WikiMigrationError("journal_source_missing");
+      }
+      if (journal.phase === "prepared" && rootState !== "content") journal = commit(journal, root, journalPath, true);
+      finalize(owner, journal, root, journalPath);
+      return;
+    }
+
+    if (rootState === "content") {
+      // 새 위치가 이긴다. 내용이 남은 옛 원본은 지우지 않고 알린다.
+      for (const source of sources) {
+        let state: TreeState;
+        try { state = inspectTree(source.path); } catch { state = "unsafe"; }
+        if (state === "content" || state === "unsafe") warn(owner, `legacy_source_preserved ${source.label}`);
+      }
+      return;
+    }
+
+    let chosen: string | null = null;
+    for (const source of sources) {
+      const state = inspectTree(source.path);
+      if (state === "unsafe") throw new WikiMigrationError("unsafe_source");
+      if (state !== "content") continue;
+      if (chosen === null) chosen = source.path;
+      else warn(owner, `legacy_source_preserved ${source.label}`);
+    }
+    if (chosen === null) return;
+    journal = { version: 1, transactionId: randomUUID(), source: chosen, method: "rename", phase: "prepared", createdAt: new Date().toISOString() };
+    writeAtomic(journalPath, journal);
+    syncDirectory(directory);
+    hooks?.afterJournal?.();
+    journal = commit(journal, root, journalPath, false);
+    finalize(owner, journal, root, journalPath);
   }
-  if (destinationState === "unsafe") throw new Error("Unsafe Fleet Wiki destination state");
 
-  const marker = readMarker(markerPath);
-  const stagingEntries = inspectReservedControlState(workspace.path);
-  if (marker) {
-    const staging = path.join(workspace.path, `${STAGING_PREFIX}${marker.transactionId}`);
-    const stagingState = inspectTree(staging);
-    if (stagingState === "content") {
-      removeEmptyDirectories(destination);
-      fs.renameSync(staging, destination);
-      syncDirectory(workspace.path);
-      markLegacyWikiCopy(workspace.cwd, destination);
-    } else if (stagingState !== "missing") throw new Error("Unsafe Fleet Wiki migration staging state");
-    return createMemoryPaths(destination);
+  function commit(journal: Journal, root: string, journalPath: string, resuming: boolean): Journal {
+    const directory = path.dirname(root);
+    const sourceState = inspectTree(journal.source);
+    if (sourceState === "unsafe") throw new WikiMigrationError("unsafe_source");
+    if (sourceState !== "content") throw new WikiMigrationError(resuming ? "journal_source_missing" : "source_changed");
+    let current = journal;
+    if (current.method === "rename") {
+      removeEmptyDirectories(root);
+      try {
+        renameDirectory(current.source, root);
+        syncDirectory(directory);
+        return markCommitted(current, journalPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+        current = { ...current, method: "copy" };
+        writeAtomic(journalPath, current);
+      }
+    }
+    const staging = path.join(directory, `${STAGING_PREFIX}${current.transactionId}`);
+    if (exists(staging)) fs.rmSync(staging, { recursive: true, force: true });
+    copyTree(current.source, staging, hooks);
+    if (!sameInventory(inventory(current.source), inventory(staging))) throw new WikiMigrationError("copy_verification_failed");
+    syncDirectory(staging);
+    const recheck = inspectTree(root, true);
+    if (recheck === "content") throw new WikiMigrationError("destination_race");
+    if (recheck === "unsafe") throw new WikiMigrationError("unsafe_destination");
+    removeEmptyDirectories(root);
+    renameDirectory(staging, root);
+    syncDirectory(directory);
+    return markCommitted(current, journalPath);
   }
 
-  const sourceState = inspectTree(source);
-  if (sourceState === "unsafe") throw new Error("Unsafe Fleet Wiki legacy source state");
-  removePriorStaging(workspace.path, stagingEntries);
-  if (sourceState !== "content") return createMemoryPaths(destination);
-  removeEmptyDirectories(destination);
-  const transactionId = randomUUID();
-  const staging = path.join(workspace.path, `${STAGING_PREFIX}${transactionId}`);
-  copyTree(source, staging, hooks);
-  if (inspectTree(staging) !== "content") throw new Error("Invalid Fleet Wiki migration staging result");
-  syncDirectory(staging);
-  hooks?.beforeMigrationCommit?.();
-  const rechecked = inspectTree(destination, true);
-  if (rechecked === "content") throw new Error("Fleet Wiki destination race detected");
-  if (rechecked === "unsafe") throw new Error("Unsafe Fleet Wiki destination race");
-  writeAtomic(markerPath, `${JSON.stringify({ version: 1, outcome: "copied", transactionId, completedAt: new Date().toISOString() } satisfies MigrationMarker)}\n`);
-  syncDirectory(workspace.path);
-  removeEmptyDirectories(destination);
-  fs.renameSync(staging, destination);
-  syncDirectory(workspace.path);
-  markLegacyWikiCopy(workspace.cwd, destination);
-  return createMemoryPaths(destination);
+  function markCommitted(journal: Journal, journalPath: string): Journal {
+    const committed: Journal = { ...journal, phase: "committed" };
+    writeAtomic(journalPath, committed);
+    hooks?.afterCommit?.();
+    return committed;
+  }
+
+  function finalize(owner: string, journal: Journal, root: string, journalPath: string): void {
+    const directory = path.dirname(root);
+    const retired = path.join(path.dirname(journal.source), `${RETIRED_PREFIX}${journal.transactionId}`);
+    let current = journal;
+    // 복사로 옮긴 원본만 여기서 지운다 — 커밋된 사본과 바이트까지 같을 때만. rename은 원본이 이미 사라졌다.
+    // 여기 오는 저널은 커밋을 지났다(root가 채워졌다). 커밋 기록 전에 멈춘 복사(phase=prepared)도 같은 검증으로 원본을 치운다.
+    if (current.method === "copy" && current.phase !== "source-retiring" && exists(current.source)) {
+      if (sameInventory(inventory(current.source), inventory(root))) {
+        current = { ...current, phase: "source-retiring" };
+        writeAtomic(journalPath, current);
+        hooks?.beforeRetire?.();
+      } else warn(owner, "source_retained_mismatch");
+    }
+    if (current.phase === "source-retiring") {
+      // 반쯤 지운 원본을 다시 검증하지 않도록 먼저 옆 자리로 원자적으로 치운다.
+      if (exists(current.source) && !exists(retired)) renameDirectory(current.source, retired);
+      if (exists(retired)) {
+        const retiredStat = fs.lstatSync(retired);
+        if (!retiredStat.isDirectory() || retiredStat.isSymbolicLink()) throw new WikiMigrationError("unsafe_retired_source");
+        fs.rmSync(retired, { recursive: true, force: true });
+      }
+    }
+    const staging = path.join(directory, `${STAGING_PREFIX}${current.transactionId}`);
+    if (exists(staging)) fs.rmSync(staging, { recursive: true, force: true });
+    fs.unlinkSync(journalPath);
+    syncDirectory(directory);
+  }
+
+  return {
+    resolve,
+    migrateAll: () => {
+      const knowledge = deps.knowledge;
+      if (!knowledge) return;
+      for (const owner of knowledge.ids()) {
+        try { resolve(owner); }
+        catch (error) { warn(owner, error instanceof WikiMigrationError ? error.code : "migration_failed"); }
+      }
+    },
+  };
 }
 
 type TreeState = "missing" | "empty" | "content" | "unsafe";
@@ -103,7 +230,7 @@ function inspectTree(target: string, regularRootIsContent = false, treeRoot = ta
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
     throw error;
   }
-  const nodeKind = classifyWikiWorkspaceNodeForTest(stat);
+  const nodeKind = classifyNode(stat);
   if (nodeKind === "unsafe") return "unsafe";
   if (nodeKind === "file") return regularRootIsContent ? "content" : "unsafe";
   let content = false;
@@ -125,20 +252,49 @@ function inspectTree(target: string, regularRootIsContent = false, treeRoot = ta
   return content ? "content" : "empty";
 }
 
-function readMarker(markerPath: string): MigrationMarker | null {
+function readJournal(journalPath: string): Journal | null {
   let stat: fs.Stats;
-  try { stat = fs.lstatSync(markerPath); } catch (error) {
+  try { stat = fs.lstatSync(journalPath); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Unsafe Fleet Wiki migration marker");
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new WikiMigrationError("unsafe_journal");
   let value: unknown;
-  try { value = JSON.parse(fs.readFileSync(markerPath, "utf8")); } catch { throw new Error("Invalid Fleet Wiki migration marker"); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Fleet Wiki migration marker");
-  const record = value as Record<string, unknown>;
-  if (record.version !== 1 || record.outcome !== "copied" || typeof record.transactionId !== "string"
-    || !/^[0-9a-f-]{36}$/i.test(record.transactionId) || typeof record.completedAt !== "string") throw new Error("Invalid Fleet Wiki migration marker");
-  return record as unknown as MigrationMarker;
+  try { value = JSON.parse(fs.readFileSync(journalPath, "utf8")); } catch { throw new WikiMigrationError("invalid_journal"); }
+  const record = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
+  if (record.version !== 1 || typeof record.transactionId !== "string" || !TRANSACTION_ID.test(record.transactionId)
+    || typeof record.source !== "string" || !path.isAbsolute(record.source) || path.basename(record.source) !== "knowledge"
+    || (record.method !== "rename" && record.method !== "copy")
+    || (record.phase !== "prepared" && record.phase !== "committed" && record.phase !== "source-retiring")
+    || typeof record.createdAt !== "string") throw new WikiMigrationError("invalid_journal");
+  return record as unknown as Journal;
+}
+
+function removeJournalResidue(directory: string): void {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (JOURNAL_TEMP.test(entry.name) && entry.isFile()) fs.unlinkSync(path.join(directory, entry.name));
+  }
+}
+
+/** 상대 경로마다 종류와 내용을 적는다. 파일은 바이트 해시, 링크는 링크 텍스트다. */
+function inventory(root: string): Map<string, string> {
+  const items = new Map<string, string>();
+  const visit = (directory: string) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      const relative = path.relative(root, entryPath);
+      if (entry.isSymbolicLink()) items.set(relative, `link:${fs.readlinkSync(entryPath)}`);
+      else if (entry.isDirectory()) { items.set(relative, "dir"); visit(entryPath); }
+      else if (entry.isFile()) items.set(relative, `file:${createHash("sha256").update(fs.readFileSync(entryPath)).digest("hex")}`);
+      else items.set(relative, "unsafe");
+    }
+  };
+  visit(root);
+  return items;
+}
+
+function sameInventory(left: ReadonlyMap<string, string>, right: ReadonlyMap<string, string>): boolean {
+  return left.size === right.size && [...left].every(([name, value]) => value !== "unsafe" && right.get(name) === value);
 }
 
 function copyTree(source: string, destination: string, hooks?: WikiWorkspaceResolverTestHooks, sourceRoot = source): void {
@@ -148,12 +304,12 @@ function copyTree(source: string, destination: string, hooks?: WikiWorkspaceReso
     const stat = fs.lstatSync(from);
     if (stat.isSymbolicLink()) {
       const target = readSafeFileSymlink(sourceRoot, from);
-      if (target === null) throw new Error("Unsafe Fleet Wiki legacy source state");
+      if (target === null) throw new WikiMigrationError("unsafe_source");
       fs.symlinkSync(target, to, "file");
       continue;
     }
-    const nodeKind = classifyWikiWorkspaceNodeForTest(stat);
-    if (nodeKind === "unsafe") throw new Error("Unsafe Fleet Wiki legacy source state");
+    const nodeKind = classifyNode(stat);
+    if (nodeKind === "unsafe") throw new WikiMigrationError("unsafe_source");
     if (nodeKind === "directory") copyTree(from, to, hooks, sourceRoot);
     else { hooks?.beforeCopyFile?.(from, to); fs.copyFileSync(from, to); syncFile(to); }
   }
@@ -186,8 +342,7 @@ function isWithinRoot(root: string, target: string): boolean {
   return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
-/** Test-only direct-module seam for the lstat branch; absent from the package-root barrel. */
-export function classifyWikiWorkspaceNodeForTest(stat: fs.Stats): "file" | "directory" | "unsafe" {
+function classifyNode(stat: fs.Stats): "file" | "directory" | "unsafe" {
   if (stat.isSymbolicLink()) return "unsafe";
   if (stat.isFile()) return "file";
   if (stat.isDirectory()) return "directory";
@@ -197,37 +352,18 @@ export function classifyWikiWorkspaceNodeForTest(stat: fs.Stats): "file" | "dire
 function removeEmptyDirectories(target: string): void {
   const state = inspectTree(target, true);
   if (state === "missing") return;
-  if (state === "unsafe") throw new Error("Unsafe Fleet Wiki destination state");
+  if (state === "unsafe") throw new WikiMigrationError("unsafe_destination");
   if (state === "empty") fs.rmSync(target, { recursive: true, force: false });
 }
 
-function removePriorStaging(workspacePath: string, stagingEntries: readonly string[]): void {
-  for (const name of stagingEntries) fs.rmSync(path.join(workspacePath, name), { recursive: true, force: false });
+function exists(target: string): boolean {
+  try { fs.lstatSync(target); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
 }
 
-function inspectReservedControlState(workspacePath: string): string[] {
-  const stagingEntries: string[] = [];
-  for (const entry of fs.readdirSync(workspacePath, { withFileTypes: true })) {
-    if (entry.name.startsWith(`${MARKER_NAME}.`)) {
-      const residuePath = path.join(workspacePath, entry.name);
-      const residue = fs.lstatSync(residuePath);
-      if (MARKER_TEMP_REGEXP.test(entry.name) && residue.isFile() && !residue.isSymbolicLink()) {
-        fs.unlinkSync(residuePath);
-        continue;
-      }
-      throw new Error("Unsafe Fleet Wiki migration marker control state");
-    }
-    if (!entry.name.startsWith(STAGING_PREFIX)) continue;
-    if (!/^[0-9a-f-]{36}$/i.test(entry.name.slice(STAGING_PREFIX.length)) || entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("Unsafe Fleet Wiki migration staging state");
-    if (inspectTree(path.join(workspacePath, entry.name)) === "unsafe") throw new Error("Unsafe Fleet Wiki migration staging state");
-    stagingEntries.push(entry.name);
-  }
-  return stagingEntries;
-}
-
-function writeAtomic(target: string, contents: string): void {
+function writeAtomic(target: string, journal: Journal): void {
   const temporary = `${target}.${randomUUID()}.tmp`;
-  fs.writeFileSync(temporary, contents, { mode: 0o600 });
+  fs.writeFileSync(temporary, `${JSON.stringify(journal)}\n`, { mode: 0o600 });
   syncFile(temporary);
   fs.renameSync(temporary, target);
 }
@@ -242,9 +378,6 @@ function fsyncBestEffort(fd: number): void {
 
 function syncFile(target: string): void { const fd = fs.openSync(target, "r"); try { fsyncBestEffort(fd); } finally { fs.closeSync(fd); } }
 function syncDirectory(target: string): void {
-  if (!shouldSyncDirectoryForTest(process.platform)) return;
+  if (process.platform === "win32") return;
   const fd = fs.openSync(target, "r"); try { fsyncBestEffort(fd); } finally { fs.closeSync(fd); }
 }
-
-/** Test-only direct-module seam for the platform-specific directory fsync policy; absent from the package-root barrel. */
-export function shouldSyncDirectoryForTest(platform: NodeJS.Platform): boolean { return platform !== "win32"; }

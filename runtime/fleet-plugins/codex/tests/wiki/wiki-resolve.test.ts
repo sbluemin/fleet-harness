@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { briefingQuery } from "../../server/wiki/briefing.js";
 import { writeClaims } from "../../server/wiki/claims.js";
-import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { createMemoryPaths } from "../../server/wiki/paths.js";
 import { writeRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildResolveToolConfig } from "../../server/wiki/tools/resolve.js";
 
@@ -18,7 +18,7 @@ afterEach(async () => {
 describe("wiki resolve", () => {
   it("returns compact_json with trust boundary and fallback facts", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     await writeWikiEntry(makeEntry("alpha", {
       title: "Alpha",
       tags: ["fleet"],
@@ -38,7 +38,7 @@ describe("wiki resolve", () => {
 
   it("returns boundary-wrapped markdown_pack output", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     await writeWikiEntry(makeEntry("alpha", {
       title: "Alpha",
       body: "Markdown pack topic for alpha. Stable body text remains available for markdown output.",
@@ -67,7 +67,7 @@ async function runResolve(root: string, params: Record<string, unknown>) {
 
 async function runResolveText(root: string, params: Record<string, unknown>) {
   const tool = buildResolveToolConfig();
-  const result = await tool.execute("test", params, undefined, undefined, { cwd: root });
+  const result = await tool.execute("test", params, undefined, undefined, { paths: createMemoryPaths(path.join(root, ".fleet", "knowledge")) });
   return result.content[0]!.text;
 }
 

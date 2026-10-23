@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { createMemoryPaths } from "../../server/wiki/paths.js";
 import { pathExists, readWikiEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildCompileSourceToolConfig } from "../../server/wiki/tools/compile-source.js";
 import type { WikiEntry } from "../../server/wiki/types.js";
@@ -23,7 +23,7 @@ describe("wiki compile source", () => {
       source: "Alpha source context with [[wiki:alpha]] and stable product notes.",
       source_title: "Alpha Source",
       mode: "preview",
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths: createMemoryPaths(path.join(root, ".fleet", "knowledge")) } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       ok: boolean;
       entries: Array<{ entry_id: string; target: string; version?: number }>;
@@ -41,7 +41,7 @@ describe("wiki compile source", () => {
 
   it("writes a source page and deterministic related entry updates", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const tool = buildCompileSourceToolConfig();
 
     await writeWikiEntry({
@@ -61,7 +61,7 @@ describe("wiki compile source", () => {
       source_title: "Alpha Source",
       mode: "write",
       max_pages_touched: 3,
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths } as any);
     const payload = JSON.parse(result.content[0]!.text) as {
       ok: boolean;
       entries: Array<{ entry_id: string; target: string; version?: number }>;

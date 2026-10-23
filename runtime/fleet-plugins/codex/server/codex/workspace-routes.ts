@@ -1,13 +1,15 @@
 import type http from "node:http";
 
-import type { TheaterRef } from "./theater-paths.js";
+import type { FleetPluginKnowledgeOwnerResult } from "@fleet-console/sdk/plugin";
+
 import type { CodexWorkspaceResolution } from "./gateway.js";
 
 export interface CodexWorkspaceRouteDeps {
-  readonly getTheater: (theaterId: string) => TheaterRef | null;
+  /** 화면이 고른 맥락의 사령관 — 대응은 호스트가 정한다(없으면 발급). Codex는 맥락 id를 해석하지 않는다. */
+  readonly resolveContext: (contextId: string) => FleetPluginKnowledgeOwnerResult;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly resolveWorkspace: (theaterId: string, theaterRoot: string) => Promise<CodexWorkspaceResolution>;
+  readonly resolveWorkspace: (commodoreId: string) => CodexWorkspaceResolution;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
 }
 
@@ -38,13 +40,17 @@ export function createCodexWorkspaceRouter(
       deps.writeJson(res, 400, { error: "invalid_theater" });
       return true;
     }
-    const theater = deps.getTheater(theaterId);
-    if (!theater) {
+    const owner = deps.resolveContext(theaterId);
+    if (!owner.ok && owner.reason === "unknown_context") {
       deps.writeJson(res, 400, { error: "invalid_theater" });
       return true;
     }
+    if (!owner.ok) {
+      deps.writeJson(res, 200, { hasWiki: false, id: null });
+      return true;
+    }
     try {
-      deps.writeJson(res, 200, await deps.resolveWorkspace(theater.id, theater.realpath));
+      deps.writeJson(res, 200, deps.resolveWorkspace(owner.commodoreId));
     } catch {
       deps.writeJson(res, 500, { error: "internal_error" });
     }

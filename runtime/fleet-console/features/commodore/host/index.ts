@@ -11,6 +11,7 @@ import { createCommodoreSupervisor } from "./supervisor.js";
 import { createCommodoreEntities } from "./entities.js";
 import { migrateCommodoreData } from "./migrate.js";
 import { CommodoreStoreError } from "./errors.js";
+import { hasLegacyKnowledge, legacyKnowledgeSources } from "./knowledge-sources.js";
 import { COMMODORE_CHANNEL } from "./types.js";
 
 export interface CommodoreFeatureDeps {
@@ -22,7 +23,8 @@ export interface CommodoreFeatureDeps {
   readonly http: FleetPluginHostCapabilities["http"];
   readonly security: FleetPluginHostCapabilities["security"];
   readonly agent: ConsoleResidentAgentDeps;
-  readonly knowledgeTools: (theaterId: string) => readonly PluginMcpServerTools[];
+  /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
+  readonly knowledgeTools: (commodoreId: string) => readonly PluginMcpServerTools[];
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -50,6 +52,32 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     }
   };
   ensureRegistered();
+  /**
+   * 지식 쪽 발급. 사령관 이주가 보류된 경로에도 새 UUID를 낸다 — 위키를 열기 위해 옛 사령관 기록의 자동 이주 길을 포기하는 것은
+   * 사람이 고른 정책이다(다음 기동의 사령관 이주는 그 기록을 theater_conflict로 보존한다).
+   */
+  // `entities.create`는 이미 연결된 경로면 그 id를 돌려준다(보류 검사만 거치지 않는다).
+  const issueForKnowledge = (root: string): string => entities.create(root);
+  // 기동 이주는 사령관마다 돈다. 옮길 옛 위키가 있는데 사령관이 없는 경로에는 여기서 먼저 발급해 그 위키도 이번 기동에 옮긴다.
+  for (const theaterId of deps.paths.listTheaterIds?.() ?? []) {
+    const root = deps.paths.resolveTheaterPath(theaterId);
+    if (!root || entities.resolve(theaterId) || !hasLegacyKnowledge(deps.paths.consoleDataDir, root)) continue;
+    try { issueForKnowledge(root); console.warn(`[commodore] registered theater ${theaterId}: entity issued for knowledge; pending records preserved`); }
+    catch { console.warn(`[commodore] registered theater ${theaterId}: knowledge entity unavailable`); }
+  }
+  const knowledge = {
+    directory: (commodoreId: string) => entities.dirOf(commodoreId),
+    root: (commodoreId: string) => { const dir = entities.dirOf(commodoreId); return dir ? path.join(dir, "knowledge") : null; },
+    ids: () => entities.ids().filter((id) => entities.dirOf(id) !== null),
+    /** 화면·세션 맥락(등록 Theater)의 사령관. 없으면 발급한다. 모르는 맥락은 거부한다. */
+    forContext(theaterId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
+      const root = deps.paths.resolveTheaterPath(theaterId);
+      if (!root) return { ok: false, reason: "unknown_context" };
+      try { return { ok: true, commodoreId: entities.resolve(theaterId) ?? issueForKnowledge(root) }; }
+      catch { return { ok: false, reason: "unavailable" }; }
+    },
+    legacySources: (commodoreId: string) => legacyKnowledgeSources(deps.paths.consoleDataDir, entities.theatersOf(commodoreId).map((link) => link.path)),
+  };
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => deps.events.publish(COMMODORE_CHANNEL, event);
@@ -93,6 +121,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   });
   return {
     host,
+    knowledge,
     routes,
     active: (theaterId: string) => { const id = entities.resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
     sync: () => { ensureRegistered(); restored = true; supervisor.sync("restart"); },

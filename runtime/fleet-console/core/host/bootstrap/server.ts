@@ -978,6 +978,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const operationId = label.startsWith("chat:") ? label.slice(5) : label;
       return operations.get(operationId) ? { kind: "operation", operationId } : null;
     },
+    // 작업 세션의 지식은 그 세션이 속한 맥락의 사령관이다(없으면 발급). 경로·모델 인자로는 고르지 않는다.
+    resolveCommodore: (caller) => {
+      if (caller.kind !== "operation") return null;
+      const operation = operations.get(caller.operationId);
+      const owner = operation && commodore ? commodore.knowledge.forContext(operation.theaterId) : null;
+      return owner?.ok ? owner.commodoreId : null;
+    },
   });
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     commodore: {
@@ -990,10 +997,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     admiralMcp: {
       connect: () => pluginMcp.connect(),
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
-      // 루트는 등록된 Theater 의 실경로다 — 부르는 플러그인이 경로를 건네지 않으므로 다른 Theater·임의 경로로 묶을 수 없다.
-      bindTheater: (theaterId) => {
-        const root = theaters.get(theaterId)?.realpath;
-        return root ? pluginMcp.bindTheater(root) : [];
+      // 사령관 id와 그 디렉터리는 호스트가 정한다 — 부르는 쪽이 경로를 건네지 않으므로 다른 사령관·임의 경로로 묶을 수 없다.
+      bindCommodore: (commodoreId) => {
+        const directory = commodore?.knowledge.directory(commodoreId);
+        return directory ? pluginMcp.bindCommodore(commodoreId, directory) : [];
       },
     },
     operations: {
@@ -1140,6 +1147,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return { path: workspace.path, id: workspaceHash(workspace.cwd) };
       },
       withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
+    },
+    knowledge: {
+      root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
+      ids: () => commodore?.knowledge.ids() ?? [],
+      commodoreForContext: (contextId) => commodore ? commodore.knowledge.forContext(contextId) : { ok: false, reason: "unavailable" },
+      legacyKnowledgeSources: (commodoreId) => commodore?.knowledge.legacySources(commodoreId) ?? [],
     },
     theaterFlags: {
       register: (flag: string, resolve: (theaterId: string) => boolean) => {
@@ -2812,7 +2825,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         experiments: pluginHostCapabilities.experiments, models: pluginHostCapabilities.models,
         attachments: attachmentsForPlugin?.("commodore"),
         http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
-        knowledgeTools: (theaterId) => pluginHostCapabilities.admiralMcp.bindTheater?.(theaterId) ?? [],
+        knowledgeTools: (commodoreId) => pluginHostCapabilities.admiralMcp.bindCommodore?.(commodoreId) ?? [],
         agent: {
           baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
           consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,

@@ -15,7 +15,7 @@ import type { PaneContext } from "@fleet-console/sdk/pane";
 import type { FileReadRequest, FolderEntry, FolderListResult } from "../server/types.js";
 import { ReadWindowControls } from "./read-window.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
-import { loadDocument, nameOfPath, refreshDocumentDiskStatus, refreshLegacyWikiMetadata } from "./doc-loader.js";
+import { loadDocument, nameOfPath, refreshDocumentDiskStatus } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
 import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { makeFilesClient } from "./files-client.js";
@@ -169,19 +169,14 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (!theaterId || !activePath || !ctx.visible) return;
     const controller = new AbortController();
     const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal).catch(() => undefined); };
-    const legacyWiki = activePath.startsWith(".fleet/knowledge/wiki/");
-    const source = new EventSource(`/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}${legacyWiki ? "&metadataDirectory=.fleet%2Fknowledge" : ""}`);
+    const source = new EventSource(`/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
     source.addEventListener("change", (event) => {
       try {
         const directory: unknown = JSON.parse((event as MessageEvent).data as string);
         if (directory === parentDirOf(activePath)) refresh();
-        if (legacyWiki && directory === ".fleet/knowledge") void refreshLegacyWikiMetadata(theaterId, activePath, controller.signal).catch(() => undefined);
       } catch { /* 잘못된 신호는 버리고 다음 정상 디스크 이벤트를 기다린다. */ }
     });
-    source.addEventListener("open", () => {
-      refresh();
-      if (legacyWiki) void refreshLegacyWikiMetadata(theaterId, activePath, controller.signal).catch(() => undefined);
-    });
+    source.addEventListener("open", () => { refresh(); });
     return () => { controller.abort(); source.close(); };
   }, [activePath, ctx.visible, theaterId]);
 
@@ -609,17 +604,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         )}
       </div>
       <div className="fexp-viewer-notices">
-        {viewState.kind === "code" && viewState.migratedWikiEntryId && theaterId && (
-          <div className="fexp-migrated-wiki" role="status">
-            <span>{t("fileExplorer.viewer.migratedWiki")}</span>
-            <button type="button" onClick={() => {
-              pinStoredDocument(theaterId, activePath ?? "");
-              void ctx.navigate.openWikiEntry({ theaterId, entryId: viewState.migratedWikiEntryId! })
-                .then((result) => { if (!result.ok) showFileNavigationError(result.reason); })
-                .catch(() => showFileNavigationError("not_found"));
-            }}>{t("fileExplorer.viewer.openCodex")}</button>
-          </div>
-        )}
         {discardedTabs && (
           <div className="fexp-tab-notice" role="status">
             <span>{t("fileExplorer.tabs.discarded", { count: discardedTabs.count })}</span>

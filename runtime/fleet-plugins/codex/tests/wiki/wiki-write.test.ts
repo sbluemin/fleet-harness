@@ -75,7 +75,7 @@ describe("direct wiki writes", () => {
     const { paths, locked } = await fixture();
     await locked(() => writeEntry(entry(), "wiki/alpha.md", paths, options));
     const log = await readFile(path.join(paths.root, "log.md"), "utf8");
-    await expect(buildIngestToolConfig().execute("", { id: "alpha", title: "alpha", tags: [], body: entry().body, source: "new evidence", mode: "update", base_hash: "stale" }, undefined, undefined, { cwd: paths.root, paths })).rejects.toThrow(/stale base_hash/);
+    await expect(buildIngestToolConfig().execute("", { id: "alpha", title: "alpha", tags: [], body: entry().body, source: "new evidence", mode: "update", base_hash: "stale" }, undefined, undefined, { paths })).rejects.toThrow(/stale base_hash/);
     expect(await readdir(paths.rawDir)).toEqual([]); expect(await listHistory(paths, "alpha")).toEqual([]);
     expect(await readFile(path.join(paths.root, "log.md"), "utf8")).toBe(log);
     expect((await readCurrentEntry(paths, "alpha"))?.entry.version).toBe(1);

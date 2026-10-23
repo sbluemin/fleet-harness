@@ -2024,8 +2024,7 @@
   .fexp-crumb-ok { left: 4px; }
 }
 
-.fexp-tab-notice,
-.fexp-migrated-wiki {
+.fexp-tab-notice {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2042,8 +2041,7 @@
   background: color-mix(in oklch, var(--warn) 8%, transparent);
 }
 
-.fexp-tab-notice button,
-.fexp-migrated-wiki button {
+.fexp-tab-notice button {
   padding: 2px 7px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);

@@ -1,6 +1,6 @@
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "../store.js";
 import { briefingQuery } from "../briefing.js";
-import { resolveToolMemoryPaths } from "../paths.js";
+
 import {
   WIKI_BRIEFING_DESCRIPTION,
   WIKI_BRIEFING_GUIDELINES,
@@ -24,7 +24,7 @@ export function buildBriefingToolConfig() {
       _onUpdate: unknown,
       ctx: WikiToolExecutionContext,
     ) {
-      const hits = await briefingQuery(resolveToolMemoryPaths(ctx), {
+      const hits = await briefingQuery(ctx.paths, {
         topic: typeof params.topic === "string" ? params.topic : undefined,
         tags: Array.isArray(params.tags) ? params.tags.map(String) : undefined,
         limit: typeof params.limit === "number" ? params.limit : undefined,
@@ -66,7 +66,7 @@ export function buildDryDockToolConfig() {
       _onUpdate: unknown,
       ctx: WikiToolExecutionContext,
     ) {
-      const report = await runDryDock(resolveToolMemoryPaths(ctx), { fix: params.fix === true });
+      const report = await runDryDock(ctx.paths, { fix: params.fix === true });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
         details: {},

@@ -147,7 +147,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
   useEffect(() => {
     if (!isOpen || !readRef.current || !tocRef.current || !reader) return;
     // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
-    // Theater id로 대신 부르면 /console/codex/w/ 라우터가 workspace_not_found로 거절한다.
+    // Theater id로 대신 부르면 /console/codex/c/ 라우터가 workspace_not_found로 거절한다.
     // 해석 전에는 아무것도 세우지 않고, 해석이 도착하면 이 effect가 다시 돈다.
     if (!workspaceId) return;
 

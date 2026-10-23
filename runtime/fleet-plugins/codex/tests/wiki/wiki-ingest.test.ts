@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { createMemoryPaths } from "../../server/wiki/paths.js";
 import { computeContentHash, readRawSourceEntry, readWikiEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildIngestToolConfig } from "../../server/wiki/tools/ingest.js";
 import type { WikiEntry } from "../../server/wiki/types.js";
@@ -17,7 +17,7 @@ afterEach(async () => {
 describe("wiki ingest provenance", () => {
   it("persists explicit template_id and enforces required template sections", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const tool = buildIngestToolConfig();
 
     const result = await tool.execute("tool-call", {
@@ -64,7 +64,7 @@ describe("wiki ingest provenance", () => {
       source: "prd source text",
       template_id: "prd",
       mode: "create",
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths } as any);
     const payload = JSON.parse(result.content[0]!.text) as { entry_id: string };
     const entry = (await readWikiEntry(payload.entry_id, paths))!;
 
@@ -73,7 +73,7 @@ describe("wiki ingest provenance", () => {
 
   it("adds latest rawSourceRef and appends a deduped rawSourceRefs entry", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const tool = buildIngestToolConfig();
     await writeWikiEntry({
       id: "alpha",
@@ -96,7 +96,7 @@ describe("wiki ingest provenance", () => {
       source_title: "New Source",
       mode: "update",
       base_version: 1,
-    }, undefined, undefined, { cwd: root } as any);
+    }, undefined, undefined, { paths } as any);
     const payload = JSON.parse(result.content[0]!.text) as { entry_id: string; raw_source_ref: string; version: number; history_ref: string };
     const entry = (await readWikiEntry(payload.entry_id, paths))!;
     const raw = await readRawSourceEntry(payload.raw_source_ref, paths);

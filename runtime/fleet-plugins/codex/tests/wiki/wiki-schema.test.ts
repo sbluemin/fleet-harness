@@ -3,7 +3,7 @@ import { chmod, lstat, mkdtemp, readFile, rm, stat, symlink, unlink, writeFile, 
 import os from "node:os";
 import path from "node:path";
 
-import { ensureMemoryRoot, resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { ensureMemoryRoot, createMemoryPaths } from "../../server/wiki/paths.js";
 import {
   DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS,
   DEFAULT_TEMPLATE_PRD,
@@ -32,7 +32,7 @@ afterEach(async () => {
 describe("workspace schema", () => {
   it("creates schema/AGENTS.md and schema/wiki-schema.md during ensureMemoryRoot", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
 
     await ensureMemoryRoot(paths);
 
@@ -44,7 +44,7 @@ describe("workspace schema", () => {
 
   it("does not follow or replace symlinked doctrine paths", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
     const linkTarget = path.join(paths.root, "existing-doctrine.md");
 
@@ -60,7 +60,7 @@ describe("workspace schema", () => {
 
   it("preserves user edits when ensureWorkspaceSchema runs again", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
 
     await ensureWorkspaceSchema(paths);
     const schemaPath = path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME);

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 
-import { getIndexMarkdownFile, resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { getIndexMarkdownFile, createMemoryPaths } from "../../server/wiki/paths.js";
 import {
   computeContentHash,
   loadIndex,
@@ -26,7 +26,7 @@ describe("wiki store", () => {
 
   it("rejects unsafe IDs before writing workspace-local files", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
 
     await expect(writeRawSourceEntry({
       id: "../escape",
@@ -39,7 +39,7 @@ describe("wiki store", () => {
 
   it("leaves no partial temp files after repeated writes", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     const entry = {
       id: "race",
       title: "Race",

@@ -205,6 +205,25 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     feature = createCommodoreFeature(deps);
     expect(fs.readdirSync(entities).sort()).toEqual(filesBefore);
     expect((await call("commodore/resolve", { theaterId: workspaceHash(a.root) })).commodoreId).toBe(resolved.commodoreId);
+
+    // 사령관 이주가 보류된 경로라도 옮길 옛 위키가 있으면 기동 때 사령관을 발급한다. 지식은 그 사령관 디렉터리에 놓이고,
+    // 이주 원본은 그 경로가 직접 소유한 workspace 하나다. 옛 사령관 기록은 지워지지 않지만 자동 이주 길은 닫힌다.
+    await feature.dispose();
+    const pendingRoot = theater("pending-with-wiki");
+    const pending = seed(workspaceDirectoryNames(pendingRoot)[0], pendingRoot, "Keep the pending directive");
+    fs.symlinkSync("state.json", path.join(pending.dir, "linked-state"));
+    write(path.join(pending.workspace, "knowledge", "wiki", "kept.md"), "kept wiki\n");
+    roots.set(workspaceHash(pendingRoot), pendingRoot);
+    expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
+    feature = createCommodoreFeature(deps);
+    const pendingOwner = (await call("commodore/resolve", { theaterId: workspaceHash(pendingRoot) })).commodoreId as string;
+    expect(pendingOwner).toEqual(expect.any(String));
+    expect(feature.knowledge.forContext(workspaceHash(pendingRoot))).toEqual({ ok: true, commodoreId: pendingOwner });
+    expect(feature.knowledge.forContext("unregistered")).toEqual({ ok: false, reason: "unknown_context" });
+    expect(feature.knowledge.root(pendingOwner)).toBe(path.join(entities, pendingOwner, "knowledge"));
+    expect(feature.knowledge.legacySources(pendingOwner)).toEqual([{ path: path.join(pending.workspace, "knowledge"), label: path.basename(pending.workspace) }]);
+    expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
+    expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
     expect(warn).toHaveBeenCalled();
   } finally {
     await feature?.dispose();

@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { createWikiWorkspaceResolver } from "./server/wiki/index.js";
@@ -14,14 +11,17 @@ import { createCodexWorkspaceRouter } from "./server/codex/workspace-routes.js";
 import { createCodexFileRouter } from "./server/codex/file-routes.js";
 
 const CODEX_PLUGIN_ID = "codex";
-const MIGRATION_LOCK = "knowledge.migration.lock";
-/** Theater 뿌리에 놓인 지식 디렉터리. 마이그레이션 전에도 위키가 있다는 사실이다. */
-const KNOWLEDGE_DIRNAME = path.join(".fleet", "knowledge");
 
 export default definePlugin({
   id: CODEX_PLUGIN_ID,
   name: "Codex",
   async register(ctx) {
+    // Wiki의 정체성은 사령관 id 하나다. 옛 위치의 위키는 라우트와 도구가 서기 전에 모두 사령관 지식으로 옮긴다 —
+    // 이 슬롯의 writer는 이 프로세스 하나이고 이주는 동기라, 이주 중인 root에 닿는 요청이 없다.
+    const knowledge = ctx.host.knowledge;
+    const wikiWorkspaceResolver = createWikiWorkspaceResolver({ knowledge });
+    wikiWorkspaceResolver.migrateAll();
+
     // 지식 루트 변화는 콘솔이 이미 여는 스트림에 실린다 — 자기 EventSource를 열면
     // 재접속·순서·생명주기가 콘솔과 갈라진다.
     ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(CODEX_CHANGED_EVENT));
@@ -33,35 +33,13 @@ export default definePlugin({
     });
     ctx.host.lifecycle.registerCleanup(() => watcher.disposeAll());
 
-    const wikiWorkspaceResolver = createWikiWorkspaceResolver({
-      ensureWorkspace: (cwd: string) => {
-        const workspace = ctx.host.paths.ensureWorkspaceDirectory(cwd);
-        return { id: workspace.id, path: workspace.path, cwd };
-      },
-      withMigrationLock: <T,>(workspace: { readonly path: string }, operation: () => T): T =>
-        ctx.host.paths.withDirectoryLock(path.join(workspace.path, MIGRATION_LOCK), operation),
-    });
-
-    // Wiki 도구가 닿는 곳은 호출의 cwd 가 가리키는 Theater 지식 루트뿐이다 — 그래서 Theater 범위로 등록해, 호스트가 사령관 세션에도
-    // 그 Theater 루트에 묶어 내줄 수 있게 한다(`bindTheater`). Operation 세션에는 지금처럼 `fleet-codex` 로 실린다.
-    ctx.host.admiralMcp.register(createCodexMcpTools(wikiWorkspaceResolver), { theaterScoped: true });
-
-    /**
-     * 진행 중인 등록의 꼬리. 이벤트 처리는 비동기라 요청이 그것을 앞지를 수 있으므로,
-     * 게이트웨이가 답하기 전에 이 꼬리를 한 번 기다린다.
-     */
-    let registrations: Promise<unknown> = Promise.resolve();
-    const track = (work: Promise<unknown>): void => {
-      registrations = registrations.then(() => work).catch(() => undefined);
-    };
+    // Wiki 도구가 닿는 곳은 호스트가 실어 준 사령관(`context.commodoreId`)의 지식뿐이다 — Operation 세션에는 그 세션 소속의
+    // 사령관이, 사령관 세션에는 그 사령관이 묶인다(`bindCommodore`).
+    ctx.host.admiralMcp.register(createCodexMcpTools(wikiWorkspaceResolver), { commodoreScoped: true });
 
     const gateway = createCodexGateway({
       host: "127.0.0.1",
       version: "1",
-      theaterPaths: {
-        canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),
-        hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),
-      },
       getPort: () => readPort(ctx),
       // 대조할 Origin은 요청을 받은 리스너의 것이다 — 콘솔의 루프백 주소로 고정하면
       // 원격 리스너로 들어온 정당한 쓰기가 자기 주소를 실었는데도 막힌다.
@@ -74,52 +52,27 @@ export default definePlugin({
         isWriteAdmitted: (request) => ctx.host.security.isWriteAdmitted(request),
       },
       wikiWorkspaceResolver,
-      dataDir: ctx.host.paths.consoleDataDir,
-      // Theater id와 워크스페이스 id는 같은 해시다 — 모르는 워크스페이스는 Theater로 되찾는다.
-      resolveWorkspaceRoot: (workspaceId) => ctx.host.paths.resolveTheaterPath(workspaceId),
-      whenRegistrationsSettle: () => registrations.then(() => undefined),
+      hasCommodore: (commodoreId) => knowledge?.root(commodoreId) != null,
+      // 옛 주소의 id는 그때의 화면 맥락 id다 — 그 맥락의 사령관은 호스트가 찾는다.
+      resolveLegacyWorkspace: (legacyId) => {
+        const owner = knowledge?.commodoreForContext(legacyId);
+        return owner?.ok ? owner.commodoreId : null;
+      },
       onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => watcher.watch(workspaceId, knowledgeRoot),
-      onWorkspaceReleased: (workspaceId) => watcher.unwatch(workspaceId),
     });
 
-    // Theater 생명주기는 코어가 이벤트로 알린다 — 예전에는 코어가 이 등록을 직접 불렀다.
-    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:registered", (payload) => {
-      track(registerTheaterWorkspace(ctx, gateway, payload));
-    }));
-    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:restored", (payload) => {
-      track(registerTheaterWorkspace(ctx, gateway, payload));
-    }));
-    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("theater:forgotten", (payload) => {
-      const theaterId = readTheaterId(payload);
-      if (theaterId) gateway.unregisterTheaterWorkspaces(theaterId);
-    }));
-
-    // 이 Theater가 위키를 가졌는가 — 코어가 추측하지 않고 소유자가 답한다.
-    ctx.host.lifecycle.registerCleanup(
-      ctx.host.theaterFlags.register("hasWiki", (theaterId) => {
-        // 이미 열려 있으면 그것으로 답하고, 아직이면 디스크에 지식 뿌리가 있는지 본다.
-        // "열려 있는가"로만 답하면 아직 아무도 펴 보지 않은 위키가 없는 것으로 읽힌다.
-        if (gateway.getWorkspace(theaterId) !== null) return true;
-        const root = ctx.host.paths.resolveTheaterPath(theaterId);
-        return root !== null && existsSync(path.join(root, KNOWLEDGE_DIRNAME));
-      }),
-    );
-
     const workspaceRouter = createCodexWorkspaceRouter({
-      getTheater: (theaterId) => {
-        const realpath = ctx.host.paths.resolveTheaterPath(theaterId);
-        return realpath ? { id: theaterId, realpath } : null;
-      },
+      resolveContext: (contextId) => knowledge ? knowledge.commodoreForContext(contextId) : { ok: false, reason: "unavailable" },
       isAuthorized: (req) => ctx.host.security.isWriteAdmitted(req),
       readJsonBody: (req) => ctx.host.http.readJsonBody(req),
-      resolveWorkspace: (theaterId, theaterRoot) => gateway.resolveWorkspaceForTheater(theaterId, theaterRoot),
+      resolveWorkspace: (commodoreId) => gateway.resolveWorkspace(commodoreId),
       writeJson: (res, status, body) => ctx.host.http.writeJson(res, status, body),
     });
     registerRouter(ctx, "/api/v1/plugins/codex/workspace", async ({ req, res, pathname }) =>
       workspaceRouter({ req, res, pathname }), {
       method: "POST",
       path: "",
-      summary: "Resolve the Codex workspace for a Theater.",
+      summary: "Resolve the Codex workspace (the commodore's knowledge) for the viewed context.",
       category: "Codex Plugin",
       gate: "origin-write",
       transport: "http",
@@ -147,24 +100,6 @@ export default definePlugin({
     registerRouter(ctx, "/console/codex", async ({ req, res }) => gateway.handle(req, res));
   },
 });
-
-async function registerTheaterWorkspace(
-  ctx: FleetPluginServerContext,
-  gateway: ReturnType<typeof createCodexGateway>,
-  payload: unknown,
-): Promise<void> {
-  const theaterId = readTheaterId(payload);
-  if (!theaterId) return;
-  const root = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!root) return;
-  await gateway.registerWorkspace(root, undefined, theaterId);
-}
-
-function readTheaterId(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const value = (payload as { readonly theaterId?: unknown }).theaterId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 function readPort(ctx: FleetPluginServerContext): number {
   const origin = ctx.host.server.origin();

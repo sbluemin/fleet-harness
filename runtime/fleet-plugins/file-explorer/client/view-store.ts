@@ -4,7 +4,7 @@ import type { FileReadWindow } from "../server/types.js";
 export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
-  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean; diskStatus?: "changed" | "deleted"; window?: FileReadWindow; migratedWikiEntryId?: string }
+  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean; diskStatus?: "changed" | "deleted"; window?: FileReadWindow }
   | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean; diskStatus?: "changed" | "deleted" }
   | { kind: "binary"; name: string }
   | { kind: "error"; message: string };

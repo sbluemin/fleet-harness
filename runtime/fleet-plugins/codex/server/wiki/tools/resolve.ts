@@ -3,7 +3,7 @@ import { briefingQuery } from "../briefing.js";
 import { readClaims } from "../claims.js";
 import { dedupeStrings, estimateTokens } from "../briefing.js";
 import { extractWikiLinks } from "../store.js";
-import { resolveToolMemoryPaths } from "../paths.js";
+
 import {
   WIKI_RESOLVE_DESCRIPTION,
   WIKI_RESOLVE_GUIDELINES,
@@ -94,7 +94,7 @@ export function buildResolveToolConfig() {
       ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeResolveInput(params);
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       const payload = await resolveWikiContext(input, paths);
       if (input.format === "markdown_pack") {
         return {

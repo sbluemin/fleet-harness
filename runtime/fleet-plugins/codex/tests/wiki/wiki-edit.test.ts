@@ -13,7 +13,7 @@ async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-edit-")); roots.push(root);
   const paths = createMemoryPaths(path.join(root, "knowledge"));
   await withWikiWriteLock(paths, () => writeEntry({ id: "alpha", title: "Alpha", body: "Exact original body", tags: [], created: "2026-01-01T00:00:00.000Z", updated: "2026-01-01T00:00:00.000Z", version: 1 }, "wiki/alpha.md", paths, { actor: "test", tool: "test" }));
-  const call = (params: Record<string, unknown>) => buildEditToolConfig().execute("", { entry_id: "alpha", ...params }, undefined, undefined, { cwd: root, paths });
+  const call = (params: Record<string, unknown>) => buildEditToolConfig().execute("", { entry_id: "alpha", ...params }, undefined, undefined, { paths });
   return { paths, call };
 }
 

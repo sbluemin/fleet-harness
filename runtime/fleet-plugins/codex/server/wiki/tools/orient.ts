@@ -1,9 +1,10 @@
+import type { MemoryPaths } from "../types.js";
 import { readFile, stat } from "node:fs/promises";
 
 import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiEntryBoundary } from "../store.js";
 import { runDryDock } from "../drydock.js";
 import { formatLogEntry, parseLog } from "../log.js";
-import { getIndexMarkdownFile, resolveMemoryPaths, resolveToolMemoryPaths } from "../paths.js";
+import { getIndexMarkdownFile } from "../paths.js";
 import {
   WIKI_ORIENT_DESCRIPTION,
   WIKI_ORIENT_GUIDELINES,
@@ -61,7 +62,7 @@ export function buildOrientToolConfig() {
       ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeInput(params);
-      const paths = resolveToolMemoryPaths(ctx);
+      const paths = ctx.paths;
       await ensureWorkspaceSchema(paths);
 
       const drydockReport = await runDryDock(paths);
@@ -124,7 +125,7 @@ function normalizeInput(params: Record<string, unknown>): OrientInput {
   };
 }
 
-async function buildSchemaSummary(paths: ReturnType<typeof resolveMemoryPaths>): Promise<Record<string, unknown>> {
+async function buildSchemaSummary(paths: MemoryPaths): Promise<Record<string, unknown>> {
   const schema = await readWorkspaceSchemaSummary(paths);
   return {
     version: 1,
@@ -143,7 +144,7 @@ async function buildSchemaSummary(paths: ReturnType<typeof resolveMemoryPaths>):
   };
 }
 
-async function buildIndexSummary(paths: ReturnType<typeof resolveMemoryPaths>): Promise<Record<string, unknown>> {
+async function buildIndexSummary(paths: MemoryPaths): Promise<Record<string, unknown>> {
   const filePath = getIndexMarkdownFile(paths);
   if (!(await pathExists(filePath))) {
     return {
@@ -165,7 +166,7 @@ async function buildIndexSummary(paths: ReturnType<typeof resolveMemoryPaths>): 
   };
 }
 
-async function buildRecentLogSummary(paths: ReturnType<typeof resolveMemoryPaths>, logLimit: number): Promise<Record<string, unknown>> {
+async function buildRecentLogSummary(paths: MemoryPaths, logLimit: number): Promise<Record<string, unknown>> {
   const entries = await parseLog(paths);
   // 최근 log는 운영 메타데이터이므로 지금은 boundary wrapper를 씌우지 않는다.
   // 이후 raw source 본문을 직접 포함하게 되면 untrusted boundary를 적용해야 한다.

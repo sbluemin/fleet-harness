@@ -22,7 +22,7 @@ export function publishResolvedWorkspace(next: CodexWorkspaceState): void {
 
 /**
  * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
- * 레일 패널이 해석해 둔 12-hex id여야 /console/codex/w/ 라우터가 인식한다.
+ * 레일 패널이 해석해 둔 사령관 id여야 /console/codex/c/ 라우터가 인식한다.
  *
  * 공유 링크로 곧장 들어오면 그 해석이 아직 진행 중이라 여기서 null이 나온다. 그때
  * Theater id로 대신 요청하면 라우터가 workspace_not_found로 거절하고, 해석이 끝나도
@@ -73,7 +73,7 @@ export async function resolveCodexWorkspace(theaterId: string): Promise<Omit<Cod
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_codex_workspace");
   const payload = value as Record<string, unknown>;
   if (Object.keys(payload).length !== 2 || typeof payload.hasWiki !== "boolean") throw new Error("invalid_codex_workspace");
-  if (payload.hasWiki && typeof payload.id === "string" && /^[0-9a-f]{12}$/.test(payload.id)) {
+  if (payload.hasWiki && typeof payload.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(payload.id)) {
     return { hasWiki: true, id: payload.id };
   }
   if (!payload.hasWiki && payload.id === null) return { hasWiki: false, id: null };

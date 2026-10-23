@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { runDryDock } from "../../server/wiki/drydock.js";
-import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, resolveMemoryPaths } from "../../server/wiki/paths.js";
+import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, createMemoryPaths } from "../../server/wiki/paths.js";
 import { WORKSPACE_SCHEMA_AGENTS_FILENAME, WORKSPACE_SCHEMA_FILENAME } from "../../server/wiki/schema.js";
 import { rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildDryDockToolConfig } from "../../server/wiki/tools/briefing.js";
@@ -19,7 +19,7 @@ describe("wiki drydock", () => {
 
   it("flags prompt-injection-like wiki content", async () => {
     const root = await makeTempRoot();
-    const paths = resolveMemoryPaths(root);
+    const paths = createMemoryPaths(path.join(root, ".fleet", "knowledge"));
     await writeRawSourceEntry({
       id: "unsafe",
       created: "2026-04-26T00:00:00.000Z",

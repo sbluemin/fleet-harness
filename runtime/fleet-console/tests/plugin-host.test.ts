@@ -82,7 +82,7 @@ afterEach(() => {
 
 describe("plugin host", () => {
 
-  it("binds plugin MCP names, isolates sessions, resolves the caller Operation, and pins Theater-bound tools to their root through registration and teardown", async () => {
+  it("binds plugin MCP names, isolates sessions, resolves the caller Operation and its commodore, and pins commodore-bound tools to that commodore through registration and teardown", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
     tempDirs.push(dir);
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
@@ -92,7 +92,11 @@ describe("plugin host", () => {
     await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
     origin = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
     // 호출자는 세션 라벨로만 푼다 — 모르는 라벨은 호출자 없이(fail-closed).
-    const mcp = createPluginAdmiralMcpHost(transport.transport, { resolveCaller: (label) => (label === "op-1" ? { kind: "operation", operationId: "op-1" } : null) });
+    // 사령관은 그 호출자의 소속에서만 나온다 — 호출자가 없으면 사령관도 없다.
+    const mcp = createPluginAdmiralMcpHost(transport.transport, {
+      resolveCaller: (label) => (label === "op-1" ? { kind: "operation", operationId: "op-1" } : null),
+      resolveCommodore: (caller) => (caller.kind === "operation" && caller.operationId === "op-1" ? "cmd-a" : null),
+    });
     const first = mcp.connect();
     const second = mcp.connect();
     const cleanups: Array<() => void | Promise<void>> = [];
@@ -102,8 +106,8 @@ describe("plugin host", () => {
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
         ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: { text: { type: "string", maxLength: 50 } } },
-          execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], isError: false }),
-        }], { theaterScoped: true });
+          execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}|${context.commodoreId ?? "-"}` }], isError: false }),
+        }], { commodoreScoped: true });
       } }),
     });
     try {
@@ -122,15 +126,15 @@ describe("plugin host", () => {
         });
         return { status: response.status, body: await response.json() };
       };
-      expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1" }] } });
-      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
-      expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-" }] } });
-      // Theater 묶음(사령관 세션) — 세션 자리가 넘긴 cwd 는 버리고 묶은 루트로만, 호출자 없이 부른다. 인자 선검사는 서빙 경로와 같다.
-      const [bound] = mcp.bindTheater("/theater-a");
+      expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1|cmd-a" }] } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1|cmd-a" }] } });
+      expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-|-" }] } });
+      // 사령관 묶음(사령관 세션) — 세션 자리가 넘긴 cwd·사령관은 버리고 묶은 값으로만, 호출자 없이 부른다. 인자 선검사는 서빙 경로와 같다.
+      const [bound] = mcp.bindCommodore("cmd-b", "/commodore/cmd-b");
       expect(bound?.name).toBe("fleet-demo");
       const boundProject = bound!.tools[0]!;
-      expect(await boundProject.execute({}, { cwd: "/theater-b" })).toMatchObject({ content: [{ text: "/theater-a|-" }] });
-      expect(await boundProject.execute({ text: "x".repeat(51) }, { cwd: "/theater-a" })).toMatchObject({ isError: true });
+      expect(await boundProject.execute({}, { cwd: "/elsewhere", commodoreId: "cmd-a" })).toMatchObject({ content: [{ text: "/commodore/cmd-b|-|cmd-b" }] });
+      expect(await boundProject.execute({ text: "x".repeat(51) }, { cwd: "/commodore/cmd-b" })).toMatchObject({ isError: true });
       // 플러그인에 닿기 전 선검사도 필드·한도를 알려야 한다. 입력 원문과 검증기 메시지는 싣지 않는다.
       const oversized = "private-answer-".repeat(4);
       const rejected = (await call(one.token, { text: oversized })).body.result;
@@ -138,11 +142,11 @@ describe("plugin host", () => {
       expect(JSON.stringify(rejected)).not.toContain(oversized);
       first.cleanup();
       expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
-      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1|cmd-a" }] } });
       for (const cleanup of cleanups) await cleanup();
       expect((await second.getEndpoint()).servers).toEqual([]);
-      expect(mcp.bindTheater("/theater-a")).toEqual([]);
-      expect(await boundProject.execute({}, { cwd: "/theater-a" })).toMatchObject({ isError: true, content: [{ text: "Plugin MCP is unavailable" }] });
+      expect(mcp.bindCommodore("cmd-b", "/commodore/cmd-b")).toEqual([]);
+      expect(await boundProject.execute({}, { cwd: "/commodore/cmd-b" })).toMatchObject({ isError: true, content: [{ text: "Plugin MCP is unavailable" }] });
     } finally {
       first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose(); await transport.dispose();
       await new Promise<void>((resolve) => { listener.close(() => resolve()); listener.closeAllConnections(); });
