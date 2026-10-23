@@ -6,6 +6,7 @@
  *
  * --fresh refuses a run dir that already exists with any entry, so a measurement pass that must start from an empty
  * slot cannot silently reuse an earlier pass's state; pass it on the pass's first call (its --check and its serve).
+ * It vouches only for the default <run-dir>/console slot, so it is refused together with --canonical-console-dir.
  *
  * --canonical-console-dir sets only FLEET_CONSOLE_DATA_DIR, to that checkout's local slot
  * (<checkout>/.fleet/console). listLocalConsoles reads that lock and no other isolated data dir
@@ -157,6 +158,9 @@ function parseArgs(argv) {
     i += 1;
   }
   if (!options.runDir) fail('--run-dir is required');
+  if (options.fresh && options.canonicalConsoleDir) {
+    fail('--fresh checks only the default <run-dir>/console slot; it cannot vouch for --canonical-console-dir, so do not combine them (references/setup.md#isolate-the-console)');
+  }
   if (command.length === 0 && !options.check) fail('expected -- <command> [args...]');
   return { options, command };
 }
