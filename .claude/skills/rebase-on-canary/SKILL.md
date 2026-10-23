@@ -24,10 +24,10 @@ Read [Remote-base rebase procedure](references/rebase.md).
 
 1. Verify target/remote base and a clean tree. Do not reread already loaded instructions, but apply child `CLAUDE.md` rules when editing conflicted files.
 2. After fetch, record remote-base SHA and old topic SHA. Perform the optional safe local-base mirror and preview overlapping files against the remote base.
-3. Run plain rebase. By default integrate incoming and topic intent; never discard a side wholesale with `-X ours`/`-X theirs`. Regenerate derived files with their owning tools and do not guess through semantic conflicts.
+3. If the remote base is already an ancestor of HEAD, skip the rebase as a no-op and go to step 5: plain rebase would still flatten the topic's merge commits and replay conflicts they already resolved. Otherwise run plain rebase. By default integrate incoming and topic intent; never discard a side wholesale with `-X ours`/`-X theirs`. Regenerate derived files with their owning tools and do not guess through semantic conflicts.
 4. After resolving conflicts, run affected workspace tests/typecheck/build. Even a textually clean rebase may need relevant checks when overlapping changes interact. If validation fails, report the unresolved outcome and block downstream publishing.
 5. Confirm a clean tree, remote base as an ancestor of HEAD, zero behind count, and the expected topic commit list.
 
-Report old/new base/topic SHA, rewrite count, per-conflict integration, checks and skipped-check reasons, and ahead/behind counts. If the topic was published, disclose rewritten SHAs; force-push remains a separately authorized action.
+Report old/new base/topic SHA, rewrite count, per-conflict integration, checks and skipped-check reasons, and ahead/behind counts; a no-op reports rewrite count 0 and the unchanged topic SHA. If the topic was published, disclose rewritten SHAs; force-push remains a separately authorized action.
 
 Do not use `--abort`, `--skip`, interactive/autosquash/rebase-merges, or hook bypasses without explicit instruction. Preserve and report state on ambiguous conflicts, local-base divergence, or failed validation.
