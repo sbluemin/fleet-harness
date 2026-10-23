@@ -36,6 +36,12 @@ git -C <worktree_path> rev-list --left-right --count <base>...<upstream>
 ## Preview and rebase
 
 ```bash
+git -C <worktree_path> merge-base --is-ancestor <upstream> HEAD
+```
+
+Exit 0 means the topic already contains the remote base: do not run `rebase`, keep HEAD and its merge commits as they are, and skip to the closing status/ancestry/count block at the end of Verification (entrypoint step 5); nothing was rewritten, so the checks before it do not apply. Plain rebase does not stop there when the topic holds a merge commit; it drops the merge and replays the topic commits, so conflicts the merge resolved come back. Exit 1 continues below; any other code is an error to report.
+
+```bash
 git -C <worktree_path> merge-base <upstream> HEAD
 git -C <worktree_path> diff --name-only <merge-base>..<upstream>
 git -C <worktree_path> diff --name-only <merge-base>..HEAD
@@ -69,7 +75,7 @@ cd <worktree_path> && pnpm install --frozen-lockfile
 cd <worktree_path> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> build && pnpm --filter <pkg> test
 ```
 
-Disclose absent scripts. A failed check makes the resolution suspect; do not publish the rewritten tip. For clean rebases, choose scoped checks and record why they suffice.
+Disclose absent scripts. A failed check makes the resolution suspect; do not publish the rewritten tip. Before attributing the failure, run the same check alternately on a `git-worktree` baseline at the recorded pre-rebase topic SHA and on the rebased HEAD, at least three runs each, and report the pass/fail counts: a failure only on HEAD points at the rebase, one on both sides predates it or is intermittent; a further baseline at `<upstream>` tells whether the base brought it. The counts do not lift the publishing block by themselves. For clean rebases, choose scoped checks and record why they suffice.
 
 When the branch contained a change that has since been merged into the base on its own — a stacked PR rebased after its lower PR landed — a file can merge without conflict and still hold both the base's copy of a block and the branch's revised copy. Compare every touched path, conflicted or not, against the pre-rebase tip: `git -C <worktree_path> diff <pre-rebase-tip> HEAD -- <path>` should show only the base's own later changes, never a duplicated declaration or block.
 
