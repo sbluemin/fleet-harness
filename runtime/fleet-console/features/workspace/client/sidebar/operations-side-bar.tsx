@@ -218,8 +218,6 @@ interface TheaterActionsMenuProps {
   readonly onForgetTheater: () => void;
   readonly onOpenSystemPrompt: () => void;
   readonly onEditAlias: () => void;
-  /** 별칭이 있을 때만 — 원래 Theater 이름으로 되돌린다. */
-  readonly onClearAlias?: () => void;
   readonly onClose: () => void;
   /** 「+」 메뉴의 「새 그룹…」에서 열었으면 이름 입력부터 연다. */
   readonly startWithNewGroup?: boolean;
@@ -1294,12 +1292,6 @@ export function OperationsSideBar({
             setActiveContextMenu(null);
           }}
           onEditAlias={() => startAliasEdit(contextMenuTheater.id)}
-          {...(contextMenuTheater.alias ? {
-            onClearAlias: () => {
-              onSetTheaterAlias(contextMenuTheater.id, null);
-              closeActiveContextMenu();
-            },
-          } : {})}
           onClose={closeActiveContextMenu}
         />
       ) : null}
@@ -1695,7 +1687,7 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClearAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
@@ -1793,12 +1785,6 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
           <span className="theater-menu-label">{t("sidebar.theater.alias.edit")}</span>
         </button>
-        {onClearAlias ? (
-          <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias-clear" onClick={onClearAlias}>
-            <span className="theater-menu-check" aria-hidden="true" />
-            <span className="theater-menu-label">{t("sidebar.theater.alias.clear")}</span>
-          </button>
-        ) : null}
         <div className="theater-menu-divider" aria-hidden="true" />
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenSystemPrompt}>
           <span className="theater-menu-check" aria-hidden="true">✦</span>
