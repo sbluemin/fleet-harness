@@ -18,7 +18,7 @@ export type DockedMap = Record<ScuttlebuttAideId, boolean>;
 export type SizeMap = Record<ScuttlebuttAideId, number>;
 
 /**
- * 부관별 AI 확장 허용. Operation의 콘솔 사용·컴퓨터 사용 스위치와 같은 정책이다 — 기본은 전부 꺼짐,
+ * 부관별 AI 확장 허용. Objective의 콘솔 사용·컴퓨터 사용 스위치와 같은 정책이다 — 기본은 전부 꺼짐,
  * 켜고 끄는 것은 부관 자신의 ··· 메뉴에서 하고, 서버는 호출마다 이 값을 다시 읽는다.
  */
 export interface AideGrants {

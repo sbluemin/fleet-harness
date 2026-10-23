@@ -125,7 +125,7 @@
      한 단 무겁게 선다. */
   --gauge-fill-warn: color-mix(in oklab, var(--warn) 42%, var(--ink-mid));
 
-  /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
+  /* ObjectiveRecords 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
   /* 대화 중심 화면 사이드바의 바탕. 기본은 --ink-deep(대화 바탕보다 한 단 밝다)이고, 대화 다크는 레퍼런스대로 바탕보다 어둡다. */
   --canvas-side: var(--ink-deep);
@@ -140,7 +140,7 @@
   --provider-cursor: oklch(72% 0.085 238);
   --provider-xai: oklch(76% 0.055 258);
   --provider-antigravity: oklch(73% 0.085 288);
-  /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
+  /* 정체성 톤(--id-*) — Objective accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(다크 C≈0.06). 신호색(brass/aurora/warn/coral)과
      hue가 이웃한 crimson/amber는 채도를 낮춰 상태 신호와 혼동되지 않게 한다. */
   --id-crimson: oklch(72% 0.065 25);
@@ -198,7 +198,7 @@
      라이트만 종이 표면(카드·터미널)보다 어두운 자체 리터럴로 분화한다(신호 ink 티어와 동형 구조).
      라이트에서 크롬이 종이보다 밝아지면 시선이 크롬으로 끌리는 극성 역전이 재발한다. */
   --surface-chrome: var(--surface-glass);
-  /* Operation 패널의 유일한 면 — 캡션·프레임·본문 거터·채팅 로그가 전부 이 하나를 칠한다.
+  /* Objective 패널의 유일한 면 — 캡션·프레임·본문 거터·채팅 로그가 전부 이 하나를 칠한다.
      패널 안에서 색이 갈리면 창 하나가 여러 장으로 읽히므로 티어를 나누지 않는다.
      값은 터미널 필드 톤이다(terminal-surface.tsx가 xterm 배경으로 이 토큰을 읽어 간다) —
      다크은 캔버스보다 밝은 쪽, 라이트는 어두운 쪽에 서서 어느 테마에서도
@@ -1048,7 +1048,7 @@
   --identity-file-error: var(--m-id-crimson);
   --identity-small-tag: var(--m-text-faint);
 
-  /* 면 — 화면·채팅 로그·Operation 본문은 bg, 그 위에 얹히는 말풍선·카드·메뉴·시트는 surface.
+  /* 면 — 화면·채팅 로그·Objective 본문은 bg, 그 위에 얹히는 말풍선·카드·메뉴·시트는 surface.
      크롬과 본문 사이에 이음매가 없다(헤더·탭 막대·본문이 한 면). 모두 불투명이다. */
   --surface-glass: var(--m-surface);
   --surface-chrome: var(--m-bg);

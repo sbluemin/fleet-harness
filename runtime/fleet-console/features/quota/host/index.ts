@@ -40,8 +40,8 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
     routes.push({ path, handler, catalog: [{ ...catalog, path: path + catalog.path }] });
   };
   let settingsMutation = Promise.resolve();
-  const serializeSettings = <T>(operation: () => Promise<T>): Promise<T> => {
-    const result = settingsMutation.then(operation, operation);
+  const serializeSettings = <T>(objectiveRecord: () => Promise<T>): Promise<T> => {
+    const result = settingsMutation.then(objectiveRecord, objectiveRecord);
     settingsMutation = result.then(() => undefined, () => undefined);
     return result;
   };

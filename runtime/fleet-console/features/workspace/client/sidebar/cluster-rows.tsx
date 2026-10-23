@@ -1,14 +1,14 @@
-import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
-import type { SideBarChipCluster, SideBarEntry } from "./operations-side-bar-chip.js";
+import type { ClusterIndex, ClusterLayout } from "../objective-clusters.js";
+import type { SideBarChipCluster, SideBarEntry } from "./objective-records-side-bar-chip.js";
 
 /**
  * 사이드바의 묶음. 묶음은 뿌리(지휘관) 한 행이 대표한다.
- * 구성원은 스토어의 기본 목록에서 이미 빠지고(SDK `isListedOperation`),
+ * 구성원은 스토어의 기본 목록에서 이미 빠지고(SDK `isListedObjective`),
  * 단계 표기는 상태 줄 앞에 `✓ N/N` 으로 선다 — 목표 줄(`side-bar-cluster-row-lead`)과 같은 글·같은 톤이다.
  * 활동(실행·대기·유휴·끝남)으로 색을 나누지 않는다.
  */
 export function clusterChipPropsFor(entry: SideBarEntry, index: ClusterIndex): SideBarChipCluster | null {
-  const root = index.rootOf.get(entry.operation.id);
+  const root = index.rootOf.get(entry.objectiveRecord.id);
   if (!root) return null;
   const progressLabel = progressLabelOf(root);
   return {

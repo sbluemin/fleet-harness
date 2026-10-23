@@ -20,7 +20,7 @@ import {
 } from "../../../shared/conversation-workbench.js";
 
 /**
- * 대화별 도구 작업대 — 지금 보이는 대화(사령관·지휘관·일반 Operation)의 도구 칸 배치를 소유한다.
+ * 대화별 도구 작업대 — 지금 보이는 대화(사령관·지휘관·일반 Objective)의 도구 칸 배치를 소유한다.
  *
  * 배치는 대화 키마다 하나이고 서버에 저장된다(`/api/v1/conversation-workbench`). 처음 붙을 때 한 번 읽고, 바뀐 대화의 배치만
  * 잠시 모아 쓴다. 칸이 무엇을 그리는지(파일 트리·Shell·브라우저)는 이 스토어가 모른다 — 칸의 출처(entry·surface·browser)와 자리만 안다.

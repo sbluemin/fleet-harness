@@ -136,7 +136,7 @@ export function MobileSettingsPage({ embedded = false }: {
 
   const close = () => {
     if ((location.state as MobileSettingsLocationState | null)?.mobileProfileReturn) {
-      navigate({ pathname: "/operations", search: "" }, { replace: true });
+      navigate({ pathname: "/objectives", search: "" }, { replace: true });
       pushMobileSheet({ kind: "profile" });
       return;
     }

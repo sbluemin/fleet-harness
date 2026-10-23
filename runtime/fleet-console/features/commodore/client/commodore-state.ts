@@ -318,7 +318,7 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
   setTheater(theaterId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, ...(options.reset ? { live: [] } : {}) });
 }
 
-/** 호스트의 채팅 턴 렌더러 — Operation 채팅과 같은 컴포넌트다. 설치 전이면 null. */
+/** 호스트의 채팅 턴 렌더러 — Objective 채팅과 같은 컴포넌트다. 설치 전이면 null. */
 export function commodoreTranscriptRenderer(): ComponentType<AgentChatTranscriptProps> | null {
   return installed?.chat.Transcript ?? null;
 }
@@ -328,7 +328,7 @@ export function commodoreLedgerRenderer(): ComponentType<AgentLedgerProps> | nul
   return installed?.chat.Ledger ?? null;
 }
 
-/** 대화 중심 화면의 대화 렌더러 — Operation 대화와 같은 말풍선 화면(호스트 `ctx.chat.Conversation`). */
+/** 대화 중심 화면의 대화 렌더러 — Objective 대화와 같은 말풍선 화면(호스트 `ctx.chat.Conversation`). */
 export function commodoreConversationRenderer(): ComponentType<AgentConversationProps> | null {
   return installed?.chat.Conversation ?? null;
 }

@@ -19,7 +19,7 @@ nohup node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-
 ```
 
 - `<handoff-dir>` is a fresh run directory placed per console-e2e's [run-directory rule](../../console-e2e/references/setup.md#isolate-the-console); the wrapper refuses one too long for its sockets. Setting only `FLEET_CONSOLE_DATA_DIR` is not enough: an inherited `FLEET_DATA_DIR` still points at the user's real Fleet root, whose legacy values are carried into the new slot once and removed from their old location.
-- The Console slot owns provider credentials, so a fresh handoff starts signed out. Prefer a scenario that needs no provider, or the [no-cost fake Claude](../../console-e2e/references/setup.md#no-cost-fake-claude) (`CLAUDE_BIN`, `FAKE_CLAUDE_DIR`) when the user only needs live Operations. A live turn needs the user's explicit choice of credential path and quota; the user can sign in inside the handed-over Console. Never copy real credential files, reuse the real Fleet root, or reuse the real Claude home without that authorization, and disclose any non-isolated store before launch.
+- The Console slot owns provider credentials, so a fresh handoff starts signed out. Prefer a scenario that needs no provider, or the [no-cost fake Claude](../../console-e2e/references/setup.md#no-cost-fake-claude) (`CLAUDE_BIN`, `FAKE_CLAUDE_DIR`) when the user only needs live Objectives. A live turn needs the user's explicit choice of credential path and quota; the user can sign in inside the handed-over Console. Never copy real credential files, reuse the real Fleet root, or reuse the real Claude home without that authorization, and disclose any non-isolated store before launch.
 - `nohup … &` so the instance outlives the tool call. The user is going to be using it for a while. Node does not keep nohup's SIGHUP ignore, so a direct SIGHUP still stops it.
 - `FLEET_AI_GATEWAY_MODEL` pins every request whatever the picker says — cheaper than walking the user through the AI Gateway settings before they can test. Omit it when no provider is used.
 
@@ -37,7 +37,7 @@ Create a small folder with real files the change can act on — an agent that re
 
 ### 4. Seed the state
 
-`scripts/seed-console.mjs` registers the Theater and, when given a prompt, launches a chat-born Operation and waits for the state you want:
+`scripts/seed-console.mjs` registers the Theater and, when given a prompt, launches a chat-born Objective and waits for the state you want:
 
 ```bash
 node <worktree>/.claude/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir>/console --theater <theater> \
@@ -46,7 +46,7 @@ node <worktree>/.claude/skills/console-handoff/scripts/seed-console.mjs --dir <h
 
 `--await ask` returns as soon as the model parks a question; `--await turn` waits for the turn to finish. Omit both to fire and forget. The JSON it prints carries `sessionId`, the URL, and the question that was parked.
 
-To leave a *settled* example beside the live one — the two read differently and the contrast is the point — seed a second Operation and answer it:
+To leave a *settled* example beside the live one — the two read differently and the contrast is the point — seed a second Objective and answer it:
 
 ```bash
 node <worktree>/.claude/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir>/console --answer <sessionId> --pick 1

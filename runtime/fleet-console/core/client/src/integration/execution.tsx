@@ -3,7 +3,7 @@ import { DEFAULT_FONTS } from "../../../../features/settings/shared/fonts.js";
 import { getGlobalSettingsStoreState, subscribe } from "../../../../features/settings/client/global-settings-store.js";
 import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 
-import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
+import { agentAttentionNotification, agentObjectiveKind, agentExecution, agentSettingsSection, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { BrowserSessionHost } from "../../../../features/browser/client/browser-session-host.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";

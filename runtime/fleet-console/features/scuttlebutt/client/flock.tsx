@@ -976,7 +976,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       <NoticeBubble
         kind="arrival"
         source={context.arrivals}
-        operations={context.operations}
+        objectiveRecords={context.objectiveRecords}
         locale={context.language}
         mascot={announcerRef}
         quiet={quiet}
@@ -987,7 +987,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         <NoticeBubble
           kind="departure"
           source={context.departures}
-          operations={context.operations}
+          objectiveRecords={context.objectiveRecords}
           locale={context.language}
           mascot={announcerRef}
           quiet={quiet}
@@ -998,7 +998,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       <NoticeBubble
         kind="awaiting"
         source={context.awaitings}
-        operations={context.operations}
+        objectiveRecords={context.objectiveRecords}
         locale={context.language}
         mascot={announcerRef}
         quiet={quiet}

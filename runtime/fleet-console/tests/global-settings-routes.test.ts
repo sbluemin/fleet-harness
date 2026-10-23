@@ -133,7 +133,7 @@ describe("global settings routes", () => {
 
   it("stores only well-formed shortcut bindings and rejects a malformed chord outright", async () => {
     // companion 명령 id는 플러그인 id와 패널 id를 그대로 품는다 — 콜론·공백이 있어도 저장돼야 한다.
-    const shortcuts = { "console.search-operations": ["Mod+Shift+KeyB"], "console.new-session": ["Mod+KeyJ", "Alt+Space"], "companion:my plugin:analyst:chat": ["Alt+Numpad1"] };
+    const shortcuts = { "console.search-objectiveRecords": ["Mod+Shift+KeyB"], "console.new-session": ["Mod+KeyJ", "Alt+Space"], "companion:my plugin:analyst:chat": ["Alt+Numpad1"] };
     const harness = createRouterHarness({ authorized: true, body: { shortcuts } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.currentGeneral()?.shortcuts).toEqual(shortcuts);
@@ -141,7 +141,7 @@ describe("global settings routes", () => {
 
     // 물리 코드가 아닌 글자, 수식키 없는 조합, 중복 조합은 저장 전에 400이다 — 조용히 걸러 저장하면
     // 화면이 「저장됨」을 그리고 다른 창은 다른 조합을 발화한다.
-    for (const malformed of [{ "console.search-operations": ["Mod+b c"] }, { "console.search-operations": ["KeyB"] }, { "console.search-operations": ["Mod+ShiftLeft"] }, { "console.new-session": ["Mod+KeyJ", "Mod+KeyJ"] }, { "console.search-operations": "Mod+KeyB" }]) {
+    for (const malformed of [{ "console.search-objectiveRecords": ["Mod+b c"] }, { "console.search-objectiveRecords": ["KeyB"] }, { "console.search-objectiveRecords": ["Mod+ShiftLeft"] }, { "console.new-session": ["Mod+KeyJ", "Mod+KeyJ"] }, { "console.search-objectiveRecords": "Mod+KeyB" }]) {
       const invalid = createRouterHarness({ authorized: true, body: { shortcuts: malformed } });
       await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
       expect(invalid.writes[0]).toEqual({ status: 400, body: { error: "invalid_shortcuts" } });

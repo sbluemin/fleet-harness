@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { getState, setOperationUseRequestIds, subscribe as subscribeStore } from "../../../core/client/src/integration/store.js";
-import { subscribeConsoleChannel } from "../../../core/client/src/integration/operations-sse.js";
+import { getState, setObjectiveUseRequestIds, subscribe as subscribeStore } from "../../../core/client/src/integration/store.js";
+import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
-/** 화면의 주인(operationId — 공유 컨텍스트면 루트)과 지금 조작하는 참가자(actor). */
-type CaptureTarget = { id: string; operationId: string; actor: string | null; title: string };
+/** 화면의 주인(objectiveId — 공유 컨텍스트면 루트)과 지금 조작하는 참가자(actor). */
+type CaptureTarget = { id: string; objectiveId: string; actor: string | null; title: string };
 /** 공유 불가의 사람이 고칠 수 있는 원인(서버의 비민감 사유 코드). 없으면 일반 식별 실패다. */
 type CaptureFailure = "accessibility_permission_required" | "screen_recording_permission_required";
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void; failure?: CaptureFailure };
@@ -30,66 +30,66 @@ async function readScreenRecordingFailure(): Promise<typeof SCREEN_RECORDING_PER
 }
 const CaptureContext = createContext<Capture | null>(null);
 /** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·시한). 인자·내용은 없다. */
-export interface OperationUseRequest {
+export interface ObjectiveUseRequest {
   readonly id: string;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly capability: "console" | "computer";
   readonly tools: readonly string[];
-  /** 이 요청을 기다리는 참가자(호출한 세션). 공유 컨텍스트에서는 루트(operationId)와 다를 수 있다. */
+  /** 이 요청을 기다리는 참가자(호출한 세션). 공유 컨텍스트에서는 루트(objectiveId)와 다를 수 있다. */
   readonly requestedBy: readonly string[];
   readonly expiresAt: number;
 }
-type OperationUseActivity = {
+type ObjectiveUseActivity = {
   console: string[];
   computer: string[];
   /** 컴퓨터를 지금 조작하는 참가자 — 공유 컨텍스트에서는 기기의 주인(computer, 루트)과 다르다. */
   computerActor: string | null;
   browser: string[];
-  requests: OperationUseRequest[];
+  requests: ObjectiveUseRequest[];
   grants: { console: string[]; computer: string[] };
 };
-const EMPTY_ACTIVITY: OperationUseActivity = { console: [], computer: [], computerActor: null, browser: [], requests: [], grants: { console: [], computer: [] } };
-const OperationUseContext = createContext<OperationUseActivity>(EMPTY_ACTIVITY);
-export function useOperationUse(operationId: string) {
-  const activity = useContext(OperationUseContext);
+const EMPTY_ACTIVITY: ObjectiveUseActivity = { console: [], computer: [], computerActor: null, browser: [], requests: [], grants: { console: [], computer: [] } };
+const ObjectiveUseContext = createContext<ObjectiveUseActivity>(EMPTY_ACTIVITY);
+export function useObjectiveUse(objectiveId: string) {
+  const activity = useContext(ObjectiveUseContext);
   return {
-    console: activity.console.includes(operationId),
-    computer: activity.computer.includes(operationId),
-    browser: activity.browser.includes(operationId),
+    console: activity.console.includes(objectiveId),
+    computer: activity.computer.includes(objectiveId),
+    browser: activity.browser.includes(objectiveId),
     /** 「이번 작업만」 허가로 쓰는 중인 도구군. */
-    turnOnly: { console: activity.grants.console.includes(operationId), computer: activity.grants.computer.includes(operationId) },
+    turnOnly: { console: activity.grants.console.includes(objectiveId), computer: activity.grants.computer.includes(objectiveId) },
   };
 }
-/** 이 Operation 이 답을 기다리는 허용 요청(도구군마다 하나). */
-export function useOperationUseRequests(operationId: string, childSessionIds: readonly string[] = []): readonly OperationUseRequest[] {
-  const activity = useContext(OperationUseContext);
-  const represented = new Set([operationId, ...childSessionIds]);
-  return activity.requests.filter((request) => represented.has(request.operationId));
+/** 이 Objective 이 답을 기다리는 허용 요청(도구군마다 하나). */
+export function useObjectiveUseRequests(objectiveId: string, childSessionIds: readonly string[] = []): readonly ObjectiveUseRequest[] {
+  const activity = useContext(ObjectiveUseContext);
+  const represented = new Set([objectiveId, ...childSessionIds]);
+  return activity.requests.filter((request) => represented.has(request.objectiveId));
 }
-/** 이 Operation(공유 컨텍스트면 루트)의 컴퓨터를 지금 조작하는 참가자. 쓰지 않으면 null. */
-export function useComputerActor(operationId: string): string | null {
-  const activity = useContext(OperationUseContext);
-  return activity.computer.includes(operationId) ? activity.computerActor ?? operationId : null;
+/** 이 Objective(공유 컨텍스트면 루트)의 컴퓨터를 지금 조작하는 참가자. 쓰지 않으면 null. */
+export function useComputerActor(objectiveId: string): string | null {
+  const activity = useContext(ObjectiveUseContext);
+  return activity.computer.includes(objectiveId) ? activity.computerActor ?? objectiveId : null;
 }
-/** 이 Console 이 답을 기다리는 허용 요청 전부 — Map 우하단 더미가 Operation 을 가리지 않고 모은다. */
-export function useAllOperationUseRequests(): readonly OperationUseRequest[] {
-  return useContext(OperationUseContext).requests;
+/** 이 Console 이 답을 기다리는 허용 요청 전부 — Map 우하단 더미가 Objective 을 가리지 않고 모은다. */
+export function useAllObjectiveUseRequests(): readonly ObjectiveUseRequest[] {
+  return useContext(ObjectiveUseContext).requests;
 }
 
-function readRequests(value: unknown): OperationUseRequest[] {
+function readRequests(value: unknown): ObjectiveUseRequest[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item): OperationUseRequest[] => {
+  return value.flatMap((item): ObjectiveUseRequest[] => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
-    if (typeof record.id !== "string" || typeof record.operationId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
+    if (typeof record.id !== "string" || typeof record.objectiveId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
     const tools = Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [];
     const requestedBy = Array.isArray(record.requestedBy) ? record.requestedBy.filter((id): id is string => typeof id === "string") : [];
-    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, requestedBy: requestedBy.length > 0 ? requestedBy : [record.operationId], expiresAt: record.expiresAt }];
+    return [{ id: record.id, objectiveId: record.objectiveId, capability: record.capability, tools, requestedBy: requestedBy.length > 0 ? requestedBy : [record.objectiveId], expiresAt: record.expiresAt }];
   });
 }
 
-/** operation-use 스냅샷(SSE 프레임과 /api/v1/operation-use 응답이 같은 모양)을 읽는다. */
-function readActivity(value: unknown): OperationUseActivity {
+/** objective-use 스냅샷(SSE 프레임과 /api/v1/objective-use 응답이 같은 모양)을 읽는다. */
+function readActivity(value: unknown): ObjectiveUseActivity {
   if (!value || typeof value !== "object") return EMPTY_ACTIVITY;
   const record = value as Record<string, unknown>;
   const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
@@ -98,10 +98,10 @@ function readActivity(value: unknown): OperationUseActivity {
   return { console: ids(record.console), computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), requests, grants: { console: ids(grants?.console), computer: ids(grants?.computer) } };
 }
 
-/** 영상 수명은 Console가, 표시 위치는 해당 Operation이 소유한다. */
+/** 영상 수명은 Console가, 표시 위치는 해당 Objective이 소유한다. */
 export function ComputerScreenShareProvider({ children }: { children: ReactNode }) {
   const [capture, setCapture] = useState<Capture | null>(null);
-  const [activity, setActivity] = useState<OperationUseActivity>(EMPTY_ACTIVITY);
+  const [activity, setActivity] = useState<ObjectiveUseActivity>(EMPTY_ACTIVITY);
   useEffect(() => {
     let disposed = false;
     // 스트림이 먼저 말을 걸었는가. mount 1회 조회가 늦게 돌아와 낡은 값을 되돌리지 않게 한다.
@@ -110,22 +110,22 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       if (disposed) return;
       const next = readActivity(value);
       setActivity(next);
-      setOperationUseRequestIds(next.requests.map((request) => request.operationId));
+      setObjectiveUseRequestIds(next.requests.map((request) => request.objectiveId));
     };
-    const unsubscribe = subscribeConsoleChannel("operation-use:state", (payload) => {
+    const unsubscribe = subscribeConsoleChannel("objective-use:state", (payload) => {
       streamed = true;
       apply(payload);
     });
-    // 최초 mount 는 connectOperationsSse 가 연 스트림의 핸드셰이크 스냅샷보다 늦게 붙을 수 있다 — 1회 조회로 그 틈을 메운다.
+    // 최초 mount 는 connectObjectiveRecordsSse 가 연 스트림의 핸드셰이크 스냅샷보다 늦게 붙을 수 있다 — 1회 조회로 그 틈을 메운다.
     // 이후 변화는 스트림이, 재연결은 서버가 다시 보내는 핸드셰이크 스냅샷이 채운다.
-    void fetch("/api/v1/operation-use", { signal: AbortSignal.timeout(3000) })
+    void fetch("/api/v1/objective-use", { signal: AbortSignal.timeout(3000) })
       .then(async (response) => {
-        if (!response.ok) throw new Error("operation_use_unavailable");
+        if (!response.ok) throw new Error("objectiveRecord_use_unavailable");
         const body = await response.json();
         if (!streamed) apply(body);
       })
       .catch(() => undefined);
-    return () => { disposed = true; unsubscribe(); setOperationUseRequestIds([]); };
+    return () => { disposed = true; unsubscribe(); setObjectiveUseRequestIds([]); };
   }, []);
   useEffect(() => {
     if (!isDesktopShell()) return;
@@ -173,16 +173,16 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     };
     const apply = (value: unknown) => {
       if (disposed || !value || typeof value !== "object") return;
-      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableOperationId?: string | null; unavailableReason?: unknown };
+      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableObjectiveId?: string | null; unavailableReason?: unknown };
       const target: CaptureTarget | null = raw.target ? { ...raw.target, actor: typeof raw.target.actor === "string" ? raw.target.actor : null } : null;
-      const unavailableOperationId = raw.unavailableOperationId;
+      const unavailableObjectiveId = raw.unavailableObjectiveId;
       desiredTarget = target;
-      if (!target && unavailableOperationId) {
+      if (!target && unavailableObjectiveId) {
         stop();
         currentId = null;
         attemptedId = null;
         const failure: CaptureFailure | undefined = raw.unavailableReason === "accessibility_permission_required" ? raw.unavailableReason : undefined;
-        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, actor: null, title: "" }, stream: null, failed: true, ...(failure ? { failure } : {}) });
+        setCapture({ target: { id: `unavailable:${unavailableObjectiveId}`, objectiveId: unavailableObjectiveId, actor: null, title: "" }, stream: null, failed: true, ...(failure ? { failure } : {}) });
         return;
       }
       if (!target) setCapture(null);
@@ -222,12 +222,12 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       .catch(() => undefined);
     return () => { disposed = true; controller.abort(); unsubscribe(); unsubscribeConnection(); stop(); };
   }, []);
-  return <OperationUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></OperationUseContext.Provider>;
+  return <ObjectiveUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></ObjectiveUseContext.Provider>;
 }
 
-/** 이 Operation(공유 컨텍스트면 루트)의 화면을 지금 공유하는 중인가 — 영상 수명은 Desktop 셸만 가진다. */
-export function useComputerShareActive(operationId: string): boolean {
-  return useContext(CaptureContext)?.target.operationId === operationId;
+/** 이 Objective(공유 컨텍스트면 루트)의 화면을 지금 공유하는 중인가 — 영상 수명은 Desktop 셸만 가진다. */
+export function useComputerShareActive(objectiveId: string): boolean {
+  return useContext(CaptureContext)?.target.objectiveId === objectiveId;
 }
 
 /**
@@ -242,12 +242,12 @@ function chromeTopInset(element: Element): number {
  * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
  * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
  */
-export function ComputerScreenShare({ operationId, actor, className }: { operationId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
+export function ComputerScreenShare({ objectiveId, actor, className }: { objectiveId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
-  const actorId = useComputerActor(operationId) ?? capture?.target.actor ?? null;
+  const actorId = useComputerActor(objectiveId) ?? capture?.target.actor ?? null;
   const video = useRef<HTMLVideoElement | null>(null);
-  const own = capture?.target.operationId === operationId ? capture : null;
+  const own = capture?.target.objectiveId === objectiveId ? capture : null;
   const card = useRef<HTMLElement | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 256, height: 144 });

@@ -2,17 +2,17 @@ import type { MongleState } from "./avatars.js";
 import type { ReactNode } from "react";
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
-import type { OperationCluster } from "../../objectives/shared/operation-clusters.js";
+import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
 /** 가운데 칸에 선 플러그인 대화가 받는 문맥. `params` 는 연 쪽이 넘긴 값 그대로다(호스트는 해석하지 않는다). */
 export interface ConversationSurfaceContext {
   readonly params: Readonly<Record<string, unknown>>;
   readonly language: "en" | "ko";
   readonly theme: ConsoleTheme;
-  /** 이 대화를 걷는다 — 가운데 칸은 직전에 보던 Operation 대화로 돌아간다. */
+  /** 이 대화를 걷는다 — 가운데 칸은 직전에 보던 Objective 대화로 돌아간다. */
   readonly close: () => void;
   /**
-   * 이 대화가 대신하는 Operation(`standInOperationId`)의 그룹 입력창 — 호스트가 그 id 의 묶음 대화 계약(`OperationCluster.conversation`)
-   * 으로 그린다. 아직 서지 않은 Operation 이라 보드 동작(`GroupConversationActions.board`)이 입력창의 일이다. 대신하는 Operation 이
+   * 이 대화가 대신하는 Objective(`standInObjectiveId`)의 그룹 입력창 — 호스트가 그 id 의 묶음 대화 계약(`ObjectiveCluster.conversation`)
+   * 으로 그린다. 아직 서지 않은 Objective 이라 보드 동작(`GroupConversationActions.board`)이 입력창의 일이다. 대신하는 Objective 이
    * 없거나 구버전 호스트면 없다.
    */
   readonly composer?: () => ReactNode;
@@ -58,7 +58,7 @@ export interface ConversationSurfaceDescriptor {
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
   /**
-   * 머리 pill 바로 오른쪽 단추 묶음(Operation 대화의 pill 단추 묶음과 같은 자리·같은 캡슐)에 설 이 대화의 동작. 호스트가 자리와 면을
+   * 머리 pill 바로 오른쪽 단추 묶음(Objective 대화의 pill 단추 묶음과 같은 자리·같은 캡슐)에 설 이 대화의 동작. 호스트가 자리와 면을
    * 진다 — 그 줄은 Desktop 에서 창을 끄는 자리라, 본문이 맨 위 줄에 단추를 띄우면 pill 밖에서는 눌리지 않는다. 없거나 null 이면 묶음이 서지 않는다.
    */
   readonly actions?: (ctx: ConversationSurfaceContext) => ReactNode;
@@ -73,14 +73,14 @@ export interface ConversationSurfaceDescriptor {
    */
   readonly theater?: (ctx: ConversationSurfaceContext) => { readonly theaterId: string; readonly inboxSection: string } | null;
   /**
-   * 이 대화가 아직 서지 않은 Operation 대화를 대신하면 그 Operation id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
-   * 오른쪽 패널이 Operation 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
-   * 묶음 대화(`OperationCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
+   * 이 대화가 아직 서지 않은 Objective 대화를 대신하면 그 Objective id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
+   * 오른쪽 패널이 Objective 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
+   * 묶음 대화(`ObjectiveCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
    */
-  readonly standInOperationId?: (ctx: ConversationSurfaceContext) => string | null;
+  readonly standInObjectiveId?: (ctx: ConversationSurfaceContext) => string | null;
   /**
    * 이 대화의 에이전트 세션이 쓰는 플릿 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
-   * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Operation 대화와 같은 지구본을 세우고, 누르면 이 플러그인 id 와
+   * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Objective 대화와 같은 지구본을 세우고, 누르면 이 플러그인 id 와
    * scopeId 로 찾은 플릿 브라우저를 대화 옆 칸에 연다. 세션이 아직 한 번도 서지 않았으면 가짜 세션을 만들지 않고 까닭만 말한다.
    * 없거나 null 이면 지구본을 세우지 않는다. `attach` 를 주면 그 칸 브라우저의 「주석 첨부」·「스크린샷 첨부」가 이 대화의 입력창에
    * 이미지를 붙인다(보내지는 않는다). 없으면 그 칸에서 첨부할 곳이 없다.
@@ -105,16 +105,16 @@ export interface ClientConversationCapability {
   /** 지금 가운데 칸에 선 플러그인 대화. 없으면 null — 같은 값이면 같은 참조를 돌려준다. */
   current(): { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> } | null;
   /**
-   * 지금 화면에 선 Operation 대화의 주인 id — 대화 중심 화면의 가운데 칸, 모바일이면 열린 Operation 화면. 없으면 null.
+   * 지금 화면에 선 Objective 대화의 주인 id — 대화 중심 화면의 가운데 칸, 모바일이면 열린 Objective 화면. 없으면 null.
    * 대화 중심 화면이 꺼진 호스트(모바일)에서도 그 대화를 실제로 볼 때만 여는 연결이 읽는다. subscribe 가 바뀜을 깨운다.
    */
-  subjectOperationId?(): string | null;
+  subjectObjectiveId?(): string | null;
   /**
    * 그룹 대화 참여자의 원장(가운데 칸에 읽기 전용으로 세운 그 참여자의 기존 본문) — 지금 연 참여자 id(지휘관이면 루트 id), 대화를 보고
    * 있으면 null. `subscribeLedger` 가 바뀜을 깨운다.
    */
-  ledgerOperationId?(rootOperationId: string): string | null;
+  ledgerObjectiveId?(rootObjectiveId: string): string | null;
   /** 원장을 연다 — 루트 id 면 지휘관, 구성원 id 면 그 구성원, null 이면 대화로 돌아간다. 호스트 「구성원」 탭의 줄 누름과 같다. */
-  openLedger?(rootOperationId: string, operationId: string | null): void;
+  openLedger?(rootObjectiveId: string, objectiveId: string | null): void;
   subscribeLedger?(listener: () => void): () => void;
 }

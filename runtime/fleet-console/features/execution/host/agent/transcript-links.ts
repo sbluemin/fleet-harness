@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 
 /**
- * 이 Operation의 transcript에 실제로 적힌 http(s) 주소들 — 터미널이 줄바꿈으로 가른 URL을 잇기 전에
+ * 이 Objective의 transcript에 실제로 적힌 http(s) 주소들 — 터미널이 줄바꿈으로 가른 URL을 잇기 전에
  * 맞춰 볼 원문이다.
  *
  * Claude Code는 긴 URL을 터미널 폭에 맞춰 직접 줄을 바꿔 그린다(자동 줄바꿈 표시가 없다). 그래서

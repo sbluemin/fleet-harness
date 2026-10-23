@@ -406,7 +406,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const timeout = setTimeout(() => session.cancel(), 30_000);
         timeout.unref?.();
         try {
-          const outcome = await session.turn({ ...firstTurnSummary(runner), reasons: ["scheduled-stop"], sentences: ["The scheduled end time has arrived. Autonomous operation is now ending. Do not patrol, schedule another wake, or change the board. Acknowledge the stop briefly; pending work returns to the person."] });
+          const outcome = await session.turn({ ...firstTurnSummary(runner), reasons: ["scheduled-stop"], sentences: ["The scheduled end time has arrived. Autonomous objectiveRecord is now ending. Do not patrol, schedule another wake, or change the board. Acknowledge the stop briefly; pending work returns to the person."] });
           noteOutcome(runner, outcome);
         } finally { clearTimeout(timeout); }
       } catch (error) {

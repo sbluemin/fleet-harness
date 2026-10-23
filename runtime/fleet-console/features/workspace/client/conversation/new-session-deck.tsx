@@ -27,7 +27,7 @@ export interface NewSessionDeckRow {
   readonly apex?: boolean;
   /** 값이 아니라 게이트(숨은 강도)를 여닫는 행. 골라도 목록이 닫히지 않는다. */
   readonly gate?: boolean;
-  /** 고를 수 없는 행(입력 대기 중인 Operation). 방향키가 건너뛴다. */
+  /** 고를 수 없는 행(입력 대기 중인 Objective). 방향키가 건너뛴다. */
   readonly disabled?: boolean;
   readonly pick: () => void;
 }

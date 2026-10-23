@@ -40,7 +40,7 @@
 
 /* ConsoleGlyph의 아래 잉크 끝은 viewBox y14 + 반쪽 선폭 0.6이다. 24px 문 안 20px SVG의
    아래 여백은 2 + (16 - 14.6) × 20/16 = 3.75px이므로, 이를 빼 잉크부터 계정까지 12 DIP를 남긴다. */
-.console-body.is-conversation .operations-side-bar.is-compact .remote-console-compact-slot + .conversation-dock {
+.console-body.is-conversation .objective-records-side-bar.is-compact .remote-console-compact-slot + .conversation-dock {
   padding-top: max(0px, calc(12px / var(--compact-layout-zoom, 1) - 3.75px));
 }
 .conversation-dock-status {

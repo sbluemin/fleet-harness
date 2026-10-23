@@ -1,5 +1,5 @@
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
-import { readLaunchVariantGroups } from "../../execution/shared/operations/launch-variants.js";
+import { readLaunchVariantGroups } from "../shared/records/launch-variants.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { ObjectiveStoreError } from "./store.js";
@@ -9,7 +9,7 @@ import { ObjectiveStoreError } from "./store.js";
  * 모델 목록 화면(console_objectives models)은 실행 카탈로그를, 지휘관의 구성원 모델 제안(fleet-objectives models·plan·enlist)은
  * gateway_models 를 읽는다 — 지휘관의 기동 모델 선택도 라우팅과 같은 후보로 확인한다.
  */
-const CATALOG_PATH = "/api/v1/operations/catalog";
+const CATALOG_PATH = "/api/v1/objectives/records/catalog";
 const QUOTA_PATH = "/api/v1/ai-gateway/quota";
 const CATALOG_TIMEOUT_MS = 5_000;
 const QUOTA_TIMEOUT_MS = 5_000;

@@ -10,7 +10,7 @@ import { getPaneStoreSnapshot, __resetPaneStoreForTests } from "../core/client/s
 import { getRailStoreSnapshot } from "../core/client/src/chrome/rail/rail-store.js";
 import { getState, setState } from "../core/client/src/integration/store.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
-import { searchRailPanels } from "../core/client/src/integration/operation-search.js";
+import { searchRailPanels } from "../core/client/src/integration/objective-search.js";
 
 import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settings/client/settings-door.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface } from "../features/workspace/client/conversation/conversation-surface-store.js";

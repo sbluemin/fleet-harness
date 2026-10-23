@@ -22,7 +22,7 @@ const FOLLOW_SLACK_PX = 48;
 /**
  * 참여자의 원장 — SDK `ctx.chat.Ledger` 의 호스트 구현. 그룹 대화가 지휘관 원장을 여는 그 모습을 플러그인 기록에 준다.
  *
- * 머리는 그룹 원장 틀(`GroupLedgerFrame`: 표식 · 「…의 원장 · 읽기 전용」 · 「대화로 돌아가기」)이고, 본문은 Operation 채팅의 면
+ * 머리는 그룹 원장 틀(`GroupLedgerFrame`: 표식 · 「…의 원장 · 읽기 전용」 · 「대화로 돌아가기」)이고, 본문은 Objective 채팅의 면
  * (`.agent-chat` · 스크롤 주체인 `.agent-chat-log` · 같은 거터와 컬럼, 채팅 폭 선호)이며, 바닥은 구성원 원장과 같은 읽기 전용 좌표
  * 줄이다. 턴은 기록 면(`ctx.chat.Transcript`)과 같은 렌더러로 선다 — 둘의 차이는 담는 그릇뿐이다. 입력 틀은 서지 않는다.
  */

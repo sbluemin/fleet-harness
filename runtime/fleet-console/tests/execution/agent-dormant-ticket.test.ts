@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
-import { readOperationLaunch, withOperationLaunchPreset, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "../../features/execution/shared/operations/types.js";
+import { readObjectiveLaunch, withObjectiveLaunchPreset, type ObjectiveRecordCreateInput, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -38,19 +38,19 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
+    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send", "resume"] });
-    const operation = harness.operations.find((op) => op.id === id)!;
-    expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "terminal", started: false });
-    expect(harness.operations).toHaveLength(1);
-    await expect(control.request(caller, { kind: "send", operationId: id, text: "Do not wake", liveOnly: true })).rejects.toThrow("session_not_live");
+    const objectiveRecord = harness.objectiveRecords.find((op) => op.id === id)!;
+    expect(readObjectiveLaunch(objectiveRecord)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "terminal", started: false });
+    expect(harness.objectiveRecords).toHaveLength(1);
+    await expect(control.request(caller, { kind: "send", objectiveId: id, text: "Do not wake", liveOnly: true })).rejects.toThrow("session_not_live");
     expect(control.observe(id)?.lifecycle).toBe("dormant");
     expect(harness.attach).not.toHaveBeenCalled();
-    harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low", viewMode: "terminal" }) });
-    expect(harness.operations.find((op) => op.id === id)!.payload).not.toHaveProperty("chatBorn");
+    harness.patch(id, { ...(withObjectiveLaunchPreset(objectiveRecord, { model: "sonnet", effort: "low", viewMode: "terminal" })) });
+    expect(harness.objectiveRecords.find((op) => op.id === id)!).not.toHaveProperty("chatBorn");
     expect(control.observe(id)?.surface).toBe("terminal");
-    expect(await control.request(caller, { kind: "send", operationId: id, text: "Begin" })).toEqual({ operationId: id, delivery: "queued" });
+    expect(await control.request(caller, { kind: "send", objectiveId: id, text: "Begin" })).toEqual({ objectiveId: id, delivery: "queued" });
     expect(harness.attach).toHaveBeenCalledTimes(1);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet[1m]", effort: "low", sessionName: "commander", disableSubagents: true }));
     expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
@@ -59,13 +59,13 @@ describe("agent dormant ticket guards", () => {
   it("resumes a dormant member with the host subagent policy instead of a stale session block", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
-    const operation = harness.operations.find((op) => op.id === sessionId)!;
+    const objectiveRecord = harness.objectiveRecords.find((op) => op.id === sessionId)!;
     harness.patch(sessionId, {
-      payload: {
-        ...operation.payload,
+      ...({
+        ...objectiveRecord,
         subagentSpawn: "default",
-        session: { ...(operation.payload.session as Record<string, unknown>), disableSubagents: true },
-      },
+        session: { ...(objectiveRecord.session as Record<string, unknown>), disableSubagents: true },
+      }),
     });
     await harness.transitionToDormant(sessionId);
     harness.attach.mockClear();
@@ -73,7 +73,7 @@ describe("agent dormant ticket guards", () => {
     const attached = harness.attach.mock.calls.at(-1)?.[0] as { disableSubagents?: boolean } | undefined;
     expect(attached).toMatchObject({ sessionId });
     expect(attached).not.toHaveProperty("disableSubagents");
-    expect(harness.operations.find((op) => op.id === sessionId)?.payload.subagentSpawn).toBe("default");
+    expect(harness.objectiveRecords.find((op) => op.id === sessionId)?.subagentSpawn).toBe("default");
   });
 
   it("resumes a dormant member through Console control without a message", async () => {
@@ -85,21 +85,21 @@ describe("agent dormant ticket guards", () => {
     expect(harness.control.observe(sessionId)?.generation).toBe(born);
     await harness.transitionToDormant(sessionId);
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId, text: "wrong" } as never)).rejects.toThrow();
-    expect(await harness.control.request(caller, { kind: "resume", operationId: sessionId })).toEqual({ operationId: sessionId, delivery: "confirmed" });
+    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId, text: "wrong" } as never)).rejects.toThrow();
+    expect(await harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).toEqual({ objectiveId: sessionId, delivery: "confirmed" });
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
     expect(harness.control.observe(sessionId)).toMatchObject({ lifecycle: "live", generation: expect.any(String) });
     expect(harness.control.observe(sessionId)?.generation).not.toBe(born);
-    await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId })).rejects.toThrow("not_dormant");
+    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).rejects.toThrow("not_dormant");
   });
 
-  it("rejects ticket issuance for a dormant session with operation_dormant", async () => {
+  it("rejects ticket issuance for a dormant session with objectiveRecord_dormant", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
 
     await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_dormant" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_dormant" } });
     expect(harness.ticketsIssued).toBe(0);
   });
 
@@ -138,7 +138,7 @@ describe("agent dormant ticket guards", () => {
 });
 
 type TestRequest = http.IncomingMessage & {
-  readonly __body?: { readonly operationId?: string; readonly fresh?: boolean };
+  readonly __body?: { readonly objectiveId?: string; readonly fresh?: boolean };
 };
 
 async function createHarness(options: {
@@ -149,14 +149,14 @@ async function createHarness(options: {
 } = {}) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-dormant-ticket-"));
   temporaryDirectories.push(fleetDataDir);
-  const operations: OperationNode[] = [];
+  const objectiveRecords: ObjectiveRecord[] = [];
   const eventListeners = new Map<string, Array<(payload: unknown) => void>>();
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   const invalidateCalls: string[] = [];
   let route: RouteHandler | undefined;
-  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Theater" }], pluginAvailable: (id) => id === "objectives" });
-  let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
+  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Theater" }], pluginAvailable: (id) => id === "objectives" });
+  let exitCallback: ((objectiveId: string) => void | Promise<void>) | undefined;
   let ticketsIssued = 0;
   const tickets = createPluginTerminalTicketRegistry({
     randomTicket: (() => {
@@ -229,41 +229,36 @@ async function createHarness(options: {
         cleanup: () => {},
         dispose: async () => {},
       }) },
-      operations: {
-        list: () => operations,
-        get: (id: string) => operations.find((operation) => operation.id === id) ?? null,
-        create: (input: OperationCreateInput) => {
+      objectiveRecords: {
+        list: () => objectiveRecords,
+        get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
+        create: (input: ObjectiveRecordCreateInput) => {
           const createdAt = input.createdAt ?? Date.now();
-          const operation: OperationNode = {
-            id: input.id ?? cryptoRandomId(),
-            theaterId: input.theaterId,
-            type: input.type,
-            pluginId: input.pluginId,
-            title: input.title,
-            payload: { ...(input.payload ?? {}) },
-            geometry: input.geometry ?? null,
-            ts: { createdAt, updatedAt: createdAt },
-          };
-          operations.push(operation);
-          return operation;
+          const objectiveRecord: ObjectiveRecord = {...({ ...(input ?? {}) }),
+id: input.id ?? cryptoRandomId(),
+theaterId: input.theaterId,
+title: input.title,
+ts: { createdAt, updatedAt: createdAt }};
+          objectiveRecords.push(objectiveRecord);
+          return objectiveRecord;
         },
-        patch: (id: string, input: OperationPatchInput) => {
-          const index = operations.findIndex((operation) => operation.id === id);
-          const current = operations[index];
+        patch: (id: string, input: ObjectiveRecordPatchInput) => {
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
+          const current = objectiveRecords[index];
           if (!current) return null;
           const patched = {
-            ...current,
+            ...(input.id === current.id ? input as typeof current : current),
             ...(input.title === undefined ? {} : { title: input.title }),
-            ...(input.payload === undefined ? {} : { payload: { ...input.payload } }),
+            ...input,
             ts: { ...current.ts, updatedAt: Date.now() },
           };
-          operations[index] = patched;
+          objectiveRecords[index] = patched;
           return patched;
         },
         delete: (id: string) => {
-          const index = operations.findIndex((candidate) => candidate.id === id);
+          const index = objectiveRecords.findIndex((candidate) => candidate.id === id);
           if (index < 0) return false;
-          operations.splice(index, 1);
+          objectiveRecords.splice(index, 1);
           return true;
         },
       },
@@ -285,13 +280,13 @@ async function createHarness(options: {
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
         readJsonBody: async <T,>(req: http.IncomingMessage) => {
           const url = req.url ?? "";
-          if (url.includes("/ticket")) return { operationId: (req as TestRequest).__body?.operationId } as T;
+          if (url.includes("/ticket")) return { objectiveId: (req as TestRequest).__body?.objectiveId } as T;
           if (url.includes("/resume")) return ((req as TestRequest).__body ?? {}) as T;
           return { theaterId: "theater-1", cliId: "claude", ...options.body } as T;
         },
@@ -336,10 +331,10 @@ async function createHarness(options: {
       res: {} as http.ServerResponse,
       pathname: "/api/v1/agent/sessions",
     });
-    const sessionId = operations[0]!.id;
-    const operation = operations[0]!;
-    operation.payload.session = {
-      ...(operation.payload.session as Record<string, unknown> | undefined),
+    const sessionId = objectiveRecords[0]!.id;
+    const objectiveRecord = objectiveRecords[0]!;
+    objectiveRecord.session = {
+      ...(objectiveRecord.session as Record<string, unknown> | undefined),
       harness: "claude-code",
       id: "provider-session-1",
       capturedAt: "2026-07-25T00:00:00.000Z",
@@ -354,13 +349,13 @@ async function createHarness(options: {
     expect(sessions[0]).toMatchObject({ sessionId, status: "dormant" });
   }
 
-  async function postTicket(operationId: string): Promise<void> {
+  async function postTicket(objectiveId: string): Promise<void> {
     if (!route) throw new Error("Agent route was not registered");
     const req = {
       method: "POST",
       url: "/api/v1/agent/ticket",
-      __body: { operationId },
-    } as http.IncomingMessage & { __body: { operationId: string } };
+      __body: { objectiveId },
+    } as http.IncomingMessage & { __body: { objectiveId: string } };
     await route({
       req,
       res: {} as http.ServerResponse,
@@ -393,8 +388,8 @@ async function createHarness(options: {
     const context: TerminalTicketContext = {
       cwd: path.join(fleetDataDir, "theater"),
       sessionId,
-      operationId: sessionId,
-      operationType: "agent",
+      objectiveId: sessionId,
+      objectiveRecordType: "agent",
       pluginId: null,
       theaterId: "theater-1",
       cliId: "claude",
@@ -406,8 +401,8 @@ async function createHarness(options: {
     dataDir: fleetDataDir,
     attach,
     control,
-    operations,
-    patch: ctx.host.operations.patch,
+    objectiveRecords,
+    patch: ctx.host.objectiveRecords.patch,
     tickets,
     responses,
     invalidateCalls,

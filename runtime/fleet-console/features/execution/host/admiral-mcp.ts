@@ -8,7 +8,7 @@ import { z } from "zod";
 
 export interface AdmiralMcpHostOptions {
   /**
-   * 세션 라벨(연결 접두사를 벗긴 것)을 호출자 Operation 으로 푼다. 모르는 라벨은 null — 호출자 없이 부른다(fail-closed).
+   * 세션 라벨(연결 접두사를 벗긴 것)을 호출자 Objective 으로 푼다. 모르는 라벨은 null — 호출자 없이 부른다(fail-closed).
    * 모델 인자나 토큰 밖의 값으로 호출자를 정하지 않는다.
    */
   readonly resolveCaller?: (label: string) => ConsoleCaller | null;

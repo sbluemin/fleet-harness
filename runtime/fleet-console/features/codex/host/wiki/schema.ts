@@ -197,7 +197,7 @@ This directory is the **Fleet Wiki**, a workspace-local markdown knowledge base.
 
 ## 2. Roles and Gates
 
-The host performs every non-pure-read Wiki operation directly. The 12 global tools include ingest, edit, query, compile, lint, and schema tools in addition to the four pure-read tools. Delegated runs cannot write entries, inspect history, run lint, or inspect/create schemas. Schema template creation is separate and create-only: it never overwrites an existing template.
+The host performs every non-pure-read Wiki objectiveRecord directly. The 12 global tools include ingest, edit, query, compile, lint, and schema tools in addition to the four pure-read tools. Delegated runs cannot write entries, inspect history, run lint, or inspect/create schemas. Schema template creation is separate and create-only: it never overwrites an existing template.
 
 ## 3. Standard Workflow
 

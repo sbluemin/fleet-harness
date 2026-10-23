@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-const SIDE_BAR_CLASS = "operations-side-bar";
+const SIDE_BAR_CLASS = "objective-records-side-bar";
 
 /**
  * 사이드바가 width 전환으로 폭을 바꾸는 동안(좁은 창의 아바타 열 전환) 대화 칸의 왼쪽 인셋이 사이드바를 매 프레임 따라가게 한다.

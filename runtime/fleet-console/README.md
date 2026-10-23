@@ -14,7 +14,7 @@ Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTY
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 
-Agent is a durable Console-owned Operation (`pluginId: null`, `type: "agent"`). Shell is one global non-durable surface with a Console-owned lifetime. Terminal and Chat are Agent execution adapters, not separate features.
+Agent is a durable Console-owned Objective (`pluginId: null`, `type: "agent"`). Shell is one global non-durable surface with a Console-owned lifetime. Terminal and Chat are Agent execution adapters, not separate features.
 
 ## Runtime Channels
 
@@ -24,7 +24,7 @@ Agent is a durable Console-owned Operation (`pluginId: null`, `type: "agent"`). 
 | `POST /api/v1/theaters/folder-listings` | Returns a directory listing (`{ path, parentPath, roots, entries, truncated? }`) for the given path, or the server home directory when `path` is null. Directories only, non-recursive, capped at 500 entries. | Requires the terminal Origin boundary (`isTerminalAuthorized`); no adminToken. |
 | `POST /api/v1/theaters/folder-grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
 | `/api/v1/shell/*` | Shell launch and ticket routes for per-conversation Shells. | Shell cwd is resolved server-side from the conversation's work location within its Theater; browser receives only one-use terminal tickets. |
-| `/api/v1/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for Agent Operations. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
+| `/api/v1/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for Agent ObjectiveRecords. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
 | `/api/v1/terminal/ws` | Console PTY and Chat WebSocket transport. | Short-lived one-use ticket and Origin authorization. |
 | `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
 | `/console/codex/*` | Console-owned Codex/Fleet Wiki web, workspace API, and migrated Maritime Codex client. | Admin workspace registration uses the lock bearer token; browser reads stay token-free on allowed local origins. |
@@ -33,7 +33,7 @@ Agent is a durable Console-owned Operation (`pluginId: null`, `type: "agent"`). 
 
 ## Session Binding
 
-When Console creates a terminal session, it generates a session id and resolves every Agent CLI, including AI Gateway operations, through the shared fleet-admiral runtime. It keeps the selected absolute cwd server-side and records non-secret session metadata for observer hydration through generic console operation and event capabilities.
+When Console creates a terminal session, it generates a session id and resolves every Agent CLI, including AI Gateway objectiveRecords, through the shared fleet-admiral runtime. It keeps the selected absolute cwd server-side and records non-secret session metadata for observer hydration through generic console objectiveRecord and event capabilities.
 
 Folder selection is handled entirely in the browser UI: the React directory browser modal calls the console-owned `POST /theaters/folders/list` route to browse the server's local filesystem, then calls `POST /theaters/folders/grants` once the operator confirms a directory. The resulting one-use grant is consumed by Theater registration; Shell and Agent launches resolve cwd from the Theater server-side. No OS-native dialog or child process is involved. The browser modal works in remote and headless browser sessions without any OS-level dialog support.
 

@@ -22,7 +22,7 @@ export interface TerminalModelAuthProviderState {
   readonly signedIn: boolean;
   /**
    * `service` 자격증명이 열어 주는 모델들. 카탈로그를 거치지 않으므로 `/model` 픽커와
-   * Operation 실행 메뉴에는 나타나지 않는다 — 설정 화면에만 보이는 이름이다.
+   * Objective 실행 메뉴에는 나타나지 않는다 — 설정 화면에만 보이는 이름이다.
    */
   readonly models?: readonly TerminalModelAuthServiceModel[];
 }

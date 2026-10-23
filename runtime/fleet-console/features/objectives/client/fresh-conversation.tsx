@@ -1,17 +1,17 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
-import { operationAvatarKey } from "../../workspace/shared/avatars.js";
+import { objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 
 import type { Objective } from "../shared/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusOperation, listedOperationSummaries, openObjectiveFromCluster, patchObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, openObjectiveFromCluster, patchObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
- * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
+ * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Objective 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
  * 완료해 지휘관이 보관된 목표도 같은 칸에 「완료」로 선다 — 입력창의 말은 지휘관에게 가고(범위 넓히기는 고르는 칩), 보내면 서버가 지휘관을 휴면으로 복원한다.
- * 칸이 서 있는 동안 호스트는 활성 Operation 을 비우므로 가운데 칸·오른쪽 패널 머리·사이드바 하이라이트가 모두 이 목표를 가리킨다.
- * 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
+ * 칸이 서 있는 동안 호스트는 활성 Objective 을 비우므로 가운데 칸·오른쪽 패널 머리·사이드바 하이라이트가 모두 이 목표를 가리킨다.
+ * 개시해 지휘관 Objective 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
 
 // 표면 id 는 objectives-state 가 갖는다 — 다른 Theater 의 목표를 열 때 그쪽도 시작 화면을 세운다(순환 import 를 피한다).
@@ -43,11 +43,11 @@ function refreshFinishedFor(objectiveId: string, theaterId: string): void {
 }
 
 /**
- * 목표의 가운데 칸을 연다 — 지휘관 Operation 이 목록에 있으면 그 대화로, 없으면 복원하지 않고 가운데 칸에 시작 화면(시작 전 목표)이나
+ * 목표의 가운데 칸을 연다 — 지휘관 Objective 이 목록에 있으면 그 대화로, 없으면 복원하지 않고 가운데 칸에 시작 화면(시작 전 목표)이나
  * 완료 화면(보관된 끝난 목표)을 세운다. 범위 넓히기는 완료 화면의 입력창이 받는다. 대화 중심 화면이 꺼져 있으면 false.
  */
 export function openObjectiveConversation(objectiveId: string, theaterId: string): boolean {
-  if (commanderLive(objectiveId)) { focusOperation(objectiveId); return true; }
+  if (commanderLive(objectiveId)) { focusObjective(objectiveId); return true; }
   return openFreshConversation(objectiveId, theaterId);
 }
 
@@ -100,8 +100,8 @@ const objectiveIdOf = (params: Readonly<Record<string, unknown>>): string | null
 /** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표(보관)에서 — 완료 화면과 그 입력창의 보드 동작이 같은 레코드를 읽는다. */
 const findObjective = (objectiveId: string | null): Objective | null => (objectiveId === null ? null : findAnyObjective(objectiveId));
 const theaterIdOf = (params: Readonly<Record<string, unknown>>): string | null => (typeof params.theaterId === "string" ? params.theaterId : null);
-/** 지휘관 Operation 이 목록에 섰다 — 보관 describe 요약(완료로 보관된 지휘관)은 세지 않는다. */
-const commanderLive = (objectiveId: string): boolean => listedOperationSummaries().some((summary) => summary.id === objectiveId);
+/** 지휘관 Objective 이 목록에 섰다 — 보관 describe 요약(완료로 보관된 지휘관)은 세지 않는다. */
+const commanderLive = (objectiveId: string): boolean => listedObjectiveSummaries().some((summary) => summary.id === objectiveId);
 
 function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, composer }: { readonly objectiveId: string; readonly theaterId: string | null; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined }) {
   const t = getT(language);
@@ -113,10 +113,10 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   const pending = useSyncExternalStore(subscribeObjectiveOrFinished, waiting, () => false);
   const failed = useSyncExternalStore(subscribeObjectiveOrFinished, failedNow, () => false);
   useEffect(() => { if (theaterId) refreshFinishedFor(objectiveId, theaterId); }, [objectiveId, theaterId]);
-  // 개시·범위 넓히기·완료 뒤 메시지로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
+  // 개시·범위 넓히기·완료 뒤 메시지로 지휘관 Objective 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   // 읽는 중인지는 렌더 값이 아니라 지금 값으로 본다 — 바로 위 효과가 같은 커밋에서 다시 읽기를 시작했을 수 있다.
   useEffect(() => {
-    if (live) focusOperation(objectiveId);
+    if (live) focusObjective(objectiveId);
     else if ((objective === null && !waiting() && !failedNow()) || objective?.removed) onClose();
   }, [live, objective, objectiveId, onClose, pending, failed]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!objective) {
@@ -158,15 +158,15 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
   id: FRESH_SURFACE_ID,
   title: (ctx) => findObjective(objectiveIdOf(ctx.params))?.title ?? getT(ctx.language)("objectives.state.fresh"),
   subtitle: (ctx) => getT(ctx.language)(findObjective(objectiveIdOf(ctx.params))?.done ? "objectives.graph.state.done" : "objectives.state.fresh"),
-  // 얼굴은 사이드바 줄의 표식과 같은 지휘관 아바타다(줄이 `avatarOperationId` 로 고르는 키).
+  // 얼굴은 사이드바 줄의 표식과 같은 지휘관 아바타다(줄이 `avatarObjectiveId` 로 고르는 키).
   avatar: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
     const objective = findObjective(objectiveId);
-    return objectiveId && objective ? { key: operationAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
+    return objectiveId && objective ? { key: objectiveRecordAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
   },
   subscribe: (listener) => subscribeObjectiveOrFinished(listener),
-  // 개시하면 이 목표 id 로 지휘관 Operation 이 선다 — 오른쪽 패널은 진행 중 Operation 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
-  standInOperationId: (ctx) => objectiveIdOf(ctx.params),
+  // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 오른쪽 패널은 진행 중 Objective 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
+  standInObjectiveId: (ctx) => objectiveIdOf(ctx.params),
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
     return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} theaterId={theaterIdOf(ctx.params)} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;

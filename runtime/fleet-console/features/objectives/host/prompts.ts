@@ -15,7 +15,7 @@ export function actorName(by: ObjectiveActor, language: PromptLanguage): string 
   if (by === "human") return language === "ko" ? "사람" : "The person";
   if (by === "commander") return language === "ko" ? "지휘관" : "The Commander";
   if (by.kind === "commodore") return language === "ko" ? "사령관" : "The Commodore";
-  return `Operation ${JSON.stringify(by.title ?? by.operationId)}`;
+  return `Objective ${JSON.stringify(by.title ?? by.objectiveId)}`;
 }
 const actorsName = (actors: readonly ObjectiveActor[], language: PromptLanguage) => [...new Set(actors.map((by) => actorName(by, language)))].join(language === "ko" ? "·" : " and ");
 const editActors = (objective: Objective, language: PromptLanguage) => actorsName(objective.edited?.actors ?? ["human"], language);
@@ -182,7 +182,7 @@ export function decisionTurn(objective: Objective, request: DecisionRequest, ans
 }
 
 /**
- * 서브에이전트(Agent 도구) 호출이 받는 거절 사유 — 그 호출의 결과 자리에 서는 사실 한 줄이다. 모든 에이전트 Operation 은 자기 목표의
+ * 서브에이전트(Agent 도구) 호출이 받는 거절 사유 — 그 호출의 결과 자리에 서는 사실 한 줄이다. 모든 에이전트 Objective 은 자기 목표의
  * 지휘관이므로 서브에이전트 대신 그 목표의 구성원이 일손이다. 절차는 쓰지 않는다: 도구 설명이 말하고 흐름은 모델이 잡는다.
  * 구성원 세션은 관여하지 않는다(null) — 그 세션의 서브에이전트는 사람이 고른 허용값(subagents)이 정하고, 막힌 세션에는 도구가 없다.
  */

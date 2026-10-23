@@ -7,12 +7,12 @@ import type { LocalizedText } from "@fleet-console/i18n";
 import type { ConversationReference } from "./references.js";
 
 /** 그룹 대화의 읽기 계약. 실행 원장과 플러그인 보드를 복제 저장하지 않는 표시 모델이다. */
-export type ConversationSpeakerKind = "human" | "commander" | "member" | "commodore" | "operation";
+export type ConversationSpeakerKind = "human" | "commander" | "member" | "commodore" | "objectiveRecord";
 
 export interface ConversationSpeaker {
   readonly kind: ConversationSpeakerKind;
   readonly name: string;
-  readonly operationId?: string;
+  readonly objectiveId?: string;
   readonly mark?: { readonly number: number; readonly tone: string };
 }
 
@@ -125,12 +125,12 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * `turn` — 그 말을 한 발화자 원장의 턴 좌표. 같은 값이면 한 턴(지시 하나에 대한 응답)이다. 턴 접기가 읽고, 없으면 그 말은 접지 않는다.
    * `references` — 사람이 문면 속 자리에 둔 참조(`./references.ts`). 평문 말풍선만 그 자리에 토큰을 세운다.
    */
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly pending?: true; readonly turn?: string }
+  | { readonly kind: "message"; readonly objectiveId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly pending?: true; readonly turn?: string }
   /**
    * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
    * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.
    */
-  | { readonly kind: "plugin-notice"; readonly operationId: string; readonly pluginId: string; readonly recipient: ConversationSpeaker; readonly text: string; readonly format?: "markdown" }
+  | { readonly kind: "plugin-notice"; readonly objectiveId: string; readonly pluginId: string; readonly recipient: ConversationSpeaker; readonly text: string; readonly format?: "markdown" }
   /** `turn` — 보낸 쪽 원장에서 이 전언을 낸 턴(메시지의 `turn` 과 같은 좌표). 받은 쪽 원장만 본 전언에는 없다. */
   | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
@@ -148,10 +148,10 @@ export type GroupTimelineEntry = EntryCoordinate & (
   | { readonly kind: "decision-answer"; readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string }[] }
 );
 
-/** Objectives 등 플러그인이 기존 OperationCluster 포트로 보내는 보드 사실. */
-export interface OperationClusterConversation {
-  readonly operationId: string;
-  /** 플러그인이 기록한 목표의 대화일 때만 true다. 일반 Operation의 빈 보드·명부·동작으로 추정하지 않는다. */
+/** Objectives 등 플러그인이 기존 ObjectiveCluster 포트로 보내는 보드 사실. */
+export interface ObjectiveClusterConversation {
+  readonly objectiveId: string;
+  /** 플러그인이 기록한 목표의 대화일 때만 true다. 일반 Objective의 빈 보드·명부·동작으로 추정하지 않는다. */
   readonly recordedObjective?: boolean;
   readonly members: readonly ConversationMember[];
   /** 지휘관 줄의 보드 사실 — 보드가 지휘관 행에 보이는 것만 싣는다. */
@@ -173,7 +173,7 @@ export interface OperationClusterConversation {
 
 export type GroupMessageTarget =
   | { readonly kind: "commander" }
-  | { readonly kind: "member"; readonly operationId: string }
+  | { readonly kind: "member"; readonly objectiveId: string }
   | { readonly kind: "all" }
   | { readonly kind: "commodore" };
 export interface GroupDecisionAnswer {
@@ -274,7 +274,7 @@ export interface GroupBoardActions {
 }
 
 export interface GroupTimelineSnapshot {
-  readonly rootOperationId: string | null;
+  readonly rootObjectiveId: string | null;
   readonly entries: readonly GroupTimelineEntry[];
   readonly participants: readonly ConversationParticipant[];
   readonly working: readonly ConversationSpeaker[];
@@ -283,5 +283,5 @@ export interface GroupTimelineSnapshot {
   readonly preview: ConversationPreview | null;
   readonly loading: boolean;
   readonly truncated: boolean;
-  readonly unavailableOperationIds: readonly string[];
+  readonly unavailableObjectiveIds: readonly string[];
 }

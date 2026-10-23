@@ -45,11 +45,11 @@ export function refuse(error: string, extra: Record<string, unknown> = {}) {
   return { ...text({ error, ...extra }), isError: true };
 }
 
-/** 이 Operation 이 이 목표에서 맡은 자리 — 지휘관 또는 명단에 연결된 구성원. 둘 다 아니면 null. */
+/** 이 Objective 이 이 목표에서 맡은 자리 — 지휘관 또는 명단에 연결된 구성원. 둘 다 아니면 null. */
 export function roleIn(objective: Objective, caller: ConsoleCaller | undefined): { role: "commander" } | { role: "member"; memberId: string } | null {
-  if (caller?.kind !== "operation") return null;
-  if (objective.id === caller.operationId) return { role: "commander" };
-  const member = objective.members.find((candidate) => candidate.id === caller.operationId && candidate.sessionName !== null);
+  if (caller?.kind !== "objectiveRecord") return null;
+  if (objective.id === caller.objectiveId) return { role: "commander" };
+  const member = objective.members.find((candidate) => candidate.id === caller.objectiveId && candidate.sessionName !== null);
   return member ? { role: "member", memberId: member.id } : null;
 }
 
@@ -62,16 +62,16 @@ export function deriveFailedOutcome(
 }
 
 export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveStore) {
-  const observe = (operationId: string): { readonly operationId: string; readonly title: string | null; readonly state: string; readonly outcome?: "failed" } => {
-    const reference = ctx.operations.describe?.(operationId);
-    const node = reference?.operation ?? ctx.operations.get(operationId);
-    if (!node) return { operationId, title: null, state: "closed" };
-    if (reference?.location === "archived") return { operationId, title: node.title, state: "archived" };
-    const observation = ctx.consoleControl?.observe(operationId) ?? null;
+  const observe = (objectiveId: string): { readonly objectiveId: string; readonly title: string | null; readonly state: string; readonly outcome?: "failed" } => {
+    const reference = ctx.objectiveRecords.describe?.(objectiveId);
+    const node = reference?.objectiveRecord ?? ctx.objectiveRecords.get(objectiveId);
+    if (!node) return { objectiveId, title: null, state: "closed" };
+    if (reference?.location === "archived") return { objectiveId, title: node.title, state: "archived" };
+    const observation = ctx.consoleControl?.observe(objectiveId) ?? null;
     const state = observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown";
     const outcome = deriveFailedOutcome(observation);
     return {
-      operationId,
+      objectiveId,
       title: node.title,
       state,
       ...(outcome ? { outcome } : {}),
@@ -80,8 +80,8 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
   const graph = (objective: Objective) => {
     const nOf = (missionId: string) => objective.missions.findIndex((candidate) => candidate.id === missionId) + 1;
     return {
-      // 지휘관 Operation 은 목표와 같은 id·제목이다 — 상태와 세션 이름만.
-      // 기동 전 목표에는 지휘관 Operation 이 아직 없다 — 닫힘(closed)이 아니라 시작 전이다.
+      // 지휘관 Objective 은 목표와 같은 id·제목이다 — 상태와 세션 이름만.
+      // 기동 전 목표에는 지휘관 Objective 이 아직 없다 — 닫힘(closed)이 아니라 시작 전이다.
       commander: (() => {
         const obs = observe(objective.id);
         return {
@@ -128,9 +128,9 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       extensionActive: objective.extensionActive,
       criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind,
         ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation, annotationBy: proposal.annotationBy }) })),
-      // 구성원 id 가 곧 그 세션의 Operation id 다.
+      // 구성원 id 가 곧 그 세션의 Objective id 다.
       members: objective.members.map((member) => {
-        const obs = ctx.operations.get(member.id) ? observe(member.id) : null;
+        const obs = ctx.objectiveRecords.get(member.id) ? observe(member.id) : null;
         return {
           id: member.id,
           role: member.role,
@@ -166,7 +166,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       followups: objective.followups.map((candidate) => (candidate.state === "discarded"
         ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary, discarded: candidate.discarded }
         : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, evidence: candidate.evidence.map((entry) => withoutEmpty({ ...entry })) })),
-      followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, by: batch.by ?? "human", at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ operationId: entry.operationId, error: entry.error }) })) })),
+      followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, by: batch.by ?? "human", at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ objectiveId: entry.objectiveId, error: entry.error }) })) })),
       // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
       origin: objective.origin,
       // 지금의 결정 요청 — 철회에 쓰는 id 와 지휘관이 낸 질문. 선택지 id 는 사람의 화면이 쓰는 값이다.
@@ -185,14 +185,14 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       at: new Date(decision.at).toISOString() })) }),
   });
   /**
-   * 목록 한 줄 — 상세를 열지 않고도 목표끼리 견줄 수 있게 한다. operation 은 지휘관 Operation 이 있는지다(보드에서 만들고
+   * 목록 한 줄 — 상세를 열지 않고도 목표끼리 견줄 수 있게 한다. objectiveRecord 은 지휘관 Objective 이 있는지다(보드에서 만들고
    * 아직 기동하지 않은 목표만 false).
    * 브리핑은 앞부분만 싣고, 잘렸으면 briefTruncated 로 알린다. 전문은 목표 하나를 읽는다.
    */
   const rowView = (objective: Objective) => ({
     id: objective.id, groupId: objective.groupId, title: objective.title,
-    operation: objective.hasOperation ?? !store.pending(objective.id), archived: objective.archived === true,
-    done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
+    objectiveRecord: objective.hasSession ?? !store.pending(objective.id), archived: objective.archived === true,
+    done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "objectiveId" in objective.addedBy ? objective.addedBy.objectiveId : objective.addedBy,
     operator: objective.operator,
     ...withoutEmpty({
       commenced: objective.commenced, commencedBy: objective.commencedBy,
@@ -206,8 +206,8 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
   });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */
   const languageOf = (caller: ConsoleCaller | undefined): PromptLanguage => {
-    if (caller?.kind !== "operation") return "en";
-    return ctx.operations.get(caller.operationId)?.payload?.objectiveLanguage === "ko" ? "ko" : "en";
+    if (caller?.kind !== "objectiveRecord") return "en";
+    return ctx.objectiveRecords.get(caller.objectiveId)?.objectiveLanguage === "ko" ? "ko" : "en";
   };
   const sessions = (objective: Objective) => {
     const commander = observe(objective.id);

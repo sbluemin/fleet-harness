@@ -467,7 +467,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
 
 @media (prefers-reduced-motion: reduce) {
   .console-shell,
-  .operations-side-bar,
+  .objective-records-side-bar,
   .right-rail {
     transition: none !important;
   }

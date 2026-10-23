@@ -1,7 +1,7 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
+import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { clampTheaterAlias, createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath, saveTheaterAlias } from "../../../../../features/workspace/client/theater.js";
@@ -53,7 +53,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
 
   const top = stack.at(-1);
   if (!top) return null;
-  if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
+  if (top.kind === "rename") return <RenameSheet key={top.objectiveId} state={state} objectiveId={top.objectiveId} />;
   if (top.kind === "console") return <ConsoleSheet />;
   if (top.kind === "create") return <CreateSheet state={state} />;
   if (top.kind === "profile") return <ProfileSheet />;
@@ -77,17 +77,17 @@ async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Pr
 }
 
 /** S-13 — 입력칸 하나. 저장하면 닫히고 토스트가 알린다. 빈 문자열은 저장하지 않는다. */
-function RenameSheet({ state, operationId }: { readonly state: ConsoleState; readonly operationId: string }) {
+function RenameSheet({ state, objectiveId }: { readonly state: ConsoleState; readonly objectiveId: string }) {
   const t = useT();
   const capabilities = useHostCapabilities();
-  const operation = state.operations.find((item) => item.id === operationId);
-  const [value, setValue] = useState(operation?.title ?? "");
+  const objectiveRecord = state.objectiveRecords.find((item) => item.id === objectiveId);
+  const [value, setValue] = useState(objectiveRecord?.title ?? "");
   const [saving, setSaving] = useState(false);
   const trimmed = value.trim();
   const save = () => {
     if (trimmed === "" || saving) return;
     setSaving(true);
-    void capabilities.operations.rename(operationId, trimmed).then(() => { closeMobileSheets(); showMobileToast(t("mobile.toast.renamed")); }).catch(() => setSaving(false));
+    void capabilities.objectiveRecords.rename(objectiveId, trimmed).then(() => { closeMobileSheets(); showMobileToast(t("mobile.toast.renamed")); }).catch(() => setSaving(false));
   };
   return (
     <MobileSheet
@@ -121,9 +121,9 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
     <>
       <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
         {state.theaters.map((theater) => {
-          const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
-          const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
-          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === getViewedTheaterId()} count={operations.length} awaiting={awaiting} />;
+          const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id);
+          const awaiting = objectiveRecords.filter((objectiveRecord) => resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) === "awaiting").length;
+          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === getViewedTheaterId()} count={objectiveRecords.length} awaiting={awaiting} />;
         })}
         <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })} disabled={state.addingTheater}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>

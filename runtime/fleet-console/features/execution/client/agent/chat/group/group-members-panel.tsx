@@ -3,7 +3,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { launchProviderGlyph } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import * as React from "react";
 
-import { operationAvatarKey, theaterAvatarKey } from "../../../../../workspace/shared/avatars.js";
+import { objectiveRecordAvatarKey, theaterAvatarKey } from "../../../../../workspace/shared/avatars.js";
 import type { ConversationMemberProfile, ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
@@ -17,7 +17,7 @@ import "./group-chat.css";
  * 오른쪽 「구성원」 탭 본문 — 그룹 대화의 참여자 목록과 활동 상태.
  *
  * 지휘관·구성원 줄 자체가 원장으로 가는 단추다 — 누르면 가운데 칸에 그 참여자의 원장(기존 본문)을 읽기 전용으로 세운다.
- * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Operation 이 아직 없는 구성원)의 줄은 단추가 아니다.
+ * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Objective 이 아직 없는 구성원)의 줄은 단추가 아니다.
  * 제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다. 정지는 작업 줄과 입력창에 있다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
  * 보드 사실(`participant.profile`)이 오면 보드 행과 같은 글 — 제안 표식, 모델·강도(라우팅·꺼짐 표식), 브리프, 상태 낱말, 진단 줄 — 을 그대로 싣는다.
@@ -27,16 +27,16 @@ export interface GroupMembersPanelProps {
   readonly snapshot: GroupTimelineSnapshot;
   readonly language: ConsoleLocale | undefined;
   /** 가운데 칸이 지금 원장을 보이는 참여자(셸의 구성원 본문 선택). 대화를 보고 있으면 null. */
-  readonly ledgerOperationId: string | null;
+  readonly ledgerObjectiveId: string | null;
   /** 원장을 열거나(id) 대화로 돌아간다(null). */
-  readonly onOpenLedger?: (operationId: string | null) => void;
+  readonly onOpenLedger?: (objectiveId: string | null) => void;
   readonly onRemove?: (speaker: ConversationSpeaker) => void;
   readonly onAdd?: () => void;
-  /** 아직 서지 않은 Operation 의 명부(시작 전 목표) — 세션이 없는 참여자의 상태를 「알 수 없음」 대신 「시작 전」으로 말한다. */
+  /** 아직 서지 않은 Objective 의 명부(시작 전 목표) — 세션이 없는 참여자의 상태를 「알 수 없음」 대신 「시작 전」으로 말한다. */
   readonly notStarted?: boolean;
 }
 
-export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus, onOpenLedger, onRemove, onAdd, notStarted = false }: GroupMembersPanelProps) {
+export function GroupMembersPanel({ snapshot, language, ledgerObjectiveId: focus, onOpenLedger, onRemove, onAdd, notStarted = false }: GroupMembersPanelProps) {
   const t = getGroupT(language);
   const participants = snapshot.participants;
   return (
@@ -51,7 +51,7 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
               participant={participant}
               language={language}
               notStarted={notStarted}
-              showing={focus !== null && focus === participant.speaker.operationId}
+              showing={focus !== null && focus === participant.speaker.objectiveId}
               onLedger={onOpenLedger && target ? () => onOpenLedger(focus === target ? null : target) : undefined}
               onRemove={onRemove && participant.speaker.kind === "member" ? () => onRemove(participant.speaker) : undefined}
             />
@@ -77,16 +77,16 @@ function MemberRow({ participant, language, notStarted, showing, onLedger, onRem
   const role = speaker.kind === "commander" ? t("group.commander")
     : speaker.kind === "member" ? t("group.member")
       : speaker.kind === "commodore" ? t("group.commodore")
-        : speaker.kind === "human" ? t("group.you") : t("group.operation");
-  // Operation 이 있는 참여자(사령관 포함)의 아바타는 이 탭에서 고친다 — 대화 중심 화면에만 서는 탭이다. 사람은 첫 글자 칩 그대로다.
+        : speaker.kind === "human" ? t("group.you") : t("group.objectiveRecord");
+  // Objective 이 있는 참여자(사령관 포함)의 아바타는 이 탭에서 고친다 — 대화 중심 화면에만 서는 탭이다. 사람은 첫 글자 칩 그대로다.
   const subject = useConversationSubject();
   // 얼굴은 다른 표면과 같은 기준이다 — 말풍선의 최신 표식과 같은 `participantMongleState` 를 지난다.
   const consoleState = useConsoleState();
   const clusters = useConversationClusters();
   const avatar = speaker.kind === "commodore"
     ? { key: theaterAvatarKey(subject?.theaterId ?? "unknown"), role: "commodore" as const }
-    : speaker.kind !== "human" && speaker.operationId
-      ? { key: operationAvatarKey(speaker.operationId), role: speaker.kind === "member" ? "member" as const : "commander" as const }
+    : speaker.kind !== "human" && speaker.objectiveId
+      ? { key: objectiveRecordAvatarKey(speaker.objectiveId), role: speaker.kind === "member" ? "member" as const : "commander" as const }
       : null;
   const profile = participant.profile;
   const text = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, language ?? "en");
@@ -147,7 +147,7 @@ function MemberLaunch({ launch, text }: {
     <span className="group-members-launch">
       {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{text(launch.via.label)}</span> : null}
       <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : [label, effort].filter(Boolean).join(" · ")}>
-        {launch.provider ? <span className={`operation-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
+        {launch.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
         <span className={`group-members-launch-label${launch.struck ? " is-off" : ""}`}>{label}</span>
         {effort ? <><span className="group-members-launch-dot" aria-hidden="true">·</span><span className="group-members-launch-effort">{effort}</span></> : null}
       </span>

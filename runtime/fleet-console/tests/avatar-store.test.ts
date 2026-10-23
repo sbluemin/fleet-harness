@@ -42,28 +42,28 @@ function harness(options: { readonly authorized?: boolean } = {}) {
 describe("avatar store", () => {
   it("claims only empty keys and keeps the first draw when an avatar is edited", async () => {
     const { call } = harness();
-    await call("PUT", { mode: "claim", entries: [{ key: "theater:t1", base: 3 }, { key: "operation:o1", base: 7 }] });
+    await call("PUT", { mode: "claim", entries: [{ key: "theater:t1", base: 3 }, { key: "objective:o1", base: 7 }] });
     // 늦게 닿은 다른 창의 배정은 이미 있는 키를 덮지 못한다.
-    const late = await call("PUT", { mode: "claim", entries: [{ key: "operation:o1", base: 12 }, { key: "operation:o2", base: 12 }] });
+    const late = await call("PUT", { mode: "claim", entries: [{ key: "objective:o1", base: 12 }, { key: "objective:o2", base: 12 }] });
     expect(late.body).toEqual({ avatars: {
       "theater:t1": { base: 3, tone: null, origin: 3 },
-      "operation:o1": { base: 7, tone: null, origin: 7 },
-      "operation:o2": { base: 12, tone: null, origin: 12 },
+      "objective:o1": { base: 7, tone: null, origin: 7 },
+      "objective:o2": { base: 12, tone: null, origin: 12 },
     } });
-    const edited = await call("PUT", { mode: "set", key: "operation:o1", base: 9, tone: "rose" });
-    expect((edited.body as { avatars: Record<string, unknown> }).avatars["operation:o1"]).toEqual({ base: 9, tone: "rose", origin: 7 });
+    const edited = await call("PUT", { mode: "set", key: "objective:o1", base: 9, tone: "rose" });
+    expect((edited.body as { avatars: Record<string, unknown> }).avatars["objective:o1"]).toEqual({ base: 9, tone: "rose", origin: 7 });
   });
 
   it("refuses malformed and unauthorized writes and reads a damaged book as empty entries", async () => {
     const { dir, call } = harness();
-    expect((await call("PUT", { mode: "set", key: "operation:o1", base: 16, tone: null })).status).toBe(400);
+    expect((await call("PUT", { mode: "set", key: "objective:o1", base: 16, tone: null })).status).toBe(400);
     expect((await call("PUT", { mode: "set", key: "../escape", base: 1, tone: null })).status).toBe(400);
     expect((await call("PUT", { mode: "claim", entries: [] })).status).toBe(400);
-    fs.writeFileSync(path.join(dir, "avatars.json"), JSON.stringify({ version: 1, avatars: { "operation:ok": { base: 2, tone: "sepia", origin: 99 }, "bogus key": { base: 1 }, "operation:bad": { base: 0 } } }));
-    expect((await call("GET")).body).toEqual({ avatars: { "operation:ok": { base: 2, tone: null, origin: 2 } } });
+    fs.writeFileSync(path.join(dir, "avatars.json"), JSON.stringify({ version: 1, avatars: { "objective:ok": { base: 2, tone: "sepia", origin: 99 }, "bogus key": { base: 1 }, "objective:bad": { base: 0 } } }));
+    expect((await call("GET")).body).toEqual({ avatars: { "objective:ok": { base: 2, tone: null, origin: 2 } } });
 
     const readonly = harness({ authorized: false });
-    expect((await readonly.call("PUT", { mode: "claim", entries: [{ key: "operation:o1", base: 1 }] })).status).toBe(401);
+    expect((await readonly.call("PUT", { mode: "claim", entries: [{ key: "objective:o1", base: 1 }] })).status).toBe(401);
     expect((await readonly.call("GET")).body).toEqual({ avatars: {} });
   });
 });

@@ -8,7 +8,7 @@ export type CapturedProviderSession = CapturedAgentSession | {
   readonly capturedAt: string;
 };
 
-export function readAgentSession(payload: Record<string, unknown> | undefined): AgentSession | undefined {
+export function readAgentSession(payload: Record<string, unknown> | null | undefined): AgentSession | undefined {
   const value = payload?.session;
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const candidate = value as Record<string, unknown>;
@@ -27,7 +27,7 @@ export function readAgentSession(payload: Record<string, unknown> | undefined): 
   };
 }
 
-export function readProviderSession(payload: Record<string, unknown> | undefined): CapturedAgentSession | undefined {
+export function readProviderSession(payload: Record<string, unknown> | null | undefined): CapturedAgentSession | undefined {
   const session = readAgentSession(payload);
   if (!session?.id || !session.capturedAt) return undefined;
   return { ...session, id: session.id, capturedAt: session.capturedAt };
@@ -51,7 +51,7 @@ export function readCapturedProviderSession(value: unknown): CapturedProviderSes
 }
 
 export function mergeCapturedAgentSession(
-  payload: Record<string, unknown> | undefined,
+  payload: Record<string, unknown> | null | undefined,
   captured: Pick<CapturedAgentSession, "id" | "capturedAt" | "transcriptPath" | "source">,
 ): CapturedAgentSession {
   const existing = readAgentSession(payload);

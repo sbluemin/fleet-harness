@@ -5,4 +5,4 @@
  */
 export { GroupConversation, GroupLedgerFrame, GroupWorkingLine, type BoardActionRecordRequest, type GroupConversationProps } from "./group-conversation.js";
 export { GroupMembersPanel, type GroupMembersPanelProps } from "./group-members-panel.js";
-export { CONVERSATION_MEMBERS_TAB_ID, installGroupConversationSurface, ledgerOperationId, MobileGroupConversation, openLedger, subscribeLedger } from "./install.js";
+export { CONVERSATION_MEMBERS_TAB_ID, installGroupConversationSurface, ledgerObjectiveId, MobileGroupConversation, openLedger, subscribeLedger } from "./install.js";

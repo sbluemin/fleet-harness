@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 
-import type { OperationLaunchVariantRow } from "../../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 import { canonicalModelId, findRosterRow, resolveRosterCoordinate, type ModelRoster } from "../../shared/models.js";
 import { useMobileSettingsHost, MobileSettingsRowLabelContext, type MobileCoordinateChoiceProps } from "../../../settings/client/mobile-host.js";
 import { EffortTrack, resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
@@ -149,7 +149,7 @@ export function rosterCoordinateWords(roster: ModelRoster | null, value: ModelCo
 
 function ProviderMark({ provider, className }: { readonly provider: LaunchProviderGlyphId | null; readonly className: string }) {
   if (!provider) return null;
-  return <span className={`operation-launch-provider-glyph ${className} is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
+  return <span className={`objective-launch-provider-glyph ${className} is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
 }
 
 export function ModelCoordinatePicker(props: ModelCoordinatePickerProps): React.ReactElement | null {
@@ -327,12 +327,12 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     return <span className={`${triggerClass} is-locked`} title={[title, labels.locked].filter(Boolean).join("\n") || undefined}>{text}</span>;
   }
 
-  const chosenRow: OperationLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
-  const providerOfRow = (row: OperationLaunchVariantRow) => {
+  const chosenRow: ObjectiveLaunchVariantRow | null = activeModel ? findRosterRow(groups, activeModel) : null;
+  const providerOfRow = (row: ObjectiveLaunchVariantRow) => {
     const group = groups.find((candidate) => candidate.rows.includes(row));
     return group && group.id !== OFF_GROUP_ID ? launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(row.launch.model) : null;
   };
-  const pickRow = (row: OperationLaunchVariantRow) => {
+  const pickRow = (row: ObjectiveLaunchVariantRow) => {
     const model = row.launch.model ?? row.id;
     // 모델만 고르는 선택기·강도를 받지 않는 행은 행이 곧 확정이다.
     if (effortMode === "none" || (row.chips?.length ?? 0) === 0) { settle({ model }); return; }
@@ -439,8 +439,8 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                 return (
                   <div key={group.id} className="fc-coord-menu-group">
                     {index > 0 ? <div className="fc-coord-menu-divider" role="separator" /> : null}
-                    <p className={`operation-launch-variant-caption fc-coord-menu-caption${provider ? ` is-${provider}` : ""}${group.id === OFF_GROUP_ID ? " is-off" : ""}`}>
-                      {provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(provider)}</span> : null}
+                    <p className={`objective-launch-variant-caption fc-coord-menu-caption${provider ? ` is-${provider}` : ""}${group.id === OFF_GROUP_ID ? " is-off" : ""}`}>
+                      {provider ? <span className="objective-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(provider)}</span> : null}
                       <span>{provider ? launchProviderCaption(provider) : group.label}</span>
                     </p>
                     {group.rows.map((row) => {

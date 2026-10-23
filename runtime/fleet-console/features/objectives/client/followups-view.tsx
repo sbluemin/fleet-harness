@@ -219,7 +219,7 @@ export function FollowupBatchResults({ batches, leftover, historyTotal, language
   readonly language: "en" | "ko";
   readonly t: T;
   readonly onRetry: (batchId: string, candidateId: string) => void;
-  readonly onOpenObjective: (operationId: string) => void;
+  readonly onOpenObjective: (objectiveId: string) => void;
 }) {
   const [leftoverOpen, setLeftoverOpen] = useState(false);
   if (batches.length === 0 && leftover.length === 0 && !historyTotal) return null;
@@ -242,7 +242,7 @@ export function FollowupBatchResults({ batches, leftover, historyTotal, language
                   <span className="objectives-followup-rt"><LinkText text={entry.snapshot.title} /></span>
                   {entry.state === "creating" ? <span className="objectives-followup-rstat is-wait"><i className="objectives-followup-spin" aria-hidden="true" />{t("objectives.followup.creating")}</span> : null}
                   {entry.state === "confirming" ? <span className="objectives-followup-rstat is-wait">{t("objectives.followup.confirming")}{why ? ` · ${why}` : ""} · <button type="button" onClick={() => onRetry(batch.id, entry.candidateId)}>{t("objectives.followup.recheck")}</button></span> : null}
-                  {entry.state === "created" ? <span className="objectives-followup-rstat is-ok">{t("objectives.followup.created")} · <button type="button" onClick={() => entry.operationId && onOpenObjective(entry.operationId)}>{t("objectives.followup.openTarget")}</button></span> : null}
+                  {entry.state === "created" ? <span className="objectives-followup-rstat is-ok">{t("objectives.followup.created")} · <button type="button" onClick={() => entry.objectiveId && onOpenObjective(entry.objectiveId)}>{t("objectives.followup.openTarget")}</button></span> : null}
                   {entry.state === "failed" ? <span className="objectives-followup-rstat is-fail">{t("objectives.followup.failed")}{why ? ` · ${why}` : ""} · <button type="button" onClick={() => onRetry(batch.id, entry.candidateId)}>{t("objectives.followup.retry")}</button></span> : null}
                   {entry.state === "deleted" ? <span className="objectives-followup-rstat is-gone">{t("objectives.followup.deleted")}</span> : null}
                   {entry.state === "abandoned" ? <span className="objectives-followup-rstat is-gone">{t("objectives.followup.abandoned")}</span> : null}

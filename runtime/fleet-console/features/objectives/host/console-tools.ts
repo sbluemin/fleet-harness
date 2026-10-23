@@ -23,7 +23,7 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
  *
  * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
  * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
- * 제목·브리핑·기한 편집뿐이다. 메시지는 사람·Operation·플러그인 호출자의 발화이고, 사령관의 첨언은 스티어링이다.
+ * 제목·브리핑·기한 편집뿐이다. 메시지는 사람·Objective·플러그인 호출자의 발화이고, 사령관의 첨언은 스티어링이다.
  * 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
@@ -39,7 +39,7 @@ const TRANSCRIPT_DEFAULT_LIMIT = 30;
 const MAX_TIDY_IDS = 20;
 const MAX_TIDY_PER_TURN = 20;
 const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
-/** 지휘관에게 건네는 말(구상·개시·스티어링·확장의 context, Operation·플러그인의 메시지)의 상한 — 첨언이 업무 지시서로 자라지 않게 한다. */
+/** 지휘관에게 건네는 말(구상·개시·스티어링·확장의 context, Objective·플러그인의 메시지)의 상한 — 첨언이 업무 지시서로 자라지 않게 한다. */
 export const MAX_REMARK = 600;
 const REMARK = "A remark: what you judged and why. The Commander decides missions, method and evidence.";
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe(REMARK);
@@ -49,7 +49,7 @@ const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(
 const sliceOffset = z.number().int().min(0).optional().describe("Slice offset: follow nextOffset until null; restart at 0 if revision changes.");
 /** 거절의 뜻은 거절 응답에 싣는다 — 도구 설명에 미리 싣지 않는다. */
 const HINTS: Readonly<Record<string, string>> = {
-  own_objective: "An Operation cannot act on an objective it commands or belongs to.",
+  own_objective: "An Objective cannot act on an objective it commands or belongs to.",
   person_message_required: "Archive completed objectives only in a turn carrying a message from the person. Ask the person to request archiving; an autonomous turn cannot do this.",
   objective_working: "A session is working and the objective waits on nothing; judge it by its results on the board.",
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
@@ -61,10 +61,10 @@ const HINTS: Readonly<Record<string, string>> = {
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { theaterId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: keep Operations or done objectives; delete unlaunched. Commodore: done needs a person message this turn.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: keep Objectives or done objectives; delete unlaunched. Commodore: done needs a person message this turn.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "A Theater's Objectives: groups, list, inbox, fleet, history, archived, models; add/tidy. purge: archived only; irreversible after 10-second undo grace. Console restart cancels pending purges.",
+  description: "The objective board list: groups, inbox, fleet, history, archived, models; add/tidy. purge: archived only; irreversible after 10-second undo grace. Console restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
@@ -76,7 +76,7 @@ const listTool = defineConsoleTool({
     add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
-    merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
+    merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
     restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore retaining completion and records; chats stay live and wait for a message.") }) },
     purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
   },
@@ -91,7 +91,7 @@ const followupTarget = { batchId: ids, candidateId: ids };
  */
 const detailTool = defineConsoleTool({
   name: "console_objectives_detail",
-  description: "One objective on the Objectives board. Its missions, success criteria and members come from its Commander's plan. Run routing before commence; commence launches what it showed.",
+  description: "One objective board detail: briefing, missions, criteria and members. Its Commander plans the work. Run routing before commence; commence launches what routing showed.",
   actions: {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
@@ -113,8 +113,8 @@ const detailTool = defineConsoleTool({
     plan: write({ context }),
     commence: write({ context }),
     steer: write({ context }),
-    // 사람·Operation·플러그인의 발화. 사령관의 첨언은 steer 이고, 사령관 스키마에는 이 액션이 없다.
-    message: { kind: "write", callers: ["operation", "plugin"], input: z.object({ ...target, memberId: ids.nullable().optional(), text: remark }) },
+    // 사람·Objective·플러그인의 발화. 사령관의 첨언은 steer 이고, 사령관 스키마에는 이 액션이 없다.
+    message: { kind: "write", callers: ["objectiveRecord", "plugin"], input: z.object({ ...target, memberId: ids.nullable().optional(), text: remark }) },
     stop: write({}),
     compact: write({}),
     hand_off: write({}),
@@ -171,9 +171,9 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     budget.count += 1; budgets.set(key, budget);
     return true;
   };
-  const theaterOfCaller = (caller: BoardCaller | undefined): string | null => caller?.kind === "commodore" ? caller.theaterId : caller?.kind === "operation" ? ctx.operations.get(caller.operationId)?.theaterId ?? null : null;
-  const callerKey = (caller: BoardCaller | undefined): string => caller?.kind === "commodore" ? `commodore:${caller.theaterId}` : caller?.kind === "operation" ? `op:${caller.operationId}` : caller?.kind === "plugin" ? `plugin:${caller.pluginId}` : "anonymous";
-  const actorOf = (caller: BoardCaller | undefined): ObjectiveReviewer | null => caller?.kind === "commodore" ? caller : caller?.kind === "operation" ? { kind: "operation", operationId: caller.operationId, title: ctx.operations.get(caller.operationId)?.title ?? null } : null;
+  const theaterOfCaller = (caller: BoardCaller | undefined): string | null => caller?.kind === "commodore" ? caller.theaterId : caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId ?? null : null;
+  const callerKey = (caller: BoardCaller | undefined): string => caller?.kind === "commodore" ? `commodore:${caller.theaterId}` : caller?.kind === "objectiveRecord" ? `op:${caller.objectiveId}` : caller?.kind === "plugin" ? `plugin:${caller.pluginId}` : "anonymous";
+  const actorOf = (caller: BoardCaller | undefined): ObjectiveReviewer | null => caller?.kind === "commodore" ? caller : caller?.kind === "objectiveRecord" ? { kind: "objectiveRecord", objectiveId: caller.objectiveId, title: ctx.objectiveRecords.get(caller.objectiveId)?.title ?? null } : null;
   const language = (caller: BoardCaller | undefined) => languageOf(caller?.kind === "commodore" ? undefined : caller);
   const scoped = (objectiveId: string) => {
     const found = store.find(objectiveId);
@@ -188,7 +188,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   const filterOf = (caller: BoardCaller | undefined): ConsoleToolFilter | undefined => boundFilter ?? (caller ? { caller: caller.kind } : undefined);
   const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
   // 사이드바 자리 — 목표 하나면 그 목표 줄, 줄 하나로 좁혀지지 않는 목록·생성·지움은 그 Theater(groupId 가 있으면 그 그룹)의 묶음 머리.
-  // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Operation 의 Theater 로 채운다.
+  // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Objective 의 Theater 로 채운다.
   const rowAt = (id: string | undefined, rowTheaterId: string): { readonly target?: ConsoleUseCallTarget } => (id ? { target: { kind: "cluster", clusterId: id, theaterId: rowTheaterId } } : {});
   const listAt = (listTheaterId: string, groupId: unknown): { readonly target?: ConsoleUseCallTarget } => ({ target: { kind: "clusters", theaterId: listTheaterId, ...(typeof groupId === "string" ? { groupId } : {}) } });
   const titleOf = (id: string) => short(store.find(id)?.title ?? "");
@@ -220,19 +220,19 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       const call = parsed.call as ListCall;
       try {
         if (call.action === "remove" || call.action === "archive" || call.action === "merge" || call.action === "restore" || call.action === "purge") {
-          // 정리는 에이전트 Operation 이나 사령관이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다. 사령관은 자기 Theater 목표만 정리한다.
-          if (caller?.kind !== "operation" && caller?.kind !== "commodore") return refuse("operation_caller_required");
+          // 정리는 에이전트 Objective 이나 사령관이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다. 사령관은 자기 Theater 목표만 정리한다.
+          if (caller?.kind !== "objectiveRecord" && caller?.kind !== "commodore") return refuse("objectiveRecord_caller_required");
           if (bound && call.action !== "purge") for (const id of call.action === "merge" ? [call.into, ...call.from] : call.objectiveIds) scoped(id);
           if (!spend(tidyBudget, callerKey(caller), MAX_TIDY_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_TIDY_PER_TURN, hint: HINTS.budget_exceeded });
           if (call.action === "purge") return await purgeObjectives(call.objectiveIds, caller);
-          const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { operationId: `${COMMODORE_TIDY_PREFIX}${caller.theaterId}`, title: null } : { operationId: caller.operationId, title: ctx.operations.get(caller.operationId)?.title ?? null }), ...(why ? { reason: why } : {}) });
+          const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { objectiveId: `${COMMODORE_TIDY_PREFIX}${caller.theaterId}`, title: null } : { objectiveId: caller.objectiveId, title: ctx.objectiveRecords.get(caller.objectiveId)?.title ?? null }), ...(why ? { reason: why } : {}) });
           // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
           const touched = (changed: readonly string[]) => { for (const id of changed) launch.followupTargetChanged(id); };
           if (call.action === "remove" || call.action === "archive") {
             const targets = [...new Set(call.objectiveIds)].map(scoped);
             const refusals = targets.flatMap((found) => {
-              const reason = caller.kind === "operation" && roleIn(found, caller) ? "own_objective"
-                : caller.kind === "operation" && found.theaterId !== theaterOfCaller(caller) ? "other_theater"
+              const reason = caller.kind === "objectiveRecord" && roleIn(found, caller) ? "own_objective"
+                : caller.kind === "objectiveRecord" && found.theaterId !== theaterOfCaller(caller) ? "other_theater"
                 : found.done && caller.kind === "commodore" && !hasPersonMessage?.() ? "person_message_required" : null;
               return reason ? [{ objectiveId: found.id, reason, ...(HINTS[reason] ? { hint: HINTS[reason] } : {}) }] : [];
             });
@@ -260,13 +260,13 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           return text(read(call, theaterId, caller));
         }
         if (!theaterId) return refuse("theater_required");
-        if (caller?.kind === "operation" && !spend(addBudget, callerKey(caller), MAX_ADD_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN, hint: HINTS.budget_exceeded });
-        // 그룹은 입력으로 받지 않는다 — 호출 Operation 의 그룹을 그대로 따른다.
-        const groupId = caller?.kind === "operation" ? ctx.operations.get(caller.operationId)?.groupId ?? null : null;
+        if (caller?.kind === "objectiveRecord" && !spend(addBudget, callerKey(caller), MAX_ADD_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN, hint: HINTS.budget_exceeded });
+        // 그룹은 입력으로 받지 않는다 — 호출 Objective 의 그룹을 그대로 따른다.
+        const groupId = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.groupId ?? null : null;
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const objective = await launch.create({
           theaterId, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
-          ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
+          ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
         return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
@@ -318,8 +318,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           return text(await routingView(current, call.rejudge === true));
         }
         const actor = actorOf(caller);
-        if (!actor) return refuse("operation_caller_required");
-        if (caller?.kind === "operation" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
+        if (!actor) return refuse("objectiveRecord_caller_required");
+        if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
         const actions = createObjectiveActions(ctx, store, launch, actor);
         const ref = { objectiveId: current.id, language: language(caller) };
         if (call.action === "complete" && (call.batchId === undefined) !== (call.followups === undefined)) return refuse("invalid_arguments", { issues: [{ path: [call.batchId === undefined ? "batchId" : "followups"], code: "invalid_type" }] });
@@ -381,25 +381,25 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   }, boundFilter);
 
 
-  /** 목표·Theater·보관 위치를 전부 확인한 뒤에만 호스트의 유예를 시작한다. 기록 회수는 operation:purged가 맡는다. */
+  /** 목표·Theater·보관 위치를 전부 확인한 뒤에만 호스트의 유예를 시작한다. 기록 회수는 objectiveRecord:purged가 맡는다. */
   async function purgeObjectives(objectiveIds: readonly string[], caller: BoardCaller) {
-    const host = ctx.operations;
-    if (!host.describe || !host.previewPurge || !host.purge) return refuse("operation_lifecycle_unavailable");
+    const host = ctx.objectiveRecords;
+    if (!host.describe || !host.previewPurge || !host.purge) return refuse("objectiveRecord_lifecycle_unavailable");
     const targets = [...new Set(objectiveIds)];
     const refusals: { objectiveId: string; reason: string }[] = [];
     const archiveReason = (error: unknown) => {
       const code = error instanceof Error ? error.message : "";
-      return /^[a-z_]{1,64}$/.test(code) ? code : "operation_archive_failed";
+      return /^[a-z_]{1,64}$/.test(code) ? code : "objectiveRecord_archive_failed";
     };
     for (const id of targets) {
       const found = store.find(id);
       const reason = !found ? "unknown_objective"
         : found.theaterId !== theaterOfCaller(caller) ? "other_theater"
-        : caller.kind === "operation" && roleIn(found, caller) ? "own_objective"
+        : caller.kind === "objectiveRecord" && roleIn(found, caller) ? "own_objective"
         : null;
       if (reason) { refusals.push({ objectiveId: id, reason }); continue; }
       const description = host.describe(id);
-      if (description?.location !== "archived" || description.rootOperationId !== id) {
+      if (description?.location !== "archived" || description.rootObjectiveId !== id) {
         refusals.push({ objectiveId: id, reason: "not_archived" }); continue;
       }
       // 이미 삭제 유예 중이거나 호스트가 회복을 기다리는 대상도 쓰기 전에 전부 거절한다.
@@ -457,26 +457,26 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     if (!member && store.pending(objective.id)) throw new ObjectiveStoreError("not_started");
     const read = ctx.consoleControl?.transcript;
     if (!read) throw new ObjectiveStoreError("capability_unavailable");
-    const operationId = member ? member.id : objective.id;
-    const page = await read(operationId, { limit: args.limit ?? TRANSCRIPT_DEFAULT_LIMIT, ...(args.cursor ? { cursor: args.cursor } : { tail: true }) }, signal);
-    if ("error" in page) throw new ObjectiveStoreError(page.error === "unknown_operation" ? "session_unavailable" : page.error);
+    const objectiveId = member ? member.id : objective.id;
+    const page = await read(objectiveId, { limit: args.limit ?? TRANSCRIPT_DEFAULT_LIMIT, ...(args.cursor ? { cursor: args.cursor } : { tail: true }) }, signal);
+    if ("error" in page) throw new ObjectiveStoreError(page.error === "unknown_objectiveRecord" ? "session_unavailable" : page.error);
     const session = member ? { kind: "member", memberId: member.id, role: member.role } : { kind: "commander" };
     return { objectiveId: objective.id, session, source: page.source, latest: !args.cursor, entries: page.entries, nextCursor: page.nextCursor, truncated: page.truncated };
   }
 
   function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" }>, theaterId: string, caller: BoardCaller | undefined) {
     if (args.action === "archived") {
-      if (!ctx.operations.listArchived) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
-      const snapshot = ctx.operations.listArchived(theaterId);
-      const objectives = snapshot.entries.flatMap(({ operation, location, archivedAt }) => {
+      if (!ctx.objectiveRecords.listArchived) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
+      const snapshot = ctx.objectiveRecords.listArchived(theaterId);
+      const objectives = snapshot.entries.flatMap(({ objectiveRecord, location, archivedAt }) => {
         if (location !== "archived" || archivedAt === null || (args.archivedBefore !== undefined && archivedAt >= args.archivedBefore)) return [];
-        const found = store.find(operation.id);
+        const found = store.find(objectiveRecord.id);
         if (!found || found.theaterId !== theaterId || (args.groupId && found.groupId !== args.groupId)) return [];
         return [{ id: found.id, objectiveId: found.id, title: found.title, archivedAt }];
       }).sort((a, b) => b.archivedAt - a.archivedAt || a.id.localeCompare(b.id));
       return consoleObjectivePage(objectives, { theaterId, offset: args.offset, limit: args.limit });
     }
-    if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
+    if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.objectiveRecords.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
     const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { theaterId, offset: args.offset, limit: args.limit, today });
     const supply = args.action === "history" ? store.all().filter((objective) => objective.theaterId === theaterId) : store.list(theaterId);
     const board = supply.filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
@@ -513,7 +513,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       return !objective.done;
     });
     // 부른 세션이 목록에 목표로 서 있으면 그 줄을 self 로 가리킨다.
-    const self = caller?.kind === "operation" ? caller.operationId : null;
+    const self = caller?.kind === "objectiveRecord" ? caller.objectiveId : null;
     return page(objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))), today);
   }
 

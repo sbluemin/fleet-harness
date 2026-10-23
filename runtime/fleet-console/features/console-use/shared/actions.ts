@@ -26,10 +26,10 @@ export const MAX_FIELD_DESCRIPTION = 120;
 /** read 는 화면을 보기만 하고, write 는 사람의 화면이나 제품 상태를 바꾼다. 읽기 전용 연결에는 read 만 실린다. */
 export type ConsoleToolActionKind = "read" | "write";
 /**
- * 호출자 종류. `operation` 은 Operation 세션, `plugin` 은 플러그인 소유 연결(부관 등), `commodore` 는 Objectives 의
+ * 호출자 종류. `objectiveRecord` 은 Objective 세션, `plugin` 은 플러그인 소유 연결(부관 등), `commodore` 는 Objectives 의
  * 사령관처럼 플러그인이 자기 세션에 직접 싣는 도구 묶음이다.
  */
-export type ConsoleToolCaller = "operation" | "plugin" | "commodore";
+export type ConsoleToolCaller = "objectiveRecord" | "plugin" | "commodore";
 
 export interface ConsoleToolAction<S extends z.ZodObject = z.ZodObject> {
   readonly kind: ConsoleToolActionKind;
@@ -147,7 +147,7 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
       const only = perAction[0]!;
       return { description, inputSchema: objectSchema(merged, only.required) };
     }
-    // 모든 action 이 같은 필수 필드를 받으면(Operation 패널의 operationId) 줄 머리에 한 번만 적는다.
+    // 모든 action 이 같은 필수 필드를 받으면(Objective 패널의 objectiveId) 줄 머리에 한 번만 적는다.
     const shared = perAction.length > 1 ? perAction[0]!.required.filter((key) => perAction.every(({ required }) => required.includes(key))) : [];
     const signature = perAction.map(({ name, properties, required }) => {
       const keys = Object.keys(properties).filter((key) => !shared.includes(key));

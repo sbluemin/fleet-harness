@@ -4,31 +4,31 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
-import type { OperationKindDescriptor } from "../../../execution/shared/client-contract.js";
+import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
 import type { RailEntryDescriptor } from "../../shared/rail.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
-import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
+import { closeNewSession, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
 import { useNewSessionShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
-import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
+import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "../../../../core/client/src/chrome/mobile/objective-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
-import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { mountConversationObjectiveTabsHost, registerConversationObjectiveTab, useConversationObjectiveTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
-import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
-import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
+import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
+import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
@@ -36,10 +36,10 @@ import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
-import { OperationCaptionContributions } from "../operation-contributions.js";
-import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
-import { PluginOperationRenderer } from "../operation-renderer.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
+import { ObjectiveCaptionContributions } from "../objective-contributions.js";
+import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
+import { PluginObjectiveRenderer } from "../objective-renderer.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -56,7 +56,7 @@ import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscrib
 import "./conversation.css";
 
 /**
- * 데스크톱 Operations 셸 — 왼쪽 사이드바, 가운데 대화, 오른쪽 세부 정보 패널의 세 칸이다.
+ * 데스크톱 ObjectiveRecords 셸 — 왼쪽 사이드바, 가운데 대화, 오른쪽 세부 정보 패널의 세 칸이다.
  * 본문 geometry는 칸의 실측이고, 이전 패널 좌표 저장은 변경하지 않는다.
  */
 
@@ -84,9 +84,9 @@ function writeLastPanel(id: string): void {
   }
 }
 
-/** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Operation 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
+/** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Objective 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
-  useEffect(() => mountConversationOperationTabsHost(), []);
+  useEffect(() => mountConversationObjectiveTabsHost(), []);
   // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면 기본 읽기 폭으로 돌아간다.
   useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
@@ -105,16 +105,16 @@ export function isWorkbenchToolBinding(binding: RailEntryBinding): boolean {
   return !binding.core && binding.panes.length > 0 && binding.entry.conversationTab !== true && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID;
 }
 
-/** 패널 머리 탭 줄 맨 앞에 서는 대화 도구(목표) — Operation 대화에서 패널이 처음 보이는 탭이다. 없으면 null. */
+/** 패널 머리 탭 줄 맨 앞에 서는 대화 도구(목표) — Objective 대화에서 패널이 처음 보이는 탭이다. 없으면 null. */
 function firstConversationTab(bindings: readonly RailEntryBinding[]): RailEntryBinding | null {
   return bindings.find((binding) => !binding.core && binding.panes.length > 0 && isConversationTab(binding.entry) && binding.entry.visible?.() !== false) ?? null;
 }
 
 /**
- * 오른쪽 패널을 여닫는다 — 열린 것이 있으면 닫고, 없으면 연다. Operation 대화는 탭 줄 맨 앞의 대화 도구(목표)를 먼저 연다.
+ * 오른쪽 패널을 여닫는다 — 열린 것이 있으면 닫고, 없으면 연다. Objective 대화는 탭 줄 맨 앞의 대화 도구(목표)를 먼저 연다.
  * 그 밖(플러그인 대화·Theater, 목표 도구가 없는 Console)은 마지막 패널(없으면 앞 묶음 첫 탭, 그것도 없으면 첫 도구)을 연다.
  */
-function useToggleDetails(operationConversation: boolean): () => void {
+function useToggleDetails(objectiveRecordConversation: boolean): () => void {
   const bindings = useDesktopRailEntries();
   return useCallback(() => {
     const active = getRailStoreSnapshot().activePanelId;
@@ -122,7 +122,7 @@ function useToggleDetails(operationConversation: boolean): () => void {
       dismissRailPanel(active);
       return;
     }
-    const lead = operationConversation ? firstConversationTab(bindings) : null;
+    const lead = objectiveRecordConversation ? firstConversationTab(bindings) : null;
     if (lead) {
       presentRailPanel(lead.entry.id);
       return;
@@ -132,15 +132,15 @@ function useToggleDetails(operationConversation: boolean): () => void {
     const last = readLastPanel();
     const target = panes.find((binding) => binding.entry.id === last) ?? panes.find((binding) => binding.core) ?? panes[0];
     if (target) presentRailPanel(target.entry.id);
-  }, [bindings, operationConversation]);
+  }, [bindings, objectiveRecordConversation]);
 }
 
 /**
- * 가운데 칸의 대상이 Operation(아직 서지 않은 Operation 을 대신하는 시작 전 목표 포함)으로 바뀌면(Operation 을 고르거나 사령관 같은
+ * 가운데 칸의 대상이 Objective(아직 서지 않은 Objective 을 대신하는 시작 전 목표 포함)으로 바뀌면(Objective 을 고르거나 사령관 같은
  * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다.
  * 닫혀 있었으면 열지 않는다. 열려 있었고 앞 대상의 탭(구성원·사령관 탭·Theater 설정)을 보이던 중이면 탭 줄 맨 앞의 목표로 돌린다 —
  * 그 탭이 대상과 함께 걷히며 패널을 이미 닫았어도(대화 칸의 cleanup 은 이 effect 보다 먼저 돈다) 다시 연다. Theater 를 연 채 대상이
- * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Operation 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
+ * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Objective 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
  * 경우는 그대로 둔다.
  */
 function usePanelFollowsSubject(subjectId: string | null): void {
@@ -184,7 +184,7 @@ export function ConversationSideBarActions() {
   return (
     <span className="conversation-side-actions">
       <span className="remote-console-anchor" data-remote-console-anchor />
-      <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
+      <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
       <button type="button" className="conversation-round" onClick={openDefaultNewSession} aria-label={t("conversation.side.newSession")} title={newSessionTitle} data-new-session-entry="sidebar">
@@ -296,17 +296,17 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const sections = usePanelSections();
-  // Operation 대화의 패널은 대화에서 곧장 이어 가는 도구(conversationTab, 목표)를 대상의 글자 탭 앞에 같은 글자 단추로 세운다.
-  // Theater 를 연 패널(사령관·Theater 설정)에는 서지 않는다. 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도
-  // Operation 대화와 같은 머리다.
+  // Objective 대화의 패널은 대화에서 곧장 이어 가는 도구(conversationTab, 목표)를 대상의 글자 탭 앞에 같은 글자 단추로 세운다.
+  // Theater 를 연 패널(사령관·Theater 설정)에는 서지 않는다. 아직 서지 않은 Objective 을 대신하는 플러그인 대화(시작 전 목표)도
+  // Objective 대화와 같은 머리다.
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
   const inbox = useTheaterInboxState();
-  const operationConversation = (subject !== null || standIn !== null) && inbox === null;
+  const objectiveRecordConversation = (subject !== null || standIn !== null) && inbox === null;
   // 하위 탭을 내는 도구(목표)가 「구성원」을 대신하면 대상의 구성원 탭은 서지 않는다 — 그 자리에 도구의 구성원 탭이 선다.
   const bindings = useDesktopRailEntries();
   const activePanelId = useRailActivePanelId();
-  const tabsEntry = operationConversation
+  const tabsEntry = objectiveRecordConversation
     ? bindings.find((binding) => !binding.core && binding.entry.conversationTab === true && binding.entry.conversationTabs !== undefined && binding.entry.visible?.() !== false)?.entry ?? null
     : null;
   const tabsTheaterId = tabsEntry?.scope === "fleet" ? null : context.theaterId;
@@ -357,7 +357,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
     measure();
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resize?.observe(row);
-    // 탭이 서고 걷히거나(Operation 탭) 켜짐이 바뀌면 다시 잰다. 이 머리가 다는 data-overflow 는 관찰하지 않는다.
+    // 탭이 서고 걷히거나(Objective 탭) 켜짐이 바뀌면 다시 잰다. 이 머리가 다는 data-overflow 는 관찰하지 않는다.
     const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     mutation?.observe(row, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class"] });
     return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
@@ -402,7 +402,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
         </div>
       ) : null}
       {/* 하위 탭을 내는 도구(목표)의 도구 줄 — 오늘·기한이 섹션 줄 자리(탭 줄 위)에 선다. 섹션 줄은 Theater 를 연 동안에만, 이 줄은
-          Operation 대화에서만 서므로 둘이 겹치지 않는다. 도구가 아무것도 그리지 않으면 줄도 남지 않는다(:empty). */}
+          Objective 대화에서만 서므로 둘이 겹치지 않는다. 도구가 아무것도 그리지 않으면 줄도 남지 않는다(:empty). */}
       {tabsEntry?.conversationTabs?.renderTools && tabsState !== null ? (
         <div className="conversation-panel-sections is-tools">{tabsEntry.conversationTabs.renderTools({ theaterId: tabsTheaterId, language: context.language })}</div>
       ) : null}
@@ -411,8 +411,8 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
-            {/* Operation 대화에서는 대화에서 곧장 이어 가는 도구(목표)가 대상의 탭(구성원)보다 앞에 선다 — 「목표 | 구성원」. */}
-            {operationConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
+            {/* Objective 대화에서는 대화에서 곧장 이어 가는 도구(목표)가 대상의 탭(구성원)보다 앞에 선다 — 「목표 | 구성원」. */}
+            {objectiveRecordConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
             <RailToolIcons context={context} variant="text" scope="core" {...(coreFilter ? { coreFilter } : {})} />
           </span>
         </div>
@@ -510,7 +510,7 @@ function ConversationPanelIdentity() {
   const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
   const descriptor = subject === null ? centerSurface : null;
   const clusterIndex = useClusterIndex();
-  const renameOperation = useConversationOperationRename();
+  const renameObjective = useConversationObjectiveRename();
   useConversationSurfaceHead(centerSurface);
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
   // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
@@ -536,8 +536,8 @@ function ConversationPanelIdentity() {
     // 대상의 몽글 아바타(64px) — 이 화면에서만 눌러 고친다. 일반 화면에는 이 자리도 편집 진입도 없다.
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={operationMongleState(subject.id, state, clusterIndex.clusters)} activityOperationId={subject.id} size={64} label={subject.title} />
-        <PanelIdentityName title={subject.title} onRename={renameOperation ? (next) => renameOperation(subject.id, next) : undefined} />
+        <AvatarEditor avatarKey={objectiveRecordAvatarKey(subject.id)} role={objectiveRecordAvatarRole(subject)} state={objectiveRecordMongleState(subject.id, state, clusterIndex.clusters)} activityObjectiveId={subject.id} size={64} label={subject.title} />
+        <PanelIdentityName title={subject.title} onRename={renameObjective ? (next) => renameObjective(subject.id, next) : undefined} />
       </div>
     );
   }
@@ -558,7 +558,7 @@ function ConversationPanelIdentity() {
 
 /**
  * 패널 머리의 Theater 섹션 — 앞 묶음 탭에 붙은 섹션 꼬리표(ConversationTabSection)로 줄을 세운다. Theater 를 연 동안에는 그
- * Theater 의 섹션 탭만 서고(대상 Operation 의 탭은 걷힌다), 섹션이 둘 이상이면 고른 섹션의 칸만 탭 줄에 선다. 고른 섹션은 켜진
+ * Theater 의 섹션 탭만 서고(대상 Objective 의 탭은 걷힌다), 섹션이 둘 이상이면 고른 섹션의 칸만 탭 줄에 선다. 고른 섹션은 켜진
  * 탭의 섹션이고, 도구를 켠 동안은 마지막으로 고른 섹션을 그대로 보인다.
  */
 function usePanelSections(): {
@@ -567,7 +567,7 @@ function usePanelSections(): {
   readonly filter: ((entryId: string) => boolean) | null;
   readonly open: (sectionId: string) => void;
 } {
-  const tabs = useConversationOperationTabPanels();
+  const tabs = useConversationObjectiveTabPanels();
   const inbox = useTheaterInboxState();
   const activePanelId = useRailActivePanelId();
   const theaterId = inbox?.theaterId ?? null;
@@ -616,45 +616,45 @@ interface ConversationStageProps {
   readonly state: ConsoleState;
   readonly insets: ArenaInsets;
   readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
-  readonly onClose: (operationId: string) => void;
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
+  readonly onClose: (objectiveId: string) => void;
   /** 머리 줄 공통 도구모음의 문맥 — 보이는 대화의 Theater(useViewedTheaterId)로 만든다. 오른쪽 패널 본문과 같은 Theater 다. */
   readonly toolContext: RailToolContext;
 }
 
 /**
- * 가운데 칸의 대상 — 활성 Operation. 활성이 풀려도(크롬을 눌러도) 방금 보던 대화는 남긴다. 처음 열었을 때처럼 본 것이 없으면
+ * 가운데 칸의 대상 — 활성 Objective. 활성이 풀려도(크롬을 눌러도) 방금 보던 대화는 남긴다. 처음 열었을 때처럼 본 것이 없으면
  * 그 작전구역에서 가장 최근에 움직인 대화를 보인다 — 빈 칸보다 이어서 볼 대화가 먼저다.
  */
-function useStageSubject(state: ConsoleState): OperationNode | null {
+function useStageSubject(state: ConsoleState): ObjectiveRecord | null {
   const lastRef = useRef<string | null>(null);
-  const operationOf = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id) ?? null;
-  const active = operationOf(state.activeOperationId);
-  const latest = () => state.operations
-    .reduce<OperationNode | null>((best, operation) => (best === null || operation.ts.updatedAt > best.ts.updatedAt ? operation : best), null);
-  const subject = active ?? operationOf(lastRef.current) ?? latest();
+  const objectiveRecordOf = (id: string | null) => id === null ? null : state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null;
+  const active = objectiveRecordOf(state.activeObjectiveId);
+  const latest = () => state.objectiveRecords
+    .reduce<ObjectiveRecord | null>((best, objectiveRecord) => (best === null || objectiveRecord.ts.updatedAt > best.ts.updatedAt ? objectiveRecord : best), null);
+  const subject = active ?? objectiveRecordOf(lastRef.current) ?? latest();
   lastRef.current = subject?.id ?? null;
   return subject;
 }
 
-export function ConversationStage({ state, insets, language, operationKinds, onClose, toolContext }: ConversationStageProps) {
+export function ConversationStage({ state, insets, language, objectiveRecordKinds, onClose, toolContext }: ConversationStageProps) {
   const t = useT();
   const newSessionShortcut = useNewSessionShortcutLabel();
   const subject = useStageSubject(state);
-  // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Operation 대신 선다.
+  // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Objective 대신 선다.
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
-  // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Operation 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
+  // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Objective 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
   const newSession = state.newSession;
   // 오른쪽 패널·분할 칸이 읽는 대상 — 새 세션 화면 동안은 보던 대화를 대상으로 삼지 않는다.
   const stageSubject = newSession ? null : subject;
   useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : stageSubject); }, [stageSubject, surfaceDescriptor]);
-  // 플러그인 대화가 아직 서지 않은 Operation 을 대신하면(시작 전 목표) 오른쪽 패널이 그 Operation 대화처럼 선다 — 머리와 「구성원」 탭이 읽는다.
+  // 플러그인 대화가 아직 서지 않은 Objective 을 대신하면(시작 전 목표) 오른쪽 패널이 그 Objective 대화처럼 선다 — 머리와 「구성원」 탭이 읽는다.
   let standInId: string | null = null;
-  if (surfaceDescriptor?.standInOperationId && surface) {
+  if (surfaceDescriptor?.standInObjectiveId && surface) {
     try {
-      standInId = surfaceDescriptor.standInOperationId({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
+      standInId = surfaceDescriptor.standInObjectiveId({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
     } catch {
       standInId = null;
     }
@@ -676,9 +676,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   }
   const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
-  // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
+  // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
-  const activeOperationId = state.activeOperationId;
+  const activeObjectiveId = state.activeObjectiveId;
   const seenNewSessionRef = useRef(newSession);
   const seenSurfaceRef = useRef(surface);
   useEffect(() => {
@@ -690,31 +690,31 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     else if (openedSurface && newSession !== null) closeNewSession();
   }, [newSession, surface]);
   useEffect(() => {
-    // 플러그인 대화가 선 동안에는 어느 Operation 도 칸에 없다 — 사이드바의 Operation 줄 선택을 걷는다(대화를 걷으면 되돌아온다).
+    // 플러그인 대화가 선 동안에는 어느 Objective 도 칸에 없다 — 사이드바의 Objective 줄 선택을 걷는다(대화를 걷으면 되돌아온다).
     if (newSession !== null) {
-      if (activeOperationId !== null) setActiveOperation(null);
+      if (activeObjectiveId !== null) setActiveObjective(null);
       return;
     }
     if (surfaceDescriptor !== null) {
-      if (activeOperationId !== null) setActiveOperation(null);
+      if (activeObjectiveId !== null) setActiveObjective(null);
       return;
     }
-    if (subject === null || activeOperationId === subject.id) return;
-    setActiveOperation(subject.id);
-  }, [activeOperationId, newSession, subject, surfaceDescriptor]);
+    if (subject === null || activeObjectiveId === subject.id) return;
+    setActiveObjective(subject.id);
+  }, [activeObjectiveId, newSession, subject, surfaceDescriptor]);
   useEffect(() => () => { publishConversationSubject(null); publishConversationStandIn(null); }, []);
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
-  const operationClusters = useOperationClusters();
-  useEffect(() => { publishConversationClusters(operationClusters); }, [operationClusters]);
+  const objectiveRecordClusters = useObjectiveClusters();
+  useEffect(() => { publishConversationClusters(objectiveRecordClusters); }, [objectiveRecordClusters]);
   const stageInbox = useTheaterInboxState();
-  // 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도 Operation 대화처럼 「목표」가 먼저다.
-  const operationConversation = (surfaceDescriptor === null ? stageSubject !== null : standInId !== null) && stageInbox === null;
-  const toggleDetails = useToggleDetails(operationConversation);
+  // 아직 서지 않은 Objective 을 대신하는 플러그인 대화(시작 전 목표)도 Objective 대화처럼 「목표」가 먼저다.
+  const objectiveRecordConversation = (surfaceDescriptor === null ? stageSubject !== null : standInId !== null) && stageInbox === null;
+  const toggleDetails = useToggleDetails(objectiveRecordConversation);
   usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
 
   // ── 도구 분할 — 이 대화의 도구 칸(작업대)이 대화 오른쪽과 아래에 선다 ──
-  // 배치는 대화마다 하나다(서버 저장). 대화 키는 그 대화를 가리키는 가장 오래가는 이름이다: Operation, 아직 서지 않은 Operation 을 대신하는
-  // 플러그인 대화는 그 Operation, 세션 브라우저를 가진 플러그인 대화(사령관)는 그 세션, 그 밖은 Theater 또는 표면 주소.
+  // 배치는 대화마다 하나다(서버 저장). 대화 키는 그 대화를 가리키는 가장 오래가는 이름이다: Objective, 아직 서지 않은 Objective 을 대신하는
+  // 플러그인 대화는 그 Objective, 세션 브라우저를 가진 플러그인 대화(사령관)는 그 세션, 그 밖은 Theater 또는 표면 주소.
   let surfaceTheaterId: string | null = null;
   if (surfaceDescriptor?.theater && surface) {
     try {
@@ -725,11 +725,11 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   }
   const conversationKey = newSession ? null
     : surfaceDescriptor && surface
-      ? standInId !== null ? `operation:${standInId}`
+      ? standInId !== null ? `objectiveRecord:${standInId}`
         : sessionSubjectKey !== null ? `session:${sessionSubjectKey}`
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
-      : subject ? `operation:${subject.id}` : null;
+      : subject ? `objectiveRecord:${subject.id}` : null;
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(
     () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
@@ -769,7 +769,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           : null,
       };
     }
-    return stageSubject ? { kind: "operation", operation: stageSubject } : { kind: "none" };
+    return stageSubject ? { kind: "objectiveRecord", objectiveRecord: stageSubject } : { kind: "none" };
   }, [sessionAttach, sessionPluginId, sessionScopeId, sessionSubjectKey, stageSubject, surfaceDescriptor]);
 
   // 도구가 놓인 대화와 그 작업 위치 — 사령관은 Theater 루트, 지휘관은 그 세션의 작업 폴더(호스트가 Theater 상대로 접어 준다).
@@ -780,7 +780,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const agentWorkspace = useAgentState().sessions[stageSubject?.id ?? ""]?.workspace ?? null;
   const workLocation = useConversationWorkLocation(
     conversationKey === null || scopeTheaterId === null ? { kind: "none" }
-      : !surfaceDescriptor && stageSubject ? { kind: "operation", operationId: stageSubject.id, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject.ts.updatedAt, folder: agentWorkspace?.outside === false ? agentWorkspace.folder ?? "" : null }
+      : !surfaceDescriptor && stageSubject ? { kind: "objectiveRecord", objectiveId: stageSubject.id, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject.ts.updatedAt, folder: agentWorkspace?.outside === false ? agentWorkspace.folder ?? "" : null }
         : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
   );
   const scopedToolContext = useMemo<RailToolContext>(
@@ -796,7 +796,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const workbenchConversationRef = useRef(workbenchConversation);
   if (workbenchKey === (conversationKey ?? "console")) workbenchConversationRef.current = workbenchConversation;
 
-  // 가운데 칸 어느 대화(사령관·지휘관·일반 Operation·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
+  // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
 
@@ -830,9 +830,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
         <ConversationColumn
           key={subject.id}
           state={state}
-          operation={subject}
+          objectiveRecord={subject}
           language={language}
-          operationKinds={operationKinds}
+          objectiveRecordKinds={objectiveRecordKinds}
           onToggleDetails={toggleDetails}
           onClose={onClose}
           browserSplitOpen={browserOpen}
@@ -860,7 +860,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       conversation={workbenchConversationRef.current}
       state={state}
       language={language}
-      operationKinds={operationKinds}
+      objectiveRecordKinds={objectiveRecordKinds}
       suspended={conversationKey !== null && workLocation === null}
     />
     </>
@@ -885,8 +885,8 @@ function stableParamsKey(params: Readonly<Record<string, unknown>>): string {
 }
 
 /**
- * 공통 도구모음에 서는 도구 — 대화에서 곧장 이어 가는 도구(conversationTab, 목표)는 Operation 대화의 오른쪽 패널 글자 탭이
- * 맡으므로 뺀다. 그래서 사령관·지휘관·일반 Operation 대화·빈 칸의 도구 집합이 같다.
+ * 공통 도구모음에 서는 도구 — 대화에서 곧장 이어 가는 도구(conversationTab, 목표)는 Objective 대화의 오른쪽 패널 글자 탭이
+ * 맡으므로 뺀다. 그래서 사령관·지휘관·일반 Objective 대화·빈 칸의 도구 집합이 같다.
  */
 function isCommonTool(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab !== true;
@@ -1124,7 +1124,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
-  // 대신하는 Operation 이 있으면 그 입력창을 문맥에 싣는다 — 플러그인은 자리만 고르고, 입력창은 호스트의 그룹 입력창이다.
+  // 대신하는 Objective 이 있으면 그 입력창을 문맥에 싣는다 — 플러그인은 자리만 고르고, 입력창은 호스트의 그룹 입력창이다.
   const standInId = useConversationStandIn();
   const standInComposer = useConversationStandInComposer();
   const context = useMemo<ConversationSurfaceContext>(() => ({
@@ -1151,7 +1151,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   tabIdsRef.current = (descriptor.tabs ?? []).map((tab) => tab.id);
   useEffect(() => {
     const tabs = descriptor.tabs ?? [];
-    const disposers = tabs.map((tab, order) => registerConversationOperationTab({
+    const disposers = tabs.map((tab, order) => registerConversationObjectiveTab({
       id: tab.id,
       title: tab.title,
       icon: tab.icon ?? null,
@@ -1165,7 +1165,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       for (const dispose of disposers) dispose();
     };
   }, [context, descriptor, section]);
-  // 대화가 걷히면 그 탭이 연 패널도 걷힌다 — 다음 대상이 Operation 이면 가운데 칸이 이 열림을 이어 그 대화의 탭을 연다
+  // 대화가 걷히면 그 탭이 연 패널도 걷힌다 — 다음 대상이 Objective 이면 가운데 칸이 이 열림을 이어 그 대화의 탭을 연다
   // (usePanelFollowsSubject).
   useEffect(() => () => {
     const active = getRailStoreSnapshot().activePanelId;
@@ -1173,7 +1173,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }, []);
   // 사람이 이 대화에서 사이드바를 여닫은 것을 기억한다 — 위 cleanup 의 닫힘과 아래 기본 탭 열림은 사람의 것이 아니라 남지 않는다.
   useConversationRailMemory(descriptor.id, descriptor.defaultTab !== undefined);
-  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Operation 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
+  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Objective 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
   // 탭을 연다 — 다만 패널이 닫혀 있고 사람이 이 대화에서 닫아 둔 것이면 열지 않는다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은
   // 그대로 둔다.
   const bindings = useDesktopRailEntries();
@@ -1191,13 +1191,13 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
-  // 대화의 동작은 Operation 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
+  // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
   // 지구본은 도구 캡슐 맨 앞이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
   const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
-  // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Operation 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
+  // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   return (
     <div className="conversation-column">
@@ -1221,14 +1221,14 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, operation, language, operationKinds, onToggleDetails, onClose, browserSplitOpen, tools }: {
+function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSplitOpen, tools }: {
   readonly state: ConsoleState;
-  readonly operation: OperationNode;
+  readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
   readonly onToggleDetails: () => void;
-  readonly onClose: (operationId: string) => void;
-  /** 오른쪽 분할 칸에 브라우저(Fleet·Operation 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
+  readonly onClose: (objectiveId: string) => void;
+  /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSplitOpen: boolean;
   /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
   readonly tools: (lead?: ReactNode) => ReactNode;
@@ -1240,19 +1240,19 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const captionRenderer = useConversationCaptionRenderer();
   // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 내용 교체와 폭 전환은 pill-takeover 가 진다.
   const pillRef = useRef<HTMLDivElement | null>(null);
-  const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(operation.id));
+  const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(objectiveRecord.id));
   const pillTaken = pillTakeover.phase === "in";
   usePillMorphWidth(pillRef, pillTaken ? pillTakeover.shown?.key ?? null : null, pillTakeover.phase === "out");
-  const clusterRoot = clusterIndex.rootOf.get(operation.id) ?? null;
-  const nested = state.nestedOperations.filter((candidate) => candidate.parentOperationId === operation.id);
-  const chosen = state.nestedBodySelection[operation.id];
-  const bodyOwner = (chosen ? nested.find((candidate) => candidate.id === chosen) : undefined) ?? operation;
-  const runtimeState = pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, bodyOwner.id);
-  const descriptor = operationKinds.find((kind) => kind.pluginId === bodyOwner.pluginId && kind.type === bodyOwner.type)
-    ?? operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  const clusterRoot = clusterIndex.rootOf.get(objectiveRecord.id) ?? null;
+  const nested = state.nestedObjectiveRecords.filter((candidate) => candidate.parentObjectiveId === objectiveRecord.id);
+  const chosen = state.nestedBodySelection[objectiveRecord.id];
+  const bodyOwner = (chosen ? nested.find((candidate) => candidate.id === chosen) : undefined) ?? objectiveRecord;
+  const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, bodyOwner.id);
+  const descriptor = objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent")
+    ?? objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
 
   // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 이 값은 어디에도 저장하지 않는다.
-  const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 720, height: 640, zIndex: 0 });
+  const [geometry, setGeometry] = useState<ObjectiveGeometry>({ x: 0, y: 0, width: 720, height: 640, zIndex: 0 });
   const bodyRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const element = bodyRef.current;
@@ -1274,41 +1274,41 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
     return () => { observer.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
   }, []);
 
-  const activate = useCallback(() => setActiveOperation(operation.id), [operation.id]);
+  const activate = useCallback(() => setActiveObjective(objectiveRecord.id), [objectiveRecord.id]);
 
-  // ── 브라우저 — 이 대화의 Operation 브라우저는 오른쪽 분할 칸에 선다 ──
+  // ── 브라우저 — 이 대화의 Objective 브라우저는 오른쪽 분할 칸에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
-  // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Operation 이 아니라 루트의 브라우저를 함께 쓰므로,
+  // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Objective 이 아니라 루트의 브라우저를 함께 쓰므로,
   // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
   // 칸은 이 대화의 도구 분할에 선다 — 대화 키가 이미 이 루트라 주인을 따로 싣지 않는다.
-  const openOperationBrowser = useCallback(() => { openWorkbenchBrowser(); }, []);
+  const openObjectiveBrowser = useCallback(() => { openWorkbenchBrowser(); }, []);
   const closeBrowserSplit = useCallback(() => { closeWorkbenchBrowser(); }, []);
   // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
     if (!visible) { closeBrowserSplit(); return; }
-    openOperationBrowser();
-  }, [closeBrowserSplit, openOperationBrowser]);
-  // 본문(채팅·CLI 링크 카드)의 「Operation 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
+    openObjectiveBrowser();
+  }, [closeBrowserSplit, openObjectiveBrowser]);
+  // 본문(채팅·CLI 링크 카드)의 「Objective 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
-    if (visible) openOperationBrowser();
+    if (visible) openObjectiveBrowser();
     else closeBrowserSplit();
-  }, [closeBrowserSplit, openOperationBrowser]);
+  }, [closeBrowserSplit, openObjectiveBrowser]);
   const hiddenCompanions = browserSplitOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
 
-  const config: OperationBodyConfig = {
-    active: state.activeOperationId === operation.id,
-    keyboardFocusRequestId: state.keyboardFocusRequest?.operationId === operation.id ? state.keyboardFocusRequest.requestId : 0,
+  const config: ObjectiveBodyConfig = {
+    active: state.activeObjectiveId === objectiveRecord.id,
+    keyboardFocusRequestId: state.keyboardFocusRequest?.objectiveId === objectiveRecord.id ? state.keyboardFocusRequest.requestId : 0,
     geometry,
-    operation: bodyOwner,
+    objectiveRecord: bodyOwner,
     runtimeState,
     bodyLive: true,
     theme: state.activeTheme,
     language,
     zoom: 1,
     onActivate: activate,
-    onClose: bodyOwner === operation ? () => onClose(operation.id) : () => selectNestedBody(operation.id, null),
+    onClose: bodyOwner === objectiveRecord ? () => onClose(objectiveRecord.id) : () => selectNestedBody(objectiveRecord.id, null),
     onGeometryChange: setGeometry,
     // companion 은 브라우저만 — 오른쪽 분할 칸에 선다. 다른 companion 은 이 화면에서 열지 않는다(onBodyCompanion 이 거른다).
     ...(offersBrowser ? {
@@ -1318,17 +1318,17 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
       onSetCompanionPanelVisible: onBodyCompanion,
     } : {}),
   };
-  const defaultBody = <OperationBodySlot key={bodyOwner.id} operationId={bodyOwner.id} config={config} className="conversation-body-slot" />;
+  const defaultBody = <ObjectiveBodySlot key={bodyOwner.id} objectiveId={bodyOwner.id} config={config} className="conversation-body-slot" />;
   const custom = bodyRenderer?.({
-    operation, bodyOperation: bodyOwner, nestedOperations: nested, language, defaultBody,
+    objectiveRecord, bodyObjective: bodyOwner, nestedObjectiveRecords: nested, language, defaultBody,
     navigate: capabilities.navigate,
-    ...(offersBrowser ? { openOperationBrowser } : {}),
+    ...(offersBrowser ? { openObjectiveBrowser } : {}),
   }) ?? null;
   const captionRender = {
     active: config.active,
     capabilities,
     geometry,
-    operation: bodyOwner,
+    objectiveRecord: bodyOwner,
     theme: state.activeTheme,
     language,
     viewportZoom: 1,
@@ -1343,30 +1343,30 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
     companionPanelIds: CONVERSATION_COMPANION_PANEL_IDS,
     bodyLive: true as const,
   };
-  const captionView = captionRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language }) ?? null;
+  const captionView = captionRenderer?.({ objectiveRecord, bodyObjective: bodyOwner, nestedObjectiveRecords: nested, language }) ?? null;
   const viewSwitch = descriptor?.captionViewSwitch === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
-      <PluginOperationRenderer {...captionRender} render={descriptor.captionViewSwitch} />
+      <PluginObjectiveRenderer {...captionRender} render={descriptor.captionViewSwitch} />
     </FeatureErrorBoundary>
   );
   // 지구본(tools-lead)은 플릿 브라우저 문이다 — 웹 브라우저 Console 에서는 세우지 않는다(시안 v2 규칙 g).
   const toolsLead = descriptor?.captionToolsLead === undefined || !isDesktopShell() ? null : (
     <FeatureErrorBoundary fallback={<></>}>
-      <PluginOperationRenderer {...captionRender} render={descriptor.captionToolsLead} />
+      <PluginObjectiveRenderer {...captionRender} render={descriptor.captionToolsLead} />
     </FeatureErrorBoundary>
   );
   const shelf = descriptor?.captionActions === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
-      <PluginOperationRenderer {...captionRender} render={descriptor.captionActions} />
+      <PluginObjectiveRenderer {...captionRender} render={descriptor.captionActions} />
     </FeatureErrorBoundary>
   );
   const hasPillControls = captionView !== null || viewSwitch !== null;
-  // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Operation 의 합집합, 지휘관 제외.
+  // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Objective 의 합집합, 지휘관 제외.
   // 묶음의 노드(임무 칸·살아 있는 구성원)는 명부가 아니다. 명부는 구조 없는 묶음(임무·떠 있는 구성원 없이 세션 없는 구성원만 있는
   // 목표)에도 서므로 rootOf 가 아니라 묶음 전체에서 찾는다 — 「구성원」 탭과 같은 길이다.
-  const roster = clusterIndex.clusters.find((cluster) => cluster.conversation?.operationId === operation.id)?.conversation?.members ?? [];
-  const memberIds = new Set([...roster.flatMap((member) => (member.operationId ? [member.operationId] : [])), ...nested.map((candidate) => candidate.id)]);
-  memberIds.delete(operation.id);
+  const roster = clusterIndex.clusters.find((cluster) => cluster.conversation?.objectiveId === objectiveRecord.id)?.conversation?.members ?? [];
+  const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
+  memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
 
   return (
@@ -1377,12 +1377,12 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
             type="button"
             className="conversation-pill-details"
             onClick={onToggleDetails}
-            aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
+            aria-label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })}
             inert={pillTaken || undefined}
           >
-            <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
-            <span className="conversation-pill-title">{operation.title}</span>
-            {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
+            <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
+            <span className="conversation-pill-title">{objectiveRecord.title}</span>
+            {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
             {memberCount > 0 ? (
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
@@ -1390,8 +1390,8 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
           {hasPillControls ? <span className="conversation-pill-controls" inert={pillTaken || undefined}>{captionView}{viewSwitch}</span> : null}
           <PillTakeoverLayer {...pillTakeover} />
         </div>
-        {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Operation 메뉴는 사이드바 우클릭이 맡는다. */}
-        <span className="conversation-caption-shelf"><OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />{shelf}</span>
+        {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
+        <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
@@ -1434,7 +1434,7 @@ interface SurfaceSessionBrowser {
 }
 
 /**
- * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 이 대화의 도구 분할에
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Objective 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 이 대화의 도구 분할에
  * 브라우저 칸을 열고 닫는다(세션이 아직 서지 않았으면 칸이 그 까닭을 말한다). 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
  * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
  */

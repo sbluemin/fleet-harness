@@ -1,6 +1,6 @@
-# Driving a real agent Operation and capturing its provider traffic
+# Driving a real agent Objective and capturing its provider traffic
 
-Read this when the scenario needs a **live agent CLI turn** — an Operation that actually
+Read this when the scenario needs a **live agent CLI turn** — an Objective that actually
 boots Claude Code, sends a prompt, and reaches a provider — rather than Console SPA
 behavior alone. Typical reasons: verifying an AI Gateway adapter against a real backend,
 reproducing a provider-specific tool-call defect, or measuring what a model actually put
@@ -39,7 +39,7 @@ Here `<e2e-dir>` means the **Console slot**, `<owned-run>/console`, not the pare
 
 ## Serve bundle freshness
 
-For a host-side change exercised by an Operation or a [headless turn](#headless-claude-code-against-the-owned-console), apply the [paid-run content gate](setup.md#before-a-paid-or-long-run) to the `serve` bundle, not just the client asset name or the package build. From the target worktree root, count a string the change adds and the bundle keeps, an identifier or literal rather than a comment:
+For a host-side change exercised by an Objective or a [headless turn](#headless-claude-code-against-the-owned-console), apply the [paid-run content gate](setup.md#before-a-paid-or-long-run) to the `serve` bundle, not just the client asset name or the package build. From the target worktree root, count a string the change adds and the bundle keeps, an identifier or literal rather than a comment:
 
 ```bash
 OUT=$(grep -cF -- '<string the change adds>' runtime/fleet-console/dist/cli.mjs); rc=$?
@@ -109,7 +109,7 @@ shows only the Claude entries and it reads as though gateway models were unsuppo
 are not. Add one first:
 
 Settings → **AI Gateway** (Terminal) → the provider's row in the gateway model section → choose
-the model in that row's combobox → the add-model action (use its current localized label). Launch the Operation afterwards and the
+the model in that row's combobox → the add-model action (use its current localized label). Launch the Objective afterwards and the
 entry appears, e.g. `Codex-GPT-6-Sol · From gateway`.
 
 That combobox resists automation in four ways:
@@ -129,7 +129,7 @@ provider quota; keep prompts short and say so when reporting.
 
 During [paid-run planning](setup.md#before-a-paid-or-long-run), before boot or agent launch,
 confirm that the planned slot lists the non-Claude gateway model the client will select.
-If no-cost UI setup adds it after boot, repeat this check before the Operation launch and
+If no-cost UI setup adds it after boot, repeat this check before the Objective launch and
 first paid call. A model pinned with `FLEET_AI_GATEWAY_MODEL` skips this exposure gate,
 not credential requirements. The slot stores catalog ids, so the command drops the client's
 `claude-gateway--` prefix and `[1m]` marker before comparing; it prints only a boolean:
@@ -248,7 +248,7 @@ routes, what the operator actually sees.
 
 ## Headless Claude Code against the owned Console
 
-Between the runner and a real Operation sits a headless `claude -p` turn against the owned
+Between the runner and a real Objective sits a headless `claude -p` turn against the owned
 Console's in-process gateway. Use it when the behavior depends on what the real client sends
 back — its own thinking blocks and signatures, real tool results, multi-turn `--resume` — but
 not on Console UI. The shell `fleet` no longer runs Claude Code: `fleet.mjs -p` exits 1 with

@@ -3,7 +3,7 @@ import { useState, type CSSProperties } from "react";
 import { IDENTITY_TONES, normalizeIdentityTone, type IdentityTone } from "../../shared/identity-tones.js";
 
 /**
- * 정체성 톤 피커 — Operation 강조색과 그룹 색을 고르는 한 줄의 스와치.
+ * 정체성 톤 피커 — Objective 강조색과 그룹 색을 고르는 한 줄의 스와치.
  *
  * 사이드바의 칩·그룹 메뉴와 플러그인(목표 표면의 그룹 메뉴)이 **같은 모듈에서** 가져다 써서, 같은 조작이 두 벌의 모양으로
  * 태어나지 않게 한다. 클래스 이름은 이 모듈이 고정하고 실제 규칙은 코어 `components.css` 가 적는다.

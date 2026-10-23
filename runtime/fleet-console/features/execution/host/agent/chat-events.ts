@@ -17,7 +17,7 @@ import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
 /** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
-export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
+export type ChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저에 가는 것은 미리보기 라우트의 좌표(id)뿐이고 호스트
@@ -160,7 +160,7 @@ export type AgentChatStreamEvent =
    */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Operation 이 보낸 지시. 없으면 사람이 친 것이다. */
+  /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Objective 이 보낸 지시. 없으면 사람이 친 것이다. */
   | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 **그 턴 안에** 선다.
@@ -240,12 +240,12 @@ export type AgentChatStreamEvent =
       readonly toolDetail?: AgentChatToolDetail;
       /** tool-start·tool-result와 같은 스텝임을 잇는 축. 트랜스크립트 재생에도 실린다. */
       readonly id?: string;
-      /** 좌표가 Operation cwd 밖을 가리킨다 — 표시형으로 접히면 구별되지 않으므로 따로 싣는다. */
+      /** 좌표가 Objective cwd 밖을 가리킨다 — 표시형으로 접히면 구별되지 않으므로 따로 싣는다. */
       readonly outside?: boolean;
       readonly change?: AgentChatChange;
     }
   /** 스텝의 결말. ok는 도구가 돌려준 사실이지 턴의 성패가 아니다. */
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientOperationId?: string }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientObjectiveId?: string }
   /**
    * 다른 세션이 이 세션에 보낸 말 한 통 — 도구 줄 하나로 선다.
    *
@@ -253,14 +253,14 @@ export type AgentChatStreamEvent =
    * 도구 호출과 그 결과다 — 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 호출이 성공한 뒤에 서버가
    * 받는 세션의 원장에 이 줄을 세운다.
    *
-   * 그래서 출처는 본문이 아니라 서버가 들고 있는 값이다: `from`은 보낸 Operation의 런치 이름(없으면 표시 제목)이며,
-   * 발신자가 본문에 무엇을 적든 그 값은 여기 오지 않는다. `id`는 `<보낸 Operation>:<tool_use id>`
+   * 그래서 출처는 본문이 아니라 서버가 들고 있는 값이다: `from`은 보낸 Objective의 런치 이름(없으면 표시 제목)이며,
+   * 발신자가 본문에 무엇을 적든 그 값은 여기 오지 않는다. `id`는 `<보낸 Objective>:<tool_use id>`
    * 라 같은 호출이 두 번 관측돼도 줄은 하나다.
    *
    * 트랜스크립트 재생에서는 절대 만들어지지 않는다 — 기록을 되읽어 세우면 지난 발신이 오늘의
    * 수신으로 다시 서고, 메모리 원장과 재생본이 서로 다른 원장이 된다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderObjectiveId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /**
    * 모델이 멈춰 서서 사용자를 기다린다. 저널에 남는 이벤트여야 하는 이유는 만료가 없기 때문이다 —
    * 재접속한 브라우저가 이 이벤트로 같은 카드를 다시 세우지 못하면, 대기는 영영 보이지 않는 채로
@@ -286,7 +286,7 @@ export type AgentChatStreamEvent =
       readonly kind: "ask-settled";
       readonly id: string;
       readonly outcome: "answered" | "dismissed" | "approved" | "revised";
-      /** 사람이 아닌 답변자 — Console Use 로 답한 Operation. */
+      /** 사람이 아닌 답변자 — Console Use 로 답한 Objective. */
       readonly by?: ChatOrigin;
       /** 접힌 줄이 보일 값 — header → 사용자가 고른 것. */
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
@@ -573,7 +573,7 @@ export function readChatCommandLaneName(text: string): string | null {
  *
  * 위조는 두 겹으로 막는다. 호스트는 모든 대화 문면의 선두 표식을 무력화한 뒤에 자기 표식을 붙이고
  * (`neutralizeChatOriginTag`), 재생은 문면의 **정확히 0번 자리**에 있는 첫 표식만 읽는다. 그래서
- * 사람·다른 Operation이 보낸 표식은 앞에 보이지 않는 글자가 붙어 읽히지 않고, 플러그인이 본문에
+ * 사람·다른 Objective이 보낸 표식은 앞에 보이지 않는 글자가 붙어 읽히지 않고, 플러그인이 본문에
  * 심은 표식은 호스트 표식 뒤에 서므로 읽히지 않는다.
  */
 const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,128})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?(?: human="([A-Za-z0-9_-]{1,1024})")?\/>\n/;
@@ -620,10 +620,10 @@ function readHumanInputTag(encoded: string): ConsoleActionInput["humanInput"] {
   try {
     const value = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     if (!value || typeof value.id !== "string" || !/^[0-9a-f-]{36}$/i.test(value.id)) return undefined;
-    if (value.targetOperationId !== undefined && (typeof value.targetOperationId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.targetOperationId))) return undefined;
+    if (value.targetObjectiveId !== undefined && (typeof value.targetObjectiveId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.targetObjectiveId))) return undefined;
     // 행위·작성자는 표시만 바꾼다 — 모르는 값은 버리고 사람 입력 표식 자체는 지킨다(옛 표식과 같은 모양).
     const act = value.act === "start" || value.act === "plan" || value.act === "steer" ? value.act : undefined;
-    return { id: value.id, ...(value.targetOperationId ? { targetOperationId: value.targetOperationId } : {}), ...(value.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(value.author === "commodore" ? { author: "commodore" as const } : {}) };
+    return { id: value.id, ...(value.targetObjectiveId ? { targetObjectiveId: value.targetObjectiveId } : {}), ...(value.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(value.author === "commodore" ? { author: "commodore" as const } : {}) };
   } catch { return undefined; }
 }
 
@@ -1766,7 +1766,7 @@ const CODE_FILE_ROOT = /^\/(?:Users|home|private|var|tmp|Volumes|mnt|media|root|
 function abbreviateAbsolutePaths(value: string, inCode = false): string {
   const fold = (path: string) => !inCode || /^[A-Za-z]:[\\/]|^\\\\/.test(path) || CODE_FILE_ROOT.test(path) ? foldPath(path) : path;
   return value
-    // uds 배송 좌표는 일반 절대 경로 정규식을 빠져나간다. 공개 문면에서 가리고 별도의 Operation id로 해석한다.
+    // uds 배송 좌표는 일반 절대 경로 정규식을 빠져나간다. 공개 문면에서 가리고 별도의 Objective id로 해석한다.
     .replace(/\buds:\/[^\s"'<>]+/gu, "uds:…")
     .replace(QUOTED_ABSOLUTE_PATH, (_match, quote: string, path: string) => `${quote}${fold(path)}${quote}`)
     .replace(BARE_ABSOLUTE_PATH, (match) => fold(match));
@@ -1865,7 +1865,7 @@ function lineCount(value: unknown): number {
   return value.replace(/\n$/, "").split("\n").length;
 }
 
-/** 도구 입력의 경로 좌표가 Operation cwd 밖을 가리키는지. 좌표가 없으면 false다. */
+/** 도구 입력의 경로 좌표가 Objective cwd 밖을 가리키는지. 좌표가 없으면 false다. */
 function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boolean {
   if (!cwd || !input || typeof input !== "object" || Array.isArray(input)) return false;
   const record = input as Record<string, unknown>;
@@ -1905,7 +1905,7 @@ function resolveDotSegments(path: string): string {
 }
 
 /**
- * 자유 텍스트 요약(command·prompt 등) 안의 경로 토큰을 표시형으로 정규화한다: Operation cwd
+ * 자유 텍스트 요약(command·prompt 등) 안의 경로 토큰을 표시형으로 정규화한다: Objective cwd
  * 접두는 `.`으로, 홈 디렉터리 접두는 `~`로 바꾼다. 셸 관용 표기라 의미를 해치지 않으면서
  * 작업공간·홈 절대 경로가 브라우저 스트림에 원문으로 실리지 않게 한다.
  */
@@ -1921,7 +1921,7 @@ function normalizePathTokens(value: string, cwd: string | undefined): string {
 }
 
 /**
- * 절대 경로를 브라우저 표시형으로 옮긴다: Operation cwd 안이면 상대 경로, 밖이면 마지막 두
+ * 절대 경로를 브라우저 표시형으로 옮긴다: Objective cwd 안이면 상대 경로, 밖이면 마지막 두
  * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
  */
 function displayPath(value: string, cwd: string | undefined): string {

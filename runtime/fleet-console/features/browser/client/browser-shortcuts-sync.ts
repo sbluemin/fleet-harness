@@ -23,7 +23,7 @@ import { usableCompanionShortcuts } from "../../../core/client/src/integration/s
  * 필드를 싣지 않아 새 셸이 중계하지 않는다.
  *
  * companion 토글도 선언된 전부를 푼다(설정 화면의 행과 같은 열거 — 코어 +
- * 플러그인 operation kind). Operation 브라우저를 재배정해도 뷰 포커스 중
+ * 플러그인 objectiveRecord kind). Objective 브라우저를 재배정해도 뷰 포커스 중
  * 중계가 따라간다.
  *
  * 서버 경로가 아직 없으면(호스트 구현 중) 조용히 실패하고, 다음 포그라운드에서 다시 시도한다.
@@ -59,13 +59,13 @@ export function useBrowserShortcutsSync(active: boolean): void {
     if (!active || !isDesktopShell()) return;
     const chords = new Set<string>();
     // 뷰에서 가로챈 키는 페이지가 받지 못한다. 그래서 어디서 눌러도 Console이 맡는 전역 명령만 넘긴다:
-    // 지도 맥락 명령(operations 묶음 — Shift+1은 「!」 입력이다)과 닫기 되돌리기(⌘Z — 페이지의 실행 취소)는 빼고,
+    // 지도 맥락 명령(objectiveRecords 묶음 — Shift+1은 「!」 입력이다)과 닫기 되돌리기(⌘Z — 페이지의 실행 취소)는 빼고,
     // 수식키(Mod·Ctrl·Alt) 없이 글자를 내는 조합도 뺀다.
     for (const command of CORE_SHORTCUT_COMMANDS) {
       if (command.group !== "console" || command.id === "console.undo-close") continue;
       for (const chord of resolveShortcutChords(command.id)) if (forwardableChord(chord)) chords.add(chord);
     }
-    for (const kind of registry.operationKinds) {
+    for (const kind of registry.objectiveRecordKinds) {
       for (const companion of usableCompanionShortcuts(kind.companions ?? []) as readonly CompanionPanelDescriptor[]) {
         if (!companion.shortcut) continue;
         const commandId = companionShortcutCommandId(kind.pluginId, companion.id);
@@ -76,7 +76,7 @@ export function useBrowserShortcutsSync(active: boolean): void {
     if (body === lastSent && lastOk) return;
     lastSent = body;
     void sendShortcuts([...chords]).then((ok) => { lastOk = ok; });
-  }, [active, overrides, registry.operationKinds]);
+  }, [active, overrides, registry.objectiveRecordKinds]);
   // 실패했으면 다음 포그라운드에서 다시 — 서버가 늦게 열려도 따라간다.
   React.useEffect(() => {
     if (!active) return;

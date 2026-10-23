@@ -15,7 +15,7 @@ import * as React from "react";
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
-import { getComposerDraft } from "../../../operation-view-state.js";
+import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, speakerKey } from "./speaker-mark.js";
@@ -50,7 +50,7 @@ type Notice = { readonly tone: "info" | "warn"; readonly text: string; readonly 
 
 /** 입력창에 붙은 이미지 — id 가 서기 전(업로드 중)에는 보내지 않는다. */
 export interface GroupComposerProps {
-  readonly rootOperationId: string;
+  readonly rootObjectiveId: string;
   readonly snapshot: GroupTimelineSnapshot;
   readonly actions: GroupConversationActions | null;
   readonly language: ConsoleLocale | undefined;
@@ -116,23 +116,23 @@ function createGroupDraft() {
     },
   };
 }
-function groupDraft(rootOperationId: string) {
-  let draft = groupDrafts.get(rootOperationId);
-  if (!draft) { draft = createGroupDraft(); groupDrafts.set(rootOperationId, draft); }
+function groupDraft(rootObjectiveId: string) {
+  let draft = groupDrafts.get(rootObjectiveId);
+  if (!draft) { draft = createGroupDraft(); groupDrafts.set(rootObjectiveId, draft); }
   return draft;
 }
 
-export function GroupComposer({ rootOperationId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
+export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
-  const draft = groupDraft(rootOperationId);
+  const draft = groupDraft(rootObjectiveId);
   const { text, target, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
-  // 인용 칩은 지휘관 Operation 의 초안이 가진다 — 채팅 원장과 이 그룹 입력창이 같은 묶음을 읽어, 어느 화면으로 열어도 칩이 서 있다.
-  const quoteStore = getComposerDraft(rootOperationId).quotes;
+  // 인용 칩은 지휘관 Objective 의 초안이 가진다 — 채팅 원장과 이 그룹 입력창이 같은 묶음을 읽어, 어느 화면으로 열어도 칩이 서 있다.
+  const quoteStore = getComposerDraft(rootObjectiveId).quotes;
   const quotes = useComposerQuotes(quoteStore);
   const hasQuotes = quotes.length > 0;
   const attachmentInput = useComposerAttachmentInput(draft.attachments, {
@@ -153,12 +153,12 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
     if (quotes.length > quoteCount.current) inputRef.current?.focus({ preventScroll: true });
     quoteCount.current = quotes.length;
   }, [quotes.length]);
-  // 수신함 — 대화 중심 화면에서는 이 입력창이 지휘관(루트)의 입력 자리다. Operation Browser 가 맡긴 주석·스크린샷을 주차된 원장 채팅
+  // 수신함 — 대화 중심 화면에서는 이 입력창이 지휘관(루트)의 입력 자리다. Objective Browser 가 맡긴 주석·스크린샷을 주차된 원장 채팅
   // 대신 여기서 붙여넣기와 같은 길(업로드 → 칩)로 세운다. 보내지는 않는다.
-  React.useEffect(() => claimComposerInbox(rootOperationId, (entry) => {
+  React.useEffect(() => claimComposerInbox(rootObjectiveId, (entry) => {
     draft.attachments.add(entry.files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
     inputRef.current?.focus();
-  }), [rootOperationId, draft, ct]);
+  }), [rootObjectiveId, draft, ct]);
   const pendingPick = React.useRef<Candidate | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
@@ -192,7 +192,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
     if (key !== null) armTimer.current = setTimeout(() => setArmed((current) => (current === key ? null : current)), ARM_MS);
   };
   /**
-   * 무장은 그 칸(`data-board-arm`) 밖을 누르면 풀린다. 포커스로 판정하지 않는다 — 대화 칸은 누를 때마다 활성 Operation 을 풀며 포커스를
+   * 무장은 그 칸(`data-board-arm`) 밖을 누르면 풀린다. 포커스로 판정하지 않는다 — 대화 칸은 누를 때마다 활성 Objective 을 풀며 포커스를
    * 먼저 빼므로(호스트 공용 pointerdown), 같은 칩을 다시 누르는 두 번째 누름도 그 직전에 blur 가 온다.
    */
   React.useEffect(() => {
@@ -255,8 +255,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
 
   const nameOf = (targetId: string): string => {
     if (targetId.startsWith("commodore:")) return t("group.commodore");
-    if (targetId === snapshot.rootOperationId) return commander?.name ?? t("group.commander");
-    return snapshot.participants.find((participant) => participant.speaker.operationId === targetId)?.speaker.name ?? t("group.member");
+    if (targetId === snapshot.rootObjectiveId) return commander?.name ?? t("group.commander");
+    return snapshot.participants.find((participant) => participant.speaker.objectiveId === targetId)?.speaker.name ?? t("group.member");
   };
 
   const describeSend = (result: GroupWriteResult, sentTo: Candidate | null): Notice | null => {
@@ -399,7 +399,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
       return;
     }
     const groupTarget: GroupMessageTarget = !sentTo ? { kind: "commander" }
-      : sentTo.kind === "member" ? { kind: "member", operationId: sentTo.speaker.operationId! }
+      : sentTo.kind === "member" ? { kind: "member", objectiveId: sentTo.speaker.objectiveId! }
         : sentTo.kind === "all" ? { kind: "all" } : { kind: "commodore" };
     setBusy(true);
     setNotice(null);

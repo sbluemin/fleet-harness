@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { OperationRenderContext } from "../../../shared/client-contract.js";
+import type { ObjectiveRenderContext } from "../../../shared/client-contract.js";
 import { AttachImageIcon } from "../../composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton } from "../../composer-primitives/attachment-surface.js";
 import { ComposerField, ComposerSubmitButton } from "../../composer-primitives/primitives.js";
@@ -23,7 +23,7 @@ import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import type { ChatConsoleCommand } from "./composer-deck.js";
 import { readAgentChatCatalog } from "../api.js";
-import { getComposerDraft } from "../../operation-view-state.js";
+import { getComposerDraft } from "../../objective-view-state.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
 import { OriginMark, originExcerpt } from "./origin-mark.js";
 
@@ -171,7 +171,7 @@ export function AgentChatComposer({
   onOpenCoordinates,
   catalogEpoch,
 }: {
-  readonly context: OperationRenderContext;
+  readonly context: ObjectiveRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
   readonly coordinate: React.ReactNode;
   /**
@@ -218,7 +218,7 @@ export function AgentChatComposer({
   const widthChoices = useDistinctChatWidths(composerRef);
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const draftState = getComposerDraft(context.operationId);
+  const draftState = getComposerDraft(context.objectiveId);
   const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
   const setDraft = draftState.setText;
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
@@ -346,7 +346,7 @@ export function AgentChatComposer({
     // 판본은 **받아 낸 사본에만** 붙인다. 요청 전에 적으면, 그 요청이 빈손으로 돌아왔을 때
     // (404·409는 이 API의 정상 응답이다) 옛 사본이 새 판본의 것으로 둔갑해 다시 물어볼 길이 없다.
     const requestedEpoch = catalogEpoch;
-    void readAgentChatCatalog(context.operationId, abort.signal)
+    void readAgentChatCatalog(context.objectiveId, abort.signal)
       .then((value) => {
         if (!value || abort.signal.aborted) return;
         setCatalog(value);
@@ -357,9 +357,9 @@ export function AgentChatComposer({
         if (!abort.signal.aborted) setCatalogTried(true);
       });
     return () => abort.abort();
-  }, [context.operationId, deckOpen, catalog, catalogEpoch]);
+  }, [context.objectiveId, deckOpen, catalog, catalogEpoch]);
 
-  const deckId = `agent-chat-deck-${context.operationId}`;
+  const deckId = `agent-chat-deck-${context.objectiveId}`;
   const deckOptionId = React.useCallback((index: number) => `${deckId}-opt-${index}`, [deckId]);
 
   /**
@@ -447,17 +447,17 @@ export function AgentChatComposer({
     draftState.attachments.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
   }, [ct, draftState]);
 
-  // 수신함 — Operation Browser 가 맡긴 스크린샷을 붙여넣기와 같은 길로 이 컴포저에 세운다. 보내지는 않는다.
+  // 수신함 — Objective Browser 가 맡긴 스크린샷을 붙여넣기와 같은 길로 이 컴포저에 세운다. 보내지는 않는다.
   React.useEffect(() => {
     const take = () => {
-      const entries = drainComposerInbox(context.operationId);
+      const entries = drainComposerInbox(context.objectiveId);
       if (entries.length === 0) return;
       addFiles(entries.flatMap((entry) => entry.files));
       inputRef.current?.focus();
     };
     take();
-    return subscribeComposerInbox(context.operationId, take);
-  }, [context.operationId, addFiles]);
+    return subscribeComposerInbox(context.objectiveId, take);
+  }, [context.objectiveId, addFiles]);
 
   // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다 — 다음 할 일은 지시를 쓰는 것이다. 처음 서는 순간의
   // 이미 있던 칩은 초점을 가져가지 않는다.

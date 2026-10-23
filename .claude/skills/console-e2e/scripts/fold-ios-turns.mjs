@@ -2,9 +2,9 @@
 /**
  * Turn Fold turns on in the installed Fleet app on one simulator, without Simulator.app.
  *
- *   node fold-ios-turns.mjs <udid> <absolute-scratch-dir> <operation-title>
+ *   node fold-ios-turns.mjs <udid> <absolute-scratch-dir> <objective-title>
  *
- * <operation-title> is the conversation title. The info button is "{title} info"
+ * <objective-title> is the conversation title. The info button is "{title} info"
  * (mobile.conv.infoAria). Writes a host app and UI test under <scratch-dir>/ios-fold-turns,
  * separate from accept-ios-open.mjs, and runs `xcodebuild test` against that UDID.
  * activate() does not relaunch: a screen a previous test left open stays open, and the test
@@ -18,7 +18,7 @@ import path from 'node:path';
 
 const [udid, scratch, title] = process.argv.slice(2);
 if (!udid || !scratch || !path.isAbsolute(scratch) || !title || /["\\\n]/.test(title)) {
-  process.stderr.write('usage: node fold-ios-turns.mjs <udid> <absolute-scratch-dir> <operation-title>\n');
+  process.stderr.write('usage: node fold-ios-turns.mjs <udid> <absolute-scratch-dir> <objective-title>\n');
   process.exit(2);
 }
 

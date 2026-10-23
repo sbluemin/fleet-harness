@@ -2,14 +2,14 @@ import { useSyncExternalStore } from "react";
 
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
-import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
-import { useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
-import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
+import { ObjectiveStatusIcon } from "../../../../../features/execution/client/components/objective-status-icon.js";
+import { useClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
+import { resolveObjectiveActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { navigateConsoleRoute } from "../../integration/console-location.js";
-import { focusOperation } from "../../integration/store.js";
+import { focusObjective } from "../../integration/store.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
@@ -41,14 +41,14 @@ export function MobileAttentionScreen() {
         <>
           <div className="mobile-group">
             {rows.map((row) => (
-              <MobileMarkedRow key={row.key} mark={(row.kind === "operation" ? clusterIndex.rowOf.get(row.operation.id) : row.clusterId ? clusterIndex.layouts.get(row.clusterId) : undefined)?.cluster.row?.mark}>
-                {row.kind === "operation" ? (
-                  <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/operations"); focusOperation(row.operation.id); }}>
-                    <OperationStatusIcon operation={row.operation} status={resolveOperationMarkVisual({ activity: resolveOperationActivity(row.operation, state.operationRuntime), operationId: row.operation.id, idleArrivalIds })} size={28} decorative />
-                    <span className="mobile-group-row-copy">{row.operation.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
+              <MobileMarkedRow key={row.key} mark={(row.kind === "objectiveRecord" ? clusterIndex.rowOf.get(row.objectiveRecord.id) : row.clusterId ? clusterIndex.layouts.get(row.clusterId) : undefined)?.cluster.row?.mark}>
+                {row.kind === "objectiveRecord" ? (
+                  <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/objectives"); focusObjective(row.objectiveRecord.id); }}>
+                    <ObjectiveStatusIcon objectiveRecord={row.objectiveRecord} status={resolveObjectiveMarkVisual({ activity: resolveObjectiveActivity(row.objectiveRecord, state.objectiveRecordRuntime), objectiveId: row.objectiveRecord.id, idleArrivalIds })} size={28} decorative />
+                    <span className="mobile-group-row-copy">{row.objectiveRecord.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                   </button>
                 ) : (
-                  <button type="button" className="mobile-group-row is-two" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) { openMobilePluginDestination(row.entryId, getViewedTheaterId()); navigateConsoleRoute("/operations"); } row.item.open(); }}>
+                  <button type="button" className="mobile-group-row is-two" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) { openMobilePluginDestination(row.entryId, getViewedTheaterId()); navigateConsoleRoute("/objectives"); } row.item.open(); }}>
                     <span className="mobile-group-row-icon" aria-hidden="true">{entryIconOf(bindings, row.entryId)}</span>
                     <span className="mobile-group-row-copy">{row.item.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                     {sourceName(row.entryId) ? <span className="mobile-group-row-value">{sourceName(row.entryId)}</span> : null}

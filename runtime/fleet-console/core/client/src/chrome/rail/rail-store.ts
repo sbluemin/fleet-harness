@@ -197,7 +197,7 @@ export function useRailPanelSoloWidth(): number | null {
   return useRailStoreField("panelSoloWidth");
 }
 
-/** RightRail이 레이아웃 후 자기 점유 폭을 보고한다 — Operations 페이지의 아레나 계산 원료. 끄는 동안의 보고는 확정 폭을 옮기지 않는다. */
+/** RightRail이 레이아웃 후 자기 점유 폭을 보고한다 — ObjectiveRecords 페이지의 아레나 계산 원료. 끄는 동안의 보고는 확정 폭을 옮기지 않는다. */
 export function reportRailOccupiedPx(px: number, settled: boolean): void {
   const normalized = Math.max(0, Math.round(px));
   const settledPx = settled ? normalized : store.railSettledPx;

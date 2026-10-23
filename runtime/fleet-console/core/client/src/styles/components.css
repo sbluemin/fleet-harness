@@ -548,7 +548,7 @@
   white-space: nowrap;
 }
 
-.operations-mutation-error {
+.objective-records-mutation-error {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -560,7 +560,7 @@
   font-size: var(--t-sm);
 }
 
-.operations-mutation-retry {
+.objective-records-mutation-retry {
   border: 1px solid light-dark(color-mix(in oklch, var(--coral) 40%, var(--surface-rim)), color-mix(in oklab, var(--coral) 40%, var(--surface-rim)));
   background: transparent;
   color: var(--coral-ink);
@@ -2338,7 +2338,7 @@
   }
 }
 
-/* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
+/* ObjectiveActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
    상태에 쓰는 기존 STATUS 예외다. */
 .side-bar-status-section--awaiting{
   --activity-color: var(--aurora);
@@ -2383,7 +2383,7 @@
 }
 
 /* ── 몽글 아바타 ─────────────────────────────────────────────────────────────
-   사령관·지휘관·구성원·Operation 의 얼굴. 몸은 정체성 톤(--id-*)과 같은 색상각의 파스텔(--mongle-*)이다 — 정체성 톤이 제목 잉크·미니맵 점 밖으로
+   사령관·지휘관·구성원·Objective 의 얼굴. 몸은 정체성 톤(--id-*)과 같은 색상각의 파스텔(--mongle-*)이다 — 정체성 톤이 제목 잉크·미니맵 점 밖으로
    나오는 승인된 예외(목표 5ea85764 시안 v2)이며, 몸은 신호 표면이 아니라 캐릭터라 상태 채널을 칠하지 않는다. 상태는 눈 모양·몸짓·
    발밑 빛·작은 배지가 말하고, 그 빛과 배지만 신호색(aurora·positive·warn)을 쓴다. 작업 중에는 지금 하는 일을 손·소품·큰 동작으로
    연기한다(목표 eb3c2802 시안 v3). 움직임은 --state-motion 으로 숨은 창·OS 모션 줄이기에서 멈춰 정지 자세로 서고, 앱 감속·비포커스
@@ -2907,8 +2907,8 @@
 @media (prefers-reduced-motion: reduce) {
 }
 
-/* 첫 글자 표식 — Operation 이 없는 그룹 대화 발화자와 「모두」 후보의 자리(speaker-mark·group-composer). 구성원은 정체성 톤(--id-*)을 쓴다.
-   Operation 이 있는 지휘관·구성원은 몽글 아바타로 선다. */
+/* 첫 글자 표식 — Objective 이 없는 그룹 대화 발화자와 「모두」 후보의 자리(speaker-mark·group-composer). 구성원은 정체성 톤(--id-*)을 쓴다.
+   Objective 이 있는 지휘관·구성원은 몽글 아바타로 선다. */
 .cluster-member-glyph {
   --member-tone: var(--id-teal);
   position: relative;
@@ -2937,7 +2937,7 @@
 .cluster-member-glyph.is-tone-crimson { --member-tone: var(--id-crimson); }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
-   Operations Progressive Left SideBar
+   ObjectiveRecords Progressive Left SideBar
    폭은 --side-bar-width CSS 변수(인라인 style)로 외부 제어, 리사이즈 핸들로 연속 조정.
 ═══════════════════════════════════════════════════════════════════════════════════ */
 
@@ -2949,7 +2949,7 @@
    반투명 재질은 자식 없는 ::before에서 칠한다. 구 "밴드 좌측 캡" 접합 규칙
    (border-top 제거·상단 라운드 0)은 캡 퇴역과 함께 원자적으로 걷혔다 — 카드는 네 변 모두
    자기 마감을 가진다. */
-.operations-side-bar {
+.objective-records-side-bar {
   position: absolute;
   top: var(--space-3);
   bottom: var(--space-3);
@@ -2970,7 +2970,7 @@
   transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
-.operations-side-bar::before {
+.objective-records-side-bar::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -2983,12 +2983,12 @@
   pointer-events: none;
 }
 
-.operations-side-bar[data-resizing="true"] {
+.objective-records-side-bar[data-resizing="true"] {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .operations-side-bar {
+  .objective-records-side-bar {
     transition-duration: 0.01ms;
   }
 }
@@ -3173,7 +3173,7 @@
   white-space: normal;
 }
 
-.operations-side-bar-chips {
+.objective-records-side-bar-chips {
   flex: 1;
   min-height: 0;
   list-style: none;
@@ -3376,7 +3376,7 @@
 }
 
 /* 시작 블록 — Theater가 없는 사이드바의 본문. 유령 행 대신 설명 한 줄·주 행동·가이드 재진입·단축키가
-   빈 높이를 채운다. 주 행동은 빈 캔버스의 「+ New Operation」과 같은 brass 틴트 버튼 문법이다 —
+   빈 높이를 채운다. 주 행동은 빈 캔버스의 「+ New Objective」과 같은 brass 틴트 버튼 문법이다 —
    첫 행동은 언제나 같은 얼굴로 선다. */
 .side-bar-starter {
   display: grid;
@@ -3752,11 +3752,11 @@
 }
 
 /* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 제목 글꼴·잉크, 머무름·키보드 포커스·활성·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
-   뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Operation 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
+   뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Objective 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
    바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
 .side-bar-cluster-row {
   display: grid;
-  /* 표식 칸은 지휘관 아바타(30px)만큼 — 대화 행은 두 줄이라 줄 높이는 그대로다. 일반 Operation 칩의 24px 비콘 칸과는 따로 선다. */
+  /* 표식 칸은 지휘관 아바타(30px)만큼 — 대화 행은 두 줄이라 줄 높이는 그대로다. 일반 Objective 칩의 24px 비콘 칸과는 따로 선다. */
   grid-template-columns: 30px 1fr auto;
   gap: 8px;
   align-items: center;
@@ -3895,8 +3895,8 @@
 
 /* 결정 요청 표식 — 묶음 뿌리에 사람의 답을 청한 결정 요청이 섰다. 이름 옆(생략 부호 밖)에 서고, 비콘·상태 칸은 활동 그대로다.
    사이드바 행이 이 부품을 쓴다. */
-.operation-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
-.operation-decision-mark svg { width: 13px; height: 13px; }
+.objective-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
+.objective-decision-mark svg { width: 13px; height: 13px; }
 
 .side-bar-chip-rename-input {
   flex: none;
@@ -3927,7 +3927,7 @@
 }
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
-   기존 operation spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
+   기존 objectiveRecord spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
 /* 켜진 AI 확장의 마크 무리 — 이름 뒤, pill 앞. 캡션·메뉴와 같은 글리프를 12px로 줄여 싣고
    본문 잉크(--text-secondary)로 선다: 허용은 위치(brass)도 활동(signal)도 아닌 사실이다.
    검토 중인 관찰만 aurora 점을 단다(진행 채널). */
@@ -4038,8 +4038,8 @@
 
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
 
-/* STATUS 축의 3px stripe는 identity가 아니라 OperationActivity 신호 채널이다.
-   색 정본은 위 OperationActivity 축이며 --status-color는 기존 소비자를 위한 별칭이다.
+/* STATUS 축의 3px stripe는 identity가 아니라 ObjectiveActivity 신호 채널이다.
+   색 정본은 위 ObjectiveActivity 축이며 --status-color는 기존 소비자를 위한 별칭이다.
    스트라이프는 섹션 봉투가 아니라 캡션 줄에만 선다 — 봉투에 두면 열이 다시 색 그룹이 된다. */
 .side-bar-status-section {
   --status-color: var(--activity-color);
@@ -4629,7 +4629,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* ── Resize Handle (우측 가장자리 4px, col-resize cursor) ───────────────────────── */
 
-.operations-side-bar-resize-handle {
+.objective-records-side-bar-resize-handle {
   position: absolute;
   top: 0;
   right: 0;
@@ -4639,7 +4639,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   z-index: 2;
 }
 
-.operations-side-bar-resize-handle:hover {
+.objective-records-side-bar-resize-handle:hover {
   background: color-mix(in oklch, var(--aurora) 30%, transparent);
 }
 
@@ -4927,7 +4927,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* ── 캡션 동작 선반 ────────────────────────────────────────────────────────
    플러그인이 채우고 호스트가 자리를 정하는 마크 버튼들. 창 컨트롤과 같은 24px 격자를 쓰되
-   메뉴 버튼 왼쪽에 서서, 이 Operation에 **대한** 동작(패널을 다루는 창 컨트롤)과 이 Operation
+   메뉴 버튼 왼쪽에 서서, 이 Objective에 **대한** 동작(패널을 다루는 창 컨트롤)과 이 Objective
    **안의** 동작을 한 줄에서 구분한다. 규칙을 창 컨트롤과 한 선택자에 적는 이유는 밴드 하나에
    두 벌의 문법이 서지 않게 하기 위해서다. */
 .mobile-session-caption-actions{
@@ -5098,7 +5098,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   to   { opacity: 0.4; }
 }
 
-/* agent-stream-host: 터미널과 Operation edge handle의 absolute offset parent. */
+/* agent-stream-host: 터미널과 Objective edge handle의 absolute offset parent. */
 .agent-stream-host {
   display: flex;
   flex-direction: column;
@@ -5107,7 +5107,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   min-height: 0;
 }
 
-/* 터미널 stage가 Operation body 전체를 유지한다. */
+/* 터미널 stage가 Objective body 전체를 유지한다. */
 .agent-stream-host .terminal-stage {
   position: absolute;
   inset: 0;
@@ -5116,7 +5116,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 재기동이 거절되면 카드가 알림으로 갈린다 — 같은 자리, 같은 정렬을 쓰되 안쪽은 버튼이
    아니라 세 조각짜리 설명이다. */
-.operation-dormant-failure {
+.objective-dormant-failure {
   display: grid;
   place-content: center;
   justify-items: center;
@@ -5125,11 +5125,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   padding: var(--space-3);
 }
 
-.operation-dormant-failure .fc-failure {
+.objective-dormant-failure .fc-failure {
   max-width: 420px;
 }
 
-.operation-dormant {
+.objective-dormant {
   display: grid;
   place-content: center;
   gap: var(--space-2);
@@ -5144,12 +5144,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   cursor: pointer;
 }
 
-.operation-dormant:hover,
-.operation-dormant:focus-visible {
+.objective-dormant:hover,
+.objective-dormant:focus-visible {
   background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 16%), transparent), transparent 38%);
 }
 
-.operation-dormant-status {
+.objective-dormant-status {
   color: var(--quiet-decor-ink);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
@@ -5161,7 +5161,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 휴면한 채팅 카드의 한 줄. 터미널 휴면은 "종료됨"과 버튼만으로 충분하지만, 채팅은 지금 무엇이
    보존되어 있는지(대화)를 말해야 재개를 누를지 판단할 수 있다. */
-.operation-dormant-body {
+.objective-dormant-body {
   max-width: 34ch;
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -5172,7 +5172,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   word-break: keep-all;
 }
 
-.operation-dormant-action {
+.objective-dormant-action {
   min-width: 118px;
   padding: 10px var(--space-5);
   border: 1px solid var(--quiet-resume-rim);
@@ -5186,17 +5186,17 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   box-shadow: 0 0 18px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 12%), transparent);
 }
 
-.operation-dormant:disabled {
+.objective-dormant:disabled {
   cursor: default;
 }
 
-.operation-dormant:disabled:hover {
+.objective-dormant:disabled:hover {
   background:
     radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 10%), transparent), transparent 34%),
     color-mix(in oklch, var(--ink-deep) 74%, transparent);
 }
 
-.operation-dormant-action--pending {
+.objective-dormant-action--pending {
   animation: dormant-resume-pulse 1.1s ease-in-out infinite; animation-name: var(--state-motion, dormant-resume-pulse);
 }
 
@@ -5206,17 +5206,17 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .operation-dormant-action--pending {
+  .objective-dormant-action--pending {
     animation: none;
   }
 }
 
-.operation-dormant--error {
+.objective-dormant--error {
   cursor: default;
   padding: var(--space-5);
 }
 
-.operation-dormant-error {
+.objective-dormant-error {
   max-width: 34ch;
   margin: 0;
   color: var(--text-secondary);
@@ -5225,20 +5225,20 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   text-align: center;
 }
 
-.operation-dormant-error-actions {
+.objective-dormant-error-actions {
   display: flex;
   gap: var(--space-3);
 }
 
-.operation-dormant-action--ghost {
+.objective-dormant-action--ghost {
   border-color: var(--surface-rim-strong);
   background: var(--surface-glass);
   color: var(--text-secondary);
   box-shadow: none;
 }
 
-.operation-dormant-action--ghost:hover,
-.operation-dormant-action--ghost:focus-visible {
+.objective-dormant-action--ghost:hover,
+.objective-dormant-action--ghost:focus-visible {
   border-color: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   color: var(--brass-bright);
 }
@@ -5426,7 +5426,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   right: 0;
   z-index: 40;
   padding: 6px;
-  /* 공통 팝업 표면(theme.css --popover-*) — operation-launch·캔버스 컨텍스트 메뉴·새 세션 모델 팝업이
+  /* 공통 팝업 표면(theme.css --popover-*) — objective-launch·캔버스 컨텍스트 메뉴·새 세션 모델 팝업이
      이 규칙을 상속한다. */
   border: 1px solid var(--popover-rim);
   border-radius: var(--radius-lg);
@@ -5512,7 +5512,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
    대화 입력창의 모델 메뉴(.agent-chat-coord-pop-caption)와 설정의 모델 선택기(.fc-coord-menu-caption)도
    같은 머리글이라 크기·말투는 여기 한 곳이 정한다 — 공통 팝업의 구역 머리 문법(12px 보통 굵기 보조색 문장형,
    대문자·자간 없음)으로, 설정 모달의 묶음 제목과 같은 말투다. */
-.operation-launch-variant-caption {
+.objective-launch-variant-caption {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -5524,19 +5524,19 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-weight: var(--weight-regular);
 }
 
-.operation-launch-variant-caption.is-antigravity,
+.objective-launch-variant-caption.is-antigravity,
 .launch-pop-band.is-antigravity,
 .fc-composer-deck-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.operation-launch-variant-caption.is-claude,
+.objective-launch-variant-caption.is-claude,
 .launch-pop-band.is-claude,
 .fc-composer-deck-band.is-claude { --launch-provider-tone: var(--provider-claude); }
-.operation-launch-variant-caption.is-codex,
+.objective-launch-variant-caption.is-codex,
 .launch-pop-band.is-codex,
 .fc-composer-deck-band.is-codex { --launch-provider-tone: var(--provider-codex); }
-.operation-launch-variant-caption.is-cursor,
+.objective-launch-variant-caption.is-cursor,
 .launch-pop-band.is-cursor,
 .fc-composer-deck-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.operation-launch-variant-caption.is-xai,
+.objective-launch-variant-caption.is-xai,
 .launch-pop-band.is-xai,
 .fc-composer-deck-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 /* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
@@ -5547,11 +5547,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-model-picker__glyph.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
-.operation-launch-provider-glyph--etc {
+.objective-launch-provider-glyph--etc {
   --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary));
 }
 
-.operation-launch-provider-glyph {
+.objective-launch-provider-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5564,7 +5564,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--launch-provider-tone);
 }
 
-.operation-launch-provider-glyph svg {
+.objective-launch-provider-glyph svg {
   width: 10px;
   height: 10px;
 }
@@ -5602,19 +5602,19 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1;
 }
 
-.operation-launch-variant-effort-gauge {
+.objective-launch-variant-effort-gauge {
   flex: 0 0 auto;
   height: 8px;
 }
 
 /* 소등 칸은 켜진 칸과 확실히 갈릴 만큼 물러서야 한다 — 램프의 낮은 단은 톤 자체가 판독 하한
    근처라, 소등이 그 근처에 있으면 LOW에서 몇 칸이 켜졌는지 읽히지 않는다. */
-.operation-launch-variant-effort-gauge rect {
+.objective-launch-variant-effort-gauge rect {
   fill: color-mix(in oklch, var(--text-tertiary) 24%, transparent);
   transition: fill var(--duration-fast) var(--ease-spring);
 }
 
-.operation-launch-variant-effort-gauge rect[data-lit="true"] {
+.objective-launch-variant-effort-gauge rect[data-lit="true"] {
   fill: var(--effort-tone, var(--brass-ink));
 }
 
@@ -6142,7 +6142,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 트랙이 닫힌 뒤에도 이 행이 무엇으로 실행되는지 남기는 표식. */
-.operation-launch-variant-effort {
+.objective-launch-variant-effort {
   color: var(--effort-tone, var(--brass-ink));
   font-family: var(--font-ui);
   font-size: var(--t-sm);
@@ -6260,7 +6260,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   text-transform: uppercase;
 }
 
-/* ── Operations 터미널 ─────────────────────────────────────────────
+/* ── ObjectiveRecords 터미널 ─────────────────────────────────────────────
    높이 전파 체인(stage → shell → canvas)을 flex로 확정해 xterm FitAddon이
    올바른 rows/cols를 계산하도록 한다. 컨테이너 높이가 비면 rows가 1로 붕괴해
    멀티라인 TUI(예: Claude Code 배너)가 한 줄로 평탄화된다. */
@@ -6279,7 +6279,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   flex-direction: column;
   gap: var(--space-2);
   padding: 0;
-  /* 이 기본 규칙의 소비처는 레일 Shell 하나다(캔버스 Operation은 아래에서 transparent로 덮는다).
+  /* 이 기본 규칙의 소비처는 레일 Shell 하나다(캔버스 Objective은 아래에서 transparent로 덮는다).
      슬롯 머리·테두리가 이미 Shell 크롬을 소유하므로 xterm 둘레에 두 번째 내부 여백을 만들지 않는다.
      Shell은 단일 반투명 terminal tint를 쓴다. xterm도 같은 terminal
      채널을 읽으므로 카드와 필드 사이에 색 계단을 만들지 않는다. */
@@ -6645,7 +6645,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .operation-search-overlay,
+  .objective-search-overlay,
   .commissioning-card {
     animation: none;
   }
@@ -6665,7 +6665,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 종료 알림은 부유 사이드바를 제외한 Map 안에만 머문다. */
-.operations-toast-region {
+.objective-records-toast-region {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -6675,32 +6675,32 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   pointer-events: none;
 }
 
-.operations-toast-region > .app-toast-host {
+.objective-records-toast-region > .app-toast-host {
   position: absolute;
   max-width: min(380px, calc(100% - 2 * var(--space-5)));
 }
 
-.operations-toast-region .app-toast {
+.objective-records-toast-region .app-toast {
   flex-wrap: wrap;
   overflow-wrap: anywhere;
 }
 
 @container (max-width: 240px) {
-  .operations-toast-region > .app-toast-host {
+  .objective-records-toast-region > .app-toast-host {
     right: var(--space-1);
     max-width: calc(100% - 2 * var(--space-1));
   }
 
-  .operations-toast-region .app-toast {
+  .objective-records-toast-region .app-toast {
     padding: var(--space-1);
     gap: 0;
   }
 
-  .operations-toast-region .app-toast-dot {
+  .objective-records-toast-region .app-toast-dot {
     display: none;
   }
 
-  .operations-toast-region .app-toast-body {
+  .objective-records-toast-region .app-toast-body {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -6857,7 +6857,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--wash-hover);
 }
 
-.operation-search-overlay {
+.objective-search-overlay {
   position: fixed;
   inset: 0;
   z-index: 90;
@@ -6868,7 +6868,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   animation: fleet-pop 280ms var(--ease-spring) both;
 }
 
-.operation-search-card {
+.objective-search-card {
   width: min(920px, 100%);
   padding: var(--space-3);
   border: 1px solid var(--popover-rim);
@@ -6877,12 +6877,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   box-shadow: var(--popover-shadow);
 }
 
-.operation-search-card:focus-visible {
+.objective-search-card:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 4px;
 }
 
-.operation-search-field {
+.objective-search-field {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -6892,14 +6892,14 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: color-mix(in oklch, var(--ink-abyss) 80%, transparent);
 }
 
-.operation-search-field svg {
+.objective-search-field svg {
   width: 20px;
   height: 20px;
   flex: none;
   color: var(--text-secondary);
 }
 
-#operation-search-input {
+#objective-search-input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -6911,11 +6911,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   letter-spacing: 0;
 }
 
-#operation-search-input::placeholder {
+#objective-search-input::placeholder {
   color: var(--text-tertiary);
 }
 
-.operation-search-results {
+.objective-search-results {
   display: grid;
   gap: var(--space-1);
   max-height: min(68vh, 620px);
@@ -6924,16 +6924,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   overflow-y: auto;
 }
 
-.operation-search-section {
+.objective-search-section {
   display: grid;
   gap: 0;
 }
 
-.operation-search-panel-section {
+.objective-search-panel-section {
   border-top: 1px solid var(--popover-divider);
 }
 
-.operation-search-section-heading {
+.objective-search-section-heading {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -6947,7 +6947,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1.2;
 }
 
-.operation-search-section-heading::after {
+.objective-search-section-heading::after {
   content: "";
   flex: 1;
   min-width: 24px;
@@ -6955,7 +6955,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--popover-divider);
 }
 
-.operation-search-result {
+.objective-search-result {
   position: relative;
   display: flex;
   align-items: center;
@@ -6976,7 +6976,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
     color var(--duration-fast) var(--ease-spring);
 }
 
-.operation-search-result::before {
+.objective-search-result::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -6993,32 +6993,32 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 행 상태는 공통 팝업의 중립 워시다 — 키보드 활성 행은 고른 행 워시와 왼쪽 점 하나로 말한다. */
-.operation-search-result:hover { background: var(--wash-hover); }
+.objective-search-result:hover { background: var(--wash-hover); }
 
-.operation-search-result.is-active {
+.objective-search-result.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
 }
 
 /* 포커스는 입력칸에 남고 aria-activedescendant가 활성 행을 가리킨다. 키보드로 옮긴 활성 행(동작 칩 포함)은
    메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)을 더한다 — 마우스가 옮긴 행은 워시뿐이다(data-nav). */
-.operation-search-results[data-nav="keyboard"] .operation-search-result.is-active,
-.operation-search-results[data-nav="keyboard"] .operation-search-action.is-active {
+.objective-search-results[data-nav="keyboard"] .objective-search-result.is-active,
+.objective-search-results[data-nav="keyboard"] .objective-search-action.is-active {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: -2px;
 }
 
-.operation-search-result.is-active::before {
+.objective-search-result.is-active::before {
   opacity: 1;
   transform: translate(0, -50%) scale(1);
 }
 
-.operation-search-result:focus-visible {
+.objective-search-result:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: -2px;
 }
 
-.operation-search-result-text {
+.objective-search-result-text {
   display: grid;
   flex: 1;
   min-width: 0;
@@ -7026,24 +7026,24 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 패널 결과(파일·Codex 문서)는 제목과 부제를 한 줄에 둔다 — 제목이 먼저 자리를 갖고, 부제는 남은 폭에서 잘린다. */
-.operation-search-result-text-inline {
+.objective-search-result-text-inline {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
 }
 
-.operation-search-result-text-inline strong {
+.objective-search-result-text-inline strong {
   flex: 0 1 auto;
 }
 
-.operation-search-result-text-inline small {
+.objective-search-result-text-inline small {
   flex: 1 1 0;
 }
 
-/* ⌘K Operation 행의 "지금 어디" — 이름이 먼저 자리를 갖고 위치 줄은 남은 폭에서 한 줄로 잘린다.
+/* ⌘K Objective 행의 "지금 어디" — 이름이 먼저 자리를 갖고 위치 줄은 남은 폭에서 한 줄로 잘린다.
    긴 이름에도 위치를 남기되 좁은 화면에서는 하한도 비례해 줄인다. 상한은 이름을 과하게 밀지 않게 한다.
    이 문법은 팔레트만 쓴다. 위치 사실은 중립 보조색으로만 말하고 활성 행에서도 잉크가 바뀌지 않는다. */
-.operation-search-result-text-inline .operation-context {
+.objective-search-result-text-inline .objective-context {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -7061,38 +7061,38 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   transform: translateY(-0.5px);
 }
 
-.operation-search-result-text-inline .operation-context > span {
+.objective-search-result-text-inline .objective-context > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.operation-search-result-text-inline .operation-context-branch,
-.operation-search-result-text-inline .operation-context-folder {
+.objective-search-result-text-inline .objective-context-branch,
+.objective-search-result-text-inline .objective-context-folder {
   flex: 0 1 auto;
 }
 
-.operation-search-result-text-inline .operation-context-branch::before {
+.objective-search-result-text-inline .objective-context-branch::before {
   content: "⎇ ";
   opacity: 0.8;
 }
 
-.operation-search-result-text-inline .operation-context-sep {
+.objective-search-result-text-inline .objective-context-sep {
   flex: none;
   opacity: 0.6;
 }
 
-.operation-search-result-text-inline .operation-context-folder.is-outside::before {
+.objective-search-result-text-inline .objective-context-folder.is-outside::before {
   content: "↗ ";
   opacity: 0.8;
 }
 
-.operation-search-result-text-inline .operation-context--deviates {
+.objective-search-result-text-inline .objective-context--deviates {
   color: var(--text-secondary);
 }
 
 /* 위치 줄의 문장형(브랜치 …, 폴더 …)은 보조기기에만 — 활동 마크의 이름과 함께 option의 접근성 이름에 남는다. */
-.operation-search-sr-only {
+.objective-search-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -7101,7 +7101,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   white-space: nowrap;
 }
 
-.operation-search-result strong {
+.objective-search-result strong {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -7115,7 +7115,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   white-space: nowrap;
 }
 
-.operation-search-result small {
+.objective-search-result small {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -7127,7 +7127,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* Theater 이름은 보조 줄이다 — 문장형 보조색, 대문자·자간을 쓰지 않는다. */
-.operation-search-theater {
+.objective-search-theater {
   max-width: 34%;
   overflow: hidden;
   color: var(--text-secondary);
@@ -7138,16 +7138,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 검색어 일치는 중립 강조다 — 글자는 본문색으로 올리고 옅은 면만 깐다. */
-.operation-search-result mark,
-.operation-search-section-heading mark,
-.operation-search-theater mark {
+.objective-search-result mark,
+.objective-search-section-heading mark,
+.objective-search-theater mark {
   padding: 0 0.16em;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--text-primary) 14%, transparent);
   color: var(--text-primary);
 }
 
-.operation-search-command-glyph {
+.objective-search-command-glyph {
   flex: none;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
@@ -7155,14 +7155,14 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1;
 }
 
-.operation-search-result.is-active .operation-search-command-glyph {
+.objective-search-result.is-active .objective-search-command-glyph {
   color: var(--text-primary);
 }
 
-/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 그 Operation 의 아바타가 쓴다 —
+/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Objective 행에서는 그 Objective 의 아바타가 쓴다 —
    아바타(16px)는 사이드바 칩과 같은 얼굴로 활동을 말하고, 이 슬롯은
    16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 아바타가 항상 서므로 제목 열이 어긋나지 않는다. */
-.operation-search-op-mark {
+.objective-search-op-mark {
   display: grid;
   place-items: center;
   flex: none;
@@ -7170,7 +7170,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 16px;
 }
 
-.operation-search-panel-open {
+.objective-search-panel-open {
   flex: none;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
@@ -7179,21 +7179,21 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 상한 표식 같은 읽기 전용 메타데이터 행 — 선택·활성화 대상이 아니므로 option 문법을 쓰지 않는다. */
-.operation-search-panel-info {
+.objective-search-panel-info {
   cursor: default;
   color: var(--text-tertiary);
 }
 
-.operation-search-panel-info strong {
+.objective-search-panel-info strong {
   font-weight: var(--weight-regular);
 }
 
-.operation-search-codex-section {
+.objective-search-codex-section {
   border-top: 1px solid var(--popover-divider);
 }
 
 /* 출처 배지 — 승인안의 배지 부품: 중립 컨트롤 면, 보조색 11px, 테두리 없음. */
-.operation-search-source-badge {
+.objective-search-source-badge {
   flex: none;
   padding: 1px 8px;
   border: 0;
@@ -7206,7 +7206,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1.4;
 }
 
-.operation-search-empty {
+.objective-search-empty {
   margin: 0;
   padding: var(--space-5) var(--space-4);
   color: var(--text-tertiary);
@@ -7214,14 +7214,14 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-size: var(--t-sm);
 }
 
-.operation-search-empty-hint {
+.objective-search-empty-hint {
   display: block;
   margin-top: var(--space-1);
   color: color-mix(in oklch, var(--text-tertiary) 80%, transparent);
 }
 
-/* ===== 팔레트 모드 스위치 — 검색창 오른쪽의 두 칸(Operation ⌘K · 명령 ⌘P). 빈 입력의 `>`도 같은 곳으로 간다. ===== */
-.operation-search-switch {
+/* ===== 팔레트 모드 스위치 — 검색창 오른쪽의 두 칸(Objective ⌘K · 명령 ⌘P). 빈 입력의 `>`도 같은 곳으로 간다. ===== */
+.objective-search-switch {
   display: inline-flex;
   flex: none;
   gap: 2px;
@@ -7231,7 +7231,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--control-rest);
 }
 
-.operation-search-switch-option {
+.objective-search-switch-option {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -7252,20 +7252,20 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 두 칸은 승인안의 세그먼트 부품이다 — 고른 칸은 중립 워시 + 본문색 굵기, 금색은 포커스 링에만. */
-.operation-search-switch-option:hover {
+.objective-search-switch-option:hover {
   background: var(--wash-hover);
   color: var(--text-primary);
 }
 
-.operation-search-switch-option.is-active {
+.objective-search-switch-option.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
   font-weight: var(--weight-medium);
 }
 
-.operation-search-switch-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.objective-search-switch-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
-.operation-search-switch-option kbd {
+.objective-search-switch-option kbd {
   padding: 0 3px;
   border: 0;
   background: transparent;
@@ -7276,13 +7276,13 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 @media (max-width: 720px) {
-  .operation-search-switch-option kbd {
+  .objective-search-switch-option kbd {
     display: none;
   }
 }
 
 /* 구역 머리글 글리프 — 스크롤 중 위치를 알린다. 잉크는 머리글과 같다. */
-.operation-search-section-glyph {
+.objective-search-section-glyph {
   display: inline-grid;
   place-items: center;
   flex: none;
@@ -7292,64 +7292,64 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   opacity: 0.85;
 }
 
-.operation-search-section-glyph svg {
+.objective-search-section-glyph svg {
   width: 13px;
   height: 13px;
 }
 
-.operation-search-section-note {
+.objective-search-section-note {
   flex: none;
   color: var(--text-tertiary);
 }
 
 /* 행 글리프 — 16px 상자에 선 글리프·Theater 아바타·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
    선택 행만 본문색으로 올라가며, 파괴 행만 coral(위험 신호)이다. */
-.operation-search-command-glyph {
+.objective-search-command-glyph {
   display: inline-grid;
   place-items: center;
   width: 16px;
   height: 16px;
 }
 
-.operation-search-command-glyph svg {
+.objective-search-command-glyph svg {
   width: 16px;
   height: 16px;
 }
 
-.operation-search-rail-icon svg {
+.objective-search-rail-icon svg {
   width: 15px;
   height: 15px;
 }
 
 /* 파괴 행 — Theater 메뉴의 잊기 항목(.theater-menu-forget)과 같은 문법: coral 잉크가 신호이고, 면은 다른 행과 같은 중립 워시다. */
-.operation-search-result.is-danger,
-.operation-search-result.is-danger strong,
-.operation-search-result.is-danger .operation-search-command-glyph {
+.objective-search-result.is-danger,
+.objective-search-result.is-danger strong,
+.objective-search-result.is-danger .objective-search-command-glyph {
   color: var(--coral-ink);
 }
 
-.operation-search-result.is-danger:hover { background: var(--wash-hover); }
-.operation-search-result.is-danger.is-active { background: var(--wash-selected); }
+.objective-search-result.is-danger:hover { background: var(--wash-hover); }
+.objective-search-result.is-danger.is-active { background: var(--wash-selected); }
 
-.operation-search-result.is-danger.is-active::before {
+.objective-search-result.is-danger.is-active::before {
   background: var(--coral);
 }
 
-.operation-search-undoable {
+.objective-search-undoable {
   flex: none;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
 }
 
-.operation-search-shortcut {
+.objective-search-shortcut {
   display: inline-flex;
   flex: none;
   gap: 3px;
 }
 
-.operation-search-shortcut kbd,
-.operation-search-legend kbd {
+.objective-search-shortcut kbd,
+.objective-search-legend kbd {
   padding: 1px 5px 2px;
   border: 0;
   border-radius: var(--radius-xs);
@@ -7361,12 +7361,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1.3;
 }
 
-/* Operation 행 동작 띠 — 행 아래에 펼쳐지며 →로 열고 ←로 닫는다. 동작 정의는 명령 팔레트와 같다. */
-.operation-search-row {
+/* Objective 행 동작 띠 — 행 아래에 펼쳐지며 →로 열고 ←로 닫는다. 동작 정의는 명령 팔레트와 같다. */
+.objective-search-row {
   display: grid;
 }
 
-.operation-search-row-arrow {
+.objective-search-row-arrow {
   flex: none;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
@@ -7375,12 +7375,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
-.operation-search-result.is-active .operation-search-row-arrow,
-.operation-search-row.has-actions .operation-search-row-arrow {
+.objective-search-result.is-active .objective-search-row-arrow,
+.objective-search-row.has-actions .objective-search-row-arrow {
   opacity: 0.8;
 }
 
-.operation-search-actions {
+.objective-search-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -7388,7 +7388,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 행 동작 칩 — 중립 컨트롤 면, 테두리 없음. 키보드로 짚은 칩은 고른 행 워시 + 본문색이고, 파괴 동작은 coral 글자가 신호다. */
-.operation-search-action {
+.objective-search-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -7404,33 +7404,33 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-weight: var(--weight-regular);
 }
 
-.operation-search-action:hover { background: var(--control-rest-hover); color: var(--text-primary); }
+.objective-search-action:hover { background: var(--control-rest-hover); color: var(--text-primary); }
 
-.operation-search-action.is-active {
+.objective-search-action.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
 }
 
-.operation-search-action.is-danger,
-.operation-search-action.is-danger:hover,
-.operation-search-action.is-danger.is-active {
+.objective-search-action.is-danger,
+.objective-search-action.is-danger:hover,
+.objective-search-action.is-danger.is-active {
   color: var(--coral-ink);
 }
 
-.operation-search-action-glyph {
+.objective-search-action-glyph {
   display: inline-grid;
   place-items: center;
   width: 14px;
   height: 14px;
 }
 
-.operation-search-action-glyph svg {
+.objective-search-action-glyph svg {
   width: 14px;
   height: 14px;
 }
 
 /* 바닥 범례 — 창 안에서 창의 키를 말한다. 오른쪽 끝은 다른 문(⌘K/⌘P)이다. */
-.operation-search-legend {
+.objective-search-legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -7443,13 +7443,13 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-size: var(--t-xs);
 }
 
-.operation-search-legend span {
+.objective-search-legend span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-.operation-search-legend-switch {
+.objective-search-legend-switch {
   margin-left: auto;
   color: var(--text-secondary);
 }
@@ -8017,16 +8017,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 @media (max-width: 760px) {
 
-  .operation-search-overlay {
+  .objective-search-overlay {
     padding: var(--space-5) var(--space-4);
   }
 
-  .operation-search-result {
+  .objective-search-result {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .operation-search-theater {
+  .objective-search-theater {
     max-width: 100%;
   }
 
@@ -8480,7 +8480,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .whatsnew-done:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 
 .fc-settings-card,
-.fc-operation-body,
+.fc-objective-body,
 .fc-plugin-error {
   border: 1px solid var(--surface-rim);
   background: var(--surface-glass);
@@ -8752,7 +8752,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   padding: 8px 12px;
 }
 
-.fc-operation-body {
+.fc-objective-body {
   height: 100%;
   min-height: 0;
   overflow: auto;
@@ -9450,7 +9450,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
    콘텐츠를 모르는 프레임이다 — 슬롯 본문은 표면 기여자가 그린다. */
 
 :root {
-  /* 캔버스(자체 스택 컨텍스트) 안에서만 경쟁한다 — Operation 패널의 zIndex는
+  /* 캔버스(자체 스택 컨텍스트) 안에서만 경쟁한다 — Objective 패널의 zIndex는
      상호 승격으로 상한 없이 자라므로, 정수 최대치 근방으로 항상 위를 보장한다. */
   --z-expanded-surface: 2147480000;
 }
@@ -11049,7 +11049,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 /* 이름만 말줄임한다 — 강도와 꺼짐·폴백 배지는 늘 보인다. */
 .fc-row-value .fc-row-value-text, .fc-coord-trigger.is-field .fc-coord-trigger-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-coord-trigger-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
-.operation-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
+.objective-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
 .fc-coord-trigger-provider svg { width: 14px; height: 14px; }
 .fc-coord-trigger-model { color: var(--text-primary); }
 .fc-coord-trigger-model.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
@@ -11074,7 +11074,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu-head { display: grid; gap: 2px; margin: 0 0 5px; padding: 8px 12px; border-bottom: 1px solid var(--popover-divider); font-size: var(--t-sm); line-height: 1.45; color: var(--text-secondary); }
 .fc-coord-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .fc-coord-menu-group { display: flex; flex-direction: column; }
-/* 공유 머리글(.operation-launch-variant-caption)과 같은 문장형 크기·굵기·색(12px 보통 굵기 보조색, 대문자·자간 없음) —
+/* 공유 머리글(.objective-launch-variant-caption)과 같은 문장형 크기·굵기·색(12px 보통 굵기 보조색, 대문자·자간 없음) —
    그 클래스 없이 이것만 다는 플러그인 머리글도 같은 말투로 선다. */
 .fc-coord-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) 12px 6px; font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
 .fc-coord-menu-caption.is-off { color: var(--warn-ink); }
@@ -11116,7 +11116,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .roster-fallback-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 /* Muse Code에는 아직 공급자 토큰이 없다 — 톤 없이 비지 않도록 Etc와 같은 머리글 잉크를 빌린다. */
 .fc-coord-menu-provider.is-muse-code, .fc-coord-trigger-provider.is-muse-code,
-.operation-launch-variant-caption.is-muse-code { --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
+.objective-launch-variant-caption.is-muse-code { --launch-provider-tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
 
 @media (prefers-reduced-motion: reduce) {
   .fc-select__trigger,
@@ -11315,8 +11315,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   .effort-track-knob,
   .effort-track-stop,
   .effort-track-value,
-  .operation-launch-variant-effort,
-  .operation-launch-variant-effort-gauge rect {
+  .objective-launch-variant-effort,
+  .objective-launch-variant-effort-gauge rect {
     animation: none;
     transition: none;
   }
@@ -12222,7 +12222,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   }
 }
 
-/* 플러그인 칸 — 보관한 Operation 목록 아래, 날짜 묶음과 같은 가는 선으로 나뉜다. 본문은 플러그인이 그린다. */
+/* 플러그인 칸 — 보관한 Objective 목록 아래, 날짜 묶음과 같은 가는 선으로 나뉜다. 본문은 플러그인이 그린다. */
 .archive-sheet-section {
   display: flex;
   flex-direction: column;
@@ -12603,7 +12603,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   .archive-sheet-search { flex-basis: 100%; }
   .archive-sheet-scope { width: 100%; }
 }
-.operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
+.objective-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
 
 /* 창이 비활성이거나 숨긴 표면이면 상태 반복을 없앤다 — paused도 style tick을 남긴다. */
 :root[data-state-motion="inactive"],

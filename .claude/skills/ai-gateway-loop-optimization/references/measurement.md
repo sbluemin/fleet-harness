@@ -16,7 +16,7 @@ Record the literal values. If any changes, the comparison is not controlled; rer
 
 Before measuring a change that acts on a behavior, run one pilot and confirm the workload produces that behavior at the frozen effort. When the change alters what reaches the provider, including a success result whose unset fields go out as proto3 defaults (`0`, empty), make that pilot one real call and confirm from the wire that the provider accepted the shape before spending trials: Cursor turned a `ReadSuccess` with unset `total_lines` into `Offset undefined is beyond file length (0 lines)`. A reasoning-carry change measured on a task with no reasoning output measures nothing: a simple file-sum task produced zero reasoning items at `low` and almost none at `medium`, while a clue puzzle with decoy files produced reasoning on every request. Decoy paths also turn reasoning quality into countable outcomes — correct answer, tool calls, and decoys opened. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
 
-For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Operation, use an isolated runtime directory, confirm the running PID command, and build `@fleet-console/ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
+For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Objective, use an isolated runtime directory, confirm the running PID command, and build `@fleet-console/ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
 
 ## Phase 1 — Observe the whole loop
 
@@ -29,7 +29,7 @@ Instrument before the first prompt. Collect all layers that exist for the provid
 | Canonical seam | `canonical.request` / `canonical.event` | What did normalization preserve or drop? |
 | Provider wire | `<provider>.wire.request`, `cursor.wire.*` | What exact body/catalog/instructions reached upstream? |
 | Provider diagnostics | e.g. Cursor bridge/redirect events | Did a live connection park, attach, mismatch, expire, or replay? |
-| Host lifecycle | Operation state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
+| Host lifecycle | Objective state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
 
 Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. An adapter-layer rejection of a native tool is not written into the caller transcript. Do not treat the model's own account of what ran as evidence; cross-check it against the adapter and gateway records. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
 
@@ -74,6 +74,6 @@ Report counts and denominators, not percentages alone:
 - provider-specific lifecycle counts: selected, parked, exact attach, deferred replay, result written, mismatch, expiry;
 - wall time per successful trial;
 - final visible-output recovery count;
-- cleanup status: standalone router/server close; real Operation owned-process cleanup.
+- cleanup status: standalone router/server close; real Objective owned-process cleanup.
 
 A privacy-preserving log may omit prompts or call ids. Keep that boundary: add payload-free counters, local operation sequence numbers, adapter labels, sizes, and outcomes before adding raw content. Never persist credentials, prompts, tool output, raw call ids, conversation ids, or session ids merely to make aggregation easier.

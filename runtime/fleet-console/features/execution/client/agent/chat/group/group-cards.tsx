@@ -3,7 +3,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
 
-import type { OperationUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
+import type { ObjectiveUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
 import { getT } from "../../i18n/index.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import {
@@ -23,7 +23,7 @@ import { SpeakerMark } from "./speaker-mark.js";
  * 닿고, 누르고 있는 Enter·Space 의 반복으로는 확정되지 않는다.
  *
  * 결정 카드의 글(질문·넘긴 이유·선택지 설명)은 대화 말풍선과 같은 마크다운 렌더(사이트 링크)로 그린다. 링크를 여는 길은 따로 두지
- * 않는다 — 말풍선의 앵커와 같은 자리에 서므로 그 표면의 링크 길(데스크톱 가운데 칸은 문서 링크 라우터, 폰 Operation 본문은 채팅 링크
+ * 않는다 — 말풍선의 앵커와 같은 자리에 서므로 그 표면의 링크 길(데스크톱 가운데 칸은 문서 링크 라우터, 폰 Objective 본문은 채팅 링크
  * 경계)이 그대로 연다. 앵커는 단추 안에 두지 않는다: 선택지 이름은 단추 안 평문이고, 설명은 단추 밖 같은 줄 안에 선다.
  */
 
@@ -201,12 +201,12 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
 }
 
 /**
- * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 요청이 선 Operation 으로, 거절 · 이번 작업만 · 계속 허용, 만료 시계,
+ * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 요청이 선 Objective 으로, 거절 · 이번 작업만 · 계속 허용, 만료 시계,
  * 반복 키 무시, 초점 미이동)에 요청한 참여자들의 표식과 이름을 더한다. 허용은 목표(루트)의 것이라 카드는 하나이고, 머리에는
  * 지금 그 답을 기다리는 참여자를 모두 겹쳐 세운다(세 명까지 이름을 잇고, 넘으면 「구현 외 2명」). 답 보내기는 `useUseRequestAnswer` 가 진다.
  */
 export function UseRequestGroupCard({ request, speakers, shared, language }: {
-  readonly request: OperationUseRequest;
+  readonly request: ObjectiveUseRequest;
   readonly speakers: readonly ConversationSpeaker[];
   /**
    * 이 대화의 루트에 구성원(자식 세션)이 있어 허용을 함께 쓰는가. 아니면(목표 밖 일반 채팅) 예전 카드 그대로다 — 요청한 한 사람의
@@ -231,7 +231,7 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
     <div className="group-card is-use" role="group" aria-labelledby={titleId} onKeyDown={onKeyDown}>
       <div className="group-card-head">
         {shown.length > 1
-          ? <span className="group-card-stack">{shown.slice(0, 3).map((speaker) => <SpeakerMark key={speaker.operationId ?? speaker.name} speaker={speaker} size="sm" />)}</span>
+          ? <span className="group-card-stack">{shown.slice(0, 3).map((speaker) => <SpeakerMark key={speaker.objectiveId ?? speaker.name} speaker={speaker} size="sm" />)}</span>
           : shown.length === 1 ? <SpeakerMark speaker={shown[0]!} size="sm" />
           : <span className="group-card-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>}
         <span className="group-card-who" id={titleId}>{shown.length > 0 ? t("group.use.from", { name: names, title }) : title}</span>

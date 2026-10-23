@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { formatPtyMessage, MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "../../features/execution/shared/operations/types.js";
+import type { ObjectiveRecordCreateInput, ObjectiveRecord, ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -89,15 +89,15 @@ describe("agent message delivery", () => {
     expect(harness.writes).toHaveLength(previousWrites);
   });
 
-  it("rejects an unknown operation with 404", async () => {
+  it("rejects an unknown objectiveRecord with 404", async () => {
     const harness = await createHarness();
 
-    await harness.postMessage("missing-operation", { text: "hello" });
+    await harness.postMessage("missing-objectiveRecord", { text: "hello" });
 
     expect(harness.responses.at(-1)).toEqual({ status: 404, body: { error: "session_not_found" } });
   });
 
-  it("rejects a dormant operation without a provider session with 409", async () => {
+  it("rejects a dormant objectiveRecord without a provider session with 409", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
 
@@ -120,7 +120,7 @@ describe("agent message delivery", () => {
     expect(harness.writes).toEqual([]);
   });
 
-  it("resumes a dormant operation then delivers in the same request", async () => {
+  it("resumes a dormant objectiveRecord then delivers in the same request", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
@@ -156,7 +156,7 @@ describe("agent message delivery", () => {
 async function createHarness(options: { readonly resumeAttachError?: Error; readonly trusted?: boolean } = {}) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-message-"));
   temporaryDirectories.push(fleetDataDir);
-  const operations: OperationNode[] = [];
+  const objectiveRecords: ObjectiveRecord[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   const writes: string[] = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
@@ -175,7 +175,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: () => true,
     attach,
-    write: (_operationId, data) => {
+    write: (_objectiveId, data) => {
       writes.push(data);
       return true;
     },
@@ -184,7 +184,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
     awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
+    getSessionLastActivityAt: (objectiveId) => (liveSessions.has(objectiveId) ? 5 : null),
     isLive: () => false,
     getForegroundProcess: () => null,
     getShellLineState: () => null,
@@ -220,41 +220,36 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
         cleanup: () => {},
         dispose: async () => {},
       }) },
-      operations: {
-        list: () => operations,
-        get: (id: string) => operations.find((operation) => operation.id === id) ?? null,
-        create: (input: OperationCreateInput) => {
+      objectiveRecords: {
+        list: () => objectiveRecords,
+        get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
+        create: (input: ObjectiveRecordCreateInput) => {
           const createdAt = input.createdAt ?? Date.now();
-          const operation: OperationNode = {
-            id: input.id ?? `operation-${operations.length + 1}`,
-            theaterId: input.theaterId,
-            type: input.type,
-            pluginId: input.pluginId,
-            title: input.title,
-            payload: { ...(input.payload ?? {}) },
-            geometry: input.geometry ?? null,
-            ts: { createdAt, updatedAt: createdAt },
-          };
-          operations.push(operation);
-          return operation;
+          const objectiveRecord: ObjectiveRecord = {...({ ...(input ?? {}) }),
+id: input.id ?? `objective-${objectiveRecords.length + 1}`,
+theaterId: input.theaterId,
+title: input.title,
+ts: { createdAt, updatedAt: createdAt }};
+          objectiveRecords.push(objectiveRecord);
+          return objectiveRecord;
         },
-        patch: (id: string, input: OperationPatchInput) => {
-          const index = operations.findIndex((operation) => operation.id === id);
-          const current = operations[index];
+        patch: (id: string, input: ObjectiveRecordPatchInput) => {
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
+          const current = objectiveRecords[index];
           if (!current) return null;
           const patched = {
-            ...current,
+            ...(input.id === current.id ? input as typeof current : current),
             ...(input.title === undefined ? {} : { title: input.title }),
-            ...(input.payload === undefined ? {} : { payload: { ...input.payload } }),
+            ...input,
             ts: { ...current.ts, updatedAt: Date.now() },
           };
-          operations[index] = patched;
+          objectiveRecords[index] = patched;
           return patched;
         },
         delete: (id: string) => {
-          const index = operations.findIndex((candidate) => candidate.id === id);
+          const index = objectiveRecords.findIndex((candidate) => candidate.id === id);
           if (index < 0) return false;
-          operations.splice(index, 1);
+          objectiveRecords.splice(index, 1);
           return true;
         },
       },
@@ -271,7 +266,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
@@ -314,9 +309,9 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
       res: {} as http.ServerResponse,
       pathname: "/api/v1/agent/sessions",
     });
-    const operation = operations[0];
-    if (!operation) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
-    return operation.id;
+    const objectiveRecord = objectiveRecords[0];
+    if (!objectiveRecord) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
+    return objectiveRecord.id;
   }
 
   async function postMessage(sessionId: string, body: Record<string, unknown>): Promise<void> {
@@ -348,10 +343,10 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
     setTrust: (trusted: boolean) => { trustAllowed = trusted; },
     fireExit: async (sessionId: string) => { if (onExit) await onExit(sessionId); },
     attachProviderSession: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.session = {
-        ...(operation.payload.session as Record<string, unknown> | undefined),
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.session = {
+        ...(objectiveRecord.session as Record<string, unknown> | undefined),
         harness: "claude-code",
         id: "provider-session-1",
         capturedAt: "2026-08-13T00:00:00.000Z",

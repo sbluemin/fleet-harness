@@ -105,7 +105,7 @@ export async function openMacApp(app: string, signal: AbortSignal, activate: boo
 export async function assertMacInteractionReadiness(app: string, allowActivation: boolean): Promise<void> {
   if (allowActivation) {
     const [state] = await inspectMacWindows([app]);
-    if (state?.hidden === true) throw new ComputerUseInputError("computer_use_app_hidden", "The app is hidden. Native AX reads can succeed while the Operation live preview is blank. No capture or input was sent. If showing the app is authorized, use computer_open on the same exact installation with activate:false, verify hidden:false, then request computer_state. Background reopen requests do not guarantee focus preservation. Do not replay an earlier input action.");
+    if (state?.hidden === true) throw new ComputerUseInputError("computer_use_app_hidden", "The app is hidden. Native AX reads can succeed while the Objective live preview is blank. No capture or input was sent. If showing the app is authorized, use computer_open on the same exact installation with activate:false, verify hidden:false, then request computer_state. Background reopen requests do not guarantee focus preservation. Do not replay an earlier input action.");
     if (state?.status === "no_window") throw new ComputerUseInputError("computer_use_no_action_window", "The app is running but AXWindows is empty. No capture or input was sent. Closing a window differs from minimizing it. Use computer_open with the exact app path only when opening the app is authorized, then request computer_state. Do not replay a previous action.");
     return;
   }

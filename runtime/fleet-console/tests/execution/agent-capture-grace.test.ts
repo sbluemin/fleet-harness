@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "../../features/execution/shared/operations/types.js";
+import type { ObjectiveRecordCreateInput, ObjectiveRecord, ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ describe("agent provider capture grace", () => {
     vi.useFakeTimers();
     const harness = await createHarness({ cliId: "claude" });
     await harness.postSessions();
-    const sessionId = harness.operations[0]!.id;
+    const sessionId = harness.objectiveRecords[0]!.id;
     harness.emitTitle(sessionId, "⠏ theater");
     harness.emitTitle(sessionId, "✳ theater");
 
@@ -41,7 +41,7 @@ describe("agent provider capture grace", () => {
     vi.useFakeTimers();
     const harness = await createHarness({ cliId: "claude" });
     await harness.postSessions();
-    const sessionId = harness.operations[0]!.id;
+    const sessionId = harness.objectiveRecords[0]!.id;
     harness.markProviderSession(sessionId);
     harness.emitTitle(sessionId, "⠏ theater");
     harness.emitTitle(sessionId, "✳ theater");
@@ -64,7 +64,7 @@ describe("agent provider capture grace", () => {
       input: JSON.stringify({ hook_event_name: "Stop", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
     });
     await harness.postSessions();
-    const sessionId = harness.operations[0]!.id;
+    const sessionId = harness.objectiveRecords[0]!.id;
 
     await harness.turnSession(sessionId);
 
@@ -76,13 +76,13 @@ describe("agent provider capture grace", () => {
 async function createHarness(body: Record<string, unknown>) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-initial-prompt-"));
   temporaryDirectories.push(fleetDataDir);
-  const operations: OperationNode[] = [];
+  const objectiveRecords: ObjectiveRecord[] = [];
   const eventListeners = new Map<string, Array<(payload: unknown) => void>>();
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   let route: RouteHandler | undefined;
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
-  let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
-  let titleCallback: ((operationId: string, title: string) => unknown) | undefined;
+  let exitCallback: ((objectiveId: string) => void | Promise<void>) | undefined;
+  let titleCallback: ((objectiveId: string, title: string) => unknown) | undefined;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
   const write = vi.fn<(sessionId: string, data: string) => boolean>(() => true);
   const terminate = vi.fn(() => true);
@@ -111,7 +111,7 @@ async function createHarness(body: Record<string, unknown>) {
         if (exitCallback === callback) exitCallback = undefined;
       };
     },
-    onTitle: (_operationType, callback) => {
+    onTitle: (_objectiveRecordType, callback) => {
       titleCallback = callback;
       return () => {
         if (titleCallback === callback) titleCallback = undefined;
@@ -145,41 +145,36 @@ async function createHarness(body: Record<string, unknown>) {
         cleanup: () => {},
         dispose: async () => {},
       }) },
-      operations: {
-        list: () => operations,
-        get: (id: string) => operations.find((operation) => operation.id === id) ?? null,
-        create: (input: OperationCreateInput) => {
+      objectiveRecords: {
+        list: () => objectiveRecords,
+        get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
+        create: (input: ObjectiveRecordCreateInput) => {
           const createdAt = input.createdAt ?? Date.now();
-          const operation: OperationNode = {
-            id: input.id ?? `operation-${operations.length + 1}`,
-            theaterId: input.theaterId,
-            type: input.type,
-            pluginId: input.pluginId,
-            title: input.title,
-            payload: { ...(input.payload ?? {}) },
-            geometry: input.geometry ?? null,
-            ts: { createdAt, updatedAt: createdAt },
-          };
-          operations.push(operation);
-          return operation;
+          const objectiveRecord: ObjectiveRecord = {...({ ...(input ?? {}) }),
+id: input.id ?? `objective-${objectiveRecords.length + 1}`,
+theaterId: input.theaterId,
+title: input.title,
+ts: { createdAt, updatedAt: createdAt }};
+          objectiveRecords.push(objectiveRecord);
+          return objectiveRecord;
         },
-        patch: (id: string, input: OperationPatchInput) => {
-          const index = operations.findIndex((operation) => operation.id === id);
-          const current = operations[index];
+        patch: (id: string, input: ObjectiveRecordPatchInput) => {
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
+          const current = objectiveRecords[index];
           if (!current) return null;
           const patched = {
-            ...current,
+            ...(input.id === current.id ? input as typeof current : current),
             ...(input.title === undefined ? {} : { title: input.title }),
-            ...(input.payload === undefined ? {} : { payload: { ...input.payload } }),
+            ...input,
             ts: { ...current.ts, updatedAt: Date.now() },
           };
-          operations[index] = patched;
+          objectiveRecords[index] = patched;
           return patched;
         },
         delete: (id: string) => {
-          const index = operations.findIndex((operation) => operation.id === id);
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
           if (index < 0) return false;
-          operations.splice(index, 1);
+          objectiveRecords.splice(index, 1);
           return true;
         },
       },
@@ -201,7 +196,7 @@ async function createHarness(body: Record<string, unknown>) {
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "theater-1" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
@@ -239,7 +234,7 @@ async function createHarness(body: Record<string, unknown>) {
   return {
     attach,
     fleetDataDir,
-    operations,
+    objectiveRecords,
     emitHostEvent: (channel: string, payload: unknown) => {
       for (const listener of eventListeners.get(channel) ?? []) listener(payload);
     },
@@ -255,10 +250,10 @@ async function createHarness(body: Record<string, unknown>) {
       await exitCallback(sessionId);
     },
     markProviderSession: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error(`Operation not found: ${sessionId}`);
-      operation.payload.session = {
-        ...(operation.payload.session as Record<string, unknown> | undefined),
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error(`Objective not found: ${sessionId}`);
+      objectiveRecord.session = {
+        ...(objectiveRecord.session as Record<string, unknown> | undefined),
         harness: "claude-code",
         id: "provider-session-1",
         capturedAt: "2026-07-25T00:00:00.000Z",

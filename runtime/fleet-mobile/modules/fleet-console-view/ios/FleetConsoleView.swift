@@ -252,14 +252,14 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func navigateBackOnMain() -> Bool {
     guard let view = activeView else { return false }
-    // 오퍼레이션이 열려 있을 때만 콘솔 내부 히스토리가 back을 답한다. 그 규칙이 없으면 콘솔의
+    // 목표이 열려 있을 때만 콘솔 내부 히스토리가 back을 답한다. 그 규칙이 없으면 콘솔의
     // 페이지 히스토리가 먼저 답해서, 여기로 돌아오는 대신 콘솔 화면들 사이를 걸어다닌다.
-    guard isOperationOpen(view), view.canGoBack else { return false }
+    guard isObjectiveOpen(view), view.canGoBack else { return false }
     view.goBack()
     return true
   }
 
-  private func isOperationOpen(_ view: WKWebView) -> Bool {
+  private func isObjectiveOpen(_ view: WKWebView) -> Bool {
     guard let url = view.url, let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
     return comps.queryItems?.contains { $0.name == "op" && !($0.value ?? "").isEmpty } ?? false
   }

@@ -4,7 +4,7 @@ import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
 import { useCodeBlockCopy } from "./code-block-copy.js";
-import type { OperationRenderContext } from "../../../shared/client-contract.js";
+import type { ObjectiveRenderContext } from "../../../shared/client-contract.js";
 import { HistoryBand, useHistoryReveal } from "../../components/history-band.js";
 
 import { getT } from "../i18n/index.js";
@@ -71,7 +71,7 @@ import "./chat-pending.css";
 const HISTORY_PEEK_PX = 56;
 
 /**
- * Chat Mode의 Operation 본문 — 지휘 로그.
+ * Chat Mode의 Objective 본문 — 지휘 로그.
  *
  * 지시는 패널 하단의 귀속 컴포저에서 쓴다(execution composer primitives 블록의 축약 조립 — 쉬는 한 줄로
  * 물러나 있다가 인터랙션에만 펼쳐진다). 새 세션 멘션 전달은 여전히 살아 있는 별도
@@ -86,9 +86,9 @@ const HISTORY_PEEK_PX = 56;
  * 있는지. 도중에 넘어진 스텝은 결말이 아니라 과정이므로 그 수를 접힌 줄에 싣지 않고,
  * 펼침 안에서 ✕와 실패 사유로 온전히 선다.
  *
- * 구성원 모드 — 이 뷰는 채팅 표면(chatMode)에서만 서므로, `parentOperationId`가 있으면
+ * 구성원 모드 — 이 뷰는 채팅 표면(chatMode)에서만 서므로, `parentObjectiveId`가 있으면
  * Objectives 구성원이다. 그때는 입력 틀·예약 목록·이미지 투입구를 빼고 바닥 줄(좌표 ·
- * 선반 · 문맥 계기 · 중지 · 채팅 폭)만 남긴다. 터미널 표면의 구성원과 일반 Operation은
+ * 선반 · 문맥 계기 · 중지 · 채팅 폭)만 남긴다. 터미널 표면의 구성원과 일반 Objective은
  * 이 구성원 모드 분기를 타지 않는다.
  */
 export function AgentChatView({
@@ -96,14 +96,14 @@ export function AgentChatView({
   tourAnchors,
   fileLinkError = null,
 }: {
-  readonly context: OperationRenderContext;
+  readonly context: ObjectiveRenderContext;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
   readonly fileLinkError?: string | null;
 }) {
   const t = getT(context.language ?? "en");
   const live = context.bodyLive !== false;
-  const state = useAgentChatStream(context.operationId, live);
+  const state = useAgentChatStream(context.objectiveId, live);
   // 재접속 스냅숏은 로그를 비운 뒤 턴을 도착하는 대로 다시 쌓는다. 그 사이에는 직전 화면을 그대로 두고 끝난 순간
   // 한 번에 바꾼다 — 쌓이는 턴마다 바닥을 따라가며 맨 위부터 훑어 내려가는 모습이 보이지 않게. 판단(스크롤·도착 셈·
   // 실행 중 여부)은 계속 state.turns를 본다. 화면에 그리는 목록만 이것이다.
@@ -113,28 +113,28 @@ export function AgentChatView({
   // 채팅 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
-  // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)이거나, 그룹 대화의 「구성원」 탭에서 고른 지휘관 원장이다
+  // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentObjectiveId)이거나, 그룹 대화의 「구성원」 탭에서 고른 지휘관 원장이다
   // (지휘관 본문이 읽기 전용 틀 안에 서 있는 동안만). 이 뷰 자체가 chatMode 분기에서만 마운트되므로 터미널(CLI)은 여기에 오지 않는다.
-  const isMember = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
-  const commanderLedger = useCommanderLedgerFramed(context.operationId);
+  const isMember = typeof context.objectiveRecord.parentObjectiveId === "string" && context.objectiveRecord.parentObjectiveId.length > 0;
+  const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
   const isMemberChat = isMember || commanderLedger;
   // 생성형 UI(OpenUI 펜스)는 목표의 지휘관 답에서만 그린다 — 그룹 대화 말풍선과 같은 말이 지휘관 채팅(모바일)·원장에서 다르게 보이지
-  // 않게. 구성원(하위 Operation)과 일반 Operation 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
-  const objectiveCommander = useObjectiveCommander(context.operationId) && !isMember;
-  // 답 단추(OpenUI)는 사람이 누를 때 이 Operation의 기존 메시지 API로 보낸다. 입력창 초안은 건드리지 않고, 원장은 읽기 전용이다.
-  const operationId = context.operationId;
-  const sendOpenUI = React.useCallback((text: string) => { void messageAgentSession(operationId, text).catch(() => {}); }, [operationId]);
+  // 않게. 구성원(하위 Objective)과 일반 Objective 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
+  const objectiveCommander = useObjectiveCommander(context.objectiveId) && !isMember;
+  // 답 단추(OpenUI)는 사람이 누를 때 이 Objective의 기존 메시지 API로 보낸다. 입력창 초안은 건드리지 않고, 원장은 읽기 전용이다.
+  const objectiveId = context.objectiveId;
+  const sendOpenUI = React.useCallback((text: string) => { void messageAgentSession(objectiveId, text).catch(() => {}); }, [objectiveId]);
   const openUISend = objectiveCommander && !commanderLedger ? sendOpenUI : undefined;
   // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
   // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
-  // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Operation 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
+  // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Objective 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
   // 말풍선 문법에 서되, 상단 막대·⋮·입력 독·안전 영역 같은 모바일 고유의 틀은 셸과 [data-mobile-surface] 규칙이 그대로 진다.
   const mobileSurface = useMobileSurface();
   const conversationStyle = (useViewMode().effective === "desktop" || mobileSurface) && !isMemberChat;
   // 모바일 대화는 스레드 전체를 처음부터 편다 — 데스크톱 대화 화면(그룹 대화)이 지난 문답을 접지 않는 것과 같다. 「이전 대화」 띠와
   // 자동 접기는 이 화면에서 서지 않는다(데스크톱 패널의 자동 접기 선호는 그대로 그 패널의 것이다).
   const wholeThread = mobileSurface && conversationStyle;
-  const speaker = useMobileConversationSpeaker(context.operationId, context.language ?? "en", wholeThread);
+  const speaker = useMobileConversationSpeaker(context.objectiveId, context.language ?? "en", wholeThread);
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
@@ -142,7 +142,7 @@ export function AgentChatView({
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   // 터미널로 넘어가는 문은 캡션에 서고, 그 시도가 왜 막혔는지는 이 면이 말한다 — 버튼과 문장이
   // 서로 다른 트리에 살므로 사실은 저장소를 거쳐 온다.
-  const { terminalError } = useViewSwitchState(context.operationId);
+  const { terminalError } = useViewSwitchState(context.objectiveId);
   const [stopping, setStopping] = React.useState(false);
   const [stopFailed, setStopFailed] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
@@ -166,7 +166,7 @@ export function AgentChatView({
     return next;
   }), []);
   const openToolId = React.useCallback((id: string) => setOpenedToolIds((current) => new Set(current).add(id)), []);
-  React.useEffect(() => setOpenedToolIds(new Set()), [context.operationId]);
+  React.useEffect(() => setOpenedToolIds(new Set()), [context.objectiveId]);
   // 로그는 마지막 문답만 보여 준다. 앞선 턴은 상단 밴드 뒤에 접혀 있고, 누르거나 맨 위에서
   // 위로 한 번 더 굴리면 펼쳐진다. 새 턴이 서면(팔로우 중일 때) 다시 접힌다.
   //
@@ -232,8 +232,8 @@ export function AgentChatView({
   const retryText = lastDispatch && !lastDispatch.by && lastDispatch.text ? lastDispatch.text : null;
   const retry = React.useCallback(() => {
     if (retryText === null) return;
-    void messageAgentSession(context.operationId, retryText).catch(() => undefined);
-  }, [context.operationId, retryText]);
+    void messageAgentSession(context.objectiveId, retryText).catch(() => undefined);
+  }, [context.objectiveId, retryText]);
 
   // 델타가 흐르는 동안에도 바닥 추적이 이어지도록 draft 길이를 스크롤 신호에 합산한다.
   const scrollSignal = state.turns.reduce(
@@ -479,10 +479,10 @@ export function AgentChatView({
     [context.language],
   );
 
-  // 이 세션의 실행 좌표. Operation payload에 실려 오므로 스트림과 무관하게 첫 프레임부터 서 있다.
+  // 이 세션의 실행 좌표. Objective payload에 실려 오므로 스트림과 무관하게 첫 프레임부터 서 있다.
   const coordinates = React.useMemo(
-    () => readAgentChatSessionCoordinates(context.operation.payload),
-    [context.operation.payload],
+    () => readAgentChatSessionCoordinates(context.objectiveRecord),
+    [context.objectiveRecord],
   );
 
   /** `/context`가 컴포저에서 문맥 계기를 여는 신호. 값이 바뀐 사실만 뜻이 있다. */
@@ -622,15 +622,15 @@ export function AgentChatView({
     ? <SessionCoordinate coordinates={coordinates} t={t} />
     : (
       <SessionCoordinateMenu
-        operationId={context.operationId}
-        payload={context.operation.payload}
+        objectiveId={context.objectiveId}
+        payload={context.objectiveRecord}
         pending={state.coordinatesPending}
         occupied={state.context ? contextOccupied(state.context) : null}
         working={turnRunning}
         language={language}
         openRequest={coordinateOpenRequest}
         formatTokens={formatTokens}
-        onCompact={() => { void messageAgentSession(context.operationId, "/compact").catch(() => undefined); }}
+        onCompact={() => { void messageAgentSession(context.objectiveId, "/compact").catch(() => undefined); }}
       />
     );
   const ledgeNode = hasJobs ? (compact: boolean) => (
@@ -740,7 +740,7 @@ export function AgentChatView({
         {turns.slice(0, -1).map((turn, index) => (
           <ChatTurn
             key={index}
-            operationId={context.operationId}
+            objectiveId={context.objectiveId}
             turn={turn}
             nextContextBefore={turns[index + 1]?.contextBefore}
             language={language}
@@ -761,7 +761,7 @@ export function AgentChatView({
       {turns.length > 0 ? (
         <ChatTurn
           key={turns.length - 1}
-          operationId={context.operationId}
+          objectiveId={context.objectiveId}
           turn={turns[turns.length - 1]!}
           nextContextBefore={undefined}
           language={language}
@@ -830,7 +830,7 @@ export function AgentChatView({
             sheetRef={workSheetRef}
             jobs={state.jobs}
             job={selectedJob}
-            operationId={context.operationId}
+            objectiveId={context.objectiveId}
             language={language}
             tall={workTall}
             onToggleTall={() => setWorkTall((value) => !value)}
@@ -841,7 +841,7 @@ export function AgentChatView({
         ) : null}
         {/* 패널 안 허용 요청 — 대화 면 바닥, 컴포저 바로 위에 선다. 초점은 가져가지 않는다. */}
         {/* 그룹 루트의 허용 요청은 그룹채팅의 카드 하나가 답한다 — 지휘관 원장 틀 안에서는 다시 그리지 않는다. */}
-        {commanderLedger ? null : <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={language} placement="chat" />}
+        {commanderLedger ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={language} placement="chat" />}
         </div>
 
         {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
@@ -1165,7 +1165,7 @@ function PendingPrompts({ queue, language }: { readonly queue: readonly AgentCha
 }
 
 export const ChatTurn = React.memo(function ChatTurn({
-  operationId,
+  objectiveId,
   turn,
   nextContextBefore,
   language,
@@ -1183,7 +1183,7 @@ export const ChatTurn = React.memo(function ChatTurn({
   openui = false,
   onOpenUISend,
 }: {
-  readonly operationId: string;
+  readonly objectiveId: string;
   /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅과, 플러그인이 켠 기록(사령관 원장·기록)만. */
   readonly openui?: boolean;
   /** 사람이 누른 OpenUI 답을 이 표면의 기존 전송 경로로 보낸다. 포트 없는 원장은 정적 칩이다. */
@@ -1336,7 +1336,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                     읽히므로, 라이브 줄의 꼬리가 "생각 중…"을 말한다(내용은 싣지 않는다). 별도의
                     행이나 상자가 아니다: 상자는 동사·대상·결과를 담는 그릇이고 생각에는 둘 다 없다. */}
                 <Ledger
-                  operationId={operationId}
+                  objectiveId={objectiveId}
                   items={view.ledger}
                   language={language}
                   jobsByToolUse={jobsByToolUse}
@@ -1361,7 +1361,7 @@ export const ChatTurn = React.memo(function ChatTurn({
               // 자리에서 완료로 변한 뒤 물러난다 — 명령과 Answer는 이미 도착했고, 늦추는 것은 이
               // 시각 개체 하나뿐이다.
               <Ledger
-                operationId={operationId}
+                objectiveId={objectiveId}
                 items={view.ledger}
                 language={language}
                 jobsByToolUse={jobsByToolUse}
@@ -1385,7 +1385,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                 onToggleOpen={setWorkOpened}
               >
                 <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} targets={changeTargets} onOpenChange={openChange} />
-                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} openedTools={openedTools} onToggleTool={onToggleTool} />
+                <Ledger objectiveId={objectiveId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} openedTools={openedTools} onToggleTool={onToggleTool} />
               </WorkFold>
             ) : null}
             {compactions.length > 0 && !ledgerShown
@@ -1447,30 +1447,30 @@ interface MobileConversationSpeaker {
  * 그룹 대화로 세우고 답 말풍선 위에 「지휘관」 이름표를, 왼쪽 아래에 몽글 아바타를 단다. 그 밖의 1:1 대화는 이름 없이 선다 — 헷갈릴
  * 상대가 없다. 모바일은 같은 판정으로 같은 표식을 단다. 그룹 입력창·구성원 전언 줄은 옮기지 않는다(이 화면은 한 에이전트의 본문이다).
  */
-/** 목표 대화(보드)의 뿌리, 곧 지휘관 Operation 인가 — 조합 루트가 묶은 클러스터 원천의 기존 판정을 그대로 구독한다. */
-function useObjectiveCommander(operationId: string): boolean {
-  const read = React.useCallback(() => isGroupConversationRoot(operationId), [operationId]);
+/** 목표 대화(보드)의 뿌리, 곧 지휘관 Objective 인가 — 조합 루트가 묶은 클러스터 원천의 기존 판정을 그대로 구독한다. */
+function useObjectiveCommander(objectiveId: string): boolean {
+  const read = React.useCallback(() => isGroupConversationRoot(objectiveId), [objectiveId]);
   return React.useSyncExternalStore(subscribeGroupClusters, read, read);
 }
 
-function useMobileConversationSpeaker(operationId: string, language: "en" | "ko", enabled: boolean): MobileConversationSpeaker | null {
+function useMobileConversationSpeaker(objectiveId: string, language: "en" | "ko", enabled: boolean): MobileConversationSpeaker | null {
   const subscribe = React.useCallback((listener: () => void) => {
     const disposeClusters = subscribeGroupClusters(listener);
     const disposeConsole = subscribeConsoleState(listener);
     return () => { disposeClusters(); disposeConsole(); };
   }, []);
   const read = React.useCallback(
-    () => isGroupConversationRoot(operationId) || getConsoleState().nestedOperations.some((operation) => operation.parentOperationId === operationId),
-    [operationId],
+    () => isGroupConversationRoot(objectiveId) || getConsoleState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === objectiveId),
+    [objectiveId],
   );
   const groupRoot = React.useSyncExternalStore(subscribe, read, read);
   return React.useMemo(() => {
     if (!enabled) return null;
     return {
-      speaker: { kind: "commander", name: getGroupT(language)("group.commander"), operationId },
+      speaker: { kind: "commander", name: getGroupT(language)("group.commander"), objectiveId },
       named: groupRoot,
     };
-  }, [enabled, groupRoot, language, operationId]);
+  }, [enabled, groupRoot, language, objectiveId]);
 }
 
 /** 답 말풍선 한 묶음 — 왼쪽 아래 표식, 말풍선 위 이름. 발화자가 없으면(데스크톱) 말풍선만 그대로 둔다. */
@@ -1674,7 +1674,7 @@ function changeTotals(changes: readonly AgentChatChange[]): { files: number; add
  * 끝난 스텝은 자리에 남아 결과를 단다. 여기서 사라지는 것은 없다.
  */
 function Ledger({
-  operationId,
+  objectiveId,
   items,
   language,
   jobsByToolUse,
@@ -1686,7 +1686,7 @@ function Ledger({
   pending = false,
   continuityItem = null,
 }: {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly items: readonly AgentChatTurnItem[];
   readonly openedTools: ReadonlySet<string>;
   readonly onToggleTool: (id: string) => void;
@@ -2890,7 +2890,7 @@ function SettledBranches({
   readonly onOpen: (id: string) => void;
 }) {
   const t = getT(language);
-  // 접힘은 세션 안에서만 산다 — 시트 높이와 같은 급의 값이라 다음 Operation까지 따라가면
+  // 접힘은 세션 안에서만 산다 — 시트 높이와 같은 급의 값이라 다음 Objective까지 따라가면
   // 그쪽에서 처음 여는 사람이 남의 접힘을 물려받는다.
   const [closed, setClosed] = React.useState<ReadonlySet<AgentChatJobKind>>(() => new Set());
   const branches = JOB_KIND_ORDER.flatMap((kind) => {
@@ -3035,7 +3035,7 @@ function WorkSheet({
   sheetRef,
   jobs,
   job,
-  operationId,
+  objectiveId,
   language,
   tall,
   onToggleTall,
@@ -3047,7 +3047,7 @@ function WorkSheet({
   readonly sheetRef: React.RefObject<HTMLElement | null>;
   readonly jobs: readonly AgentChatJob[];
   readonly job: AgentChatJob | null;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly language: "en" | "ko";
   readonly tall: boolean;
   readonly onToggleTall: () => void;
@@ -3068,7 +3068,7 @@ function WorkSheet({
       <div className="agent-chat-sheet-head">
         <span>{t("terminal.chat.workAria")}</span>
         {/* 200스텝짜리 발자국에 62%는 좁다. 높이는 세션 안에서만 기억한다 — 한 번 키운 높이가
-            다음 Operation까지 따라가면, 그쪽 잡 둘을 보려고 대화를 82% 덮게 된다. */}
+            다음 Objective까지 따라가면, 그쪽 잡 둘을 보려고 대화를 82% 덮게 된다. */}
         <button type="button" className="agent-chat-sheet-grow" onClick={onToggleTall}>
           {tall ? t("terminal.chat.sheetShrink") : t("terminal.chat.sheetGrow")}
         </button>
@@ -3083,7 +3083,7 @@ function WorkSheet({
       </div>
       <div className="agent-chat-work-body">
         {job !== null ? (
-          <JobDetail job={job} operationId={operationId} language={language} onBack={onBack} />
+          <JobDetail job={job} objectiveId={objectiveId} language={language} onBack={onBack} />
         ) : jobs.length === 0 ? (
           <div className="agent-chat-work-empty">{t("terminal.chat.workEmpty")}</div>
         ) : (
@@ -3116,18 +3116,18 @@ function WorkSheet({
  */
 function JobDetail({
   job,
-  operationId,
+  objectiveId,
   language,
   onBack,
 }: {
   readonly job: AgentChatJob;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly language: "en" | "ko";
   readonly onBack: () => void;
 }) {
   const t = getT(language);
-  const detail = useAgentChatJobDetail(operationId, job);
-  const stop = useAgentChatJobStop(operationId, job);
+  const detail = useAgentChatJobDetail(objectiveId, job);
+  const stop = useAgentChatJobStop(objectiveId, job);
   return (
     <>
       <div className="agent-chat-detail-head">
@@ -3334,7 +3334,7 @@ const JOB_DETAIL_POLL_MS = 2_000;
  * 폴링이 닫히는 순간에 맞춰 멈추더라도, 뒤늦게 온 좌표가 마지막 한 번을 다시 부른다.
  */
 function useAgentChatJobDetail(
-  operationId: string,
+  objectiveId: string,
   job: AgentChatJob,
 ): { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null } {
   const wanted = job.kind === "agent" || job.kind === "shell";
@@ -3353,7 +3353,7 @@ function useAgentChatJobDetail(
     // 다시 서고, 읽던 자리가 그때마다 날아간다.
     setResult((prev) => (prev.state === "idle" ? { state: "loading", value: null } : prev));
     const read = (): void => {
-      void readAgentChatJobDetail(operationId, job.id, controller.signal)
+      void readAgentChatJobDetail(objectiveId, job.id, controller.signal)
         .then((value) => {
           if (!live) return;
           // 도는 중의 null은 "없다"가 아니라 "아직"이다 — 이미 그린 발자국을 그것으로 지우지 않는다.
@@ -3368,7 +3368,7 @@ function useAgentChatJobDetail(
       if (timer !== undefined) clearTimeout(timer);
       controller.abort();
     };
-  }, [operationId, job.id, wanted, job.open, job.ends]);
+  }, [objectiveId, job.id, wanted, job.open, job.ends]);
   return result;
 }
 
@@ -3380,7 +3380,7 @@ function useAgentChatJobDetail(
  * 잡이 닫히면 카드가 스스로 결말을 그리므로, `job.open`이 꺼지는 것이 곧 성공 표시다.
  */
 function useAgentChatJobStop(
-  operationId: string,
+  objectiveId: string,
   job: AgentChatJob,
 ): { readonly state: "idle" | "stopping" | "failed"; readonly request: () => void } {
   const [state, setState] = React.useState<"idle" | "stopping" | "failed">("idle");
@@ -3390,10 +3390,10 @@ function useAgentChatJobStop(
   }, [job.id]);
   const request = React.useCallback(() => {
     setState("stopping");
-    void stopAgentChatJob(operationId, job.id)
+    void stopAgentChatJob(objectiveId, job.id)
       .then(() => setState("idle"))
       .catch(() => setState("failed"));
-  }, [operationId, job.id]);
+  }, [objectiveId, job.id]);
   return { state, request };
 }
 

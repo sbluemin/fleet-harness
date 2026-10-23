@@ -1,7 +1,7 @@
 import type { ClientComposerCapability } from "../../execution/shared/composer-ports.js";
 import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 import type { ClientExpandedSurfacesCapability, ClientNavigationCapability, ClientRailCapability } from "../../workspace/shared/navigation-ports.js";
-import type { ClientOperationsCapability } from "../../execution/shared/client-contract.js";
+import type { ClientObjectiveRecordsCapability } from "../../execution/shared/client-contract.js";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 
@@ -21,7 +21,7 @@ interface CodexHostCapabilities {
   /** 문서에서 고른 문장을 지휘관·사령관 입력창에 인용으로 붙인다 — 붙일 곳 목록과 붙이기를 호스트가 중개한다. */
   readonly composer: ClientComposerCapability;
   /** 붙인 곳이 지금 보이지 않는 지휘관이면 그 대화로 데려간다. */
-  readonly operations?: Pick<ClientOperationsCapability, "focus">;
+  readonly objectiveRecords?: Pick<ClientObjectiveRecordsCapability, "focus">;
 }
 
 let capabilities: CodexHostCapabilities | null = null;

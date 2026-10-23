@@ -55,7 +55,7 @@ export function setSettingsModalSection(section: string): void {
 
 /**
  * 설정을 연다 — 데스크톱은 가운데 모달, 모바일은 /settings 페이지. 섹션은 두 그릇이 같은 주소 id 로 받는다.
- * 모달은 /operations 에만 서므로 다른 화면에서 부르는 데스크톱 쪽은 먼저 그 화면으로 간다.
+ * 모달은 /objectives 에만 서므로 다른 화면에서 부르는 데스크톱 쪽은 먼저 그 화면으로 간다.
  */
 export function openSettingsSurface(section?: string): void {
   if (getViewModeSnapshot().effective === "mobile") {

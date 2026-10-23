@@ -1,6 +1,6 @@
 import { DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
 
-import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchObjectiveRecords, fetchTheaterBootstrap } from "./api.js";
 
 /**
  * 호스트 전환의 원격은 HTTP/1.1이라 한 origin에 연결이 여섯 개다. 새 연결은 왕복 세 번이다.
@@ -15,14 +15,14 @@ const BOOT_CRITICAL_PATHS = new Set([
   "/api/v1/settings/global",
   "/api/v1/settings/fonts/migration",
   "/api/v1/theaters",
-  "/api/v1/operations",
-  "/api/v1/operations/groups",
+  "/api/v1/objectives/records",
+  "/api/v1/objectives/records/groups",
   DESKTOP_WINDOW_COMMAND_PATH,
 ]);
 
 export interface BootSnapshots {
   readonly theaters: ReturnType<typeof fetchTheaterBootstrap>;
-  readonly operations: ReturnType<typeof fetchOperations>;
+  readonly objectiveRecords: ReturnType<typeof fetchObjectiveRecords>;
   readonly groups: Promise<Awaited<ReturnType<typeof fetchGroups>> | null>;
 }
 
@@ -87,7 +87,7 @@ export function installBootFetchGate(): void {
 
 function abortError(signal: AbortSignal | undefined): DOMException {
   const reason = signal?.reason;
-  return reason instanceof DOMException ? reason : new DOMException("The operation was aborted.", "AbortError");
+  return reason instanceof DOMException ? reason : new DOMException("The objectiveRecord was aborted.", "AbortError");
 }
 
 function isBootCritical(input: RequestInfo | URL): boolean {
@@ -104,7 +104,7 @@ export function startBootSnapshots(): BootSnapshots {
   if (snapshots) return snapshots;
   snapshots = {
     theaters: fetchTheaterBootstrap(),
-    operations: fetchOperations(null),
+    objectiveRecords: fetchObjectiveRecords(null),
     groups: fetchGroups(null).catch(() => null),
   };
   return snapshots;

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * 이 기계의 Google Chrome 프로필에서 쿠키를 가져온다 — 로그인 상태를 Operation 브라우저 뷰로 옮기는 길.
+ * 이 기계의 Google Chrome 프로필에서 쿠키를 가져온다 — 로그인 상태를 Objective 브라우저 뷰로 옮기는 길.
  *
  * 브라우저 뷰는 창을 든 Desktop 안에 살고, 사람이 늘 쓰는 Chrome 도 같은 기계에 있다. 그래서 가져오기는 콘솔이
  * 아니라 셸의 일이다 — 원격 콘솔에 건너가 있어도 쿠키는 이 기계의 Chrome 에서 나와 이 창의 뷰로 들어간다.

@@ -2,21 +2,21 @@ import { createContext, useContext, useEffect, useRef, useSyncExternalStore, typ
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "../../../objectives/shared/operation-clusters.js";
+import type { ObjectiveClusterRow, ObjectiveClusterRowGlyph, ObjectiveClusterRowMark } from "../../../objectives/shared/objective-clusters.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
-import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getObjectiveWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
+import { objectiveRecordMarkLabel, type ObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
-import { subscribeSideBarOperationAction } from "./interaction.js";
-import { pointOnText } from "./operations-side-bar-hit-test.js";
+import { subscribeSideBarObjectiveAction } from "./interaction.js";
+import { pointOnText } from "./objective-records-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
-import type { SideBarEntry } from "./operations-side-bar-chip.js";
-import { setSideBarRowFoldExpanded, type SideBarRowFoldKind } from "./operations-side-bar-store.js";
-import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
+import type { ClusterIndex, ClusterLayout } from "../objective-clusters.js";
+import type { SideBarEntry } from "./objective-records-side-bar-chip.js";
+import { setSideBarRowFoldExpanded, type SideBarRowFoldKind } from "./objective-records-side-bar-store.js";
+import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
+import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
@@ -59,13 +59,13 @@ export function theaterClusterHead(plan: SideBarRowPlan, rowsHidden: boolean): {
   return items.length > 0 ? { hiddenClusterIds: items.map((item) => item.layout.cluster.id), anyList: true } : undefined;
 }
 
-/** 줄 하나가 감싸이는 표식 — 목표 자체, 그다음 접혀 든 뿌리·구성원 Operation. 목록 읽기는 줄이 아니라 머리가 받는다. 저장된 객체를 그대로 돌린다. */
+/** 줄 하나가 감싸이는 표식 — 목표 자체, 그다음 접혀 든 뿌리·구성원 Objective. 목록 읽기는 줄이 아니라 머리가 받는다. 저장된 객체를 그대로 돌린다. */
 function rowWrapOf(item: SideBarRowItem): ConsoleUseWrap | null {
   const { layout, anchor, fold } = item;
-  const direct = getClusterWrap(layout.cluster.id) ?? (anchor ? getOperationWrap(anchor.operation.id) : null);
+  const direct = getClusterWrap(layout.cluster.id) ?? (anchor ? getObjectiveWrap(anchor.objectiveRecord.id) : null);
   if (direct) return direct;
   for (const entry of fold) {
-    const wrap = getOperationWrap(entry.operation.id);
+    const wrap = getObjectiveWrap(entry.objectiveRecord.id);
     if (wrap) return wrap;
   }
   return null;
@@ -82,8 +82,8 @@ export function useClusterHeadWrap(theaterId: string, groupId: string | null | u
 
 export interface SideBarRowItem {
   readonly layout: ClusterLayout;
-  readonly row: OperationClusterRow;
-  /** 뿌리 Operation 이 이 Theater 목록에 서 있으면 그 엔트리 — 끌기·메뉴·포커스가 그 Operation 을 탄다. */
+  readonly row: ObjectiveClusterRow;
+  /** 뿌리 Objective 이 이 Theater 목록에 서 있으면 그 엔트리 — 끌기·메뉴·포커스가 그 Objective 을 탄다. */
   readonly anchor: SideBarEntry | null;
   readonly fold: readonly SideBarEntry[];
 }
@@ -106,15 +106,15 @@ export interface SideBarRowPlan {
 }
 
 /**
- * 「시작 전」 접기에 드는 줄 — Operation 이 아직 없는 시작 전 목표. 개시해 뿌리가 서면 첫 턴 전이라도 빠진다. 맡은 이가 처리 중인
+ * 「시작 전」 접기에 드는 줄 — Objective 이 아직 없는 시작 전 목표. 개시해 뿌리가 서면 첫 턴 전이라도 빠진다. 맡은 이가 처리 중인
  * 줄(`delegated`)은 접힌 접기에 묻히면 그 상태 문구가 보이지 않으므로 그룹 자리에 선다.
  */
 const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0 && item.row.delegated === undefined;
 
 /**
- * 「완료」 접기에 드는 줄 — 끝난 목표. 지휘관 Operation 이 남아 뿌리가 선 줄도 든다(「시작 전」과 달리). 지금 활성인 줄도 접기에
+ * 「완료」 접기에 드는 줄 — 끝난 목표. 지휘관 Objective 이 남아 뿌리가 선 줄도 든다(「시작 전」과 달리). 지금 활성인 줄도 접기에
  * 머문다 — 활성 여부로 줄이 접기를 드나들면 다른 대화로 옮길 때마다 자리가 튄다. 접힌 접기 안의 활성 줄은 사이드바가 접기를 펼쳐
- * 보인다. 사람을 기다리는 Operation 을 품은 줄만 접힌 접기에 묻히면 부름이 보이지 않으므로 제자리에 선다(`delegated` 예외와 같은 이유).
+ * 보인다. 사람을 기다리는 Objective 을 품은 줄만 접힌 접기에 묻히면 부름이 보이지 않으므로 제자리에 선다(`delegated` 예외와 같은 이유).
  * 구역으로 올라간 줄은 판정 전에 빠진다.
  */
 function foldedDone(item: SideBarRowItem): boolean {
@@ -124,11 +124,11 @@ function foldedDone(item: SideBarRowItem): boolean {
 }
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.
-const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, idle: 4, ended: 5 };
+const MARK_URGENCY: Record<ObjectiveMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, idle: 4, ended: 5 };
 
-export function rowGlyphState(item: SideBarRowItem): OperationClusterRowGlyph | OperationMarkVisual {
+export function rowGlyphState(item: SideBarRowItem): ObjectiveClusterRowGlyph | ObjectiveMarkVisual {
   if (item.row.glyph) return item.row.glyph;
-  let best: OperationMarkVisual | null = null;
+  let best: ObjectiveMarkVisual | null = null;
   for (const entry of item.fold) {
     const mark = entry.mark ?? entry.status ?? "idle";
     if (best === null || MARK_URGENCY[mark] < MARK_URGENCY[best]) best = mark;
@@ -147,7 +147,7 @@ export function planSideBarRows(
   clusterIndex: ClusterIndex,
   theaterId: string | null,
 ): SideBarRowPlan {
-  const entryById = new Map(sections.flatMap((section) => section.entries.map((entry) => [entry.operation.id, entry] as const)));
+  const entryById = new Map(sections.flatMap((section) => section.entries.map((entry) => [entry.objectiveRecord.id, entry] as const)));
   const sectionIds = new Set(sections.map((section) => section.groupId));
   const items: SideBarRowItem[] = clusterIndex.rows
     .filter((layout) => layout.cluster.theaterId === theaterId && layout.cluster.row)
@@ -165,8 +165,8 @@ export function planSideBarRows(
   // 사람의 결정이 함께 선 줄은 「내 결정」에만 선다 — 한 줄은 한 구역에.
   const today = items.filter(todayRow)
     .sort((a, b) => a.row.order - b.row.order);
-  const folded = new Set(items.flatMap((item) => item.fold.map((entry) => entry.operation.id)));
-  const byAnchor = new Map(items.flatMap((item) => (item.anchor ? [[item.anchor.operation.id, item] as const] : [])));
+  const folded = new Set(items.flatMap((item) => item.fold.map((entry) => entry.objectiveRecord.id)));
+  const byAnchor = new Map(items.flatMap((item) => (item.anchor ? [[item.anchor.objectiveRecord.id, item] as const] : [])));
 
   const result = new Map<string | null, SideBarSectionItem[]>();
   const folds = new Map<string | null, SideBarRowItem[]>();
@@ -175,7 +175,7 @@ export function planSideBarRows(
   for (const section of sections) {
     const list: SideBarSectionItem[] = [];
     for (const entry of section.entries) {
-      const item = byAnchor.get(entry.operation.id);
+      const item = byAnchor.get(entry.objectiveRecord.id);
       if (item) {
         // 접기에 든 완료 줄은 뿌리 칩 자리를 비운다 — 그 칩은 다시 칩으로 서지 않는다.
         if (promoted(item)) continue;
@@ -183,7 +183,7 @@ export function planSideBarRows(
         else list.push({ kind: "row", item });
         continue;
       }
-      if (folded.has(entry.operation.id)) continue;
+      if (folded.has(entry.objectiveRecord.id)) continue;
       list.push({ kind: "chip", entry });
     }
     result.set(section.groupId, list);
@@ -238,15 +238,15 @@ interface SideBarClusterRowProps {
   readonly dragging?: boolean;
   readonly dragOffsetY?: number;
   readonly dropTarget?: boolean;
-  /** 뿌리 Operation 의 사용자 accent — 칩처럼 제목 잉크만 소유한다. */
+  /** 뿌리 Objective 의 사용자 accent — 칩처럼 제목 잉크만 소유한다. */
   readonly accentValue?: string | null;
-  /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(휴면·Theater 전환 포함). */
-  readonly onFocus: (operationId: string) => void;
+  /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Objective 패널로 간다(휴면·Theater 전환 포함). */
+  readonly onFocus: (objectiveId: string) => void;
   /**
    * 「더블클릭으로 열기」 — 있으면 뿌리가 선 줄의 한 번 클릭과 Space 는 열지 않고 고르기만 하고, 더블클릭과 Enter 가 연다.
    * 터치 탭은 늘 연다. 뿌리 없는 줄(시작 전 목표)은 열 패널이 없어 그대로 플러그인 표면을 연다.
    */
-  readonly onSelect?: (operationId: string) => void;
+  readonly onSelect?: (objectiveId: string) => void;
   readonly onPointerDragStart?: (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => void;
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
 }
@@ -256,10 +256,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
-  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
+  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Objective 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
   const state = rowGlyphState(item);
-  // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Operation 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
+  // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Objective 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
   const label = row.commodore && !anchor && item.fold.length === 0
     ? t("conversation.row.decision")
     : state === "fresh"
@@ -268,15 +268,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       ? t("sidebar.row.glyph.review")
       : state === "done"
         ? t("sidebar.row.glyph.done")
-        : operationMarkLabel(state);
-  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Operation 이 대화 화면에서 활성일 때만 선다. 목표 화면의 선택만으로는
+        : objectiveRecordMarkLabel(state);
+  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Objective 이 대화 화면에서 활성일 때만 선다. 목표 화면의 선택만으로는
   // 서지 않는다(패널과 목표 화면이 서로 다른 줄을 가리키는 이중 하이라이트가 없게). 활성이 될 수 없는 뿌리 없는 줄만 화면의 선택을 따른다.
   const active = anchor ? anchor.active || item.fold.some((entry) => entry.active) : row.selected === true;
   // 사이드바에서 고른(열지 않은) 뿌리 — 열림(면+테두리)과 다른 문법(점선 테두리)이라 한 줄 하이라이트 규칙과 겹치지 않는다.
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
   // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
-  const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
+  const rowPreview = useConversationRowPreview(anchor?.objectiveRecord?.id ?? "");
   const foldKind = useContext(RowFoldContext);
   // 「시작 전」·「완료」 접기 안에서 줄 상태가 접기 종류와 같으면 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
   // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
@@ -291,12 +291,12 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
   const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
-  // 메뉴의 「이름 바꾸기」가 여는 통로 — 뿌리가 선 줄은 그 Operation id, 뿌리 없는 줄(시작 전 목표)은 줄 id 로 듣는다.
-  const actionId = anchor?.operation.id ?? layout.cluster.id;
+  // 메뉴의 「이름 바꾸기」가 여는 통로 — 뿌리가 선 줄은 그 Objective id, 뿌리 없는 줄(시작 전 목표)은 줄 id 로 듣는다.
+  const actionId = anchor?.objectiveRecord?.id ?? layout.cluster.id;
   useEffect(() => {
     if (!renameRow) return undefined;
-    return subscribeSideBarOperationAction((request) => {
-      if (request.operationId !== actionId || request.action !== "rename") return false;
+    return subscribeSideBarObjectiveAction((request) => {
+      if (request.objectiveId !== actionId || request.action !== "rename") return false;
       if (rowRef.current?.closest("[inert]")) return false;
       rename.begin();
       return true;
@@ -347,7 +347,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const rowRef = useRef<HTMLLIElement | null>(null);
   const pointerTypeRef = useRef("mouse");
   // 뿌리가 선 줄은 칩과 똑같이 그 패널로 간다. 플러그인 표면은 열지 않고, 이미 열려 있으면 선택 알림으로 따라오게 한다.
-  // 열 패널이 없는 줄(Operation 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
+  // 열 패널이 없는 줄(Objective 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
   const open = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
@@ -357,12 +357,12 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       layout.cluster.open?.();
       return;
     }
-    const operationId = anchor.operation.id;
-    onFocus(operationId);
-    registry.objectives.operationSelected(operationId);
+    const objectiveId = anchor.objectiveRecord.id;
+    onFocus(objectiveId);
+    registry.objectives.objectiveRecordSelected(objectiveId);
   };
   const selectAnchor = () => {
-    if (onSelect && anchor) onSelect(anchor.operation.id);
+    if (onSelect && anchor) onSelect(anchor.objectiveRecord.id);
   };
   // 고르기 모드의 클릭 — 키보드·보조기술이 만든 클릭(detail 0)과 터치 탭은 연다. 더블클릭의 둘째 클릭은 dblclick 이 연다.
   const activate = (event: MouseEvent<HTMLButtonElement>) => {
@@ -417,7 +417,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         dropTarget ? "is-drop-target" : "",
       ].filter(Boolean).join(" ")}
       data-cluster-row-id={layout.cluster.id}
-      {...(anchor ? { "data-side-bar-chip-id": anchor.operation.id } : {})}
+      {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
       style={style}
       onPointerDown={(event) => {
         pointerTypeRef.current = event.pointerType;
@@ -494,42 +494,42 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
  */
 function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
   readonly item: SideBarRowItem;
-  readonly rowState: OperationClusterRowGlyph | OperationMarkVisual;
+  readonly rowState: ObjectiveClusterRowGlyph | ObjectiveMarkVisual;
   readonly label: string;
   readonly decorative?: boolean;
 }) {
   const { row, anchor, layout } = item;
   // 지휘관의 얼굴은 다른 표면과 같은 기준(`mongleStateOf`)을 지난다 — 줄의 글리프는 시작 전·검토 대기·완료라는 사실로,
   // 활동은 뿌리 칩의 표식(구성원 활동을 끌어올린 공개 축, 안 본 답 포함)으로 넘긴다. 뿌리가 없으면 줄의 가장 급한 표식이다.
-  const commanderState: MongleState = mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : row.glyph ? undefined : rowState as OperationMarkVisual, {
+  const commanderState: MongleState = mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : row.glyph ? undefined : rowState as ObjectiveMarkVisual, {
     session: row.glyph !== "fresh",
     awaitingReview: row.glyph === "review",
     decisionRequest: row.decisionRequestedAt !== undefined,
     workDone: row.glyph === "done",
   });
   // 미니는 그 줄 지휘관의 실제 구성원만 — `fold` 에는 뿌리(지휘관) 자신이 함께 들 수 있고 구성원은 사이드바 목록에 없을 수 있으므로,
-  // 묶음의 구성원 목록에서 뿌리를 빼고 상태는 사이드바 표식(있으면)과 런타임 활동에서 읽는다. 구성원이 없는 줄(단독 Operation)은
+  // 묶음의 구성원 목록에서 뿌리를 빼고 상태는 사이드바 표식(있으면)과 런타임 활동에서 읽는다. 구성원이 없는 줄(단독 Objective)은
   // 미니 없이 제 크기로 선다.
-  const { operations, nestedOperations, operationRuntime } = useConsoleState();
-  const foldMarks = new Map(item.fold.map((entry) => [entry.operation.id, entry.mark ?? entry.status ?? "idle"] as const));
-  const working = clusterWorkingMembers(layout.cluster, anchor?.operation.id ?? layout.cluster.root, { operations, nestedOperations, operationRuntime }, foldMarks);
-  // 대화 행의 지휘관 아바타는 30px 이다 — 제목·진행 두 줄을 함께 받친다. 일반 Operation 칩(22px)은 그대로다.
+  const { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime } = useConsoleState();
+  const foldMarks = new Map(item.fold.map((entry) => [entry.objectiveRecord.id, entry.mark ?? entry.status ?? "idle"] as const));
+  const working = clusterWorkingMembers(layout.cluster, anchor?.objectiveRecord?.id ?? layout.cluster.root, { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime }, foldMarks);
+  // 대화 행의 지휘관 아바타는 30px 이다 — 제목·진행 두 줄을 함께 받친다. 일반 Objective 칩(22px)은 그대로다.
   const full = 30;
   const size = working.length > 0 ? 26 : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
   const commander = row.commodore && !anchor
     ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
     : anchor
-    ? <OperationAvatar operation={anchor.operation} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
-    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.root ?? layout.cluster.avatarOperationId ?? layout.cluster.id)} role="commander" state={commanderState} activityOperationId={layout.cluster.root} size={size} label={label} decorative={decorative} />;
+    ? <ObjectiveAvatar objectiveRecord={anchor.objectiveRecord} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
+    : <KeyedAvatar avatarKey={objectiveRecordAvatarKey(layout.cluster.root ?? layout.cluster.avatarObjectiveId ?? layout.cluster.id)} role="commander" state={commanderState} activityObjectiveId={layout.cluster.root} size={size} label={label} decorative={decorative} />;
   if (working.length === 0) return commander;
   return (
     <span className="side-bar-cluster-avatars" style={{ width: full, height: full }}>
       {commander}
       <span className="side-bar-cluster-avatars-minis" aria-hidden="true">
         {working.map((entry) => (
-          <span key={entry.operation.id} className="side-bar-cluster-avatars-mini">
-            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={14} label="" decorative />
+          <span key={entry.objectiveRecord.id} className="side-bar-cluster-avatars-mini">
+            <ObjectiveAvatar objectiveRecord={entry.objectiveRecord} role="member" state={mongleStateOfMark(entry.mark)} size={14} label="" decorative />
           </span>
         ))}
       </span>
@@ -542,7 +542,7 @@ function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
  * 동안은 같은 표식들이 함께 밝아진다. 플러그인이 맡은 이의 글리프를 주면 그 모양을 같은 잉크 규칙으로 칠하고, 없으면 사각을
  * 그린다. 뜻은 줄의 접근 이름이 말하므로 여기서는 제목만 단다. 「확인 필요」 목록의 줄도 같은 표식을 쓴다.
  */
-export function ClusterRowMark({ mark, decorative = true }: { readonly mark: OperationClusterRowMark; readonly decorative?: boolean }) {
+export function ClusterRowMark({ mark, decorative = true }: { readonly mark: ObjectiveClusterRowMark; readonly decorative?: boolean }) {
   const locale = useConsoleLocale();
   const label = resolveLocalizedText(mark.label, locale);
   const glyph = mark.renderGlyph?.();
@@ -556,7 +556,7 @@ export function ClusterRowMark({ mark, decorative = true }: { readonly mark: Ope
  * 꺼진 표식은 줄에 올리거나 초점이 올 때만 보인다(터치는 흐리게 늘). 줄은 누르는 순간 끌기를 시작하므로 여기서 막고, 누르고 있는
  * Enter·Space 의 반복 입력과 더블클릭의 둘째 클릭은 받지 않는다 — 한 번 누름이 한 번 바꿈이다.
  */
-function ClusterRowMarkToggle({ mark, toggle }: { readonly mark: OperationClusterRowMark; readonly toggle: NonNullable<OperationClusterRowMark["toggle"]> }) {
+function ClusterRowMarkToggle({ mark, toggle }: { readonly mark: ObjectiveClusterRowMark; readonly toggle: NonNullable<ObjectiveClusterRowMark["toggle"]> }) {
   const locale = useConsoleLocale();
   const glyph = mark.renderGlyph?.();
   const className = ["side-bar-cluster-row-mark", glyph ? "has-glyph" : "", toggle.pressed ? `is-${mark.square}` : "is-off", toggle.pressed && mark.emphasized ? "is-emphasized" : ""].filter(Boolean).join(" ");

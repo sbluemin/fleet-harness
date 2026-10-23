@@ -263,7 +263,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
    * The page decides first (bridge contract §8): `window.__fleetMobileBack()` returns true when it
    * stepped back itself — a sheet, the drawer, a detail screen. It has [PAGE_BACK_BUDGET_MS] to
    * answer; silence, false, or a throw hand the press to the shell. A page without the function
-   * (an older Console) keeps the earlier rule: back leaves an open operation through history.
+   * (an older Console) keeps the earlier rule: back leaves an open objective through history.
    */
   fun navigateBack(promise: Promise) {
     main.post {
@@ -278,21 +278,21 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       view.evaluateJavascript(PAGE_BACK_SCRIPT) { result ->
         when {
           settled.get() -> Unit
-          result == "\"absent\"" -> settle(legacyOperationBack(view))
+          result == "\"absent\"" -> settle(legacyObjectiveBack(view))
           else -> settle(result == "true")
         }
       }
     }
   }
 
-  private fun legacyOperationBack(view: WebView): Boolean {
-    if (view !== activeView || !isOperationOpen(view) || !view.canGoBack()) return false
+  private fun legacyObjectiveBack(view: WebView): Boolean {
+    if (view !== activeView || !isObjectiveOpen(view) || !view.canGoBack()) return false
     view.goBack()
     return true
   }
 
-  /** The console names the open operation in its address, which is the only signal the shell needs. */
-  private fun isOperationOpen(view: WebView): Boolean {
+  /** The console names the open objective in its address, which is the only signal the shell needs. */
+  private fun isObjectiveOpen(view: WebView): Boolean {
     val url = view.url ?: return false
     return try {
       Uri.parse(url).getQueryParameter("op")?.isNotEmpty() == true

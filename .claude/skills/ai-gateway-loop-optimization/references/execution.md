@@ -2,7 +2,7 @@
 
 ## Execution dependency
 
-Choose the smallest execution surface. For provider-loop, canonical, or router behavior only, use the standalone package runner below and do not start Console. If a bespoke request shape exceeds the runner, call the built adapter directly. If caller tools/transcripts, host-generated or auxiliary turns, process lifecycle, or operator view matter, use a real Operation: read `console-e2e` and its [live agent prompt testing reference](../../console-e2e/references/live-agent-prompt-testing.md) first; that reference owns isolated Console setup, credentials, PTY/browser choices, and cleanup.
+Choose the smallest execution surface. For provider-loop, canonical, or router behavior only, use the standalone package runner below and do not start Console. If a bespoke request shape exceeds the runner, call the built adapter directly. If caller tools/transcripts, host-generated or auxiliary turns, process lifecycle, or operator view matter, use a real Objective: read `console-e2e` and its [live agent prompt testing reference](../../console-e2e/references/live-agent-prompt-testing.md) first; that reference owns isolated Console setup, credentials, PTY/browser choices, and cleanup.
 
 Between those sits a headless Claude Code turn against each worktree's owned Console, described in the same reference's **Headless Claude Code against the owned Console** section. Use it when the behavior depends on what the real client returns — its thinking signatures, real tool results, `--resume` — which the runner cannot express: its tool results are a fixed `ok` and its prompt is synthetic. For before/after runs, point both builds at the same slot, Claude config home, and fixed run directory so the system prompt and tool catalog stay identical, and alternate the order.
 
@@ -10,7 +10,7 @@ When the question is only whether a backend accepts a request variant, take a re
 
 ### Standalone provider-loop runner
 
-The runner starts no Console, PTY, Theater, or Operation. It uses the production `@fleet-console/ai-gateway` router and production credential readers. From the absolute worktree root, build:
+The runner starts no Console, PTY, Theater, or Objective. It uses the production `@fleet-console/ai-gateway` router and production credential readers. From the absolute worktree root, build:
 
 ```sh
 pnpm --filter @fleet-console/ai-gateway build
@@ -29,7 +29,7 @@ On failure, rebuild the package above and check again; if it still fails, stop b
 pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6-sol' --auth-path <authorized-console-slot>/auth.json --operations 3 --trials 5 --confirm-live-provider
 ```
 
-`--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.
+`--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Isolated runtime/PID/Console-build requirements apply only to real Objectives. Default test and CI paths never invoke the live runner.
 
 ### Caller tool output capture
 

@@ -1,6 +1,6 @@
 # Browser fallback — Fleet Browser
 
-Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot run here. Record the agent-browser error and affected scope before switching. A failed product assertion is not a reason to switch drivers, and a permission denial is not permission to route around it. Fleet Browser is this Operation's Browser pane, not the Electron application under test.
+Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot run here. Record the agent-browser error and affected scope before switching. A failed product assertion is not a reason to switch drivers, and a permission denial is not permission to route around it. Fleet Browser is this Objective's Browser pane, not the Electron application under test.
 
 ## Connection and ownership
 

@@ -1,4 +1,4 @@
-import type { OperationRenderContext } from "../../shared/client-contract.js";
+import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
@@ -33,10 +33,10 @@ export interface LinkOpenChoice {
   readonly card: React.ReactNode;
 }
 
-/** 카드의 「Operation 브라우저」 행이 갈 곳 — 그 Operation 과, 그 브라우저를 여는 손잡이. */
+/** 카드의 「Objective 브라우저」 행이 갈 곳 — 그 Objective 과, 그 브라우저를 여는 손잡이. */
 export interface LinkOpenChoiceTarget {
-  readonly language: OperationRenderContext["language"];
-  readonly operationId: string;
+  readonly language: ObjectiveRenderContext["language"];
+  readonly objectiveId: string;
   readonly openCompanion: () => void;
 }
 
@@ -64,7 +64,7 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
       companion={{
         // 주소를 먼저 놓고 문을 연다 — 패널은 마운트하는 순간 그 요청을 집어 든다.
         open: () => {
-          requestBrowserOpen(target.operationId, pending.url);
+          requestBrowserOpen(target.objectiveId, pending.url);
           target.openCompanion();
         },
       }}
@@ -74,7 +74,7 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
 }
 
 /** Shell 에는 Session 이 없다 — 카드를 세우지 않고 내 브라우저로 연다. */
-export function useShellLinkChoice(_language: OperationRenderContext["language"]): LinkOpenChoice {
+export function useShellLinkChoice(_language: ObjectiveRenderContext["language"]): LinkOpenChoice {
   const engine = useBrowserEngine();
   const canOfferRef = React.useRef(true);
   canOfferRef.current = engine === null || engine.available;
@@ -98,10 +98,10 @@ export interface LinkAvailability {
  * 수정키 손짓의 직접 열기. 카드를 세우지 않고 true를 돌리면 부른 쪽은 맡긴 것으로 보고
  * confirm·앵커 기본 동작으로 떨어지지 않는다. click 손짓과 쓸 수 없을 때는 false다.
  */
-export function openOperationLink(
+export function openObjectiveLink(
   url: string,
   gesture: OpenLinkGesture,
-  target: { readonly operationId: string; readonly openCompanion: () => void },
+  target: { readonly objectiveId: string; readonly openCompanion: () => void },
   availability: LinkAvailability,
 ): boolean {
   if (!isDesktopShell()) return false;
@@ -113,7 +113,7 @@ export function openOperationLink(
   }
   if (gesture === "click") return false;
   if (gesture === "background" || gesture === "companion") {
-    requestBrowserOpen(target.operationId, url);
+    requestBrowserOpen(target.objectiveId, url);
     target.openCompanion();
     return true;
   }

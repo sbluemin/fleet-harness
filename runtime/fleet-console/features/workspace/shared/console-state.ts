@@ -1,4 +1,4 @@
-import type { OperationRuntimeHydration, ConsoleOperationSummary } from "../../execution/shared/client-contract.js";
+import type { ObjectiveRuntimeHydration, ConsoleObjectiveSummary } from "../../execution/shared/client-contract.js";
 /**
  * 확대 표면을 여닫는 능력. 슬롯 목록·기하·포커스는 호스트가 소유하므로 플러그인은
  * "이걸 열어 달라"고 요청할 뿐이고, 어느 슬롯에 어떤 폭으로 서는지는 결정하지 못한다.
@@ -13,20 +13,20 @@ import type { OperationRuntimeHydration, ConsoleOperationSummary } from "../../e
 export interface ClientConsoleStateCapability {
   getTheaters(): readonly ConsoleTheaterSummary[];
   /**
-   * Operation 목록의 브라우저 DTO 몫 — 제목·Theater·종류·활동. 활동은 코어가 런타임 축에서 읽는
+   * Objective 목록의 브라우저 DTO 몫 — 제목·Theater·종류·활동. 활동은 코어가 런타임 축에서 읽는
    * 값이며, 어느 플러그인이 그 축의 권위인지는 플러그인이 알 필요가 없다. transcript·경로는 없다.
-   * 사이드바와 같은 목록이라 부모가 대표하는 구성원(`parentOperationId`)은 빠진다 — 구성원을 거느리는
+   * 사이드바와 같은 목록이라 부모가 대표하는 구성원(`parentObjectiveId`)은 빠진다 — 구성원을 거느리는
    * 플러그인만 `{ nested: true }` 로 함께 읽는다.
    */
-  getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
+  getObjectiveRecords(options?: { readonly nested?: boolean }): readonly ConsoleObjectiveSummary[];
   /** @deprecated Mount는 없다. 지금 보는 대화의 Theater를 반환한다. getViewedTheaterId를 사용한다. */
   getActiveTheaterId(): string | null;
   /** 지금 화면에 보이는 대화 또는 모바일 목록의 Theater. 빈 칸은 null이다. */
   getViewedTheaterId?(): string | null;
   /** 마운트하지 않고 해당 Theater의 Inbox를 연다. */
   viewTheater?(theaterId: string): void;
-  /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
-  getActiveOperationId(): string | null;
+  /** 캔버스에서 활성인 Objective — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
+  getActiveObjectiveId(): string | null;
   /**
    * 코어 이벤트 스트림의 연결 상태 — 바뀌면 `subscribe` 가 울린다. `live` 로 돌아온 전이는 서버가 다시 닿는다는 증거다.
    * 이미 읽은 데이터를 단절 뒤에 다시 읽을 신호는 `consoleEvents.onReconnect` 다.
@@ -35,17 +35,17 @@ export interface ClientConsoleStateCapability {
   getConnection?(): ConsoleConnectionState;
   /**
    * 런타임 축(활동·수명주기)을 지금 신뢰할 수 있는지 — 축의 권위자가 `runtime.setHydration` 으로 보고한 값을 읽기만 한다.
-   * `pending`·`degraded` 동안 `getOperations` 의 `activity` 는 관측이 아니라 폴백(유휴·종료)이므로, 그 값으로 판정을 내리지 않는다.
+   * `pending`·`degraded` 동안 `getObjectiveRecords` 의 `activity` 는 관측이 아니라 폴백(유휴·종료)이므로, 그 값으로 판정을 내리지 않는다.
    * 바뀌면 `subscribe` 가 울린다. 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 `ready` 로 다룬다.
    */
-  getOperationRuntimeHydration?(): OperationRuntimeHydration;
+  getObjectiveRuntimeHydration?(): ObjectiveRuntimeHydration;
   /**
-   * 사람이 사이드바에서 열지 않고 고르기만 한 Operation — 「더블클릭으로 열기」를 켰을 때의 한 번 클릭이다. 무대는 그대로이므로
-   * 활성과 다르며, 활성과 같아지거나 열리는 순간 null 로 돌아간다. 문맥을 따라가는 표면은 `getSelectedOperationId() ??
-   * getActiveOperationId()` 를 읽는다. 바뀌면 `subscribe` 가 알리고, 고를 때는 `onMapOperationSelected` 도 함께 온다.
+   * 사람이 사이드바에서 열지 않고 고르기만 한 Objective — 「더블클릭으로 열기」를 켰을 때의 한 번 클릭이다. 무대는 그대로이므로
+   * 활성과 다르며, 활성과 같아지거나 열리는 순간 null 로 돌아간다. 문맥을 따라가는 표면은 `getSelectedObjectiveId() ??
+   * getActiveObjectiveId()` 를 읽는다. 바뀌면 `subscribe` 가 알리고, 고를 때는 `onMapObjectiveSelected` 도 함께 온다.
    * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 고른 것이 없는 것(null)으로 다룬다.
    */
-  getSelectedOperationId?(): string | null;
+  getSelectedObjectiveId?(): string | null;
   /** @deprecated Mount는 없다. viewTheater와 같이 해당 Theater의 Inbox를 연다. */
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;

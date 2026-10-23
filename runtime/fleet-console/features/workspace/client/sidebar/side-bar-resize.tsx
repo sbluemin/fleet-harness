@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-import { setSideBarWidth, useSideBarState } from "./operations-side-bar-store.js";
+import { setSideBarWidth, useSideBarState } from "./objective-records-side-bar-store.js";
 
 // 사이드바 폭을 바꾸는 조작 표면 — 사이드바는 접히지 않으므로 폭만 바꾼다.
 export function useSideBarResize(): {
@@ -52,7 +52,7 @@ export function SideBarResizeHandle({
 }) {
   return (
     <div
-      className="operations-side-bar-resize-handle"
+      className="objective-records-side-bar-resize-handle"
       onPointerDown={onPointerDown}
       aria-hidden="true"
     />

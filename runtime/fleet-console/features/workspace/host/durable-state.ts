@@ -7,13 +7,13 @@ import {
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
-import { DEFAULT_OPERATION_GROUP_COLOR, isOperationGroupColor } from "../shared/identity-tones.js";
+import { DEFAULT_OBJECTIVE_GROUP_COLOR, isObjectiveGroupColor } from "../shared/identity-tones.js";
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
-import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "../../execution/host/operations/operations-domain.js";
+import { MAX_GROUP_NAME_LENGTH, type ObjectiveRecord } from "../../objectives/host/records/objective-records-domain.js";
 import { normalizeTheaterAlias, type TheaterRegistration } from "./theaters/theater-domain.js";
 
-export interface DurableOperationGroup {
+export interface DurableObjectiveGroup {
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -32,20 +32,20 @@ export interface DurableDeletionBase {
 }
 
 export type DurableDeletionTombstone =
-  | (DurableDeletionBase & { readonly kind: "operation"; readonly operation: OperationNode; readonly descendants?: readonly OperationNode[] })
+  | (DurableDeletionBase & { readonly kind: "objectiveRecord"; readonly objectiveRecord: ObjectiveRecord; readonly descendants?: readonly ObjectiveRecord[] })
   | (DurableDeletionBase & {
       readonly kind: "theater";
       readonly theater: TheaterRegistration;
-      readonly operations: readonly OperationNode[];
-      readonly groups: readonly DurableOperationGroup[];
+      readonly objectiveRecords: readonly ObjectiveRecord[];
+      readonly groups: readonly DurableObjectiveGroup[];
     });
 
 export interface DurableConsoleState {
   readonly version: 6;
   readonly revision?: number;
   readonly theaters: readonly TheaterRegistration[];
-  readonly operations: readonly OperationNode[];
-  readonly groups?: readonly DurableOperationGroup[];
+  readonly objectiveRecords: readonly ObjectiveRecord[];
+  readonly groups?: readonly DurableObjectiveGroup[];
   readonly deletionTombstones?: readonly DurableDeletionTombstone[];
 }
 
@@ -77,20 +77,20 @@ export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateSt
 
 export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState {
   if (!isRecord(value)) return emptyDurableConsoleState();
-  const upgraded = migrateToCurrentVersion(value);
+  const upgraded = value;
   if (upgraded.version !== STATE_VERSION) return emptyDurableConsoleState();
   return {
     version: STATE_VERSION,
     ...(readNonNegativeInteger(upgraded.revision) !== null ? { revision: readNonNegativeInteger(upgraded.revision)! } : {}),
     theaters: readTheaterRegistrations(upgraded.theaters),
-    operations: readOperations(upgraded.operations),
-    groups: readOperationGroups(upgraded.groups),
+    objectiveRecords: readObjectiveRecords(upgraded.objectiveRecords ?? upgraded.operations),
+    groups: readObjectiveGroups(upgraded.groups),
     deletionTombstones: readDeletionTombstones(upgraded.deletionTombstones),
   };
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], operations: [], groups: [], deletionTombstones: [] };
+  return { version: STATE_VERSION, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] };
 }
 
 export function readDurableStateVersion(stateFilePath: string): number | null {
@@ -120,122 +120,6 @@ export function backupDurableStateV4(stateFilePath: string): void {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
 }
 
-// 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
-// 변환 결과는 readOperations의 sanitizeOperationNode가 다시 검증하므로 여기서는 모양만 맞춘다.
-// 각 버전 단계를 순서대로 거쳐 단계별 기본값을 보존하고, 최종 sanitizer가 다시 검증한다.
-function migrateToCurrentVersion(value: Record<string, unknown>): Record<string, unknown> {
-  let current = value;
-  if (current.version === 1) current = migrateV1ToV2(current);
-  if (current.version === 2) current = migrateV2ToV3(current);
-  if (current.version === 3) current = migrateV3ToV4(current);
-  if (current.version === 4 || current.version === 5) current = { ...current, version: STATE_VERSION };
-  return current;
-}
-
-function migrateV1ToV2(v1: Record<string, unknown>): Record<string, unknown> {
-  const operations = Array.isArray(v1.operations) ? v1.operations.map(migrateV1Operation) : [];
-  return {
-    version: 2,
-    theaters: v1.theaters ?? [],
-    operations,
-    groups: [],
-  };
-}
-
-function migrateV2ToV3(v2: Record<string, unknown>): Record<string, unknown> {
-  return {
-    version: 3,
-    theaters: v2.theaters ?? [],
-    operations: v2.operations ?? [],
-    groups: v2.groups ?? [],
-    deletionTombstones: [],
-  };
-}
-
-function migrateV3ToV4(v3: Record<string, unknown>): Record<string, unknown> {
-  return {
-    version: 4,
-    theaters: v3.theaters ?? [],
-    operations: migrateOperationListToV4(v3.operations),
-    groups: v3.groups ?? [],
-    deletionTombstones: migrateDeletionTombstonesToV4(v3.deletionTombstones),
-  };
-}
-
-function migrateOperationListToV4(value: unknown): unknown {
-  return Array.isArray(value) ? value.map(migrateOperationToV4) : [];
-}
-
-function migrateOperationToV4(value: unknown): unknown {
-  if (!isRecord(value) || value.pluginId !== "terminal" || value.type !== "agent") return value;
-  const payload = isRecord(value.payload) ? value.payload : {};
-  const legacyProviderSession = isRecord(payload.providerSession) ? payload.providerSession : undefined;
-  const existingSession = isRecord(payload.session) ? payload.session : undefined;
-  const legacyHarness = legacyProviderSession?.provider === "codex" ? "codex" : "claude-code";
-  const session: Record<string, unknown> = {
-    ...(existingSession ?? {}),
-    harness: readOptionalString(existingSession?.harness) ?? legacyHarness,
-  };
-  const model = readOptionalString(existingSession?.model) ?? readOptionalString(payload.launchModel);
-  const effort = readOptionalString(existingSession?.effort) ?? readOptionalString(payload.launchEffort);
-  const id = readOptionalString(existingSession?.id) ?? readOptionalString(legacyProviderSession?.sessionId);
-  const transcriptPath = readOptionalString(existingSession?.transcriptPath) ?? readOptionalString(legacyProviderSession?.transcriptPath);
-  const source = readOptionalString(existingSession?.source) ?? readOptionalString(legacyProviderSession?.source);
-  const capturedAt = readOptionalString(existingSession?.capturedAt) ?? readOptionalString(legacyProviderSession?.capturedAt);
-  if (model) session.model = model;
-  if (effort) session.effort = effort;
-  if (id) session.id = id;
-  if (transcriptPath) session.transcriptPath = transcriptPath;
-  if (source) session.source = source;
-  if (capturedAt) session.capturedAt = capturedAt;
-
-  const nextPayload: Record<string, unknown> = { ...payload, session };
-  for (const key of ["cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession"]) {
-    delete nextPayload[key];
-  }
-  return { ...value, payload: nextPayload };
-}
-
-function migrateDeletionTombstonesToV4(value: unknown): unknown {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => {
-    if (!isRecord(item)) return item;
-    if (item.kind === "operation") return { ...item, operation: migrateOperationToV4(item.operation) };
-    if (item.kind === "theater") return { ...item, operations: migrateOperationListToV4(item.operations) };
-    return item;
-  });
-}
-
-function migrateV1Operation(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value)) return null;
-  const sessionId = readNonEmptyString(value.sessionId);
-  const theaterId = readNonEmptyString(value.theaterId);
-  const cwd = readNonEmptyString(value.cwd);
-  const createdAt = readFiniteNumber(value.createdAt);
-  if (!sessionId || !theaterId || !cwd || createdAt === null) return null;
-  // v1 label(사용자/auto 표시명) → title. 없으면 cwd basename(#N 제거 규칙과 일치).
-  const title = readOptionalString(value.label) ?? (path.basename(cwd) || cwd);
-  const payload: Record<string, unknown> = { cwd };
-  const cliId = readOptionalString(value.cliId);
-  const cliLabel = readOptionalString(value.cliLabel);
-  const labelSource = readOptionalString(value.labelSource);
-  if (cliId) payload.cliId = cliId;
-  if (cliLabel) payload.cliLabel = cliLabel;
-  if (labelSource) payload.labelSource = labelSource;
-  if (isRecord(value.providerSession)) payload.providerSession = value.providerSession;
-  // 드롭: sequence(#N 기능 제거), cwdLabel(basename 파생), autoNamePromptSeen(v2 비영속).
-  return {
-    id: sessionId,
-    theaterId,
-    type: "agent",
-    pluginId: "terminal",
-    title,
-    payload,
-    geometry: null,
-    ts: { createdAt, updatedAt: createdAt },
-  };
-}
-
 function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[] {
   if (!Array.isArray(value)) return [];
   const registrations: TheaterRegistration[] = [];
@@ -246,11 +130,11 @@ function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[
   return registrations;
 }
 
-function readOperations(value: unknown): readonly OperationNode[] {
+function readObjectiveRecords(value: unknown): readonly ObjectiveRecord[] {
   if (!Array.isArray(value)) return [];
-  const nodes: OperationNode[] = [];
+  const nodes: ObjectiveRecord[] = [];
   for (const item of value) {
-    const node = sanitizeOperationNode(item);
+    const node = sanitizeObjectiveRecord(item);
     if (node) nodes.push(node);
   }
   return nodes;
@@ -279,49 +163,47 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   };
 }
 
-export function sanitizeOperationNode(value: unknown): OperationNode | null {
+export function sanitizeObjectiveRecord(value: unknown): ObjectiveRecord | null {
   if (!isRecord(value)) return null;
   const id = readNonEmptyString(value.id);
   const theaterId = readNonEmptyString(value.theaterId);
   const type = readNonEmptyString(value.type);
   const pluginId = remapTerminalPluginId(readNonEmptyString(value.pluginId));
   const title = readNonEmptyString(value.title);
-  const ts = sanitizeOperationTimestamps(value.ts);
-  if (!id || !theaterId || !type || (pluginId === null && value.pluginId !== null) || !title || !ts) return null;
-  // Shell은 콘솔 전역 확대 표면으로 옮겨 갔고 더 이상 Operation이 아니다. 예전 상태 파일이
+  const ts = sanitizeObjectiveTimestamps(value.ts);
+  if (!id || !theaterId || !title || !ts) return null;
+  // Shell은 콘솔 전역 확대 표면으로 옮겨 갔고 더 이상 Objective이 아니다. 예전 상태 파일이
   // 실어 온 Shell 노드는 그릴 종류가 없으므로 복원하지 않고 흘려보낸다 — 남겨 두면 캔버스에
   // 렌더러 없는 패널로 서고, 사용자는 그것을 고장으로 읽는다.
   //
   // 종류 이름은 플러그인마다 독립이므로 plugin까지 함께 본다. `type`만 보면 "shell"이라는
-  // 흔한 이름을 쓴 남의 플러그인의 Operation이 재시작마다 조용히 지워진다. 예전 `shell`
+  // 흔한 이름을 쓴 남의 플러그인의 Objective이 재시작마다 조용히 지워진다. 예전 `shell`
   // 플러그인 id는 remapTerminalPluginId가 이미 terminal로 옮겨 주므로 옛 상태도 걸린다.
   if (type === "shell" && pluginId === "terminal") return null;
   const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
   const order = readNonNegativeInteger(value.order);
-  const childSessions = Array.isArray(value.childSessions) ? value.childSessions.flatMap((entry) => {
+  const childRows = value.sessions ?? value.childSessions;
+  const sessions = Array.isArray(childRows) ? childRows.flatMap((entry) => {
     if (!isRecord(entry)) return [];
     const childId = readNonEmptyString(entry.id);
-    const childTs = sanitizeOperationTimestamps(entry.ts);
-    return childId && childId !== id && childTs ? [{ id: childId, payload: readRecord(entry.payload), ts: childTs }] : [];
+    const childTs = sanitizeObjectiveTimestamps(entry.ts);
+    return childId && childId !== id && childTs ? [{ id: childId, ...(readRecord(entry.payload ?? entry)), ts: childTs }] : [];
   }) : [];
   return {
     id,
     theaterId,
-    type,
-    pluginId: pluginId === "terminal" && type === "agent" ? null : pluginId,
     title,
-    payload: readRecord(value.payload),
-    geometry: sanitizeOperationGeometry(value.geometry),
+    ...(readRecord(value.payload ?? value)),
     ...(accent ? { accent } : {}),
     ...(groupId !== undefined ? { groupId } : {}),
     ...(order !== null ? { order } : {}),
-    ...(childSessions.length ? { childSessions } : {}),
+    ...(sessions.length ? { sessions } : {}),
     ts,
   };
 }
 
-function sanitizeOperationTimestamps(value: unknown): OperationNode["ts"] | null {
+function sanitizeObjectiveTimestamps(value: unknown): ObjectiveRecord["ts"] | null {
   if (!isRecord(value)) return null;
   const createdAt = readFiniteNumber(value.createdAt);
   const updatedAt = readFiniteNumber(value.updatedAt);
@@ -329,7 +211,7 @@ function sanitizeOperationTimestamps(value: unknown): OperationNode["ts"] | null
   return { createdAt, updatedAt };
 }
 
-function sanitizeOperationGeometry(value: unknown): OperationNode["geometry"] {
+function sanitizeObjectiveGeometry(value: unknown): ObjectiveRecord["geometry"] {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) return null;
   const x = readFiniteNumber(value.x);
@@ -384,23 +266,23 @@ function readOptionalGroupId(value: unknown): string | null | undefined {
   return undefined;
 }
 
-function readOperationGroups(value: unknown): readonly DurableOperationGroup[] {
+function readObjectiveGroups(value: unknown): readonly DurableObjectiveGroup[] {
   if (!Array.isArray(value)) return [];
-  const groups: DurableOperationGroup[] = [];
+  const groups: DurableObjectiveGroup[] = [];
   for (const item of value) {
-    const group = sanitizeOperationGroup(item);
+    const group = sanitizeObjectiveGroup(item);
     if (group) groups.push(group);
   }
   return groups;
 }
 
-function sanitizeOperationGroup(value: unknown): DurableOperationGroup | null {
+function sanitizeObjectiveGroup(value: unknown): DurableObjectiveGroup | null {
   if (!isRecord(value)) return null;
   const id = readNonEmptyString(value.id);
   const theaterId = readNonEmptyString(value.theaterId);
   const rawName = readNonEmptyString(value.name);
   const rawColor = readNonEmptyString(value.color);
-  const color = isOperationGroupColor(rawColor) ? rawColor : DEFAULT_OPERATION_GROUP_COLOR;
+  const color = isObjectiveGroupColor(rawColor) ? rawColor : DEFAULT_OBJECTIVE_GROUP_COLOR;
   const order = readNonNegativeInteger(value.order);
   const createdAt = readFiniteNumber(value.createdAt);
   if (!id || !theaterId || !rawName || order === null || createdAt === null) return null;
@@ -418,8 +300,8 @@ function readDeletionTombstones(value: unknown): readonly DurableDeletionTombsto
   return tombstones;
 }
 
-export function deletionOperations(value: DurableDeletionTombstone): readonly OperationNode[] {
-  return value.kind === "operation" ? [value.operation, ...(value.descendants ?? [])] : value.operations;
+export function deletionObjectiveRecords(value: DurableDeletionTombstone): readonly ObjectiveRecord[] {
+  return value.kind === "objectiveRecord" ? [value.objectiveRecord, ...(value.descendants ?? [])] : value.objectiveRecords;
 }
 
 export function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | null {
@@ -438,27 +320,28 @@ export function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombst
     }
   }
   const location = Object.keys(archived).length ? { archived } : {};
-  if (value.kind === "operation") {
-    const operation = sanitizeOperationNode(value.operation);
-    if (!operation || operation.id !== targetId) return null;
-    const descendants = value.descendants === undefined ? [] : readOperations(value.descendants);
+  if (value.kind === "objectiveRecord" || value.kind === "operation") {
+    const objectiveRecord = sanitizeObjectiveRecord(value.objectiveRecord ?? value.operation);
+    if (!objectiveRecord || objectiveRecord.id !== targetId) return null;
+    const descendants = value.descendants === undefined ? [] : readObjectiveRecords(value.descendants);
     if (value.descendants !== undefined && (!Array.isArray(value.descendants) || descendants.length !== value.descendants.length)) return null;
-    return { deletionId, targetId, deletedAt, expiresAt, kind: "operation", operation, ...location, ...(descendants.length ? { descendants } : {}) };
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "objectiveRecord", objectiveRecord, ...location, ...(descendants.length ? { descendants } : {}) };
   }
   if (value.kind === "theater") {
     const theater = sanitizeTheaterRegistration(value.theater);
-    if (!theater || theater.id !== targetId || !Array.isArray(value.operations) || !Array.isArray(value.groups)) return null;
-    const operations = value.operations
-      .map(sanitizeOperationNode)
-      .filter((operation): operation is OperationNode => operation !== null);
+    const records = value.objectiveRecords ?? value.operations;
+    if (!theater || theater.id !== targetId || !Array.isArray(records) || !Array.isArray(value.groups)) return null;
+    const objectiveRecords = records
+      .map(sanitizeObjectiveRecord)
+      .filter((objectiveRecord): objectiveRecord is ObjectiveRecord => objectiveRecord !== null);
     const groups = value.groups
-      .map(sanitizeOperationGroup)
-      .filter((group): group is DurableOperationGroup => group !== null);
-    if (operations.length !== value.operations.length
+      .map(sanitizeObjectiveGroup)
+      .filter((group): group is DurableObjectiveGroup => group !== null);
+    if (objectiveRecords.length !== records.length
       || groups.length !== value.groups.length
-      || operations.some((operation) => operation.theaterId !== targetId)
+      || objectiveRecords.some((objectiveRecord) => objectiveRecord.theaterId !== targetId)
       || groups.some((group) => group.theaterId !== targetId)) return null;
-    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups, ...location };
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, objectiveRecords, groups, ...location };
   }
   return null;
 }

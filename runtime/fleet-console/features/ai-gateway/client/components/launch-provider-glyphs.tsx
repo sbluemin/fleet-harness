@@ -8,7 +8,7 @@ export type LaunchProviderGlyphId = "claude" | "codex" | "cursor" | "xai" | "ant
 /**
  * Optional intrinsic size for a provider mark.
  *
- * Host chrome sizes these marks in CSS (`.operation-launch-provider-glyph svg`). Plugin
+ * Host chrome sizes these marks in CSS (`.objective-launch-provider-glyph svg`). Plugin
  * rails that drop a mark into an unsized box have no such rule, so they pass explicit
  * attributes and keep the artwork here as the single source.
  */

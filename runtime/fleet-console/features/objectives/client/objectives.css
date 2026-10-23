@@ -117,9 +117,9 @@
 .objectives-pop-empty { margin: 0; padding: 10px 8px; font-size: var(--t-sm); color: var(--text-tertiary); }
 .objectives-pop-none { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 8px; }
 .objectives-pop-none p { margin: 0; font-size: var(--t-sm); line-height: 1.5; color: var(--text-secondary); word-break: keep-all; }
-.objectives-pop-none .objectives-new-operation { padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); cursor: pointer; }
-.objectives-pop-none .objectives-new-operation:hover { text-decoration: underline; text-underline-offset: 3px; }
-.objectives-pop-none .objectives-new-operation:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-pop-none .objectives-new-objectiveRecord { padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); cursor: pointer; }
+.objectives-pop-none .objectives-new-objectiveRecord:hover { text-decoration: underline; text-underline-offset: 3px; }
+.objectives-pop-none .objectives-new-objectiveRecord:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
 
 /* 구획 머리는 접이식 낱말 — 상자·채움 없이 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다.
@@ -252,7 +252,7 @@ span.objectives-row-main { cursor: default; }
 /* 지휘관 모델·강도·표면 — 한 줄의 글. 누르면 공통 팝업 표면의 메뉴가 뜬다(불투명 면·40px 본문 행·중립 워시). */
 /* 트리거·구성원 줄의 공급자 글리프 — 메뉴의 칩 상자 없이 글리프 자체만 공급자 톤으로 칠한다. */
 .objectives-launch-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
-.operation-launch-provider-glyph.objectives-launch-provider { border: 0; background: none; }
+.objective-launch-provider-glyph.objectives-launch-provider { border: 0; background: none; }
 .objectives-launch-provider svg { width: 14px; height: 14px; }
 .objectives-launch-model { color: var(--text-primary); }
 .objectives-launch-dot { color: var(--text-tertiary); }
@@ -284,7 +284,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 
-/* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
+/* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Objective 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 62px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
 /* 구성원 일괄 모델 설정 — 섹션 헤더 액션 바, 전용 글리프 버튼과 은은한 말풍선 안내 */
@@ -326,7 +326,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-member.is-ledger { background: var(--control-wash); }
 .objectives-member > .objectives-member-remove { grid-area: remove; }
 .objectives-member:hover { background: var(--control-rest); }
-/* 구성원·지휘관 표식 — 그 사람 Operation 의 몽글 아바타(objective-avatar.tsx)로 사이드바와 같은 얼굴이다. 같은 사람이 임무 줄·메뉴·그래프에
+/* 구성원·지휘관 표식 — 그 사람 Objective 의 몽글 아바타(objective-avatar.tsx)로 사이드바와 같은 얼굴이다. 같은 사람이 임무 줄·메뉴·그래프에
    여러 번 서므로 움직임은 명단 한 자리에만 두고, 나머지(is-still)는 --state-motion 을 꺼 얼굴과 배지로만 상태를 말한다. */
 .objectives-avatar { width: 20px; height: 20px; }
 /* 명단의 표식은 한 단 크다 — 이름 줄과 설명 줄을 함께 받친다. */

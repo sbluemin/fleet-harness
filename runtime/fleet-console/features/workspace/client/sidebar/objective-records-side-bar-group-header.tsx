@@ -1,0 +1,131 @@
+import { useRef, useSyncExternalStore, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getFirstClusterWrap, getGroupCreator, getGroupWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+
+import { useT } from "../../../../core/client/src/i18n/index.js";
+import type { ObjectiveGroup } from "../../../../core/client/src/integration/types.js";
+import { resolveAccentColor } from "../objective-accent.js";
+
+interface GroupHeaderProps {
+  readonly group: ObjectiveGroup;
+  readonly count: number;
+  readonly collapsed: boolean;
+  readonly dragging: boolean;
+  readonly dropTarget: boolean;
+  readonly dragOffsetY: number;
+  readonly onToggle: (groupId: string) => void;
+  readonly onContextMenu: (groupId: string, anchor: DOMRect) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => void;
+  /** 그룹 「+」 — 이 그룹에 서는 새 목표·Objective 메뉴. 없으면 버튼을 세우지 않는다. */
+  /** 이 그룹이 목표 줄을 모은 묶음 머리일 때 — 목록 읽기와, 접혀 안 보이는 줄의 표식을 헤더가 대신 두른다(`groupClusterHead`). */
+  readonly clusterHead?: { readonly theaterId: string; readonly hiddenClusterIds: readonly string[] } | undefined;
+}
+
+export function ObjectiveRecordsSideBarGroupHeader({
+  group,
+  count,
+  collapsed,
+  dragging,
+  dropTarget,
+  dragOffsetY,
+  onToggle,
+  onContextMenu,
+  onPointerDragStart,
+  clusterHead,
+}: GroupHeaderProps) {
+  const t = useT();
+  const suppressClickRef = useRef(false);
+  // 그룹 머리는 구분선 라벨이다 — 라벨 자체가 접기이고, 끌기는 라벨을 잡아도 된다.
+  const grpColor = resolveAccentColor(group.color);
+  // Console Use — 에이전트가 이 그룹을 만들거나 고치면 헤더 전체가 감싸인다. 만든 이는 툴팁에만 남는다(사실이지 사건이 아니다).
+  const wrap = useSyncExternalStore(
+    subscribeConsoleUseGestures,
+    () => getGroupWrap(group.id) ?? (clusterHead ? getFirstClusterWrap(clusterHead.hiddenClusterIds) ?? getClusterListWrap(clusterHead.theaterId, group.id) : null),
+    () => null,
+  );
+  const creator = useSyncExternalStore(subscribeConsoleUseGestures, () => getGroupCreator(group.id), () => null);
+  const headerClassName = [
+    "side-bar-group-header",
+    consoleUseWrapClassName(wrap),
+    collapsed ? "side-bar-group-header--collapsed" : "",
+    dragging ? "side-bar-group-header--dragging" : "",
+    dropTarget ? "side-bar-group-header--drop-target" : "",
+  ].filter(Boolean).join(" ");
+  const headerStyle = {
+    ...(grpColor ? { "--grp-color": grpColor } : {}),
+    ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
+  } as CSSProperties;
+
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    onContextMenu(group.id, event.currentTarget.getBoundingClientRect());
+  };
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    onPointerDragStart(event, group.id);
+  };
+  const handlePointerUp = () => {
+    if (dragging) suppressClickRef.current = true;
+  };
+  const toggle = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onToggle(group.id);
+  };
+
+  return (
+    <div
+      className={headerClassName}
+      style={headerStyle}
+      onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) toggle(); }}
+      role="group"
+      aria-label={group.name}
+      title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : creator ? t("sidebar.group.createdBy", { caller: gestureCallerLabel(creator.caller) }) : undefined}
+    >
+      <button
+        type="button"
+        className="side-bar-group-header__toggle"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? t("sidebar.group.expand", { name: group.name }) : t("sidebar.group.collapse", { name: group.name })}
+        title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
+      >
+        <CollapseArrow collapsed={collapsed} />
+      </button>
+      <span className="side-bar-group-header__mark" aria-hidden="true" />
+      <span className="side-bar-group-header__name">{group.name}</span>
+      <span className="side-bar-group-header__rule" aria-hidden="true" />
+      <span className="side-bar-group-header__count" aria-label={t("sidebar.group.objectiveRecordsCount", { count })}>{count}</span>
+    </div>
+  );
+}
+
+/** 그룹이 있는 Theater 의 「미분류」 머리 — 대화 중심 화면에서는 그룹 라벨과 같은 구분선 형식(표식 자리·헤어라인·개수)이다. */
+export function SideBarUngroupedLabel({ count }: { readonly count: number }) {
+  const t = useT();
+  return (
+    <div className="side-bar-ungrouped-label is-label-row" aria-label={t("sidebar.ungrouped.aria")}>
+      <span className="side-bar-group-header__mark" aria-hidden="true" />
+      <span className="side-bar-group-header__name">{t("sidebar.ungrouped.label")}</span>
+      <span className="side-bar-group-header__rule" aria-hidden="true" />
+      <span className="side-bar-group-header__count" aria-label={t("sidebar.group.objectiveRecordsCount", { count })}>{count}</span>
+    </div>
+  );
+}
+
+function CollapseArrow({ collapsed }: { readonly collapsed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      className={`side-bar-group-header__arrow${collapsed ? " is-collapsed" : ""}`}
+    >
+      <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 에이전트가 만든 그룹의 저자 — hover 로 읽는 작은 표식. 사람이 만든 그룹에는 없다. */

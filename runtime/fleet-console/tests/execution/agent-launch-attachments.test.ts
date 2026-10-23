@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "../../features/execution/shared/operations/types.js";
+import type { ObjectiveRecordCreateInput, ObjectiveRecord, ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -121,7 +121,7 @@ describe("agent attachment routes", () => {
     await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: ["missing"] });
 
     expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
-    expect(harness.operations).toHaveLength(0);
+    expect(harness.objectiveRecords).toHaveLength(0);
   });
 
   it("composes the path instruction into the spawn prompt and binds the attachment", async () => {
@@ -160,7 +160,7 @@ describe("agent attachment routes", () => {
 });
 
 async function createHarness(options: { readonly attachError?: Error } = {}) {
-  const operations: OperationNode[] = [];
+  const objectiveRecords: ObjectiveRecord[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   const writes: string[] = [];
   const liveSessions = new Set<string>();
@@ -178,7 +178,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: () => true,
     attach,
-    write: (_operationId, data) => {
+    write: (_objectiveId, data) => {
       writes.push(data);
       return true;
     },
@@ -187,7 +187,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
+    getSessionLastActivityAt: (objectiveId) => (liveSessions.has(objectiveId) ? 5 : null),
     isLive: () => false,
     getForegroundProcess: () => null,
     getShellLineState: () => null,
@@ -228,36 +228,31 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
         cleanup: () => {},
         dispose: async () => {},
       }) },
-      operations: {
-        list: () => operations,
-        get: (id: string) => operations.find((operation) => operation.id === id) ?? null,
-        create: (input: OperationCreateInput) => {
+      objectiveRecords: {
+        list: () => objectiveRecords,
+        get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
+        create: (input: ObjectiveRecordCreateInput) => {
           const createdAt = input.createdAt ?? Date.now();
-          const operation: OperationNode = {
-            id: input.id ?? `operation-${operations.length + 1}`,
-            theaterId: input.theaterId,
-            type: input.type,
-            pluginId: input.pluginId,
-            title: input.title,
-            payload: { ...(input.payload ?? {}) },
-            geometry: input.geometry ?? null,
-            ts: { createdAt, updatedAt: createdAt },
-          };
-          operations.push(operation);
-          return operation;
+          const objectiveRecord: ObjectiveRecord = {...({ ...(input ?? {}) }),
+id: input.id ?? `objective-${objectiveRecords.length + 1}`,
+theaterId: input.theaterId,
+title: input.title,
+ts: { createdAt, updatedAt: createdAt }};
+          objectiveRecords.push(objectiveRecord);
+          return objectiveRecord;
         },
-        patch: (id: string, input: OperationPatchInput) => {
-          const index = operations.findIndex((operation) => operation.id === id);
-          const current = operations[index];
+        patch: (id: string, input: ObjectiveRecordPatchInput) => {
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
+          const current = objectiveRecords[index];
           if (!current) return null;
-          const patched = { ...current, ...(input.title === undefined ? {} : { title: input.title }), ...(input.payload === undefined ? {} : { payload: { ...input.payload } }), ts: { ...current.ts, updatedAt: Date.now() } };
-          operations[index] = patched;
+          const patched = { ...current, ...(input.title === undefined ? {} : { title: input.title }), ...input, ts: { ...current.ts, updatedAt: Date.now() } };
+          objectiveRecords[index] = patched;
           return patched;
         },
         delete: (id: string) => {
-          const index = operations.findIndex((candidate) => candidate.id === id);
+          const index = objectiveRecords.findIndex((candidate) => candidate.id === id);
           if (index < 0) return false;
-          operations.splice(index, 1);
+          objectiveRecords.splice(index, 1);
           return true;
         },
       },
@@ -270,7 +265,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
@@ -312,7 +307,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
 
   return {
     attach,
-    operations,
+    objectiveRecords,
     responses,
     writes,
     setLive: (sessionId: string) => { liveSessions.add(sessionId); },

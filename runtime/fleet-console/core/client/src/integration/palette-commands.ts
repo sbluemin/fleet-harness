@@ -10,7 +10,7 @@ import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
 
 export { fuzzyMatchPaletteLabel, type PaletteCommandMatch } from "./palette-match.js";
-import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
+import { resolveObjectiveActivity } from "../../../../features/execution/client/objective-activity.js";
 import type { ConsoleState, ThemeId } from "./types.js";
 import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";
 
@@ -37,10 +37,10 @@ export interface PaletteTheaterSectionInfo {
 
 /**
  * 명령 홈의 구역. 순서가 곧 홈의 순서다 — 최근 실행은 별도 구역으로 앞에 서고,
- * 그다음이 지금 보고 있는 Operation, 그 Operation이 사는 Theater, 화면, 패널, Console 순이다.
+ * 그다음이 지금 보고 있는 Objective, 그 Objective이 사는 Theater, 화면, 패널, Console 순이다.
  */
-export type PaletteCommandGroup = "current-operation" | "theater" | "view" | "panel" | "console";
-export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-operation", "theater", "view", "panel", "console"];
+export type PaletteCommandGroup = "current-objectiveRecord" | "theater" | "view" | "panel" | "console";
+export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-objectiveRecord", "theater", "view", "panel", "console"];
 
 /**
  * 행 글리프 어휘. 모양이 종류를 말하고 색은 상태만 말한다 — 글리프는 한 잉크이고
@@ -48,8 +48,8 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater-avatar" | "theater-add" | "operation-new"
-  | "operation-open" | "operation-resume" | "operation-archive" | "operation-rename" | "operation-group" | "operation-accent"
+  | "theater-avatar" | "theater-add" | "objective-new"
+  | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group" | "objective-accent"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
@@ -58,18 +58,18 @@ export type PaletteCommandAction =
   | { readonly kind: "switch-theater"; readonly theaterId: string }
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
-  | { readonly kind: "new-operation" }
-  | { readonly kind: "resume-operation"; readonly operationId: string }
-  | { readonly kind: "archive-operation"; readonly operationId: string }
+  | { readonly kind: "new-objectiveRecord" }
+  | { readonly kind: "resume-objectiveRecord"; readonly objectiveId: string }
+  | { readonly kind: "archive-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "open-archive" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
-  | { readonly kind: "rename-operation"; readonly operationId: string }
-  | { readonly kind: "assign-operation-group"; readonly operationId: string }
-  | { readonly kind: "set-operation-accent"; readonly operationId: string }
+  | { readonly kind: "rename-objectiveRecord"; readonly objectiveId: string }
+  | { readonly kind: "assign-objective-group"; readonly objectiveId: string }
+  | { readonly kind: "set-objective-accent"; readonly objectiveId: string }
   | { readonly kind: "whats-new" }
   | { readonly kind: "open-commissioning" };
 
@@ -91,7 +91,7 @@ export interface PaletteCommandEntry {
   /** 같은 일을 하는 전역 단축키(있을 때만). 행 오른쪽에 kbd로 선다. */
   /** 등록부 명령 id — 팔레트가 현재 조합을 그린다. */
   readonly shortcut?: string;
-  /** 대상이 있는 명령의 대상 이름 — 현재 Operation 구역의 행 아래 캡션. */
+  /** 대상이 있는 명령의 대상 이름 — 현재 Objective 구역의 행 아래 캡션. */
   readonly subject?: string;
   /** 「Theater 아바타」 글리프의 재료 — 그 Theater. */
   readonly theaterAvatar?: { readonly id: string; readonly label: string };
@@ -152,28 +152,28 @@ export function buildPaletteCommands(
     commands.push({ ...rest, current: entry.current ?? false, aliases: [...(aliasLabel === rest.label ? [] : [aliasLabel]), ...(extraAliases ?? [])] });
   };
   const activeTheater = current.theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
-  const activeOperation = current.operations.find(
-    (operation) => operation.id === current.activeOperationId,
+  const activeObjective = current.objectiveRecords.find(
+    (objectiveRecord) => objectiveRecord.id === current.activeObjectiveId,
   ) ?? null;
   if (options?.canUndoLastClose === true) {
     // 되돌릴 마지막 일이 보관이면 「보관 되돌리기」, Theater 잊기 같은 삭제면 기존 「실행 취소」다.
     const undoKey = options.undoKind === "deletion" ? "palette.undoClose" : "palette.undoArchive";
     push({ commandId: "undo-close", label: t(undoKey), aliasLabel: alias(undoKey), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: "console.undo-close" });
   }
-  push({ commandId: "open-archive", label: t("palette.openArchive"), aliasLabel: alias("palette.openArchive"), action: { kind: "open-archive" }, group: "console", glyph: "operation-archive" });
-  // 현재 Operation — 이 구역만이 Operation을 가리키는 명령을 가진다. 다른 Operation의 동작은
-  // 검색 결과 행의 동작 띠가 맡는다(Operation마다 재개·닫기 쌍을 늘어놓던 옛 홈은 첫 화면을
+  push({ commandId: "open-archive", label: t("palette.openArchive"), aliasLabel: alias("palette.openArchive"), action: { kind: "open-archive" }, group: "console", glyph: "objective-archive" });
+  // 현재 Objective — 이 구역만이 Objective을 가리키는 명령을 가진다. 다른 Objective의 동작은
+  // 검색 결과 행의 동작 띠가 맡는다(Objective마다 재개·닫기 쌍을 늘어놓던 옛 홈은 첫 화면을
   // 그 쌍으로 채웠다).
-  if (activeOperation) {
-    const subject = activeOperation.title;
-    if (resolveOperationActivity(activeOperation, current.operationRuntime) === "ended") {
-      push({ commandId: `resume-operation:${activeOperation.id}`, label: t("palette.resumeOperation", { title: subject }), aliasLabel: alias("palette.resumeOperation", { title: subject }), action: { kind: "resume-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-resume", subject });
+  if (activeObjective) {
+    const subject = activeObjective.title;
+    if (resolveObjectiveActivity(activeObjective, current.objectiveRecordRuntime) === "ended") {
+      push({ commandId: `resume-objectiveRecord:${activeObjective.id}`, label: t("palette.resumeObjective", { title: subject }), aliasLabel: alias("palette.resumeObjective", { title: subject }), action: { kind: "resume-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-resume", subject });
     }
-    push({ commandId: "rename-operation", label: t("palette.renameOperation"), aliasLabel: alias("palette.renameOperation"), action: { kind: "rename-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-rename", subject });
-    push({ commandId: "assign-operation-group", label: t("palette.assignGroup"), aliasLabel: alias("palette.assignGroup"), action: { kind: "assign-operation-group", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-group", subject });
-    push({ commandId: "set-operation-accent", label: t("palette.setAccent"), aliasLabel: alias("palette.setAccent"), action: { kind: "set-operation-accent", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-accent", subject });
+    push({ commandId: "rename-objectiveRecord", label: t("palette.renameObjective"), aliasLabel: alias("palette.renameObjective"), action: { kind: "rename-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-rename", subject });
+    push({ commandId: "assign-objective-group", label: t("palette.assignGroup"), aliasLabel: alias("palette.assignGroup"), action: { kind: "assign-objective-group", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-group", subject });
+    push({ commandId: "set-objective-accent", label: t("palette.setAccent"), aliasLabel: alias("palette.setAccent"), action: { kind: "set-objective-accent", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-accent", subject });
     // 보관은 되돌릴 수 있고 보관함에서 다시 꺼낼 수 있다 — 파괴 명령이 아니므로 coral로 세우지 않는다.
-    push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
+    push({ commandId: `archive-objectiveRecord:${activeObjective.id}`, label: t("palette.archiveObjective", { title: subject }), aliasLabel: alias("palette.archiveObjective", { title: subject }), action: { kind: "archive-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-archive", subject, undoable: true });
   }
   // Theater Inbox 섹션 행(사령관 등) — 보고 있는 Theater 의 행이 theater 구역 맨 앞에 서고, 다른 Theater 의 행은
   // 홈에서 빠진 채 질의에만 맞는다. 이름은 사이드바 머리처럼 별칭을 앞세우고, 원래 이름으로도 찾아진다.
@@ -217,10 +217,10 @@ export function buildPaletteCommands(
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
-    push({ commandId: "new-operation", label: t("palette.newOperation", { label: activeTheater.label }), aliasLabel: alias("palette.newOperation", { label: activeTheater.label }), action: { kind: "new-operation" }, group: "theater", glyph: "operation-new", shortcut: "console.new-session" });
-    const theaterOperations = current.operations.filter((operation) => operation.theaterId === activeTheater.id);
-    if (theaterOperations.length > 0) {
-      push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });
+    push({ commandId: "new-objectiveRecord", label: t("palette.newObjective", { label: activeTheater.label }), aliasLabel: alias("palette.newObjective", { label: activeTheater.label }), action: { kind: "new-objectiveRecord" }, group: "theater", glyph: "objective-new", shortcut: "console.new-session" });
+    const theaterObjectiveRecords = current.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === activeTheater.id);
+    if (theaterObjectiveRecords.length > 0) {
+      push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "objectives.sort-by-status" });
     }
   }
   for (const panel of railPanels) {

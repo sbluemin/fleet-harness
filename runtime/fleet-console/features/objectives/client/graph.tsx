@@ -39,10 +39,10 @@ export function MissionNodeIcon({ state, number }: { state: MissionState; number
   return <span className={`objectives-graph-shape is-${state}`} aria-hidden="true"><span className="objectives-graph-number">{number}</span></span>;
 }
 /** 노드·상태 셈·대기 안내가 같은 판정을 공유한다. 준비된 첫 임무만 담당의 활동을 받는다. */
-export function graphMissionStates(objective: Objective, operationState: (id: string) => string): ReadonlyMap<string, MissionState> {
+export function graphMissionStates(objective: Objective, objectiveRecordState: (id: string) => string): ReadonlyMap<string, MissionState> {
   const states = new Map<string, MissionState>(), activeMembers = new Set<string>();
   for (const mission of objective.missions) {
-    const owner = mission.member ?? objective.id, activity = operationState(owner);
+    const owner = mission.member ?? objective.id, activity = objectiveRecordState(owner);
     let state: MissionState = mission.done ? "done" : isLoose(mission) ? "unplaced" : missionReady(objective.missions, mission) ? "ready" : "blocked";
     if (state === "ready" && !activeMembers.has(owner) && ["running", "awaiting"].includes(activity)) {
       state = activity === "awaiting" ? "awaiting" : "running";

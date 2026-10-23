@@ -12,9 +12,9 @@ import { useT } from "../../i18n/index.js";
  * `Workspace caption-actions`의 프리미티브로 만들어야 한다. 한 줄에 두 벌의
  * 문법이 서지 않게 하려는 것이 이 계약의 전부다.
  *
- * 클래스 이름을 `.pane-caption-*`로 따로 두는 이유는 Operation 프레임의 캡션 밴드와 CSS를
+ * 클래스 이름을 `.pane-caption-*`로 따로 두는 이유는 Objective 프레임의 캡션 밴드와 CSS를
  * 나누기 위해서다. 두 밴드는 같은 문법을 쓰지만 사는 곳이 다르고(캔버스 창 / 표면의 열),
- * `.fleet-caption-*` 규칙은 Operation 밴드 전용을 전제로 잠겨 있다.
+ * `.fleet-caption-*` 규칙은 Objective 밴드 전용을 전제로 잠겨 있다.
  */
 
 export interface PaneCaptionProps {

@@ -103,7 +103,7 @@ export const browserEn = {
   "terminal.browser.onboarding.tour.step1Title": "The globe opens the Fleet Browser",
   "terminal.browser.onboarding.tour.step1Body": "Open it here or with Alt+B. The agent drives the same tabs you see, so you can watch it work, take over, annotate a page and paste the screenshot into this Session.",
   "terminal.browser.onboarding.tour.step1Example": "Open Hacker News in the Fleet Browser and tell me the top three stories.",
-  "terminal.chooser.noOperation": "This chat has no Fleet Browser",
+  "terminal.chooser.noObjective": "This chat has no Fleet Browser",
   "terminal.chooser.sessionNotStarted": "This chat's session hasn't started yet",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
@@ -208,7 +208,7 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.onboarding.tour.step1Title": "이 지구본이 플릿 브라우저를 엽니다",
   "terminal.browser.onboarding.tour.step1Body": "여기서 또는 Alt+B로 엽니다. 에이전트가 사용자와 같은 탭을 조작하므로 작업을 지켜보고, 직접 이어받고, 페이지에 주석을 달아 스크린샷을 이 Session에 붙여넣을 수 있습니다.",
   "terminal.browser.onboarding.tour.step1Example": "플릿 브라우저로 Hacker News를 열고 상위 글 3개만 알려줘",
-  "terminal.chooser.noOperation": "이 채팅에는 플릿 브라우저가 없습니다",
+  "terminal.chooser.noObjective": "이 채팅에는 플릿 브라우저가 없습니다",
   "terminal.chooser.sessionNotStarted": "이 채팅의 세션이 아직 시작되지 않았습니다",
 };
 const messages = { en: browserEn, ko: browserKo };

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSy
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
-import type { ConsoleOperationSummary } from "../../execution/shared/client-contract.js";
+import type { ConsoleObjectiveSummary } from "../../execution/shared/client-contract.js";
 import type { MobileBarMenuItem, PaneContext } from "../../workspace/shared/pane.js";
 import type { RailEntryAttentionItem, RailEntryFinishedItem } from "../../workspace/shared/rail.js";
 import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
@@ -25,13 +25,13 @@ import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
  * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물) 하나를 두 자리에 세운다. 폰에는 목표 목록(보드)이 없다.
- * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
- * 지휘관 Operation 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
+ * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Objective 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
+ * 지휘관 Objective 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
  * 노출 판정도 구성원 채팅 입력창의 보드 동작과 같은 판정(`bandChoices`)을 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
@@ -63,32 +63,32 @@ const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height=
 
 /** 턴 뒤에 남은 백그라운드 작업(background)은 화면에서 진행 중(running)이다 — 색인을 세울 때 한 번 접는다. */
 const shownActivity = <A extends string | undefined>(activity: A) => (activity === "background" ? "running" : activity) as A;
-const shownOperation = (operation: ConsoleOperationSummary): ConsoleOperationSummary => operation.activity !== "background" && operation.ownActivity !== "background" ? operation : {
-  ...operation,
-  activity: shownActivity(operation.activity),
-  ...(operation.ownActivity === undefined ? {} : { ownActivity: shownActivity(operation.ownActivity) }),
+const shownObjective = (objectiveRecord: ConsoleObjectiveSummary): ConsoleObjectiveSummary => objectiveRecord.activity !== "background" && objectiveRecord.ownActivity !== "background" ? objectiveRecord : {
+  ...objectiveRecord,
+  activity: shownActivity(objectiveRecord.activity),
+  ...(objectiveRecord.ownActivity === undefined ? {} : { ownActivity: shownActivity(objectiveRecord.ownActivity) }),
 };
-const operationIndex = (operations: readonly ConsoleOperationSummary[]) => new Map(operations.map((operation) => [operation.id, shownOperation(operation)]));
-type OperationIndex = ReturnType<typeof operationIndex>;
-const activityOf = (operations: OperationIndex, id: string): string => operations.get(id)?.activity ?? "closed";
+const objectiveRecordIndex = (objectiveRecords: readonly ConsoleObjectiveSummary[]) => new Map(objectiveRecords.map((objectiveRecord) => [objectiveRecord.id, shownObjective(objectiveRecord)]));
+type ObjectiveIndex = ReturnType<typeof objectiveRecordIndex>;
+const activityOf = (objectiveRecords: ObjectiveIndex, id: string): string => objectiveRecords.get(id)?.activity ?? "closed";
 /** 지휘관 자신의 활동 — 코어가 구성원 활동을 끌어올리기 전 값. 보드와 같은 셈이다. */
-const ownActivityOf = (operations: OperationIndex, id: string): string => { const operation = operations.get(id); return operation ? operation.ownActivity ?? operation.activity : "closed"; };
+const ownActivityOf = (objectiveRecords: ObjectiveIndex, id: string): string => { const objectiveRecord = objectiveRecords.get(id); return objectiveRecord ? objectiveRecord.ownActivity ?? objectiveRecord.activity : "closed"; };
 
 /**
- * 지휘관 표식 — 목표 Operation 의 몽글 아바타. 데스크톱 보드·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
+ * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 데스크톱 보드·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
  * 표식은 장식이다 — 이름은 곁의 글자가 말한다.
  */
-const CommanderMark = ({ objective, operations }: { readonly objective: Objective; readonly operations: OperationIndex }) =>
-  <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, activityOf(operations, objective.id))} />;
-/** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타. 세션이 아직 없으면 시작 전 얼굴이다. */
-const MemberMark = ({ objective, member, operations }: { readonly objective: Objective; readonly member: ObjectiveMember; readonly operations: OperationIndex }) =>
-  <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? activityOf(operations, member.id) : "closed")} />;
+const CommanderMark = ({ objective, objectiveRecords }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex }) =>
+  <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, activityOf(objectiveRecords, objective.id))} />;
+/** 구성원 표식 — 그 구성원 Objective 의 몽글 아바타. 세션이 아직 없으면 시작 전 얼굴이다. */
+const MemberMark = ({ objective, member, objectiveRecords }: { readonly objective: Objective; readonly member: ObjectiveMember; readonly objectiveRecords: ObjectiveIndex }) =>
+  <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? activityOf(objectiveRecords, member.id) : "closed")} />;
 
 const criteriaMet = (objective: Objective) => objective.criteria.filter((criterion) => criterion.met !== undefined).length;
 /** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
 const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
 /**
- * 목록에 서는 목표 — 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Operation 이 「목표 밖」에 선 것)은 목표가 아니다.
+ * 목록에 서는 목표 — 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Objective 이 「목표 밖」에 선 것)은 목표가 아니다.
  * 데스크톱 보드는 그것을 「목표 밖」으로 가르지만, 모바일 목표 화면에는 그 구역이 없다.
  */
 const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
@@ -191,7 +191,7 @@ export function finishedObjectiveItems(theaterId: string | null, locale: Console
         id: objective.id,
         title: objective.title,
         detail: total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members }),
-        avatarOperationId: objective.id,
+        avatarObjectiveId: objective.id,
         open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
       };
     });
@@ -201,43 +201,43 @@ export function finishedObjectiveItems(theaterId: string | null, locale: Console
 
 /**
  * 폰의 목표 화면 — 칩 없는 목적지(`destination.chip: false`)의 본문이다. 목표 목록은 폰에 없고, 이 화면의 입구는 플러그인의 착지(`openObjectiveOnPhone`)뿐이다:
- * 지휘관 Operation 이 없는 목표나 대화 탭이 서지 못한 목표를 reveal(또는 호스트가 돌려준 params)로 받아 그 상세를 뿌리(depth 0)로 세운다 — ‹ 는 홈이다.
+ * 지휘관 Objective 이 없는 목표나 대화 탭이 서지 못한 목표를 reveal(또는 호스트가 돌려준 params)로 받아 그 상세를 뿌리(depth 0)로 세운다 — ‹ 는 홈이다.
  * 고른 목표는 페인 params(`objectiveId`)에 두어 호스트의 목적지 주소로 새로고침을 넘긴다.
  */
 export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   const reveal = useReveal();
   const { panes } = ctx;
   // 보이는 목표는 페인 주소(params)가 든다 — 호스트가 목적지 주소에 옮겨 적어, 새로고침·딥링크에도 같은 목표가 선다.
-  // 착지는 reveal 로 오거나(시작 전 줄·질문 카드) 호스트가 대화 탭 대신 돌려준 `operationId` 로 온다 — 둘 다 `objectiveId` 하나로 고쳐 적는다.
+  // 착지는 reveal 로 오거나(시작 전 줄·질문 카드) 호스트가 대화 탭 대신 돌려준 `objectiveId` 로 온다 — 둘 다 `objectiveId` 하나로 고쳐 적는다.
   // primary params 는 화면을 닫아도 남는다(호스트 계약) — 새 착지의 reveal 이 아직 집히기 전이면 그것을 먼저 그려 옛 목표가 한 번 비치지 않게 한다.
-  const objectiveId = reveal?.objectiveId ?? ctx.params.objectiveId ?? ctx.params.operationId ?? "";
+  const objectiveId = reveal?.objectiveId ?? ctx.params.objectiveId ?? ctx.params.objectiveId ?? "";
   useEffect(() => {
     if (!reveal) return;
     const target = takeReveal();
     if (target) panes.replaceParams({ objectiveId: target.objectiveId });
   }, [reveal, panes]);
   useEffect(() => {
-    if (ctx.params.objectiveId === undefined && ctx.params.operationId) panes.replaceParams({ objectiveId: ctx.params.operationId });
-  }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
+    if (ctx.params.objectiveId === undefined && ctx.params.objectiveId) panes.replaceParams({ objectiveId: ctx.params.objectiveId });
+  }, [ctx.params.objectiveId, ctx.params.objectiveId, panes]);
   // 보관된 끝난 목표로 착지했다면(「완료 N」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
   const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
   useEffect(() => { if (objectiveId && !known) ensureFinishedObjectives(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
-  // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
-  const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
+  // 시작 화면에서 개시해 지휘관 Objective 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Objective 이 있는 목표로 착지했으면 그대로 둔다).
+  const hasCommander = useObjectiveSummaries().some((objectiveRecord) => objectiveRecord.id === objectiveId);
   const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);
   useEffect(() => {
     if (!objectiveId) return;
     const previous = seen.current;
     seen.current = { id: objectiveId, had: hasCommander };
-    if (previous?.id === objectiveId && !previous.had && hasCommander && ctx.visible) focusOperation(objectiveId);
+    if (previous?.id === objectiveId && !previous.had && hasCommander && ctx.visible) focusObjective(objectiveId);
   }, [objectiveId, hasCommander, ctx.visible]);
   return <MobileObjectiveDetail ctx={ctx} objectiveId={objectiveId} />;
 }
 
-/** 대화 주인 Operation 의 목표 — 지휘관 Operation 이면 그 목표, 구성원 Operation 이면 그 구성원이 속한 목표. 같은 상태면 같은 참조. */
-export function objectiveOfOperation(operationId: string): Objective | null {
+/** 대화 주인 Objective 의 목표 — 지휘관 Objective 이면 그 목표, 구성원 Objective 이면 그 구성원이 속한 목표. 같은 상태면 같은 참조. */
+export function objectiveOfObjective(objectiveId: string): Objective | null {
   for (const state of readAllTheaters()) {
-    const found = state.objectives.find((objective) => isListedObjective(objective) && (objective.id === operationId || objective.members.some((member) => member.id === operationId)));
+    const found = state.objectives.find((objective) => isListedObjective(objective) && (objective.id === objectiveId || objective.members.some((member) => member.id === objectiveId)));
     if (found) return found;
   }
   return null;
@@ -273,26 +273,26 @@ interface ObjectiveActions {
  * 라우팅 확인이 걸리는 개시(확인 켬 + 아직 띄우지 않은 라우팅 구성원)는 데스크톱 띠처럼 확인 시트를 거쳐 본 결과로만 띄운다.
  * 제안 대기(띠가 잠김)·작업 중에는 카드가 막힌 채 서서 이유를 말하고, 그 밖의 다른 할 일이 먼저인 상태에서는 서지 않는다.
  */
-function objectiveActions(objective: Objective, operations: OperationIndex, t: T, launchAvailable: boolean): ObjectiveActions {
+function objectiveActions(objective: Objective, objectiveRecords: ObjectiveIndex, t: T, launchAvailable: boolean): ObjectiveActions {
   const done = !!objective.done;
-  const working = !done && (WORKING.has(ownActivityOf(operations, objective.id)) || objective.members.some((member) => member.sessionName !== null && WORKING.has(activityOf(operations, member.id))));
-  const commanderAwaiting = !done && ownActivityOf(operations, objective.id) === "awaiting";
-  const awaitingMember = done ? undefined : objective.members.find((member) => member.sessionName !== null && activityOf(operations, member.id) === "awaiting");
+  const working = !done && (WORKING.has(ownActivityOf(objectiveRecords, objective.id)) || objective.members.some((member) => member.sessionName !== null && WORKING.has(activityOf(objectiveRecords, member.id))));
+  const commanderAwaiting = !done && ownActivityOf(objectiveRecords, objective.id) === "awaiting";
+  const awaitingMember = done ? undefined : objective.members.find((member) => member.sessionName !== null && activityOf(objectiveRecords, member.id) === "awaiting");
   const memberMission = awaitingMember ? objective.missions.findIndex((mission) => !mission.done && mission.member === awaitingMember.id) : -1;
-  const memberAwaiting = awaitingMember ? { operationId: awaitingMember.id, role: awaitingMember.role, mission: memberMission >= 0 ? memberMission + 1 : null } : null;
+  const memberAwaiting = awaitingMember ? { objectiveId: awaitingMember.id, role: awaitingMember.role, mission: memberMission >= 0 ? memberMission + 1 : null } : null;
   // 완료한 목표는 지휘관에게만 — 구성원은 임무를 닫았다. 보관된 지휘관(closed)도 서버가 휴면으로 되살려 전하므로 휴면으로 보인다.
-  const commanderState = ownActivityOf(operations, objective.id);
+  const commanderState = ownActivityOf(objectiveRecords, objective.id);
   const recipients = done
     ? (objective.commander.started ? [{ id: objective.id, role: t("objectives.graph.commander"), state: commanderState === "closed" ? "ended" : commanderState }] : [])
     : [
       { id: objective.id, role: t("objectives.graph.commander"), state: commanderState },
-      ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, state: activityOf(operations, member.id) })),
+      ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, state: activityOf(objectiveRecords, member.id) })),
     ].filter((recipient) => recipient.state !== "closed");
-  const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(operations, objective.id) !== "closed", recipientCount: recipients.length });
+  const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(objectiveRecords, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
   // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 개시는 늘 그 판단 결과를 먼저 확인한다.
-  const review = objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id)));
+  const review = objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(objectiveRecords, id)));
   // 띠의 주 동작이 개시·재개일 때 개시 카드가 주 단추다 — 폰에 있는 다른 할 일(답·인계·완료 등)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
   // 띠의 주 동작이 폰에 없는 것(구상·재구상·스티어링·확장)이면 이 화면에서 경쟁할 걸음이 없으므로 개시가 주 단추다.
   const primary = choices.primary === "start" || choices.primary === "resume" || (choices.primary !== null && !PHONE_STEPS.has(choices.primary));
@@ -369,23 +369,23 @@ function scrollerOf(root: HTMLElement): HTMLElement {
   return root;
 }
 
-/** 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 params 로 싣는다(막대 창구 없음). */
+/** 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Objective 을 params 로 싣는다(막대 창구 없음). */
 export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext }) {
-  const operationId = ctx.params.operationId ?? "";
-  const objective = useSyncExternalStore(subscribeObjective, () => objectiveOfOperation(operationId), () => objectiveOfOperation(operationId));
+  const objectiveId = ctx.params.objectiveId ?? "";
+  const objective = useSyncExternalStore(subscribeObjective, () => objectiveOfObjective(objectiveId), () => objectiveOfObjective(objectiveId));
   return <MobileObjectiveDetail ctx={ctx} objectiveId={objective?.id ?? ""} />;
 }
 
 /**
  * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)에서는 호스트 막대(`mobileBar`)에 제목·⋮ 동작을 선언하는 뿌리이고,
  * 대화 정보 화면의 「목표」 탭에서는 막대가 없어 같은 동작을 본문 맨 위 동작 줄로 그린다. 제목은 정보 화면 머리가 말하므로 본문에 다시 세우지 않는다.
- * 보관은 두 자리 모두 두지 않는다 — Operation 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Operation 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
+ * 보관은 두 자리 모두 두지 않는다 — Objective 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Objective 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
  */
 export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
   const t = getT(ctx.language, true);
   const language = ctx.language ?? "en";
   const objective = useObjective(objectiveId);
-  const operations = operationIndex(useOperationSummaries());
+  const objectiveRecords = objectiveRecordIndex(useObjectiveSummaries());
   const { mobileBar, visible, api } = ctx;
   // 막대가 없으면 대화 정보 화면의 「목표」 탭에 심긴 것이다 — 동작은 본문 맨 위 동작 줄로 그린다.
   const embedded = !mobileBar;
@@ -407,8 +407,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   useEffect(() => { if (embedded && reveal && reveal.objectiveId === objectiveId) takeReveal(); }, [embedded, reveal, objectiveId]);
 
   const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
-  const actions = objective ? objectiveActions(objective, operations, t, launchAvailable) : null;
-  const crew = useCrewActions(objective, operations, t, api, language, say);
+  const actions = objective ? objectiveActions(objective, objectiveRecords, t, launchAvailable) : null;
+  const crew = useCrewActions(objective, objectiveRecords, t, api, language, say);
   // 확인 시트는 누를 수 있는 개시 카드가 라우팅 확인을 요구하는 동안만 선다 — 그새 다른 곳에서 개시했거나 막혔으면 닫는다.
   const reviewing = actions?.commence && !actions.commence.reason && actions.commence.review.length > 0 ? actions.commence.review : null;
   const canReview = reviewing !== null;
@@ -437,11 +437,11 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     return items;
   }, [act, t]);
   // 목표 화면의 상태 한 낱말(막대 보조 줄) — 시작 전 목표는 홈 행의 「시작 전」에서 이어지고, 보관된 끝난 목표는 읽기 전용임을 말한다.
-  const fresh = !!objective && !objective.done && !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
+  const fresh = !!objective && !objective.done && !objective.awaitingReview && !objective.commander.started && !objectiveRecords.has(objective.id);
   const stateWord = !objective ? null : fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : null;
-  // 시작 전 목표(Operation 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
+  // 시작 전 목표(Objective 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
   const settingsHost = useMobileSettingsHost();
-  const tidy = !embedded && !!objective && !objective.hasOperation && !objective.done;
+  const tidy = !embedded && !!objective && !objective.hasSession && !objective.done;
   // 완료한 목표는 보관하지 않으므로 사람이 따로 보관할 길을 ⋮ 에 둔다 — 이름 변경은 서버가 완료 목표에 거절하므로 「보관」만. 이미 보관된(「완료 N」에서 연) 목표는 뺀다.
   const archivable = tidy || (!embedded && !!objective?.done && !objective.archived);
   const rename = useCallback(() => {
@@ -497,13 +497,13 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const flow = embedded ? {} : { "data-mobile-chrome": "flow" };
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} {...flow} />;
   const locale = language === "ko" ? "ko" : "en";
-  const editable = !objective.done && !WORKING.has(activityOf(operations, objective.id));
+  const editable = !objective.done && !WORKING.has(activityOf(objectiveRecords, objective.id));
   const patch = (value: Record<string, unknown>) => { void post(api, "/objective/patch", { objectiveId: objective.id, patch: value, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); };
   const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
   const pickTab = (next: DetailTab) => patchObjectiveView(theaterId, () => ({ detailTab: next }));
-  // 대화 정보 화면은 호스트의 한 줄 탭을 쓴다. Operation 없는 단독 목표 화면만 자기 탭을 가진다.
+  // 대화 정보 화면은 호스트의 한 줄 탭을 쓴다. Objective 없는 단독 목표 화면만 자기 탭을 가진다.
   const tabBar = !embedded ? (
     <div className="objectives-m-tabbar">
       <div ref={tabsRef} className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
@@ -545,7 +545,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
         ) : null}
         {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다.
             지금 할 일(결정 요청 답하기·넘김 답하기·개시 카드)은 탭과 무관하게 탭 칸 맨 위에 선다. 결정 내역은 목표 탭 맨 아래다. */}
-        <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
+        <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
         <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         {tab === "goal" ? <>
@@ -553,7 +553,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
           <DecisionHistory objective={objective} t={t} />
         </> : tab === "crew" ? <>
-          <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
+          <CrewSection objective={objective} objectiveRecords={objectiveRecords} t={t} crew={crew} />
           <SubagentsSection objective={objective} t={t} crew={crew} />
           {/* 임무 — 구성원 탭 맨 아래. 폰은 그래프 대신 글 목록이다 — 머리는 맡은 사람(구성원이 없으면 지휘관), 끝남은 줄 끝의 체크가 말한다. */}
           {objective.missions.length > 0 ? <>
@@ -563,7 +563,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
                 const member = mission.member ? objective.members.find((candidate) => candidate.id === mission.member) : undefined;
                 return (
                   <div key={mission.id} className={`objectives-m-row is-mission${mission.done ? " is-done" : ""}`}>
-                    {member ? <MemberMark objective={objective} member={member} operations={operations} /> : <CommanderMark objective={objective} operations={operations} />}
+                    {member ? <MemberMark objective={objective} member={member} objectiveRecords={objectiveRecords} /> : <CommanderMark objective={objective} objectiveRecords={objectiveRecords} />}
                     <span className="objectives-m-tx">{mission.text}</span>
                     {mission.done ? <span className="objectives-m-mission-done"><CheckIcon size={18} /></span> : null}
                   </div>
@@ -756,7 +756,7 @@ function FollowupSheet({ objective, finish, t, api, language, onClose }: {
 
 // ── 개시 ──
 
-/** 목표가 속한 Theater 의 호스트가 Operation 을 띄울 수 있는가 — 데스크톱 띠의 launchAvailable 과 같은 값. */
+/** 목표가 속한 Theater 의 호스트가 Objective 을 띄울 수 있는가 — 데스크톱 띠의 launchAvailable 과 같은 값. */
 const launchAvailableFor = (objectiveId: string): boolean =>
   readAllTheaters().find((state) => state.objectives.some((objective) => objective.id === objectiveId))?.launchAvailable ?? false;
 
@@ -866,7 +866,7 @@ function FollowupResults({ objective, t, language, api, say }: { readonly object
         language={language === "ko" ? "ko" : "en"}
         t={t}
         onRetry={(batchId, candidateId) => { void post(api, "/followup/retry", { objectiveId: objective.id, batchId, candidateId, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); }}
-        onOpenObjective={(operationId) => openObjectiveOnPhone(operationId, objective.theaterId)}
+        onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, objective.theaterId)}
       />
     </section>
   );
@@ -923,12 +923,12 @@ interface CrewActions {
 }
 
 /** 지휘관·구성원 묶음과 서브에이전트 묶음이 함께 쓰는 저장 경로 — 서브에이전트 저장 중 표시는 두 묶음이 같은 것을 본다. */
-function useCrewActions(objective: Objective | null, operations: OperationIndex, t: T, api: PaneContext["api"], language: ConsoleLocale, say: (text: string) => void): CrewActions {
+function useCrewActions(objective: Objective | null, objectiveRecords: ObjectiveIndex, t: T, api: PaneContext["api"], language: ConsoleLocale, say: (text: string) => void): CrewActions {
   const [saving, setSaving] = useState<ReadonlySet<string>>(new Set());
   const objectiveId = objective?.id ?? "";
   const send = (path: string, body: Record<string, unknown>) => post<{ objective?: Objective }>(api, path, { objectiveId, ...body, language });
   const fail = (error: unknown) => say(launchFailure(t, error));
-  const memberState = (member: ObjectiveMember) => (member.sessionName !== null ? activityOf(operations, member.id) : "closed");
+  const memberState = (member: ObjectiveMember) => (member.sessionName !== null ? activityOf(objectiveRecords, member.id) : "closed");
   const toggleSubagents = (member: ObjectiveMember) => {
     if (saving.has(member.id)) return;
     const live = MEMBER_LIVE.has(memberState(member));
@@ -972,26 +972,26 @@ function CrewControls({ open, role, locked, lockedNote, note, t, children }: { r
 /**
  * 지휘관·구성원 — 호스트의 모바일 설정 묶음 한 장이 세션 진입과 모델·강도를 함께 진다. 행(글리프 · 이름 · 배지 / 세션 제목 / 값 칩 /
  * 예외 줄 · ›)을 누르면 그 세션이 열리고, 값 칩을 누르면 공유 선택기가 좌표 시트로 선다. 모델과 강도를 차례로 골라도 시트가 닫힐 때 한 번만
- * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 세션 판정은 지휘관 = Operation 이
+ * 저장한다(데스크톱 메뉴와 같은 확정 규칙). 구성원 전용 「라우팅」·「지휘관과 같게」는 시트 맨 위 묶음이다. 세션 판정은 지휘관 = Objective 이
  * 있거나 개시함, 구성원 = 세션 이름이 있음이다. 지휘관은 데스크톱과 같이 개시 전에만 바꾼다.
  */
-function CrewSection({ objective, operations, t, crew }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly crew: CrewActions }) {
+function CrewSection({ objective, objectiveRecords, t, crew }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex; readonly t: T; readonly crew: CrewActions }) {
   const rows = useLaunchRows();
   const touchable = !objective.done;
-  const commanderOperation = operations.get(objective.id);
-  const commanderState = ownActivityOf(operations, objective.id);
-  const commanderLocked = !touchable || objective.commander.started || COMMANDER_LIVE.has(commanderState) || WORKING.has(activityOf(operations, objective.id));
-  const commanderSession = !!commanderOperation || objective.commander.started;
+  const commanderObjective = objectiveRecords.get(objective.id);
+  const commanderState = ownActivityOf(objectiveRecords, objective.id);
+  const commanderLocked = !touchable || objective.commander.started || COMMANDER_LIVE.has(commanderState) || WORKING.has(activityOf(objectiveRecords, objective.id));
+  const commanderSession = !!commanderObjective || objective.commander.started;
   // 지휘관 제목이 목표 제목과 같으면 상단 막대가 이미 말한다.
-  const commanderTitle = commanderOperation && commanderOperation.title !== objective.title ? commanderOperation.title : undefined;
+  const commanderTitle = commanderObjective && commanderObjective.title !== objective.title ? commanderObjective.title : undefined;
   const commanderWord = memberActivityWord(commanderState, t);
   const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
   return (
     <SettingsCard title={t("objectives.mobile.crew")}>
-      <SettingsRow label={t("objectives.commander.title")} icon={<CommanderMark objective={objective} operations={operations} />}
+      <SettingsRow label={t("objectives.commander.title")} icon={<CommanderMark objective={objective} objectiveRecords={objectiveRecords} />}
         {...(commanderWord ? { badge: <span className="objectives-m-badge">{commanderWord}</span> } : {})}
         {...(commanderTitle ? { hint: commanderTitle } : {})}>
-        <CrewControls open={commanderSession ? () => focusOperation(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
+        <CrewControls open={commanderSession ? () => focusObjective(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
           {...(commanderLocked && touchable ? { lockedNote: t("objectives.commander.locked") } : {})}>
           <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={commanderLocked}
             onChange={(next) => { crew.send("/objective/patch", { patch: { launch: next } }).catch(crew.fail); }} />
@@ -1001,12 +1001,12 @@ function CrewSection({ objective, operations, t, crew }: { readonly objective: O
         const state = crew.memberState(member);
         const badge = memberStatus(member, state, objective, t);
         const session = member.sessionName !== null;
-        const title = session ? operations.get(member.id)?.title ?? member.sessionName ?? undefined : undefined;
+        const title = session ? objectiveRecords.get(member.id)?.title ?? member.sessionName ?? undefined : undefined;
         return (
-          <SettingsRow key={member.id} label={member.role} icon={<MemberMark objective={objective} member={member} operations={operations} />}
+          <SettingsRow key={member.id} label={member.role} icon={<MemberMark objective={objective} member={member} objectiveRecords={objectiveRecords} />}
             badge={<span className={`objectives-m-badge${badge.failed ? " is-failed" : ""}`}>{badge.text}{memberSubagents(member) ? t("objectives.members.subagentsMark") : ""}</span>}
             {...(title ? { hint: title } : {})}>
-            <CrewControls open={session ? () => focusOperation(member.id) : null} role={member.role} locked={!touchable} note={memberNote(member, state, rows, t)} t={t}>
+            <CrewControls open={session ? () => focusObjective(member.id) : null} role={member.role} locked={!touchable} note={memberNote(member, state, rows, t)} t={t}>
               <MemberLaunchControl t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
                 onPickLaunched={(launch) => patchMember(member, launch)}
                 onPatchLaunch={(launch) => patchMember(member, launch)}
@@ -1162,7 +1162,7 @@ function DecisionHistory({ objective, t }: { readonly objective: Objective; read
   );
 }
 
-function DecisionSection({ objective, operations, t, language, api, say }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+function DecisionSection({ objective, objectiveRecords, t, language, api, say }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   const request = objective.done ? null : objective.decisionRequest;
   const [draftMap, setDraftMap] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
@@ -1185,7 +1185,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
       <>
         <h2 className="objectives-m-glab">{t("objectives.decision.request")}</h2>
         <section className="objectives-m-ucard">
-          <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{t("objectives.mobile.decision.sent")}</div>
+          <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{t("objectives.mobile.decision.sent")}</div>
           {sent.map((decision) => (
             <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision)}</span></p>
           ))}
@@ -1256,7 +1256,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.autonomy.note.answering")}</span> : null}</div>
+              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.autonomy.note.answering")}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.autonomy.decisionHint")}</p> : null}
               {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
               {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}

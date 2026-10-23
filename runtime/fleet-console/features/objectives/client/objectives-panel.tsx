@@ -20,7 +20,7 @@ import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { canOpenLedger, toggleLedger, useLedgerOperation, openNewOperation, hasDecisionRequest, focusOperation, followActiveOperation, listedOperationSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { ObjectiveSwitcher } from "./switcher.js";
@@ -52,7 +52,7 @@ export interface ObjectiveContext {
 type T = Translate<ObjectiveMessageKey>;
 
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
-/** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
+/** 브리핑 — 봉인된 목표 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
 
 /**
@@ -127,7 +127,7 @@ const TridentRouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="cur
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
 const WORKING = new Set(["running"]);
-/** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Operation 도 진행 중으로 선다. */
+/** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
 const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
@@ -138,7 +138,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const language = ctx.language === "ko" ? "ko" : "en";
   const theaterId = useObjectiveDisplayTheater(ctx.theaterId);
   const state = useObjectiveTheater(theaterId);
-  const operations = useOperationSummaries();
+  const objectiveRecords = useObjectiveSummaries();
   const reveal = useReveal();
   // 보기 상태(고른 목표 · 상세 구획 접힘)는 Theater 별 모듈 스토어에 산다 — 표면을 닫았다 열어도 보던 자리 그대로.
   const view = useObjectiveView(theaterId);
@@ -152,7 +152,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const pickObjective = useCallback((next: string | null) => {
     setSelected(next);
     const picked = next === null ? undefined : state.objectives.find((objective) => objective.id === next);
-    if (picked?.done && !listedOperationSummaries().some((summary) => summary.id === picked.id)) openFreshConversation(picked.id, picked.theaterId);
+    if (picked?.done && !listedObjectiveSummaries().some((summary) => summary.id === picked.id)) openFreshConversation(picked.id, picked.theaterId);
   }, [setSelected, state.objectives]);
   const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
@@ -168,8 +168,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다 — 열리고 닫힐 때 줄이 다시 읽게 한다(닫힘은 자리 상태가 바뀐 뒤에).
   useEffect(() => {
     notifyObjectiveSurface();
-    // 사이드바가 활성으로 보이는 Operation 의 목표로 연다 — 줄·팔레트가 가리킨 목표(reveal)가 있으면 그쪽이 앞선다.
-    followActiveOperation();
+    // 사이드바가 활성으로 보이는 Objective 의 목표로 연다 — 줄·팔레트가 가리킨 목표(reveal)가 있으면 그쪽이 앞선다.
+    followActiveObjective();
     return () => { setTimeout(notifyObjectiveSurface, 0); };
   }, []);
   // 목표 상세는 대화 중심 화면의 우측 레일에만 선다 — 머리(제목·완료·보관·작업 줄)는 가운데 대화의 머리와 레일 캡션이 맡는다.
@@ -193,22 +193,22 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     try { return await post<R>(ctx.api, path, { ...body, language }); } catch (error) { fail(error); return null; }
   }, [ctx.api, fail, language]);
 
-  const operationOf = useCallback((operationId: string) => operations.find((candidate) => candidate.id === operationId) ?? null, [operations]);
-  const operationTitle = useCallback((operationId: string) => operationOf(operationId)?.title ?? "—", [operationOf]);
+  const objectiveRecordOf = useCallback((objectiveId: string) => objectiveRecords.find((candidate) => candidate.id === objectiveId) ?? null, [objectiveRecords]);
+  const objectiveRecordTitle = useCallback((objectiveId: string) => objectiveRecordOf(objectiveId)?.title ?? "—", [objectiveRecordOf]);
   // 턴 뒤에 남은 백그라운드 작업(background)은 화면에서 진행 중(running)이다 — 활동을 읽는 이 두 곳에서 접는다.
-  const operationState = useCallback((operationId: string): string => shownActivity(operationOf(operationId)?.activity ?? "closed"), [operationOf]);
+  const objectiveRecordState = useCallback((objectiveId: string): string => shownActivity(objectiveRecordOf(objectiveId)?.activity ?? "closed"), [objectiveRecordOf]);
   // 지휘관 자신의 활동 — 코어는 구성원의 대기·실행을 지휘관 활동으로 끌어올린다. 하단 한 자리는 지휘관 자신의 대기·실행과
-  // 구성원의 것을 가려야 하므로 끌어올리기 전 값(ownActivity)을 읽는다. 구성원·부모 아닌 Operation 은 activity 와 같다.
-  const operationOwnState = useCallback((operationId: string): string => { const operation = operationOf(operationId); return operation ? shownActivity(operation.ownActivity ?? operation.activity) : "closed"; }, [operationOf]);
+  // 구성원의 것을 가려야 하므로 끌어올리기 전 값(ownActivity)을 읽는다. 구성원·부모 아닌 Objective 은 activity 와 같다.
+  const objectiveRecordOwnState = useCallback((objectiveId: string): string => { const objectiveRecord = objectiveRecordOf(objectiveId); return objectiveRecord ? shownActivity(objectiveRecord.ownActivity ?? objectiveRecord.activity) : "closed"; }, [objectiveRecordOf]);
   // 항목의 활동 = 지휘관과 담당 가운데 가장 급한 것 — 호스트가 캔버스에서 지휘관을 그리는 셈법과 같다.
   const URGENCY: Record<string, number> = { awaiting: 0, running: 1, idle: 3, ended: 4, unknown: 5 };
   const objectiveActivity = useCallback((objective: Objective) => {
-    const ids = [objective.id, ...objective.missions.flatMap((mission) => (mission.operationId ? [mission.operationId] : []))];
-    return ids.map((id) => operationState(id)).filter((state) => state !== "closed").reduce((top, state) => ((URGENCY[state] ?? 9) < (URGENCY[top] ?? 9) ? state : top), "unknown" as ReturnType<typeof operationState>);
-  }, [operationState]);
+    const ids = [objective.id, ...objective.missions.flatMap((mission) => (mission.objectiveId ? [mission.objectiveId] : []))];
+    return ids.map((id) => objectiveRecordState(id)).filter((state) => state !== "closed").reduce((top, state) => ((URGENCY[state] ?? 9) < (URGENCY[top] ?? 9) ? state : top), "unknown" as ReturnType<typeof objectiveRecordState>);
+  }, [objectiveRecordState]);
   // 지휘관이 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남는다(서버도 같은 기준으로 거절한다).
   // 담당의 활동은 잠그지 않고, 지휘관이 사람을 기다리는(awaiting) 동안도 잠그지 않는다 — 그때는 사람이 손을 대야 한다.
-  const isBusy = useCallback((objective: Objective): boolean => !objective.done && WORKING.has(operationState(objective.id)), [operationState]);
+  const isBusy = useCallback((objective: Objective): boolean => !objective.done && WORKING.has(objectiveRecordState(objective.id)), [objectiveRecordState]);
   // 하단 한 자리의 행동 — 실패를 삼키지 않고 코드를 던진다(띠가 원인 한 줄을 보이고 글을 지킨다).
   const request = useCallback((path: string, body: Record<string, unknown>) => post<unknown>(ctx.api, path, { ...body, language }), [ctx.api, language]);
   const modeLabel = (mode: CommanderMode) => t(mode === "direct" ? "objectives.mode.direct" : mode === "coordinate" ? "objectives.mode.coordinate" : "objectives.mode.mixed");
@@ -216,7 +216,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   /** 전환 목록 줄의 글리프 — 사이드바 줄과 같은 판정: 검토 대기 · 시작 전 · 묶음에서 가장 급한 활동. */
   const glyphOf = (objective: Objective): { state: StatusGlyphState; label: string } => {
     if (objective.awaitingReview) return { state: "review", label: t("objectives.objectives.review") };
-    if (!objective.commander.started && !operationOf(objective.id)) return { state: "fresh", label: t("objectives.state.fresh") };
+    if (!objective.commander.started && !objectiveRecordOf(objective.id)) return { state: "fresh", label: t("objectives.state.fresh") };
     const activity = objectiveActivity(objective);
     return activity === "awaiting" || activity === "running" || activity === "idle"
       ? { state: activity, label: stateLabel(activity) }
@@ -244,7 +244,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       // 후보 칸은 그 목표의 구성원 채팅 입력창 위에 선다 — 가운데 칸이 다른 대화면 그 지휘관 대화부터 연다. 초점은 칸이 서며 스스로 잡는다.
       requestFollowupFocus(target.id);
       setFollowupOpen(target.id, true);
-      if (listedOperationSummaries().some((summary) => summary.id === target.id)) focusOperation(target.id);
+      if (listedObjectiveSummaries().some((summary) => summary.id === target.id)) focusObjective(target.id);
     } else if (n > 0 && followupGate(target) === "criteria") {
       // 후보 목록은 탭에 두지 않는다 — 기준 제안이 고르기를 막고 있으면 그 제안이 선 목표 탭을 연다.
       patchObjectiveView(theaterId, () => ({ detailTab: "goal" }));
@@ -252,8 +252,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     // 스티어링이 먼저이거나 아직 고를 때가 아니면(openTip) 할 일은 구성원 채팅 입력창 위 제안 줄에 선다 — 다른 번들의 DOM 이라 초점을 옮기지 않는다.
   };
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 없는 id(지워진 원본 등)는 두지 않는다. */
-  const openObjectiveDetail = (operationId: string) => {
-    if (state.objectives.some((entry) => entry.id === operationId)) setSelected(operationId);
+  const openObjectiveDetail = (objectiveId: string) => {
+    if (state.objectives.some((entry) => entry.id === objectiveId)) setSelected(objectiveId);
   };
   const toggleEdge = async (objective: Objective, from: string, to: string, linked?: boolean) => {
     const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to, linked });
@@ -262,7 +262,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     toast(t(result.linked ? "objectives.toast.linkedEdge" : "objectives.toast.cutEdge", { from: index(from), to: index(to) }));
   };
 
-  // 사이드바 줄·팔레트·캡션에서 온 "이 항목으로" — 이 Theater 의 항목이면 고르고 임무를 잠깐 강조한다. 시작 전 목표(Operation 없음)도 연다.
+  // 사이드바 줄·팔레트·캡션에서 온 "이 항목으로" — 이 Theater 의 항목이면 고르고 임무를 잠깐 강조한다. 시작 전 목표(Objective 없음)도 연다.
   // 검토 대기 글리프는 후속 선택으로 바로 들어간다.
   useEffect(() => {
     if (!reveal) return;
@@ -288,11 +288,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       groups={state.groups}
       selected={selected}
       glyphOf={glyphOf}
-      hasOperation={(objectiveId) => operationOf(objectiveId) !== null}
+      hasSession={(objectiveId) => objectiveRecordOf(objectiveId) !== null}
       onPick={pickObjective}
       open={switcherOpen}
       onOpenChange={setSwitcherOpen}
-      onNewOperation={openNewOperation}
+      onNewObjective={openNewObjective}
     />
   );
   const noObjectives = state.loaded && !state.objectives.some((objective) => !objective.removed);
@@ -310,7 +310,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           <h5>{t("objectives.none.title")}</h5>
           <p>{t("objectives.none.body")}</p>
           <div className="objectives-pick-shortcuts">
-            <button type="button" className="objectives-new-operation" onClick={openNewOperation}>{t("objectives.none.newOperation")}</button>
+            <button type="button" className="objectives-new-objectiveRecord" onClick={openNewObjective}>{t("objectives.none.newObjective")}</button>
           </div>
         </div>
       </div>
@@ -349,9 +349,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         toast={toast}
         modeLabel={modeLabel}
         stateLabel={stateLabel}
-        operationTitle={operationTitle}
-        operationState={operationState}
-        operationOwnState={operationOwnState}
+        objectiveRecordTitle={objectiveRecordTitle}
+        objectiveRecordState={objectiveRecordState}
+        objectiveRecordOwnState={objectiveRecordOwnState}
         busy={isBusy(current)}
         request={request}
         tab={detailTabOf(view.detailTab)}
@@ -387,32 +387,32 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
 /** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
 
-/** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
-function MemberMark({ objective, member, operationState, still, size }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean; size?: number }) {
-  return <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? operationState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
+/** 구성원 표식 — 그 구성원 Objective 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
+function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
+  return <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? objectiveRecordState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
 }
 
 /**
- * 지휘관 표식 — 목표 Operation 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
- * 기준이라 구성원 활동을 끌어올린 값(`operationState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
+ * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
+ * 기준이라 구성원 활동을 끌어올린 값(`objectiveRecordState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
  */
-function CommanderMark({ objective, operationState, size }: { objective: Objective; operationState: (operationId: string) => string; size?: number }) {
-  return <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, operationState(objective.id))} {...(size ? { size } : {})} />;
+function CommanderMark({ objective, objectiveRecordState, size }: { objective: Objective; objectiveRecordState: (objectiveId: string) => string; size?: number }) {
+  return <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, objectiveRecordState(objective.id))} {...(size ? { size } : {})} />;
 }
 
 /**
  * 원장 단추 — 표식을 누르면 그 참여자의 원장(가운데 칸의 읽기 전용 기록)이 열리고, 연 참여자를 다시 누르면 대화로 돌아간다. 호스트 「구성원」
  * 탭의 줄 누름과 같다. 아직 띄운 적 없는 참여자나 원장을 열 수 없는 호스트에서는 표식만 선다.
  */
-function LedgerMark({ rootId, operationId, name, open, available, t, children }: { rootId: string; operationId: string; name: string; open: boolean; available: boolean; t: T; children: ReactNode }) {
+function LedgerMark({ rootId, objectiveId, name, open, available, t, children }: { rootId: string; objectiveId: string; name: string; open: boolean; available: boolean; t: T; children: ReactNode }) {
   if (!available) return <>{children}</>;
   const label = open ? t("objectives.members.closeLedger") : t("objectives.members.openLedger", { name });
-  return <button type="button" className="objectives-member-ledger" aria-pressed={open} aria-label={label} title={label} onClick={() => toggleLedger(rootId, operationId)}>{children}</button>;
+  return <button type="button" className="objectives-member-ledger" aria-pressed={open} aria-label={label} title={label} onClick={() => toggleLedger(rootId, objectiveId)}>{children}</button>;
 }
 
 /** 구성원 탭의 명단 — 머리(셈·일괄 설정) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
-function MemberRoster({ objective, t, call, request, operationState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
-  const ledger = useLedgerOperation(objective.id);
+function MemberRoster({ objective, t, call, request, objectiveRecordState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; objectiveRecordState: DetailProps["objectiveRecordState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
+  const ledger = useLedgerObjective(objective.id);
   const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
@@ -565,7 +565,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
 
       // 실제로 값이 바뀐 구성원 중 실행 중인 세션에게만 안내 노출
       const changedLiveIds = changedMembers
-        .filter((member) => MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed"))
+        .filter((member) => MEMBER_LIVE.has(member.sessionName !== null ? objectiveRecordState(member.id) : "closed"))
         .map((member) => member.id);
 
       if (changedLiveIds.length > 0) showNotes(changedLiveIds);
@@ -636,8 +636,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     {lead}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
-      const state = member.sessionName !== null ? operationState(member.id) : "closed";
-      const launched = memberLaunched(member, operationState);
+      const state = member.sessionName !== null ? objectiveRecordState(member.id) : "closed";
+      const launched = memberLaunched(member, objectiveRecordState);
       const routedTag = memberRoutedTag(member, launched, t);
       const diagnostics = memberNotes(member, launched, t);
       const noteOf = (kind: (typeof diagnostics)[number]["kind"]) => diagnostics.find((note) => note.kind === kind);
@@ -654,8 +654,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       return (
         <div key={member.id} className="objectives-member-slot">
         <div className={`objectives-member${ledger === member.id ? " is-ledger" : ""}`}>
-          <LedgerMark rootId={objective.id} operationId={member.id} name={member.role} open={ledger === member.id} available={ledgerReady && state !== "closed"} t={t}>
-            <MemberMark objective={objective} member={member} operationState={operationState} still={false} size={28} />
+          <LedgerMark rootId={objective.id} objectiveId={member.id} name={member.role} open={ledger === member.id} available={ledgerReady && state !== "closed"} t={t}>
+            <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} still={false} size={28} />
           </LedgerMark>
           <div className="objectives-member-body">
             <span className="objectives-member-name">
@@ -751,10 +751,10 @@ interface DetailProps {
   readonly toast: (text: string, undo?: () => Promise<void>) => void;
   readonly modeLabel: (mode: CommanderMode) => string;
   readonly stateLabel: (state: string) => string;
-  readonly operationTitle: (operationId: string) => string;
-  readonly operationState: (operationId: string) => string;
+  readonly objectiveRecordTitle: (objectiveId: string) => string;
+  readonly objectiveRecordState: (objectiveId: string) => string;
   /** 끌어올리기 전 자기 활동 — 지휘관 자신의 대기·실행을 구성원 것과 가를 때. */
-  readonly operationOwnState: (operationId: string) => string;
+  readonly objectiveRecordOwnState: (objectiveId: string) => string;
   readonly busy: boolean;
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   /** 고른 탭 — Theater별 메모리 보기 상태에 하나로 남는다. */
@@ -771,7 +771,7 @@ interface DetailProps {
   readonly detailRef: RefObject<HTMLElement | null>;
   readonly onToggleEdge: (from: string, to: string, linked?: boolean) => Promise<void>;
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
-  readonly onOpenObjective: (operationId: string) => void;
+  readonly onOpenObjective: (objectiveId: string) => void;
 }
 
 /**
@@ -1265,7 +1265,7 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   return describeQuietMission(elapsed / 60_000, language);
 }
 
-function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective }: DetailProps) {
   const launchRows = useLaunchRows();
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
@@ -1288,7 +1288,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const mode = commanderMode(objective.missions);
   const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
-  const locked = objective.commander.started || ["idle", "running", "awaiting"].includes(operationOwnState(objective.id));
+  const locked = objective.commander.started || ["idle", "running", "awaiting"].includes(objectiveRecordOwnState(objective.id));
   const editable = !objective.done && !busy;
   // 지휘관이 일하는 동안에도 받는 편집 — 임무 추가, 끝나지 않은 임무의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
   const touchable = !objective.done;
@@ -1343,7 +1343,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   // 결정 — 질문·기록에 붙은 구성원 표식과, 그 세션으로 가는 길(세션이 떠 있을 때만). 임무 줄의 결정 표식이 가리킨 결정은 잠시 비춘다.
   const memberMarkOf = (memberId: string) => {
     const member = objective.members.find((candidate) => candidate.id === memberId);
-    return member ? { mark: <MemberMark objective={objective} member={member} operationState={operationState} />, role: member.role, live: member.sessionName !== null && operationState(member.id) !== "closed" } : null;
+    return member ? { mark: <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} />, role: member.role, live: member.sessionName !== null && objectiveRecordState(member.id) !== "closed" } : null;
   };
   const [decisionFlash, setDecisionFlash] = useState<string | null>(null);
   useEffect(() => { setDecisionFlash(null); }, [objective.id]);
@@ -1426,12 +1426,12 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     return t("objectives.members.idle");
   };
   // 지휘관 실행 설정 — 구성원 탭 첫 줄, 구성원과 같은 줄 문법(몽글·이름·설명 | 모델·강도·상태). 보기는 채팅으로 고정이라 고르지 않는다.
-  const commanderState = operationOwnState(objective.id);
-  const ledger = useLedgerOperation(objective.id);
+  const commanderState = objectiveRecordOwnState(objective.id);
+  const ledger = useLedgerObjective(objective.id);
   const commanderRow = (
     <div className={`objectives-member is-commander${ledger === objective.id ? " is-ledger" : ""}`}>
-      <LedgerMark rootId={objective.id} operationId={objective.id} name={t("objectives.commander.title")} open={ledger === objective.id} available={canOpenLedger() && commanderState !== "closed"} t={t}>
-        <CommanderMark objective={objective} operationState={operationState} size={28} />
+      <LedgerMark rootId={objective.id} objectiveId={objective.id} name={t("objectives.commander.title")} open={ledger === objective.id} available={canOpenLedger() && commanderState !== "closed"} t={t}>
+        <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} size={28} />
       </LedgerMark>
       <div className="objectives-member-body">
         <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span></span>
@@ -1445,7 +1445,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   );
   const sCrew = (
       <div className="objectives-group objectives-crew-group">
-        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} lead={commanderRow} />
+        <MemberRoster objective={objective} t={t} call={call} request={request} objectiveRecordState={objectiveRecordState} rows={launchRows} touchable={touchable} lead={commanderRow} />
       </div>
   );
   const sOrigin = (<>
@@ -1544,14 +1544,14 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
       {!allowed ? <p className="objectives-popup-hint">{t("objectives.graph.locked")}</p> : null}
       {!mission.done && state === "blocked" ? <p className="objectives-popup-hint">{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter(id => !objective.missions.find(m => m.id === id)?.done).map(numberOf).join("·") })}</p> : null}
-      <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.owner")}<span title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member?.role ?? t("objectives.graph.commander")} · {stateLabel(operationOwnState(member?.id ?? objective.id))}</span></div>
+      <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.owner")}<span title={mission.objectiveId ? objectiveRecordTitle(mission.objectiveId) : undefined}>{member?.role ?? t("objectives.graph.commander")} · {stateLabel(objectiveRecordOwnState(member?.id ?? objective.id))}</span></div>
         <div className="objectives-popup-members" role="radiogroup" aria-label={t("objectives.missions.setMember")} onKeyDown={event => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
           const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")], at = options.indexOf(document.activeElement as HTMLButtonElement);
           if (!options.length) return;
           event.preventDefault(); const next = options[(at + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) + options.length) % options.length]!; next.focus(); next.click();
         }}>
-          {[...objective.members, null].map(option => <button key={option?.id ?? "commander"} type="button" role="radio" aria-checked={mission.member === (option?.id ?? null)} tabIndex={mission.member === (option?.id ?? null) ? 0 : -1} disabled={!allowed} onClick={() => patch({ member: option?.id ?? null })}>{option ? <MemberMark objective={objective} member={option} operationState={operationState} /> : <CommanderMark objective={objective} operationState={operationState} />}{option?.role ?? t("objectives.graph.commander")}</button>)}
+          {[...objective.members, null].map(option => <button key={option?.id ?? "commander"} type="button" role="radio" aria-checked={mission.member === (option?.id ?? null)} tabIndex={mission.member === (option?.id ?? null) ? 0 : -1} disabled={!allowed} onClick={() => patch({ member: option?.id ?? null })}>{option ? <MemberMark objective={objective} member={option} objectiveRecordState={objectiveRecordState} /> : <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} />}{option?.role ?? t("objectives.graph.commander")}</button>)}
         </div>
         {/* 임무 목록이 하던 담당 쪽 일 — 새 구성원을 만들어 맡기기, 조용한 임무, 발주·수신 흔적(본문은 보드에 없다). */}
         {allowed && !mission.done ? <NewMemberAssign key={mission.id} t={t} onCreate={async (role) => { const result = await call<{ objective: Objective }>("/member/add", { objectiveId: objective.id, member: { role } }); const created = result?.objective.members.at(-1); return created ? !!(await call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member: created.id } })) : false; }} /> : null}
@@ -1569,7 +1569,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       {!editable ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
     </>;
   };
-  const missionStates = graphMissionStates(objective, operationOwnState);
+  const missionStates = graphMissionStates(objective, objectiveRecordOwnState);
   const countOrder: readonly MissionState[] = ["awaiting", "running", "ready", "blocked", "unplaced", "done"];
   const statusCounts = countOrder.map(state => ({ state, count: [...missionStates.values()].filter(value => value === state).length })).filter(entry => entry.count > 0);
   const renderCounts = (wide = false) => <span className={`objectives-graph-counts${wide ? " is-wide" : ""}`} role="img" aria-label={statusCounts.map(({ state, count }) => `${t(`objectives.graph.state.${state}`)} ${count}`).join(", ")}>{statusCounts.map(({ state, count }) => <span className={`objectives-popup-state is-${state}`} key={state} title={`${t(`objectives.graph.state.${state}`)} ${count}`}><i aria-hidden="true" /><span className="objectives-graph-count-label">{t(`objectives.graph.state.${state}`)}</span><b>{count}</b></span>)}</span>;
@@ -1577,12 +1577,12 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const missionAttention = awaitingMissions.map(mission => {
     const owner = objective.members.find(member => member.id === mission.member);
     const ownerName = owner?.role ?? t("objectives.graph.commander");
-    return <div key={mission.id} className="objectives-graph-attention" role="status">{owner ? <MemberMark objective={objective} member={owner} operationState={operationState} /> : <CommanderMark objective={objective} operationState={operationState} />}<span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusOperation(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
+    return <div key={mission.id} className="objectives-graph-attention" role="status">{owner ? <MemberMark objective={objective} member={owner} objectiveRecordState={objectiveRecordState} /> : <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} />}<span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusObjective(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
   });
   const ownerMark = (memberId: string | null) => {
-    if (!memberId) return <CommanderMark objective={objective} operationState={operationState} />;
+    if (!memberId) return <CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} />;
     const member = objective.members.find((candidate) => candidate.id === memberId);
-    return member ? <MemberMark objective={objective} member={member} operationState={operationState} /> : null;
+    return member ? <MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} /> : null;
   };
   const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation };
   const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {

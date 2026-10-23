@@ -45,7 +45,7 @@ export interface AgentSession {
   readonly effort?: string;
   readonly sessionName?: string;
   readonly disableSubagents?: boolean;
-  /** 이 Operation의 Claude 세션은 auto-memory를 끄고 뜬다. 태어날 때 정해지고 재개·재기동이 그대로 따른다. */
+  /** 이 Objective의 Claude 세션은 auto-memory를 끄고 뜬다. 태어날 때 정해지고 재개·재기동이 그대로 따른다. */
   readonly disableAutoMemory?: boolean;
   readonly id?: string;
   readonly transcriptPath?: string;
@@ -58,7 +58,7 @@ export interface CapturedAgentSession extends AgentSession {
   readonly capturedAt: string;
 }
 
-export interface AgentDurableOperation {
+export interface AgentDurableObjective {
   readonly sessionId: string;
   readonly theaterId: string;
   readonly cwd: string;
@@ -70,7 +70,7 @@ export interface AgentDurableOperation {
 }
 
 /**
- * Operation이 지금 서 있는 자리 — 브라우저 DTO용 투영이다. 절대 경로는 여기 오지 않는다:
+ * Objective이 지금 서 있는 자리 — 브라우저 DTO용 투영이다. 절대 경로는 여기 오지 않는다:
  * `folder`는 Theater 루트 기준 상대 경로(루트면 null)이고, Theater 밖이면 basename 하나만 남기고
  * `outside`로 표식한다. `branch`는 git이 아니거나 읽지 못하면 null이다.
  */
@@ -84,7 +84,7 @@ export interface AgentTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
-  /** 실험 기능(Operation 위치 표시)이 켜진 동안만 실린다. */
+  /** 실험 기능(Objective 위치 표시)이 켜진 동안만 실린다. */
   readonly workspace?: AgentSessionWorkspace;
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
@@ -105,7 +105,7 @@ export interface AgentTerminalSessionInfo {
   readonly chatActive?: boolean;
   /**
    * Chat 턴이 도는 동안 지금 하는 일의 계열. 계열이 바뀔 때만, 최소 간격을 두고 바뀐다. 턴이 닫히거나 모르는 도구면 없다.
-   * 활동축(`modelActivity` 등)을 바꾸지 않는 표시용 사실이다 — 플러그인 계약 `OperationRuntimeState` 에는 싣지 않는다.
+   * 활동축(`modelActivity` 등)을 바꾸지 않는 표시용 사실이다 — 플러그인 계약 `ObjectiveRuntimeState` 에는 싣지 않는다.
    */
   readonly step?: AgentWorkStep;
   readonly createdAt: number;

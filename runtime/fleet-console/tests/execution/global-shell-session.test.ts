@@ -12,35 +12,35 @@ import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/exe
 import type { TerminalLaunchResolver, TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
- * Shell은 Operation이 아니라 대화마다 하나씩 붙는 Console 표면이다. 이 파일이 지키는 것은 세 가지다 —
- * 세션 키가 Operation id가 아니라 대화 키(없으면 기본 상수)라는 것, 대화마다 PTY가 따로라 한 대화의 닫기가
+ * Shell은 Objective이 아니라 대화마다 하나씩 붙는 Console 표면이다. 이 파일이 지키는 것은 세 가지다 —
+ * 세션 키가 Objective id가 아니라 대화 키(없으면 기본 상수)라는 것, 대화마다 PTY가 따로라 한 대화의 닫기가
  * 다른 대화의 Shell을 끝내지 않는다는 것, 그리고 cwd가 첫 기동에 못 박혀 사용자가 끝낼 때까지 움직이지 않는다는 것.
  */
 describe("conversation Shell sessions", () => {
-  it("keys the PTY on a console-wide constant rather than an Operation id", async () => {
+  it("keys the PTY on a console-wide constant rather than an Objective id", async () => {
     const { call, issued } = mount();
 
     await call({ theaterId: "theater-a" });
 
     expect(issued[0]!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
-    expect(issued[0]!.operationType).toBe("shell");
+    expect(issued[0]!.objectiveRecordType).toBe("shell");
   });
 
   it("keeps one PTY per conversation and ends only the closed conversation's Shell", async () => {
     const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
     const { call, issued, del, terminated } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
 
-    await call({ shell: "operation:a", cwd: { theaterId: "theater-a" } });
-    await call({ shell: "operation:b", cwd: { theaterId: "theater-b" } });
+    await call({ shell: "objective:a", cwd: { theaterId: "theater-a" } });
+    await call({ shell: "objective:b", cwd: { theaterId: "theater-b" } });
     // 다른 대화에 다녀와 같은 대화의 Shell을 다시 붙여도 같은 PTY·같은 발밑이다.
-    await call({ shell: "operation:a", cwd: { theaterId: "theater-b" } });
+    await call({ shell: "objective:a", cwd: { theaterId: "theater-b" } });
 
     const [a, b, again] = issued;
     expect(a!.sessionId).not.toBe(b!.sessionId);
     expect(again!.sessionId).toBe(a!.sessionId);
     expect([a!.cwd, b!.cwd, again!.cwd]).toEqual([realpathSync(process.cwd()), realpathSync(os.homedir()), realpathSync(process.cwd())]);
 
-    await del("operation:a");
+    await del("objective:a");
     expect(terminated).toEqual([a!.sessionId]);
   });
 
@@ -247,7 +247,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     // 전역 Shell의 PTY가 뜨는 순간 — 등록된 launch를 실제로 지나게 해 셸 이름과 세대를 정하게 한다.
     launch: async (cwd: string) => {
       if (!launchResolver) throw new Error("shell launch resolver was not registered");
-      return launchResolver(cwd, { sessionId: GLOBAL_SHELL_SESSION_ID, operationType: "shell" });
+      return launchResolver(cwd, { sessionId: GLOBAL_SHELL_SESSION_ID, objectiveRecordType: "shell" });
     },
     openAt: (body: Record<string, unknown>) => invoke("shell/open-at", "POST", body),
     restartAt: (body: Record<string, unknown>) => invoke("shell/restart-at", "POST", body),
@@ -259,7 +259,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
 }
 
 /**
- * cwd 폴백은 payload에 cwd가 없는 Operation을 Theater 경로로 구제하기 위한 것이다.
+ * cwd 폴백은 payload에 cwd가 없는 Objective을 Theater 경로로 구제하기 위한 것이다.
  * `readPayloadString`이 없는 키에 빈 문자열을 돌려주므로 `??`로는 절대 넘어가지 않았고,
- * 그래서 cwd가 찍히지 않은 agent Operation은 티켓을 영영 받지 못했다.
+ * 그래서 cwd가 찍히지 않은 agent Objective은 티켓을 영영 받지 못했다.
  */

@@ -4,7 +4,7 @@ import { DESKTOP_SHELL_API_CATALOG } from "../shell/desktop-contract.js";
 import { DESKTOP_SCREEN_PERMISSION_API_CATALOG, DESKTOP_SHELL_UPDATE_API_CATALOG, DESKTOP_THEME_API_CATALOG, DESKTOP_UPDATE_API_CATALOG, DESKTOP_WINDOW_COMMAND_API_CATALOG } from "../shell/desktop-contract.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { SETTINGS_DOCUMENT_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
-import { OPERATIONS_API_CATALOG } from "../../../features/execution/host/operations/operations-domain.js";
+import { OBJECTIVE_RECORDS_API_CATALOG } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { AVATARS_API_CATALOG } from "../../../features/workspace/host/avatars.js";
 import { CONVERSATION_WORKBENCH_API_CATALOG } from "../../../features/workspace/host/conversation-workbench.js";
 import { SERVER_API_CATALOG } from "../bootstrap/server.js";
@@ -30,7 +30,7 @@ export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): 
     ...GLOBAL_SETTINGS_API_CATALOG,
     ...SETTINGS_DOCUMENT_API_CATALOG,
     ...SYSTEM_FONTS_API_CATALOG,
-    ...OPERATIONS_API_CATALOG,
+    ...OBJECTIVE_RECORDS_API_CATALOG,
     ...AVATARS_API_CATALOG,
     ...CONVERSATION_WORKBENCH_API_CATALOG,
     ...extraEntries,

@@ -14,9 +14,9 @@ export interface BrowserPanelSnapshot {
   readonly busy: boolean;
   /** 지금 이 Console 에서 브라우저를 열 수 있는가 — 아니면 캡션의 문(새 탭·뷰포트)도 닫힌다. */
   readonly available: boolean;
-  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션 — 캡션의 표식이 이것을 말한다. */
+  /** 이 Objective 이 쓰는 영속 프로필. `null` 이면 임시 세션 — 캡션의 표식이 이것을 말한다. */
   readonly profile: string | null;
-  /** 새 Operation 이 시작하는 세션 — 메뉴의 「기본」 표식이 서는 행. */
+  /** 새 Objective 이 시작하는 세션 — 메뉴의 「기본」 표식이 서는 행. */
   readonly defaultProfile: string | null;
   readonly actions: {
     readonly selectTab: (tabId: string) => void;
@@ -26,7 +26,7 @@ export interface BrowserPanelSnapshot {
     readonly setViewport: (preset: "responsive" | "mobile" | "tablet") => void;
     /** 세션을 바꾼다. 열린 탭이 있으면 패널이 먼저 확인을 받는다 — 세션은 뷰에 바꿔 끼울 수 없다. */
     readonly chooseProfile: (profile: string | null) => void;
-    /** 새 Operation 의 기본 세션을 정한다. 이 Operation 의 세션은 그대로다. */
+    /** 새 Objective 의 기본 세션을 정한다. 이 Objective 의 세션은 그대로다. */
     readonly setDefaultProfile: (profile: string | null) => void;
     readonly openClearProfile: () => void;
   };
@@ -35,18 +35,18 @@ export interface BrowserPanelSnapshot {
 const snapshots = new Map<string, BrowserPanelSnapshot>();
 const listeners = new Map<string, Set<() => void>>();
 
-export function publishBrowserPanel(operationId: string, snapshot: BrowserPanelSnapshot | null): void {
-  if (snapshot) snapshots.set(operationId, snapshot); else snapshots.delete(operationId);
-  for (const listener of listeners.get(operationId) ?? []) listener();
+export function publishBrowserPanel(objectiveId: string, snapshot: BrowserPanelSnapshot | null): void {
+  if (snapshot) snapshots.set(objectiveId, snapshot); else snapshots.delete(objectiveId);
+  for (const listener of listeners.get(objectiveId) ?? []) listener();
 }
 
-export function useBrowserPanel(operationId: string): BrowserPanelSnapshot | null {
+export function useBrowserPanel(objectiveId: string): BrowserPanelSnapshot | null {
   const subscribe = React.useCallback((listener: () => void) => {
-    const set = listeners.get(operationId) ?? new Set<() => void>();
-    set.add(listener); listeners.set(operationId, set);
-    return () => { set.delete(listener); if (set.size === 0) listeners.delete(operationId); };
-  }, [operationId]);
-  return React.useSyncExternalStore(subscribe, () => snapshots.get(operationId) ?? null, () => null);
+    const set = listeners.get(objectiveId) ?? new Set<() => void>();
+    set.add(listener); listeners.set(objectiveId, set);
+    return () => { set.delete(listener); if (set.size === 0) listeners.delete(objectiveId); };
+  }, [objectiveId]);
+  return React.useSyncExternalStore(subscribe, () => snapshots.get(objectiveId) ?? null, () => null);
 }
 
 // ---------- 밖에서 온 주소 ----------
@@ -64,34 +64,34 @@ const openRequests = new Map<string, BrowserOpenRequest>();
 const openRequestListeners = new Map<string, Set<() => void>>();
 let openRequestSerial = 0;
 
-function notifyOpenRequest(operationId: string): void {
-  for (const listener of openRequestListeners.get(operationId) ?? []) listener();
+function notifyOpenRequest(objectiveId: string): void {
+  for (const listener of openRequestListeners.get(objectiveId) ?? []) listener();
 }
 
-export function requestBrowserOpen(operationId: string, url: string): void {
-  openRequests.set(operationId, { url, serial: ++openRequestSerial });
-  notifyOpenRequest(operationId);
+export function requestBrowserOpen(objectiveId: string, url: string): void {
+  openRequests.set(objectiveId, { url, serial: ++openRequestSerial });
+  notifyOpenRequest(objectiveId);
 }
 
 /** 패널이 요청을 집어 든다. 그사이 더 새 요청이 들어왔으면 그것은 남는다(직렬 번호로 판정). */
-export function takeBrowserOpenRequest(operationId: string, serial: number): void {
-  if (openRequests.get(operationId)?.serial !== serial) return;
-  openRequests.delete(operationId);
-  notifyOpenRequest(operationId);
+export function takeBrowserOpenRequest(objectiveId: string, serial: number): void {
+  if (openRequests.get(objectiveId)?.serial !== serial) return;
+  openRequests.delete(objectiveId);
+  notifyOpenRequest(objectiveId);
 }
 
-export function dropBrowserOpenRequest(operationId: string): void {
-  if (!openRequests.delete(operationId)) return;
-  notifyOpenRequest(operationId);
+export function dropBrowserOpenRequest(objectiveId: string): void {
+  if (!openRequests.delete(objectiveId)) return;
+  notifyOpenRequest(objectiveId);
 }
 
-export function useBrowserOpenRequest(operationId: string): BrowserOpenRequest | null {
+export function useBrowserOpenRequest(objectiveId: string): BrowserOpenRequest | null {
   const subscribe = React.useCallback((listener: () => void) => {
-    const set = openRequestListeners.get(operationId) ?? new Set<() => void>();
-    set.add(listener); openRequestListeners.set(operationId, set);
-    return () => { set.delete(listener); if (set.size === 0) openRequestListeners.delete(operationId); };
-  }, [operationId]);
-  return React.useSyncExternalStore(subscribe, () => openRequests.get(operationId) ?? null, () => null);
+    const set = openRequestListeners.get(objectiveId) ?? new Set<() => void>();
+    set.add(listener); openRequestListeners.set(objectiveId, set);
+    return () => { set.delete(listener); if (set.size === 0) openRequestListeners.delete(objectiveId); };
+  }, [objectiveId]);
+  return React.useSyncExternalStore(subscribe, () => openRequests.get(objectiveId) ?? null, () => null);
 }
 
 // ---------- 캡션이 띄운 것 ----------
@@ -106,19 +106,19 @@ export function useBrowserOpenRequest(operationId: string): BrowserOpenRequest |
 const captionOverlays = new Map<string, boolean>();
 const overlayListeners = new Map<string, Set<() => void>>();
 
-export function publishBrowserCaptionOverlay(operationId: string, open: boolean): void {
-  if ((captionOverlays.get(operationId) ?? false) === open) return;
-  if (open) captionOverlays.set(operationId, true); else captionOverlays.delete(operationId);
-  for (const listener of overlayListeners.get(operationId) ?? []) listener();
+export function publishBrowserCaptionOverlay(objectiveId: string, open: boolean): void {
+  if ((captionOverlays.get(objectiveId) ?? false) === open) return;
+  if (open) captionOverlays.set(objectiveId, true); else captionOverlays.delete(objectiveId);
+  for (const listener of overlayListeners.get(objectiveId) ?? []) listener();
 }
 
-export function useBrowserCaptionOverlay(operationId: string): boolean {
+export function useBrowserCaptionOverlay(objectiveId: string): boolean {
   const subscribe = React.useCallback((listener: () => void) => {
-    const set = overlayListeners.get(operationId) ?? new Set<() => void>();
-    set.add(listener); overlayListeners.set(operationId, set);
-    return () => { set.delete(listener); if (set.size === 0) overlayListeners.delete(operationId); };
-  }, [operationId]);
-  return React.useSyncExternalStore(subscribe, () => captionOverlays.get(operationId) ?? false, () => false);
+    const set = overlayListeners.get(objectiveId) ?? new Set<() => void>();
+    set.add(listener); overlayListeners.set(objectiveId, set);
+    return () => { set.delete(listener); if (set.size === 0) overlayListeners.delete(objectiveId); };
+  }, [objectiveId]);
+  return React.useSyncExternalStore(subscribe, () => captionOverlays.get(objectiveId) ?? false, () => false);
 }
 
 // ---------- 네이티브 뷰를 실은 칸의 끌기 ----------

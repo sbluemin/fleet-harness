@@ -130,14 +130,14 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
         expect(headers.connection).toBeUndefined();
         return probe;
       };
-      const operations = await open("/api/v1/operations/events");
+      const objectiveRecords = await open("/api/v1/objectives/events");
       const theme = await open("/api/v1/desktop/theme/events");
       await theme.waitFor("desktop:theme", () => true);
       // 두 SSE가 끝나지 않은 동안에도 같은 세션에서 일반 응답을 받는다.
       expect((await h2Request(client, admitted)).status).toBe(200);
       const device = (await readRemoteStatus(fixture)).devices[0]!;
       expect(await revoke(fixture, `access-sessions/${device.sessionHandle}`)).toBe(204);
-      await operations.waitForClose();
+      await objectiveRecords.waitForClose();
       await theme.waitForClose();
       expect((await h2Request(client, admitted)).status).toBe(401);
 
@@ -246,7 +246,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     let reopenedCookie = cookiesOf(reopened);
     await expect(remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
 
-    // 유휴 만료는 그 세션의 모든 장수명 채널을 함께 닫는다 — Operation 스트림만이 아니라 다른 SSE도.
+    // 유휴 만료는 그 세션의 모든 장수명 채널을 함께 닫는다 — Objective 스트림만이 아니라 다른 SSE도.
     // 루프백 구독은 그대로 남고, 페어링된 기기는 말없이 다시 붙는다.
     const writeLocal = async (route: string, method: string, body: unknown) => {
       const response = await fetch(`${restarted.loopbackEndpoint}api/v1/${route}`, {
@@ -257,7 +257,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     };
     const grant = await writeLocal("theaters/folder-grants", "POST", { path: restarted.dir });
     const theater = await writeLocal("theaters", "POST", { folderGrantId: grant.folderGrantId });
-    const { operation } = await writeLocal("operations", "POST", { theaterId: theater.id, type: "agent", pluginId: null, title: "before-idle", payload: {} });
+    const { objectiveRecord } = await writeLocal("objectives/records", "POST", { theaterId: theater.id, type: "agent", pluginId: null, title: "before-idle", payload: {} });
     const idleStream = await openRemoteEvents(restarted, reopenedCookie);
     const secondIdleStream = await openRemoteEvents(restarted, reopenedCookie);
     const localStream = await openLoopbackEvents(restarted);
@@ -267,14 +267,14 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       await idleTheme.waitFor("desktop:theme", () => true);
       await localTheme.waitFor("desktop:theme", () => true);
       clockOffset += 61 * 60_000;
-      await writeLocal(`operations/${operation.id}`, "PATCH", { title: "after-idle" });
+      await writeLocal(`objectives/records/${objectiveRecord.id}`, "PATCH", { title: "after-idle" });
       await idleStream.waitForClose();
       await secondIdleStream.waitForClose();
       for (const stream of [idleStream, secondIdleStream]) {
-        expect(stream.seen("operation:changed")).toBe(0);
+        expect(stream.seen("objective:changed")).toBe(0);
         expect(stream.seen("control:reclaimed")).toBe(0);
       }
-      await localStream.waitFor("operation:changed", (data) => data.operation.title === "after-idle");
+      await localStream.waitFor("objective:changed", (data) => data.objectiveRecord.title === "after-idle");
       // 만료는 위 전송에서 이미 판정됐다. 테마 스트림은 자기 방송을 기다리지 않고 같은 종료 신호로 닫혀 있어야 한다.
       await idleTheme.waitForClose();
       await writeLocal("settings/global", "PUT", { theme: "light" });
@@ -288,9 +288,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       reopenedCookie = cookiesOf(rejoined);
       const freshStream = await openRemoteEvents(restarted, reopenedCookie);
       try {
-        await writeLocal(`operations/${operation.id}`, "PATCH", { title: "after-rejoin" });
-        await freshStream.waitFor("operation:changed", (data) => data.operation.title === "after-rejoin");
-        expect(idleStream.seen("operation:changed")).toBe(0);
+        await writeLocal(`objectives/records/${objectiveRecord.id}`, "PATCH", { title: "after-rejoin" });
+        await freshStream.waitFor("objective:changed", (data) => data.objectiveRecord.title === "after-rejoin");
+        expect(idleStream.seen("objective:changed")).toBe(0);
       } finally { freshStream.close(); }
     } finally {
       localStream.close();
@@ -321,7 +321,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const home = "http://127.0.0.1:50692";
     const attached = await openRemoteEvents(fixture, cookie, undefined, true);
     const localDesktop = await openLoopbackEvents(fixture, undefined, true);
-    await expect(localDesktop.waitFor("computer-capture:state", () => true)).resolves.toEqual({ target: null, unavailableOperationId: null });
+    await expect(localDesktop.waitFor("computer-capture:state", () => true)).resolves.toEqual({ target: null, unavailableObjectiveId: null });
     localDesktop.close();
 
     const published = await remoteRequest(fixture, "PUT", "/api/v1/desktop/shell", JSON.stringify({ homeOrigin: home }), cookie, { origin });
@@ -450,7 +450,7 @@ function readEventStream(response: Readable): EventProbe {
   };
 }
 
-function openLoopbackEvents(fixture: Fixture, streamPath = "/api/v1/operations/events", desktop = false): Promise<EventProbe> {
+function openLoopbackEvents(fixture: Fixture, streamPath = "/api/v1/objectives/events", desktop = false): Promise<EventProbe> {
   const url = new URL(`${fixture.loopbackEndpoint}${streamPath.slice(1)}`);
   return new Promise((resolve, reject) => {
     const request = http.request({ host: url.hostname, port: Number(url.port), path: url.pathname, method: "GET", headers: { origin: url.origin, ...(desktop ? { "user-agent": "Electron/42" } : {}) } }, (response) => resolve(readEventStream(response)));
@@ -459,7 +459,7 @@ function openLoopbackEvents(fixture: Fixture, streamPath = "/api/v1/operations/e
   });
 }
 
-function openRemoteEvents(fixture: Fixture, cookie: string, streamPath = "/api/v1/operations/events", desktop = false): Promise<EventProbe> {
+function openRemoteEvents(fixture: Fixture, cookie: string, streamPath = "/api/v1/objectives/events", desktop = false): Promise<EventProbe> {
   return new Promise((resolve, reject) => {
     const request = https.request({
       host: BIND_HOST,

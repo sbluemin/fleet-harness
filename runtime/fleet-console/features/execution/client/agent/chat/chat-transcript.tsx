@@ -10,7 +10,7 @@ import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
 /**
- * 플러그인 소유 에이전트 기록을 Operation 채팅과 같은 턴 렌더러로 — SDK `ctx.chat.Transcript` 의 호스트 구현.
+ * 플러그인 소유 에이전트 기록을 Objective 채팅과 같은 턴 렌더러로 — SDK `ctx.chat.Transcript` 의 호스트 구현.
  *
  * 화면 문법(원장·작업 접힘·답 마크다운·라이브 줄)은 채팅 뷰의 `ChatTurn` 하나가 진다. 여기는 공개 어휘를 채팅 스트림으로 옮겨
  * 접고, `note` 를 턴 사이 구분선으로 세우는 일만 한다. 잡·질문 카드·다시 시도는 플러그인 기록에 없으므로 비어 있다.
@@ -88,7 +88,7 @@ export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>
 
 /**
  * 기록의 줄들 — 구분선과 턴. 담는 쪽의 흐름에 그대로 선다(기록 면은 자기 상자 안에, 원장 면은 로그 컬럼 안에). 구분선은 턴 사이를
- * 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다(Operation 채팅의 「이전 대화」 띠와 같은 자리).
+ * 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다(Objective 채팅의 「이전 대화」 띠와 같은 자리).
  */
 export function TranscriptLines({ entries, language, openui = false, onOpenUISend }: {
   readonly entries: AgentChatTranscriptProps["entries"];
@@ -125,7 +125,7 @@ export function TranscriptLines({ entries, language, openui = false, onOpenUISen
           return (
             <div key={`${segment.key}:${index}`} className="agent-chat-transcript-turn" {...(lastAt !== undefined ? { "data-transcript-at": String(lastAt) } : {})}>
               <ChatTurn
-                operationId="transcript"
+                objectiveId="transcript"
                 turn={turn}
                 nextContextBefore={undefined}
                 language={language}

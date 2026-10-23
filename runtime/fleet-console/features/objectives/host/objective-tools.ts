@@ -15,7 +15,7 @@ import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_DECISION_H
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
- * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
+ * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Objective 에 실리므로
  * 권한은 호스트가 넘긴 호출자(`context.caller`)로 여기서 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
  * 구성원은 보드를 읽고 자기 root의 증거만 보존할 수 있다 — 결과물 연결·보드 기록은 지휘관이 한다. 화면 제스처는 없다.
  * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다.
@@ -113,7 +113,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 
   /** 짧은 목표 이름은 인증된 참여 범위 안에서만 푼다. 정확한 id와 기존 권한 판정은 그대로 둔다. */
   const resolveObjectiveId = (reference: string, caller: ConsoleCaller | undefined): string => {
-    if (store.find(reference) || caller?.kind !== "operation") return reference;
+    if (store.find(reference) || caller?.kind !== "objectiveRecord") return reference;
     const matches = store.all().filter((objective) => objective.id.startsWith(reference) && roleIn(objective, caller));
     return matches.length === 1 ? matches[0]!.id : reference;
   };
@@ -158,7 +158,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       return { ...member, launch: { mode: "model" as const, ...await modelCatalog.checkProposal({ model, effort }, signal, loadout) } };
     }));
   };
-  /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
+  /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Objective 에게는 참여자가 아님을 말한다. */
   const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
     tool(name, `Commander only. ${description}`, schema, (args, caller, context) => {
       const objective = find((args as { objectiveId: string }).objectiveId);
@@ -182,18 +182,18 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 
   return [
     tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. A directive that reads as reversed in meaning or unreadable goes to the Commander before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective and the resources they created for this objective.`, z.object({}).strict(), (_args, caller) => {
-      if (caller?.kind !== "operation") return refuse("not_participant");
-      const assigned = store.findMember(caller.operationId);
+      if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
+      const assigned = store.findMember(caller.objectiveId);
       if (assigned) {
         const member = assigned.objective.members.find((candidate) => candidate.id === assigned.memberId)!;
         return text({ role: "member", access: "read-only", objectiveId: assigned.objective.id,
-          // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Operation 이 지휘관인 목표).
+          // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Objective 이 지휘관인 목표).
           commander: { session: assigned.objective.commander.sessionName, ...(assigned.objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) },
           member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
           missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, text: mission.text, done: mission.done, ...(mission.done ? {} : { ready: missionReady(assigned.objective.missions, mission) }) }] : []),
           objective: objectiveView(assigned.objective) });
       }
-      const own = store.find(caller.operationId);
+      const own = store.find(caller.objectiveId);
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
@@ -213,8 +213,8 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       const root = store.sharedDir(objective.theaterId, objective.id);
       const bytes = await readSharedEvidence(path.isAbsolute(source) ? source : path.join(root, source), root, context.signal);
       // 읽기를 기다리는 동안 명단이 바뀌었다면 그 목표에 bytes를 남기지 않는다.
-      if (!roleIn(find(objectiveId), caller) || caller?.kind !== "operation") return refuse("not_participant");
-      const sealed = store.evidenceSeal(objectiveId, caller.operationId, bytes);
+      if (!roleIn(find(objectiveId), caller) || caller?.kind !== "objectiveRecord") return refuse("not_participant");
+      const sealed = store.evidenceSeal(objectiveId, caller.objectiveId, bytes);
       return text({ evidenceId: sealed.evidenceId, name: sealed.name, bytes: sealed.bytes, expiresAt: new Date(sealed.capturedAt + RESULT_LIMITS.pendingEvidenceTtlMs).toISOString() });
     }),
     commanderTool("update_result", "Correct an existing result without changing its resultId or kind. Omitted fields stay; null clears label, note, or sourceMissionId. PR and Artifact URLs can change within their kind. A changed PR URL resets its server observation to unchecked. Artifact links are not fetched or observed; unlike sealed evidence, no content copy is preserved. Replacing evidence with a different evidenceId requires one sealed for this objective; the previous evidenceId then becomes unavailable, while its source file is unchanged. Mission records are unchanged. Once the person completes the objective, changes are refused as objective_done.",
@@ -329,7 +329,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
       z.object({ objectiveId: ids }).strict(),
       async ({ objectiveId }, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
-        return text({ members: (await launch.muster(objectiveId)).map(({ operationId: _operationId, ...member }) => member) });
+        return text({ members: (await launch.muster(objectiveId)).map(({ objectiveId: _objectiveId, ...member }) => member) });
       }),
     commanderTool("complete_mission", `Mark a mission done with a text record and optional PR, sealed-file or Artifact-link results the person can open from the objective. A file mentioned in summary is not an attached result. Results are linked automatically to this mission, not to an individual record. Repeating completion appends a record and adds results; omitted or empty results preserve existing results. Duplicate normalized PR or Artifact URLs, or evidenceIds, within the request or already attached, are refused as result_exists. A refused result leaves this completion's record, results and mission state unchanged. The objective holds at most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files totaling at most ${RESULT_LIMITS.totalEvidenceBytes / 1024 / 1024} MiB. Calls that add results return their new resultIds in input order. Results alone do not establish that a success criterion is met. Once the person completes the objective, calls with or without results are refused as objective_done.`,
       z.object({ ...missionRef,

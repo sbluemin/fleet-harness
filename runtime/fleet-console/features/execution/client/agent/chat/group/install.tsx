@@ -6,11 +6,11 @@ import * as React from "react";
 
 import { getState, selectNestedBody, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
-import type { OperationNode } from "../../../../../../core/client/src/integration/types.js";
+import type { ObjectiveRecord } from "../../../../../../core/client/src/integration/types.js";
 import {
   getConversationStandIn,
   getConversationSubject,
-  registerConversationOperationTab,
+  registerConversationObjectiveTab,
   setConversationBodyRenderer,
   setConversationCaptionRenderer,
   setConversationStandInComposer,
@@ -27,7 +27,7 @@ import { stopAgentChatTurn } from "../../api.js";
 import { ComputerScreenShare, useComputerActor } from "../../../../../computer-use/client/computer-screen-share.js";
 import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
-import { useOperationLinks } from "../../operation-links.js";
+import { useObjectiveLinks } from "../../objective-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
@@ -58,7 +58,7 @@ export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeCaption = setConversationCaptionRenderer(renderConversationCaption);
-  const disposeComposer = setConversationStandInComposer((operationId, language) => <StandInComposer key={operationId} rootId={operationId} language={language} />);
+  const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
   return () => { disposeComposer(); disposeCaption(); disposeBody(); };
 }
 
@@ -86,13 +86,13 @@ const MEMBERS_TAB = {
 };
 function syncMembersTab(): void {
   // 목표가 아닌 1:1 채팅에는 명부가 없다 — 탭을 세우지 않는다. 지휘관은 구성원이 아직 없어도 자기 줄이 있다.
-  // 플러그인 대화는 아직 서지 않은 Operation 을 대신할 때만(시작 전 목표) 그 명부로 탭을 세운다.
+  // 플러그인 대화는 아직 서지 않은 Objective 을 대신할 때만(시작 전 목표) 그 명부로 탭을 세운다.
   const subject = getConversationSubject();
   const standIn = getConversationStandIn();
-  const rootId = standIn ?? (subject ? subject.parentOperationId ?? subject.id : null);
+  const rootId = standIn ?? (subject ? subject.parentObjectiveId ?? subject.id : null);
   const hidden = (getConversationSurface() !== null && standIn === null) || rootId === null || !hasRoster(rootId);
   if (hidden && releaseMembersTab) { releaseMembersTab(); releaseMembersTab = null; }
-  if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationOperationTab(MEMBERS_TAB);
+  if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationObjectiveTab(MEMBERS_TAB);
 }
 function ensureMembersTab(): void {
   if (membersTabPrepared) return;
@@ -108,18 +108,18 @@ function ensureMembersTab(): void {
 
 /** 명부가 서는 루트 — 구성원이 있거나 목표 대화의 뿌리(지휘관)다. */
 function hasRoster(rootId: string): boolean {
-  return isGroupConversationRoot(rootId) || getState().nestedOperations.some((operation) => operation.parentOperationId === rootId);
+  return isGroupConversationRoot(rootId) || getState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === rootId);
 }
 
 /** 원장을 연다 — 루트 id 면 지휘관 원장, 구성원 id 면 그 구성원 원장, null 이면 대화로 돌아간다. 둘은 동시에 서지 않는다. */
-export function openLedger(rootId: string, operationId: string | null): void {
-  const commander = operationId === rootId;
+export function openLedger(rootId: string, objectiveId: string | null): void {
+  const commander = objectiveId === rootId;
   setCommanderLedger(rootId, commander);
-  selectNestedBody(rootId, commander ? null : operationId);
+  selectNestedBody(rootId, commander ? null : objectiveId);
 }
 
 /** 지금 연 원장의 참여자 — 지휘관이면 루트 id, 구성원이면 그 id, 대화를 보고 있으면 null. 「구성원」 탭의 켜짐과 같은 판정이다. */
-export function ledgerOperationId(rootId: string): string | null {
+export function ledgerObjectiveId(rootId: string): string | null {
   return getState().nestedBodySelection[rootId] ?? (isCommanderLedgerChosen(rootId) ? rootId : null);
 }
 
@@ -131,27 +131,27 @@ export function subscribeLedger(listener: () => void): () => void {
 }
 
 /** 이 채팅 루트의 가운데 칸이 그룹 대화인가 — 목표 대화의 뿌리이거나 구성원을 가진 채팅. 모바일 본문도 같은 판정을 쓴다. */
-export function isGroupConversationOperation(operation: OperationNode, hasNested: boolean): boolean {
-  return operation.payload.chatMode === true && (hasNested || isGroupConversationRoot(operation.id));
+export function isGroupConversationObjective(objectiveRecord: ObjectiveRecord, hasNested: boolean): boolean {
+  return objectiveRecord.chatMode === true && (hasNested || isGroupConversationRoot(objectiveRecord.id));
 }
 
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {
-  if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
-  if (context.bodyOperation.id !== context.operation.id) {
-    return <MemberLedger root={context.operation} member={context.bodyOperation} language={context.language}>{context.defaultBody}</MemberLedger>;
+  if (!isGroupConversationObjective(context.objectiveRecord, context.nestedObjectiveRecords.length > 0)) return null;
+  if (context.bodyObjective.id !== context.objectiveRecord.id) {
+    return <MemberLedger root={context.objectiveRecord} member={context.bodyObjective} language={context.language}>{context.defaultBody}</MemberLedger>;
   }
-  // 데스크톱 가운데 칸의 그룹 대화는 루트(지휘관) Operation 본문 대신 선다 — 그 본문의 채팅 링크 경계를 잃지 않게 같은 길로 감싼다.
+  // 데스크톱 가운데 칸의 그룹 대화는 루트(지휘관) Objective 본문 대신 선다 — 그 본문의 채팅 링크 경계를 잃지 않게 같은 길로 감싼다.
   // 구성원·지휘관 원장(MemberLedger)은 기본 본문을 그대로 세우므로 그 본문의 경계가 이미 있다.
-  const links: GroupLinkPorts = { navigate: context.navigate, ...(context.openOperationBrowser ? { openOperationBrowser: context.openOperationBrowser } : {}) };
-  return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
+  const links: GroupLinkPorts = { navigate: context.navigate, ...(context.openObjectiveBrowser ? { openObjectiveBrowser: context.openObjectiveBrowser } : {}) };
+  return <RootBody root={context.objectiveRecord} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
 /** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 제목 pill 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
   // 구성원 원장도 CLI 를 보고 있으면 턴 접기가 할 일이 없다.
-  if (context.bodyOperation.payload.chatMode !== true) return null;
-  if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
-  if (!conversationHasFoldableMembers(context.operation.id)) return null;
+  if (context.bodyObjective.chatMode !== true) return null;
+  if (!isGroupConversationObjective(context.objectiveRecord, context.nestedObjectiveRecords.length > 0)) return null;
+  if (!conversationHasFoldableMembers(context.objectiveRecord.id)) return null;
   return <GroupFoldToggle language={context.language} />;
 }
 
@@ -195,26 +195,26 @@ function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
 }
 
 /**
- * 모바일 Operation 화면의 그룹 대화 — 「턴 접기」를 켠 그룹 루트에서 채팅 본문이 1:1 원장 대신 이 자리를 세운다. 데스크톱 가운데 칸의
+ * 모바일 Objective 화면의 그룹 대화 — 「턴 접기」를 켠 그룹 루트에서 채팅 본문이 1:1 원장 대신 이 자리를 세운다. 데스크톱 가운데 칸의
  * 루트 자리와 같은 화면이다: 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관 원장(children = 기존 채팅 본문)을 틀에 넣는다.
- * 기존 본문은 원장일 때만 그려지므로 그 동안만 자기 소켓을 연다. 그룹 소켓은 호스트가 실은 대화 주인(`subjectOperationId`)으로
+ * 기존 본문은 원장일 때만 그려지므로 그 동안만 자기 소켓을 연다. 그룹 소켓은 호스트가 실은 대화 주인(`subjectObjectiveId`)으로
  * 실행 기능의 집계가 연다.
  */
-export function MobileGroupConversation({ root, language, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
+export function MobileGroupConversation({ root, language, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
   return <RootBody root={root} language={language} phone>{children}</RootBody>;
 }
 
-/** 가운데 칸이 기본 본문 대신 그룹 대화를 세울 때 넘겨받는 링크 창구 — 기본 본문(루트 Operation 본문)이 받는 것과 같은 자리다. */
+/** 가운데 칸이 기본 본문 대신 그룹 대화를 세울 때 넘겨받는 링크 창구 — 기본 본문(루트 Objective 본문)이 받는 것과 같은 자리다. */
 interface GroupLinkPorts {
   readonly navigate: ConversationBodyContext["navigate"];
-  readonly openOperationBrowser?: () => void;
+  readonly openObjectiveBrowser?: () => void;
 }
 
 /**
  * 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문).
- * `links` 는 데스크톱 가운데 칸만 준다. 폰은 루트 Operation 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
+ * `links` 는 데스크톱 가운데 칸만 준다. 폰은 루트 Objective 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
  */
-function RootBody({ root, language, phone = false, links, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly children: React.ReactNode }) {
+function RootBody({ root, language, phone = false, links, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly children: React.ReactNode }) {
   const commanderLedger = useCommanderLedgerChosen(root.id);
   if (commanderLedger) return <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>;
   return links
@@ -223,18 +223,18 @@ function RootBody({ root, language, phone = false, links, children }: { readonly
 }
 
 /**
- * 그룹 대화의 링크 경계 — 루트(지휘관) Operation 의 1:1 채팅과 같은 길(useOperationLinks)이다: 파일·좌표 링크 분류와 열기, 왼클릭의 3행 카드
- * (Operation 브라우저 행은 이 대화의 오른쪽 칸), 수정키·가운데 클릭의 직접 열기. 문서 링크 라우터는 이 영역을 건너뛴다(`self`).
+ * 그룹 대화의 링크 경계 — 루트(지휘관) Objective 의 1:1 채팅과 같은 길(useObjectiveLinks)이다: 파일·좌표 링크 분류와 열기, 왼클릭의 3행 카드
+ * (Objective 브라우저 행은 이 대화의 오른쪽 칸), 수정키·가운데 클릭의 직접 열기. 문서 링크 라우터는 이 영역을 건너뛴다(`self`).
  */
 function GroupLinkBoundary({ root, language, ports, children }: {
-  readonly root: OperationNode;
+  readonly root: ObjectiveRecord;
   readonly language: "en" | "ko";
   readonly ports: GroupLinkPorts;
   readonly children: (fileLinkError: string | null) => React.ReactNode;
 }) {
-  const { navigate, openOperationBrowser } = ports;
-  const openCompanion = React.useCallback(() => openOperationBrowser?.(), [openOperationBrowser]);
-  const links = useOperationLinks({ operationId: root.id, theaterId: root.theaterId, language, navigate, openCompanion });
+  const { navigate, openObjectiveBrowser } = ports;
+  const openCompanion = React.useCallback(() => openObjectiveBrowser?.(), [openObjectiveBrowser]);
+  const links = useObjectiveLinks({ objectiveId: root.id, theaterId: root.theaterId, language, navigate, openCompanion });
   const t = getT(language);
   const fileLinkError = links.fileLinkFailure === null ? null : t(links.fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed");
   return (
@@ -245,26 +245,26 @@ function GroupLinkBoundary({ root, language, ports, children }: {
   );
 }
 
-function RootConversation({ root, language, phone = false, fileLinkError = null }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly fileLinkError?: string | null }) {
+function RootConversation({ root, language, phone = false, fileLinkError = null }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly fileLinkError?: string | null }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const fold = useFoldTurns();
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
-  const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
+  const openMemberLedger = React.useCallback((objectiveId: string) => openLedger(root.id, objectiveId), [root.id]);
   const clusters = useGroupClusters();
-  const openUIOpen = clusters.find((cluster) => cluster.conversation?.operationId === root.id)?.conversation?.openUIOpen;
-  // 보드 동작이 있는 일반 Operation도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
-  const recordedObjective = clusters.some((cluster) => cluster.conversation?.operationId === root.id && cluster.conversation.recordedObjective === true);
+  const openUIOpen = clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.openUIOpen;
+  // 보드 동작이 있는 일반 Objective도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
+  const recordedObjective = clusters.some((cluster) => cluster.conversation?.objectiveId === root.id && cluster.conversation.recordedObjective === true);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
   const openRecord = useOpenBoardActionRecord(clusters);
   // 답이 받아들여진 요청은 보드가 요청을 걷기 전에도 카드를 내린다. 답은 보드가 결정으로 남긴 대화 줄로 그 시각 자리에 선다.
   const [answered, setAnswered] = React.useState<readonly string[]>([]);
   React.useEffect(() => setAnswered([]), [root.id]);
-  const speakerOf = (operationId: string) => snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
+  const speakerOf = (objectiveId: string) => snapshot.participants.find((participant) => participant.speaker.objectiveId === objectiveId)?.speaker ?? null;
   // 지휘관과 구성원은 컴퓨터 하나를 함께 쓴다(호스트의 공유 컨텍스트) — 화면공유는 원장이 아니라 이 대화에 서고, 누가 조작하는지는
   // 미리보기 위 칩과 진행 줄 꼬리가 같은 이름으로 말한다.
   // 함께 쓰는 사람(구성원)이 있을 때만 목표 표면이다 — 목표 밖 일반 채팅은 예전 그대로(카드 문구·진행 줄·미리보기 자리).
-  const shared = useConsoleState().nestedOperations.some((operation) => operation.parentOperationId === root.id);
+  const shared = useConsoleState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === root.id);
   const actorId = useComputerActor(root.id);
   const computerActor = shared ? actorId : null;
   const t = getGroupT(language);
@@ -282,7 +282,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
       ) : null}
-      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} shared={shared} speakers={(shared ? request.requestedBy : [request.operationId]).flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
+      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} shared={shared} speakers={(shared ? request.requestedBy : [request.objectiveId]).flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
       {!phone ? snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
@@ -291,7 +291,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const sendOpenUI = React.useCallback((text: string, speaker: ConversationSpeaker) => {
     void actions?.send({ kind: speaker.kind === "commodore" ? "commodore" : "commander" }, text).catch(() => {});
   }, [actions]);
-  const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
+  const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootObjectiveId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
   return (
     <OpenUINavigationContext.Provider value={openUIOpen ?? null}><GroupConversation
       snapshot={snapshot}
@@ -301,11 +301,11 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       cards={cards}
       fold={fold}
       computerActor={computerActor}
-      pillOperationId={root.id}
+      pillObjectiveId={root.id}
       {...(actions ? { onOpenUISend: sendOpenUI } : {})}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare
-          operationId={root.id}
+          objectiveId={root.id}
           className="is-group"
           actor={(id) => {
             const speaker = speakerOf(id);
@@ -325,34 +325,34 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
 function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
-  const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.operationId === rootId && cluster.conversation.recordedObjective === true);
+  const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);
   return <>
     {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
-    <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
+    <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
   </>;
 }
 
 /** 한 명 정지 — 기존 실행 중 중지 경로(채팅 턴만 닫는다. 백그라운드 작업은 그대로). */
 function stopOne(speaker: ConversationSpeaker): Promise<void> {
-  return speaker.operationId ? stopAgentChatTurn(speaker.operationId) : Promise.resolve();
+  return speaker.objectiveId ? stopAgentChatTurn(speaker.objectiveId) : Promise.resolve();
 }
 
 function MemberLedger({ root, member, language, children }: {
-  readonly root: OperationNode;
-  readonly member: OperationNode;
+  readonly root: ObjectiveRecord;
+  readonly member: ObjectiveRecord;
   readonly language: "en" | "ko";
   readonly children: React.ReactNode;
 }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const commander = member.id === root.id;
-  const speaker: ConversationSpeaker = snapshot.participants.find((participant) => participant.speaker.operationId === member.id)?.speaker
-    ?? { kind: commander ? "commander" : "member", name: member.title, operationId: member.id };
+  const speaker: ConversationSpeaker = snapshot.participants.find((participant) => participant.speaker.objectiveId === member.id)?.speaker
+    ?? { kind: commander ? "commander" : "member", name: member.title, objectiveId: member.id };
   // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
   React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
   // 컴퓨터는 목표가 함께 쓰고 그 화면은 대화에만 선다 — 원장을 보는 동안 공유 중이면 머리 아래 한 줄이 대화로 데려간다.
-  const shared = useConsoleState().nestedOperations.some((operation) => operation.parentOperationId === root.id);
+  const shared = useConsoleState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === root.id);
   const actorId = useComputerActor(root.id);
-  const actor = shared && actorId ? snapshot.participants.find((participant) => participant.speaker.operationId === actorId)?.speaker ?? null : null;
+  const actor = shared && actorId ? snapshot.participants.find((participant) => participant.speaker.objectiveId === actorId)?.speaker ?? null : null;
   const t = getGroupT(language);
   const notice = actor ? (
     <div className="group-ledger-share" role="status">
@@ -371,45 +371,45 @@ function MemberLedger({ root, member, language, children }: {
 function MembersTab({ ctx }: { readonly ctx: RailPanelContext }) {
   const standIn = useConversationStandIn();
   const language = ctx.language ?? "en";
-  return standIn !== null ? <StandInMembersTab rootId={standIn} language={language} /> : <OperationMembersTab language={language} />;
+  return standIn !== null ? <StandInMembersTab rootId={standIn} language={language} /> : <ObjectiveMembersTab language={language} />;
 }
 
 /**
- * 아직 서지 않은 Operation(시작 전 목표의 지휘관 자리)을 대신하는 대화의 명부 — 같은 구성원 패널에 지휘관과 명부의 구성원이 시작 전으로
+ * 아직 서지 않은 Objective(시작 전 목표의 지휘관 자리)을 대신하는 대화의 명부 — 같은 구성원 패널에 지휘관과 명부의 구성원이 시작 전으로
  * 선다. 원장이 없으므로 줄은 단추가 아니다. 지휘관은 개시하면 이 id 로 서므로 그 자리의 얼굴(아바타 키)이 그대로 이어진다.
  */
 function StandInMembersTab({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const clusters = useGroupClusters();
   const t = getGroupT(language);
-  // 지휘관 줄은 Operation 이 없어 여기서 세운다 — 보드 사실(지휘관 모델 줄)은 명부의 commander profile 에서 그대로 붙인다.
-  const commander = clusters.find((cluster) => cluster.conversation?.operationId === rootId)?.conversation?.commander;
+  // 지휘관 줄은 Objective 이 없어 여기서 세운다 — 보드 사실(지휘관 모델 줄)은 명부의 commander profile 에서 그대로 붙인다.
+  const commander = clusters.find((cluster) => cluster.conversation?.objectiveId === rootId)?.conversation?.commander;
   const participants = React.useMemo<readonly ConversationParticipant[]>(() => (
     snapshot.participants.some((participant) => participant.speaker.kind === "commander")
       ? snapshot.participants
-      : [{ speaker: { kind: "commander", name: t("group.commander"), operationId: rootId }, activity: "unknown", ...(commander ? { profile: commander } : {}) }, ...snapshot.participants]
+      : [{ speaker: { kind: "commander", name: t("group.commander"), objectiveId: rootId }, activity: "unknown", ...(commander ? { profile: commander } : {}) }, ...snapshot.participants]
   ), [rootId, snapshot.participants, t, commander]);
-  if (!clusters.some((cluster) => cluster.conversation?.operationId === rootId)) return <p className="group-members-empty">{t("group.members.none")}</p>;
-  return <GroupMembersPanel snapshot={{ ...snapshot, participants }} language={language} ledgerOperationId={null} notStarted />;
+  if (!clusters.some((cluster) => cluster.conversation?.objectiveId === rootId)) return <p className="group-members-empty">{t("group.members.none")}</p>;
+  return <GroupMembersPanel snapshot={{ ...snapshot, participants }} language={language} ledgerObjectiveId={null} notStarted />;
 }
 
-function OperationMembersTab({ language }: { readonly language: "en" | "ko" }) {
+function ObjectiveMembersTab({ language }: { readonly language: "en" | "ko" }) {
   const subject = useConversationSubject();
   const state = useConsoleState();
   // 구성원의 본문을 보고 있어도 탭은 그 루트의 명부를 보인다.
-  const root = subject ? (subject.parentOperationId ? state.operations.find((operation) => operation.id === subject.parentOperationId) ?? subject : subject) : null;
+  const root = subject ? (subject.parentObjectiveId ? state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subject.parentObjectiveId) ?? subject : subject) : null;
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root?.id ?? null), language);
   const clusters = useGroupClusters();
   const commanderLedger = useCommanderLedgerChosen(root?.id ?? null);
-  const hasRoster = root !== null && (clusters.some((cluster) => cluster.conversation?.operationId === root.id)
-    || state.nestedOperations.some((operation) => operation.parentOperationId === root.id));
+  const hasRoster = root !== null && (clusters.some((cluster) => cluster.conversation?.objectiveId === root.id)
+    || state.nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === root.id));
   if (!root || !hasRoster) return <p className="group-members-empty">{getGroupT(language)("group.members.none")}</p>;
   return (
     <GroupMembersPanel
       snapshot={snapshot}
       language={language}
-      ledgerOperationId={state.nestedBodySelection[root.id] ?? (commanderLedger ? root.id : null)}
-      onOpenLedger={(operationId) => openLedger(root.id, operationId)}
+      ledgerObjectiveId={state.nestedBodySelection[root.id] ?? (commanderLedger ? root.id : null)}
+      onOpenLedger={(objectiveId) => openLedger(root.id, objectiveId)}
     />
   );
 }

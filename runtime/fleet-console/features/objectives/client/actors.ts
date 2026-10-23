@@ -9,7 +9,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 보드가 남긴 행위자를 사람의 말로 — 사람·지휘관·사령관·다른 세션. 행위자는 문자열이거나 객체이므로 그대로 그리지 않고,
  * 사람/지휘관 두 갈래로 가정하지 않는다. 옛 기록의 생략은 사람이다.
  */
-export type ActorKind = "human" | "commander" | "commodore" | "operation";
+export type ActorKind = "human" | "commander" | "commodore" | "objectiveRecord";
 
 export function actorKind(actor: ObjectiveActor | undefined): ActorKind {
   if (actor === undefined || actor === "human") return "human";
@@ -23,8 +23,8 @@ export function actorName(t: T, actor: ObjectiveActor | undefined): string {
     case "human": return t("objectives.actor.human");
     case "commander": return t("objectives.actor.commander");
     case "commodore": return t("objectives.actor.commodore");
-    case "operation": {
-      const title = typeof actor === "object" && actor.kind === "operation" ? actor.title : null;
+    case "objectiveRecord": {
+      const title = typeof actor === "object" && actor.kind === "objectiveRecord" ? actor.title : null;
       return title ?? t("objectives.actor.agent");
     }
   }
@@ -36,9 +36,9 @@ function actorSubject(t: T, actor: ObjectiveActor | undefined): string {
     case "human": return t("objectives.actor.subject.human");
     case "commander": return t("objectives.actor.subject.commander");
     case "commodore": return t("objectives.actor.subject.commodore");
-    case "operation": {
-      const title = typeof actor === "object" && actor.kind === "operation" ? actor.title : null;
-      return title ? t("objectives.actor.subject.operation", { title }) : t("objectives.actor.subject.agent");
+    case "objectiveRecord": {
+      const title = typeof actor === "object" && actor.kind === "objectiveRecord" ? actor.title : null;
+      return title ? t("objectives.actor.subject.objectiveRecord", { title }) : t("objectives.actor.subject.agent");
     }
   }
 }

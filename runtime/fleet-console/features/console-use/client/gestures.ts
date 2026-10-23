@@ -9,10 +9,10 @@
  * 표식은 잠깐이고(GAZE_MS / MARK_MS), 걷히기 직전 잠깐 `leaving` 이 되어 페이드할 틈을 준다.
  */
 
-import type { OperationArchiveReceipt } from "../../execution/shared/operations/archive.js";
+import type { ObjectiveArchiveReceipt } from "../../objectives/shared/records/archive.js";
 
 export const CONSOLE_USE_CALL_CHANNEL = "console-use:call";
-export const OPERATION_CLOSING_CHANNEL = "operation:closing";
+export const OBJECTIVE_CLOSING_CHANNEL = "objective:closing";
 /** 시선 표식이 남는 시간. 같은 대상에 잇단 읽기는 이 창 안에서 하나로 합쳐진다. */
 export const GAZE_MS = 8_000;
 /** 쓰기(input·press·create) 표식이 남는 시간 — 읽기보다 짧다. 사건은 순간이고 시선은 머문다. */
@@ -21,10 +21,10 @@ export const MARK_MS = 3_000;
 export const LEAVE_MS = 220;
 
 export type GestureKind = "gaze" | "input" | "press" | "create" | "wait";
-export type GestureCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type GestureCaller = { readonly kind: "objectiveRecord"; readonly objectiveId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 export type GestureTarget =
   | { readonly kind: "theater"; readonly theaterId: string }
-  | { readonly kind: "operation"; readonly operationId: string }
+  | { readonly kind: "objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "group"; readonly groupId: string; readonly theaterId: string }
   | { readonly kind: "panel"; readonly panelId: string; readonly theaterId: string; readonly view?: string; readonly path?: string }
   | { readonly kind: "cluster"; readonly clusterId: string; readonly theaterId: string }
@@ -42,19 +42,19 @@ export interface ConsoleUseGesture {
 }
 
 /**
- * 에이전트가 Operation을 치웠다는 알림. Console Use의 닫기는 이제 보관이라 `archive`로 오고,
+ * 에이전트가 Objective을 치웠다는 알림. Console Use의 닫기는 이제 보관이라 `archive`로 오고,
  * 보관 도입 전 서버가 보내던 삭제 receipt는 `deletion`으로 계속 받는다.
  */
 export type ClosingByAgent =
   | {
     readonly kind: "archive";
-    readonly receipt: OperationArchiveReceipt;
+    readonly receipt: ObjectiveArchiveReceipt;
     readonly targetTitle: string;
     readonly by: GestureCaller & { readonly title?: string };
   }
   | {
     readonly kind: "deletion";
-    readonly receipt: { readonly deletionId: string; readonly kind: "operation" | "theater"; readonly targetId: string; readonly expiresAt: number };
+    readonly receipt: { readonly deletionId: string; readonly kind: "objectiveRecord" | "theater"; readonly targetId: string; readonly expiresAt: number };
     readonly targetTitle: string;
     readonly by: GestureCaller & { readonly title?: string };
   };
@@ -66,14 +66,14 @@ export interface ConsoleUseWrap {
 }
 
 const listeners = new Set<() => void>();
-const operationWrap = new Map<string, ConsoleUseWrap>();
+const objectiveRecordWrap = new Map<string, ConsoleUseWrap>();
 const theaterWrap = new Map<string, ConsoleUseWrap>();
 const groupWrap = new Map<string, ConsoleUseWrap>();
 const panelWrap = new Map<string, ConsoleUseWrap>();
 /** 묶음 줄(cluster id) 하나, 그리고 Theater 별 묶음 목록(목록 읽기 — 줄들이 모인 머리가 감싸인다). */
 const clusterWrap = new Map<string, ConsoleUseWrap>();
 const clusterListWrap = new Map<string, ConsoleUseWrap>();
-const WRAP_MAPS = [operationWrap, theaterWrap, groupWrap, panelWrap, clusterWrap, clusterListWrap] as const;
+const WRAP_MAPS = [objectiveRecordWrap, theaterWrap, groupWrap, panelWrap, clusterWrap, clusterListWrap] as const;
 const groupCreator = new Map<string, ConsoleUseGesture>();
 const closingListeners = new Set<(closing: ClosingByAgent) => void>();
 let version = 0;
@@ -125,7 +125,7 @@ export function isConsoleUseGesture(value: unknown): value is ConsoleUseGesture 
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   const caller = record.caller as Record<string, unknown> | undefined;
-  return !!caller && typeof caller === "object" && (caller.kind === "operation" ? typeof caller.operationId === "string" : caller.kind === "plugin" && typeof caller.pluginId === "string")
+  return !!caller && typeof caller === "object" && (caller.kind === "objectiveRecord" ? typeof caller.objectiveId === "string" : caller.kind === "plugin" && typeof caller.pluginId === "string")
     && typeof record.tool === "string" && typeof record.summary === "string" && typeof record.at === "number"
     && ["gaze", "input", "press", "create", "wait"].includes(String(record.gesture));
 }
@@ -133,10 +133,10 @@ export function isConsoleUseGesture(value: unknown): value is ConsoleUseGesture 
 export function recordConsoleUseGesture(gesture: ConsoleUseGesture): void {
   const target = gesture.target;
   const wrap: ConsoleUseWrap = { gesture, leaving: false };
-  if (target?.kind === "operation") {
-    operationWrap.set(target.operationId, wrap);
+  if (target?.kind === "objectiveRecord") {
+    objectiveRecordWrap.set(target.objectiveId, wrap);
     // 행이 감싸이면 그 Theater 의 링은 먼저 걷는다 — 두 겹이 겹치면 어느 쪽도 읽히지 않는다.
-    const theaterId = operations().find((operation) => operation.id === target.operationId)?.theaterId;
+    const theaterId = objectiveRecords().find((objectiveRecord) => objectiveRecord.id === target.objectiveId)?.theaterId;
     if (theaterId !== undefined) theaterWrap.delete(theaterId);
   } else if (target?.kind === "theater") theaterWrap.set(target.theaterId, wrap);
   else if (target?.kind === "panel") panelWrap.set(target.panelId, wrap);
@@ -149,10 +149,10 @@ export function recordConsoleUseGesture(gesture: ConsoleUseGesture): void {
   scheduleSweep();
 }
 
-/** 호출자를 사람이 읽는 이름으로 — Operation 은 제목, 플러그인은 id. 지워진 Operation 이면 id. */
+/** 호출자를 사람이 읽는 이름으로 — Objective 은 제목, 플러그인은 id. 지워진 Objective 이면 id. */
 export function gestureCallerLabel(caller: GestureCaller): string {
   if (caller.kind === "plugin") return caller.pluginId;
-  return operations().find((operation) => operation.id === caller.operationId)?.title ?? caller.operationId;
+  return objectiveRecords().find((objectiveRecord) => objectiveRecord.id === caller.objectiveId)?.title ?? caller.objectiveId;
 }
 
 export function subscribeConsoleUseGestures(listener: () => void): () => void {
@@ -161,7 +161,7 @@ export function subscribeConsoleUseGestures(listener: () => void): () => void {
 }
 export function getGestureVersion(): number { return version; }
 
-export function getOperationWrap(operationId: string): ConsoleUseWrap | null { return operationWrap.get(operationId) ?? null; }
+export function getObjectiveWrap(objectiveId: string): ConsoleUseWrap | null { return objectiveRecordWrap.get(objectiveId) ?? null; }
 export function getTheaterWrap(theaterId: string): ConsoleUseWrap | null { return theaterWrap.get(theaterId) ?? null; }
 export function getGroupWrap(groupId: string): ConsoleUseWrap | null { return groupWrap.get(groupId) ?? null; }
 export function getPanelWrap(panelId: string): ConsoleUseWrap | null { return panelWrap.get(panelId) ?? null; }
@@ -213,32 +213,32 @@ function readClosingByAgent(value: unknown): ClosingByAgent | null {
   if (!receipt || typeof receipt !== "object" || !record.by || typeof record.by !== "object" || typeof receipt.targetId !== "string") return null;
   const by = record.by as ClosingByAgent["by"];
   const targetTitle = typeof record.targetTitle === "string" ? record.targetTitle : receipt.targetId;
-  if (typeof receipt.archiveId === "string" && Array.isArray(receipt.operationIds) && typeof receipt.rootOperationId === "string") {
-    return { kind: "archive", receipt: receipt as unknown as OperationArchiveReceipt, targetTitle, by };
+  if (typeof receipt.archiveId === "string" && Array.isArray(receipt.objectiveIds) && typeof receipt.rootObjectiveId === "string") {
+    return { kind: "archive", receipt: receipt as unknown as ObjectiveArchiveReceipt, targetTitle, by };
   }
-  if (typeof receipt.deletionId === "string" && typeof receipt.expiresAt === "number" && (receipt.kind === "operation" || receipt.kind === "theater")) {
+  if (typeof receipt.deletionId === "string" && typeof receipt.expiresAt === "number" && (receipt.kind === "objectiveRecord" || receipt.kind === "theater")) {
     return { kind: "deletion", receipt: { deletionId: receipt.deletionId, kind: receipt.kind, targetId: receipt.targetId, expiresAt: receipt.expiresAt }, targetTitle, by };
   }
   return null;
 }
 
 interface GestureServices {
-  readonly operations: () => readonly { readonly id: string; readonly theaterId: string; readonly title: string }[];
+  readonly objectiveRecords: () => readonly { readonly id: string; readonly theaterId: string; readonly title: string }[];
   readonly subscribeConsoleChannel: (channel: string, listener: (payload: unknown) => void) => () => void;
 }
-let operations: GestureServices["operations"] = () => [];
+let objectiveRecords: GestureServices["objectiveRecords"] = () => [];
 let installed = false;
 /** 앱이 한 번 부른다 — SSE 채널을 스토어에 잇는다. 재연결마다 채널은 다시 붙고 구독자는 남는다. */
 export function installConsoleUseGestures(services: GestureServices): () => void {
   if (installed) return () => undefined;
   installed = true;
-  operations = services.operations;
+  objectiveRecords = services.objectiveRecords;
   const { subscribeConsoleChannel } = services;
   const disposeCalls = subscribeConsoleChannel(CONSOLE_USE_CALL_CHANNEL, (payload) => { if (isConsoleUseGesture(payload)) recordConsoleUseGesture(payload); });
-  const disposeClosing = subscribeConsoleChannel(OPERATION_CLOSING_CHANNEL, (payload) => {
+  const disposeClosing = subscribeConsoleChannel(OBJECTIVE_CLOSING_CHANNEL, (payload) => {
     const closing = readClosingByAgent(payload);
     if (!closing) return;
     for (const listener of closingListeners) listener(closing);
   });
-  return () => { installed = false; operations = () => []; disposeCalls(); disposeClosing(); };
+  return () => { installed = false; objectiveRecords = () => []; disposeCalls(); disposeClosing(); };
 }

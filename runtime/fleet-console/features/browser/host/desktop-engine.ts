@@ -3,7 +3,7 @@ import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserBounds, type DesktopBrow
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
- * Operation Browser 의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰.
+ * Objective Browser 의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰.
  *
  * `CdpClient` 얼굴을 하고 있어 BrowserService 는 전송을 모른다. 명령은 스냅샷(SSE)에 실려 셸로 내려가고, 응답과
  * 이벤트는 relay(POST)로 올라온다. 브라우저 수준의 명령(`Target.*`, `Browser.*`)은 셸에 CDP 브라우저 세션이 없으므로
@@ -22,7 +22,7 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; operationId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
+interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
 interface Placement { bounds: DesktopBrowserBounds; visible: boolean }
 
 export interface DesktopEngineDeps {
@@ -33,8 +33,8 @@ export interface DesktopEngineDeps {
 
 export class DesktopEngine implements CdpClient {
   private readonly views = new Map<string, ViewRecord>();
-  /** 컨텍스트마다의 영속 프로필. Operation 은 컨텍스트를 하나씩 가지므로 파티션은 늘 Operation 마다 다르고,
-   *  같은 프로필을 고른 Operation 들만 셸에서 같은 디스크 세션을 나눠 쓴다. */
+  /** 컨텍스트마다의 영속 프로필. Objective 은 컨텍스트를 하나씩 가지므로 파티션은 늘 Objective 마다 다르고,
+   *  같은 프로필을 고른 Objective 들만 셸에서 같은 디스크 세션을 나눠 쓴다. */
   private readonly contextProfiles = new Map<string, string | null>();
   private readonly placements = new Map<string, Placement>();
   private readonly pending = new Map<number, Pending>();
@@ -99,10 +99,10 @@ export class DesktopEngine implements CdpClient {
 
   snapshot(): DesktopBrowserSnapshot {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
-      const placement = this.placements.get(view.operationId) ?? null;
+      const placement = this.placements.get(view.objectiveId) ?? null;
       // `visible` 은 Companion presentation. 자리(bounds)는 숨겨도 남겨 셸이 parking 때 마지막 유효 크기를 지키게 한다.
       const visible = view.active && placement !== null && placement.visible;
-      return { id: view.id, operationId: view.operationId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
+      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, bounds: placement?.bounds ?? null, url: view.url };
     });
     return {
       generation: this.generation,
@@ -123,16 +123,16 @@ export class DesktopEngine implements CdpClient {
 
   /**
    * Companion 자리. `null` 은 presentation 만 내린다 — 마지막 양수 bounds 는 남겨 실행 크기와 자리를 분리한다.
-   * 활성 탭만 `visible: true` 로 그려지고, 같은 Operation 의 다른 탭은 그 bounds 크기로 parking 된다.
+   * 활성 탭만 `visible: true` 로 그려지고, 같은 Objective 의 다른 탭은 그 bounds 크기로 parking 된다.
    */
-  place(operationId: string, placement: Placement | null): void {
-    if (placement) this.placements.set(operationId, placement);
+  place(objectiveId: string, placement: Placement | null): void {
+    if (placement) this.placements.set(objectiveId, placement);
     else {
-      const previous = this.placements.get(operationId);
+      const previous = this.placements.get(objectiveId);
       if (previous && previous.bounds.width >= 1 && previous.bounds.height >= 1) {
-        this.placements.set(operationId, { bounds: previous.bounds, visible: false });
+        this.placements.set(objectiveId, { bounds: previous.bounds, visible: false });
       } else {
-        this.placements.delete(operationId);
+        this.placements.delete(objectiveId);
       }
     }
     this.publish();
@@ -140,8 +140,8 @@ export class DesktopEngine implements CdpClient {
 
   /** 셸이 알려 준 **그 뷰**의 실제 크기 — 다른 탭 pane 과 섞지 않는다. */
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
-  viewOwner(viewId: string): string | null { return this.views.get(viewId)?.operationId ?? null; }
-  viewOperation(viewId: string): string | null { return this.viewOwner(viewId); }
+  viewOwner(viewId: string): string | null { return this.views.get(viewId)?.objectiveId ?? null; }
+  viewObjective(viewId: string): string | null { return this.viewOwner(viewId); }
 
   /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
   relay(owner: string, body: DesktopBrowserRelay): void {
@@ -197,8 +197,8 @@ export class DesktopEngine implements CdpClient {
       }
       case "Target.disposeBrowserContext": {
         const partition = String(params.browserContextId ?? "");
-        // 파티션은 Operation 마다 다르므로 여기서 떨어지는 뷰도 그 Operation 의 것뿐이다. 프로필을 공유하는
-        // 다른 Operation 의 뷰는 파티션이 달라 살아남고, 디스크의 프로필도 지워지지 않는다.
+        // 파티션은 Objective 마다 다르므로 여기서 떨어지는 뷰도 그 Objective 의 것뿐이다. 프로필을 공유하는
+        // 다른 Objective 의 뷰는 파티션이 달라 살아남고, 디스크의 프로필도 지워지지 않는다.
         for (const view of [...this.views.values()]) if (view.partition === partition) this.dropView(view.id);
         this.contextProfiles.delete(partition);
         this.publish();
@@ -213,7 +213,7 @@ export class DesktopEngine implements CdpClient {
       case "Target.closeTarget": { this.dropView(String(params.targetId ?? "")); this.publish(); return { success: true } as T; }
       case "Target.activateTarget": {
         const target = this.views.get(String(params.targetId ?? ""));
-        if (target) { for (const view of this.views.values()) if (view.operationId === target.operationId) view.active = view.id === target.id; this.publish(); }
+        if (target) { for (const view of this.views.values()) if (view.objectiveId === target.objectiveId) view.active = view.id === target.id; this.publish(); }
         return {} as T;
       }
       case "Browser.getWindowForTarget": {
@@ -256,8 +256,8 @@ export class DesktopEngine implements CdpClient {
 
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
-    this.views.set(id, { id, operationId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null });
-    // Operation 은 컨텍스트 이름으로 안다 — 서비스가 컨텍스트를 Operation 마다 하나 만들기 때문이다.
+    this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null });
+    // Objective 은 컨텍스트 이름으로 안다 — 서비스가 컨텍스트를 Objective 마다 하나 만들기 때문이다.
     const attached = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
       this.attachWaiters.set(id, { resolve, reject, timer });
@@ -267,11 +267,11 @@ export class DesktopEngine implements CdpClient {
     return id;
   }
 
-  /** 서비스가 뷰를 어느 Operation 에 묶는지 알려 준다 — 자리(placement)는 Operation 단위로 오기 때문이다. */
-  bindView(viewId: string, operationId: string): void {
+  /** 서비스가 뷰를 어느 Objective 에 묶는지 알려 준다 — 자리(placement)는 Objective 단위로 오기 때문이다. */
+  bindView(viewId: string, objectiveId: string): void {
     const view = this.views.get(viewId);
     if (!view) return;
-    view.operationId = operationId;
+    view.objectiveId = objectiveId;
     this.publish();
   }
 

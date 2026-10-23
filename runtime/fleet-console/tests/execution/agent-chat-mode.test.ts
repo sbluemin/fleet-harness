@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-import { readOperationLaunch, withSubagentSpawn, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "../../features/execution/shared/operations/types.js";
+import { readObjectiveLaunch, withSubagentSpawn, type ObjectiveRecordCreateInput, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,8 +57,8 @@ describe("agent chat mode routes", () => {
     harness.setLive(sessionId);
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
-    const caller = { kind: "operation" as const, operationId: sessionId };
-    expect(await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Check terminal output" })).toEqual({ operationId: sessionId, delivery: "queued" });
+    const caller = { kind: "objectiveRecord" as const, objectiveId: sessionId };
+    expect(await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Check terminal output" })).toEqual({ objectiveId: sessionId, delivery: "queued" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Check terminal output" }) });
     await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Public result /private/example/output.txt sk-123456789012345678901234" }) });
     const output = harness.consoleControl.observe(sessionId)?.output;
@@ -67,28 +67,28 @@ describe("agent chat mode routes", () => {
     expect(output?.text).not.toContain("/private/example");
     expect(output?.text).not.toContain("sk-123456789012345678901234");
     expect(harness.consoleControl.observe(sessionId)?.supportedActions).not.toContain("interrupt");
-    await expect(harness.consoleControl.request(caller, { kind: "interrupt", operationId: sessionId })).rejects.toThrow("nothing_to_interrupt");
+    await expect(harness.consoleControl.request(caller, { kind: "interrupt", objectiveId: sessionId })).rejects.toThrow("nothing_to_interrupt");
     expect(harness.writes).not.toContain("");
-    await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Wait for interruption" });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Wait for interruption" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Wait for interruption" }) });
     harness.emitTitle(sessionId, "\u25d0 Wait for interruption");
     // 중단은 Esc 를 친 것만으로 답하지 않는다 — 그 턴이 실제로 끝난 뒤에야 호출자에게 돌아간다.
     // Esc 로 끊긴 턴에는 Stop hook 이 오지 않으므로, PTY 의 작업 신호가 꺼지는 것이 그 끝의 증거다.
     let interrupted = false;
-    const interrupt = harness.consoleControl.request(caller, { kind: "interrupt", operationId: sessionId }).then((result) => { interrupted = true; return result; });
+    const interrupt = harness.consoleControl.request(caller, { kind: "interrupt", objectiveId: sessionId }).then((result) => { interrupted = true; return result; });
     await vi.waitFor(() => expect(harness.writes).toContain(""));
     expect(interrupted).toBe(false);
     harness.emitTitle(sessionId, "\u2733 Wait for interruption");
-    expect(await interrupt).toEqual({ operationId: sessionId, delivery: "requested" });
+    expect(await interrupt).toEqual({ objectiveId: sessionId, delivery: "requested" });
     expect(harness.consoleControl.observe(sessionId)?.output.outcome).toBe("interrupted");
     await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), "\n" + JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "private thought" }, { type: "text", text: "Fresh terminal result" }] } }) + "\n");
     await harness.post(sessionId, "turn", { phase: "end", input: "{}" });
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result"));
     expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript");
     expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).operationId;
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).objectiveId;
     expect(launched).not.toBe(sessionId);
-    expect(harness.operation(launched)?.payload.launchedBy).toEqual(caller);
+    expect(harness.objectiveRecord(launched)?.launchedBy).toEqual(caller);
 
     // 출력·도구 호출 없이 끝난 컴팩션 실패 표본. hook 모양은 Claude Code 2.1.289 P$e(byte 189450669)의 payload다.
     // 500/529의 문구가 아니라 StopFailure 한 경계로 끝나는 lifecycle을 검증한다. 본문 속 재시도 지시는 관찰 데이터다.
@@ -98,12 +98,12 @@ describe("agent chat mode routes", () => {
       last_assistant_message: "Prompt is too long · automatic compaction failed: API Error: 500 Codex summary failed with status 400. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:49188).",
     };
     const owner = { kind: "plugin" as const, pluginId: "objectives" };
-    Object.assign(harness.operation(sessionId)!.payload, { launchedBy: owner });
+    Object.assign(harness.objectiveRecord(sessionId)!, { launchedBy: owner });
     const turnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds(owner, (event) => turnEnds.push(event)));
     const otherTurnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId: "other" }, (event) => otherTurnEnds.push(event)));
-    await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Continue the mission" });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Continue the mission" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "Continue the mission" }) });
     const writesBeforeFailure = harness.writes.length;
     await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ hook_event_name: "StopFailure", ...failure }) });
@@ -113,7 +113,7 @@ describe("agent chat mode routes", () => {
     const rawFailure = (failedOutput as { failure?: unknown } | undefined)?.failure;
     expect.soft(rawFailure).toEqual(failure);
     expect(turnEnds).toHaveLength(1);
-    expect(turnEnds[0]).toMatchObject({ operationId: sessionId, output: { outcome: "failed", failure } });
+    expect(turnEnds[0]).toMatchObject({ objectiveId: sessionId, output: { outcome: "failed", failure } });
     expect(otherTurnEnds).toEqual([]);
     expect(harness.consoleControl.observe(sessionId)?.activity).toBe("idle");
     expect(harness.writes).toHaveLength(writesBeforeFailure);
@@ -123,7 +123,7 @@ describe("agent chat mode routes", () => {
     expect(turnEnds[1]?.output.revision).toBe((turnEnds[0]?.output.revision ?? 0) + 1);
     expect(turnEnds[1]?.output.failure).toEqual(failure);
     expect(harness.writes).toHaveLength(writesBeforeFailure);
-    await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Explicit recovery" });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Explicit recovery" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Explicit recovery" }) });
     await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ hook_event_name: "Stop", last_assistant_message: "Recovered" }) });
     expect(harness.consoleControl.observe(sessionId)?.output).toMatchObject({ outcome: "completed", text: "Recovered" });
@@ -136,36 +136,36 @@ describe("agent chat mode routes", () => {
     harness.attachProviderSession(sessionId);
     harness.allowConsoleUse(sessionId);
     await harness.post(sessionId, "chat");
-    const caller = { kind: "operation" as const, operationId: sessionId };
-    const delivered = harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Inspect the build" });
+    const caller = { kind: "objectiveRecord" as const, objectiveId: sessionId };
+    const delivered = harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Inspect the build" });
     expect(harness.sends).toEqual([]);
-    expect(await delivered).toMatchObject({ operationId: sessionId });
+    expect(await delivered).toMatchObject({ objectiveId: sessionId });
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build"]));
-    // 목표 밖의 평범한 채팅 Operation도 사람에게 묻는 도구와 계획 모드 도구 없이 연다.
+    // 목표 밖의 평범한 채팅 Objective도 사람에게 묻는 도구와 계획 모드 도구 없이 연다.
     expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ systemPrompt: { mode: "append", text: "Theater rules" }, disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).operationId;
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
     expect(launched).not.toBe(sessionId);
-    expect(harness.operation(launched)?.payload.chatBorn).toBe(true);
+    expect(harness.objectiveRecord(launched)?.chatBorn).toBe(true);
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]));
     // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
-    const commander = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).operationId;
+    const commander = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
     expect(harness.sends).toHaveLength(2);
-    await harness.consoleControl.request(caller, { kind: "send", operationId: commander, text: "Begin the objective" });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Begin the objective" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Begin the objective"));
     expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
-    await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
+    await vi.waitFor(() => expect(readObjectiveLaunch(harness.objectiveRecord(commander)!).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 서브에이전트 차단 규칙이 없다.
-    const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).operationId;
+    const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).objectiveId;
     harness.setSubagentSpawn(member, "default");
-    await harness.consoleControl.request(caller, { kind: "send", operationId: member, text: "Start the mission" });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
-    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).operationId;
+    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).objectiveId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
@@ -194,8 +194,8 @@ describe("agent chat mode routes", () => {
     harness.emitToLatest(sent("call-1", "commander", "Check the mobile layout."));
     harness.emitToLatest(settled("call-1", true));
     await vi.waitFor(() => expect(frames.filter(({ event }) => event.kind === "received")).toHaveLength(1));
-    // 이름 없는 발신자도 Operation 좌표는 확실하다. 명명된 호출과 같은 대표 전달 경로로 검사한다.
-    delete (harness.operation(member)!.payload.session as Record<string, unknown>).sessionName;
+    // 이름 없는 발신자도 Objective 좌표는 확실하다. 명명된 호출과 같은 대표 전달 경로로 검사한다.
+    delete (harness.objectiveRecord(member)!.session as Record<string, unknown>).sessionName;
     // 같은 호출을 다시 관측해도, 실패한 호출·서브에이전트 발신·이 Console이 모르는 이름도 줄을 세우지 않는다.
     harness.emitToLatest(settled("call-1", true));
     const reportsBeforeFailure = arrivalReports.mock.calls.length;
@@ -203,7 +203,7 @@ describe("agent chat mode routes", () => {
     harness.emitToLatest(sent("call-2", "dormant-member", "Rejected send."));
     harness.emitToLatest(settled("call-2", false));
     // 기존 실패 케이스를 휴면 대상에게 보낸다. 수신자는 해석해도 도착·기동은 만들지 않고, 본문의 거절은 사유를 단 실패로 선다.
-    await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient, ok: false, summary: "no such session" }));
+    await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientObjectiveId: dormantRecipient, ok: false, summary: "no such session" }));
     expect(arrivalReports.mock.calls).toHaveLength(reportsBeforeFailure);
     expect(frames.filter(({ event }) => event.kind === "received")).toHaveLength(1);
     expect(harness.consoleControl.observe(dormantRecipient)?.lifecycle).toBe("live");
@@ -216,12 +216,12 @@ describe("agent chat mode routes", () => {
     harness.emitToLatest(settled("call-5", true));
     const received = (): readonly Record<string, unknown>[] => frames.flatMap(({ event }) => (event.kind === "received" ? [event as unknown as Record<string, unknown>] : []));
     await vi.waitFor(() => expect(received()).toHaveLength(2));
-    // 발신자 이름은 본문의 주장이 아니라 서버가 들고 있는 런치 이름이고, 좌표는 발신 Operation과 호출 id다.
-    expect(received()[0]).toMatchObject({ id: `${member}:call-1`, from: "member", senderOperationId: member, text: "Check the mobile layout." });
-    expect(received()[1]).toMatchObject({ from: harness.operation(member)!.title, senderOperationId: member, text: "Last word." });
-    await vi.waitFor(() => expect(sentResult("call-5")).toMatchObject({ recipientOperationId: commander }));
-    expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient });
-    expect(sentResult("call-4")).not.toHaveProperty("recipientOperationId");
+    // 발신자 이름은 본문의 주장이 아니라 서버가 들고 있는 런치 이름이고, 좌표는 발신 Objective과 호출 id다.
+    expect(received()[0]).toMatchObject({ id: `${member}:call-1`, from: "member", senderObjectiveId: member, text: "Check the mobile layout." });
+    expect(received()[1]).toMatchObject({ from: harness.objectiveRecord(member)!.title, senderObjectiveId: member, text: "Last word." });
+    await vi.waitFor(() => expect(sentResult("call-5")).toMatchObject({ recipientObjectiveId: commander }));
+    expect(sentResult("call-2")).toMatchObject({ recipientObjectiveId: dormantRecipient });
+    expect(sentResult("call-4")).not.toHaveProperty("recipientObjectiveId");
     // 그 턴이 닫히면 관측은 결과까지 성공한 최상위 발신의 받는 이름과 최종 응답 원문을 싣는다 — 거절·서브에이전트 발신은 없다.
     // 자식이 스스로 연 턴이라 사람의 턴이 아니다. 플러그인은 이 값으로 "실패 없이 닫혔지만 아무 말도 남기지 못한 턴"을 가른다.
     // 원장의 답은 표시 상한(60,000자)을 지나지만, 턴 보고에는 SDK result 원문 전체가 그대로 실린다.
@@ -232,7 +232,7 @@ describe("agent chat mode routes", () => {
     }));
     if (process.platform === "darwin" || process.platform === "linux") {
       // CLI 2.1.296의 실제 producer(byte 189832312)가 쓰는 필드다. socket 번호로 PID를 추측할 수 없는 주소를 쓴다.
-      // 실제 CLI/모델을 기동한 증거가 아니라 live 등록 → 공개 Operation 좌표 경계의 로컬 검증이다.
+      // 실제 CLI/모델을 기동한 증거가 아니라 live 등록 → 공개 Objective 좌표 경계의 로컬 검증이다.
       const socketPath = path.join(harness.fleetDataDir, "reply.sock");
       const inbox = net.createServer();
       await new Promise<void>((resolve, reject) => { inbox.once("error", reject); inbox.listen(socketPath, resolve); });
@@ -242,7 +242,7 @@ describe("agent chat mode routes", () => {
       const file = path.join(registry, `${process.pid}.json`);
       const registration = { pid: process.pid, sessionId: "registered-commander", messagingSocketPath: socketPath,
         procStart: execFileSync("ps", ["-o", "lstart=", "-p", String(process.pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" }).trim() };
-      (harness.operation(commander)!.payload.session as Record<string, unknown>).id = registration.sessionId;
+      (harness.objectiveRecord(commander)!.session as Record<string, unknown>).id = registration.sessionId;
       await fs.writeFile(file, JSON.stringify(registration));
       const sendToAddress = async (id: string) => {
         harness.emitToLatest(sent(id, `uds:${socketPath}`, "Report through the reply address."));
@@ -250,17 +250,17 @@ describe("agent chat mode routes", () => {
         await vi.waitFor(() => expect(sentResult(id)).toBeDefined());
       };
       await sendToAddress("address-live");
-      expect(sentResult("address-live")).toMatchObject({ recipientOperationId: commander });
-      expect(received().at(-1)).toMatchObject({ id: `${member}:address-live`, senderOperationId: member });
+      expect(sentResult("address-live")).toMatchObject({ recipientObjectiveId: commander });
+      expect(received().at(-1)).toMatchObject({ id: `${member}:address-live`, senderObjectiveId: member });
       // 죽은/재사용된 PID 등록은 주소가 같아도 해석하지 않는다.
       await fs.writeFile(file, JSON.stringify({ ...registration, procStart: "not-this-process" }));
       await sendToAddress("address-stale");
-      expect(sentResult("address-stale")).not.toHaveProperty("recipientOperationId");
+      expect(sentResult("address-stale")).not.toHaveProperty("recipientObjectiveId");
       await fs.writeFile(file, JSON.stringify(registration));
-      // 같은 provider 신원을 두 Operation이 주장하면 둘 중 하나를 고르지 않는다.
-      (harness.operation(member)!.payload.session as Record<string, unknown>).id = registration.sessionId;
+      // 같은 provider 신원을 두 Objective이 주장하면 둘 중 하나를 고르지 않는다.
+      (harness.objectiveRecord(member)!.session as Record<string, unknown>).id = registration.sessionId;
       await sendToAddress("address-ambiguous");
-      expect(sentResult("address-ambiguous")).not.toHaveProperty("recipientOperationId");
+      expect(sentResult("address-ambiguous")).not.toHaveProperty("recipientObjectiveId");
       expect(received()).toHaveLength(3);
       const publicResult = JSON.stringify(sentResult("address-live"));
       expect(publicResult).not.toContain(registration.sessionId);
@@ -277,11 +277,11 @@ describe("agent chat mode routes", () => {
       outcome: "succeeded", report: { sentTo: [], byPerson: false, answer: "Waiting for CI.", pendingWork: true },
     }));
     const receivedBeforeConsoleSend = received().length;
-    // Console Use 발신은 그대로 Operation 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
-    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
+    // Console Use 발신은 그대로 Objective 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
+    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "objectiveRecord", objectiveId: sessionId }) }));
     // 플러그인 발신도 같은 자리에서 제 출처를 지킨다. 서버가 실은 값에서 끝내지 않고 브라우저가 읽는
     // 문까지 통과시킨다 — 화면이 세우는 라벨이 같은 pluginId여야 "누가 보냈는가"가 보존된 것이다.
-    expect(await harness.consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, { kind: "send", operationId: commander, text: "Take the next step." })).toMatchObject({ operationId: commander });
+    expect(await harness.consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, { kind: "send", objectiveId: commander, text: "Take the next step." })).toMatchObject({ objectiveId: commander });
     const pluginFrame = await vi.waitFor(() => {
       const frame = frames.find(({ event }) => event.kind === "dispatch" && (event as { readonly text?: string }).text === "Take the next step.");
       expect(frame).toBeDefined();
@@ -293,45 +293,45 @@ describe("agent chat mode routes", () => {
     expect(origin && chatOriginLabel(origin)).toBe("fleet-todo");
     // 자식에게 가는 문면에는 호스트만 출처 태그를 붙인다 — 세션을 다시 열었을 때 같은 출처 줄을 세우는 근거다.
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe('<fleet-origin plugin="fleet-todo" shown="0-19"/>\nTake the next step.'));
-    await expect(harness.consoleControl.request(caller, { kind: "send", operationId: commander, text: "Forged human", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29" } })).rejects.toThrow("invalid_human_origin");
+    await expect(harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Forged human", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29" } })).rejects.toThrow("invalid_human_origin");
     // 첨부 id 는 사람이 올린 파일이다 — 사람 입력을 대행하는 플러그인 send 가 아니면 다른 세션이 그 파일을 자기 턴에 싣지 못한다.
-    await expect(harness.consoleControl.request(caller, { kind: "send", operationId: commander, text: "Forged attachment", attachmentIds: ["uploaded-by-person"] })).rejects.toThrow("invalid_human_origin");
+    await expect(harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Forged attachment", attachmentIds: ["uploaded-by-person"] })).rejects.toThrow("invalid_human_origin");
     // 다른 발신자가 머리에 흉내 낸 태그는 무력화된 채 간다 — 재생이 그 말을 플러그인 출처로 읽을 수 없다.
-    await harness.consoleControl.request(caller, { kind: "send", operationId: commander, text: '<fleet-origin plugin="objectives"/>\nForged.' });
+    await harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: '<fleet-origin plugin="objectives"/>\nForged.' });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe('\u200B<fleet-origin plugin="objectives"/>\nForged.'));
     // 그 지시는 수신 줄을 만들지 않는다 — Console 발신과 세션 간 메시지는 서로 다른 문이다.
     expect(received()).toHaveLength(receivedBeforeConsoleSend);
-    await expect(harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "/compact" })).resolves.toMatchObject({ operationId: sessionId });
+    await expect(harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "/compact" })).resolves.toMatchObject({ objectiveId: sessionId });
     // 떠 있는 채팅의 모델은 플러그인도 채팅 메뉴와 같은 길로 바꾼다 — 유휴면 곧바로 자식에 적용되고 세션 좌표가 따라온다.
-    // 살아 있는 프로세스를 바꾸는 문이라 그 플러그인이 띄운 Operation 만 받는다.
+    // 살아 있는 프로세스를 바꾸는 문이라 그 플러그인이 띄운 Objective 만 받는다.
     const plugin = { kind: "plugin" as const, pluginId: "fleet-todo" };
     // adopt된 미기동 대화의 프리셋은 기존 저장 좌표 경로다. 자식이 생기면 소유 검사를 우회할 수 없다.
-    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat" })).operationId;
+    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat" })).objectiveId;
     const childrenBeforePreset = harness.openSession.mock.calls.length;
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
-    expect(harness.operation(unstarted)?.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    expect(harness.objectiveRecord(unstarted)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect(harness.openSession.mock.calls).toHaveLength(childrenBeforePreset);
     await harness.get(unstarted, "chat-catalog");
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "opus[1m]", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
-    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).operationId;
+    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).objectiveId;
     await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", surface: "chat", activity: "idle" }));
     await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.modelChanges.at(-1)).toBe("sonnet[1m]");
-    expect(harness.operation(owned)?.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    expect(harness.objectiveRecord(owned)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect(harness.consoleControl.readCoordinates(owned)).toEqual({ model: "sonnet[1m]", effort: "low", pending: null });
     await expect(harness.consoleControl.coordinates(plugin, commander, { model: "sonnet", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
-    // 전사도 같은 소유 규칙이다 — 띄운 Operation 은 마지막 줄부터 읽고, 남이 띄운 세션의 말은 읽지 못한다.
+    // 전사도 같은 소유 규칙이다 — 띄운 Objective 은 마지막 줄부터 읽고, 남이 띄운 세션의 말은 읽지 못한다.
     const tail = await harness.consoleControl.transcript(plugin, owned, { limit: 5, tail: true });
     expect(tail).toMatchObject({ source: "chat", nextCursor: null });
     expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
-    // 세션 간 메시지 도착은 보낸·받은 Operation 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
-    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).operationId;
+    // 세션 간 메시지 도착은 보낸·받은 Objective 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
+    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).objectiveId;
     const arrivals: import("../../features/console-use/shared/control.js").ConsoleSessionMessage[] = [];
     cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
     harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
     harness.emitToLatest(settled("call-peer", true));
-    await vi.waitFor(() => expect(arrivals).toEqual([{ fromOperationId: owned, toOperationId: peer, at: expect.any(Number) }]));
+    await vi.waitFor(() => expect(arrivals).toEqual([{ fromObjectiveId: owned, toObjectiveId: peer, at: expect.any(Number) }]));
     // 광고 도구 — 자식이 init 에서 모델에게 내놓은 목록을 그 세션을 띄운 플러그인만 읽는다. init 전·남의 세션은 null(「없다」가 아니다).
     expect(harness.consoleControl.advertisedTools(plugin, owned)).toBeNull();
     harness.emitToLatest({ type: "system", subtype: "init", tools: ["Bash", "Read", "SendMessage"] });
@@ -349,9 +349,9 @@ describe("agent chat mode routes", () => {
       outcome: "failed", failure: { error: "error_during_execution", error_details: apiError },
     }));
     expect(turnEnds).toHaveLength(1);
-    expect(turnEnds[0]).toMatchObject({ operationId: owned, output: { outcome: "failed", failure: { error_details: apiError } } });
+    expect(turnEnds[0]).toMatchObject({ objectiveId: owned, output: { outcome: "failed", failure: { error_details: apiError } } });
     expect(harness.sends).toHaveLength(sendsBefore);
-    await harness.consoleControl.request(plugin, { kind: "send", operationId: owned, text: "Explicit recovery" });
+    await harness.consoleControl.request(plugin, { kind: "send", objectiveId: owned, text: "Explicit recovery" });
     await vi.waitFor(() => expect(harness.consoleControl.observe(owned)?.output.outcome).toBe("succeeded"));
     expect(harness.consoleControl.observe(owned)?.output).not.toHaveProperty("failure");
   });
@@ -392,7 +392,7 @@ describe("agent chat mode routes", () => {
     await harness.post(sessionId, "chat");
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
     expect(harness.terminate).toHaveBeenCalledWith(sessionId);
   });
 
@@ -406,7 +406,7 @@ describe("agent chat mode routes", () => {
     await harness.post(sessionId, "chat");
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
     expect(harness.terminate).toHaveBeenCalledWith(sessionId);
     expect((await harness.sessions()).find((session) => session.sessionId === sessionId)).toMatchObject({
       chatActive: true,
@@ -449,7 +449,7 @@ describe("agent chat mode routes", () => {
     expect(closedWith).toBe(4003);
   });
 
-  it("refuses a terminal ticket for a chat mode operation", async () => {
+  it("refuses a terminal ticket for a chat mode objectiveRecord", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
@@ -458,7 +458,7 @@ describe("agent chat mode routes", () => {
 
     await harness.postTicket(sessionId);
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
   });
 
   it("confirms wrapped terminal links only from text the caller already shows", async () => {
@@ -483,7 +483,7 @@ describe("agent chat mode routes", () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     const verifier = await harness.createSession();
-    (harness.operation(verifier)!.payload.session as Record<string, unknown>).sessionName = "verifier";
+    (harness.objectiveRecord(verifier)!.session as Record<string, unknown>).sessionName = "verifier";
     // 지금 유효한 주소라도 과거 발신의 수신 신원으로 쓰지 않는다.
     const socketPath = path.join(harness.fleetDataDir, "replay.sock");
     if (process.platform === "darwin" || process.platform === "linux") {
@@ -494,14 +494,14 @@ describe("agent chat mode routes", () => {
       await fs.mkdir(registry, { recursive: true });
       const registration = { pid: process.pid, sessionId: "current-socket-owner", messagingSocketPath: socketPath,
         procStart: execFileSync("ps", ["-o", "lstart=", "-p", String(process.pid)], { env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, encoding: "utf8" }).trim() };
-      (harness.operation(verifier)!.payload.session as Record<string, unknown>).id = registration.sessionId;
+      (harness.objectiveRecord(verifier)!.session as Record<string, unknown>).id = registration.sessionId;
       await fs.writeFile(path.join(registry, `${process.pid}.json`), JSON.stringify(registration));
     }
     const arrivalReports = vi.spyOn(harness.consoleControl, "reportSessionMessage");
     cleanups.push(() => arrivalReports.mockRestore());
     harness.attachProviderSession(sessionId);
-    const operation = harness.operation(sessionId)!;
-    Object.assign(operation.payload, { chatMode: true, chatBorn: true, dormantBorn: true, restoredDormant: true });
+    const objectiveRecord = harness.objectiveRecord(sessionId)!;
+    Object.assign(objectiveRecord, { chatMode: true, chatBorn: true, dormantBorn: true, restoredDormant: true });
     const at = (second: number) => `2026-08-14T00:00:0${second}.000Z`;
     await fs.writeFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), [
       { type: "user", timestamp: at(1), message: { role: "user", content: "send the plan to the verifier" } },
@@ -517,8 +517,8 @@ describe("agent chat mode routes", () => {
     await harness.restart();
     expect((await harness.sessions()).find((row) => row.sessionId === sessionId)).toMatchObject({ status: "registered", chatActive: true });
     expect(harness.consoleControl.observe(sessionId)).toMatchObject({ lifecycle: "live", activity: "idle", supportedActions: ["send"] });
-    expect(harness.operation(sessionId)?.payload).not.toHaveProperty("dormantBorn");
-    expect(harness.operation(sessionId)?.payload).not.toHaveProperty("restoredDormant");
+    expect(harness.objectiveRecord(sessionId)).not.toHaveProperty("dormantBorn");
+    expect(harness.objectiveRecord(sessionId)).not.toHaveProperty("restoredDormant");
     expect(await harness.sleep(sessionId)).toEqual({ ok: false, error: "chat_sleep_unsupported" });
     await harness.post(sessionId, "resume");
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_resume_unsupported" } });
@@ -530,9 +530,9 @@ describe("agent chat mode routes", () => {
     const response = harness.responses.at(-1) as { readonly status: number; readonly body: { readonly entries: ReadonlyArray<{ readonly event: { readonly kind: string; readonly name?: string; readonly id?: string } }>; readonly truncated: boolean } };
     expect(response.status).toBe(200);
     expect(response.body.entries.map(({ event }) => event.kind === "tool" ? `tool:${event.name}` : event.kind)).toEqual(["dispatch", "tool:SendMessage", "tool-result", "tool:SendMessage", "tool-result", "text", "turn-end"]);
-    expect(response.body.entries.find(({ event }) => event.kind === "tool-result" && event.id === "send-address")?.event).not.toHaveProperty("recipientOperationId");
+    expect(response.body.entries.find(({ event }) => event.kind === "tool-result" && event.id === "send-address")?.event).not.toHaveProperty("recipientObjectiveId");
     expect(response.body.truncated).toBe(false);
-    expect(response.body.entries.find(({ event }) => event.kind === "tool-result")?.event).toMatchObject({ recipientOperationId: verifier });
+    expect(response.body.entries.find(({ event }) => event.kind === "tool-result")?.event).toMatchObject({ recipientObjectiveId: verifier });
     expect(arrivalReports).not.toHaveBeenCalled();
     expect(JSON.stringify(response.body)).not.toContain(harness.fleetDataDir);
     expect(harness.sdkOptions).toHaveLength(sdkBefore);
@@ -541,15 +541,15 @@ describe("agent chat mode routes", () => {
     // 소켓도 저장 대화만 재생하고 SDK 자식이나 과거 발신의 도착 보고를 만들지 않는다.
     const replay = await harness.openChatSocket(sessionId);
     const replayed = replay.map(({ raw }) => readChatJournalEvent(raw)?.event);
-    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientOperationId: verifier });
-    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-address")).not.toHaveProperty("recipientOperationId");
+    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientObjectiveId: verifier });
+    expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-address")).not.toHaveProperty("recipientObjectiveId");
     expect(arrivalReports).not.toHaveBeenCalled();
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore);
-    const providerId = (harness.operation(sessionId)!.payload.session as { id: string }).id;
+    const providerId = (harness.objectiveRecord(sessionId)!.session as { id: string }).id;
     await harness.post(sessionId, "message", { text: "Continue the same plan" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Continue the same plan"));
     expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore + 1);
-    expect((harness.operation(sessionId)!.payload.session as { id: string }).id).toBe(providerId);
+    expect((harness.objectiveRecord(sessionId)!.session as { id: string }).id).toBe(providerId);
   });
 
   it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
@@ -618,7 +618,7 @@ describe("agent chat mode routes", () => {
     // 전환 뒤로는 한 마디도 나가지 않는다. 자식이 닫혔으므로 남은 일감도 함께 거둬진다.
     expect(harness.sends).toHaveLength(before);
     expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
+    expect(harness.objectiveRecord(sessionId)?.chatMode).toBeUndefined();
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
       sessionId,
       resumeSessionId: "sid-live",
@@ -698,7 +698,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     return { configDir: sdkConfigDir, models: options.models, openSession, dispose: async () => {} };
   };
 
-  const operations: OperationNode[] = [];
+  const objectiveRecords: ObjectiveRecord[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
   const writes: string[] = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
@@ -721,7 +721,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: () => true,
     attach,
-    write: (_operationId, data) => {
+    write: (_objectiveId, data) => {
       writes.push(data);
       return true;
     },
@@ -730,7 +730,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
+    getSessionLastActivityAt: (objectiveId) => (liveSessions.has(objectiveId) ? 5 : null),
     isLive: () => false,
     getForegroundProcess: () => null,
     getShellLineState: () => null,
@@ -750,7 +750,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     stop: async () => {},
   };
-  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
+  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
@@ -777,41 +777,36 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         cleanup: () => {},
         dispose: async () => {},
       }) },
-      operations: {
-        list: () => operations,
-        get: (id: string) => operations.find((operation) => operation.id === id) ?? null,
-        create: (input: OperationCreateInput) => {
+      objectiveRecords: {
+        list: () => objectiveRecords,
+        get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
+        create: (input: ObjectiveRecordCreateInput) => {
           const createdAt = input.createdAt ?? Date.now();
-          const operation: OperationNode = {
-            id: input.id ?? `operation-${operations.length + 1}`,
-            theaterId: input.theaterId,
-            type: input.type,
-            pluginId: input.pluginId,
-            title: input.title,
-            payload: { ...(input.payload ?? {}) },
-            geometry: input.geometry ?? null,
-            ts: { createdAt, updatedAt: createdAt },
-          };
-          operations.push(operation);
-          return operation;
+          const objectiveRecord: ObjectiveRecord = {...({ ...(input ?? {}) }),
+id: input.id ?? `objective-${objectiveRecords.length + 1}`,
+theaterId: input.theaterId,
+title: input.title,
+ts: { createdAt, updatedAt: createdAt }};
+          objectiveRecords.push(objectiveRecord);
+          return objectiveRecord;
         },
-        patch: (id: string, input: OperationPatchInput) => {
-          const index = operations.findIndex((operation) => operation.id === id);
-          const current = operations[index];
+        patch: (id: string, input: ObjectiveRecordPatchInput) => {
+          const index = objectiveRecords.findIndex((objectiveRecord) => objectiveRecord.id === id);
+          const current = objectiveRecords[index];
           if (!current) return null;
           const patched = {
-            ...current,
+            ...(input.id === current.id ? input as typeof current : current),
             ...(input.title === undefined ? {} : { title: input.title }),
-            ...(input.payload === undefined ? {} : { payload: { ...input.payload } }),
+            ...input,
             ts: { ...current.ts, updatedAt: Date.now() },
           };
-          operations[index] = patched;
+          objectiveRecords[index] = patched;
           return patched;
         },
         delete: (id: string) => {
-          const index = operations.findIndex((candidate) => candidate.id === id);
+          const index = objectiveRecords.findIndex((candidate) => candidate.id === id);
           if (index < 0) return false;
-          operations.splice(index, 1);
+          objectiveRecords.splice(index, 1);
           return true;
         },
       },
@@ -828,7 +823,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
@@ -879,11 +874,11 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   return {
     consoleControl,
     restart: async () => {
-      // durable Operation 기록만 남기고 실행 어댑터를 새로 만든다. 제어 서비스는 연결을 유지한다.
+      // durable Objective 기록만 남기고 실행 어댑터를 새로 만든다. 제어 서비스는 연결을 유지한다.
       for (const cleanup of lifecycleCleanups.splice(1).reverse()) await cleanup();
       api = await start();
     },
-    sleep: (operationId: string) => api.actions.sleep!(operationId),
+    sleep: (objectiveId: string) => api.actions.sleep!(objectiveId),
     emitToLatest: (message: Record<string, unknown>) => emitToLatest(message),
     sdkOptions,
     fleetDataDir,
@@ -897,7 +892,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     writes,
     /** PTY가 방출하는 OSC 제목 — Claude Code의 작업 스피너와 유휴 글리프. */
     emitTitle: (sessionId: string, title: string) => titleListener?.(sessionId, title),
-    operation: (id: string) => operations.find((operation) => operation.id === id),
+    objectiveRecord: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id),
     createSession: async (): Promise<string> => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
@@ -905,9 +900,9 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         res: {} as http.ServerResponse,
         pathname: "/api/v1/agent/sessions",
       });
-      const operation = operations[0];
-      if (!operation) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
-      return operation.id;
+      const objectiveRecord = objectiveRecords[0];
+      if (!objectiveRecord) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
+      return objectiveRecord.id;
     },
     sessions: async (): Promise<readonly Record<string, unknown>[]> => {
       if (!route) throw new Error("Agent route was not registered");
@@ -931,7 +926,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     postTicket: async (sessionId: string, extra: Record<string, unknown> = {}): Promise<void> => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
-        req: { method: "POST", url: "/api/v1/agent/ticket", __body: { operationId: sessionId, ...extra } } as unknown as TestRequest,
+        req: { method: "POST", url: "/api/v1/agent/ticket", __body: { objectiveId: sessionId, ...extra } } as unknown as TestRequest,
         res: {} as http.ServerResponse,
         pathname: "/api/v1/agent/ticket",
       });
@@ -941,7 +936,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     openChatSocket: async (sessionId: string): Promise<Array<{ seq: number; event: { kind: string }; raw: string }>> => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
-        req: { method: "POST", url: "/api/v1/agent/ticket", __body: { operationId: sessionId, channel: "chat" } } as unknown as TestRequest,
+        req: { method: "POST", url: "/api/v1/agent/ticket", __body: { objectiveId: sessionId, channel: "chat" } } as unknown as TestRequest,
         res: {} as http.ServerResponse,
         pathname: "/api/v1/agent/ticket",
       });
@@ -962,37 +957,37 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     setLive: (sessionId: string) => { liveSessions.add(sessionId); },
     overrideCliId: (sessionId: string, value: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.cliId = value;
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.cliId = value;
     },
     /** 호스트 포트(setSubagentSpawn)와 같은 SDK 헬퍼로 다음 기동 정책만 바꾼다. */
     setSubagentSpawn: (sessionId: string, policy: "blocked" | "default") => {
-      const index = operations.findIndex((candidate) => candidate.id === sessionId);
-      if (index < 0) throw new Error("Operation not found");
-      operations[index] = { ...operations[index]!, payload: withSubagentSpawn(operations[index]!.payload, policy) };
+      const index = objectiveRecords.findIndex((candidate) => candidate.id === sessionId);
+      if (index < 0) throw new Error("Objective not found");
+      objectiveRecords[index] = { ...objectiveRecords[index]!, ...(withSubagentSpawn(objectiveRecords[index]!, policy)) };
     },
-    /** 채팅으로 태어난 Operation의 durable 표식을 세운다. */
+    /** 채팅으로 태어난 Objective의 durable 표식을 세운다. */
     markChatBorn: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.chatBorn = true;
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.chatBorn = true;
     },
     /** 원 트랜스크립트를 밖에서 치운다 — 되쓰기 뒤 파일이 사라진 상태의 재현. */
     removeTranscript: () => {
       rmSync(transcriptDir, { recursive: true, force: true });
     },
-    /** Console 실행 경로를 보려면 그 Operation이 콘솔 사용을 허용받고 있어야 한다. */
+    /** Console 실행 경로를 보려면 그 Objective이 콘솔 사용을 허용받고 있어야 한다. */
     allowConsoleUse: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.consoleUse = { enabled: true, language: "en" };
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.consoleUse = { enabled: true, language: "en" };
     },
     attachProviderSession: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.session = {
-        ...(operation.payload.session as Record<string, unknown> | undefined),
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.session = {
+        ...(objectiveRecord.session as Record<string, unknown> | undefined),
         harness: "claude-code",
         id: "sid-live",
         transcriptPath,
@@ -1001,10 +996,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     /** 런치 시점에 미리 심는 좌표 — 첫 prompt capture나 transcript가 아직 없는 상태다. */
     attachLaunchProviderSession: (sessionId: string) => {
-      const operation = operations.find((candidate) => candidate.id === sessionId);
-      if (!operation) throw new Error("Operation not found");
-      operation.payload.session = {
-        ...(operation.payload.session as Record<string, unknown> | undefined),
+      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
+      if (!objectiveRecord) throw new Error("Objective not found");
+      objectiveRecord.session = {
+        ...(objectiveRecord.session as Record<string, unknown> | undefined),
         harness: "claude-code",
         id: "sid-live",
         source: "launch",

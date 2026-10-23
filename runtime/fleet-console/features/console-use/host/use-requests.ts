@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 /**
- * 패널 안 허용 요청 — Operation 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면, 거부하는 대신
- * 그 호출을 붙잡아 두고 그 Operation 패널에 허용/거절 카드를 띄운다. 사람의 답이 호출의 결말이 된다.
+ * 패널 안 허용 요청 — Objective 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면, 거부하는 대신
+ * 그 호출을 붙잡아 두고 그 Objective 패널에 허용/거절 카드를 띄운다. 사람의 답이 호출의 결말이 된다.
  *
- * - 한 Operation 의 한 도구군에는 요청이 하나뿐이다. 그사이 들어온 호출은 같은 요청에 합쳐져 한 번의 답을 함께 받는다.
+ * - 한 Objective 의 한 도구군에는 요청이 하나뿐이다. 그사이 들어온 호출은 같은 요청에 합쳐져 한 번의 답을 함께 받는다.
  * - 「이번 작업만」 허가는 메모리에만 산다. 턴이 끝나거나(settle) 5분 동안 쓰이지 않거나 스위치를 거두면 풀리고,
  *   서버가 다시 뜨면 요청도 허가도 없다 — 붙잡혀 있던 호출은 연결과 함께 끝난다.
  * - 붙잡는 시간은 MCP 호출 상한(5분)보다 짧다. 답이 없으면 `no_response` 로 끝나 에이전트가 먼저 회신을 받는다.
@@ -20,7 +20,7 @@ export type UseHoldOutcome = "turn" | "always" | "authorized" | "declined" | "no
 
 export interface UseRequestView {
   readonly id: string;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly capability: UseCapability;
   /** 이 요청에 합쳐진 도구 이름(중복 없이, 들어온 순서). 인자·내용은 싣지 않는다. */
   readonly tools: readonly string[];
@@ -31,8 +31,8 @@ export interface UseRequestView {
 
 export interface UseHoldInput {
   /** 허용의 주인(공유 컨텍스트면 루트). 요청·허가는 이 키에 선다. */
-  readonly operationId: string;
-  /** 실제로 호출한 세션. 없으면 `operationId` 와 같다. */
+  readonly objectiveId: string;
+  /** 실제로 호출한 세션. 없으면 `objectiveId` 와 같다. */
   readonly participantId?: string;
   readonly capability: UseCapability;
   readonly tool: string;
@@ -45,20 +45,20 @@ export interface UseHoldInput {
 
 export interface UseRequestBroker {
   hold(input: UseHoldInput): Promise<UseHoldOutcome>;
-  answer(operationId: string, requestId: string, answer: UseAnswer): { readonly ok: true; readonly capability: UseCapability } | { readonly ok: false; readonly error: "request_not_found" };
+  answer(objectiveId: string, requestId: string, answer: UseAnswer): { readonly ok: true; readonly capability: UseCapability } | { readonly ok: false; readonly error: "request_not_found" };
   /** 「이번 작업만」 허가가 살아 있는가. 유휴 시한을 넘긴 허가는 여기서 걷힌다. */
-  granted(operationId: string, capability: UseCapability): boolean;
+  granted(objectiveId: string, capability: UseCapability): boolean;
   /** 허가로 통과한 호출이 있었다 — 유휴 시한을 다시 잰다. */
-  touch(operationId: string, capability: UseCapability): void;
-  /** 턴이 끝났다 — 그 Operation 의 요청은 `stopped`, 허가는 모두 풀린다. */
-  settle(operationId: string): void;
+  touch(objectiveId: string, capability: UseCapability): void;
+  /** 턴이 끝났다 — 그 Objective 의 요청은 `stopped`, 허가는 모두 풀린다. */
+  settle(objectiveId: string): void;
   /**
    * 한 참가자만 턴을 닫았다 — 그 참가자의 붙잡힌 호출만 `stopped` 로 끝내고, 남은 waiter 가 없으면 카드를 내린다.
    * 허가는 건드리지 않는다(다른 참가자가 아직 쓰는 중일 수 있다). 걷을 때인지는 호출자가 판정해 `settle` 을 부른다.
    */
-  leave(operationId: string, participantId: string): void;
+  leave(objectiveId: string, participantId: string): void;
   /** 스위치를 거두었다 — 그 도구군의 요청과 허가만 걷는다. */
-  revoke(operationId: string, capability: UseCapability): void;
+  revoke(objectiveId: string, capability: UseCapability): void;
   list(): { readonly requests: readonly UseRequestView[]; readonly grants: { readonly console: readonly string[]; readonly computer: readonly string[] } };
   dispose(): void;
 }
@@ -68,7 +68,7 @@ export interface UseRequestBrokerOptions {
   readonly idleMs?: number;
   readonly recheckMs?: number;
   readonly now?: () => number;
-  /** 요청·허가가 바뀔 때마다 불린다 — 호스트가 이걸로 operation-use 스냅샷을 밀어낸다. */
+  /** 요청·허가가 바뀔 때마다 불린다 — 호스트가 이걸로 objective-use 스냅샷을 밀어낸다. */
   readonly onChange?: () => void;
 }
 
@@ -77,7 +77,7 @@ export const USE_GRANT_IDLE_MS = 5 * 60_000;
 
 interface PendingRequest {
   readonly id: string;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly capability: UseCapability;
   readonly tools: string[];
   readonly expiresAt: number;
@@ -85,7 +85,7 @@ interface PendingRequest {
   readonly timer: ReturnType<typeof setTimeout>;
 }
 
-const key = (operationId: string, capability: UseCapability) => `${capability}:${operationId}`;
+const key = (objectiveId: string, capability: UseCapability) => `${capability}:${objectiveId}`;
 
 export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): UseRequestBroker {
   const holdMs = options.holdMs ?? USE_REQUEST_HOLD_MS;
@@ -113,8 +113,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   };
 
   const finish = (request: PendingRequest, outcome: UseHoldOutcome) => {
-    if (pending.get(key(request.operationId, request.capability)) !== request) return;
-    pending.delete(key(request.operationId, request.capability));
+    if (pending.get(key(request.objectiveId, request.capability)) !== request) return;
+    pending.delete(key(request.objectiveId, request.capability));
     clearTimeout(request.timer);
     for (const waiter of request.waiters) waiter.resolve(outcome);
     request.waiters.clear();
@@ -143,8 +143,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
 
   const withdrawnOf = (request: PendingRequest): boolean => [...request.waiters].some((waiter) => waiter.input.withdrawn?.() === true);
 
-  const granted = (operationId: string, capability: UseCapability) => {
-    const k = key(operationId, capability);
+  const granted = (objectiveId: string, capability: UseCapability) => {
+    const k = key(objectiveId, capability);
     const at = grants.get(k);
     if (at === undefined) return false;
     if (now() - at > idleMs) { grants.delete(k); clearGrantTimer(k); return false; }
@@ -156,13 +156,13 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       if (disposed || input.signal?.aborted) return Promise.resolve("stopped");
       if (input.withdrawn?.() === true) return Promise.resolve("withdrawn");
       if (input.authorized()) return Promise.resolve("authorized");
-      const k = key(input.operationId, input.capability);
+      const k = key(input.objectiveId, input.capability);
       let request = pending.get(k);
       let changed = false;
       if (!request) {
         const created: PendingRequest = {
           id: randomUUID(),
-          operationId: input.operationId,
+          objectiveId: input.objectiveId,
           capability: input.capability,
           tools: [],
           expiresAt: now() + holdMs,
@@ -176,7 +176,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       }
       if (!request.tools.includes(input.tool)) { request.tools.push(input.tool); changed = true; }
       // 새 참가자가 같은 카드에 합쳐지면 requestedBy 가 바뀐다 — 스냅숏을 다시 흘린다.
-      if (![...request.waiters].some((waiter) => (waiter.input.participantId ?? request.operationId) === (input.participantId ?? input.operationId))) changed = true;
+      if (![...request.waiters].some((waiter) => (waiter.input.participantId ?? request.objectiveId) === (input.participantId ?? input.objectiveId))) changed = true;
       if (changed) options.onChange?.();
       const current = request;
       return new Promise<UseHoldOutcome>((resolve) => {
@@ -195,23 +195,23 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         syncRecheck();
       });
     },
-    answer(operationId, requestId, answer) {
-      const request = [...pending.values()].find((candidate) => candidate.id === requestId && candidate.operationId === operationId);
+    answer(objectiveId, requestId, answer) {
+      const request = [...pending.values()].find((candidate) => candidate.id === requestId && candidate.objectiveId === objectiveId);
       if (!request) return { ok: false, error: "request_not_found" };
       // 순찰 사이에 거두어졌으면 허용 답은 받지 않고 요청을 거둔다 — 붙잡힌 호출은 `withdrawn` 으로 끝난다.
       if (answer !== "deny" && withdrawnOf(request)) { finish(request, "withdrawn"); return { ok: false, error: "request_not_found" }; }
-      if (answer === "turn") { grants.set(key(operationId, request.capability), now()); scheduleGrantExpiry(key(operationId, request.capability)); }
+      if (answer === "turn") { grants.set(key(objectiveId, request.capability), now()); scheduleGrantExpiry(key(objectiveId, request.capability)); }
       finish(request, answer === "deny" ? "declined" : answer);
       return { ok: true, capability: request.capability };
     },
     granted,
-    touch(operationId, capability) {
-      const k = key(operationId, capability);
-      if (granted(operationId, capability)) { grants.set(k, now()); scheduleGrantExpiry(k); }
+    touch(objectiveId, capability) {
+      const k = key(objectiveId, capability);
+      if (granted(objectiveId, capability)) { grants.set(k, now()); scheduleGrantExpiry(k); }
     },
-    settle(operationId) {
+    settle(objectiveId) {
       for (const capability of ["console", "computer"] as const) {
-        const k = key(operationId, capability);
+        const k = key(objectiveId, capability);
         const hadGrant = grants.delete(k);
         clearGrantTimer(k);
         const request = pending.get(k);
@@ -220,19 +220,19 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       }
       syncRecheck();
     },
-    leave(operationId, participantId) {
+    leave(objectiveId, participantId) {
       for (const capability of ["console", "computer"] as const) {
-        const request = pending.get(key(operationId, capability));
+        const request = pending.get(key(objectiveId, capability));
         if (!request) continue;
-        const leaving = [...request.waiters].filter((waiter) => (waiter.input.participantId ?? operationId) === participantId);
+        const leaving = [...request.waiters].filter((waiter) => (waiter.input.participantId ?? objectiveId) === participantId);
         if (!leaving.length) continue;
         if (leaving.length === request.waiters.size) { finish(request, "stopped"); continue; }
         for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
         options.onChange?.();
       }
     },
-    revoke(operationId, capability) {
-      const k = key(operationId, capability);
+    revoke(objectiveId, capability) {
+      const k = key(objectiveId, capability);
       const hadGrant = grants.delete(k);
       clearGrantTimer(k);
       const request = pending.get(k);
@@ -243,17 +243,17 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     list() {
       const requests = [...pending.values()].map((request) => ({
         id: request.id,
-        operationId: request.operationId,
+        objectiveId: request.objectiveId,
         capability: request.capability,
         tools: [...request.tools],
-        requestedBy: [...new Set([...request.waiters].map((waiter) => waiter.input.participantId ?? request.operationId))],
+        requestedBy: [...new Set([...request.waiters].map((waiter) => waiter.input.participantId ?? request.objectiveId))],
         expiresAt: request.expiresAt,
       }));
       const active = { console: [] as string[], computer: [] as string[] };
       for (const k of [...grants.keys()]) {
         const [capability, ...rest] = k.split(":");
-        const operationId = rest.join(":");
-        if ((capability === "console" || capability === "computer") && granted(operationId, capability)) active[capability].push(operationId);
+        const objectiveId = rest.join(":");
+        if ((capability === "console" || capability === "computer") && granted(objectiveId, capability)) active[capability].push(objectiveId);
       }
       return { requests, grants: active };
     },

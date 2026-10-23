@@ -21,14 +21,14 @@ export function objectiveConversationActions(objective: Objective): GroupConvers
         return { targets: [{ targetId: `commodore:${objective.theaterId}`, outcome: "sent" }] };
       }
       if (target.kind === "all") return request<GroupWriteResult>("/conversation/broadcast", { objectiveId: objective.id, text });
-      const memberId = target.kind === "member" ? target.operationId : null;
+      const memberId = target.kind === "member" ? target.objectiveId : null;
       const attached = attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {};
       const result = await request<{ notified: boolean | null }>("/commander/message", { objectiveId: objective.id, memberId, text, ...attached });
       return { targets: [{ targetId: memberId ?? objective.id, outcome: "sent" }], ...(result.notified !== null ? { commanderNotified: result.notified } : {}) };
     },
     async stopAll() {
-      const result = await request<{ targets: readonly { operationId: string; outcome: "interrupted" | "skipped" | "failed"; reason?: string }[] }>("/commander/stop", { objectiveId: objective.id });
-      return { targets: result.targets.map((target) => ({ targetId: target.operationId, outcome: target.outcome === "interrupted" ? "stopped" as const : target.outcome, ...(target.reason ? { reason: target.reason } : {}) })) };
+      const result = await request<{ targets: readonly { objectiveId: string; outcome: "interrupted" | "skipped" | "failed"; reason?: string }[] }>("/commander/stop", { objectiveId: objective.id });
+      return { targets: result.targets.map((target) => ({ targetId: target.objectiveId, outcome: target.outcome === "interrupted" ? "stopped" as const : target.outcome, ...(target.reason ? { reason: target.reason } : {}) })) };
     },
     async answerDecision(requestId, answers) {
       await request("/decision/answer", { objectiveId: objective.id, requestId, answers });

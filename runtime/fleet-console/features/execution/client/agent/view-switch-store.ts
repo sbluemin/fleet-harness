@@ -27,50 +27,50 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function read(operationId: string): ViewSwitchState {
-  return states.get(operationId) ?? IDLE;
+function read(objectiveId: string): ViewSwitchState {
+  return states.get(objectiveId) ?? IDLE;
 }
 
-function write(operationId: string, next: ViewSwitchState): void {
-  const current = read(operationId);
+function write(objectiveId: string, next: ViewSwitchState): void {
+  const current = read(objectiveId);
   if (current.chatPromptOpen === next.chatPromptOpen
     && current.terminalPending === next.terminalPending
     && current.terminalError === next.terminalError) return;
   if (next.chatPromptOpen === IDLE.chatPromptOpen
     && next.terminalPending === IDLE.terminalPending
-    && next.terminalError === IDLE.terminalError) states.delete(operationId);
-  else states.set(operationId, next);
+    && next.terminalError === IDLE.terminalError) states.delete(objectiveId);
+  else states.set(objectiveId, next);
   emit();
 }
 
-export function useViewSwitchState(operationId: string): ViewSwitchState {
+export function useViewSwitchState(objectiveId: string): ViewSwitchState {
   return React.useSyncExternalStore(
     (listener: () => void) => {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    () => read(operationId),
-    () => read(operationId),
+    () => read(objectiveId),
+    () => read(objectiveId),
   );
 }
 
-export function setChatPromptOpen(operationId: string, open: boolean): void {
-  write(operationId, { ...read(operationId), chatPromptOpen: open });
+export function setChatPromptOpen(objectiveId: string, open: boolean): void {
+  write(objectiveId, { ...read(objectiveId), chatPromptOpen: open });
 }
 
 export function setTerminalHandoff(
-  operationId: string,
+  objectiveId: string,
   patch: { readonly pending?: boolean; readonly error?: ViewSwitchState["terminalError"] },
 ): void {
-  const current = read(operationId);
-  write(operationId, {
+  const current = read(objectiveId);
+  write(objectiveId, {
     ...current,
     ...(patch.pending === undefined ? {} : { terminalPending: patch.pending }),
     ...(patch.error === undefined ? {} : { terminalError: patch.error }),
   });
 }
 
-export function disposeViewSwitch(operationId: string): void {
-  if (!states.delete(operationId)) return;
+export function disposeViewSwitch(objectiveId: string): void {
+  if (!states.delete(objectiveId)) return;
   emit();
 }

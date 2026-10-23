@@ -105,7 +105,7 @@ if (!sdk) {
   const queue = [];
   let pendingAsk = null;
   const takeAsk = () => {
-    // A launch may not consume another Operation's request in a shared control directory.
+    // A launch may not consume another Objective's request in a shared control directory.
     for (const name of [`ask-${sessionId}`, "ask"]) {
       const file = join(dir, name);
       try {

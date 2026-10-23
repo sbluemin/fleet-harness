@@ -6,23 +6,23 @@ import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
+import type { ObjectiveGroup, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { accentToneLabels, resolveAccentColor } from "../operation-accent.js";
+import { accentToneLabels, resolveAccentColor } from "../objective-accent.js";
 
 export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
   readonly onSetGroupId: (groupId: string | null) => void;
   readonly onCreateGroup: (name: string) => void;
   /** 창 닫기 — 캡션 X와 같은 닫기(유예 삭제 + 실행 취소 토스트). 두 번 눌러 확정한 뒤에만 부른다. */
-  readonly onCloseOperation: () => void;
+  readonly onCloseObjective: () => void;
   /** 「더블클릭으로 열기」를 켠 사이드바만 — 한 번 클릭이 고르기라 메뉴 맨 위에서 연다. */
   readonly onOpen?: () => void;
   /** 사이드바 칩만 — 이름을 그 칩 자리에서 고친다(F2 와 같은 동작). */
   readonly onRename?: () => void;
 }
 
-/** Operation 이 아직 없는 사이드바 줄(시작 전 목표) — 줄 제목 고치기와 보관만 뜻이 있다(그룹·액센트·종류 스위치는 Operation 의 것). */
+/** Objective 이 아직 없는 사이드바 줄(시작 전 목표) — 줄 제목 고치기와 보관만 뜻이 있다(그룹·액센트·종류 스위치는 Objective 의 것). */
 export interface GroupContextMenuRowActions {
   readonly onRename?: () => void;
   /** 보관 — 뿌리 있는 줄의 「보관」과 같은 자리·같은 항목이다. 보관함에서 복원할 수 있다. */
@@ -42,8 +42,8 @@ export type GroupContextMenuAlign = "start" | "end";
 type GroupContextMenuProps =
   | {
       readonly kind: "chip";
-      readonly operation: OperationNode;
-      readonly groups: readonly OperationGroup[];
+      readonly objectiveRecord: ObjectiveRecord;
+      readonly groups: readonly ObjectiveGroup[];
       readonly accentKey: string | null;
       readonly anchor: DOMRect;
       readonly align?: GroupContextMenuAlign;
@@ -59,7 +59,7 @@ type GroupContextMenuProps =
     }
   | {
       readonly kind: "group-header";
-      readonly group: OperationGroup;
+      readonly group: ObjectiveGroup;
       readonly anchor: DOMRect;
       readonly align?: GroupContextMenuAlign;
       readonly actions: GroupContextMenuHeaderActions;
@@ -118,12 +118,12 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
   }, [anchor, onClose]);
 
   return createPortal(
-    <div className="group-context-menu-overlay" data-native-browser-transparent data-keep-operation-active role="presentation" onPointerDown={onClose}>
+    <div className="group-context-menu-overlay" data-native-browser-transparent data-keep-objective-active role="presentation" onPointerDown={onClose}>
       <div
         ref={cardRef}
         className="group-context-menu-card"
         role="menu"
-        aria-label={props.kind === "group-header" ? t("sidebar.groupMenu.groupOptions", { name: props.group.name }) : t("sidebar.groupMenu.operationOptions")}
+        aria-label={props.kind === "group-header" ? t("sidebar.groupMenu.groupOptions", { name: props.group.name }) : t("sidebar.groupMenu.objectiveRecordOptions")}
         style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -141,14 +141,14 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
 }
 
 function ChipMenuContent({
-  operation,
+  objectiveRecord,
   groups,
   accentKey,
   actions,
   onClose,
 }: {
-  operation: OperationNode;
-  groups: readonly OperationGroup[];
+  objectiveRecord: ObjectiveRecord;
+  groups: readonly ObjectiveGroup[];
   accentKey: string | null;
   actions: GroupContextMenuChipActions;
   onClose: () => void;
@@ -186,11 +186,11 @@ function ChipMenuContent({
           <div className="group-context-menu-divider" aria-hidden="true" />
         </>
       ) : null}
-      <PluginOperationMenuSection operation={operation} onClose={onClose} />
+      <PluginObjectiveMenuSection objectiveRecord={objectiveRecord} onClose={onClose} />
       <div className="group-context-menu-section-label">{t("sidebar.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
         const color = resolveAccentColor(group.color);
-        const isSelected = operation.groupId === group.id;
+        const isSelected = objectiveRecord.groupId === group.id;
         return (
           <button
             key={group.id}
@@ -247,7 +247,7 @@ function ChipMenuContent({
         onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
       />
       <div className="group-context-menu-divider" aria-hidden="true" />
-      <CloseWindowItem onCloseOperation={actions.onCloseOperation} onClose={onClose} />
+      <CloseWindowItem onCloseObjective={actions.onCloseObjective} onClose={onClose} />
     </>
   );
 }
@@ -262,7 +262,7 @@ function RowMenuContent({ actions, onClose }: { actions: GroupContextMenuRowActi
           <div className="group-context-menu-divider" aria-hidden="true" />
         </>
       ) : null}
-      <CloseWindowItem onCloseOperation={actions.onArchive} onClose={onClose} />
+      <CloseWindowItem onCloseObjective={actions.onArchive} onClose={onClose} />
     </>
   );
 }
@@ -291,11 +291,11 @@ function RenameGlyph() {
  * 되돌리기는 토스트와 ⌘Z가, 복원은 보관함이 맡는다. 캡션·칩과 같은 보관 글리프를 쓴다.
  * Enter를 누르고 있는 반복 입력은 받지 않는다 — 메뉴를 연 키가 그대로 보관까지 이어지면 안 된다.
  */
-function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () => void; onClose: () => void }) {
+function CloseWindowItem({ onCloseObjective, onClose }: { onCloseObjective: () => void; onClose: () => void }) {
   const t = useT();
   const trigger = () => {
     onClose();
-    onCloseOperation();
+    onCloseObjective();
   };
   return (
     <button
@@ -316,18 +316,18 @@ function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () =
 }
 
 /**
- * Operation 종류가 메뉴에 싣는 섹션 — 이 Operation에 **대한** 스위치(관찰·콘솔 사용·컴퓨터 사용 같은).
+ * Objective 종류가 메뉴에 싣는 섹션 — 이 Objective에 **대한** 스위치(관찰·콘솔 사용·컴퓨터 사용 같은).
  * 캡션의 ···와 사이드바 우클릭이 같은 카드를 열므로 여기 한 번만 서면 두 진입점이 같은 것을
  * 본다. 실패해도 메뉴의 나머지는 살아야 하므로 조각만 조용히 비운다.
  */
-function PluginOperationMenuSection({ operation, onClose }: { operation: OperationNode; onClose: () => void }) {
+function PluginObjectiveMenuSection({ objectiveRecord, onClose }: { objectiveRecord: ObjectiveRecord; onClose: () => void }) {
   const registry = useFeatureRegistry();
   const language = useConsoleLocale();
-  const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
-  if (!descriptor?.operationMenu) return null;
+  const descriptor = registry.objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+  if (!descriptor?.objectiveRecordMenu) return null;
   return (
     <FeatureErrorBoundary fallback={<></>}>
-      {descriptor.operationMenu({ operation, language, onClose })}
+      {descriptor.objectiveRecordMenu({ objectiveRecord, language, onClose })}
       <div className="group-context-menu-divider" aria-hidden="true" />
     </FeatureErrorBoundary>
   );
@@ -338,7 +338,7 @@ function GroupHeaderMenuContent({
   actions,
   onClose,
 }: {
-  group: OperationGroup;
+  group: ObjectiveGroup;
   actions: GroupContextMenuHeaderActions;
   onClose: () => void;
 }) {

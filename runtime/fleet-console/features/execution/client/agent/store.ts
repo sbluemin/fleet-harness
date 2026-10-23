@@ -55,7 +55,7 @@ export function hydrateSessions(sessions: readonly SessionInfo[]): void {
 export function applySessionUpdate(incoming: SessionInfo): void {
   const session = splitSessionStep(incoming);
   // 지금 하는 일(step)만 바뀐 프레임은 세션 목록을 갈아 끼우지 않는다 — 목록을 구독하는 모든 표면이 다시 그려지지 않게,
-  // 계열은 Operation 별 구독(`useSessionStep`)으로만 흐른다. Chat 턴 동안 이 프레임이 대부분이다.
+  // 계열은 Objective 별 구독(`useSessionStep`)으로만 흐른다. Chat 턴 동안 이 프레임이 대부분이다.
   const current = state.sessions[session.sessionId];
   if (current && sameSessionInfo(current, session)) return;
   const known = Boolean(current);
@@ -87,7 +87,7 @@ function emit(): void {
 }
 
 
-// ── 지금 하는 일(step) — 세션 목록과 따로 산다. 몽글 아바타만 Operation 하나씩 구독한다. ──
+// ── 지금 하는 일(step) — 세션 목록과 따로 산다. 몽글 아바타만 Objective 하나씩 구독한다. ──
 
 const steps = new Map<string, SessionStep>();
 const stepListeners = new Map<string, Set<Listener>>();

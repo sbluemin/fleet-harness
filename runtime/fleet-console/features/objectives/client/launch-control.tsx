@@ -4,7 +4,7 @@ import { ModelCoordinatePicker, modelCoordinateDisplay } from "../../ai-gateway/
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { LocalizedText, Translate } from "@fleet-console/i18n";
-import type { OperationLaunchVariantRow } from "../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchVariantRow } from "../shared/records/types.js";
 import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
 import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
@@ -19,7 +19,7 @@ import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
 
-export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; readonly caption: string; readonly rows: readonly OperationLaunchVariantRow[] }
+export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; readonly caption: string; readonly rows: readonly ObjectiveLaunchVariantRow[] }
 
 /**
  * 지휘관·구성원 메뉴의 원천 — Console 모델 로스터(`launch` 대상). 코어 캐시 하나를 구독하므로 Settings › AI Gateway에서
@@ -64,7 +64,7 @@ function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
 export function useLaunchGroups(): readonly LaunchGroup[] {
   return toLaunchGroups(useModelRoster(models, "launch"));
 }
-export const useLaunchRows = (): readonly OperationLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
+export const useLaunchRows = (): readonly ObjectiveLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
 
 /** 모델 id 의 공급자 — 카탈로그 행이 있으면 그 밴드, 없으면 id 에서. 라우팅의 "codex/gpt-…"·게이트웨이 접두 표기도 같은 공급자로 읽는다. */
 function providerOfModel(groups: readonly LaunchGroup[], model: string): LaunchProviderGlyphId | null {
@@ -78,14 +78,14 @@ export function ProviderGlyph({ model }: { readonly model: string | undefined })
   const groups = useLaunchGroups();
   const provider = model ? providerOfModel(groups, model) : null;
   if (!provider) return null;
-  return <span className={`operation-launch-provider-glyph objectives-launch-provider is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
+  return <span className={`objective-launch-provider-glyph objectives-launch-provider is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
 }
 
 /**
- * 실제로 띄운 모델의 낱말 — 설정 선택(member.launch)이 아니라 실행 Operation 에 적힌 값이다. 모델이 비어 있으면 Console 기본으로
+ * 실제로 띄운 모델의 낱말 — 설정 선택(member.launch)이 아니라 실행 Objective 에 적힌 값이다. 모델이 비어 있으면 Console 기본으로
  * 뜬 것이므로 기본 모델(Opus)을 추정하지 않고 「기본」으로 둔다. 제목(title)은 공급자까지 붙인 풀네임.
  */
-export function launchedWords(rows: readonly OperationLaunchVariantRow[], model: string | undefined, effort: string | undefined, labels: { readonly auto: string; readonly fallback: string }): { readonly model: string | null; readonly words: { readonly model: string; readonly effort: string }; readonly title: string } {
+export function launchedWords(rows: readonly ObjectiveLaunchVariantRow[], model: string | undefined, effort: string | undefined, labels: { readonly auto: string; readonly fallback: string }): { readonly model: string | null; readonly words: { readonly model: string; readonly effort: string }; readonly title: string } {
   const known = model && model !== "default" ? model : null;
   const words = known ? launchWords(rows, known, effort, labels.auto) : { model: labels.fallback, effort: effort && effort !== "auto" ? effort.toUpperCase() : labels.auto };
   return { model: known, words, title: `${known ? modelFullName(rows, known) : labels.fallback} · ${words.effort}` };
@@ -111,7 +111,7 @@ export function routingReason(t: Translate<ObjectiveMessageKey>, code: string): 
 }
 
 /** "Opus" / "HIGH" — 카드·행·메뉴가 같은 낱말을 쓴다. 카탈로그에 없는 모델은 id 그대로. */
-export function launchWords(rows: readonly OperationLaunchVariantRow[], model: string | undefined, effort: string | undefined, autoLabel: string): { readonly model: string; readonly effort: string } {
+export function launchWords(rows: readonly ObjectiveLaunchVariantRow[], model: string | undefined, effort: string | undefined, autoLabel: string): { readonly model: string; readonly effort: string } {
   const id = model ?? DEFAULT_LAUNCH.model;
   const row = findLaunchRow(rows, id);
   const chosen = effort ?? (model ? undefined : DEFAULT_LAUNCH.effort);
@@ -126,7 +126,7 @@ function canonicalModelId(model: string): string {
   return canonical.includes("--") || !canonical.includes("/") ? canonical : canonical.replace(/\//g, "--");
 }
 /** 라우팅·스코프·bare 표기가 달라도 같은 모델의 행을 찾는다. */
-function findLaunchRow(rows: readonly OperationLaunchVariantRow[], model: string): OperationLaunchVariantRow | undefined {
+function findLaunchRow(rows: readonly ObjectiveLaunchVariantRow[], model: string): ObjectiveLaunchVariantRow | undefined {
   const id = canonicalModelId(model);
   return rows.find((candidate) => canonicalModelId(candidate.launch.model ?? candidate.id) === id);
 }
@@ -136,7 +136,7 @@ function bareModelId(model: string): string {
   return stripped.includes("--") ? stripped.slice(stripped.lastIndexOf("--") + 2) : stripped.includes("/") ? stripped.slice(stripped.lastIndexOf("/") + 1) : stripped;
 }
 /** "Codex GPT-5.3 Codex" / "Claude Opus" — 임무 아래 dim 줄의 풀네임. 게이트웨이 접두는 벗기고, 카탈로그 행이 있으면 그 이름, 없으면 id 를 읽을 수 있게 다듬는다. */
-export function modelFullName(rows: readonly OperationLaunchVariantRow[], model: string | undefined | null): string {
+export function modelFullName(rows: readonly ObjectiveLaunchVariantRow[], model: string | undefined | null): string {
   if (!model || model === "default") return "";
   // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
   const id = canonicalModelId(model);
@@ -255,11 +255,11 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
 }
 
 /**
- * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Operation 이 있으면 어떤 방식이든 그 Operation 의 모델이 실제 실행값이다(연결 뒤
- * 설정을 바꿔도 기존 Operation 은 옛 모델로 재개된다). 띄우기 전에는 라우팅·지휘관과 같게는 선택 낱말, 모델 지정은 선택값 그대로.
+ * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Objective 이 있으면 어떤 방식이든 그 Objective 의 모델이 실제 실행값이다(연결 뒤
+ * 설정을 바꿔도 기존 Objective 은 옛 모델로 재개된다). 띄우기 전에는 라우팅·지휘관과 같게는 선택 낱말, 모델 지정은 선택값 그대로.
  * 메뉴의 선택 표시(model·effort·active)는 이 값이 아니라 member.launch 만 따른다.
  */
-export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, rows: readonly OperationLaunchVariantRow[]): { text?: ReactNode; title: string; label: string } {
+export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, rows: readonly ObjectiveLaunchVariantRow[]): { text?: ReactNode; title: string; label: string } {
   const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
   if (launched) {
     const running = launchedWords(rows, member.model, member.effort, labels);
@@ -385,8 +385,8 @@ export function memberStatus(member: ObjectiveMember, state: string, objective: 
   return { text: memberActivityWord(state, t) ?? "", failed: false };
 }
 
-/** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
-export const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
+/** 사라진 Objective 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
+export const memberLaunched = (member: ObjectiveMember, objectiveRecordState: (objectiveId: string) => string): boolean => member.sessionName !== null && objectiveRecordState(member.id) !== "closed";
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
 export const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
 /** 세션이 살아 있는 활동 — 서브에이전트 허용은 이런 세션에 곧바로 실리지 않고 다음 기동부터 적용된다. */
@@ -400,7 +400,7 @@ interface MemberLaunchControlProps {
   readonly member: ObjectiveMember;
   /** 구성원 세션의 활동 — 세션이 없으면 "closed". */
   readonly state: string;
-  readonly rows: readonly OperationLaunchVariantRow[];
+  readonly rows: readonly ObjectiveLaunchVariantRow[];
   readonly touchable: boolean;
   /** 띄운 구성원의 선택 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 한 번의 선택에 한 번 불린다. */
   readonly onPickLaunched: (choice: MemberLaunchChoice) => void;

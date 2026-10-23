@@ -6,7 +6,7 @@ import { isIdentityTone, type IdentityTone } from "./identity-tones.js";
  * 베이스는 15종이다. 각 베이스는 몸 모양·정체성 톤·얼굴 디테일이 정해진 캐릭터이고, 역할은 베이스 위에 특징 하나로만 갈린다
  * (사령관은 왼쪽 위 brass 별 배지, 지휘관은 머리 위 안테나, 구성원은 베이스만). 상태는 얼굴과 몸짓이 말한다.
  *
- * 저장은 키(`theater:<id>`·`operation:<id>`) → 모습이다. 처음 읽을 때 형제와 겹치지 않는 베이스를 무작위로 뽑아 저장하고,
+ * 저장은 키(`theater:<id>`·`objective:<id>`) → 모습이다. 처음 읽을 때 형제와 겹치지 않는 베이스를 무작위로 뽑아 저장하고,
  * `origin` 은 그때 뽑힌 베이스라 「처음 값으로」가 돌아갈 자리다. 서버·브라우저가 같은 정제기로 읽는다.
  */
 
@@ -53,7 +53,7 @@ export function isMongleBaseId(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MONGLE_BASE_COUNT;
 }
 
-/** 역할 — 사령관(Theater 운영자), 지휘관(목표의 뿌리와 일반 Operation), 구성원(목표 안의 Operation). */
+/** 역할 — 사령관(Theater 운영자), 지휘관(목표의 뿌리와 일반 Objective), 구성원(목표 안의 Objective). */
 export type MongleRole = "commodore" | "commander" | "member";
 
 /** 얼굴·몸짓이 말하는 상태. Console 표시 어휘(running·awaiting·unseen·idle·ended)와 목표 줄 글리프에 결정 요청·오류를 더했다. */
@@ -73,7 +73,7 @@ export type MongleActivity = (typeof MONGLE_ACTIVITIES)[number];
  * Console 의 공개 활동 축)이고, 구성원은 자기 값이다. 원시 낱말(background 포함)을 그대로 받는다.
  */
 export interface MongleFacts {
-  /** 이 사람의 세션(Operation)이 있다. false 면 시작 전 얼굴이다. 생략하면 있다고 본다. */
+  /** 이 사람의 세션(Objective)이 있다. false 면 시작 전 얼굴이다. 생략하면 있다고 본다. */
   readonly session?: boolean;
   readonly activity?: "idle" | "running" | "background" | "awaiting" | "ended" | null;
   /** 지휘관 — 목표가 사람의 검토를 기다린다. */
@@ -116,7 +116,7 @@ export interface MongleLook {
 
 export type AvatarBook = Readonly<Record<string, MongleLook>>;
 
-const AVATAR_KEY = /^(?:theater|operation):[A-Za-z0-9._:-]{1,160}$/u;
+const AVATAR_KEY = /^(?:theater|objective):[A-Za-z0-9._:-]{1,160}$/u;
 /** 저장소가 끝없이 자라지 않게 하는 상한. 넘치면 읽기에서 뒤쪽을 버린다(다음 읽기에서 다시 뽑힌다). */
 export const MAX_AVATAR_ENTRIES = 5000;
 
@@ -124,8 +124,8 @@ export function theaterAvatarKey(theaterId: string): string {
   return `theater:${theaterId}`;
 }
 
-export function operationAvatarKey(operationId: string): string {
-  return `operation:${operationId}`;
+export function objectiveRecordAvatarKey(objectiveId: string): string {
+  return `objective:${objectiveId}`;
 }
 
 export function isAvatarKey(value: unknown): value is string {

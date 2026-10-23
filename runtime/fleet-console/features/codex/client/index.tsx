@@ -75,7 +75,7 @@ export function installCodexClient(ctx: CodexClientDeps): () => void {
       surfaces: ctx.surfaces,
       rail: ctx.rail,
       composer: ctx.composer,
-      operations: ctx.operations,
+      objectiveRecords: ctx.objectiveRecords,
     });
     // 서버는 감시 결과를 콘솔 공용 스트림으로 계속 밀어 보낸다 — 받는 쪽이 없으면 그
     // 프레임은 버려지고, 화면은 파일이 바뀌어도 낡은 채로 남는다. 감시가 끊겼다는 통보

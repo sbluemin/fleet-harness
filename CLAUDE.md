@@ -1,6 +1,6 @@
 # Fleet
 
-Fleet is a multi-LLM orchestration kit spanning Agent CLI backends and gateway models. The **Admiral** is the host agent that plans, delegates, and integrates; a **Theater** is a registered project root and its local context boundary; an **Operation** is a Console-managed unit inside a Theater.
+Fleet is a multi-LLM orchestration kit spanning Agent CLI backends and gateway models. The **Admiral** is the host agent that plans, delegates, and integrates; a **Theater** is a registered project root and its local context boundary; an **Objective** is a Console-managed unit of work, holding its board and agent sessions under the commodore that owns it.
 
 ## Select task context
 

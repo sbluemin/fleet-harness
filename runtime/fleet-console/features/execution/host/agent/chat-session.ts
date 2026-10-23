@@ -142,13 +142,13 @@ export interface AgentChatSessionSeed {
    */
   readonly resolveContextWindow?: (model: string) => number | undefined;
   /**
-   * 적용된 모델·강도를 Operation payload에 남긴다. 재개·터미널·같은 세션을 보는 다른 탭이 모두
+   * 적용된 모델·강도를 Objective payload에 남긴다. 재개·터미널·같은 세션을 보는 다른 탭이 모두
    * 그 좌표를 읽으므로, 자식에 적용한 순간이 곧 payload를 고치는 순간이어야 한다.
    */
   readonly onCoordinatesApplied?: (coordinates: { readonly model: string; readonly effort: string | null }) => void;
   readonly cwd: string;
   /**
-   * 자식 세션의 표시 이름(`-n`). 터미널 런치가 CLI에 싣는 것과 같은 Operation의 세션 이름이며,
+   * 자식 세션의 표시 이름(`-n`). 터미널 런치가 CLI에 싣는 것과 같은 Objective의 세션 이름이며,
    * 다른 세션이 `SendMessage`로 이 세션을 부르는 주소다.
    */
   readonly sessionName?: string;
@@ -161,7 +161,7 @@ export interface AgentChatSessionSeed {
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. `{ mode: "preset" }`이면 켜고,
    * `undefined`는 결함이 아니라 사용자의 설정(`off`)이다 — SDK는 이 필드가 없으면 그 프롬프트를
-   * 아예 붙이지 않는다. 터미널에서 같은 Operation을 열면 같은 설정이 CLI 플래그로 나타난다.
+   * 아예 붙이지 않는다. 터미널에서 같은 Objective을 열면 같은 설정이 CLI 플래그로 나타난다.
    */
   readonly systemPrompt?: ClaudeGatewaySystemPrompt;
   /**
@@ -185,15 +185,15 @@ export interface AgentChatSessionSeed {
    * 턴의 첨부는 바이트 없는 자리로 그려진다 — 경로는 어느 쪽이든 브라우저로 가지 않는다.
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
-  /** 성공·실패와 무관하게 발신 대상만 해석한다. 반환한 불투명 Operation id는 tool-result에 싣고 전달 부작용은 없다. */
+  /** 성공·실패와 무관하게 발신 대상만 해석한다. 반환한 불투명 Objective id는 tool-result에 싣고 전달 부작용은 없다. */
   readonly resolveSessionMessageRecipient?: (to: string) => string | undefined | Promise<string | undefined>;
   /**
    * 이 세션이 다른 세션으로 **성공적으로 보낸** 말 한 통. 받는 쪽의 원장에 수신 줄을 세우는 유일한 문이다.
    *
    * 라이브 도구 호출과 그 성공 결과만 관측한다. 어느 쪽 트랜스크립트도 읽지 않으며, 실패한 발신에서는
-   * 부르지 않는다. 대상은 이미 서버가 해석한 Operation 좌표다 — 세션은 레지스트리를 모른다.
+   * 부르지 않는다. 대상은 이미 서버가 해석한 Objective 좌표다 — 세션은 레지스트리를 모른다.
    */
-  readonly onSessionMessageSent?: (sent: { readonly recipientOperationId?: string; readonly text: string; readonly toolUseId: string }) => void;
+  readonly onSessionMessageSent?: (sent: { readonly recipientObjectiveId?: string; readonly text: string; readonly toolUseId: string }) => void;
   /**
    * 다른 세션의 세션 간 메시지가 이 세션에 닿았다 — 자식의 트랜스크립트가 `origin.kind:"peer"` 로 적은 user 레코드에서 보낸 이름과
    * 시각만 읽는다(본문은 읽지 않는다). 보낸 쪽이 터미널이라 발신 관측이 없어도 도착은 여기서 보인다.
@@ -202,14 +202,14 @@ export interface AgentChatSessionSeed {
   readonly cancelComputerUse?: () => void;
   readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
-   * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
+   * 이 세션의 실행 활동을 Objective 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
    * 뜻이며, 그때는 턴을 시작하지 않는다 — 배선이 끊긴 채 도는 턴은 화면에 휴면으로 보이고,
    * 그 조용한 거짓말이 이 계약이 존재하는 이유다.
    */
   readonly reportActivity: (working: boolean) => boolean;
   /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Console Use·Computer Use)이 여기서 내려간다. */
   readonly onTurnSettled?: () => void;
-  readonly onTurnEnd?: (output: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"]) => void;
+  readonly onTurnEnd?: (output: import("../../../console-use/shared/control.js").ConsoleObjectiveObservation["output"]) => void;
   /**
    * 턴이 닫힐 때 transcript의 마지막 cwd로 위치 보고를 보정한다. 실행별 hook 바인딩이
    * 있으면 그 바인딩을 통해 보고하고, 없는 호출자는 이 콜백을 쓴다.
@@ -619,9 +619,9 @@ async function resolveReplayRecipients(
 
 function withReplayRecipient(event: AgentChatStreamEvent, recipients: Map<string, string>): AgentChatStreamEvent {
   if (event.kind !== "tool-result") return event;
-  const recipientOperationId = recipients.get(event.id);
+  const recipientObjectiveId = recipients.get(event.id);
   recipients.delete(event.id);
-  return recipientOperationId ? { ...event, recipientOperationId } : event;
+  return recipientObjectiveId ? { ...event, recipientObjectiveId } : event;
 }
 
 /**
@@ -735,7 +735,7 @@ function opensChatTurn(event: AgentChatStreamEvent): boolean {
 }
 
 class AgentChatSession {
-  readonly operationId: string;
+  readonly objectiveId: string;
   private readonly seed: AgentChatSessionSeed;
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
@@ -755,7 +755,7 @@ class AgentChatSession {
    * `fresh`는 아직 세션이 없으므로 null로 출발하고, 첫 SDK 메시지의 session_id가 이 자리를 채운다.
    */
   private latestSessionId: string | null;
-  /** 이미 Operation에 심은 세션 id. 같은 좌표를 매 턴 다시 심지 않기 위한 축이다. */
+  /** 이미 Objective에 심은 세션 id. 같은 좌표를 매 턴 다시 심지 않기 위한 축이다. */
   private reportedSessionId: string | null = null;
   /** 마지막으로 알린 자식 cwd. 실행 cwd로 출발하므로 같은 자리는 다시 알리지 않는다. */
   private reportedCwd: string;
@@ -815,7 +815,7 @@ class AgentChatSession {
   private endedTurnReport: { readonly seq: number; readonly report: import("../../../console-use/shared/control.js").ConsoleTurnReport } | undefined;
   private disposed = false;
   /**
-   * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
+   * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Objective이 열려 있는 동안**
    * 살아 있으며, 그 수명이 곧 백그라운드 작업의 수명이다 — 턴 단위 실행은 vendor가 single-turn으로
    * 보고 자식의 입력을 닫아, Claude Code의 wind-down이 백그라운드 셸을 유예 뒤 kill한다.
    */
@@ -1012,8 +1012,8 @@ class AgentChatSession {
   /** 자식이 마지막으로 거절한 좌표와 그 원 예외. 그 좌표를 곧바로 적용하려던 호출자가 실패 사유로 돌려준다. */
   private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("../../../console-use/shared/control.js").ConsoleCoordinatesFailureCause } | null = null;
 
-  constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
-    this.operationId = operationId;
+  constructor(objectiveId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
+    this.objectiveId = objectiveId;
     this.seed = seed;
     this.createSdk = createSdk;
     this.stepReporter = seed.reportStep ? createChatStepReporter(seed.reportStep) : null;
@@ -1187,7 +1187,7 @@ class AgentChatSession {
     return this.seed.canReportActivity();
   }
 
-  private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] } | undefined;
+  private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("../../../console-use/shared/control.js").ConsoleObjectiveObservation["output"] } | undefined;
 
   /**
    * Console Use 의 전사 페이지 — 저널을 seq 순으로 잘라 준다. 표시용 이벤트(델타·큐·맥박)는 빼고
@@ -1221,7 +1221,7 @@ class AgentChatSession {
     return [...rows.values()];
   }
 
-  readConsoleOutput(): import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] {
+  readConsoleOutput(): import("../../../console-use/shared/control.js").ConsoleObjectiveObservation["output"] {
     const busy = this.pendingTurns > 0 || this.turnOpen || this.settlingStoppedTurn;
     if (this.consoleOutputCache?.seq === this.seq && this.consoleOutputCache.busy === busy) return this.consoleOutputCache.value;
     const start = this.journal.findLastIndex(({ event }) => event.kind === "dispatch" || event.kind === "turn-start");
@@ -1230,7 +1230,7 @@ class AgentChatSession {
     const endEntry = entries.findLast(({ event }) => event.kind === "turn-end");
     const ending = endEntry?.event;
     const safe = chatShellTailFromOutput(text, { cwd: this.seed.cwd });
-    const value: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] = {
+    const value: import("../../../console-use/shared/control.js").ConsoleObjectiveObservation["output"] = {
       status: text ? "available" : "unavailable", ...(text ? { text: safe.tail, truncated: safe.truncated || start < 0 } : {}),
       revision: endEntry?.seq ?? this.seq,
       outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
@@ -1730,7 +1730,7 @@ class AgentChatSession {
     this.disposed = true;
     this.stepReporter?.dispose();
     // 아직 시작하지 않은 예약은 여기서 거둔다. 남겨 두면 접는 도중에 자기 차례가 와 새 턴을
-    // 세우고, dispose는 그 턴의 완주를 기다리며 Operation 삭제·셧다운을 그만큼 붙든다.
+    // 세우고, dispose는 그 턴의 완주를 기다리며 Objective 삭제·셧다운을 그만큼 붙든다.
     this.queuedDispatches.clear();
     // 건넨 말의 결말은 자식이 말해 주는데, 그 자식을 지금 접는다. 기다리는 쪽을 풀어 주지 않으면
     // 오지 않을 `command_lifecycle`을 영원히 기다린다.
@@ -1741,7 +1741,7 @@ class AgentChatSession {
     for (const wake of this.workflowReadWaiters.splice(0)) wake();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
-    // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
+    // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Objective 삭제·Console 셧다운을
     // 무기한 막는다. 살아 있던 백그라운드 작업도 자식과 함께 거둬진다 — 터미널 세션을 닫는 것과
     // 같은 결말이며, 원장은 아래 리더 종료 경로가 정직하게 닫는다.
     const session = this.session;
@@ -1757,7 +1757,7 @@ class AgentChatSession {
     // 남겨 두면 turnFlight가 영영 착지하지 않아 dispose가 그 자리에서 멈춘다.
     this.releaseTurnCloseWaiters();
     await this.turnFlight.catch(() => undefined);
-    // 날고 있는 좌표 심기를 착지시킨다 — 끝난 세션이 뒤늦게 Operation을 고쳐 쓰지 않게.
+    // 날고 있는 좌표 심기를 착지시킨다 — 끝난 세션이 뒤늦게 Objective을 고쳐 쓰지 않게.
     if (this.syncFlight) await this.syncFlight.catch(() => undefined);
     // 첫 조회가 파일 생성보다 빨랐을 수 있다 — 더는 메시지가 오지 않으므로 종료 후 한 번 확정한다.
     await this.syncProviderSession().catch(() => undefined);
@@ -2497,7 +2497,7 @@ class AgentChatSession {
     if (!this.sdkFlight) {
       this.sdkFlight = (async () => {
         // 플러그인을 못 실으면 스킬도 게이트웨이 정체성도 정책 훅도 없는 세션이 된다. 그런 세션을
-        // 조용히 계속 돌리면 같은 Operation을 터미널로 열었을 때와 다른, 특히 위임 가드가 없는
+        // 조용히 계속 돌리면 같은 Objective을 터미널로 열었을 때와 다른, 특히 위임 가드가 없는
         // 능력을 갖게 되고 그 차이는 화면 어디에도 드러나지 않는다 — 구체 코드를 저널에 남기고
         // 턴을 실패시킨다. 실패한 턴이 무장 해제된 세션보다 낫다.
         const claudeSession = await this.resolveClaudeSession()
@@ -2528,9 +2528,9 @@ class AgentChatSession {
             env: {
               ...chatChildEnv(process.env),
               ...this.workspaceHook?.env,
-              // 서브에이전트 호출 hook만 이 세션의 Operation을 안다. 턴·주의 hook의 식별자와 이름을 나눠
+              // 서브에이전트 호출 hook만 이 세션의 Objective을 안다. 턴·주의 hook의 식별자와 이름을 나눠
               // 그 hook들이 채팅 자식에서 남의 축이 아니라 아예 침묵하는 지금 동작을 그대로 둔다.
-              FLEET_CONSOLE_AGENT_CALL_SESSION_ID: this.operationId,
+              FLEET_CONSOLE_AGENT_CALL_SESSION_ID: this.objectiveId,
               FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
               ...(this.seed.compactHookToken
                 ? { FLEET_COMPACT_HOOK_TOKEN: this.seed.compactHookToken }
@@ -2859,8 +2859,8 @@ class AgentChatSession {
             this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
           }
-          const recipientOperationId = event.kind === "tool-result" ? recipients.get(event.id) : undefined;
-          const resolved = recipientOperationId && event.kind === "tool-result" ? { ...event, recipientOperationId } : event;
+          const recipientObjectiveId = event.kind === "tool-result" ? recipients.get(event.id) : undefined;
+          const resolved = recipientObjectiveId && event.kind === "tool-result" ? { ...event, recipientObjectiveId } : event;
           this.ingest(apiError !== undefined && resolved.kind === "turn-end" && resolved.failure ? { ...resolved, failure: { ...resolved.failure, error: apiError } } : resolved);
         }
       }
@@ -2928,18 +2928,18 @@ class AgentChatSession {
       const sent = this.pendingSentMessages.get(record.tool_use_id);
       if (sent === undefined) continue;
       this.pendingSentMessages.delete(record.tool_use_id);
-      let recipientOperationId: string | undefined;
+      let recipientObjectiveId: string | undefined;
       try {
         // 휴면 구성원에게 보내 실패해도 명부 신원은 해석된다. 해석 자체는 도착 사실이 아니다.
-        recipientOperationId = await this.seed.resolveSessionMessageRecipient?.(sent.to);
-        if (recipientOperationId && !this.disposed) recipients.set(record.tool_use_id, recipientOperationId);
+        recipientObjectiveId = await this.seed.resolveSessionMessageRecipient?.(sent.to);
+        if (recipientObjectiveId && !this.disposed) recipients.set(record.tool_use_id, recipientObjectiveId);
       } catch {
         // 대상 등록을 읽을 수 없으면 좌표는 무의견이다. 도구가 돌려준 성공/실패는 그대로 남긴다.
       }
       if (this.disposed || record.is_error === true || sessionMessageRefusal(record.content) !== null) continue;
       if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
-        this.seed.onSessionMessageSent?.({ ...(recipientOperationId ? { recipientOperationId } : {}), text: sent.text, toolUseId: record.tool_use_id });
+        this.seed.onSessionMessageSent?.({ ...(recipientObjectiveId ? { recipientObjectiveId } : {}), text: sent.text, toolUseId: record.tool_use_id });
       } catch {
         // 전달 배선이 넘어져도 보낸 세션은 계속 산다 — 이 관측은 대화의 곁가지지 대화 자체가 아니다.
       }
@@ -2957,7 +2957,7 @@ class AgentChatSession {
    * 본문과 출처는 **둘 다** 같은 문(`maskChatText`)을 지난다. 런치 이름도 사람이 짓는 값이라 경로나
    * 자격증명 모양이 섞일 수 있고, 브라우저로 나가는 값에 masking 없는 자리를 하나라도 두지 않는다.
    */
-  noteReceived(entry: { readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string }): void {
+  noteReceived(entry: { readonly id: string; readonly from: string; readonly senderObjectiveId?: string; readonly text: string }): void {
     if (this.disposed) return;
     if (entry.id.length === 0 || entry.from.length === 0) return;
     if (this.receivedMessageIds.has(entry.id)) return;
@@ -2970,7 +2970,7 @@ class AgentChatSession {
     const text = maskChatText(entry.text, { cwd: this.seed.cwd }).text;
     if (from.length === 0 || text.length === 0) return;
     // 수신 당시 열린 턴인지 원장에 남긴다. 재접속 때 과거 재생 경계로 위치를 추측하지 않는다.
-    this.push({ kind: "received", id: entry.id, from, ...(entry.senderOperationId ? { senderOperationId: entry.senderOperationId } : {}), text, inTurn: this.turnOpen, at: Date.now() });
+    this.push({ kind: "received", id: entry.id, from, ...(entry.senderObjectiveId ? { senderObjectiveId: entry.senderObjectiveId } : {}), text, inTurn: this.turnOpen, at: Date.now() });
   }
 
   /**
@@ -3353,7 +3353,7 @@ class AgentChatSession {
     this.readerDone = null;
     // 스트림이 끝났다고 슬롯이 돌아오지는 않는다 — SDK 인스턴스는 `close()`를 받아야 자리를
     // 비운다. 부르지 않으면 다음 메시지의 openSession이 "이미 세션이 돈다"로 거절되고, 그때부터
-    // 이 Operation은 dispose될 때까지 한 마디도 받지 못한다.
+    // 이 Objective은 dispose될 때까지 한 마디도 받지 못한다.
     try {
       session.close();
     } catch {
@@ -3373,7 +3373,7 @@ class AgentChatSession {
     this.liveJobs.clear();
     this.settledJobs.clear();
     // 원장이 비었으니 축도 비어야 한다. 여기서 걷지 않으면 자식과 함께 사라진 작업이 TTL이
-    // 만료될 때까지 이 Operation을 백그라운드로 세워 둔다.
+    // 만료될 때까지 이 Objective을 백그라운드로 세워 둔다.
     this.syncBackgroundPending();
     // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
     // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
@@ -3508,7 +3508,7 @@ class AgentChatSession {
   }
 
   /**
-   * 이 세션의 트랜스크립트 좌표를 Operation에 심는다.
+   * 이 세션의 트랜스크립트 좌표를 Objective에 심는다.
    *
    * 공유 홈에서는 옮길 파일이 없다 — 트랜스크립트는 이미 정본 자리에서 자라고 있다. 남는 일은
    * 좌표를 확정하는 것뿐이며, 세션 id가 바뀌지 않는 한 다시 할 일도 없다(resume이 새 id를 낳는
@@ -3519,7 +3519,7 @@ class AgentChatSession {
    *
    * 리더는 메시지마다 이 자리를 지난다. 첫 시도가 파일을 못 찾아 실패하는 것은 정상이므로
    * (자식이 아직 트랜스크립트를 만들지 않았다) 다음 메시지가 다시 시도해야 하는데, 가드가 없으면
-   * 그 사이 도착한 메시지들이 같은 좌표를 겹쳐 심어 Operation write-back이 여러 번 인다.
+   * 그 사이 도착한 메시지들이 같은 좌표를 겹쳐 심어 Objective write-back이 여러 번 인다.
    */
   private syncProviderSessionOnce(): void {
     // 날고 있는 동안 들어온 요청은 버리지 않고 기억한다. 첫 조회가 파일을 못 찾는 것은 정상
@@ -3594,86 +3594,86 @@ export class AgentChatRegistry {
   private readonly disposals = new Map<string, Promise<void>>();
   private readonly generations = new Map<string, number>();
   private readonly createSdk: CreateChatSdk;
-  /** 같은 Operation 의 접은 PTY 자식이 사라졌는지 — false 면 새 세션을 세우지 않는다(같은 Claude 세션의 두 번째 필자). */
-  private readonly awaitPriorWriterExit: ((operationId: string) => Promise<boolean>) | undefined;
+  /** 같은 Objective 의 접은 PTY 자식이 사라졌는지 — false 면 새 세션을 세우지 않는다(같은 Claude 세션의 두 번째 필자). */
+  private readonly awaitPriorWriterExit: ((objectiveId: string) => Promise<boolean>) | undefined;
 
   constructor(
     createSdk: CreateChatSdk = createChatSdkFactory(),
-    awaitPriorWriterExit?: (operationId: string) => Promise<boolean>,
+    awaitPriorWriterExit?: (objectiveId: string) => Promise<boolean>,
   ) {
     this.createSdk = createSdk;
     this.awaitPriorWriterExit = awaitPriorWriterExit;
   }
 
-  has(operationId: string): boolean {
-    return this.sessions.has(operationId);
+  has(objectiveId: string): boolean {
+    return this.sessions.has(objectiveId);
   }
 
-  isBusy(operationId: string): boolean {
-    return this.sessions.get(operationId)?.busy === true;
+  isBusy(objectiveId: string): boolean {
+    return this.sessions.get(objectiveId)?.busy === true;
   }
 
   /** 세션이 없으면 만들고 트랜스크립트를 재생한다. 동시 진입은 한 생성으로 수렴한다. */
-  async ensure(operationId: string, seed: () => AgentChatSessionSeed): Promise<AgentChatSession> {
+  async ensure(objectiveId: string, seed: () => AgentChatSessionSeed): Promise<AgentChatSession> {
     // dispose가 진행 중이면 새 세션을 만들지 않는다 — 터미널 복귀와 경합해 같은 Claude 세션의
     // 이중 필자가 되는 창이다. 호출자(스트림·메시지 라우트)는 chat_unavailable로 답한다.
-    if (this.disposals.has(operationId)) throw new Error("chat_session_disposing");
-    const existing = this.sessions.get(operationId);
+    if (this.disposals.has(objectiveId)) throw new Error("chat_session_disposing");
+    const existing = this.sessions.get(objectiveId);
     if (existing) return existing;
-    const inFlight = this.ensureFlights.get(operationId);
+    const inFlight = this.ensureFlights.get(objectiveId);
     if (inFlight) return inFlight;
     const flight = (async () => {
       // 터미널에서 넘어온 세션은 옛 CLI 가 실제로 사라진 뒤에만 선다 — 호출자는 chat_unavailable 로 답한다.
-      if (this.awaitPriorWriterExit && !await this.awaitPriorWriterExit(operationId)) throw new Error("chat_prior_writer_alive");
-      const session = new AgentChatSession(operationId, seed(), this.createSdk);
+      if (this.awaitPriorWriterExit && !await this.awaitPriorWriterExit(objectiveId)) throw new Error("chat_prior_writer_alive");
+      const session = new AgentChatSession(objectiveId, seed(), this.createSdk);
       await session.replayTranscript();
-      this.sessions.set(operationId, session);
+      this.sessions.set(objectiveId, session);
       return session;
     })().finally(() => {
-      this.ensureFlights.delete(operationId);
+      this.ensureFlights.delete(objectiveId);
     });
-    this.ensureFlights.set(operationId, flight);
+    this.ensureFlights.set(objectiveId, flight);
     return flight;
   }
 
-  get(operationId: string): AgentChatSession | undefined {
-    return this.sessions.get(operationId);
+  get(objectiveId: string): AgentChatSession | undefined {
+    return this.sessions.get(objectiveId);
   }
 
   /**
-   * 이 Operation의 채팅이 접힌 횟수. 접기가 시작되는 순간 오른다 — 비동기로 자식을 여는 쪽이
+   * 이 Objective의 채팅이 접힌 횟수. 접기가 시작되는 순간 오른다 — 비동기로 자식을 여는 쪽이
    * 시작할 때 읽은 값과 비교해, 그 사이 채팅을 떠났으면 열지 않는다.
    */
-  generation(operationId: string): number {
-    return this.generations.get(operationId) ?? 0;
+  generation(objectiveId: string): number {
+    return this.generations.get(objectiveId) ?? 0;
   }
 
-  async dispose(operationId: string): Promise<void> {
-    this.generations.set(operationId, this.generation(operationId) + 1);
-    const pending = this.disposals.get(operationId);
+  async dispose(objectiveId: string): Promise<void> {
+    this.generations.set(objectiveId, this.generation(objectiveId) + 1);
+    const pending = this.disposals.get(objectiveId);
     if (pending) return pending;
     // tombstone은 동기로 먼저 세운다 — 이후 도착하는 ensure는 전부 거부되고, 이미 in-flight인
     // 생성은 완주를 기다린 뒤 접는다. 그냥 돌아가면 DELETE가 터미널을 되살린 뒤에 pending
     // ensure가 chat 세션을 등록해 같은 Claude 세션의 이중 필자가 된다.
     const disposal = (async () => {
-      const flight = this.ensureFlights.get(operationId);
+      const flight = this.ensureFlights.get(objectiveId);
       if (flight) await flight.then(() => undefined, () => undefined);
-      const session = this.sessions.get(operationId);
+      const session = this.sessions.get(objectiveId);
       if (!session) return;
-      this.sessions.delete(operationId);
+      this.sessions.delete(objectiveId);
       await session.dispose();
     })();
-    this.disposals.set(operationId, disposal);
+    this.disposals.set(objectiveId, disposal);
     try {
       await disposal;
     } finally {
-      this.disposals.delete(operationId);
+      this.disposals.delete(objectiveId);
     }
   }
 
   async disposeAll(): Promise<void> {
-    const operationIds = new Set([...this.sessions.keys(), ...this.ensureFlights.keys()]);
-    await Promise.all([...operationIds].map((operationId) => this.dispose(operationId)));
+    const objectiveIds = new Set([...this.sessions.keys(), ...this.ensureFlights.keys()]);
+    await Promise.all([...objectiveIds].map((objectiveId) => this.dispose(objectiveId)));
   }
 }
 

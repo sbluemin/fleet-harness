@@ -23,14 +23,14 @@ export function describeTerminalFailure(code: string | undefined, t: Translate<T
         diagnostic,
         tone: "warn",
       };
-    case "operation_id_required":
+    case "objectiveRecord_id_required":
       return {
-        title: t("terminal.failure.operationMissing.title"),
-        cause: t("terminal.failure.operationMissing.cause"),
+        title: t("terminal.failure.objectiveRecordMissing.title"),
+        cause: t("terminal.failure.objectiveRecordMissing.cause"),
         diagnostic,
         tone: "warn",
       };
-    case "operation_not_found":
+    case "objectiveRecord_not_found":
     case "terminal_session_not_found":
       return {
         title: t("terminal.failure.sessionGone.title"),
@@ -38,16 +38,16 @@ export function describeTerminalFailure(code: string | undefined, t: Translate<T
         diagnostic,
         tone: "coral",
       };
-    case "operation_dormant":
+    case "objectiveRecord_dormant":
       return {
         title: t("terminal.failure.dormant.title"),
         cause: t("terminal.failure.dormant.cause"),
         diagnostic,
         tone: "warn",
       };
-    case "invalid_shell_operation":
-    case "invalid_global_shell_operation":
-    case "operation_chat_mode":
+    case "invalid_shell_objectiveRecord":
+    case "invalid_global_shell_objectiveRecord":
+    case "objectiveRecord_chat_mode":
       return {
         title: t("terminal.failure.wrongSurface.title"),
         cause: t("terminal.failure.wrongSurface.cause"),

@@ -2,12 +2,12 @@ import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import { operationAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
-import type { OperationCluster } from "../../../../../features/objectives/shared/operation-clusters.js";
+import { objectiveRecordAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
+import type { ObjectiveCluster } from "../../../../../features/objectives/shared/objective-clusters.js";
 import type { RailEntryFinishedItem } from "../../../../../features/workspace/shared/rail.js";
 
 import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
-import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
+import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { entryIconOf } from "./mobile-destinations.js";
@@ -17,7 +17,7 @@ import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
  * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「완료 N」(기본 접힘). 둘 다 0개면 서지 않는다.
- * 「시작 전」은 데스크톱 사이드바의 「시작 전 N」 접기와 같은 원천이다: 지금 Theater의 뿌리 없는 묶음 줄(`OperationCluster.row.glyph === "fresh"`) 가운데
+ * 「시작 전」은 데스크톱 사이드바의 「시작 전 N」 접기와 같은 원천이다: 지금 Theater의 뿌리 없는 묶음 줄(`ObjectiveCluster.row.glyph === "fresh"`) 가운데
  * 사람 차례의 결정 요청 줄(`decisionRequestedAt`, 「확인 필요」에 선다)을 뺀 것, 줄 순서(`row.order`)대로. 맡은 이가 처리 중인 줄(`delegated`)은
  * 폰에는 그 줄이 설 다른 자리가 없어 여기서 빼면 어디에도 보이지 않으므로 남긴다(이 접기는 기본으로 펼쳐 있다). 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
  * 「완료 N」은 세 출처를 이 순서로 모은다: 묶음 줄이 「완료」인 대화(`isFinishedConversation`, 갱신 시각순) · 뿌리 없는 완료 줄(`row.order`) ·
@@ -31,13 +31,13 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
 }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const clusters = useOperationClusters();
+  const clusters = useObjectiveClusters();
   const bindings = useRailEntries();
   const finished = useFinishedItems(bindings, theaterId, locale);
   const fresh = useMemo(() => clusters
     .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "fresh" && cluster.row.decisionRequestedAt === undefined)
     .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, theaterId]);
-  // 지휘관 Operation이 사라졌지만 보관되지 않은 완료 줄 — 대화 행이 없어 여기서만 보인다.
+  // 지휘관 Objective이 사라졌지만 보관되지 않은 완료 줄 — 대화 행이 없어 여기서만 보인다.
   const doneRows = useMemo(() => clusters
     .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "done" && cluster.row.decisionRequestedAt === undefined)
     .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, theaterId]);
@@ -53,7 +53,7 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
           {freshOpen ? fresh.map((cluster) => (
             <MobileMarkedRow key={cluster.id} mark={cluster.row?.mark}>
               <HomeRow
-                avatar={<KeyedAvatar avatarKey={operationAvatarKey(cluster.avatarOperationId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
+                avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-fresh">{t("mobile.search.state.fresh")}</span>{rowDetail(cluster, locale)}</>}
                 onOpen={() => cluster.open?.()}
@@ -68,12 +68,12 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
           {finishedOpen ? finishedConversations.map((conversation) => {
             // 완료 지휘관의 얼굴도 작업 중·사람 대기·안 본 답이면 그 활동이 앞선다 — 이 접기 안에서는 묶음 줄의 「완료」로 덮는다.
             const shown = { ...conversation, face: "done" as const };
-            return <ConversationRow key={conversation.operation.id} conversation={shown} sub={<ConversationSummary conversation={shown} />} onOpen={() => onOpenConversation(conversation)} />;
+            return <ConversationRow key={conversation.objectiveRecord.id} conversation={shown} sub={<ConversationSummary conversation={shown} />} onOpen={() => onOpenConversation(conversation)} />;
           }) : null}
           {finishedOpen ? doneRows.map((cluster) => (
             <MobileMarkedRow key={cluster.id} mark={cluster.row?.mark}>
               <HomeRow
-                avatar={<KeyedAvatar avatarKey={operationAvatarKey(cluster.avatarOperationId ?? cluster.id)} role="commander" state="done" size={52} label="" decorative />}
+                avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="done" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{rowDetail(cluster, locale)}</>}
                 onOpen={() => cluster.open?.()}
@@ -83,8 +83,8 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
           {finishedOpen ? finished.map(({ entryId, item }) => (
             <HomeRow
               key={`${entryId}:${item.id}`}
-              avatar={item.avatarOperationId !== undefined
-                ? <KeyedAvatar avatarKey={operationAvatarKey(item.avatarOperationId)} role="commander" state="done" size={52} label="" decorative />
+              avatar={item.avatarObjectiveId !== undefined
+                ? <KeyedAvatar avatarKey={objectiveRecordAvatarKey(item.avatarObjectiveId)} role="commander" state="done" size={52} label="" decorative />
                 : <span className="mobile-conv-round is-static">{entryIconOf(bindings, entryId)}</span>}
               title={item.title}
               sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{item.detail ? ` · ${item.detail}` : null}</>}
@@ -122,7 +122,7 @@ function HomeRow({ avatar, title, sub, onOpen }: { readonly avatar: ReactNode; r
 
 const dueFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
 /** 시작 전·완료 줄의 둘째 줄 꼬리 — 기한과 플러그인이 붙인 짧은 사실(`row.notes`). 사이드바 줄이 쓰는 것과 같은 필드다. */
-function rowDetail(cluster: OperationCluster, locale: ConsoleLocale): string {
+function rowDetail(cluster: ObjectiveCluster, locale: ConsoleLocale): string {
   const parts: string[] = [];
   const due = cluster.row?.due;
   if (due) {
@@ -170,6 +170,6 @@ function finishedVersion(bindings: readonly RailEntryBinding[], theaterId: strin
   return bindings.map((binding) => {
     const finished = binding.entry.mobile?.finished;
     if (!finished || binding.entry.visible?.() === false) return "";
-    return `${binding.entry.id}:${finished.items(scopeOf(binding, theaterId), locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.detail ?? ""}\u0001${item.avatarOperationId ?? ""}`).join("\u0002")}`;
+    return `${binding.entry.id}:${finished.items(scopeOf(binding, theaterId), locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.detail ?? ""}\u0001${item.avatarObjectiveId ?? ""}`).join("\u0002")}`;
   }).join("|");
 }

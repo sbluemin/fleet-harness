@@ -1,15 +1,15 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import type { FloatingWidgetArrival, FloatingWidgetArrivalsCapability, FloatingWidgetAwaiting, FloatingWidgetAwaitingsCapability, FloatingWidgetComposerCapability, FloatingWidgetContext, FloatingWidgetDeparture, FloatingWidgetDeparturesCapability, FloatingWidgetDescriptor, FloatingWidgetFleetSignals, FloatingWidgetKeepOutCapability, FloatingWidgetOperationsCapability, FloatingWidgetRect, FloatingWidgetSignalsCapability } from "../../../../features/workspace/shared/floating.js";
+import type { FloatingWidgetArrival, FloatingWidgetArrivalsCapability, FloatingWidgetAwaiting, FloatingWidgetAwaitingsCapability, FloatingWidgetComposerCapability, FloatingWidgetContext, FloatingWidgetDeparture, FloatingWidgetDeparturesCapability, FloatingWidgetDescriptor, FloatingWidgetFleetSignals, FloatingWidgetKeepOutCapability, FloatingWidgetObjectiveRecordsCapability, FloatingWidgetRect, FloatingWidgetSignalsCapability } from "../../../../features/workspace/shared/floating.js";
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 
 import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
-import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
-import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
+import { resolveObjectiveActivity } from "../../../../features/execution/client/objective-activity.js";
+import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/objective-marks.js";
 import { createHostCapabilities } from "./feature-capabilities.js";
 import { useFeatureRegistry } from "./feature-registry.js";
-import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
+import { focusObjective, getState, subscribe as subscribeStore } from "./store.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 
 export function FloatingWidgetLayer() {
@@ -30,12 +30,12 @@ export function FloatingWidgetLayer() {
   const composer = useMemo<FloatingWidgetComposerCapability>(() => ({
     open: (options) => openNewSessionComposer(typeof options?.draft === "string" ? { draft: options.draft } : undefined),
   }), []);
-  // 스토어 갱신만으로는 /operations 밖(설정 등)에서 아무 일도 보이지 않는다 —
-  // pendingOperationFocus는 operations 페이지가 소비하므로 rail 알림·검색과 같은 순서로 이동을 동반한다.
-  const operations = useMemo<FloatingWidgetOperationsCapability>(() => ({
-    focus: (operationId) => {
-      focusOperation(operationId);
-      navigate("/operations");
+  // 스토어 갱신만으로는 /objectives 밖(설정 등)에서 아무 일도 보이지 않는다 —
+  // pendingObjectiveFocus는 objectiveRecords 페이지가 소비하므로 rail 알림·검색과 같은 순서로 이동을 동반한다.
+  const objectiveRecords = useMemo<FloatingWidgetObjectiveRecordsCapability>(() => ({
+    focus: (objectiveId) => {
+      focusObjective(objectiveId);
+      navigate("/objectives");
     },
   }), [navigate]);
   const context = useMemo<FloatingWidgetContext>(() => ({
@@ -45,12 +45,12 @@ export function FloatingWidgetLayer() {
     awaitings: awaitings.capability,
     keepOut: keepOut.capability,
     composer,
-    operations,
+    objectiveRecords,
     signals: signals.capability,
     lifecycle: capabilities.lifecycle,
     preferences: capabilities.preferences,
     language,
-  }), [arrivals, awaitings, capabilities, composer, departures, keepOut, language, operations, signals]);
+  }), [arrivals, awaitings, capabilities, composer, departures, keepOut, language, objectiveRecords, signals]);
 
   if (floatingWidgets.length === 0) return null;
 
@@ -83,11 +83,11 @@ function createManagedArrivalsCapability(): ManagedArrivalsCapability {
   const activeSubscriptions = new Set<() => void>();
 
   const list = (): readonly FloatingWidgetArrival[] => {
-    const titlesById = new Map(getState().operations.map((operation) => [operation.id, operation.title]));
+    const titlesById = new Map(getState().objectiveRecords.map((objectiveRecord) => [objectiveRecord.id, objectiveRecord.title]));
     const arrivals: FloatingWidgetArrival[] = [];
-    for (const operationId of getIdleArrivalIds()) {
-      const title = titlesById.get(operationId);
-      if (title !== undefined) arrivals.push({ operationId, title });
+    for (const objectiveId of getIdleArrivalIds()) {
+      const title = titlesById.get(objectiveId);
+      if (title !== undefined) arrivals.push({ objectiveId, title });
     }
     return arrivals;
   };
@@ -140,11 +140,11 @@ function createManagedDeparturesCapability(): ManagedDeparturesCapability {
   const activeSubscriptions = new Set<() => void>();
 
   const list = (): readonly FloatingWidgetDeparture[] => {
-    const titlesById = new Map(getState().operations.map((operation) => [operation.id, operation.title]));
+    const titlesById = new Map(getState().objectiveRecords.map((objectiveRecord) => [objectiveRecord.id, objectiveRecord.title]));
     const departures: FloatingWidgetDeparture[] = [];
-    for (const operationId of getDepartureIds()) {
-      const title = titlesById.get(operationId);
-      if (title !== undefined) departures.push({ operationId, title });
+    for (const objectiveId of getDepartureIds()) {
+      const title = titlesById.get(objectiveId);
+      if (title !== undefined) departures.push({ objectiveId, title });
     }
     return departures;
   };
@@ -194,7 +194,7 @@ interface ManagedAwaitingsCapability {
 }
 
 /**
- * 입력·승인을 기다리는 Operation의 정체를 넘긴다. 집계(signals.awaiting)만으로는 위젯이
+ * 입력·승인을 기다리는 Objective의 정체를 넘긴다. 집계(signals.awaiting)만으로는 위젯이
  * "누가" 기다리는지 말할 수 없어 알림이 자세 하나로 끝난다 — 도착·출발과 같은 원장 계약이다.
  */
 function createManagedAwaitingsCapability(): ManagedAwaitingsCapability {
@@ -203,9 +203,9 @@ function createManagedAwaitingsCapability(): ManagedAwaitingsCapability {
   const list = (): readonly FloatingWidgetAwaiting[] => {
     const state = getState();
     const awaitings: FloatingWidgetAwaiting[] = [];
-    for (const operation of state.operations) {
-      if (resolveOperationActivity(operation, state.operationRuntime) !== "awaiting") continue;
-      awaitings.push({ operationId: operation.id, title: operation.title });
+    for (const objectiveRecord of state.objectiveRecords) {
+      if (resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) !== "awaiting") continue;
+      awaitings.push({ objectiveId: objectiveRecord.id, title: objectiveRecord.title });
     }
     return awaitings;
   };
@@ -344,8 +344,8 @@ function readFleetSignals(): FloatingWidgetFleetSignals {
   const state = getState();
   let running = 0;
   let awaiting = 0;
-  for (const operation of state.operations) {
-    const activity = resolveOperationActivity(operation, state.operationRuntime);
+  for (const objectiveRecord of state.objectiveRecords) {
+    const activity = resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime);
     if (activity === "running") running += 1;
     // 확인하지 않은 완료 도착은 arrivals 채널과 만세 연출이 맡는다.
     // 사이드바 STATUS 축처럼 awaiting에 섞으면 보리가 경보 포즈에 남아 idle로 돌아가지 않는다.
@@ -366,7 +366,7 @@ function signalsEqual(left: FloatingWidgetFleetSignals, right: FloatingWidgetFle
     && left.reducedMotion === right.reducedMotion;
 }
 
-// 함대 신호는 Operation 스토어와 OS 모션 환경에서 바뀐다.
+// 함대 신호는 Objective 스토어와 OS 모션 환경에서 바뀐다.
 // 완료 도착은 arrivals 채널이 따로 전하므로 여기 집계에 섞지 않는다.
 function createManagedSignalsCapability(): ManagedSignalsCapability {
   const activeSubscriptions = new Set<() => void>();
@@ -419,7 +419,7 @@ function arrivalsEqual(
 ): boolean {
   return left.length === right.length
     && left.every((arrival, index) => (
-      arrival.operationId === right[index]?.operationId
+      arrival.objectiveId === right[index]?.objectiveId
       && arrival.title === right[index]?.title
     ));
 }

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { readNewSessionSelection } from "../features/workspace/client/conversation/new-session-preferences.js";
 import { resolveMentionEntry } from "../features/workspace/client/conversation/new-session-mention.js";
 import { getState, removeTheater, setState } from "../core/client/src/integration/store.js";
-import type { OperationNode, TheaterInfo } from "../core/client/src/integration/types.js";
+import type { ObjectiveRecord, TheaterInfo } from "../core/client/src/integration/types.js";
 
 function makeTheater(id: string): TheaterInfo {
   return { id, label: id, createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
@@ -41,15 +41,12 @@ describe("pending request lifecycle", () => {
   });
 });
 
-function makeOperation(id: string, overrides: Partial<OperationNode> = {}): OperationNode {
+function makeObjective(id: string, overrides: Partial<ObjectiveRecord> = {}): ObjectiveRecord {
   return {
     id,
     theaterId: "th-a",
-    type: "agent",
-    pluginId: "terminal",
     title: id,
-    payload: {},
-    geometry: null,
+    ...({}),
     ts: { createdAt: 1, updatedAt: 1 },
     ...overrides,
   };
@@ -58,22 +55,20 @@ function makeOperation(id: string, overrides: Partial<OperationNode> = {}): Oper
 const MESSAGEABLE = new Map<string, ReadonlySet<string>>([["terminal", new Set(["agent"])]]);
 
 describe("resolveMentionEntry", () => {
-  // composer.open({ mentionOperationId })가 건네는 명시 행선지의 해소. 그 패널을 직접 가리킨 지시라
+  // composer.open({ mentionObjectiveId })가 건네는 명시 행선지의 해소. 그 패널을 직접 가리킨 지시라
   // 어느 Theater인지는 가리지 않지만, 메시지를 받지 않는 타입·입력 대기 중인 대상은 거른다.
   const state = {
     ...getState(),
     theaters: [makeTheater("th-a"), makeTheater("th-b")],
-    operations: [
-      makeOperation("op-live"),
-      makeOperation("op-shell", { type: "shell" }),
-      makeOperation("op-await", { id: "op-await" }),
-      makeOperation("op-far", { theaterId: "th-b" }),
+    objectiveRecords: [
+      makeObjective("op-live"),
+      makeObjective("op-await", { id: "op-await" }),
+      makeObjective("op-far", { theaterId: "th-b" }),
     ],
-    operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
+    objectiveRecordRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
   };
 
-  it("refuses a type that takes no messages, an Operation waiting on its own prompt, and an unknown id", () => {
-    expect(resolveMentionEntry(state, MESSAGEABLE, "op-shell")).toBeNull();
+  it("refuses an objective waiting on its own prompt and an unknown id", () => {
     expect(resolveMentionEntry(state, MESSAGEABLE, "op-await")).toBeNull();
     expect(resolveMentionEntry(state, MESSAGEABLE, "op-missing")).toBeNull();
   });

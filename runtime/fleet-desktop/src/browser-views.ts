@@ -17,7 +17,7 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
 import { defaultParkViewport, parkedNativeBounds, type DesktopShellWindow, type ParkViewport } from "./shell-window.js";
 
 /**
- * Operation 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
+ * Objective 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
  *
  * 콘솔은 탭·정책·도구를 소유하고, 이 셸은 "어디에 어떤 뷰를 놓을지"와 "그 뷰의 디버거로 이 명령을 보내라"를
  * 스냅샷으로 받아 수행할 뿐이다. 사람은 뷰를 직접 보고 만진다 — 픽셀을 찍어 보내는 일이 없다. 에이전트의
@@ -414,13 +414,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const markSession = (browserSession: Session): void => {
     if (!origin || markedSessions.has(browserSession)) return;
     markedSessions.add(browserSession);
-    browserSession.webRequest.onBeforeSendHeaders({ urls: [`${origin}/api/v1/operations/events*`] }, (details, callback) => {
+    browserSession.webRequest.onBeforeSendHeaders({ urls: [`${origin}/api/v1/objectives/events*`] }, (details, callback) => {
       const headers = { ...details.requestHeaders };
       // 페이지가 직접 넣은 값은 신뢰하지 않는다 — 영속 프로필을 공유해도 실제 요청을 낸 뷰를 찾는다.
       for (const name of Object.keys(headers)) if (name.toLowerCase() === DESKTOP_BROWSER_VIEW_HEADER) delete headers[name];
       const entry = [...live.values()].find((candidate) => candidate.view.webContents.id === details.webContentsId);
       const url = new URL(details.url);
-      if (entry && url.origin === origin && url.pathname === "/api/v1/operations/events") headers[DESKTOP_BROWSER_VIEW_HEADER] = entry.spec.id;
+      if (entry && url.origin === origin && url.pathname === "/api/v1/objectives/events") headers[DESKTOP_BROWSER_VIEW_HEADER] = entry.spec.id;
       callback({ requestHeaders: headers });
     });
   };

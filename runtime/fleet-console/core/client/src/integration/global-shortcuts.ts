@@ -4,23 +4,23 @@ import { CORE_SHORTCUT_COMMANDS, isShortcutRecording, matchesShortcutCommand } f
 
 export type PanelShortcutOutcome = "suppress" | "reveal" | "apply";
 
-// 사이드바와 Activity Rail은 데스크톱 /operations에만 마운트된다. 표면이 없는 곳에서 토글을 그대로
+// 사이드바와 Activity Rail은 데스크톱 /objectives에만 마운트된다. 표면이 없는 곳에서 토글을 그대로
 // 적용하면 아무 변화 없이 영속 상태만 바뀌고, 나중에 그 표면으로 돌아갔을 때 누른 적 없는 접힘이
 // 나타난다(2026-08 실측). 모바일 셸에는 두 표면이 아예 없으므로 발화를 막고(suppress),
 // 라우트만 다르면 그 표면으로 돌아가 펼친다(reveal).
 export function resolvePanelShortcutOutcome(surfaces: {
   readonly panelSurfacesReachable: boolean;
-  readonly operationsViewVisible: boolean;
+  readonly objectiveRecordsViewVisible: boolean;
 }): PanelShortcutOutcome {
   if (!surfaces.panelSurfacesReachable) return "suppress";
-  return surfaces.operationsViewVisible ? "apply" : "reveal";
+  return surfaces.objectiveRecordsViewVisible ? "apply" : "reveal";
 }
 
 export interface ConsoleGlobalShortcutDependencies {
-  readonly openOperationSearch: (seed?: string) => void;
-  readonly closeOperationSearch: () => void;
+  readonly openObjectiveSearch: (seed?: string) => void;
+  readonly closeObjectiveSearch: () => void;
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
-  readonly getOperationSearchMode: () => "operations" | "commands" | null;
+  readonly getObjectiveSearchMode: () => "objectiveRecords" | "commands" | null;
   /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly openNewSession?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
@@ -46,24 +46,24 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     const matches = (commandId: string) => matchesShortcutCommand(event, commandId);
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
-    if (matches("console.search-operations")) {
+    if (matches("console.search-objectiveRecords")) {
       // Codex 확대 읽기가 대화 칸을 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
       // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
       if (windowFor.document.body.dataset.codexReading === "true") return;
-      if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
+      if (isForeignBlockingDialogOpen(windowFor.document, ".objective-search-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const mode = dependencies.getOperationSearchMode();
-      if (mode === null) dependencies.openOperationSearch();
-      else if (mode === "operations") dependencies.closeOperationSearch();
-      else dependencies.openOperationSearch("");
+      const mode = dependencies.getObjectiveSearchMode();
+      if (mode === null) dependencies.openObjectiveSearch();
+      else if (mode === "objectiveRecords") dependencies.closeObjectiveSearch();
+      else dependencies.openObjectiveSearch("");
       return;
     }
     if (matches("console.command-palette")) {
-      if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
+      if (isForeignBlockingDialogOpen(windowFor.document, ".objective-search-overlay")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (dependencies.getOperationSearchMode() !== "commands") dependencies.openOperationSearch(">");
+      if (dependencies.getObjectiveSearchMode() !== "commands") dependencies.openObjectiveSearch(">");
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;

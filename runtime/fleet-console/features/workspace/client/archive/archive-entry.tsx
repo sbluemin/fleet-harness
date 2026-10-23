@@ -4,7 +4,7 @@ import type { ArchiveSectionDescriptor } from "../../../execution/shared/archive
 
 import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { openArchiveSheet, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
+import { openArchiveSheet, useObjectiveArchive } from "../../../../core/client/src/integration/objective-archive.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 
@@ -34,9 +34,9 @@ export function useArchiveSections(query = "", theaterIds?: readonly string[]): 
   return archiveSections.map((section, index) => ({ section, count: values[index] ?? 0 }));
 }
 
-/** 보관함 전체 수 — 보관한 Operation과 플러그인 칸의 수를 더한다. */
+/** 보관함 전체 수 — 보관한 Objective과 플러그인 칸의 수를 더한다. */
 function useArchiveTotal(): { readonly total: number; readonly sections: readonly ArchiveSectionCount[] } {
-  const { totalsByTheater } = useOperationArchive();
+  const { totalsByTheater } = useObjectiveArchive();
   const sections = useArchiveSections();
   return { total: Object.values(totalsByTheater).reduce((sum, count) => sum + count, 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
 }

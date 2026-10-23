@@ -10,9 +10,9 @@ import type { ExpandedSurfaceDescriptor } from "../../../../features/workspace/s
 import type { FloatingWidgetDescriptor } from "../../../../features/workspace/shared/floating.js";
 import type { NotificationKindDescriptor } from "../../../../features/execution/shared/notifications.js";
 import type { ArchiveSectionDescriptor } from "../../../../features/execution/shared/archive-surfaces.js";
-import type { OperationCaptionContribution, TheaterContribution, CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, PersistentComponentDescriptor } from "../../../../features/workspace/shared/surface-contracts.js";
-import type { OperationCluster, OperationClusterSource } from "../../../../features/objectives/shared/operation-clusters.js";
-import type { OperationKindDescriptor } from "../../../../features/execution/shared/client-contract.js";
+import type { ObjectiveCaptionContribution, TheaterContribution, CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, PersistentComponentDescriptor } from "../../../../features/workspace/shared/surface-contracts.js";
+import type { ObjectiveCluster, ObjectiveClusterSource } from "../../../../features/objectives/shared/objective-clusters.js";
+import type { ObjectiveKindDescriptor } from "../../../../features/execution/shared/client-contract.js";
 import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 import type { ConversationSurfaceDescriptor } from "../../../../features/workspace/shared/conversation-surfaces.js";
 import type { PaneDescriptor } from "../../../../features/workspace/shared/pane.js";
@@ -34,7 +34,7 @@ export type ResolvedConversationSurface = ConversationSurfaceDescriptor & { read
 export type ResolvedRailEntry = RailEntryDescriptor & { readonly pluginId?: string };
 
 /** 플러그인이 선언한 묶음 id를 호스트 색인의 정준 id로 바꾼다. */
-export function operationClusterId(pluginId: string, localClusterId: string): string {
+export function objectiveRecordClusterId(pluginId: string, localClusterId: string): string {
   return `${pluginId}:${localClusterId}`;
 }
 
@@ -48,7 +48,7 @@ export interface FeatureRegistry {
   install(deps: ConsoleClientCapabilities): () => void;
   readonly commodore: CommodoreClientHost;
   readonly providers: readonly ClientFeatureDescriptor[];
-  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
@@ -65,13 +65,13 @@ export interface FeatureRegistry {
   readonly sidebarFooterEntries: readonly SidebarFooterEntryDescriptor[];
   readonly composerTopEntries: readonly ComposerTopEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
-  readonly operationCaptionContributions: readonly OperationCaptionContribution[];
+  readonly objectiveRecordCaptionContributions: readonly ObjectiveCaptionContribution[];
   /** Theater 머리 표식·머리 아래 줄·동작(우클릭) 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly theaterContributions: readonly TheaterContribution[];
   /** Theater Inbox 의 플러그인 섹션 — id 는 `<pluginId>:<id>` 로 붙어 있다. 호스트의 「Theater 설정」은 여기에 없다. */
   readonly theaterInboxSections: readonly TheaterInboxSectionDescriptor[];
   /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
-  readonly operationClusters: OperationClusterSource;
+  readonly objectiveRecordClusters: ObjectiveClusterSource;
   /** 보관함 시트의 플러그인 칸 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly archiveSections: readonly ArchiveSectionDescriptor[];
   /** 플러그인의 온보딩 기여 — 엔진은 코어 기능의 온보딩 다음 순서로 보인다. */
@@ -79,7 +79,7 @@ export interface FeatureRegistry {
 }
 
 // 모듈 평가 때 createFeatureRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
-const NO_CLUSTERS: readonly OperationCluster[] = [];
+const NO_CLUSTERS: readonly ObjectiveCluster[] = [];
 /** 도구모음 Bridge의 끝 자리 — 부관의 글리프. 답 말풍선이 이 글리프를 닻으로 삼아 줄 끝에서 뜬다. */
 export const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
 const EMPTY_FEATURE_REGISTRY: FeatureRegistry = createFeatureRegistry(builtInPlugins);
@@ -154,7 +154,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
   }
   return {
     install(deps) {
-      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, operations: deps.operations, navigate: deps.navigate }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, operations: deps.operations, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installCodexClient({ consoleState: deps.consoleState, navigation: deps.navigation, surfaces: deps.surfaces, rail: deps.rail, composer: deps.composer, operations: deps.operations, consoleEvents: deps.consoleEvents }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
+      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, objectiveRecords: deps.objectiveRecords, navigate: deps.navigate }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, objectiveRecords: deps.objectiveRecords, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installCodexClient({ consoleState: deps.consoleState, navigation: deps.navigation, surfaces: deps.surfaces, rail: deps.rail, composer: deps.composer, objectiveRecords: deps.objectiveRecords, consoleEvents: deps.consoleEvents }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
       return () => { for (const cleanup of cleanups.reverse()) cleanup(); };
     },
     objectives,
@@ -163,7 +163,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
     conversationSurfaces: providers.flatMap((plugin) => (plugin.conversationSurfaces ?? []).map((descriptor) => ({ ...descriptor, pluginId: plugin.id ?? undefined }))),
     onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
-    operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
+    objectiveRecordKinds: providers.flatMap((plugin) => plugin.objectiveRecordKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: providers.flatMap((plugin) => plugin.notificationKinds ?? []),
     railPanels,
@@ -180,7 +180,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     sidebarFooterEntries: providers.flatMap((plugin) => (plugin.sidebarFooterEntries ?? []).map((descriptor) => ({ ...descriptor, id: `${plugin.id}:${descriptor.id}` }))),
     composerTopEntries: providers.flatMap((plugin) => (plugin.composerTopEntries ?? []).map((descriptor) => ({ ...descriptor, id: `${plugin.id}:${descriptor.id}` }))),
     expandedSurfaces,
-    operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
+    objectiveRecordCaptionContributions: providers.flatMap((plugin) => (plugin.objectiveRecordCaptionContributions ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
@@ -196,7 +196,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
-    operationClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.operationClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.operationClusters }] : []))),
+    objectiveRecordClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.objectiveRecordClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.objectiveRecordClusters }] : []))),
   };
 }
 /**
@@ -211,10 +211,10 @@ function deputyLast(entries: readonly CommandBandEntryDescriptor[]): readonly Co
  * 여러 플러그인의 묶음 원천을 하나로. 어느 원천도 참조가 바뀌지 않았으면 합친 배열도 같은 참조를 돌려준다 —
  * 사이드바·대화 화면이 useSyncExternalStore 로 읽으므로 참조가 흔들리면 매 사건마다 다시 그린다.
  */
-export function combineClusterSources(sources: readonly { readonly pluginId: string; readonly source: OperationClusterSource }[]): OperationClusterSource {
+export function combineClusterSources(sources: readonly { readonly pluginId: string; readonly source: ObjectiveClusterSource }[]): ObjectiveClusterSource {
   if (sources.length === 0) return { subscribe: () => () => undefined, get: () => NO_CLUSTERS };
-  let seen: readonly (readonly OperationCluster[])[] = [];
-  let combined: readonly OperationCluster[] = NO_CLUSTERS;
+  let seen: readonly (readonly ObjectiveCluster[])[] = [];
+  let combined: readonly ObjectiveCluster[] = NO_CLUSTERS;
   return {
     subscribe: (listener) => {
       const offs = sources.map(({ source }) => { try { return source.subscribe(listener); } catch { return () => undefined; } });
@@ -224,7 +224,7 @@ export function combineClusterSources(sources: readonly { readonly pluginId: str
       const current = sources.map(({ source }) => { try { return source.get(); } catch { return NO_CLUSTERS; } });
       if (current.length === seen.length && current.every((list, index) => list === seen[index])) return combined;
       seen = current;
-      combined = current.flatMap((list, index) => list.map((cluster) => ({ ...cluster, id: operationClusterId(sources[index]!.pluginId, cluster.id) })));
+      combined = current.flatMap((list, index) => list.map((cluster) => ({ ...cluster, id: objectiveRecordClusterId(sources[index]!.pluginId, cluster.id) })));
       return combined;
     },
   };

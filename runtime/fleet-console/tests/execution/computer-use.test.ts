@@ -147,7 +147,7 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(f.call).toHaveBeenCalledTimes(2);
       const capture = f.onCaptureTarget.mock.lastCall?.[0];
       expect(capture).toMatchObject({ pid: 1, title: "Fixture" });
-      expect(host.operationIdForOwner(capture.owner)).toBe("on");
+      expect(host.objectiveIdForOwner(capture.owner)).toBe("on");
       const captureCalls = f.onCaptureTarget.mock.calls.length;
       f.call.mockResolvedValueOnce({ content: [{ type: "text", text: "No changes" }] });
       await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.google.chrome.for.testing" } });
@@ -164,7 +164,7 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(f.start).toHaveBeenCalledTimes(2);
       connection.releaseSessionToken("on");
       expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
-      expect(host.operationIdForOwner(capture.owner)).toBeNull();
+      expect(host.objectiveIdForOwner(capture.owner)).toBeNull();
       expect((await rpc(on.token, "tools/call", { name: "computer_state", arguments: { app: "com.apple.TextEdit" } })).error).toBeDefined();
       expect(f.call).toHaveBeenCalledTimes(5);
       await f.service.stop();
@@ -172,28 +172,28 @@ describe("Computer Use authorization and lifecycle", () => {
     } finally { await host.dispose(); }
   });
 
-  it("revoking an Operation aborts a call that passed authorization but has not claimed the device yet", async () => {
+  it("revoking an Objective aborts a call that passed authorization but has not claimed the device yet", async () => {
     // 인가는 통과했지만 대상을 풀고 있는(파일시스템 대기) 사이에 허용이 거둬지면, 그 호출은 기기에 닿지 않아야 한다.
     const f = setup();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     let markResolving!: () => void;
     const resolving = new Promise<void>((resolve) => { markResolving = resolve; });
-    const operations = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
     const service = new ComputerUseService({
       directory: "unused", enabled: () => true, localControl: () => true,
       platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true, resolveTarget: async (app) => { markResolving(); await gate; return app; }, createBroker: async () => { throw new Error("device must not be claimed"); } },
     });
     services.push(service);
-    const host = createComputerUseMcpHost({ service, operations: () => operations, experimentEnabled: () => true });
+    const host = createComputerUseMcpHost({ service, objectiveRecords: () => objectiveRecords, experimentEnabled: () => true });
     const connection = host.connect();
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
       const token = connection.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!.token;
       const pending = fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_state", arguments: { app: "/Applications/TextEdit.app" } } }) });
       await resolving;
-      operations[0]!.payload = {};
-      host.revokeOperation("op-a");
+      delete objectiveRecords[0]!.computerUse;
+      host.revokeObjective("op-a");
       release();
       const result = (await (await pending).json()).result as { isError: boolean; content: { text: string }[] };
       expect(result.isError).toBe(true);
@@ -212,14 +212,14 @@ describe("Computer Use authorization and lifecycle", () => {
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
     f.call.mockImplementationOnce(async () => { markStarted(); await gate; return { content: [{ type: "text", text: "<app_state>app state</app_state>" }] }; });
     const ts = { createdAt: 0, updatedAt: 0 };
-    const root = { id: "op-root", theaterId: "t", type: "agent", pluginId: null, title: "Commander", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, childSessions: [{ id: "m-b", payload: {}, ts }], geometry: null, ts };
+    const root = { id: "op-root", theaterId: "t", type: "agent", pluginId: null, title: "Commander", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), sessions: [{ id: "m-b", ...({}), ts }], geometry: null, ts };
     let memberDeleted = false;
-    const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentOperationId: root.id, payload: {} as Record<string, unknown>, geometry: null, ts } : null;
+    const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentObjectiveId: root.id, ...({} as Record<string, unknown>), geometry: null, ts } : null;
     const useContext = createUseContext({ get, turnOpen: () => false });
     // 허용을 통과한 호출은 그 컨텍스트의 허가를 만진다 — 두 호출이 모두 호스트에 닿았는지를 여기서 본다.
     const touch = vi.fn();
     const requests = { hold: vi.fn(async () => "stopped" as const), granted: () => false, touch };
-    const host = createComputerUseMcpHost({ service: f.service, operations: () => [root], resolveOperation: get, experimentEnabled: () => true, requests, useContext: useContext.resolve });
+    const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => [root], resolveObjective: get, experimentEnabled: () => true, requests, useContext: useContext.resolve });
     const connection = host.connect();
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -243,7 +243,7 @@ describe("Computer Use authorization and lifecycle", () => {
       const done = await b;
       expect(done.isError).toBe(false);
       expect(f.call).toHaveBeenCalledTimes(1);
-      expect(host.operationIdForOwner(f.service.activeOwner()!)).toBe("op-root");
+      expect(host.objectiveIdForOwner(f.service.activeOwner()!)).toBe("op-root");
       expect(host.actorForOwner(f.service.activeOwner()!)).toBe("m-b");
       // 마지막 참가자 B 가 빠지면 기기를 놓는다. 구성원을 지우면 기록이 먼저 사라지고 그 세션의 턴 정리는 뒤따르므로,
       // 기록이 없어진 뒤의 정리도 B 를 루트의 묶음에서 빼야 한다.
@@ -254,13 +254,13 @@ describe("Computer Use authorization and lifecycle", () => {
     } finally { await host.dispose(); }
   });
 
-  it("refuses every device tool until the caller Operation is allowed, and revoking drops its device session", async () => {
-    // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Operation의 토글이 둘 다 참일 때만 통과하고,
+  it("refuses every device tool until the caller Objective is allowed, and revoking drops its device session", async () => {
+    // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Objective의 토글이 둘 다 참일 때만 통과하고,
     // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.
     const f = setup();
     let experiment = true;
-    const operations = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
-    const host = createComputerUseMcpHost({ service: f.service, operations: () => operations, experimentEnabled: () => experiment, language: () => "ko" });
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => objectiveRecords, experimentEnabled: () => experiment, language: () => "ko" });
     const connection = host.connect();
     try {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
@@ -272,11 +272,11 @@ describe("Computer Use authorization and lifecycle", () => {
       const parse = (result: { content: { text: string }[] }) => JSON.parse(result.content[0]!.text);
       const denied = await call("computer_state", { app: "com.apple.TextEdit" });
       expect(denied.isError).toBe(true);
-      expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
+      expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "objectiveRecord_not_authorized", retryable: true, remedy: { surface: "objectiveRecord_panel", objectiveId: "op-a" } });
       expect(parse(denied).message).toContain("컴퓨터 사용");
       expect(f.call).not.toHaveBeenCalled();
-      expect(parse(await call("computer_status"))).toMatchObject({ reason: "operation_not_authorized" });
-      operations[0]!.payload = { computerUse: { enabled: true, language: "en" } };
+      expect(parse(await call("computer_status"))).toMatchObject({ reason: "objectiveRecord_not_authorized" });
+      objectiveRecords[0]! = { ...objectiveRecords[0]!, computerUse: { enabled: true, language: "en" } };
       experiment = false;
       expect(parse(await call("computer_apps"))).toMatchObject({ error: "computer_use_not_authorized", reason: "experiment_disabled", remedy: { surface: "settings" } });
       experiment = true;
@@ -284,11 +284,11 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(allowed.isError).toBe(false);
       expect(f.call).toHaveBeenCalledTimes(1);
       expect(f.service.status().state).not.toBe("idle");
-      operations[0]!.payload = {};
-      host.revokeOperation("op-a");
+      delete objectiveRecords[0]!.computerUse;
+      host.revokeObjective("op-a");
       await f.service.stop();
       expect(f.stop).toHaveBeenCalledTimes(1);
-      expect(parse(await call("computer_apps"))).toMatchObject({ reason: "operation_not_authorized" });
+      expect(parse(await call("computer_apps"))).toMatchObject({ reason: "objectiveRecord_not_authorized" });
       expect(f.call).toHaveBeenCalledTimes(1);
     } finally { await host.dispose(); }
   });

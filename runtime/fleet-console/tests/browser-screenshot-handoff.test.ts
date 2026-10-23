@@ -20,7 +20,7 @@ import type { DesktopEngine } from "../features/browser/host/desktop-engine.js";
  * BrowserService 가 CDP/셸 스텁 위에서 실제로 거절·동기화하는지.
  */
 
-const OPERATION = "operation-screenshot";
+const OBJECTIVE = "objective-screenshot";
 const CAPTURE = Buffer.alloc(8_000, 0x7f);
 
 function screenshotResult(width = 1404, height = 1177) {
@@ -47,7 +47,7 @@ function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrow
   };
   const specs = createBrowserToolSpecs({ service: service as never, screenshots, screenshotDelivery });
   const computer = specs.find((spec) => spec.id === "computer")!;
-  return () => computer.execute({ action: "screenshot" }, { sessionLabel: OPERATION } as never) as Promise<{ content: { type: string; text?: string }[] }>;
+  return () => computer.execute({ action: "screenshot" }, { sessionLabel: OBJECTIVE } as never) as Promise<{ content: { type: string; text?: string }[] }>;
 }
 
 function store() {
@@ -55,7 +55,7 @@ function store() {
   return { screenshots: createBrowserScreenshotStore({ dataDir }), root: resolveBrowserScreenshotNamespaceRoot(dataDir) };
 }
 
-describe("operation browser screenshots", () => {
+describe("objectiveRecord browser screenshots", () => {
   it("hands every screenshot over as a file instead of loading the result with the image, and takes it back with the browser", async () => {
     const { screenshots } = store();
     try {
@@ -74,7 +74,7 @@ describe("operation browser screenshots", () => {
       expect((await readFile(filePath!)).equals(CAPTURE)).toBe(true);
       expect(statSync(filePath!).mode & 0o777).toBe(0o600);
 
-      screenshots.release(OPERATION);
+      screenshots.release(OBJECTIVE);
       await expect(readFile(filePath!)).rejects.toThrow();
       // 파일 읽기 권한이 없는 사령관 세션은 같은 캡처를 MCP 이미지로 받으며 로컬 경로에 의존하지 않는다.
       const inline = await screenshotTool(CAPTURE, screenshots, false, "inline")();
@@ -101,7 +101,7 @@ describe("operation browser screenshots", () => {
     const dataDir = mkdtempSync(path.join(tmpdir(), "browser-screenshot-"));
     const serving = createBrowserScreenshotStore({ dataDir });
     try {
-      const filePath = serving.save(OPERATION, CAPTURE, "jpg");
+      const filePath = serving.save(OBJECTIVE, CAPTURE, "jpg");
 
       // 같은 데이터 루트로 두 번째 Console 이 올라온다. 서버는 기동 끝에서야 runtime lock 을 잡으므로
       // 이 프로세스는 아직 자기가 질지 모른 채 만들어지고, 잠금에 실패하면 정리하며 내려간다.
@@ -139,7 +139,7 @@ function createStubDesktop(options: StubOptions = {}) {
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
     viewSize: (id: string) => sizes.get(id) ?? null,
-    viewOperation: () => OPERATION,
+    viewObjective: () => OBJECTIVE,
     place: () => undefined,
     bindView: () => undefined,
     setHost: () => false,
@@ -245,21 +245,21 @@ function createService(desktop: StubDesktop) {
   });
 }
 
-describe("operation browser service contracts", () => {
+describe("objectiveRecord browser service contracts", () => {
   it("reports a tab lost during navigation as a browser error rather than a successful missing tab", async () => {
     const service = createService(createStubDesktop({ detachOnNavigate: true }));
     const { screenshots } = store();
     try {
       const specs = createBrowserToolSpecs({ service, screenshots });
-      const context = { sessionLabel: OPERATION } as never;
+      const context = { sessionLabel: OBJECTIVE } as never;
       const created = await specs.find((spec) => spec.id === "tabs_create")!.execute({}, context) as { content: { text: string }[] };
       const { tabId } = JSON.parse(created.content[0]!.text);
       const result = await specs.find((spec) => spec.id === "navigate")!.execute({ url: "http://localhost/", tabId }, context) as { isError: boolean; content: { text: string }[] };
       expect(result.isError).toBe(true);
       expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: "browser_tab_not_found", tabId });
-      expect(service.state(OPERATION).tabs).toEqual([]);
+      expect(service.state(OBJECTIVE).tabs).toEqual([]);
     } finally {
-      service.endAgentSession(OPERATION);
+      service.endAgentSession(OBJECTIVE);
       await service.dispose();
       screenshots.cleanup();
     }
@@ -269,19 +269,19 @@ describe("operation browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1386, height: 1163 } });
     const service = createService(desktop);
     try {
-      await service.createTab(OPERATION, null, "agent");
+      await service.createTab(OBJECTIVE, null, "agent");
       desktop.setPaneSize({ width: 1386, height: 1163, scale: 2 });
 
-      await service.setViewport(OPERATION, { preset: "mobile" }, "agent");
-      expect(service.state(OPERATION).viewport).toMatchObject({ width: 375, height: 812, preset: "mobile" });
+      await service.setViewport(OBJECTIVE, { preset: "mobile" }, "agent");
+      expect(service.state(OBJECTIVE).viewport).toMatchObject({ width: 375, height: 812, preset: "mobile" });
 
       // desktop 복귀: 직전 375x812 가 아니라 pane 실측.
-      const restored = await service.setViewport(OPERATION, { preset: "responsive" }, "agent");
+      const restored = await service.setViewport(OBJECTIVE, { preset: "responsive" }, "agent");
       expect(restored).toMatchObject({ width: 1386, height: 1163, preset: "responsive" });
-      expect(service.state(OPERATION).viewport).toMatchObject({ width: 1386, height: 1163, preset: "responsive" });
+      expect(service.state(OBJECTIVE).viewport).toMatchObject({ width: 1386, height: 1163, preset: "responsive" });
 
       // 임의 크기는 실제 에뮬레이션으로 잠근다(pane 과 분리).
-      const custom = await service.setViewport(OPERATION, { preset: "responsive", width: 1200, height: 900 }, "agent");
+      const custom = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 1200, height: 900 }, "agent");
       expect(custom).toMatchObject({ width: 1200, height: 900, preset: "responsive" });
     } finally {
       await service.dispose();
@@ -296,12 +296,12 @@ describe("operation browser service contracts", () => {
     });
     const service = createService(desktop);
     try {
-      const tab = await service.createTab(OPERATION, null, "agent");
+      const tab = await service.createTab(OBJECTIVE, null, "agent");
       // read_page 가 남긴 것처럼 매핑만 있고 노드는 이미 떨어졌다.
-      const opTab = (service as unknown as { operations: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).operations.get(OPERATION)!.tabs.get(tab.id)!;
+      const opTab = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(tab.id)!;
       opTab.refs.set("ref_1", 99);
 
-      await expect(service.clickRef(OPERATION, "ref_1", { button: "left", clickCount: 1 })).rejects.toMatchObject({
+      await expect(service.clickRef(OBJECTIVE, "ref_1", { button: "left", clickCount: 1 })).rejects.toMatchObject({
         code: "browser_ref_unknown",
       });
       expect(dispatches).toEqual([]);
@@ -319,12 +319,12 @@ describe("operation browser service contracts", () => {
     });
     const service = createService(desktop);
     try {
-      const tab = await service.createTab(OPERATION, null, "agent");
-      const opTab = (service as unknown as { operations: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).operations.get(OPERATION)!.tabs.get(tab.id)!;
+      const tab = await service.createTab(OBJECTIVE, null, "agent");
+      const opTab = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(tab.id)!;
       opTab.refs.set("ref_1", 7);
 
       const controller = new AbortController();
-      const pending = service.clickRef(OPERATION, "ref_1", { button: "left", clickCount: 1, signal: controller.signal });
+      const pending = service.clickRef(OBJECTIVE, "ref_1", { button: "left", clickCount: 1, signal: controller.signal });
       await new Promise((resolve) => setTimeout(resolve, 10));
       controller.abort();
       await expect(pending).rejects.toThrow(/browser_call_interrupted/);
@@ -338,15 +338,15 @@ describe("operation browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1386, height: 1163 } });
     const service = createService(desktop);
     try {
-      await service.createTab(OPERATION, null, "agent");
+      await service.createTab(OBJECTIVE, null, "agent");
       desktop.setPaneSize({ width: 1386, height: 1163, scale: 1 });
-      await service.setViewport(OPERATION, { preset: "mobile" }, "agent");
+      await service.setViewport(OBJECTIVE, { preset: "mobile" }, "agent");
       // 에뮬레이션을 직접 걷어 layout 만 desktop 크기로 두고, 저장 뷰포트는 mobile 로 남겨 stale 을 재현한다.
       desktop.setLayout({ width: 1386, height: 1163 });
-      const op = (service as unknown as { operations: Map<string, { viewportFollowsPane: boolean }> }).operations.get(OPERATION)!;
+      const op = (service as unknown as { objectiveRecords: Map<string, { viewportFollowsPane: boolean }> }).objectiveRecords.get(OBJECTIVE)!;
       op.viewportFollowsPane = true;
 
-      const shot = await service.screenshot(OPERATION, { format: "jpeg" });
+      const shot = await service.screenshot(OBJECTIVE, { format: "jpeg" });
       expect(shot.staleViewport).toBe(true);
       expect(shot.width).toBe(1386);
       expect(shot.height).toBe(1163);
@@ -360,35 +360,35 @@ describe("operation browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1280, height: 800 } });
     const service = createService(desktop);
     try {
-      const first = await service.createTab(OPERATION, null, "agent");
+      const first = await service.createTab(OBJECTIVE, null, "agent");
       desktop.setPaneSize({ width: 800, height: 600, scale: 1 });
-      const second = await service.createTab(OPERATION, null, "agent");
+      const second = await service.createTab(OBJECTIVE, null, "agent");
       desktop.setPaneSize({ width: 1280, height: 800, scale: 1 });
-      await service.selectTab(OPERATION, first.id);
+      await service.selectTab(OBJECTIVE, first.id);
 
-      const parked = await service.screenshot(OPERATION, { tabId: second.id, format: "jpeg" });
+      const parked = await service.screenshot(OBJECTIVE, { tabId: second.id, format: "jpeg" });
       expect(parked.layout).toEqual({ width: 1280, height: 800 });
       expect(parked.width).toBe(1280);
       expect(parked.height).toBe(800);
 
-      const shown = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
+      const shown = await service.screenshot(OBJECTIVE, { tabId: first.id, format: "jpeg" });
       expect(shown.layout).toEqual({ width: 800, height: 600 });
       expect(shown.width).toBe(800);
       expect(shown.height).toBe(600);
 
       // overflow: cssLayoutViewport.clientWidth 가 native pane 보다 좁다(스크롤바). 캡처는 layout clip 으로 성공해야 한다.
-      const firstTarget = (service as unknown as { operations: Map<string, { tabs: Map<string, { targetId: string }> }> }).operations.get(OPERATION)!.tabs.get(first.id)!.targetId;
+      const firstTarget = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { targetId: string }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(first.id)!.targetId;
       desktop.setPaneSize({ width: 640, height: 800, scale: 1 }, firstTarget);
       desktop.setLayout({ width: 625, height: 800 }, firstTarget);
-      const overflow = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
+      const overflow = await service.screenshot(OBJECTIVE, { tabId: first.id, format: "jpeg" });
       expect(overflow.layout).toEqual({ width: 625, height: 800 });
       expect(overflow.width).toBe(625);
       expect(overflow.height).toBe(800);
 
       // 고DPI: 에이전트 캡처는 출력 1px = CSS 1px 계약을 지키고, 시트의 device 요청만 화면 배율로 찍는다 — 보고 크기는 둘 다 CSS px.
       desktop.setPaneSize({ width: 625, height: 800, scale: 2 }, firstTarget);
-      const agent = await service.screenshot(OPERATION, { tabId: first.id, format: "jpeg" });
-      const device = await service.screenshot(OPERATION, { tabId: first.id, format: "png", resolution: "device" });
+      const agent = await service.screenshot(OBJECTIVE, { tabId: first.id, format: "jpeg" });
+      const device = await service.screenshot(OBJECTIVE, { tabId: first.id, format: "png", resolution: "device" });
       expect(desktop.captureClips.slice(-2).map((clip) => clip.scale)).toEqual([0.5, 1]);
       expect([agent.width, agent.height, device.width, device.height]).toEqual([625, 800, 625, 800]);
     } finally {
@@ -397,7 +397,7 @@ describe("operation browser service contracts", () => {
   });
 });
 
-describe("operation browser tool target admission", () => {
+describe("objectiveRecord browser tool target admission", () => {
   it("requires a click target and forwards abortable ref clicks through the service", async () => {
     const { screenshots } = store();
     const calls: Array<{ name: string; signalAborted: boolean }> = [];
@@ -418,17 +418,17 @@ describe("operation browser tool target admission", () => {
     };
     const computer = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "computer")!;
 
-    const missing = await computer.execute({ action: "left_click" }, { sessionLabel: OPERATION, signal: new AbortController().signal } as never) as { isError: boolean; content: { text?: string }[] };
+    const missing = await computer.execute({ action: "left_click" }, { sessionLabel: OBJECTIVE, signal: new AbortController().signal } as never) as { isError: boolean; content: { text?: string }[] };
     expect(missing.isError).toBe(true);
     expect(missing.content.some((block) => block.text?.includes("browser_click_target_required"))).toBe(true);
 
-    const byRef = await computer.execute({ action: "left_click", ref: "ref_1" }, { sessionLabel: OPERATION, signal: new AbortController().signal } as never) as { isError: boolean };
+    const byRef = await computer.execute({ action: "left_click", ref: "ref_1" }, { sessionLabel: OBJECTIVE, signal: new AbortController().signal } as never) as { isError: boolean };
     expect(byRef.isError).toBe(false);
     expect(calls.some((call) => call.name === "clickRef" && call.signalAborted === false)).toBe(true);
     // 후속 조건 시간 초과는 제출을 다시 보내거나 자동 캡처를 만드는 이유가 아니다.
     const act = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "act")!;
     const before = calls.length;
-    const result = await act.execute({ action: "click", target: { ref: "ref_1" }, expect: { url: "https://expected.test/" }, timeout_ms: 0 }, { sessionLabel: OPERATION, signal: new AbortController().signal } as never) as { isError: boolean; content: { text: string }[] };
+    const result = await act.execute({ action: "click", target: { ref: "ref_1" }, expect: { url: "https://expected.test/" }, timeout_ms: 0 }, { sessionLabel: OBJECTIVE, signal: new AbortController().signal } as never) as { isError: boolean; content: { text: string }[] };
     expect(result.isError).toBe(false);
     expect(calls.length - before).toBe(1);
     expect(JSON.parse(result.content[0]!.text).verification.matched).toBe(false);

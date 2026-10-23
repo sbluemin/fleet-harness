@@ -3,22 +3,22 @@
  *
  * - 최근 실행한 명령: 브라우저별 localStorage(사이드바 폭 저장과 같은 범위). 명령 홈의 첫 구역이
  *   이 목록이라, 빈 첫 실행에서는 구역 자체가 서지 않는다.
- * - 최근 포커스한 Operation: 세션 메모리. 검색 결과의 활성 Theater 묶음 안 정렬만 바꾸므로
+ * - 최근 포커스한 Objective: 세션 메모리. 검색 결과의 활성 Theater 묶음 안 정렬만 바꾸므로
  *   영속할 이유가 없고, 영속하면 옛 순서가 새 세션의 첫 화면을 결정해 버린다.
  */
 
 const RECENT_COMMANDS_KEY = "fleet.palette.recentCommands";
 export const RECENT_COMMANDS_LIMIT = 5;
 
-let recentOperationIds: readonly string[] = [];
+let recentObjectiveIds: readonly string[] = [];
 
-export function noteOperationFocused(operationId: string): void {
-  recentOperationIds = [operationId, ...recentOperationIds.filter((id) => id !== operationId)].slice(0, 32);
+export function noteObjectiveFocused(objectiveId: string): void {
+  recentObjectiveIds = [objectiveId, ...recentObjectiveIds.filter((id) => id !== objectiveId)].slice(0, 32);
 }
 
-/** 최근 포커스 순위. 모르는 Operation은 -1이라 정렬에서 뒤로 간다. */
-export function recentOperationRank(operationId: string): number {
-  const index = recentOperationIds.indexOf(operationId);
+/** 최근 포커스 순위. 모르는 Objective은 -1이라 정렬에서 뒤로 간다. */
+export function recentObjectiveRank(objectiveId: string): number {
+  const index = recentObjectiveIds.indexOf(objectiveId);
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 

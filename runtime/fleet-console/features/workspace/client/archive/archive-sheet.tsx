@@ -2,16 +2,16 @@ import { useViewedTheaterId } from "../../../../core/client/src/integration/view
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { ApiError, previewOperationPurge, previewOperationBatch, purgeArchivedOperations, restoreArchivedOperations, restoreOperationCluster, undoOperationPurge } from "../../../execution/client/operations.js";
-import { readOperationLaunch } from "../../../execution/shared/operations/types.js";
-import { OPERATION_PURGE_GRACE_MS, type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation, type OperationPurgeResult } from "../../../execution/shared/operations/archive.js";
+import { ApiError, previewObjectivePurge, previewObjectiveBatch, purgeArchivedObjectiveRecords, restoreArchivedObjectiveRecords, restoreObjectiveCluster, undoObjectivePurge } from "../../../execution/client/objective-records.js";
+import { readObjectiveLaunch } from "../../../objectives/shared/records/types.js";
+import { OBJECTIVE_PURGE_GRACE_MS, type ObjectiveDescription, type ObjectivePendingPurge, type ObjectivePurgeConfirmation, type ObjectivePurgeResult } from "../../../objectives/shared/records/archive.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
-import { closeArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
-import { fetchOperations } from "../../../../core/client/src/integration/api.js";
-import { getState, hydrateOperations } from "../../../../core/client/src/integration/store.js";
+import { closeArchiveSheet, openRestoredObjective, refreshObjectiveArchive, useObjectiveArchive } from "../../../../core/client/src/integration/objective-archive.js";
+import { fetchObjectiveRecords } from "../../../../core/client/src/integration/api.js";
+import { getState, hydrateObjectiveRecords } from "../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useArchiveSections } from "./archive-entry.js";
 import { ArchiveRetention } from "./archive-retention.js";
@@ -20,13 +20,13 @@ const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]
 const LOCALE_TAG: Readonly<Record<ConsoleLocale, string>> = { en: "en-US", ko: "ko-KR" };
 interface ArchiveCluster {
   readonly rootId: string;
-  readonly root: OperationDescription;
+  readonly root: ObjectiveDescription;
   readonly members: readonly string[];
   readonly archivedAt: number;
 }
-function clustersOf(entries: readonly OperationDescription[]): readonly ArchiveCluster[] {
-  return entries.map((root) => ({ rootId: root.operation.id, root,
-    members: (root.operation.childSessions ?? []).map((child) => readOperationLaunch(child.payload).sessionName ?? child.id.slice(0, 8)),
+function clustersOf(entries: readonly ObjectiveDescription[]): readonly ArchiveCluster[] {
+  return entries.map((root) => ({ rootId: root.objectiveRecord.id, root,
+    members: (root.objectiveRecord.sessions ?? []).map((child) => readObjectiveLaunch(child).sessionName ?? child.id.slice(0, 8)),
     archivedAt: root.archivedAt ?? 0,
   })).sort((a, b) => b.archivedAt - a.archivedAt);
 }
@@ -72,7 +72,7 @@ function Highlight({ text, query }: { readonly text: string; readonly query: str
 }
 
 export function ArchiveSheet() {
-  return useOperationArchive().sheetOpen ? <ArchiveSheetDialog /> : null;
+  return useObjectiveArchive().sheetOpen ? <ArchiveSheetDialog /> : null;
 }
 
 /** 무장·고르기는 시트 전체가 공유하며, 복원·삭제 보류는 줄의 자리를 유지한다. */
@@ -81,7 +81,7 @@ function ArchiveSheetDialog() {
   const locale = useConsoleLocale();
   const state = useConsoleState();
   const viewedTheaterId = useViewedTheaterId();
-  const archive = useOperationArchive();
+  const archive = useObjectiveArchive();
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -93,13 +93,13 @@ function ArchiveSheetDialog() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   // 복원 기록은 열린 시트 수명만 가진다. 원본 위치·날짜를 보존하고 다시 열면 사라진다.
-  const [restored, setRestored] = useState<readonly OperationDescription[]>([]);
+  const [restored, setRestored] = useState<readonly ObjectiveDescription[]>([]);
   const [notice, setNotice] = useState<CoreMessageKey | null>(null);
   const [retentionOpen, setRetentionOpen] = useState(false);
   const [clock, setClock] = useState(Date.now());
   // 확정 응답의 영수증 — 뒤따르는 목록 새로고침이 실패해도 유예 동안 되돌리기를 보여 준다.
   // 만료는 서버 시각 대신 받은 순간부터의 유예로 잰다(기기 시계 차이로 바로 사라지지 않게).
-  const [receipts, setReceipts] = useState<readonly { readonly batch: OperationPendingPurge; readonly until: number }[]>([]);
+  const [receipts, setReceipts] = useState<readonly { readonly batch: ObjectivePendingPurge; readonly until: number }[]>([]);
   const focusRequest = useRef<{ id: string; index: number; kind: "next" | "restore" | "undo" } | null>(null);
   const lastFocused = useRef<{ id: string; index: number } | null>(null);
 
@@ -114,24 +114,24 @@ function ArchiveSheetDialog() {
   const allCount = archive.total + allSections.reduce((sum, entry) => sum + entry.count, 0);
   const total = allTheaters ? allCount : currentCount;
   const activeLabel = state.theaters.find((theater) => theater.id === viewedTheaterId)?.label ?? t("archive.currentTheater");
-  const restoredIds = new Set(restored.map((entry) => entry.operation.id));
-  const entries = [...(archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.operation.id)), ...restored];
+  const restoredIds = new Set(restored.map((entry) => entry.objectiveRecord.id));
+  const entries = [...(archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.objectiveRecord.id)), ...restored];
   const allClusters = clustersOf(entries);
   const matches = (cluster: ArchiveCluster) => {
-    const node = cluster.root.operation;
+    const node = cluster.root.objectiveRecord;
     const haystack = [node.title, state.theaters.find((theater) => theater.id === node.theaterId)?.label, state.groups.find((group) => group.id === node.groupId)?.name, ...cluster.members].filter(Boolean).join(" ");
     return haystack.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   };
-  const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === viewedTheaterId) && matches(cluster));
-  const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.operation.theaterId !== viewedTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
-  const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.operationIds.includes(id))
-    ?? receipts.find((entry) => entry.until > clock && entry.batch.operationIds.includes(id))?.batch;
+  const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.objectiveRecord.theaterId === viewedTheaterId) && matches(cluster));
+  const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.objectiveRecord.theaterId !== viewedTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
+  const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.objectiveIds.includes(id))
+    ?? receipts.find((entry) => entry.until > clock && entry.batch.objectiveIds.includes(id))?.batch;
   const selectable = clusters.filter((cluster) => !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId));
   const selectedIds = selectable.filter((cluster) => selected.has(cluster.rootId)).map((cluster) => cluster.rootId);
-  const old = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === viewedTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
+  const old = allClusters.filter((cluster) => (allTheaters || cluster.root.objectiveRecord.theaterId === viewedTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
   const showTools = allCount > 0 || restored.length > 0;
   // 자동 정리는 화면의 검색·범위와 무관하게 모든 Theater의 보관 루트가 대상이다(삭제 보류 중인 묶음은 서버도 건너뛴다).
-  const retentionTargets = (archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.operation.id) && !pendingOf(entry.operation.id)).map((entry) => entry.archivedAt ?? Number.NaN);
+  const retentionTargets = (archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.objectiveRecord.id) && !pendingOf(entry.objectiveRecord.id)).map((entry) => entry.archivedAt ?? Number.NaN);
 
   useLayoutEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -158,7 +158,7 @@ function ArchiveSheetDialog() {
     if (!request && document.activeElement === document.body && lastFocused.current) request = { ...lastFocused.current, kind: "next" };
     if (!request || (busy && request.kind === "next")) return;
     const rows = [...(dialogRef.current?.querySelectorAll<HTMLElement>(".archive-sheet-item") ?? [])];
-    const row = rows.find((item) => item.dataset.operationId === request!.id);
+    const row = rows.find((item) => item.dataset.objectiveId === request!.id);
     let target: HTMLElement | null = null;
     if (request.kind !== "next") target = row?.querySelector<HTMLElement>(request.kind === "undo" ? ".archive-sheet-undo" : ".archive-sheet-restore") ?? null;
     if (request.kind !== "next" && row && !target && !archive.error) return;
@@ -209,43 +209,43 @@ function ArchiveSheetDialog() {
     setSelected(next);
   };
   const open = (id: string) => {
-    if (!openRestoredOperation(id)) { setNotice("archive.notice.restoreFailed"); return; }
+    if (!openRestoredObjective(id)) { setNotice("archive.notice.restoreFailed"); return; }
     closeArchiveSheet();
   };
   const restore = async (ids: readonly string[]) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setArmed(null); setNotice(null);
-    const before = entries.filter((entry) => ids.includes(entry.operation.id));
+    const before = entries.filter((entry) => ids.includes(entry.objectiveRecord.id));
     const index = clusters.findIndex((cluster) => cluster.rootId === ids[0]);
     try {
-      const result = ids.length === 1 ? await restoreOperationCluster(ids[0]!) : await restoreArchivedOperations(await previewOperationBatch(ids));
-      hydrateOperations([...getState().operations.filter((node) => !ids.includes(node.id)), ...result.operations]);
+      const result = ids.length === 1 ? await restoreObjectiveCluster(ids[0]!) : await restoreArchivedObjectiveRecords(await previewObjectiveBatch(ids));
+      hydrateObjectiveRecords([...getState().objectiveRecords.filter((node) => !ids.includes(node.id)), ...result.objectiveRecords]);
       setRestored((previous) => [...previous, ...before]);
       clearSelection();
       focusRequest.current = { id: ids[0]!, index, kind: "next" };
-      await fetchOperations(null).then(hydrateOperations).catch(() => {});
-      await refreshOperationArchive();
+      await fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {});
+      await refreshObjectiveArchive();
     } catch (error) {
       setNotice(error instanceof ApiError && error.message === "restore_parent_missing" ? "archive.notice.restoreParentMissing" : "archive.notice.restoreFailed");
-      void refreshOperationArchive();
+      void refreshObjectiveArchive();
     } finally { busyRef.current = false; setBusy(false); }
   };
   const purged = async (id: string, result: unknown) => {
     const receipt = receiptOf(result);
-    if (receipt) setReceipts((previous) => [...previous.filter((entry) => entry.batch.purgeId !== receipt.purgeId), { batch: receipt, until: Date.now() + OPERATION_PURGE_GRACE_MS }]);
+    if (receipt) setReceipts((previous) => [...previous.filter((entry) => entry.batch.purgeId !== receipt.purgeId), { batch: receipt, until: Date.now() + OBJECTIVE_PURGE_GRACE_MS }]);
     clearSelection();
     focusRequest.current = { id, index: clusters.findIndex((cluster) => cluster.rootId === id), kind: "undo" };
-    await refreshOperationArchive();
+    await refreshObjectiveArchive();
   };
-  const undo = async (batch: OperationPendingPurge, id: string) => {
+  const undo = async (batch: ObjectivePendingPurge, id: string) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setArmed(null);
     try {
-      await undoOperationPurge(batch.purgeId);
+      await undoObjectivePurge(batch.purgeId);
       setReceipts((previous) => previous.filter((entry) => entry.batch.purgeId !== batch.purgeId));
       focusRequest.current = { id, index: clusters.findIndex((cluster) => cluster.rootId === id), kind: "restore" };
-      await refreshOperationArchive();
-    } catch { setNotice("archive.notice.undoFailed"); void refreshOperationArchive(); }
+      await refreshObjectiveArchive();
+    } catch { setNotice("archive.notice.undoFailed"); void refreshObjectiveArchive(); }
     finally { busyRef.current = false; setBusy(false); }
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -296,7 +296,7 @@ function ArchiveSheetDialog() {
                 <h3 id={`archive-sheet-day-${day.key}`} className="archive-sheet-day-date"><span className="archive-sheet-day-main">{label.main}</span><span className="archive-sheet-day-sub">{label.sub}</span></h3>
                 <div className="archive-sheet-day-items">
                   {day.clusters.map((cluster) => {
-                    const node = cluster.root.operation;
+                    const node = cluster.root.objectiveRecord;
                     const group = state.groups.find((candidate) => candidate.id === node.groupId);
                     const theater = state.theaters.find((candidate) => candidate.id === node.theaterId)?.label;
                     const meta = [allTheaters ? theater : null, group?.name ?? t(node.groupId ? "archive.meta.groupLost" : "archive.meta.ungrouped"),
@@ -305,7 +305,7 @@ function ArchiveSheetDialog() {
                     const isRestored = restoredIds.has(cluster.rootId);
                     const pending = pendingOf(cluster.rootId);
                     const index = clusters.indexOf(cluster);
-                    return <article key={cluster.rootId} data-operation-id={cluster.rootId} className={`archive-sheet-item${selectedIds.includes(cluster.rootId) ? " is-selected" : ""}${isRestored ? " is-restored" : ""}${pending ? " is-pending" : ""}`}
+                    return <article key={cluster.rootId} data-objective-id={cluster.rootId} className={`archive-sheet-item${selectedIds.includes(cluster.rootId) ? " is-selected" : ""}${isRestored ? " is-restored" : ""}${pending ? " is-pending" : ""}`}
                       role="option" aria-label={node.title} aria-selected={selectedIds.includes(cluster.rootId)} aria-disabled={isRestored || !!pending || undefined} tabIndex={0}
                       onFocus={() => { lastFocused.current = { id: cluster.rootId, index }; }}
                       onClick={(event) => { if (!(event.target instanceof Element) || event.target.closest("button")) return; select(cluster.rootId, event.shiftKey); }}
@@ -313,11 +313,11 @@ function ArchiveSheetDialog() {
                       <div className="archive-sheet-item-main"><p className="archive-sheet-item-title" title={node.title}><Highlight text={node.title} query={query} /></p><p className="archive-sheet-item-meta" title={meta}><Highlight text={meta} query={query} /></p></div>
                       <div className="archive-sheet-actions">
                         {isRestored ? <><span>{t("archive.restored")}</span><span aria-hidden="true">·</span><button type="button" className="archive-sheet-open" onClick={() => open(cluster.rootId)}>{t("archive.open")}</button></> : pending ?
-                          <><span>{t("archive.pending", { seconds: Math.max(0, Math.ceil((pending.purgeAt - clock) / 1000)) })}</span><button type="button" className="archive-sheet-undo" aria-disabled={busy || undefined} onClick={() => { void undo(pending, cluster.rootId); }}>{t("archive.undo")}{pending.operationIds.length > 1 ? ` (${pending.operationIds.length})` : ""}</button></> :
+                          <><span>{t("archive.pending", { seconds: Math.max(0, Math.ceil((pending.purgeAt - clock) / 1000)) })}</span><button type="button" className="archive-sheet-undo" aria-disabled={busy || undefined} onClick={() => { void undo(pending, cluster.rootId); }}>{t("archive.undo")}{pending.objectiveIds.length > 1 ? ` (${pending.objectiveIds.length})` : ""}</button></> :
                           <><button type="button" className="archive-sheet-restore" aria-disabled={busy || undefined} onClick={() => { void restore([cluster.rootId]); }}>{t("archive.restore")}</button>
-                            <ArchivePurgeButton targetId={cluster.rootId} title={node.title} currentRevision={archive.revision} preview={previewOperationPurge} purge={purgeArchivedOperations}
+                            <ArchivePurgeButton targetId={cluster.rootId} title={node.title} currentRevision={archive.revision} preview={previewObjectivePurge} purge={purgeArchivedObjectiveRecords}
                               armed={armed === cluster.rootId} onArm={() => setArmed(cluster.rootId)} onDisarm={() => setArmed(null)} disabled={busy}
-                              onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={(result) => { void purged(cluster.rootId, result); }} /></>}
+                              onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshObjectiveArchive(); }} onPurged={(result) => { void purged(cluster.rootId, result); }} /></>}
                       </div>
                     </article>;
                   })}
@@ -335,9 +335,9 @@ function ArchiveSheetDialog() {
         {selectedIds.length > 0 ? <footer className="archive-sheet-selection">
           <span>{t("archive.selected", { count: selectedIds.length })}</span>
           <button type="button" className="archive-sheet-restore" aria-disabled={busy || undefined} onClick={() => { void restore(selectedIds); }}>{t("archive.restoreAll")}</button>
-          <ArchivePurgeButton targetId="batch" title={t("archive.selected", { count: selectedIds.length })} currentRevision={archive.revision} preview={() => previewOperationBatch(selectedIds)} purge={purgeArchivedOperations}
+          <ArchivePurgeButton targetId="batch" title={t("archive.selected", { count: selectedIds.length })} currentRevision={archive.revision} preview={() => previewObjectiveBatch(selectedIds)} purge={purgeArchivedObjectiveRecords}
             armed={armed === "batch"} onArm={() => setArmed("batch")} onDisarm={() => setArmed(null)} armedLabel={t("archive.purgeBatchArmed", { count: selectedIds.length })} disabled={busy}
-            onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={(result) => { void purged(selectedIds[0]!, result); }} />
+            onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshObjectiveArchive(); }} onPurged={(result) => { void purged(selectedIds[0]!, result); }} />
           <button type="button" className="archive-sheet-deselect" onClick={clearSelection}>{t("archive.deselect")}</button>
         </footer> : null}
       </div>
@@ -346,10 +346,10 @@ function ArchiveSheetDialog() {
 }
 
 /** 확정 응답에 보류 영수증이 있으면 꺼낸다. */
-function receiptOf(result: unknown): OperationPendingPurge | null {
+function receiptOf(result: unknown): ObjectivePendingPurge | null {
   if (!result || typeof result !== "object") return null;
-  const { purgeId, purgeAt, operationIds } = result as Partial<OperationPurgeResult>;
-  return typeof purgeId === "string" && typeof purgeAt === "number" && Array.isArray(operationIds) ? { purgeId, purgeAt, operationIds } : null;
+  const { purgeId, purgeAt, objectiveIds } = result as Partial<ObjectivePurgeResult>;
+  return typeof purgeId === "string" && typeof purgeAt === "number" && Array.isArray(objectiveIds) ? { purgeId, purgeAt, objectiveIds } : null;
 }
 
 /** 두 번 눌러 확정하며, 첫 누름의 revision과 서버가 preview한 대상 집합을 끝까지 검증한다. */
@@ -357,8 +357,8 @@ export function ArchivePurgeButton({ targetId, title, currentRevision, preview, 
   readonly targetId: string;
   readonly title: string;
   readonly currentRevision: number;
-  readonly preview: (operationId: string) => Promise<OperationPurgeConfirmation>;
-  readonly purge: (confirmation: OperationPurgeConfirmation) => Promise<OperationPurgeResult | unknown>;
+  readonly preview: (objectiveId: string) => Promise<ObjectivePurgeConfirmation>;
+  readonly purge: (confirmation: ObjectivePurgeConfirmation) => Promise<ObjectivePurgeResult | unknown>;
   readonly onStart: () => void;
   readonly onRefused: (notice: CoreMessageKey) => void;
   readonly onPurged: (result: unknown) => void;

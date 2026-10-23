@@ -1,7 +1,7 @@
 import { useEffect, useState, type Ref } from "react";
 
 import { useT } from "../../i18n/index.js";
-import { reconnectOperationsSseNow } from "../../integration/operations-sse.js";
+import { reconnectObjectiveRecordsSseNow } from "../../integration/objective-records-sse.js";
 
 // 재연결이 실패하면 EventSource가 거의 즉시 error를 내므로 connection 상태만으로는
 // "다시 연결하는 중"이 사람 눈에 걸리지 않는다(실측: 클릭 250ms 뒤 이미 offline).
@@ -29,7 +29,7 @@ export function ReconnectButton({ buttonRef }: ReconnectButtonProps = {}) {
       disabled={pending}
       onClick={() => {
         setPending(true);
-        reconnectOperationsSseNow();
+        reconnectObjectiveRecordsSseNow();
       }}
     >
       {t(pending ? "chrome.link.reconnecting" : "chrome.link.reconnect")}

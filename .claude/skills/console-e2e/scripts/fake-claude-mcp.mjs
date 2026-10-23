@@ -56,7 +56,7 @@ async function rpc(method, params, notification = false) {
       ...(sessionHeader ? { "mcp-session-id": sessionHeader } : {}),
     },
     body: JSON.stringify(body),
-  }).catch((error) => fail(`${method} -> ${error.cause?.code ?? error.message} (Console restarted? resume the Operation and pass the new --pid)`));
+  }).catch((error) => fail(`${method} -> ${error.cause?.code ?? error.message} (Console restarted? resume the Objective and pass the new --pid)`));
   sessionHeader = response.headers.get("mcp-session-id") ?? sessionHeader;
   if (notification) return undefined;
   const text = await response.text();

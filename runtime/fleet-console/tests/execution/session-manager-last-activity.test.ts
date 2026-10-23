@@ -20,7 +20,7 @@ describe("session-manager lastActivityAt", () => {
     expect(manager.getSessionLastActivityAt("agent-a")).toBeNull();
 
     const socket = createMockSocket();
-    await manager.attach(socket, { sessionId: "agent-a", cwd: "/work", operationType: "agent" });
+    await manager.attach(socket, { sessionId: "agent-a", cwd: "/work", objectiveRecordType: "agent" });
     expect(manager.getSessionLastActivityAt("agent-a")).toBe(1_000);
 
     clock = 2_000;

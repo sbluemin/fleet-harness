@@ -20,7 +20,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
   readonly consoleControl?: import("../../../features/console-use/host/console-control.js").ConsoleControl;
-  readonly agentCallRedirect?: (operationId: string) => string | null;
+  readonly agentCallRedirect?: (objectiveId: string) => string | null;
 }): ConsoleRuntimeContext {
   const basePath = "/api/v1";
   const wsBasePath = "/api/v1/terminal/ws";

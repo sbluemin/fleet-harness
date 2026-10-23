@@ -1,5 +1,5 @@
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
-import type { OperationsHost } from "./operations/ports.js";
+import type { ObjectiveRecordsHost } from "../../objectives/host/records/ports.js";
 import type { AdmiralMcpHost } from "../shared/admiral-mcp.js";
 import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
 import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
@@ -17,13 +17,13 @@ import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/rou
 
 export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
-  readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeOperation(operationId: string): void; endParticipant(operationId: string): void };
-  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeOperation(operationId: string): void | Promise<void>; interruptOperation(operationId: string): number; bindTerminalPaste(paste: (operationId: string) => boolean): () => void; endAgentSession(operationId: string): void };
+  readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeObjective(objectiveId: string): void; endParticipant(objectiveId: string): void };
+  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; interruptObjective(objectiveId: string): number; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };
   /** 패널 안 허용 요청(콘솔 사용·컴퓨터 사용). 답하는 라우트와 턴 종료가 쓴다. */
   readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
   readonly useContext?: import("./use-context.js").UseContext;
-  readonly operations: Pick<OperationsHost, "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
+  readonly objectiveRecords: Pick<ObjectiveRecordsHost, "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
   readonly paths: Omit<WorkspacePaths, "pluginDataDir">;
   /**
    * 이 요청이 입장한 접속의 수명. 원격 리스너에서는 그 원격 세션이고, 루프백에서는 끝나지 않는다.
@@ -65,10 +65,10 @@ export interface ConsoleRuntimeContext {
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
   /**
-   * 이 Operation의 서브에이전트(Agent 도구) 호출에 돌려줄 거절 사유. null이면 호출을 그대로 둔다.
+   * 이 Objective의 서브에이전트(Agent 도구) 호출에 돌려줄 거절 사유. null이면 호출을 그대로 둔다.
    * 사유는 등록한 플러그인이 정하고, 실행 기능은 묻고 전달만 한다.
    */
-  readonly agentCallRedirect?: (operationId: string) => string | null;
+  readonly agentCallRedirect?: (objectiveId: string) => string | null;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }

@@ -12,10 +12,10 @@ Open the client with [`scripts/readonly-client-init.js`](../scripts/readonly-cli
 
 - turns every non-GET `fetch`, XHR, and beacon into a local 503 and records it in `window.__fleetE2E.blockedFetch`;
 - allows only the POST reads it lists (the Objectives `state` and `objective/get` RPCs) — add another only after reading its server route and confirming it has no write side effect;
-- allows the chat ticket (`channel: "chat"`): attaching reads or prepares the journal and replays saved history, but never opens an SDK child; chat Operations stay live even without a child. Every terminal ticket is rewritten to `role: "viewer"`, which attaches only to live PTYs and cannot spawn, type, or resize;
+- allows the chat ticket (`channel: "chat"`): attaching reads or prepares the journal and replays saved history, but never opens an SDK child; chat Objectives stay live even without a child. Every terminal ticket is rewritten to `role: "viewer"`, which attaches only to live PTYs and cannot spawn, type, or resize;
 - drops every `send` on terminal/agent sockets, so neither keystrokes, xterm query replies, nor resize frames reach a PTY.
 
-The server applies the last resize from any controlling client to the PTY, and panel moves are persisted with `PATCH /api/v1/operations/:id`; both are why the guard is not optional.
+The server applies the last resize from any controlling client to the PTY, and panel moves are persisted with `PATCH /api/v1/objectives/records/:id`; both are why the guard is not optional.
 
 ## Using the client
 

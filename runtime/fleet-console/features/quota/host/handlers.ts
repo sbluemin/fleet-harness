@@ -7,7 +7,7 @@ import { isProviderId, type LoginProvider } from "../shared/provider-order.js";
 
 export { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
 
-export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
+export type SettingsSerializer = <T>(objectiveRecord: () => Promise<T>) => Promise<T>;
 
 /**
  * Gateway quota 라우트를 읽는 창구. `stale`이면 만료된 캐시라도 먼저 받고, 그렇게 받은 응답은

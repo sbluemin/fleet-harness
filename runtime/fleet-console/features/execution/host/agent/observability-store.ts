@@ -4,7 +4,7 @@ import path from "node:path";
 
 import type {
   AgentAttentionReason,
-  AgentDurableOperation,
+  AgentDurableObjective,
   AgentLabelSource,
   AgentModelActivity,
   AgentObservedEvent,
@@ -81,13 +81,13 @@ interface PendingTerminalSessionState {
   /** 현재 작업 폴더·브랜치 투영. 추적기가 옵트인 동안만 채우고, 끄면 지운다. */
   workspace?: AgentSessionWorkspace;
   /**
-   * PTY 생산자 세대. 세션을 세우거나 재기동할 때마다 새 무작위 값이다 — 같은 Operation id 위에서 옛 PTY와
+   * PTY 생산자 세대. 세션을 세우거나 재기동할 때마다 새 무작위 값이다 — 같은 Objective id 위에서 옛 PTY와
    * 새 PTY를 가르는 유일한 값이다. 휴면 투영에는 싣지 않는다(살아 있는 생산자가 없다).
    */
   terminalGeneration?: string;
 }
 
-type DormantOperationInput = AgentDurableOperation;
+type DormantObjectiveInput = AgentDurableObjective;
 
 interface AutoNameTerminalSessionResult {
   readonly session: AgentTerminalSessionInfo;
@@ -224,22 +224,22 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return terminalSessionsById.get(sessionId)?.terminalGeneration;
   }
 
-  function injectDormantOperation(operation: DormantOperationInput): AgentTerminalSessionInfo {
-    const previous = terminalSessionsById.get(operation.sessionId);
+  function injectDormantObjective(objectiveRecord: DormantObjectiveInput): AgentTerminalSessionInfo {
+    const previous = terminalSessionsById.get(objectiveRecord.sessionId);
     if (previous) clearTerminalSessionBackgroundPending(previous);
     const state: PendingTerminalSessionState = {
-      sessionId: operation.sessionId,
-      cwd: operation.cwd,
-      canonicalCwd: canonicalizeTheaterPath(operation.cwd),
-      cwdLabel: path.basename(operation.cwd) || operation.cwd,
-      label: operation.label,
-      labelSource: operation.labelSource,
-      providerTitle: operation.providerTitle,
-      createdAt: operation.createdAt,
-      theaterId: operation.theaterId,
-      terminalSessionId: operation.sessionId,
+      sessionId: objectiveRecord.sessionId,
+      cwd: objectiveRecord.cwd,
+      canonicalCwd: canonicalizeTheaterPath(objectiveRecord.cwd),
+      cwdLabel: path.basename(objectiveRecord.cwd) || objectiveRecord.cwd,
+      label: objectiveRecord.label,
+      labelSource: objectiveRecord.labelSource,
+      providerTitle: objectiveRecord.providerTitle,
+      createdAt: objectiveRecord.createdAt,
+      theaterId: objectiveRecord.theaterId,
+      terminalSessionId: objectiveRecord.sessionId,
       status: "dormant",
-      session: operation.session,
+      session: objectiveRecord.session,
       // 다시 주입해도 마지막 기동의 세대는 남는다 — 세대는 기동만 바꾼다.
       ...(previous?.terminalGeneration ? { terminalGeneration: previous.terminalGeneration } : {}),
     };
@@ -251,7 +251,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return Array.from(terminalSessionsById.values()).map(toTerminalSessionInfo).sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  function listDurableOperations(): readonly AgentDurableOperation[] {
+  function listDurableObjectiveRecords(): readonly AgentDurableObjective[] {
     return Array.from(terminalSessionsById.values()).map((session) => ({
       sessionId: session.sessionId,
       theaterId: session.theaterId,
@@ -264,8 +264,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     }));
   }
 
-  function getDurableOperation(sessionId: string): AgentDurableOperation | null {
-    return listDurableOperations().find((operation) => operation.sessionId === sessionId) ?? null;
+  function getDurableObjective(sessionId: string): AgentDurableObjective | null {
+    return listDurableObjectiveRecords().find((objectiveRecord) => objectiveRecord.sessionId === sessionId) ?? null;
   }
 
   function updateTerminalSessionProviderSession(sessionId: string, providerSession: CapturedAgentSession): AgentTerminalSessionInfo | null {
@@ -506,7 +506,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   // 자동 작명: 사용자 수동 또는 provider 라벨이 없는 세션의 첫 유효 프롬프트에만 적용한다.
   // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다.
-  // 처리 여부는 패널의 인메모리 상태에만 남기며 durable operation에는 포함하지 않는다.
+  // 처리 여부는 패널의 인메모리 상태에만 남기며 durable objectiveRecord에는 포함하지 않는다.
   function autoNameTerminalSession(sessionId: string, label: string | null): AutoNameTerminalSessionResult | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
@@ -598,14 +598,14 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   return {
     clear,
     getLaunchCwd,
-    getDurableOperation,
+    getDurableObjective,
     getWorkspace,
-    listDurableOperations,
+    listDurableObjectiveRecords,
     listTerminalSessions,
     listWorkspaces,
     createPendingTerminalSession,
     getTerminalSessionInfo,
-    injectDormantOperation,
+    injectDormantObjective,
     notifySessionAttention,
     notifySessionUpdated,
     renameTerminalSession,

@@ -13,10 +13,10 @@ export interface BrowserToolDeps {
 
 /**
  * 에이전트에 노출되는 Session Browser 도구면 — Fleet 의 브라우저 어휘. 탭·항해·컴퓨터 조작·페이지 읽기·
- * 폼 입력·콘솔·네트워크·자바스크립트·뷰포트·배치를 한 벌로 묶고, 정책(호출자 Operation 판정, 로컬 전용)은
+ * 폼 입력·콘솔·네트워크·자바스크립트·뷰포트·배치를 한 벌로 묶고, 정책(호출자 Objective 판정, 로컬 전용)은
  * 도구가 아니라 MCP 호스트가 감싼다.
  *
- * 세션 라벨은 MCP 호스트가 Operation id(브라우저의 주인)로 바꿔서 넘긴다.
+ * 세션 라벨은 MCP 호스트가 Objective id(브라우저의 주인)로 바꿔서 넘긴다.
  */
 
 /**
@@ -45,18 +45,18 @@ const TAB_ID = { type: "string", description: "Tab ID from tabs_context or the t
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const { service } = deps;
-  const spec = (id: string, description: string, parameters: Record<string, unknown>, run: (args: Record<string, any>, operationId: string, signal: AbortSignal) => Promise<ToolResult>): AgentToolSpec => ({
+  const spec = (id: string, description: string, parameters: Record<string, unknown>, run: (args: Record<string, any>, objectiveId: string, signal: AbortSignal) => Promise<ToolResult>): AgentToolSpec => ({
     id, tag: id, title: id, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters,
     execute: async (args, context) => {
-      const operationId = context.sessionLabel ?? "";
-      if (!operationId) return text({ error: "browser_caller_unresolved" }, true);
-      try { return await service.agentCall(operationId, context.signal, (signal) => run((args ?? {}) as Record<string, any>, operationId, signal), participantOf(context) ?? operationId); }
+      const objectiveId = context.sessionLabel ?? "";
+      if (!objectiveId) return text({ error: "browser_caller_unresolved" }, true);
+      try { return await service.agentCall(objectiveId, context.signal, (signal) => run((args ?? {}) as Record<string, any>, objectiveId, signal), participantOf(context) ?? objectiveId); }
       catch (error) { return failure(error); }
     },
   });
 
-  const tabsContext = (operationId: string) => {
-    const state = service.state(operationId);
+  const tabsContext = (objectiveId: string) => {
+    const state = service.state(objectiveId);
     return { browserOpen: state.tabs.length > 0, tabs: state.tabs.map((tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, isActive: tab.id === state.activeTabId })), viewport: { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset } };
   };
 
@@ -69,8 +69,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
    * 모델은 이미지를 아예 보지 못한다. 경로는 몇 십 토큰이고 에이전트가 제 손으로 읽을 때 비로소 이미지로
    * 들어가니, 같은 장이 스무 배 넘게 싸면서 더 확실히 닿는다.
    */
-  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<BrowserContent[]> => {
-    const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg", signal });
+  const screenshotBlock = async (objectiveId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<BrowserContent[]> => {
+    const shot = await service.screenshot(objectiveId, { tabId, clip, format: "jpeg", signal });
     const pixelLine = shot.pixels ? `Image ${shot.pixels.width}x${shot.pixels.height} pixels; pixel-to-CSS scale [${shot.width / shot.pixels.width}, ${shot.height / shot.pixels.height}]. Geometry ${shot.geometryVersion}.` : "";
     const viewportLine = `Reported viewport ${shot.viewport.width}x${shot.viewport.height} (${shot.viewport.preset}${shot.viewport.followsPane ? ", follows pane" : ", emulated"}).`;
     const layoutLine = shot.layout ? `Page layout metrics ${shot.layout.width}x${shot.layout.height}.` : "Page layout metrics unavailable.";
@@ -84,7 +84,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     if (signal.aborted) return [{ type: "text", text: geometry }];
     if (deps.screenshotDelivery === "inline") return [{ type: "text", text: geometry }, { type: "image", data: shot.data, mimeType: "image/jpeg" }];
     try {
-      const filePath = deps.screenshots.save(operationId, Buffer.from(shot.data, "base64"), "jpg");
+      const filePath = deps.screenshots.save(objectiveId, Buffer.from(shot.data, "base64"), "jpg");
       return [{ type: "text", text: `${geometry}\nThe image was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
     } catch {
       // 앞선 조작은 이미 일어났다 — 실패로 되돌리면 에이전트가 같은 클릭을 되풀이한다. 이 장만 포기하고
@@ -114,43 +114,43 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const scopeSchema = { anyOf: targetBranches() };
   const targetSchema = { description: "Exactly one of ref, selector, or role/name; never combine them. selector and role/name take an optional within: a unique ancestor in one of the same forms. A ref is already unique and takes no within.", anyOf: targetBranches(scopeSchema) };
   const conditionSchema = { type: "object", properties: { target: targetSchema, state: { type: "string", enum: ["visible", "hidden", "enabled", "disabled", "checked", "unchecked"] }, attribute: { type: "string" }, equals: { type: "string" }, value: { type: "string" }, url: { type: "string" } }, additionalProperties: false };
-  const observation = async (mode: string | undefined, operationId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<BrowserContent[]> => {
+  const observation = async (mode: string | undefined, objectiveId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<BrowserContent[]> => {
     if (!mode || mode === "none") return [];
     // 입력 이후 관측 실패는 입력 실패가 아니다. 재전송을 유도하지 않는다.
     try {
-      if (mode === "screenshot") return await screenshotBlock(operationId, tabId, signal);
-      return [{ type: "text", text: JSON.stringify(await service.readPage(operationId, { tabId, filter: "interactive", maxChars: 12000 })) }];
+      if (mode === "screenshot") return await screenshotBlock(objectiveId, tabId, signal);
+      return [{ type: "text", text: JSON.stringify(await service.readPage(objectiveId, { tabId, filter: "interactive", maxChars: 12000 })) }];
     } catch (error) { return [{ type: "text", text: JSON.stringify({ observationError: error instanceof Error ? error.message : "unavailable", retryInput: false }) }]; }
   };
   const observe = spec("observe", "Observe without images. Omit target for a bounded accessibility snapshot with observation-scoped refs. Use within/max_depth/max_chars to narrow it. Supply target for a small state result (visible, enabled, checked, value, text, requested attributes). Targets are unique ref, role/name (exact by default), or CSS selector, optionally within a unique scope. No match and ambiguous matches are distinct errors.", {
     type: "object", properties: { target: targetSchema, within: targetSchema, filter: { type: "string", enum: ["interactive", "all"] }, max_depth: { type: "integer", minimum: 0, maximum: 100 }, max_chars: { type: "integer", minimum: 200, maximum: 50000 }, attributes: { type: "array", maxItems: 20, items: { type: "string" } }, tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => {
-    if (args.target) { const ref = await service.targetRef(operationId, args.target as BrowserTarget, args.tabId); return text({ ref, ...await service.elementState(operationId, ref, args.attributes ?? [], args.tabId) }); }
-    return text(await service.readPage(operationId, { tabId: args.tabId, within: args.within, filter: args.filter ?? "interactive", maxDepth: args.max_depth, maxChars: args.max_chars }));
+  }, async (args, objectiveId) => {
+    if (args.target) { const ref = await service.targetRef(objectiveId, args.target as BrowserTarget, args.tabId); return text({ ref, ...await service.elementState(objectiveId, ref, args.attributes ?? [], args.tabId) }); }
+    return text(await service.readPage(objectiveId, { tabId: args.tabId, within: args.within, filter: args.filter ?? "interactive", maxDepth: args.max_depth, maxChars: args.max_chars }));
   });
   const waitFor = spec("wait_for", "Wait for a declared URL or element condition without sending input. Exact URL, visible/hidden/enabled/disabled/checked/unchecked, attribute equals, or value. Timeouts return matched=false. Does not retry a prior action. Prefer this to sleeps.", {
     type: "object", properties: { condition: conditionSchema, timeout_ms: { type: "integer", minimum: 0, maximum: 30000 }, tabId: TAB_ID }, required: ["condition"], additionalProperties: false,
-  }, async (args, operationId, signal) => text(await waitForBrowser(service, operationId, args.condition as BrowserCondition, args.tabId, signal, args.timeout_ms)));
+  }, async (args, objectiveId, signal) => text(await waitForBrowser(service, objectiveId, args.condition as BrowserCondition, args.tabId, signal, args.timeout_ms)));
   const act = spec("act", "Act on a unique element: click, fill, select, check, uncheck. Use ref from observe/read_page or role/name/selector with optional within. No automatic screenshot. An optional expect checks a postcondition without retrying input; observed success is separate from input dispatch. Optional observe returns snapshot or screenshot after input. Never automatically repeat an action after a postcondition timeout.", {
     type: "object", properties: { action: { type: "string", enum: ["click", "fill", "select", "check", "uncheck"] }, target: targetSchema, value: { type: ["string", "number", "boolean"] }, expect: conditionSchema, timeout_ms: { type: "integer", minimum: 0, maximum: 30000 }, observe: { type: "string", enum: ["none", "snapshot", "screenshot"] }, tabId: TAB_ID }, required: ["action", "target"], additionalProperties: false,
-  }, async (args, operationId, signal) => {
-    const dispatch = await actOnBrowser(service, operationId, { action: args.action, target: args.target, value: args.value, tabId: args.tabId }, signal);
+  }, async (args, objectiveId, signal) => {
+    const dispatch = await actOnBrowser(service, objectiveId, { action: args.action, target: args.target, value: args.value, tabId: args.tabId }, signal);
     let verification: unknown = { requested: false };
     if (args.expect) {
-      try { verification = await waitForBrowser(service, operationId, args.expect, args.tabId, signal, args.timeout_ms); }
+      try { verification = await waitForBrowser(service, objectiveId, args.expect, args.tabId, signal, args.timeout_ms); }
       catch (error) { verification = { matched: false, error: error instanceof Error ? error.message : "unavailable", retryInput: false }; }
     }
-    return { content: [{ type: "text", text: JSON.stringify({ input: dispatch, verification, retryInput: false }) }, ...await observation(args.observe, operationId, args.tabId, signal)], isError: false };
+    return { content: [{ type: "text", text: JSON.stringify({ input: dispatch, verification, retryInput: false }) }, ...await observation(args.observe, objectiveId, args.tabId, signal)], isError: false };
   });
   const capture = spec("capture", `Explicit screenshot only. Waits for native pane/layout readiness. Returns ${deps.screenshotDelivery === "inline" ? "an image" : "a local image file"} with actual pixel size, CSS capture area, offset and geometry version. Never infer page-action success from capture. Input coordinates remain viewport CSS pixels.`, {
     type: "object", properties: { tabId: TAB_ID, region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 } }, additionalProperties: false,
-  }, async (args, operationId, signal) => ({ content: await screenshotBlock(operationId, args.tabId, signal, args.region ? { x: args.region[0], y: args.region[1], width: args.region[2], height: args.region[3] } : undefined), isError: false }));
+  }, async (args, objectiveId, signal) => ({ content: await screenshotBlock(objectiveId, args.tabId, signal, args.region ? { x: args.region[0], y: args.region[1], width: args.region[2], height: args.region[3] } : undefined), isError: false }));
 
   const navigate = spec("navigate", "Navigate a Fleet Browser tab to a URL, or go back/forward/reload in its history. Operates on this session's browser. Without tabId the active tab is used; if no tab is open, one is created. Any http(s) URL is allowed.", {
     type: "object", properties: { url: { type: "string", description: "Absolute URL, or one of \"back\", \"forward\", \"reload\"." }, tabId: TAB_ID }, required: ["url"], additionalProperties: false,
-  }, async (args, operationId) => {
-    const result = await service.navigate(operationId, String(args.url), "agent", args.tabId ?? null);
-    return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
+  }, async (args, objectiveId) => {
+    const result = await service.navigate(objectiveId, String(args.url), "agent", args.tabId ?? null);
+    return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(objectiveId) }, !result.ok);
   });
 
   const computer = spec("computer", "Use a mouse and keyboard on this session's browser tab and take screenshots. Operates on this session's browser. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
@@ -168,14 +168,14 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4, description: "[x, y, width, height] for zoom." },
       tabId: TAB_ID,
     }, required: ["action"], additionalProperties: false,
-  }, async (args, operationId, signal) => {
+  }, async (args, objectiveId, signal) => {
     const tabId = args.tabId ?? null;
     const xy = (value: unknown): { x: number; y: number } => { if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === "number" && Number.isFinite(n))) throw new BrowserPolicyError("browser_coordinate_invalid", "coordinate must be [x, y] numbers from the latest screenshot."); return { x: value[0], y: value[1] }; };
-    if (args.geometry_version && (args.coordinate || args.start_coordinate) && args.geometry_version !== await service.geometryVersion(operationId, tabId)) throw new BrowserPolicyError("browser_viewport_stale", "Viewport changed since capture. Capture again; no input was dispatched.");
+    if (args.geometry_version && (args.coordinate || args.start_coordinate) && args.geometry_version !== await service.geometryVersion(objectiveId, tabId)) throw new BrowserPolicyError("browser_viewport_stale", "Viewport changed since capture. Capture again; no input was dispatched.");
     let dispatchSummary: string | null = null;
     switch (args.action) {
-      case "screenshot": return { content: await screenshotBlock(operationId, tabId, signal), isError: false };
-      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(operationId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }), isError: false }; }
+      case "screenshot": return { content: await screenshotBlock(objectiveId, tabId, signal), isError: false };
+      case "zoom": { const r = args.region; if (!Array.isArray(r) || r.length !== 4) throw new BrowserPolicyError("browser_region_invalid", "region must be [x, y, width, height]."); return { content: await screenshotBlock(objectiveId, tabId, signal, { x: r[0], y: r[1], width: r[2], height: r[3] }), isError: false }; }
       case "left_click": case "right_click": case "double_click": case "triple_click": {
         const button = args.action === "right_click" ? "right" as const : "left" as const;
         const clickCount = args.action === "double_click" ? 2 : args.action === "triple_click" ? 3 : 1;
@@ -184,74 +184,74 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         if (hasRef && hasCoordinate) throw new BrowserPolicyError("browser_click_target_ambiguous", "Pass either ref or coordinate for click actions, not both.");
         if (!hasRef && !hasCoordinate) throw new BrowserPolicyError("browser_click_target_required", "Click actions require ref (from read_page/find) or coordinate from the latest screenshot.");
         const dispatched = hasRef
-          ? await service.clickRef(operationId, String(args.ref), { button, clickCount, signal }, tabId)
-          : await service.clickAt(operationId, xy(args.coordinate).x, xy(args.coordinate).y, { button, clickCount, signal }, tabId);
+          ? await service.clickRef(objectiveId, String(args.ref), { button, clickCount, signal }, tabId)
+          : await service.clickAt(objectiveId, xy(args.coordinate).x, xy(args.coordinate).y, { button, clickCount, signal }, tabId);
         const hit = dispatched.hit ? ` hit=${dispatched.hit.selector || dispatched.hit.tag}${dispatched.hit.disabled ? " disabled=true" : ""}${dispatched.hit.text ? ` text=${JSON.stringify(dispatched.hit.text)}` : ""}` : " hit=(none)";
         dispatchSummary = `${args.action}: input dispatched at [${Math.round(dispatched.x)}, ${Math.round(dispatched.y)}]${dispatched.ref ? ` ref=${dispatched.ref}` : ""}${hit}.${dispatched.note ? ` ${dispatched.note}` : ""} This reports pointer dispatch only — confirm with the screenshot or page state; do not assume the control activated.`;
         break;
       }
-      case "hover": { const { x, y } = xy(args.coordinate); await service.mouse(operationId, { type: "move", x, y }, tabId); break; }
-      case "left_click_drag": { await service.drag(operationId, xy(args.start_coordinate), xy(args.coordinate), tabId); break; }
-      case "type": { if (typeof args.text !== "string") throw new BrowserPolicyError("browser_text_required", "text is required for type."); await service.typeText(operationId, args.text, tabId); break; }
-      case "key": { if (typeof args.text !== "string") throw new BrowserPolicyError("browser_text_required", "text (key chord) is required for key."); await service.keyChord(operationId, args.text, tabId); break; }
+      case "hover": { const { x, y } = xy(args.coordinate); await service.mouse(objectiveId, { type: "move", x, y }, tabId); break; }
+      case "left_click_drag": { await service.drag(objectiveId, xy(args.start_coordinate), xy(args.coordinate), tabId); break; }
+      case "type": { if (typeof args.text !== "string") throw new BrowserPolicyError("browser_text_required", "text is required for type."); await service.typeText(objectiveId, args.text, tabId); break; }
+      case "key": { if (typeof args.text !== "string") throw new BrowserPolicyError("browser_text_required", "text (key chord) is required for key."); await service.keyChord(objectiveId, args.text, tabId); break; }
       case "scroll": {
-        const { x, y } = args.coordinate ? xy(args.coordinate) : { x: service.state(operationId).viewport.width / 2, y: service.state(operationId).viewport.height / 2 };
+        const { x, y } = args.coordinate ? xy(args.coordinate) : { x: service.state(objectiveId).viewport.width / 2, y: service.state(objectiveId).viewport.height / 2 };
         const amount = (typeof args.scroll_amount === "number" ? args.scroll_amount : 3) * 100;
         const direction = args.scroll_direction ?? "down";
-        await service.mouse(operationId, { type: "wheel", x, y, deltaX: direction === "left" ? -amount : direction === "right" ? amount : 0, deltaY: direction === "up" ? -amount : direction === "down" ? amount : 0 }, tabId);
+        await service.mouse(objectiveId, { type: "wheel", x, y, deltaX: direction === "left" ? -amount : direction === "right" ? amount : 0, deltaY: direction === "up" ? -amount : direction === "down" ? amount : 0 }, tabId);
         break;
       }
-      case "scroll_to": { if (typeof args.ref !== "string") throw new BrowserPolicyError("browser_ref_required", "ref is required for scroll_to."); await service.scrollToRef(operationId, args.ref, tabId); break; }
+      case "scroll_to": { if (typeof args.ref !== "string") throw new BrowserPolicyError("browser_ref_required", "ref is required for scroll_to."); await service.scrollToRef(objectiveId, args.ref, tabId); break; }
       case "wait": { const seconds = Math.min(10, Math.max(0, Number(args.duration ?? 1))); await new Promise<void>((resolve) => { const timer = setTimeout(resolve, seconds * 1000); signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true }); }); return text(`Waited for ${seconds} seconds`); }
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }
     const summary = dispatchSummary ?? `${args.action}: input dispatched. Confirm with the screenshot or page state; do not assume success.`;
-    return { content: [{ type: "text", text: summary }, ...await observation(args.observe, operationId, tabId, signal)], isError: false };
+    return { content: [{ type: "text", text: summary }, ...await observation(args.observe, objectiveId, tabId, signal)], isError: false };
   });
 
   const readPage = spec("read_page", "Get an accessibility-tree representation of the page as an indented list. Interactive elements carry observation-scoped ref ids for form_input, computer clicks/scroll_to and find. filter \"interactive\" keeps only buttons/links/inputs. Output is capped (default 50000 chars); pass max_chars to raise it.", {
     type: "object", properties: { filter: { type: "string", enum: ["interactive", "all"] }, max_chars: { type: "number" }, tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => { const page = await service.readPage(operationId, { tabId: args.tabId ?? null, filter: args.filter, maxChars: typeof args.max_chars === "number" ? args.max_chars : undefined }); return text(page.text || "(empty page)"); });
+  }, async (args, objectiveId) => { const page = await service.readPage(objectiveId, { tabId: args.tabId ?? null, filter: args.filter, maxChars: typeof args.max_chars === "number" ? args.max_chars : undefined }); return text(page.text || "(empty page)"); });
 
   const find = spec("find", "Search the page's accessibility tree for elements whose role or name contains every word of the query. Returns matching lines with their ref ids.", {
     type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 400 }, tabId: TAB_ID }, required: ["query"], additionalProperties: false,
-  }, async (args, operationId) => text(await service.find(operationId, String(args.query), args.tabId ?? null)));
+  }, async (args, objectiveId) => text(await service.find(objectiveId, String(args.query), args.tabId ?? null)));
 
   const formInput = spec("form_input", "Set a form control's value by element ref from read_page or find. Booleans for checkboxes/radios, option value or text for selects, strings for text inputs and editable areas. Fires input/change events.", {
     type: "object", properties: { ref: { type: "string" }, value: { type: ["string", "number", "boolean"] }, tabId: TAB_ID }, required: ["ref", "value"], additionalProperties: false,
-  }, async (args, operationId) => text({ ref: args.ref, result: await service.formInput(operationId, String(args.ref), args.value, args.tabId ?? null) }));
+  }, async (args, objectiveId) => text({ ref: args.ref, result: await service.formInput(objectiveId, String(args.ref), args.value, args.tabId ?? null) }));
 
   const getPageText = spec("get_page_text", "Extract the visible text of the page (article/main content first, falling back to body). Ideal for reading docs and long pages without screenshots.", {
     type: "object", properties: { tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => text(await service.pageText(operationId, args.tabId ?? null)));
+  }, async (args, objectiveId) => text(await service.pageText(objectiveId, args.tabId ?? null)));
 
   const consoleMessages = spec("read_console_messages", "Get console output (log, info, warn, error, debug) and uncaught exceptions from the tab, newest last. pattern is a case-insensitive regex matched against each line's text or level; an invalid pattern is ignored and every line is returned. limit keeps the newest N lines (default 100). Pass a pattern when you are looking for something specific.", {
     type: "object", properties: { pattern: { type: "string" }, limit: { type: "number" }, tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => text(service.consoleMessages(operationId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${new Date(entry.at).toISOString()} [${entry.level}] ${entry.text}${entry.url ? ` (${entry.url}:${entry.line ?? 0})` : ""}`).join("\n") || "(no console messages)"));
+  }, async (args, objectiveId) => text(service.consoleMessages(objectiveId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${new Date(entry.at).toISOString()} [${entry.level}] ${entry.text}${entry.url ? ` (${entry.url}:${entry.line ?? 0})` : ""}`).join("\n") || "(no console messages)"));
 
   const network = spec("read_network_requests", "List network requests (XHR, fetch, documents, images…) made by the tab since its last navigation, or fetch a specific response body by requestId (truncated to 64 KB). Use pattern (regex) to filter by URL, method or status.", {
     type: "object", properties: { pattern: { type: "string" }, limit: { type: "number" }, requestId: { type: "string" }, tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => {
-    if (typeof args.requestId === "string") return text(await service.responseBody(operationId, args.requestId, args.tabId ?? null));
-    return text(service.networkRequests(operationId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${entry.requestId} ${entry.method} ${entry.status ?? (entry.failed ? "FAILED" : "…")} ${entry.type} ${entry.url}${entry.failed ? ` (${entry.failed})` : ""}${entry.size ? ` ${entry.size}B` : ""}`).join("\n") || "(no requests recorded)");
+  }, async (args, objectiveId) => {
+    if (typeof args.requestId === "string") return text(await service.responseBody(objectiveId, args.requestId, args.tabId ?? null));
+    return text(service.networkRequests(objectiveId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${entry.requestId} ${entry.method} ${entry.status ?? (entry.failed ? "FAILED" : "…")} ${entry.type} ${entry.url}${entry.failed ? ` (${entry.failed})` : ""}${entry.size ? ` ${entry.size}B` : ""}`).join("\n") || "(no requests recorded)");
   });
 
   const javascript = spec("javascript_tool", "Execute JavaScript in the page and return the awaited, JSON-serialized result. Its effects live only in this page session and are never written to source files, so it serves inspection and debugging; a UI change is made in source code.", {
     type: "object", properties: { code: { type: "string", minLength: 1, maxLength: 20_000 }, tabId: TAB_ID }, required: ["code"], additionalProperties: false,
-  }, async (args, operationId) => { const result = await service.evaluate(operationId, String(args.code), args.tabId ?? null); return result.error ? text({ error: "javascript_failed", message: result.error }, true) : text(result.value === undefined ? "undefined" : result.value); });
+  }, async (args, objectiveId) => { const result = await service.evaluate(objectiveId, String(args.code), args.tabId ?? null); return result.error ? text({ error: "javascript_failed", message: result.error }, true) : text(result.value === undefined ? "undefined" : result.value); });
 
   const resizeWindow = spec("resize_window", "Set the Browser pane tab viewport. Presets: mobile (375x812), tablet (768x1024), or desktop (clears emulation and follows the native pane size). Arbitrary width/height emulates that CSS size (not the previous preset). Optionally emulate prefers-color-scheme. The user sees the same size and a “set by agent” mark.", {
     type: "object", properties: { preset: { type: "string", enum: ["mobile", "tablet", "desktop"] }, width: { type: "number", description: "CSS px width to emulate. With desktop/responsive, this locks an emulated size instead of the native pane." }, height: { type: "number", description: "CSS px height to emulate." }, colorScheme: { type: "string", enum: ["light", "dark", "system"] }, tabId: TAB_ID }, additionalProperties: false,
-  }, async (args, operationId) => {
+  }, async (args, objectiveId) => {
     const preset = args.preset === "desktop" ? "responsive" : args.preset;
-    const viewport = await service.setViewport(operationId, { preset, width: typeof args.width === "number" ? args.width : undefined, height: typeof args.height === "number" ? args.height : undefined, colorScheme: args.colorScheme === "system" ? null : args.colorScheme }, "agent");
+    const viewport = await service.setViewport(objectiveId, { preset, width: typeof args.width === "number" ? args.width : undefined, height: typeof args.height === "number" ? args.height : undefined, colorScheme: args.colorScheme === "system" ? null : args.colorScheme }, "agent");
     return text({ viewport });
   });
 
-  const tabsContextTool = spec("tabs_context", "List every Fleet Browser tab of this session with ids, URLs and which is active, plus the current viewport. Operates on this session's browser.", { type: "object", properties: {}, additionalProperties: false }, async (_args, operationId) => text(tabsContext(operationId)));
-  const tabsCreate = spec("tabs_create", "Open a fresh blank Browser pane tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, async (_args, operationId) => { const tab = await service.createTab(operationId, null, "agent"); return text({ tabId: tab.id }); });
-  const tabsClose = spec("tabs_close", "Close one Browser pane tab. Close tabs you opened when you are done, unless the user wants them kept.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.closeTab(operationId, String(args.tabId)); return text({ closed: args.tabId, ...tabsContext(operationId) }); });
-  const tabsSelect = spec("tabs_select", "Bring one Browser pane tab to the front for the user.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.selectTab(operationId, String(args.tabId)); return text(tabsContext(operationId)); });
+  const tabsContextTool = spec("tabs_context", "List every Fleet Browser tab of this session with ids, URLs and which is active, plus the current viewport. Operates on this session's browser.", { type: "object", properties: {}, additionalProperties: false }, async (_args, objectiveId) => text(tabsContext(objectiveId)));
+  const tabsCreate = spec("tabs_create", "Open a fresh blank Browser pane tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, async (_args, objectiveId) => { const tab = await service.createTab(objectiveId, null, "agent"); return text({ tabId: tab.id }); });
+  const tabsClose = spec("tabs_close", "Close one Browser pane tab. Close tabs you opened when you are done, unless the user wants them kept.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, objectiveId) => { await service.closeTab(objectiveId, String(args.tabId)); return text({ closed: args.tabId, ...tabsContext(objectiveId) }); });
+  const tabsSelect = spec("tabs_select", "Bring one Browser pane tab to the front for the user.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, objectiveId) => { await service.selectTab(objectiveId, String(args.tabId)); return text(tabsContext(objectiveId)); });
 
   const singles = [observe, act, waitFor, capture, navigate, computer, readPage, find, formInput, getPageText, consoleMessages, network, javascript, resizeWindow, tabsContextTool, tabsCreate, tabsClose, tabsSelect];
   const byName = new Map(singles.map((tool) => [tool.id, tool]));
@@ -264,11 +264,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       const actions = (args as { actions?: { name: string; input?: Record<string, unknown> }[] }).actions ?? [];
       const content: BrowserContent[] = [];
       // 스텝마다 새 호출이 열리므로 「중단」은 세대로 이어 본다 — 한 번 눌렸으면 남은 스텝은 시작하지 않는다.
-      const operationId = context.sessionLabel ?? "";
-      const participantId = participantOf(context) ?? operationId;
-      const serial = service.interruptSerial(operationId, participantId);
+      const objectiveId = context.sessionLabel ?? "";
+      const participantId = participantOf(context) ?? objectiveId;
+      const serial = service.interruptSerial(objectiveId, participantId);
       for (const [index, action] of actions.entries()) {
-        if (service.interruptSerial(operationId, participantId) !== serial) { content.push({ type: "text", text: `Step ${index + 1}: batch stopped — the user interrupted the browser. Do not retry automatically; read the page again if you continue.` }); return { content, isError: true }; }
+        if (service.interruptSerial(objectiveId, participantId) !== serial) { content.push({ type: "text", text: `Step ${index + 1}: batch stopped — the user interrupted the browser. Do not retry automatically; read the page again if you continue.` }); return { content, isError: true }; }
         const tool = byName.get(action.name);
         if (!tool || action.name === "browser_batch") { content.push({ type: "text", text: `Step ${index + 1}: unknown tool ${action.name}; batch stopped.` }); return { content, isError: true }; }
         const result = await tool.execute(action.input ?? {}, context) as ToolResult;

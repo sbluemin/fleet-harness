@@ -14,7 +14,7 @@ import type { AideGrants } from "./settings-store.js";
  * 「웹 전용」「콘솔 사용」은 기능 이름이지 권한이 아니었다: 조회인지 지시인지, 파일은 되는지 말하지
  * 않는다. 칩은 항상 서는 「웹 읽기」와 「파일·셸 없음」 사이에 허용된 확장만 세우고, 칩에 머무르면
  * 실제 동사와 조건이 한 줄 말풍선으로 선다(헤더 아이콘의 도움말과 같은 계약·같은 포털).
- * 글리프는 Operation 메뉴·사이드바 칩의 ~Use 글리프 그대로다.
+ * 글리프는 Objective 메뉴·사이드바 칩의 ~Use 글리프 그대로다.
  */
 export function GrantLine({ grants, locale, compact = false }: {
   readonly grants: AideGrants;
@@ -84,7 +84,7 @@ function GrantChip({ label, tip, icon, granted = false, consoleUse = false }: {
   );
 }
 
-/** 헤더 이름 옆의 12px 글리프 pill — 켜진 확장만, Operation 사이드바 칩의 표식과 같은 문법. */
+/** 헤더 이름 옆의 12px 글리프 pill — 켜진 확장만, Objective 사이드바 칩의 표식과 같은 문법. */
 export function GrantMarks({ grants, locale }: { readonly grants: AideGrants; readonly locale: ConsoleLocale | undefined }) {
   const t = getT(locale);
   if (!grants.consoleUse && !grants.computerUse) return null;

@@ -1,23 +1,23 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { MongleState } from "../../../../../features/workspace/shared/avatars.js";
-import type { OperationClusterRowMark } from "../../../../../features/objectives/shared/operation-clusters.js";
+import type { ObjectiveClusterRowMark } from "../../../../../features/objectives/shared/objective-clusters.js";
 
-import { OperationAvatar, clusterFaceFacts, clusterWorkingMembers, mongleStateOfMark, type ClusterWorkingMember } from "../../../../../features/workspace/client/avatars.js";
-import { useClusterIndex, useOperationClusters, type ClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
-import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
+import { ObjectiveAvatar, clusterFaceFacts, clusterWorkingMembers, mongleStateOfMark, type ClusterWorkingMember } from "../../../../../features/workspace/client/avatars.js";
+import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
+import { resolveObjectiveActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
-import type { ConsoleState, OperationNode } from "../../integration/types.js";
-import { operationHarnessLabel } from "./mobile-operation-label.js";
+import type { ConsoleState, ObjectiveRecord } from "../../integration/types.js";
+import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
- * 대화 목록의 한 행이 읽는 사실. 대화의 단위는 지휘관 묶음이다 — 최상위 Operation 하나가 행 하나이고, 묶음의 구성원은 행으로 서지 않고
+ * 대화 목록의 한 행이 읽는 사실. 대화의 단위는 지휘관 묶음이다 — 최상위 Objective 하나가 행 하나이고, 묶음의 구성원은 행으로 서지 않고
  * 지휘관 아바타 옆 미니 아바타로만 선다. 아바타 얼굴·구성원 셈법은 데스크톱 대화 중심 화면 사이드바와 같은 원천(`features/workspace`)이다.
  */
 export interface MobileConversation {
-  readonly operation: OperationNode;
+  readonly objectiveRecord: ObjectiveRecord;
   /** 지휘관의 얼굴 — 사이드바와 같은 기준(`mongleStateOf`)을 지난다. 묶음 줄이 「완료」면 쉬거나 휴면일 때 완료 얼굴이다. */
   readonly face: MongleState;
   /** 지금 일하는 구성원(최대 3). 묶음이 아니면 비어 있다. */
@@ -27,63 +27,63 @@ export interface MobileConversation {
   /** 목표(묶음)의 뿌리인가 — 검색 결과의 종류 라벨이 읽는다. */
   readonly isCluster: boolean;
   /** 대표 줄의 맡은 이 표식 — 구조 없는 목표도 `rowOf`에 선언된 표식을 읽는다. */
-  readonly rowMark?: OperationClusterRowMark;
+  readonly rowMark?: ObjectiveClusterRowMark;
 }
 
 /**
- * Operation 하나를 대화로 읽는 함수 — 목록 행·검색 결과·Operation 화면 머리·정보 화면이 같은 셈법을 쓴다. 구성원 Operation도 읽을 수 있고
+ * Objective 하나를 대화로 읽는 함수 — 목록 행·검색 결과·Objective 화면 머리·정보 화면이 같은 셈법을 쓴다. 구성원 Objective도 읽을 수 있고
  * (묶음의 뿌리가 아니라 미니 아바타 없이 자기 얼굴만 가진다), 상태가 바뀌면 새 함수가 선다.
  */
-export function useMobileConversationOf(state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">): (operation: OperationNode) => MobileConversation {
+export function useMobileConversationOf(state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords" | "objectiveRecordRuntime">): (objectiveRecord: ObjectiveRecord) => MobileConversation {
   const index = useClusterIndex();
-  const clusters = useOperationClusters();
+  const clusters = useObjectiveClusters();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const { operations, nestedOperations, operationRuntime } = state;
-  return useMemo(() => (operation: OperationNode): MobileConversation => {
-    const mark = resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, operationRuntime), operationId: operation.id, idleArrivalIds });
-    const layout = index.rootOf.get(operation.id);
-    const members = layout ? layout.cluster.members.filter((member) => !member.pending && member.operationId !== operation.id) : [];
+  const { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime } = state;
+  return useMemo(() => (objectiveRecord: ObjectiveRecord): MobileConversation => {
+    const mark = resolveObjectiveMarkVisual({ activity: resolveObjectiveActivity(objectiveRecord, objectiveRecordRuntime), objectiveId: objectiveRecord.id, idleArrivalIds });
+    const layout = index.rootOf.get(objectiveRecord.id);
+    const members = layout ? layout.cluster.members.filter((member) => !member.pending && member.objectiveId !== objectiveRecord.id) : [];
     return {
-      operation,
+      objectiveRecord,
       // 완료 지휘관은 활동만 읽으면 「쉼/휴면」이다 — 묶음 줄의 「완료」를 임무 완료 사실로 넘겨 홈 「끝남」·검색·대화 머리가 같은 낱말을 쓴다.
-      face: mongleStateOfMark(mark, { ...clusterFaceFacts(clusters, operation.id), ...(isFinishedConversation(index, operation.id) ? { workDone: true } : {}) }),
-      minis: layout ? clusterWorkingMembers(layout.cluster, operation.id, { operations, nestedOperations, operationRuntime }) : [],
+      face: mongleStateOfMark(mark, { ...clusterFaceFacts(clusters, objectiveRecord.id), ...(isFinishedConversation(index, objectiveRecord.id) ? { workDone: true } : {}) }),
+      minis: layout ? clusterWorkingMembers(layout.cluster, objectiveRecord.id, { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime }) : [],
       memberCount: members.length,
       isCluster: layout !== undefined,
-      rowMark: index.rowOf.get(operation.id)?.cluster.row?.mark,
+      rowMark: index.rowOf.get(objectiveRecord.id)?.cluster.row?.mark,
     };
-  }, [clusters, idleArrivalIds, index, nestedOperations, operationRuntime, operations]);
+  }, [clusters, idleArrivalIds, index, nestedObjectiveRecords, objectiveRecordRuntime, objectiveRecords]);
 }
 
 /**
- * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Operation이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
- * 남의 줄에 fold로 든 Operation은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
+ * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Objective이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
+ * 남의 줄에 fold로 든 Objective은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
  */
-export function isFinishedConversation(index: ClusterIndex, operationId: string): boolean {
-  const layout = index.rowOf.get(operationId);
+export function isFinishedConversation(index: ClusterIndex, objectiveId: string): boolean {
+  const layout = index.rowOf.get(objectiveId);
   const row = layout?.cluster.row;
-  return layout?.cluster.root === operationId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
+  return layout?.cluster.root === objectiveId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
 }
 
-/** 모든 Theater의 최상위 Operation을 대화로 읽는다 — 호출부가 Theater로 거른다. */
-export function useMobileConversations(state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">): readonly MobileConversation[] {
+/** 모든 Theater의 최상위 Objective을 대화로 읽는다 — 호출부가 Theater로 거른다. */
+export function useMobileConversations(state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords" | "objectiveRecordRuntime">): readonly MobileConversation[] {
   const conversationOf = useMobileConversationOf(state);
-  return useMemo(() => state.operations.map(conversationOf), [conversationOf, state.operations]);
+  return useMemo(() => state.objectiveRecords.map(conversationOf), [conversationOf, state.objectiveRecords]);
 }
 
 /** 대화 행의 아바타 — 지휘관 얼굴 하나와, 일하는 구성원이 있으면 오른쪽 아래에 겹친 미니 아바타. */
 export function ConversationAvatar({ conversation, size = 52 }: { readonly conversation: MobileConversation; readonly size?: number }) {
-  const { operation, face, minis } = conversation;
+  const { objectiveRecord, face, minis } = conversation;
   const main = minis.length > 0 ? Math.round(size * 0.86) : size;
   return (
     // 미니 아바타 상자와 겹침 간격은 아바타 크기에 비례한다 — 목록 행(52)·머리 pill(36)·정보 화면(110)이 같은 모양이다.
     <span className="mobile-conv-avatar" style={{ width: size, height: size, ["--conv-mini" as string]: `${Math.round(size * 0.38)}px`, ["--conv-mini-overlap" as string]: `${Math.round(size * 0.13)}px`, ["--conv-mini-offset" as string]: `${Math.round(size * 0.07)}px` }}>
-      <OperationAvatar operation={operation} state={face} size={main} label="" decorative />
+      <ObjectiveAvatar objectiveRecord={objectiveRecord} state={face} size={main} label="" decorative />
       {minis.length > 0 ? (
         <span className="mobile-conv-avatar-stack" aria-hidden="true">
           {minis.map((entry) => (
-            <span className="mobile-conv-avatar-mini" key={entry.operation.id}>
-              <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={Math.round(size * 0.34)} label="" decorative />
+            <span className="mobile-conv-avatar-mini" key={entry.objectiveRecord.id}>
+              <ObjectiveAvatar objectiveRecord={entry.objectiveRecord} role="member" state={mongleStateOfMark(entry.mark)} size={Math.round(size * 0.34)} label="" decorative />
             </span>
           ))}
         </span>
@@ -110,9 +110,9 @@ export function conversationStateWord(face: MongleState, t: ReturnType<typeof us
 /** 상태 요약 — 상태 낱말(색이 상태를 말한다)에 구성원 수나 하네스·보는 방식을 잇는다. 이미 클라이언트에 있는 사실만 쓴다. */
 export function ConversationSummary({ conversation }: { readonly conversation: MobileConversation }) {
   const t = useT();
-  const { face, memberCount, operation } = conversation;
+  const { face, memberCount, objectiveRecord } = conversation;
   const word = conversationStateWord(face, t);
-  const detail = memberCount > 0 ? t("mobile.list.members", { count: memberCount }) : operationHarnessLabel(operation, t);
+  const detail = memberCount > 0 ? t("mobile.list.members", { count: memberCount }) : objectiveRecordHarnessLabel(objectiveRecord, t);
   return (
     <>
       <span className={`mobile-conv-state is-${face}`}>{word}</span>
@@ -158,8 +158,8 @@ export function ConversationRow({ conversation, sub, trailing, onOpen }: {
         <span className="mobile-conv-row-av"><ConversationAvatar conversation={conversation} /></span>
         <span className="mobile-conv-row-copy">
           <span className="mobile-conv-row-top">
-            <span className="mobile-conv-row-title">{conversation.operation.title}</span>
-            <span className="mobile-conv-row-aside">{trailing ?? time(conversation.operation.ts.updatedAt)}</span>
+            <span className="mobile-conv-row-title">{conversation.objectiveRecord.title}</span>
+            <span className="mobile-conv-row-aside">{trailing ?? time(conversation.objectiveRecord.ts.updatedAt)}</span>
           </span>
           <span className="mobile-conv-row-sub">{sub}</span>
         </span>

@@ -14,7 +14,7 @@ import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
 type T = Translate<CommodoreMessageKey>;
 
 /**
- * 사령관 기록 → Operation 채팅 어휘. 화면은 호스트의 채팅 턴 렌더러(`ctx.chat.Transcript`)가 그리고, 여기는 서버가 정제해 쌓은
+ * 사령관 기록 → Objective 채팅 어휘. 화면은 호스트의 채팅 턴 렌더러(`ctx.chat.Transcript`)가 그리고, 여기는 서버가 정제해 쌓은
  * 기록 줄을 그 어휘로 옮기기만 한다. 깨움은 출처 줄로 턴을 열고, 사람의 말은 말풍선(턴 중이면 그 턴 안), 글은 마크다운 답,
  * 도구는 이름과 한 줄 요약(입력 전체는 기록에 없다)이다. 사고는 채팅처럼 내용을 그리지 않는다. 세션 교대와 오류는 구분선이다.
  * 저장하지 않는 라이브 사건(글자 흐름·진행 중 도구 이름)은 마지막 확정 줄 뒤에 이어 붙는다 — 확정 줄이 오면 그 몫은 버려진다.
@@ -152,9 +152,9 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
 }
 
 /**
- * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Operation 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
+ * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Objective 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
  * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 세션 교대·실패는
- * 노트 줄이다. 보드를 읽기만 한 도구는 Operation 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 사람의 말이 깨운 턴은 그
+ * 노트 줄이다. 보드를 읽기만 한 도구는 Objective 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 사람의 말이 깨운 턴은 그
  * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
@@ -179,13 +179,13 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
-        out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
+        out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
           ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "text":
-        if (entry.text.trim()) out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: commodore, text: entry.text, format: "markdown", streaming: false });
+        if (entry.text.trim()) out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: commodore, text: entry.text, format: "markdown", streaming: false });
         break;
       case "tool": {
         if (!entry.action) break;
@@ -238,7 +238,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
 export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[]): readonly AgentConversationEntry[] {
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, objectiveId: "", speaker: { kind: "commodore", name: t("commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */

@@ -24,7 +24,7 @@ export function isKeyboardShortcutsModalOpen(): boolean {
   return document.body.getAttribute(KEYBOARD_SHORTCUTS_MODAL_ATTRIBUTE) === "true";
 }
 
-export function shouldHandleOperationsKeyboardShortcut(): boolean {
+export function shouldHandleObjectiveRecordsKeyboardShortcut(): boolean {
   return !isKeyboardShortcutsModalOpen();
 }
 

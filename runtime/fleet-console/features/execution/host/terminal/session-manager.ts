@@ -340,8 +340,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
     const launch = await deps.launch(context.cwd, {
       sessionId: context.sessionId,
-      ...(context.operationId ? { operationId: context.operationId } : {}),
-      ...(context.operationType ? { operationType: context.operationType } : {}),
+      ...(context.objectiveId ? { objectiveId: context.objectiveId } : {}),
+      ...(context.objectiveRecordType ? { objectiveRecordType: context.objectiveRecordType } : {}),
       ...(context.pluginId ? { pluginId: context.pluginId } : {}),
       ...(context.theaterId ? { theaterId: context.theaterId } : {}),
       ...(context.kind ? { kind: context.kind } : {}),

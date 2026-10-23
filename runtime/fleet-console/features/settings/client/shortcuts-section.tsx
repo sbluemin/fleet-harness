@@ -64,11 +64,11 @@ export function ShortcutsCard({ state, saving }: {
       title: t(command.descriptionKey),
       defaults: command.defaults,
     }));
-    // companion 패널은 플러그인이 선언한다 — 지금 활성인 작전과 무관하게 선언된 전부를 세운다.
-    // 같은 패널 id가 여러 작전 종류에 실려도 한 행이다(같은 명령 id로 저장된다).
+    // companion 패널은 플러그인이 선언한다 — 지금 활성인 목표과 무관하게 선언된 전부를 세운다.
+    // 같은 패널 id가 여러 목표 종류에 실려도 한 행이다(같은 명령 id로 저장된다).
     const seen = new Set<string>();
     const companions: ShortcutRow[] = [];
-    for (const kind of registry.operationKinds) {
+    for (const kind of registry.objectiveRecordKinds) {
       for (const companion of usableCompanionShortcuts(kind.companions ?? []) as readonly CompanionPanelDescriptor[]) {
         if (!companion.shortcut) continue;
         const commandId = companionShortcutCommandId(kind.pluginId, companion.id);
@@ -77,13 +77,13 @@ export function ShortcutsCard({ state, saving }: {
         companions.push({
           commandId,
           group: "companion",
-          title: t("shortcuts.operations.toggleCompanion", { title: resolveLocalizedText(companion.title, locale) }),
+          title: t("shortcuts.objectiveRecords.toggleCompanion", { title: resolveLocalizedText(companion.title, locale) }),
           defaults: [companionDefaultChord(companion.shortcut.code)],
         });
       }
     }
     return [...core, ...companions];
-  }, [locale, registry.operationKinds, t]);
+  }, [locale, registry.objectiveRecordKinds, t]);
 
   const rowById = useMemo(() => new Map(rows.map((row) => [row.commandId, row])), [rows]);
   const chordsOf = (row: ShortcutRow, bindings: ShortcutBindings = overrides) => {
@@ -186,7 +186,7 @@ export function ShortcutsCard({ state, saving }: {
 
   const groups: readonly { readonly group: ShortcutCommandGroup; readonly title: string }[] = [
     { group: "console", title: t("settings.shortcuts.groupConsole") },
-    { group: "operations", title: t("settings.shortcuts.groupOperations") },
+    { group: "objectiveRecords", title: t("settings.shortcuts.groupObjectiveRecords") },
     { group: "companion", title: t("settings.shortcuts.groupCompanion") },
   ];
   const disabled = saving || state === null;

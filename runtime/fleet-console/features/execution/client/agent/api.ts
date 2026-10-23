@@ -1,14 +1,14 @@
-import type { OperationGeometry, OperationNode } from "../../shared/operations/types.js";
+import type { ObjectiveGeometry, ObjectiveRecord } from "../../../objectives/shared/records/types.js";
 import {
   readAgentChatCatalogPayload,
   readAgentChatJobDetailPayload,
   type AgentChatCatalog,
   type AgentChatJobDetail,
 } from "./chat/chat-events.js";
-import type { AgentCliMetadata, OperationWorkspace, SessionInfo, SessionStep } from "./types.js";
+import type { AgentCliMetadata, ObjectiveWorkspace, SessionInfo, SessionStep } from "./types.js";
 
-export interface OperationsSnapshot {
-  readonly operations: readonly OperationNode[];
+export interface ObjectiveRecordsSnapshot {
+  readonly objectiveRecords: readonly ObjectiveRecord[];
 }
 
 const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath", "prompt", "persona", "toolAllowlist"] as const;
@@ -51,12 +51,12 @@ export async function fetchSessions(signal?: AbortSignal): Promise<readonly Sess
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
 }
 
-export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<OperationsSnapshot> {
-  const response = await fetch("/api/v1/operations", { signal });
+export async function fetchObjectiveRecordsSnapshot(signal?: AbortSignal): Promise<ObjectiveRecordsSnapshot> {
+  const response = await fetch("/api/v1/objectives/records", { signal });
   await assertOk(response);
-  const payload = await response.json() as { readonly operations?: unknown };
-  if (!Array.isArray(payload.operations)) throw new AgentApiError(response.status, "Invalid operations response");
-  return { operations: payload.operations.map((operation) => assertOperationNode(operation, response.status)) };
+  const payload = await response.json() as { readonly objectiveRecords?: unknown };
+  if (!Array.isArray(payload.objectiveRecords)) throw new AgentApiError(response.status, "Invalid objectives response");
+  return { objectiveRecords: payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status)) };
 }
 
 export async function createAgentSession(
@@ -69,7 +69,7 @@ export async function createAgentSession(
     readonly attachmentIds?: readonly string[];
     /** 생략은 터미널이다 — 기본이 곧 계약이라 이 키를 모르는 호출부도 같은 길을 탄다. */
     readonly viewMode?: "chat";
-    readonly geometry?: OperationGeometry;
+    readonly geometry?: ObjectiveGeometry;
   },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
@@ -411,8 +411,8 @@ function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadat
   };
 }
 
-function assertOperationNode(value: unknown, status: number): OperationNode {
-  const payload = value as Partial<OperationNode>;
+function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord {
+  const payload = value as Partial<ObjectiveRecord>;
   if (
     !payload
     || typeof payload.id !== "string"
@@ -420,30 +420,27 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     || typeof payload.type !== "string"
     || (payload.pluginId !== null && typeof payload.pluginId !== "string")
     || typeof payload.title !== "string"
-    || !payload.payload
-    || typeof payload.payload !== "object"
-    || Array.isArray(payload.payload)
+    || !payload
+    || typeof payload !== "object"
+    || Array.isArray(payload)
     || !payload.ts
     || typeof payload.ts.createdAt !== "number"
     || typeof payload.ts.updatedAt !== "number"
     || hasForbiddenBrowserPayloadKey(payload)
-    || hasForbiddenBrowserPayloadKey(payload.payload)
+    || hasForbiddenBrowserPayloadKey(payload)
   ) {
-    throw new AgentApiError(status, "Invalid operation response");
+    throw new AgentApiError(status, "Invalid objectiveRecord response");
   }
   return {
     id: payload.id,
     theaterId: payload.theaterId,
-    type: payload.type,
-    pluginId: payload.pluginId,
     title: payload.title,
-    payload: payload.payload,
-    geometry: payload.geometry ?? null,
+    ...(payload),
     ts: payload.ts,
   };
 }
 
-function readWorkspace(value: unknown): OperationWorkspace | null {
+function readWorkspace(value: unknown): ObjectiveWorkspace | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as { readonly folder?: unknown; readonly outside?: unknown; readonly branch?: unknown };
   const folder = typeof record.folder === "string" && record.folder.length > 0 ? record.folder : null;

@@ -90,7 +90,7 @@ async function mount(options: MountOptions): Promise<{
     registerRouter: (routePath: string, handler: RouteHandler) => { routes.set(routePath, handler); },
     registerWsHandler: () => {},
     host: {
-      operations: {
+      objectiveRecords: {
         get: () => ({ id: "op-1", type: "shell", pluginId: null, theaterId: "theater-1", payload: {} }),
         list: () => [],
       },
@@ -98,7 +98,7 @@ async function mount(options: MountOptions): Promise<{
         resolveTheaterPath: () => process.cwd(),
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
-        withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
+        withDirectoryLock: <T,>(_lockDir: string, objectiveRecord: () => T): T => objectiveRecord(),
       },
       storage: { readJson: async () => null, writeJson: async () => {} },
       events: { subscribe: () => () => {}, publish: () => {}, registerSseChannel: () => () => {} },

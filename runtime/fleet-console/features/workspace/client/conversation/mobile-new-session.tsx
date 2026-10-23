@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "../../../execution/shared/operations/types.js";
-import { fetchOperationCatalog } from "../../../execution/client/operations.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
+import { fetchObjectiveCatalog } from "../../../execution/client/objective-records.js";
 import { composerAttachmentNoticeText, composerT } from "../../../execution/client/composer-primitives/messages.js";
 import { createComposerAttachments } from "../../../execution/client/composer-primitives/attachment-store.js";
 import { nextUltracodeIgnored, readUltracodeTokens } from "../../../execution/client/composer-primitives/ultracode.js";
@@ -28,7 +28,7 @@ import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionThe
  * 거절 칸(newSessionRejection)을 쓰고, 그리는 것은 시트(mobile-new-session-sheet)가 맡는다.
  *
  * 앱에 늘 마운트돼 있다 — 시트를 닫아도 쓰던 문장·칩이 이 컴포넌트 상태에 남아 다음 열림에서 이어진다(닫힘은 취소가 아니라 미룸).
- * 보내면 비운다. '@'로 기존 Operation·플러그인 행선지(부관 등)에 보낼 수 있고, 부관의 답은 부관 자기 카드에 선다.
+ * 보내면 비운다. '@'로 기존 Objective·플러그인 행선지(부관 등)에 보낼 수 있고, 부관의 답은 부관 자기 카드에 선다.
  * 시작 보기 선택은 없다 — 폰의 새 대화는 채팅을 선언한 실행 종류면 늘 채팅으로 연다.
  */
 export function MobileNewSession() {
@@ -41,7 +41,7 @@ export function MobileNewSession() {
   const open = state.mobileNewSessionOpen && mobileLayout;
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
+  const [catalog, setCatalog] = useState<readonly ObjectiveCatalogPlugin[]>([]);
   const [prompt, setPrompt] = useState("");
   const promptRef = useRef(prompt);
   promptRef.current = prompt;
@@ -78,7 +78,7 @@ export function MobileNewSession() {
   const mentionTarget = useMemo(() => sources.latest(mentionPick), [sources, mentionPick]);
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
-  const mentionEntries = useMemo(() => sources.operationGroups.flatMap((group) => group.entries), [sources.operationGroups]);
+  const mentionEntries = useMemo(() => sources.objectiveRecordGroups.flatMap((group) => group.entries), [sources.objectiveRecordGroups]);
   const pendingMentionEntries = useMemo(() => sources.pendingGroups.flatMap((group) => group.entries), [sources.pendingGroups]);
   const pluginMentionRows = useMemo(() => sources.pluginCategories.flatMap((category) => category.rows), [sources.pluginCategories]);
   const mentionDeckOpen = mentionToken !== null;
@@ -95,7 +95,7 @@ export function MobileNewSession() {
   useEffect(() => {
     if (!open) return;
     const abort = new AbortController();
-    void fetchOperationCatalog(abort.signal)
+    void fetchObjectiveCatalog(abort.signal)
       .then((next) => { if (!abort.signal.aborted) setCatalog(next); })
       .catch(() => {});
     return () => abort.abort();
@@ -127,22 +127,22 @@ export function MobileNewSession() {
     const seed = consumeNewSessionSeed();
     if (seed === null) return;
     epochRef.current += 1;
-    if (seed.draft !== null || seed.mentionOperationId !== null) {
+    if (seed.draft !== null || seed.mentionObjectiveId !== null) {
       attachmentStore.discardAll();
       setPrompt(seed.draft ?? "");
     }
     setMentionToken(null);
     setMentionErrorKey(null);
     setPluginAddressUnavailable(false);
-    if (seed.mentionOperationId !== null) {
-      const entry = resolveMentionEntry(getState(), messageableTypesByPlugin, seed.mentionOperationId);
-      setMentionPick(entry ? { kind: "operation", entry } : null);
+    if (seed.mentionObjectiveId !== null) {
+      const entry = resolveMentionEntry(getState(), messageableTypesByPlugin, seed.mentionObjectiveId);
+      setMentionPick(entry ? { kind: "objectiveRecord", entry } : null);
     } else if (seed.mentionTarget !== null) {
       const address = seed.mentionTarget;
       const row = allPluginRows.find((candidate) => candidate.pluginId === address.pluginId && candidate.targetId === address.targetId);
       setMentionPick(row ? { kind: "plugin", row } : null);
       if (!row) {
-        // 사라진 행선지를 새 Operation 실행으로 조용히 바꾸지 않는다. 사용자가 주소를 다시 고른다.
+        // 사라진 행선지를 새 Objective 실행으로 조용히 바꾸지 않는다. 사용자가 주소를 다시 고른다.
         setPluginAddressUnavailable(true);
         setMentionErrorKey("chrome.launch.mentionErrorTargetGone");
       }
@@ -202,7 +202,7 @@ export function MobileNewSession() {
   };
 
   const addAttachmentFiles = (files: readonly File[]) => {
-    // 비-Operation 행선지는 첨부를 받지 않는다.
+    // 비-Objective 행선지는 첨부를 받지 않는다.
     if (mentionTargetRef.current?.kind === "plugin") {
       setAttachmentErrorKey("chrome.launch.attachmentNotSupported");
       return;
@@ -267,7 +267,7 @@ export function MobileNewSession() {
     if (mentionTarget) {
       const entry = mentionTarget.entry;
       const plugin = registry.providers.find((candidate) => candidate.id === entry.pluginId);
-      if (!plugin?.messageOperation) return;
+      if (!plugin?.messageObjective) return;
       // 칩은 실행 대상 플러그인의 스토어에 올라갔다 — 다른 플러그인의 세션에는 실을 수 없다.
       if (attachments.length > 0 && entry.pluginId !== target?.pluginId) {
         setAttachmentErrorKey("chrome.launch.errorAttachmentUploadFailed");
@@ -277,7 +277,7 @@ export function MobileNewSession() {
       setMentionErrorKey(null);
       const delivered = attachments.flatMap((attachment) => attachment.id !== null ? [{ id: attachment.id, key: attachment.key }] : []);
       // 전달 성공 시 화면을 옮기지 않고 닫기만 한다. 실패는 초안·멘션·칩을 지킨 채 사유만 싣는다.
-      void plugin.messageOperation(entry.operationId, text, delivered.map((attachment) => attachment.id))
+      void plugin.messageObjective(entry.objectiveId, text, delivered.map((attachment) => attachment.id))
         .then(() => {
           attachmentStore.releaseSent(delivered.map((attachment) => attachment.key));
           if (epochRef.current === epoch) finishSubmission({ keepAttachments: true });
@@ -301,7 +301,7 @@ export function MobileNewSession() {
     writeNewSessionTheater(theaterId);
     writeNewSessionModelEffort(model, effort);
     requestLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant, ...(launched.length > 0 ? { attachments: launched } : {}) });
-    navigate("/operations");
+    navigate("/objectives");
     finishSubmission();
   };
 
@@ -329,7 +329,7 @@ export function MobileNewSession() {
       groups={groups}
       selectedRow={selectedRow}
       effort={effort}
-      onModelRow={(row: OperationLaunchVariantRow) => {
+      onModelRow={(row: ObjectiveLaunchVariantRow) => {
         // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다(모델 픽커와 같은 규칙).
         const rowModel = row.launch.model ?? null;
         const nextEffort = resolveRowEffort(row, effort);

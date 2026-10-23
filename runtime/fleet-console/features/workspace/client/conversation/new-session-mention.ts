@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import type { MentionTargetDescriptor } from "../../../execution/shared/composer-ports.js";
-import type { OperationClusterRow } from "../../../objectives/shared/operation-clusters.js";
+import type { ObjectiveClusterRow } from "../../../objectives/shared/objective-clusters.js";
 
-import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
-import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, searchTokens, type OperationSearchEntry, type OperationSearchGroup } from "../../../../core/client/src/integration/operation-search.js";
+import type { ObjectiveActivityVisual } from "../../../execution/client/objective-activity.js";
+import { buildObjectiveSearchEntries, filterObjectiveSearchEntries, groupObjectiveSearchEntries, searchTokens, type ObjectiveSearchEntry, type ObjectiveSearchGroup } from "../../../../core/client/src/integration/objective-search.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
 
 /**
- * 새 세션 컴포저의 '@' 행선지 — 토큰 읽기, Operation·플러그인 행선지 목록, 전달 거절 문구. 순수 함수만 둔다.
+ * 새 세션 컴포저의 '@' 행선지 — 토큰 읽기, Objective·플러그인 행선지 목록, 전달 거절 문구. 순수 함수만 둔다.
  */
 
 export interface MentionToken {
@@ -39,60 +39,60 @@ export function stripMentionToken(value: string, token: MentionToken): string {
  * awaiting은 CLI가 응답 입력을 기다리는 상태라 임의 텍스트가 프롬프트 응답을 오염시킨다 —
  * 목록에서 dim + 선택 불가 + 방향키 스킵(제품 결정). dormant는 선택 가능하며 서버가 재기동 후 전달한다.
  */
-export function isMentionSelectable(activity: OperationActivityVisual): boolean {
+export function isMentionSelectable(activity: ObjectiveActivityVisual): boolean {
   return activity !== "awaiting";
 }
 
 /**
- * 멘션 덱의 목록: messageOperation을 선언한 플러그인의 해당 타입 Operation만, Theater로 묶어서.
- * 원천은 활성 목록(`state.operations`)뿐이다 — 보관함 스냅샷(팔레트의 `refreshOperationArchive`)은 섞지 않으므로 보관된
- * Operation 은 '@'에 서지 않는다.
- * 구성원(부모가 대표하는 Operation)은 스토어의 기본 목록에 없으므로 덱에도 서지 않는다.
- * 활동 분류는 팔레트와 같은 원천(resolveOperationActivity)을 쓰되 idle-arrival 화면 승격은 받지
+ * 멘션 덱의 목록: messageObjective을 선언한 플러그인의 해당 타입 Objective만, Theater로 묶어서.
+ * 원천은 활성 목록(`state.objectiveRecords`)뿐이다 — 보관함 스냅샷(팔레트의 `refreshObjectiveArchive`)은 섞지 않으므로 보관된
+ * Objective 은 '@'에 서지 않는다.
+ * 구성원(부모가 대표하는 Objective)은 스토어의 기본 목록에 없으므로 덱에도 서지 않는다.
+ * 활동 분류는 팔레트와 같은 원천(resolveObjectiveActivity)을 쓰되 idle-arrival 화면 승격은 받지
  * 않는다 — 여기서 awaiting은 선택 차단 신호라, 표시용 승격이 섞이면 보낼 수 있는 대상이 막힌다.
  */
 export function buildMentionGroups(
   state: ConsoleState,
   messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   query: string,
-): readonly OperationSearchGroup[] {
-  const mentionable = state.operations.filter((operation) => messageableTypesByPlugin.get(operation.pluginId)?.has(operation.type) === true);
+): readonly ObjectiveSearchGroup[] {
+  const mentionable = state.objectiveRecords.filter((objectiveRecord) => messageableTypesByPlugin.get("terminal")?.has("agent") === true);
   if (mentionable.length === 0) return [];
-  const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
-  return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
+  const entries = buildObjectiveSearchEntries({ ...state, objectiveRecords: mentionable });
+  return groupObjectiveSearchEntries(filterObjectiveSearchEntries(entries, query));
 }
 
 /**
- * 「시작 전」 — 사이드바 「시작 전 N」 접기·모바일 홈 「시작 전」과 같은 원천이다. Operation 을 대표하는 묶음 줄(`ClusterIndex.rowOf`)의
- * 글리프가 `fresh`(SDK `OperationClusterRowGlyph`, 플러그인이 세션 없는 시작 전 줄에 단다)이고 사람이 답할 결정이 걸려 있지 않은
+ * 「시작 전」 — 사이드바 「시작 전 N」 접기·모바일 홈 「시작 전」과 같은 원천이다. Objective 을 대표하는 묶음 줄(`ClusterIndex.rowOf`)의
+ * 글리프가 `fresh`(SDK `ObjectiveClusterRowGlyph`, 플러그인이 세션 없는 시작 전 줄에 단다)이고 사람이 답할 결정이 걸려 있지 않은
  * 줄이다(결정이 걸리면 「내 결정」으로 올라간다). 정의를 사이드바 하나에 두어야 두 화면이 어긋나지 않는다.
  */
-export function isNotStartedRow(row: OperationClusterRow | undefined): boolean {
+export function isNotStartedRow(row: ObjectiveClusterRow | undefined): boolean {
   return row?.glyph === "fresh" && row.decisionRequestedAt === undefined;
 }
 
 /**
- * '@' Operation 묶음을 Operations 와 「시작 전」으로 가른다. Theater 띠 순서는 그대로 두고, 행이 남지 않은 띠는 뺀다.
+ * '@' Objective 묶음을 ObjectiveRecords 와 「시작 전」으로 가른다. Theater 띠 순서는 그대로 두고, 행이 남지 않은 띠는 뺀다.
  * 데스크톱 새 세션 화면과 모바일 새 대화 시트가 같은 결과를 받는다(`useMentionSources`).
  */
 export function splitNotStartedGroups(
-  groups: readonly OperationSearchGroup[],
-  rowOf: (operationId: string) => OperationClusterRow | undefined,
-): { readonly operationGroups: readonly OperationSearchGroup[]; readonly pendingGroups: readonly OperationSearchGroup[] } {
-  const operationGroups: OperationSearchGroup[] = [];
-  const pendingGroups: OperationSearchGroup[] = [];
+  groups: readonly ObjectiveSearchGroup[],
+  rowOf: (objectiveId: string) => ObjectiveClusterRow | undefined,
+): { readonly objectiveRecordGroups: readonly ObjectiveSearchGroup[]; readonly pendingGroups: readonly ObjectiveSearchGroup[] } {
+  const objectiveRecordGroups: ObjectiveSearchGroup[] = [];
+  const pendingGroups: ObjectiveSearchGroup[] = [];
   for (const group of groups) {
-    const pending = group.entries.filter((entry) => isNotStartedRow(rowOf(entry.operationId)));
-    if (pending.length === 0) { operationGroups.push(group); continue; }
+    const pending = group.entries.filter((entry) => isNotStartedRow(rowOf(entry.objectiveId)));
+    if (pending.length === 0) { objectiveRecordGroups.push(group); continue; }
     const rest = group.entries.filter((entry) => !pending.includes(entry));
-    if (rest.length > 0) operationGroups.push({ ...group, entries: rest });
+    if (rest.length > 0) objectiveRecordGroups.push({ ...group, entries: rest });
     pendingGroups.push({ ...group, entries: pending });
   }
-  return { operationGroups, pendingGroups };
+  return { objectiveRecordGroups, pendingGroups };
 }
 
 /**
- * 플러그인이 기여한 비-Operation 행선지 한 줄. 호스트가 쓰는 모양으로 눕힌 것이라 descriptor를
+ * 플러그인이 기여한 비-Objective 행선지 한 줄. 호스트가 쓰는 모양으로 눕힌 것이라 descriptor를
  * 그대로 들고 다니지 않는다 — `optionId`가 이름공간을 나눈 유일한 신원이고, DOM id도 이 값이다.
  */
 export interface PluginMentionRow {
@@ -121,21 +121,21 @@ export interface MentionSource {
   readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
 }
 
-/** 확정된 행선지. Operation과 플러그인 대상은 전달 경로도 태그도 달라서 판별 유니온으로 둔다. */
+/** 확정된 행선지. Objective과 플러그인 대상은 전달 경로도 태그도 달라서 판별 유니온으로 둔다. */
 export type MentionTarget =
-  | { readonly kind: "operation"; readonly entry: OperationSearchEntry }
+  | { readonly kind: "objectiveRecord"; readonly entry: ObjectiveSearchEntry }
   | { readonly kind: "plugin"; readonly row: PluginMentionRow };
 
 /** 행선지의 이름 — 안내문·칩·거절 문구가 공유하는 한 값. */
 export function mentionTargetName(target: MentionTarget): string {
-  return target.kind === "operation" ? target.entry.operationName : target.row.label;
+  return target.kind === "objectiveRecord" ? target.entry.objectiveRecordName : target.row.label;
 }
 
 /**
  * 플러그인 기여 행선지의 카테고리 목록.
  *
  * `mentionTargets`와 `messageMentionTarget`을 **함께** 선언한 플러그인만 읽는다 — 목록에만 서고
- * 받지 못하는 행선지는 고르는 순간 막다른 길이 된다(Operation 쪽 `messageOperation` 짝 조건과 같다).
+ * 받지 못하는 행선지는 고르는 순간 막다른 길이 된다(Objective 쪽 `messageObjective` 짝 조건과 같다).
  * 로스터를 읽다 던지는 플러그인은 그 플러그인만 빠지고 덱은 계속 선다.
  */
 export function buildPluginMentionCategories(
@@ -194,21 +194,21 @@ export function buildPluginMentionCategories(
 }
 
 /**
- * Operation 하나를 멘션 행선지로 해소한다. 덱과 같은 원천을 빈 질의로 읽어 "메시지를 받는 타입인가"를
+ * Objective 하나를 멘션 행선지로 해소한다. 덱과 같은 원천을 빈 질의로 읽어 "메시지를 받는 타입인가"를
  * 확인하고, 입력 대기 중인 대상은 덱과 같은 이유로 거른다(임의 텍스트가 CLI 프롬프트 응답을 오염시킨다).
  *
- * 명시 행선지(플러그인이 `composer.open({ mentionOperationId })`로 건네는 시드)의 판정이다. 시드는 그 패널을 직접 가리킨
+ * 명시 행선지(플러그인이 `composer.open({ mentionObjectiveId })`로 건네는 시드)의 판정이다. 시드는 그 패널을 직접 가리킨
  * 지시라 어느 Theater의 패널인지가 의도를 바꾸지 않는다.
  */
 export function resolveMentionEntry(
   state: ConsoleState,
   messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
-  operationId: string,
-): OperationSearchEntry | null {
-  // 명시 행선지는 한 Operation 을 가리키는 길이다 — 덱에 서지 않는 구성원(부모 패널이 본문으로 보이는)도 주소가 된다.
-  const entry = buildMentionGroups({ ...state, operations: [...state.operations, ...state.nestedOperations] }, messageableTypesByPlugin, "")
+  objectiveId: string,
+): ObjectiveSearchEntry | null {
+  // 명시 행선지는 한 Objective 을 가리키는 길이다 — 덱에 서지 않는 구성원(부모 패널이 본문으로 보이는)도 주소가 된다.
+  const entry = buildMentionGroups({ ...state, objectiveRecords: [...state.objectiveRecords, ...state.nestedObjectiveRecords] }, messageableTypesByPlugin, "")
     .flatMap((group) => group.entries)
-    .find((candidate) => candidate.operationId === operationId);
+    .find((candidate) => candidate.objectiveId === objectiveId);
   if (!entry || !isMentionSelectable(entry.activity)) return null;
   return entry;
 }
@@ -222,7 +222,7 @@ export function mentionErrorMessageKey(code: string | null): string {
     case "resume_unavailable": return "chrome.launch.mentionErrorResumeUnavailable";
     case "session_awaiting_input": return "chrome.launch.mentionErrorAwaiting";
     case "claude_trust_required": return "chrome.launch.mentionErrorTrustRequired";
-    // 비-Operation 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
+    // 비-Objective 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
     case "destination_busy": return "chrome.launch.mentionErrorBusy";
     case "session_capacity": return "chrome.launch.mentionErrorCapacity";
     case "session_not_found": return "chrome.launch.mentionErrorGone";

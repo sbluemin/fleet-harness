@@ -1,37 +1,37 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { mongleStateOf, objectiveRecordAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
-import type { OperationCluster } from "../../objectives/shared/operation-clusters.js";
+import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
 import { MongleAvatarPicker, type MongleAvatarPickerLabels, type MongleAvatarPreviewState } from "./components/mongle-avatar-picker.js";
 import { IDENTITY_TONES, type IdentityTone } from "../shared/identity-tones.js";
 
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
-import { resolveOperationActivity, type OperationMarkVisual } from "../../execution/client/operation-activity.js";
-import { useOperationMongleActivity } from "../../execution/client/avatar-activity.js";
+import type { ConsoleState, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
+import { resolveObjectiveActivity, type ObjectiveMarkVisual } from "../../execution/client/objective-activity.js";
+import { useObjectiveMongleActivity } from "../../execution/client/avatar-activity.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
  *
- * 역할: 부모 Operation 이 있는 Operation 은 구성원, 그 밖의 Operation(목표의 뿌리와 일반 Operation)은 지휘관 안테나, Theater 는 사령관.
+ * 역할: 부모 Objective 이 있는 Objective 은 구성원, 그 밖의 Objective(목표의 뿌리와 일반 Objective)은 지휘관 안테나, Theater 는 사령관.
  * 배정: 사이드바가 한 곳(`useAvatarClaims`)에서 아직 모습이 없는 키를 묶음째 뽑는다 — 같은 Theater 의 사령관·지휘관끼리,
  * 같은 부모의 구성원끼리 겹치지 않게. 다른 표면은 읽기만 하고, 저장값이 없으면 키에서 정한 베이스를 그린다.
  */
 
-export function operationAvatarRole(operation: Pick<OperationNode, "parentOperationId">): MongleRole {
-  return operation.parentOperationId ? "member" : "commander";
+export function objectiveRecordAvatarRole(objectiveRecord: Pick<ObjectiveRecord, "parentObjectiveId">): MongleRole {
+  return objectiveRecord.parentObjectiveId ? "member" : "commander";
 }
 
 /** 묶음에서 읽는 얼굴 사실 — 뿌리면 검토 대기·결정 요청, 구성원이면 맡은 임무가 모두 끝났는지. */
 export type ClusterFaceFacts = Pick<MongleFacts, "awaitingReview" | "decisionRequest" | "workDone">;
 
-export function clusterFaceFacts(clusters: readonly OperationCluster[], operationId: string): ClusterFaceFacts {
+export function clusterFaceFacts(clusters: readonly ObjectiveCluster[], objectiveId: string): ClusterFaceFacts {
   for (const cluster of clusters) {
-    if (cluster.root === operationId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.decisionRequest === true };
-    const own = cluster.members.filter((member) => !member.pending && member.operationId === operationId);
+    if (cluster.root === objectiveId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.decisionRequest === true };
+    const own = cluster.members.filter((member) => !member.pending && member.objectiveId === objectiveId);
     // 구성원의 진행은 대표 임무의 것이다 — 끝나지 않은 임무가 남아 있으면 그것이 대표라 done 은 「모두 끝남」이다.
     if (own.length > 0) return { workDone: own.every((member) => member.progress === "done") };
   }
@@ -42,80 +42,80 @@ export function clusterFaceFacts(clusters: readonly OperationCluster[], operatio
  * 사이드바 표식 축(상태 마크) → 아바타 상태. 표식의 unseen 은 활동이 쉼이고 안 본 답이 도착한 것이다 — 통일 기준의 예외로
  * 사이드바만 표식째 넘긴다. 결정 요청·검토 대기·임무 완료는 활동 축과 별개의 사실이라 따로 받는다.
  */
-export function mongleStateOfMark(mark: OperationMarkVisual | undefined, facts: Omit<MongleFacts, "activity" | "unseen"> = {}): MongleState {
+export function mongleStateOfMark(mark: ObjectiveMarkVisual | undefined, facts: Omit<MongleFacts, "activity" | "unseen"> = {}): MongleState {
   return mongleStateOf({ ...facts, activity: mark === "unseen" ? "idle" : mark ?? null, unseen: mark === "unseen" });
 }
 
 /**
- * Operation 하나의 얼굴 — 사이드바 밖 표면(지휘관 탭 레일·대화 머리·그룹 구성원 탭)이 쓴다. 활동은 Console 의 공개 축이라
- * 지휘관은 구성원 활동을 끌어올린 값, 구성원은 자기 값이다. Operation 이 없으면 시작 전이다. 안 본 답은 읽지 않는다.
+ * Objective 하나의 얼굴 — 사이드바 밖 표면(지휘관 탭 레일·대화 머리·그룹 구성원 탭)이 쓴다. 활동은 Console 의 공개 축이라
+ * 지휘관은 구성원 활동을 끌어올린 값, 구성원은 자기 값이다. Objective 이 없으면 시작 전이다. 안 본 답은 읽지 않는다.
  */
-export function operationMongleState(
-  operationId: string,
-  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
-  clusters: readonly OperationCluster[],
+export function objectiveRecordMongleState(
+  objectiveId: string,
+  state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords" | "objectiveRecordRuntime">,
+  clusters: readonly ObjectiveCluster[],
 ): MongleState {
-  const operation = state.nestedOperations.find((node) => node.id === operationId) ?? state.operations.find((node) => node.id === operationId);
-  if (!operation) return mongleStateOf({ session: false });
-  return mongleStateOf({ activity: resolveOperationActivity(operation, state.operationRuntime), ...clusterFaceFacts(clusters, operationId) });
+  const objectiveRecord = state.nestedObjectiveRecords.find((node) => node.id === objectiveId) ?? state.objectiveRecords.find((node) => node.id === objectiveId);
+  if (!objectiveRecord) return mongleStateOf({ session: false });
+  return mongleStateOf({ activity: resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime), ...clusterFaceFacts(clusters, objectiveId) });
 }
 
 /** 일하는 구성원으로 치는 표식 — 진행·부름·안 본 답. 쉬거나 끝난 구성원은 줄 앞 미니 아바타에 서지 않는다. */
-const WORKING_MARKS: ReadonlySet<OperationMarkVisual> = new Set(["running", "awaiting", "unseen"]);
+const WORKING_MARKS: ReadonlySet<ObjectiveMarkVisual> = new Set(["running", "awaiting", "unseen"]);
 
 export interface ClusterWorkingMember {
-  readonly operation: OperationNode;
-  readonly mark: OperationMarkVisual;
+  readonly objectiveRecord: ObjectiveRecord;
+  readonly mark: ObjectiveMarkVisual;
 }
 
 /**
  * 묶음 지휘관 옆에 미니 아바타로 서는, 지금 일하는 구성원(최대 `limit`). 사이드바 줄과 모바일 대화 행이 같은 셈법을 읽는다.
  * 구성원은 묶음의 구성원 목록에서 뿌리를 뺀 것이고(`fold` 에는 뿌리가 함께 들 수 있다), 표식은 `marks`(사이드바 표식)가 있으면 그것을,
- * 없으면 런타임 활동을 쓴다. 자리표시(pending)와 Operation 이 아직 없는 구성원은 서지 않는다.
+ * 없으면 런타임 활동을 쓴다. 자리표시(pending)와 Objective 이 아직 없는 구성원은 서지 않는다.
  */
 export function clusterWorkingMembers(
-  cluster: OperationCluster,
+  cluster: ObjectiveCluster,
   rootId: string | undefined,
-  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
-  marks?: ReadonlyMap<string, OperationMarkVisual>,
+  state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords" | "objectiveRecordRuntime">,
+  marks?: ReadonlyMap<string, ObjectiveMarkVisual>,
   limit = 3,
 ): readonly ClusterWorkingMember[] {
   const working: ClusterWorkingMember[] = [];
   for (const member of cluster.members) {
-    if (member.pending || member.operationId === rootId || working.length >= limit) continue;
-    const operation = state.nestedOperations.find((node) => node.id === member.operationId) ?? state.operations.find((node) => node.id === member.operationId);
-    if (!operation) continue;
-    const mark = marks?.get(operation.id) ?? resolveOperationActivity(operation, state.operationRuntime);
-    if (WORKING_MARKS.has(mark)) working.push({ operation, mark });
+    if (member.pending || member.objectiveId === rootId || working.length >= limit) continue;
+    const objectiveRecord = state.nestedObjectiveRecords.find((node) => node.id === member.objectiveId) ?? state.objectiveRecords.find((node) => node.id === member.objectiveId);
+    if (!objectiveRecord) continue;
+    const mark = marks?.get(objectiveRecord.id) ?? resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime);
+    if (WORKING_MARKS.has(mark)) working.push({ objectiveRecord, mark });
   }
   return working;
 }
 
-const byCreation = (left: OperationNode, right: OperationNode) => left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
+const byCreation = (left: ObjectiveRecord, right: ObjectiveRecord) => left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 
 /** 배정 묶음 — 묶음 안에서는 겹치지 않게 뽑는다. Theater 묶음의 첫 키는 사령관이다. */
-export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "operations" | "nestedOperations">): string[][] {
+export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "objectiveRecords" | "nestedObjectiveRecords">): string[][] {
   const groups: string[][] = [];
   for (const theater of state.theaters) {
-    const operations = state.operations.filter((operation) => operation.theaterId === theater.id && !operation.parentOperationId).sort(byCreation);
-    groups.push([theaterAvatarKey(theater.id), ...operations.map((operation) => operationAvatarKey(operation.id))]);
+    const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id && !objectiveRecord.parentObjectiveId).sort(byCreation);
+    groups.push([theaterAvatarKey(theater.id), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
   }
-  const children = new Map<string, OperationNode[]>();
-  for (const operation of [...state.operations, ...state.nestedOperations]) {
-    if (!operation.parentOperationId) continue;
-    const list = children.get(operation.parentOperationId) ?? [];
-    if (!list.some((existing) => existing.id === operation.id)) list.push(operation);
-    children.set(operation.parentOperationId, list);
+  const children = new Map<string, ObjectiveRecord[]>();
+  for (const objectiveRecord of [...state.objectiveRecords, ...state.nestedObjectiveRecords]) {
+    if (!objectiveRecord.parentObjectiveId) continue;
+    const list = children.get(objectiveRecord.parentObjectiveId) ?? [];
+    if (!list.some((existing) => existing.id === objectiveRecord.id)) list.push(objectiveRecord);
+    children.set(objectiveRecord.parentObjectiveId, list);
   }
-  for (const list of children.values()) groups.push(list.sort(byCreation).map((operation) => operationAvatarKey(operation.id)));
+  for (const list of children.values()) groups.push(list.sort(byCreation).map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id)));
   return groups.filter((group) => group.length > 0);
 }
 
-/** 사이드바가 한 번 마운트한다 — Theater·Operation 이 처음 보이면 묶음째 뽑아 저장한다. 이미 저장된 키는 건드리지 않는다. */
+/** 사이드바가 한 번 마운트한다 — Theater·Objective 이 처음 보이면 묶음째 뽑아 저장한다. 이미 저장된 키는 건드리지 않는다. */
 export function useAvatarClaims(): void {
   const state = useConsoleState();
   const book = useAvatarBook();
-  const groups = useMemo(() => avatarClaimGroups(state), [state.theaters, state.operations, state.nestedOperations]);
+  const groups = useMemo(() => avatarClaimGroups(state), [state.theaters, state.objectiveRecords, state.nestedObjectiveRecords]);
   const signature = groups.map((group) => group.join(",")).join("|");
   useEffect(() => {
     if (!book) return;
@@ -126,12 +126,12 @@ export function useAvatarClaims(): void {
 }
 
 /** 편집기의 「다시 뽑기」가 피할 형제 키. */
-function siblingKeysOf(state: Pick<ConsoleState, "theaters" | "operations" | "nestedOperations">, key: string): string[] {
+function siblingKeysOf(state: Pick<ConsoleState, "theaters" | "objectiveRecords" | "nestedObjectiveRecords">, key: string): string[] {
   return avatarClaimGroups(state).find((group) => group.includes(key))?.filter((candidate) => candidate !== key) ?? [];
 }
 
-interface OperationAvatarProps {
-  readonly operation: Pick<OperationNode, "id" | "parentOperationId">;
+interface ObjectiveAvatarProps {
+  readonly objectiveRecord: Pick<ObjectiveRecord, "id" | "parentObjectiveId">;
   readonly state: MongleState;
   readonly size: number;
   readonly label: string;
@@ -140,19 +140,19 @@ interface OperationAvatarProps {
   readonly className?: string;
 }
 
-/** Operation 의 아바타 — 작업 중이면 그 Operation 이 지금 하는 일을 연기한다. */
-export function OperationAvatar({ operation, state, size, label, role, decorative, className }: OperationAvatarProps) {
-  const look = useMongleLook(operationAvatarKey(operation.id));
-  const activity = useOperationMongleActivity(state === "running" ? operation.id : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
+/** Objective 의 아바타 — 작업 중이면 그 Objective 이 지금 하는 일을 연기한다. */
+export function ObjectiveAvatar({ objectiveRecord, state, size, label, role, decorative, className }: ObjectiveAvatarProps) {
+  const look = useMongleLook(objectiveRecordAvatarKey(objectiveRecord.id));
+  const activity = useObjectiveMongleActivity(state === "running" ? objectiveRecord.id : null);
+  return <MongleAvatar base={look.base} tone={look.tone} role={role ?? objectiveRecordAvatarRole(objectiveRecord)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size, label, decorative, off, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size, label, decorative, off, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
-  /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다. */
-  readonly activityOperationId?: string | null;
+  /** 이 얼굴이 대표하는 Objective — 있으면 작업 중일 때 그 Objective 이 지금 하는 일을 연기한다. */
+  readonly activityObjectiveId?: string | null;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
@@ -160,7 +160,7 @@ export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size,
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  const activity = useOperationMongleActivity(state === "running" ? activityOperationId : null);
+  const activity = useObjectiveMongleActivity(state === "running" ? activityObjectiveId : null);
   return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={className} />;
 }
 
@@ -199,12 +199,12 @@ interface Draft {
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, activityOperationId, size, label, layout = "stack", children }: {
+export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size, label, layout = "stack", children }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
-  /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다(편집 미리보기 중에는 연기하지 않는다). */
-  readonly activityOperationId?: string | null;
+  /** 이 얼굴이 대표하는 Objective — 있으면 작업 중일 때 그 Objective 이 지금 하는 일을 연기한다(편집 미리보기 중에는 연기하지 않는다). */
+  readonly activityObjectiveId?: string | null;
   readonly size: number;
   readonly label: string;
   /** stack: 아바타 아래에 편집기가 뜬다(패널 머리). inline: 줄 아래로 펼친다(구성원 탭). */
@@ -219,7 +219,7 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   const book = useAvatarBook();
   const look = resolveMongleLook(book, avatarKey);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const activity = useOperationMongleActivity(state === "running" && draft === null ? activityOperationId : null);
+  const activity = useObjectiveMongleActivity(state === "running" && draft === null ? activityObjectiveId : null);
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

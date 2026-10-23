@@ -7,7 +7,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { OpenLinkHandler } from "@fleet-console/link/core";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { onboardingWorkSurface } from "../../../../../features/onboarding/shared/anchors.js";
-import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../../../../features/objectives/shared/records/types.js";
 import type { ConversationToolScope, PaneDescriptor, PaneOpenRequest } from "../../../../../features/workspace/shared/pane.js";
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 
@@ -52,7 +52,7 @@ export interface RailSurfaceProps {
   readonly theme?: ConsoleTheme;
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
-  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly onLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
   /** 이 표면이 놓인 대화 — 데스크톱 대화의 도구 칸에서만 싣는다. 페인 컨텍스트로 그대로 흐른다. */
   readonly conversation?: ConversationToolScope;
@@ -68,7 +68,7 @@ export const RailSurface = memo(function RailSurface({
   theme,
   surfaces,
   onRequestExtraWidth,
-  onLaunchOperation,
+  onLaunchObjective,
   openLink,
   conversation,
 }: RailSurfaceProps) {
@@ -273,7 +273,7 @@ export const RailSurface = memo(function RailSurface({
       theme={theme}
       surfaces={surfaces}
       onRequestExtraWidth={onRequestExtraWidth}
-      onLaunchOperation={onLaunchOperation}
+      onLaunchObjective={onLaunchObjective}
       openLink={openLink}
       conversation={conversation}
       {...(split ? { width: primaryWidth } : {})}
@@ -308,7 +308,7 @@ export const RailSurface = memo(function RailSurface({
           theme={theme}
           surfaces={surfaces}
           onRequestExtraWidth={onRequestExtraWidth}
-          onLaunchOperation={onLaunchOperation}
+          onLaunchObjective={onLaunchObjective}
           openLink={openLink}
           conversation={conversation}
         />
@@ -340,7 +340,7 @@ interface PaneHostProps {
   readonly theme?: ConsoleTheme;
   readonly surfaces?: ClientExpandedSurfacesCapability;
   readonly onRequestExtraWidth?: (px: number | null) => void;
-  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly onLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
   readonly conversation?: ConversationToolScope | undefined;
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
@@ -372,7 +372,7 @@ function PaneHost({
   theme,
   surfaces,
   onRequestExtraWidth,
-  onLaunchOperation,
+  onLaunchObjective,
   openLink,
   conversation,
   width,
@@ -478,7 +478,7 @@ function PaneHost({
     onCloseOther: handleCloseOther,
     ...(onRequestExtraWidth === undefined ? {} : { requestExtraWidth: onRequestExtraWidth }),
     legacySurfaces: surfaces,
-    legacyLaunchOperation: onLaunchOperation,
+    legacyLaunchObjective: onLaunchObjective,
     ...(openLink === undefined ? {} : { openLink }),
     ...(conversation === undefined ? {} : { conversation }),
   });

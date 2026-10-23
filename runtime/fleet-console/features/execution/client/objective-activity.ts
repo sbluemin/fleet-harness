@@ -1,0 +1,136 @@
+import type { ObjectiveActivity, ObjectiveRuntimeHydration, ObjectiveRuntimeState } from "../shared/client-contract.js";
+
+import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";
+import { getT } from "../../../core/client/src/i18n/index.js";
+import type { ObjectiveRecord } from "../../../core/client/src/integration/types.js";
+import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
+
+// 표시 어휘는 한 번에 한 모습만 그린다. 수명주기 dormant(프로세스 없음)는 화면에서 ended 로 읽힌다 —
+// 복원 Claude/Codex/Shell 이 서로 다른 색·단어를 쓰면 같은 사실이 세 이야기로 갈라진다.
+// 턴 뒤에 남은 백그라운드 작업(런타임 활동 background)도 화면에서는 진행 중(running)이다 — 사람에게는 그 Objective이
+// 아직 일하고 있다는 한 사실이고, 턴인지 남은 작업인지는 채팅 안 작업 목록이 말한다. 원시 활동은 런타임 축에 그대로 남는다.
+export type ObjectiveActivityVisual = "running" | "awaiting" | "ended" | "idle";
+
+// 런타임 맵에 항목이 없는 Objective의 분류 폭백. 방금 만든 셸/에이전트는 스냅샷 전에
+// 런타임이 비어 있으므로, 복원 마커가 있을 때만 ended 다. resumeAvailable 은 Claude 재개
+// 경로이고, restoredDormant 는 부팅 복원 Shell·Agent 공통 마커다.
+// 사이드바 STATUS 축, Objective 검색, 팔레트 뱃지가 같은 원천 활동 분류를 공유하도록 이 함수가 단일 기준이다.
+export function resolveObjectiveActivity(
+  objectiveRecord: ObjectiveRecord,
+  objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>,
+): ObjectiveActivityVisual {
+  const live = objectiveRecordRuntime[objectiveRecord.id];
+  if (live) return runtimeStateVisual(live);
+  return isRestoredAbsentObjective(objectiveRecord) ? "ended" : "idle";
+}
+
+// 플러그인 SDK 요약(ConsoleObjectiveSummary.activity)이 싣는 원시 활동 — 표시 어휘와 같은 분류지만 background 를 접지 않는다.
+// 활동 값은 플러그인 계약이고, 접는 것은 각 표면의 표시 몫이다.
+export function resolveObjectiveRuntimeActivity(
+  objectiveRecord: ObjectiveRecord,
+  objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>,
+): ObjectiveActivity | "ended" {
+  const live = objectiveRecordRuntime[objectiveRecord.id];
+  if (live) return live.lifecycle === "dormant" ? "ended" : live.activity;
+  return isRestoredAbsentObjective(objectiveRecord) ? "ended" : "idle";
+}
+
+function isRestoredAbsentObjective(objectiveRecord: ObjectiveRecord): boolean {
+  return objectiveRecord?.chatMode !== true && (objectiveRecord?.restoredDormant === true || objectiveRecord?.resumeAvailable === true);
+}
+
+// 런타임 상태 → 표시 어휘. 프로세스 없음은 활동값을 가지지 않으므로 여기서만 두 축이 만난다.
+export function runtimeStateVisual(state: ObjectiveRuntimeState): ObjectiveActivityVisual {
+  if (state.lifecycle === "dormant") return "ended";
+  return state.activity === "background" ? "running" : state.activity;
+}
+
+// 미관측(맵에 항목 없음)은 표시 어휘로도 미관측이다 — 폭백 분류가 필요한 소비처는
+// resolveObjectiveActivity를 쓰고, 여기서는 "모른다"를 유휴로 접지 않는다.
+export function objectiveRecordRuntimeVisual(state: ObjectiveRuntimeState | undefined): ObjectiveActivityVisual | undefined {
+  return state ? runtimeStateVisual(state) : undefined;
+}
+
+// 플러그인 본문에 넘기는 런타임 축. degraded 는 "모른다"는 뜻이므로 마지막으로 알던 값을 지금의
+// 사실처럼 넘기지 않는다 — 그러면 패널은 끊긴 축 위에서 계속 작업 중이라고 말한다.
+// 칩 쪽은 재가된 대로 배너 하나로만 말하고 마지막 표시를 유지한다(여기와 다른 결정, 다른 표면).
+export function pluginRuntimeState(
+  objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>,
+  hydration: ObjectiveRuntimeHydration,
+  objectiveId: string,
+): ObjectiveRuntimeState | null {
+  if (hydration === "degraded") return null;
+  return objectiveRecordRuntime[objectiveId] ?? null;
+}
+
+// 표시 어휘 하나에서 런타임 상태를 되짚는다. 표시 축은 두 축이 합류한 뒤라 일반적으로 역함수가
+// 없지만, 휴면만 수명주기로 갈라지고 나머지는 그대로 활동이므로 이 방향은 유일하게 결정된다.
+export function runtimeStateOfVisual(visual: ObjectiveActivityVisual): ObjectiveRuntimeState {
+  return visual === "ended" ? { lifecycle: "dormant" } : { lifecycle: "live", activity: visual };
+}
+
+export function resolveObjectiveDisplayActivity({
+  activity,
+  objectiveId,
+  idleArrivalIds,
+}: {
+  readonly activity: ObjectiveActivityVisual;
+  readonly objectiveId: string;
+  readonly idleArrivalIds: ReadonlySet<string>;
+}): ObjectiveActivityVisual {
+  return activity === "idle" && idleArrivalIds.has(objectiveId) ? "awaiting" : activity;
+}
+
+// 마크 축 — 상태 마크가 그리는 값. 섹션 축(resolveObjectiveDisplayActivity)과 갈라진다:
+// 그쪽은 미확인 도착을 AWAITING 칸에 세워 사용자가 놓치지 않게 하고, 이쪽은 그것을 자기 값으로
+// 남겨 색이 사실을 바꾸지 않게 한다. 사람을 기다리는 중(aurora)과 이미 끝났는데 안 본 것(positive)은
+// 다른 일이고, 한 색으로 뭉치면 화면은 둘을 구별해 주지 못한다.
+export type ObjectiveMarkVisual = ObjectiveActivityVisual | "unseen";
+
+export function resolveObjectiveMarkVisual({
+  activity,
+  objectiveId,
+  idleArrivalIds,
+}: {
+  readonly activity: ObjectiveActivityVisual;
+  readonly objectiveId: string;
+  readonly idleArrivalIds: ReadonlySet<string>;
+}): ObjectiveMarkVisual {
+  return activity === "idle" && idleArrivalIds.has(objectiveId) ? "unseen" : activity;
+}
+
+export function objectiveRecordMarkVisual(mark: ObjectiveMarkVisual | undefined): ObjectiveMarkVisual {
+  return mark === "unseen" ? "unseen" : objectiveRecordActivityVisual(mark);
+}
+
+export function objectiveRecordActivityVisual(status: ObjectiveActivityVisual | undefined): ObjectiveActivityVisual {
+  if (status === "running") return "running";
+  if (status === "awaiting") return "awaiting";
+  if (status === "ended") return "ended";
+  return "idle";
+}
+
+// 마크 라벨을 그리는 다른 조형(종류 글리프)도 같은 로케일 해석을 쓴다 — 한 화면의 두 마크가
+// 서로 다른 언어로 낭독되면 안 된다.
+export function resolveActiveLocale() {
+  const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
+  const navigatorLanguage =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language.toLowerCase()
+      : "";
+  return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
+export function objectiveRecordMarkLabel(mark: ObjectiveMarkVisual | undefined): string {
+  if (mark === "unseen") return getT(resolveActiveLocale())("activity.unseen");
+  return objectiveRecordActivityLabel(mark);
+}
+
+export function objectiveRecordActivityLabel(status: ObjectiveActivityVisual | undefined): string {
+  const t = getT(resolveActiveLocale());
+  const visual = objectiveRecordActivityVisual(status);
+  if (visual === "running") return t("activity.running");
+  if (visual === "awaiting") return t("activity.awaiting");
+  if (visual === "ended") return t("activity.ended");
+  return t("activity.idle");
+}

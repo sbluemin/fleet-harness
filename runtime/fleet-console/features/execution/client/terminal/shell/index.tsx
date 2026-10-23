@@ -17,7 +17,7 @@ import { requestShellOpenAt, requestShellRestartAt } from "../../../../workspace
 import "./shell.css";
 
 /**
- * Shell은 Operation이 아니라 대화마다 하나씩 붙는 Console 표면이다.
+ * Shell은 Objective이 아니라 대화마다 하나씩 붙는 Console 표면이다.
  *
  * 그래서 durable state에 남지 않고 캡션도 없다 — 칸 머리가 이름을 말하고 닫기를 준다. 어느 Shell 인지는 칸이 놓인
  * 대화(`ctx.conversation.key`)가 정하고, 대화가 없는 자리(폰 배치)는 Console 기본 Shell 을 쓴다. PTY 세션 키는 서버가
@@ -356,7 +356,7 @@ function ShellInstanceHost({ mount, language, theme }: { readonly mount: ShellMo
       <TerminalSurface
         key={surfaceKey}
         {...(carryOver ? { carryOver } : {})}
-        operationId={key === DEFAULT_SHELL_KEY ? SHELL_SURFACE_ID : `${SHELL_SURFACE_ID}:${key}`}
+        objectiveId={key === DEFAULT_SHELL_KEY ? SHELL_SURFACE_ID : `${SHELL_SURFACE_ID}:${key}`}
         ticketPath={SHELL_TICKET_PATH}
         wsPath={SHELL_WS_PATH}
         surface="shell"

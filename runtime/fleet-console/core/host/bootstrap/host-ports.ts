@@ -9,14 +9,14 @@ import type { EventPort, CleanupPort, HttpSecurityPort, HttpPort, ServerOriginPo
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import type { SettingsStorageHost } from "../../../features/settings/host/storage-port.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
-import type { OperationsHost } from "../../../features/execution/host/operations/ports.js";
+import type { ObjectiveRecordsHost } from "../../../features/objectives/host/records/ports.js";
 import type { ModelRosterHost } from "../../../features/ai-gateway/host/model-ports.js";
 export interface ConsoleHostPorts {
   readonly attachments?: AttachmentHost;
   readonly consoleUse: ConsoleUseMcpHost;
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect" | "bindCommodore">;
   readonly mcpTransport?: McpTransport;
-  readonly operations: OperationsHost;
+  readonly objectiveRecords: ObjectiveRecordsHost;
   readonly events: EventPort;
   readonly paths: WorkspacePaths;
   readonly server: ServerOriginPort;

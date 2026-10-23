@@ -5,7 +5,7 @@ import type { ClientApiCapability, ClientLifecycleCapability } from "@fleet-cons
 import type { ClientPreferencesCapability } from "../../settings/shared/client-ports.js";
 
 export interface FloatingWidgetArrival {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly title: string;
 }
 
@@ -15,7 +15,7 @@ export interface FloatingWidgetArrivalsCapability {
 }
 
 export interface FloatingWidgetDeparture {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly title: string;
 }
 
@@ -25,11 +25,11 @@ export interface FloatingWidgetDeparturesCapability {
 }
 
 export interface FloatingWidgetAwaiting {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly title: string;
 }
 
-/** 지금 입력이나 승인을 기다리는 Operation들. 확인이 끝나면 목록에서 빠진다. */
+/** 지금 입력이나 승인을 기다리는 Objective들. 확인이 끝나면 목록에서 빠진다. */
 export interface FloatingWidgetAwaitingsCapability {
   list(): readonly FloatingWidgetAwaiting[];
   subscribe(listener: (awaitings: readonly FloatingWidgetAwaiting[]) => void): () => void;
@@ -53,25 +53,25 @@ export interface FloatingWidgetKeepOutCapability {
   subscribe(listener: () => void): () => void;
 }
 
-/** 호스트 컴포저를 초안과 함께 연다 — 부관의 답을 Operation 지시로 넘기는 손잡이. */
+/** 호스트 컴포저를 초안과 함께 연다 — 부관의 답을 Objective 지시로 넘기는 손잡이. */
 export interface FloatingWidgetComposerCapability {
   open(options?: { readonly draft?: string }): void;
 }
 
-/** 부유 위젯이 호스트에 요청할 수 있는 Operation 동작. 상태 읽기는 허용하지 않는다. */
-export interface FloatingWidgetOperationsCapability {
-  /** 해당 Operation이 속한 Theater로 전환하고 Operation을 활성화한다. */
-  focus(operationId: string): void;
+/** 부유 위젯이 호스트에 요청할 수 있는 Objective 동작. 상태 읽기는 허용하지 않는다. */
+export interface FloatingWidgetObjectiveRecordsCapability {
+  /** 해당 Objective이 속한 Theater로 전환하고 Objective을 활성화한다. */
+  focus(objectiveId: string): void;
 }
 
 /**
- * 콘솔 전역 상태를 부유 위젯이 읽는 유일한 창구. 개별 Operation의 정체는 넘기지 않고 집계만 넘겨
+ * 콘솔 전역 상태를 부유 위젯이 읽는 유일한 창구. 개별 Objective의 정체는 넘기지 않고 집계만 넘겨
  * 위젯이 함대 분위기에만 반응하게 한다 — 세부는 여전히 호스트 소유다.
  */
 export interface FloatingWidgetFleetSignals {
-  /** 실행 중인 Operation 수. */
+  /** 실행 중인 Objective 수. */
   readonly running: number;
-  /** 입력이나 승인을 기다리는 Operation 수. */
+  /** 입력이나 승인을 기다리는 Objective 수. */
   readonly awaiting: number;
   /** 콘솔 스트림이 끊어진 상태. */
   readonly disconnected: boolean;
@@ -91,7 +91,7 @@ export interface FloatingWidgetContext {
   readonly awaitings: FloatingWidgetAwaitingsCapability;
   readonly keepOut: FloatingWidgetKeepOutCapability;
   readonly composer: FloatingWidgetComposerCapability;
-  readonly operations: FloatingWidgetOperationsCapability;
+  readonly objectiveRecords: FloatingWidgetObjectiveRecordsCapability;
   readonly signals: FloatingWidgetSignalsCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;

@@ -50,11 +50,11 @@ Register errors, rejections, `console.error`, and WebSocket lifecycle before the
 AGENT_BROWSER_IDLE_TIMEOUT_MS=1800000 ab --session fleet-console-e2e-20260725-a7c3 --headed false open \
   --init-script <worktree>/.claude/skills/console-e2e/scripts/page-diagnostics.js \
   [--init-script <scratchpad>/fleet-console-e2e-probe-<unique-id>.js] \
-  "http://127.0.0.1:<port>/console/operations"
+  "http://127.0.0.1:<port>/console/objectives"
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ```
 
-Replace `/console/operations` only when the scenario targets another route. `--headed false` overrides a user/project `headed` config; pass `--headed` instead when the task requires a headed visual gate. The launch mode belongs to the daemon: if a running daemon ignores the flag, report the actual mode rather than claiming the requested one, and never `close --all` or kill an unknown daemon to reset it.
+Replace `/console/objectives` only when the scenario targets another route. `--headed false` overrides a user/project `headed` config; pass `--headed` instead when the task requires a headed visual gate. The launch mode belongs to the daemon: if a running daemon ignores the flag, report the actual mode rather than claiming the requested one, and never `close --all` or kill an unknown daemon to reset it.
 
 ## Mock page API responses before navigation
 

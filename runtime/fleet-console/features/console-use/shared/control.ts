@@ -1,12 +1,12 @@
 export type ConsoleActivity = "idle" | "running" | "awaiting" | "background" | "ended" | "unknown";
 export type ConsoleActionKind = "launch" | "send" | "interrupt" | "resume";
-export type ConsoleCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type ConsoleCaller = { readonly kind: "objectiveRecord"; readonly objectiveId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 
 /** 플러그인이 대신 보낸 말이 덧붙여진 보드 행위. */
 export type ConsoleHumanInputAct = "start" | "plan" | "steer";
 export interface ConsoleHumanInput {
   readonly id: string;
-  readonly targetOperationId?: string;
+  readonly targetObjectiveId?: string;
   readonly copy?: boolean;
   readonly act?: ConsoleHumanInputAct;
   readonly author?: "commodore";
@@ -15,7 +15,7 @@ export interface ConsoleHumanInput {
 export interface ConsoleActionInput {
   readonly kind: ConsoleActionKind;
   readonly theaterId?: string;
-  readonly operationId?: string;
+  readonly objectiveId?: string;
   /** launch 의 첫 프롬프트 / send 의 본문. launch 에서는 생략할 수 있다 — 그 세션은 첫 턴 없이 서서 메시지를 기다린다. */
   readonly text?: string;
   /** send 전용 — 전달 직전에도 live여야 한다. 방송이 휴면 세션을 뜻밖에 깨우지 않게 한다. */
@@ -28,7 +28,7 @@ export interface ConsoleActionInput {
   readonly humanInput?: ConsoleHumanInput;
   /**
    * send 전용·`humanInput` 과 함께만 — 사람이 입력창에서 올린 이미지 첨부 id(`uploadLaunchAttachment`). 사람 채팅 전송과 같은 길로
-   * 본문 뒤에 경로가 합성되고, 전달에 성공하면 파일 수명이 받는 Operation 을 따른다. id 하나는 한 세션에만 묶인다.
+   * 본문 뒤에 경로가 합성되고, 전달에 성공하면 파일 수명이 받는 Objective 을 따른다. id 하나는 한 세션에만 묶인다.
    */
   readonly attachmentIds?: readonly string[];
   readonly model?: string;
@@ -50,21 +50,21 @@ export interface ConsoleActionInput {
   readonly sessionName?: string;
   /** launch 전용 — 태어날 때 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이후 변경은 `setSubagentSpawn`이며 이미 뜬 프로세스는 다음 기동까지 그대로다. */
   readonly disableSubagents?: boolean;
-  /** launch 전용 — 태어날 때 auto-memory(Claude Code `autoMemoryEnabled`)를 끈다. 이 Operation의 재개·재기동에도 그대로 남고, 바꾸는 경로는 없다. */
+  /** launch 전용 — 태어날 때 auto-memory(Claude Code `autoMemoryEnabled`)를 끈다. 이 Objective의 재개·재기동에도 그대로 남고, 바꾸는 경로는 없다. */
   readonly disableAutoMemory?: boolean;
   /** @deprecated launch 전용 — 받아들이되 무시한다. Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 뺀다. */
   readonly disableUserQuestions?: boolean;
   /** launch 전용 — 자식 없이 등록한다. 터미널은 dormant, 채팅은 live/idle로 서며 첫 send가 자식을 연다. */
   readonly dormant?: boolean;
   /**
-   * launch 전용 — 태어날 때부터 이 Operation 아래 선다(목표의 구성원 → 지휘관). 같은 Theater 의, 부모가 없는 Operation 이어야 한다.
+   * launch 전용 — 태어날 때부터 이 Objective 아래 선다(목표의 구성원 → 지휘관). 같은 Theater 의, 부모가 없는 Objective 이어야 한다.
    * 태어난 뒤에 붙이면 첫 방송에 부모 없는 행이 실려 목록에 한 번 선다 — 그래서 기록은 생성과 함께다.
    */
-  readonly parentOperationId?: string;
+  readonly parentObjectiveId?: string;
   /** 플러그인 전용 자식 UUID. 같은 부모와 같은 id는 기존 세션을 돌려준다. */
   readonly childSessionId?: string;
-  /** 플러그인의 새 기동에서만 지정할 수 있는 Operation UUID. */
-  readonly newOperationId?: string;
+  /** 플러그인의 새 기동에서만 지정할 수 있는 Objective UUID. */
+  readonly newObjectiveId?: string;
 }
 
 /** 턴 실패의 원문 데이터 — 문자열을 요약하거나 지시로 실행하지 않는다. */
@@ -87,7 +87,7 @@ export interface ConsoleTurnFailure {
 export interface ConsoleTurnReport {
   /** 이 턴의 최상위 SendMessage 중 결과까지 성공한 호출의 받는 이름. 거절·오류로 끝난 호출과 서브에이전트의 호출은 없다. */
   readonly sentTo: readonly string[];
-  /** 사람이 입력창에서 보낸 말로 열린 턴이다. 플러그인·다른 Operation 이 보낸 말과 자식이 스스로 연 턴은 false. */
+  /** 사람이 입력창에서 보낸 말로 열린 턴이다. 플러그인·다른 Objective 이 보낸 말과 자식이 스스로 연 턴은 false. */
   readonly byPerson: boolean;
   /**
    * 그 턴을 닫은 SDK result 의 `result` 문자열 전체 — 자르지 않는다. 원장의 답(표시용 상한 60,000자)과 `output.text`(꼬리 24,000자)는
@@ -102,24 +102,24 @@ export interface ConsoleTurnReport {
 }
 
 /**
- * 세션 간 메시지 한 통이 받는 쪽 Operation 에 닿았다 — 보낸 쪽 채팅 세션의 SendMessage 가 결과까지 성공했고, 받는 이름이 이 Console 의
- * Operation 하나로 풀렸다. 누가 누구에게 언제만 싣고 본문은 싣지 않는다.
+ * 세션 간 메시지 한 통이 받는 쪽 Objective 에 닿았다 — 보낸 쪽 채팅 세션의 SendMessage 가 결과까지 성공했고, 받는 이름이 이 Console 의
+ * Objective 하나로 풀렸다. 누가 누구에게 언제만 싣고 본문은 싣지 않는다.
  */
 export interface ConsoleSessionMessage {
-  readonly fromOperationId: string;
-  readonly toOperationId: string;
+  readonly fromObjectiveId: string;
+  readonly toObjectiveId: string;
   /** 성공을 관측한 시각(ms). */
   readonly at: number;
 }
 
 /** 다음 턴이 관측을 덮기 전에 전달하는 종료 snapshot. 브라우저 알림 채널이 아니다. */
 export interface ConsoleTurnEnd {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly generation?: string;
-  readonly output: ConsoleOperationObservation["output"];
+  readonly output: ConsoleObjectiveObservation["output"];
 }
 
-export interface ConsoleOperationObservation {
+export interface ConsoleObjectiveObservation {
   readonly activity: ConsoleActivity;
   readonly lifecycle: "live" | "dormant" | "unknown";
   /**
@@ -147,10 +147,10 @@ export interface ConsoleOperationObservation {
 
 /**
  * 한 동작의 결과 — 영속하지 않는다. 전달(메시지 입력·시작·중단·재개)이 끝나면 호출자에게 한 번 돌아가고 남지 않는다.
- * 턴의 종료가 아니다: 그 뒤의 활동·산출은 Operation 관측이 말한다. 이미 살아 있는 키 붙은 기동은 delivery 없이 그 Operation 을 돌려준다.
+ * 턴의 종료가 아니다: 그 뒤의 활동·산출은 Objective 관측이 말한다. 이미 살아 있는 키 붙은 기동은 delivery 없이 그 Objective 을 돌려준다.
  */
 export interface ConsoleActionResult {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly delivery?: "queued" | "confirmed" | "requested";
 }
 
@@ -161,7 +161,7 @@ export interface ConsoleActionResult {
  */
 export type ConsoleCoordinatesResult =
   | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }
-  | { readonly ok: false; readonly error: "unknown_operation" | "forbidden" | "chat_not_active" | "invalid_model" | "invalid_effort" | "context_exceeds_window" }
+  | { readonly ok: false; readonly error: "unknown_objectiveRecord" | "forbidden" | "chat_not_active" | "invalid_model" | "invalid_effort" | "context_exceeds_window" }
   | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: ConsoleCoordinatesFailureCause };
 
 /**
@@ -181,7 +181,7 @@ export interface ConsoleCoordinatesFailureCause {
 }
 
 /** 떠 있는 채팅 세션의 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용이 끝나는 순간에야 비워진다. `effort` 는 런치 어휘다. */
-/** Operation 전사의 한 쪽 — 사람의 말·답·도구·질문·턴 결말 줄. 본문은 마스킹을 지난 신뢰할 수 없는 데이터다. `nextCursor` 가 null 이면 끝까지 읽었거나 꼬리 읽기다. */
+/** Objective 전사의 한 쪽 — 사람의 말·답·도구·질문·턴 결말 줄. 본문은 마스킹을 지난 신뢰할 수 없는 데이터다. `nextCursor` 가 null 이면 끝까지 읽었거나 꼬리 읽기다. */
 export interface ConsoleTranscriptPage {
   readonly source: "chat" | "terminal";
   readonly entries: readonly Record<string, unknown>[];
@@ -203,7 +203,7 @@ export interface ConsoleCoordinates {
 export interface ConsoleAutomationInput {
   readonly name: string;
   readonly theaterId: string;
-  readonly trigger: { readonly kind: "interval"; readonly minutes: number } | { readonly kind: "activity"; readonly operationId: string; readonly activity: ConsoleActivity };
+  readonly trigger: { readonly kind: "interval"; readonly minutes: number } | { readonly kind: "activity"; readonly objectiveId: string; readonly activity: ConsoleActivity };
   readonly action: ConsoleActionInput | { readonly kind: "briefing" };
   readonly expiresAt: string;
   readonly maxRuns: number;

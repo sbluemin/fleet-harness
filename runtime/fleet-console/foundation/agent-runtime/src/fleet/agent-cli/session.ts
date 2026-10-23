@@ -77,7 +77,7 @@ export interface PrepareClaudeSessionOptions {
   /**
    * 호스트가 기동에 한 번 렌더해 둔 플러그인 트리. 세션마다 다시 렌더하지 않는다 — 내용이
    * 같아 디스크는 그대로지만, 매 런치가 저장소 락을 잡고 트리 전체를 다시 읽는 비용은 남고,
-   * 여러 Operation을 동시에 여는 순간 그 락에서 직렬화된다.
+   * 여러 Objective을 동시에 여는 순간 그 락에서 직렬화된다.
    */
   readonly plugin: AgentCliPlugin;
   /** SDK 표면의 cwd 훅. 트리에 실리지 않고 세션 투영에만 들어간다. */
@@ -120,7 +120,7 @@ export interface PrepareClaudeSessionOptions {
  *
  * 이 함수는 프로세스를 세우지 않는다 — 프로세스 수명은 런타임 호스트의 것이다. 대신 그
  * 세션의 **정체성과 능력 표면**을 여기서 한 번만 정한다: 세션 id, 플러그인 트리, 스킬 억제,
- * 시스템 프롬프트 정책, 설정 층. 이것들이 표면마다 따로 조립되면 같은 Operation을 터미널로
+ * 시스템 프롬프트 정책, 설정 층. 이것들이 표면마다 따로 조립되면 같은 Objective을 터미널로
  * 열었을 때와 Chat으로 열었을 때가 조용히 다른 세션이 된다.
  */
 export async function prepareClaudeSession(
@@ -194,8 +194,8 @@ function buildSdkSystemPrompt(
 /**
  * 세션 id를 확정한다.
  *
- * `preferredSessionId`는 호출자가 이 세션에 붙이고 싶은 값이다 — Console은 Operation id를
- * 넘겨 Operation과 Claude 세션의 좌표를 태어날 때 하나로 만든다. 쓸 수 없는 값이면 조용히
+ * `preferredSessionId`는 호출자가 이 세션에 붙이고 싶은 값이다 — Console은 Objective id를
+ * 넘겨 Objective과 Claude 세션의 좌표를 태어날 때 하나로 만든다. 쓸 수 없는 값이면 조용히
  * 새로 발급하고, 실제로 쓰인 값은 핸들의 `sessionId`가 말한다. 호출자가 그 값을 되받아 적으면
  * 어긋날 방법이 없다.
  */

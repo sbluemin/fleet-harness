@@ -253,7 +253,7 @@ export interface PaneContext {
   readonly openLink?: OpenLinkHandler;
   /**
    * 호스트 좌측 사이드바(Theater 그룹 트리)가 지금 보이는가. 접혔거나 모바일이면 false다 — 사이드바에
-   * 묶음 줄(`OperationCluster.row`)을 세운 플러그인은 이때 자기 화면 안에 같은 목록으로 가는 길을 둔다.
+   * 묶음 줄(`ObjectiveCluster.row`)을 세운 플러그인은 이때 자기 화면 안에 같은 목록으로 가는 길을 둔다.
    * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
    */
   readonly sideBarVisible?: boolean;
@@ -289,7 +289,7 @@ export interface MobileBarSpec {
   /** 깊이를 하나 거두는 동작. `depth`가 1 이상이면 반드시 싣는다 — 상세 상태를 닫는 일은 플러그인이 안다. */
   readonly onBack?: () => void;
   /**
-   * 제목 자리를 대화 pill로 세운다 — Operation 대화 머리와 같은 ‹ · [아바타 · 제목/보조 줄] 묶음이고, 가운데 제목 대신 왼쪽부터 선다.
+   * 제목 자리를 대화 pill로 세운다 — Objective 대화 머리와 같은 ‹ · [아바타 · 제목/보조 줄] 묶음이고, 가운데 제목 대신 왼쪽부터 선다.
    * pill의 제목·보조 줄은 위 `title`·`subtitle`이다. 누르면 `onPress` — 보통 그 대화의 기록·설정 화면을 연다(깊이를 올리는 일은 플러그인이 한다).
    */
   readonly pill?: MobileBarPill;

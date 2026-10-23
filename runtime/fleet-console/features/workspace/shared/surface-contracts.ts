@@ -2,7 +2,7 @@ import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "./theate
 import type { MongleState } from "./avatars.js";
 import type { ReactNode, RefObject } from "react";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import type { OperationNode } from "../../execution/shared/operations/types.js";
+import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { ConsoleTheaterSummary } from "./console-state.js";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
 /**
@@ -70,17 +70,17 @@ export interface PersistentComponentDescriptor {
 }
 
 
-export interface OperationCaptionContributionContext {
-  readonly operation: OperationNode;
+export interface ObjectiveCaptionContributionContext {
+  readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
   /** 캔버스 캡션(넓은 칩)인지 사이드바 칩(12px 표식)인지. */
   readonly surface: "caption" | "chip";
 }
 
 
-export interface OperationCaptionContribution {
+export interface ObjectiveCaptionContribution {
   readonly id: string;
-  readonly render: (context: OperationCaptionContributionContext) => ReactNode;
+  readonly render: (context: ObjectiveCaptionContributionContext) => ReactNode;
 }
 
 
@@ -108,7 +108,7 @@ export interface TheaterMenuContext extends TheaterContributionContext {
 export interface TheaterContribution {
   readonly id: string;
   /**
-   * A row the host shows directly under this Theater's sidebar header, above its Operation list, while the
+   * A row the host shows directly under this Theater's sidebar header, above its Objective list, while the
    * section is expanded. It is a standing fact about the Theater, laid out on the sidebar row grammar; return
    * nothing to take no space. The host wraps each contribution in its own error boundary.
    */

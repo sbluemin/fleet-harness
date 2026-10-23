@@ -54,7 +54,7 @@ describe("terminal session manager", () => {
     expect(ptys[0]?.killed()).toBe(true);
   });
 
-  it("cancels a pending launch before a per-Operation stop reports completion", async () => {
+  it("cancels a pending launch before a per-Objective stop reports completion", async () => {
     const gate = createDeferred<void>();
     const startShell = vi.fn(() => createMockPty());
     const cleanup = vi.fn();

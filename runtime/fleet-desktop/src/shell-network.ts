@@ -3,7 +3,7 @@ import { installRemoteCertificatePins, type PinnableSession, type RemoteCertific
 /**
  * 셸이 콘솔과 주고받는 배관의 연결 예산.
  *
- * 브라우저는 origin 하나에 HTTP/1.1 연결을 여섯 개까지만 연다. 그 여섯은 콘솔 화면의 것이다 — Operation 스트림,
+ * 브라우저는 origin 하나에 HTTP/1.1 연결을 여섯 개까지만 연다. 그 여섯은 콘솔 화면의 것이다 — Objective 스트림,
  * 패널의 스트림, 사람이 누른 버튼이 보내는 요청이 전부 거기서 나간다. 셸의 배관(스냅샷 구독과 relay)이 같은 항아리를
  * 쓰면 그 예산을 나눠 먹고, 다 차는 순간 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다 — 눌러도 아무 일이 없고,
  * 스트림 하나가 닫히는 순간 그제야 밀린 요청이 한꺼번에 나간다.

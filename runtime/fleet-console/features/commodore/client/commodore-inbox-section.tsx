@@ -448,7 +448,7 @@ function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; re
 const FOLLOW_SLACK_PX = 48;
 
 /**
- * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
+ * 사령관 기록 — Objective 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
  * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
 export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal, cards }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null; readonly cards?: React.ReactNode }) {
