@@ -18,7 +18,7 @@ cat <<'EOF' | ab --session fleet-console-e2e-20260725-a7c3 eval --stdin
   const canvas = q('.terminal-canvas');
   return {
     shell: !!q('.console-shell'),
-    stage: !!q('.objective-records-terminal-stage'),
+    stage: !!q('.terminal-stage'),
     terminalSize: q('.terminal-stage') ? [q('.terminal-stage').offsetWidth, q('.terminal-stage').offsetHeight] : null,
     xterm: !!canvas?.querySelector('.xterm'),
     canvasCount: canvas?.querySelectorAll('canvas').length || 0,
