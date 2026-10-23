@@ -5,7 +5,7 @@ import { useAgentState } from "../../../execution/client/agent/store.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
@@ -456,7 +456,7 @@ function displayTitle(operation: OperationNode): string {
  * 읽게 한다. 활동은 비콘이 지므로 여기는 상태가 아니라 사실만 선다. 실패해도 칩은 살아야 한다.
  */
 function PluginOperationMarks({ operation }: { readonly operation: OperationNode }) {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const language = useConsoleLocale();
   const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   return (

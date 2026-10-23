@@ -5,7 +5,7 @@ import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
 import type { MongleState } from "@fleet-console/sdk/avatars";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { scopedTheaterInbox } from "./theater-inbox/scoped.js";
 
 interface TheaterContributionProps {
@@ -18,7 +18,7 @@ interface TheaterContributionProps {
  * 아무도 그리지 않으면 자리도 없다.
  */
 export function TheaterContributionRows({ theater }: TheaterContributionProps) {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const language = useConsoleLocale();
   const rows = theaterContributions.filter((contribution) => contribution.row);
   if (rows.length === 0) return null;
@@ -36,7 +36,7 @@ export function TheaterContributionRows({ theater }: TheaterContributionProps) {
 
 /** Theater 동작(우클릭·Shift+F10) 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */
 export function TheaterContributionMenuItems({ theater, onClose }: TheaterContributionProps & { readonly onClose: () => void }) {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const language = useConsoleLocale();
   const menus = theaterContributions.filter((contribution) => contribution.menu);
   if (menus.length === 0) return null;
@@ -71,7 +71,7 @@ function useHeaderSubscription(contributions: readonly TheaterContribution[]): (
  * 아무도 돌려주지 않으면 null 이고, 머리는 이니셜 칩을 그대로 세운다.
  */
 export function useTheaterContributionMark(theater: ConsoleTheaterSummary): ReactNode | null {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const language = useConsoleLocale();
   const marks = useMemo(() => theaterContributions.filter((contribution) => contribution.mark), [theaterContributions]);
   const subscribe = useHeaderSubscription(marks);
@@ -101,7 +101,7 @@ export function useTheaterContributionMark(theater: ConsoleTheaterSummary): Reac
  * 얼굴을 돌려준 기여가 이기고, 아무도 돌려주지 않으면 null 이다(호스트의 쉼 얼굴). 표식과 같은 구독으로 다시 읽는다.
  */
 export function useTheaterContributionFace(theaterId: string): TheaterFace | null {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const faces = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.face), [theaterContributions]);
   const subscribe = useHeaderSubscription(faces);
   // 기여는 읽을 때마다 새 객체를 줄 수 있다 — 스냅숏은 값을 이은 문자열이라 같은 얼굴이면 다시 그리지 않는다.
@@ -126,7 +126,7 @@ export function useTheaterContributionFace(theaterId: string): TheaterFace | nul
 
 /** 이 Theater 의 운영자가 일하는 중인가 — 머리는 Theater 이름에 라이브 물결을 흘린다. */
 export function useTheaterHeaderLive(theaterId: string): boolean {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const lives = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.live), [theaterContributions]);
   const subscribe = useHeaderSubscription(lives);
   const read = useCallback(() => lives.some((contribution) => {

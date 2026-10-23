@@ -9,7 +9,7 @@ import { useLongPress } from "../../../../../features/workspace/client/long-pres
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
-import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -324,7 +324,7 @@ interface TheaterSheetPluginRow { readonly id: string; readonly label: string; r
 
 /** 플러그인이 `TheaterContribution.mobileRow`로 거는 행 — `subscribe`의 변화에 맞춰 다시 읽고, 글이 같으면 다시 그리지 않는다. */
 function useTheaterSheetPluginRows(theaterId: string | null): readonly TheaterSheetPluginRow[] {
-  const { theaterContributions } = usePluginRegistry();
+  const { theaterContributions } = useFeatureRegistry();
   const locale = useConsoleLocale();
   const contributions = useMemo(() => theaterContributions.filter((contribution) => contribution.mobileRow !== undefined), [theaterContributions]);
   const version = () => contributions.map((contribution) => theaterId === null ? "" : contribution.mobileRow?.get(theaterId, locale)?.label ?? "").join("\u0001");

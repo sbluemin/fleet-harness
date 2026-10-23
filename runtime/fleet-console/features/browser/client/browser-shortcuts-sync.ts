@@ -2,7 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import {
   companionDefaultChord,
   companionShortcutCommandId,
@@ -54,7 +54,7 @@ async function sendShortcuts(shortcuts: readonly string[]): Promise<boolean> {
 
 export function useBrowserShortcutsSync(active: boolean): void {
   const overrides = useShortcutOverrides();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   React.useEffect(() => {
     if (!active || !isDesktopShell()) return;
     const chords = new Set<string>();

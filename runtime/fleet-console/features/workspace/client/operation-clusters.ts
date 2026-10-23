@@ -2,7 +2,7 @@ import { useMemo, useSyncExternalStore } from "react";
 
 import type { OperationCluster, OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 
 /**
  * 묶음 — 플러그인이 선언한 실행 구조를 네 모드가 같은 셈법으로 읽는 자리.
@@ -136,7 +136,7 @@ export function indexClusters(clusters: readonly OperationCluster[]): ClusterInd
 }
 
 export function useOperationClusters(): readonly OperationCluster[] {
-  const { operationClusters } = usePluginRegistry();
+  const { operationClusters } = useFeatureRegistry();
   return useSyncExternalStore(operationClusters.subscribe, operationClusters.get, operationClusters.get);
 }
 

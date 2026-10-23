@@ -1,4 +1,9 @@
 import { createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
+import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
+import { createRepositoryFeature } from "../../../features/repository/host/index.js";
+import { createCodexFeature } from "../../../features/codex/host/index.js";
+import { createQuotaFeature } from "../../../features/quota/host/index.js";
+import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
 import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -40,7 +45,7 @@ import { createModelRosterHost } from "../../../features/ai-gateway/host/model-r
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
 import { createLaunchKeyLedger } from "../../../features/console-use/host/launch-keys.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
-import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
+import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
@@ -69,7 +74,7 @@ import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
 import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
-import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createExecutionSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
@@ -78,8 +83,7 @@ import { deletionOperations, STATE_VERSION, backupDurableStateV3, backupDurableS
 import { migrateLegacyCaptures } from "../../../features/workspace/host/legacy-capture-migration.js";
 import type { TheaterRegistration } from "../../../features/workspace/host/theaters/theater-domain.js";
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
-import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../plugin-host/plugin-host.js";
-import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
+import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "@fleet-console/sdk/plugin";
 import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopScreenPermissionRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
@@ -104,7 +108,6 @@ export interface ConsoleServerDeps {
   readonly port?: number;
   readonly version?: string;
   readonly dataDir?: string;
-  readonly pluginHomeDir?: string;
   readonly agentRuntime?: unknown;
   readonly release?: FleetConsoleRelease;
   readonly releaseNotes?: ConsoleReleaseNotesService;
@@ -609,7 +612,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
-  const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
+  const featureCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const experimentListeners = new Set<(settings: ConsoleExperimentSettings) => void>();
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
@@ -771,7 +774,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function deleteChildForPlugin(id: string, requesterPluginId?: string): boolean {
     const found = operations.getChild(id);
     if (!found) return false;
-    // 요청 플러그인이 없는 호출은 코어 실행 호스트의 롤백·정리뿐이다 — 플러그인 표면은 plugin-host 가 늘 호출 플러그인을 묶는다.
+    // 요청 플러그인이 없는 호출은 코어 실행 호스트의 롤백·정리뿐이다 — feature 표면은 조합이 늘 호출 소유자를 묶는다.
     const before = operations.list();
     operations.deleteChild(id, requesterPluginId);
     try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }
@@ -809,7 +812,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     dataDir: durablePaths.dir,
     legacyDirs: [fleetDataDir, path.join(durablePaths.dir, "plugins", "terminal")],
   });
-  const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
+  const mcpHttp = createMcpHttpTransport(() => consoleFeaturePorts.server.origin());
   const consoleAgentOwners = new Set<string>();
   // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
   const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
@@ -951,7 +954,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
    * 화면 사건(보이기). 재개·뷰·대화는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
-  const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, archive: operationArchive.archive, listOperationUse, patchOperation: (id, input) => pluginHostCapabilities.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
+  const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, archive: operationArchive.archive, listOperationUse, patchOperation: (id, input) => consoleFeaturePorts.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
   let sleepOperation: ConsoleUseActions["sleep"];
   const consoleUse = createConsoleUseMcpHost({
@@ -975,7 +978,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<operationId>` 또는 `chat:<operationId>`)을 Operation 으로 푼다.
-  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport, {
+  const pluginMcp = createAdmiralMcpHost(mcpHttp.transport, {
     onFailure: recordFailure,
     resolveCaller: (label) => {
       const operationId = label.startsWith("chat:") ? label.slice(5) : label;
@@ -989,7 +992,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return owner?.ok ? owner.commodoreId : null;
     },
   });
-  const pluginHostCapabilities: FleetPluginHostCapabilities = {
+  const consoleFeaturePorts: FleetPluginHostCapabilities = {
     commodore: {
       registerBoard: (adapter) => { if (!commodore) throw new Error("commodore_unavailable"); return commodore.host.registerBoard(adapter); },
       commander: (theaterId) => commodore?.host.commander(theaterId) ?? null,
@@ -1195,8 +1198,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     lifecycle: {
       registerCleanup: (cleanup) => {
-        pluginCleanupCallbacks.add(cleanup);
-        return () => pluginCleanupCallbacks.delete(cleanup);
+        featureCleanupCallbacks.add(cleanup);
+        return () => featureCleanupCallbacks.delete(cleanup);
       },
     },
   };
@@ -1234,7 +1237,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!node) return;
       const next = withSubagentSpawn(node.payload, policy);
       if (next === node.payload) return;
-      pluginHostCapabilities.operations.patch(operationId, { payload: next });
+      consoleFeaturePorts.operations.patch(operationId, { payload: next });
     },
     // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
     // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
@@ -1250,72 +1253,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
     transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
   });
-  // 번들 캐시가 durable dir(FLEET_CONSOLE_DIR 추종)로 이동해 번들 파일 위치 기준의 조상 탐색으로는
-  // 콘솔 패키지를 찾지 못할 수 있다 — 플러그인 external(node-pty·ws) 해석용 패키지 루트를 명시로 전달한다.
-  process.env.FLEET_CONSOLE_PACKAGE_ROOT = release.packageRoot;
-  const pluginHost = createFleetPluginHost({
-    ...resolveBuiltInPluginDiscoveryRoots(release.packageRoot),
-    homeDir: deps.pluginHomeDir,
-    bundleCacheDir: path.join(durablePaths.dir, "plugin-cache"),
-    routes: routeRegistry,
-    upgrades: upgradeRegistry,
-    host: pluginHostCapabilities,
-    registerAdmiralMcp: (pluginId, tools, options) => pluginMcp.register(`fleet-${pluginId}`, tools, options),
-    contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
-    // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
-    spawnOwnedProcess: (pluginId, request) => {
-      const child = ownedProcesses.spawn({
-        command: request.command,
-        args: request.args,
-        ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
-        env: request.env ?? process.env,
-        stdin: request.stdin ?? "pipe",
-        owner: `plugin:${pluginId}`,
-      });
-      return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
-    },
-    // Console 제어 — `console_launcher`·`console_operation` send 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
-    consoleControlFor: createFeatureConsoleControl,
-    createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
-    createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
-        // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
-        const executable = await resolveClaudeExecutable?.();
-        if (!executable) throw new Error("agent_cli_unavailable");
-        return executable;
-      }, compactCeiling: () => readGatewayCompactCeiling?.() });
-      consoleAgentOwners.add(pluginId);
-      return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
-    },
-  });
-  const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins, skipped: pluginHost.skipped });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
     const result: OperationCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
-    for (const plugin of pluginHost.plugins) {
-      const providers = pluginLaunchCatalogProviders.get(plugin.manifest.id);
-      if (!providers) continue;
-      const kinds: OperationLaunchKind[] = [];
-      for (const provider of providers) {
-        let provided: readonly OperationLaunchKind[] = [];
-        try {
-          provided = await provider();
-        } catch {
-          provided = [];
-        }
-        for (const kind of provided) {
-          const safe = sanitizeLaunchKind(kind);
-          if (safe) kinds.push(safe);
-        }
-      }
-      const seenKindIds = new Set<string>();
-      const deduped = kinds.filter((kind) => {
-        if (seenKindIds.has(kind.id)) return false;
-        seenKindIds.add(kind.id);
-        return true;
-      });
-      if (deduped.length === 0) continue;
-      result.push({ id: plugin.manifest.id, title: plugin.manifest.name ?? plugin.manifest.id, kinds: deduped });
-    }
+
     return { plugins: result };
   }
   const lifecycle = deps.lifecycle ?? createConsoleServeLifecycle();
@@ -1492,7 +1432,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
   });
-  const pluginSettingsRouter = createPluginSettingsRouter({
+  const executionSettingsRouter = createExecutionSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
@@ -1511,11 +1451,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     deleteOperation: (operationId): DeferredDeletionReceipt | null => deletionCoordinator.deleteOperation(operationId),
     isPendingDeletion: (operationId) => deletionCoordinator.hasPendingOperation(operationId),
     getPluginSensitiveFields: (pluginId) => pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-      ...(pluginHost.sensitiveFieldsByPluginId.get(pluginId) ?? []),
+
       ...(pluginPayloadSanitizers.get(pluginId) ?? []),
     ],
     resolveLaunchCatalog: resolveOperationCatalog,
-    publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
+    publishRenameEvent: (event) => consoleFeaturePorts.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
     broadcastOperationChanged,
     broadcastGroupChanged,
     broadcastGroupRemoved,
@@ -1603,7 +1543,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleObserverApiCatalog(req, res);
       return true;
     }
-    if (await pluginSettingsRouter(ctx)) return true;
+    if (await executionSettingsRouter(ctx)) return true;
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
@@ -1638,7 +1578,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (desktopUpdateRouter(context)) return true;
     return desktopThemeRouter(context);
   });
-  routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
 
   // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
   function isRequestHostAllowed(req: http.IncomingMessage): boolean {
@@ -1861,38 +1800,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, PAIRING_IDENTITY);
   }
 
-  function handlePluginRuntimeRoute({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): boolean {
-    if (req.method !== "GET") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return true;
-    }
-    if (pathname === "/plugin-runtime/manifest") {
-      writeJson(res, 200, pluginClientAssets.manifest());
-      return true;
-    }
-    const clientMatch = pathname.match(/^\/plugin-runtime\/client\/([^/]+)\.mjs$/u);
-    if (clientMatch) {
-      const source = pluginClientAssets.getClient(decodeURIComponent(clientMatch[1] ?? ""));
-      if (!source) {
-        writeJson(res, 404, { error: "Not found" });
-        return true;
-      }
-      writeJavaScript(res, 200, source);
-      return true;
-    }
-    const shimMatch = pathname.match(/^\/plugin-runtime\/shim\/([^/]+)\.mjs$/u);
-    if (shimMatch) {
-      const source = pluginClientAssets.getShim(decodeURIComponent(shimMatch[1] ?? ""));
-      if (!source) {
-        writeJson(res, 404, { error: "Not found" });
-        return true;
-      }
-      writeJavaScript(res, 200, source);
-      return true;
-    }
-    return false;
-  }
-
   function handleHealth(req: http.IncomingMessage, res: http.ServerResponse): void {
     const handle = lockHandle;
     const token = handle?.payload.token;
@@ -2082,7 +1989,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { version, routes: buildApiCatalog([...OPERATION_ARCHIVE_API_CATALOG, ...executionApiCatalog, ...pluginHost.apiCatalog]) });
+    writeJson(res, 200, { version, routes: buildApiCatalog([...OPERATION_ARCHIVE_API_CATALOG, ...executionApiCatalog, ]) });
   }
 
   // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
@@ -2210,26 +2117,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     consoleAgentOwners.delete("objectives");
     consoleAgentOwners.delete("commodore");
     // SDK는 동기 cleanup도 허용한다 — async 래퍼가 동기 throw를 그 cleanup 하나의 reject로 바꿔, 나머지 정리와 lock 해제를 막지 않는다.
-    const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map(async (cleanup) => cleanup()));
+    const cleanupResults = await Promise.allSettled([...featureCleanupCallbacks].map(async (cleanup) => cleanup()));
     for (const result of cleanupResults) {
       if (result.status === "rejected") {
-        console.warn(`[fleet-console] Plugin cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+        console.warn(`[fleet-console] Feature cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       }
     }
     // 플러그인 cleanup 이후 살아 있는 플러그인 그룹을 정리한다. 같은 정지 단계는 owner와 무관하게
     // 종료된 리더의 잔여도 grace 뒤 거둔다. 살아 있는 에이전트는 flush를 위해 계속 SDK close에 맡긴다.
-    ownedProcesses.beginStop((group) => group.owner?.startsWith("plugin:") === true, OWNED_GROUP_TERM_GRACE_MS, {
+    ownedProcesses.beginStop((group) => group.owner?.startsWith("feature:") === true, OWNED_GROUP_TERM_GRACE_MS, {
       onProcessTableUnavailable: (error) => recordFailure("shutdown_process_table_unavailable", error),
     });
     for (const cleanup of [...executionCleanupCallbacks].reverse()) {
       try { await cleanup(); } catch (error) { console.warn("[fleet-console] Execution cleanup failed:", error); }
     }
     executionCleanupCallbacks.clear();
-    await pluginHost.cleanup();
     consoleControl.dispose();
     useRequests.dispose();
     try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
-    pluginCleanupCallbacks.clear();
+    featureCleanupCallbacks.clear();
     pluginEventListeners.clear();
     currentLock?.release();
   }
@@ -2295,7 +2201,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 축이라 비교에서 뺀다 — 남기면 게이트가 항상 열려 게이트가 아니게 된다.
   function sanitizedOperationJson(node: OperationNode): string {
     const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
+
       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
     const { ts: _ts, ...rest } = createSanitizedOpDto(node, { sensitiveFields });
@@ -2381,7 +2287,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function broadcastOperationChanged(node: OperationNode): void {
     if (operationSseSubscribers.size === 0) return;
     const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
+
       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
     const sanitized = createSanitizedOpDto(node, { sensitiveFields });
@@ -2707,7 +2613,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function sanitizeArchiveOperation(node: OperationNode, includeSessionNames = false): OperationNode {
     const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []), ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
+       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
     return createSanitizedOpDto(node, { sensitiveFields, includeSessionNames });
   }
@@ -2790,7 +2696,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
       reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
       // 같은 id로 발견된 플러그인(거절된 외부 플러그인 포함)이 있으면 그 폴더는 그 플러그인의 것이다.
-      reclaimRetiredPluginData(durablePaths.dir, new Set([...pluginHost.plugins.map((plugin) => plugin.manifest.id), ...pluginHost.skipped.map((plugin) => plugin.id)]));
+      reclaimRetiredPluginData(durablePaths.dir, new Set());
       consoleSettingsStore.load();
       await rehydrateDurableState();
       // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
@@ -2807,7 +2713,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           }
           return null;
         },
-        host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, useContext, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+        host: { ...consoleFeaturePorts, computerUseMcp, browserMcp, useRequests, useContext, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
         dataDir: durablePaths.dir,
         recordFailure,
         legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
@@ -2816,7 +2722,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
+      }), consoleActions, consoleFeaturePorts.storage, theaterSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2828,13 +2734,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       purgeCoreOperation = execution.purgeOperation;
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
-        paths: pluginHostCapabilities.paths, events: pluginHostCapabilities.events,
-        experiments: pluginHostCapabilities.experiments, models: pluginHostCapabilities.models,
+        paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
+        experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),
-        http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
-        knowledgeTools: (commodoreId) => pluginHostCapabilities.admiralMcp.bindCommodore?.(commodoreId) ?? [],
+        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
+        knowledgeTools: (commodoreId) => consoleFeaturePorts.admiralMcp.bindCommodore?.(commodoreId) ?? [],
         agent: {
-          baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
+          baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
           consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,
           browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "commodore" }) },
           resolveExecutablePath: async () => {
@@ -2852,10 +2758,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
       }
       objectives = createObjectivesFeature({
-        paths: pluginHostCapabilities.paths, events: pluginHostCapabilities.events,
-        operations: { ...pluginHostCapabilities.operations, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
+        paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
+        operations: { ...consoleFeaturePorts.operations, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),
-        server: pluginHostCapabilities.server, http: pluginHostCapabilities.http, security: pluginHostCapabilities.security,
+        server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
       });
@@ -2866,14 +2772,67 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         routeRegistry.register(routePath, (context) => context.pathname === routePath ? route.handler(context) : false);
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Objectives", gate: "origin-write", transport: "http" });
       }
-      await pluginHost.boot();
+      const codexFeature = await createCodexFeature({
+        knowledge: consoleFeaturePorts.knowledge, paths: consoleFeaturePorts.paths,
+        events: consoleFeaturePorts.events, server: consoleFeaturePorts.server,
+        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
+        registerMcp: (name, tools, options) => pluginMcp.register(name, tools, options),
+      });
+      featureCleanupCallbacks.add(() => codexFeature.dispose());
+      const quotaFeature = createQuotaFeature({
+        server: consoleFeaturePorts.server, storage: consoleFeaturePorts.storage,
+        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
+      });
+      const scuttlebuttAgent = createPluginAgentHost({
+        baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
+        consoleUse: consoleUse.forPlugin("scuttlebutt"), computerUseMcp,
+        browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "scuttlebutt" }) },
+        resolveExecutablePath: async () => {
+          const executable = await resolveClaudeExecutable?.();
+          if (!executable) throw new Error("agent_cli_unavailable");
+          return executable;
+        },
+        compactCeiling: () => readGatewayCompactCeiling?.(),
+      });
+      consoleAgentOwners.add("scuttlebutt");
+      featureCleanupCallbacks.add(async () => { consoleAgentOwners.delete("scuttlebutt"); await scuttlebuttAgent.dispose(); });
+      const scuttlebuttFeature = await createScuttlebuttFeature({
+        paths: consoleFeaturePorts.paths, knowledge: consoleFeaturePorts.knowledge,
+        experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
+        http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
+        agent: scuttlebuttAgent,
+      });
+      featureCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
+      const fileExplorerFeature = createFileExplorerFeature({
+        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
+        security: consoleFeaturePorts.security, consoleUse: consoleUse.forPlugin("file-explorer"),
+      });
+      featureCleanupCallbacks.add(() => fileExplorerFeature.dispose());
+      const repositoryFeature = createRepositoryFeature({
+        paths: consoleFeaturePorts.paths, http: consoleFeaturePorts.http,
+        security: consoleFeaturePorts.security, consoleUse: consoleUse.forPlugin("repository"),
+        processes: { spawnOwned: (request) => {
+          const child = ownedProcesses.spawn({
+            command: request.command, args: request.args,
+            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:repository",
+          });
+          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
+        } },
+      });
+      featureCleanupCallbacks.add(() => repositoryFeature.dispose());
+      for (const feature of [codexFeature, quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
+        for (const route of feature.routes) {
+          routeRegistry.register(route.path, route.handler);
+          executionApiCatalog.push(...route.catalog);
+        }
+      }
       // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
       announceRestoredTheaters();
       commodore.sync();
       operationArchive.flushEvents();
       deletionCoordinator.sweepExpired();
-      await pluginClientAssets.prepare();
       // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
       // 서비스 중인 Console의 파일을 지운다.
       launchPromptDirectories.reclaimLeftovers();
@@ -3314,15 +3273,6 @@ function remotePortUnavailable(cause: unknown): Error {
   return Object.assign(new Error("remote_port_unavailable"), { code: REMOTE_PORT_UNAVAILABLE, cause });
 }
 
-function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly builtInSourceRoot?: string; readonly builtInDistRoot: string } {
-  const packageRootRepo = path.resolve(packageRoot, "..", "..");
-  const sourceRoot = path.join(packageRootRepo, "runtime", "fleet-plugins");
-  return {
-    ...(fs.existsSync(sourceRoot) ? { builtInSourceRoot: sourceRoot } : {}),
-    builtInDistRoot: path.join(packageRoot, "dist", "fleet-plugins"),
-  };
-}
-
 /**
  * 업그레이드는 요청 경로와 같은 Host 경계를 먼저 통과해야 한다. 업그레이드 핸들러는
  * 거절을 바이트 없이 소켓 파기로만 표현하므로, 거절 사유를 밖에서 구분할 수 없다.
@@ -3564,11 +3514,6 @@ function writeJson(res: http.ServerResponse, status: number, body: unknown): voi
 function writeNoContent(res: http.ServerResponse): void {
   res.writeHead(204, withSecurityHeaders({}));
   res.end();
-}
-
-function writeJavaScript(res: http.ServerResponse, status: number, body: string): void {
-  res.writeHead(status, withSecurityHeaders({ "Content-Type": "text/javascript; charset=utf-8" }));
-  res.end(body);
 }
 
 function runAsyncHandler(handler: Promise<void>, res: http.ServerResponse): void {

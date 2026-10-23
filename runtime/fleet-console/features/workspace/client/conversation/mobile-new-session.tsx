@@ -7,7 +7,7 @@ import { composerAttachmentNoticeText, composerT, createComposerAttachments, nex
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { closeMobileNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, requestLaunch } from "../../../../core/client/src/integration/store.js";
 import type { LaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -33,7 +33,7 @@ export function MobileNewSession() {
   const t = useT(true);
   const ct = composerT(useConsoleLocale());
   const navigate = useNavigate();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const mobileLayout = useViewMode().effective === "mobile";
   const open = state.mobileNewSessionOpen && mobileLayout;
 

@@ -1,7 +1,7 @@
 import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
-import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -82,7 +82,7 @@ import type { ConsoleState } from "../../integration/types.js";
 interface OperationSearchProps {
   readonly state: ConsoleState;
   readonly railPanels: readonly PaletteSearchPanel[];
-  // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
+  // feature-registry 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly ClientExecutionProvider[];
   // 같은 이유로 Theater Inbox 섹션(사령관 등)도 prop으로 받는다 — 팔레트가 그 Theater 의 섹션 행을 범용으로 세운다.
   readonly theaterSections: readonly TheaterInboxSectionDescriptor[];
@@ -109,7 +109,7 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const language = useConsoleLocale();
   const desktopView = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;

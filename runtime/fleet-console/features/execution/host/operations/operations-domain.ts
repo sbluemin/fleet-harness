@@ -484,7 +484,7 @@ import type http from "node:http";
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
 import type { DeferredDeletionReceipt } from "../../../workspace/host/deferred-deletion.js";
-import type { OperationCatalogPlugin } from "../../../../core/host/plugin-host/plugin-host.js";
+import type { OperationCatalogPlugin } from "@fleet-console/sdk/plugin";
 
 export interface OperationsRouterDeps {
   readonly store: OperationStore;

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { SidebarFooterEntryContext } from "@fleet-console/sdk/plugin";
-import { DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -20,7 +20,7 @@ import "./conversation-dock.css";
  * 콘솔 전환은 위 공용 섹션이 맡고, 앱 메뉴에는 보기 모드(브라우저만)와 도움말·설정이 남는다.
  */
 function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   // 옛 Band 기여도 버리지 않는다. 부관 머리만 기존 맨 위 자리에 남고, 나머지는 이 호환 경로를 따른다.
   const sidebarFooterEntries = useMemo(() => [...registry.sidebarFooterEntries, ...registry.commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID).map((entry) => ({ id: entry.id, render: (_context: SidebarFooterEntryContext) => entry.render() }))], [registry.sidebarFooterEntries, registry.commandBandEntries]);
   const ref = useRef<HTMLDivElement>(null);

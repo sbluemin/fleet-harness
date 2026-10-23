@@ -60,7 +60,7 @@ const DEPRECATED_SDK_IMPORTS = new Map([
   ["@fleet-console/sdk/settings/browser", ["CLAUDE_EXPERIMENT_MODEL_OPTIONS", "ModelPicker", "ModelPickerProps", "ModelPickerEffort", "useModelPickerOptions"]],
 ]);
 const DEPRECATED_MEMBER_READS = new Set(["modelOptions", "experimentModelOptions", "ModelChoice"]);
-const builtInRoots = [consoleRoot, path.join(repoRoot, "runtime/fleet-plugins")];
+const builtInRoots = [consoleRoot, path.join(repoRoot)];
 for (const file of builtInRoots.flatMap((root) => files(root))) {
   if (!/\.(?:[cm]?ts|tsx)$/.test(file) || file.endsWith(".d.ts")) continue;
   if (file.startsWith(path.join(consoleRoot, "sdk") + path.sep)) continue;

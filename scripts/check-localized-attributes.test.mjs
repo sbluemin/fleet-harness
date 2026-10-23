@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { findLocalizedAttributeViolations } from "./check-localized-attributes.mjs";
 
-const ROOTS = ["runtime/fleet-plugins"];
+const ROOTS = ["runtime/fleet-console/features"];
 
 function fixture(files) {
   const root = mkdtempSync(path.join(tmpdir(), "localized-attr-gate-"));
@@ -19,39 +19,39 @@ function fixture(files) {
 }
 
 test("catches the literal that shipped as aria-label=\"Terminal\"", () => {
-  const root = fixture({ "runtime/fleet-plugins/x/panel.tsx": '<section aria-label="Terminal">\n' });
+  const root = fixture({ "runtime/fleet-console/features/x/panel.tsx": '<section aria-label="Terminal">\n' });
   assert.deepEqual(
     findLocalizedAttributeViolations(root, ROOTS),
-    ['runtime/fleet-plugins/x/panel.tsx:1 aria-label="Terminal"'],
+    ['runtime/fleet-console/features/x/panel.tsx:1 aria-label="Terminal"'],
   );
 });
 
 test("accepts a value read through the translator", () => {
-  const root = fixture({ "runtime/fleet-plugins/x/panel.tsx": '<section aria-label={t("terminal.aria")}>\n' });
+  const root = fixture({ "runtime/fleet-console/features/x/panel.tsx": '<section aria-label={t("terminal.aria")}>\n' });
   assert.deepEqual(findLocalizedAttributeViolations(root, ROOTS), []);
 });
 
 test("leaves identifiers and single glyphs alone — they are not the screen's words", () => {
   const root = fixture({
-    "runtime/fleet-plugins/x/a.tsx": '<i title="▾" />\n<div placeholder="" />\n<b title="id" />\n',
+    "runtime/fleet-console/features/x/a.tsx": '<i title="▾" />\n<div placeholder="" />\n<b title="id" />\n',
   });
   assert.deepEqual(findLocalizedAttributeViolations(root, ROOTS), []);
 });
 
 test("catches a multi-word placeholder as well", () => {
-  const root = fixture({ "runtime/fleet-plugins/x/a.tsx": '<input placeholder="search skills here" />\n' });
+  const root = fixture({ "runtime/fleet-console/features/x/a.tsx": '<input placeholder="search skills here" />\n' });
   assert.deepEqual(
     findLocalizedAttributeViolations(root, ROOTS),
-    ['runtime/fleet-plugins/x/a.tsx:1 placeholder="search skills here"'],
+    ['runtime/fleet-console/features/x/a.tsx:1 placeholder="search skills here"'],
   );
 });
 
 test("skips test files, which name the screen's words to find them", () => {
-  const root = fixture({ "runtime/fleet-plugins/x/a.test.tsx": '<section aria-label="Terminal">\n' });
+  const root = fixture({ "runtime/fleet-console/features/x/a.test.tsx": '<section aria-label="Terminal">\n' });
   assert.deepEqual(findLocalizedAttributeViolations(root, ROOTS), []);
 });
 
 test("skips build output", () => {
-  const root = fixture({ "runtime/fleet-plugins/x/dist/a.tsx": '<section aria-label="Terminal">\n' });
+  const root = fixture({ "runtime/fleet-console/features/x/dist/a.tsx": '<section aria-label="Terminal">\n' });
   assert.deepEqual(findLocalizedAttributeViolations(root, ROOTS), []);
 });

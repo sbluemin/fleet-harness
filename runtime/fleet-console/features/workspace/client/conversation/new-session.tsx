@@ -15,7 +15,7 @@ import { resolveRowEffort } from "../../../execution/client/components/effort-tr
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { notifyKeepOutSurfaceChanged } from "../../../../core/client/src/integration/floating-widget-layer.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
 import { readCommandInput, type NewSessionCommandInput } from "./new-session-commands.js";
@@ -78,7 +78,7 @@ export function NewSessionColumn({ state, target, tools }: {
   const [apexOpen, setApexOpen] = useState(false);
   const apexCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current); }, []);
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const deckId = useId();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);

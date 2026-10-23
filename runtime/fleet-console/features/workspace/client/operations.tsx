@@ -15,7 +15,7 @@ import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-co
 import { operationAccentFromNode } from "./operation-accent.js";
 import { getTheaterGroupCollapse, pruneOperationAccents, toggleTheaterStatusAxis } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
@@ -54,7 +54,7 @@ interface OperationsProps {
 
 export function Operations({ state, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
   const viewedTheaterId = useViewedTheaterId();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const viewMode = useViewMode();
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");

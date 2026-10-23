@@ -6,7 +6,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { getState, subscribe } from "../../integration/store.js";
-import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
+import { useExpandedSurfaceDescriptors } from "../../integration/feature-registry.js";
 import { SurfacePane } from "../expanded-surface/layer.js";
 import { closeExpandedSurface, getExpandedSurfaceState, useExpandedSurfaces } from "../expanded-surface/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";

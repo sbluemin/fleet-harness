@@ -12,7 +12,7 @@ import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useNewSessionShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
-import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
+import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
@@ -209,7 +209,7 @@ const DEPUTY_CLEARANCE = 8;
  */
 export function ConversationSideBarDeputies() {
   const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
+  const { commandBandEntries } = useFeatureRegistry();
   const pinned = commandBandEntries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID);
   const ref = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -503,7 +503,7 @@ function ConversationPanelIdentity() {
   const theaterLabel = useTheaterLabel(inbox?.theaterId);
   const subject = useConversationSubject();
   const surface = useConversationSurface();
-  const { conversationSurfaces } = usePluginRegistry();
+  const { conversationSurfaces } = useFeatureRegistry();
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
@@ -642,7 +642,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const subject = useStageSubject(state);
   // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Operation 대신 선다.
   const surface = useConversationSurface();
-  const { conversationSurfaces } = usePluginRegistry();
+  const { conversationSurfaces } = useFeatureRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
   // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Operation 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
   const newSession = state.newSession;
@@ -1135,7 +1135,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }), [descriptor.id, language, selection.params, theme, standInId, standInComposer]);
   // 대화가 Theater 의 Inbox 섹션을 대신하면(사령관) 그 탭에 섹션 꼬리표를 단다 — Theater 를 연 동안 패널 머리가 「사령관 | Theater 설정」
   // 섹션 줄로 묶는다.
-  const { theaterInboxSections } = usePluginRegistry();
+  const { theaterInboxSections } = useFeatureRegistry();
   const section = useMemo<ConversationTabSection | null>(() => {
     let info: { readonly theaterId: string; readonly inboxSection: string } | null = null;
     try { info = descriptor.theater?.(context) ?? null; } catch { info = null; }

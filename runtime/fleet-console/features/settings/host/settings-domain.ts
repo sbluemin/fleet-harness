@@ -814,62 +814,47 @@ function isSeenFeatureToursInput(value: unknown): value is readonly string[] {
     && value.every((item) => typeof item === "string" && item.length <= 64);
 }
 
-interface PluginSettingsRouteDeps {
+interface ExecutionSettingsRouteDeps {
   readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
 }
 
-interface PluginSettingsRouteContext {
+interface ExecutionSettingsRouteContext {
   readonly req: http.IncomingMessage;
   readonly res: http.ServerResponse;
   readonly pathname: string;
 }
 
-const PLUGIN_SETTINGS_PREFIX = "/api/v1/settings/plugins/";
-const MAX_PLUGIN_SETTINGS_BYTES = 32 * 1024;
+const MAX_EXECUTION_SETTINGS_BYTES = 32 * 1024;
 
-export const PLUGIN_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
+export const EXECUTION_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
-    path: "/api/v1/settings/plugins/:pluginId",
-    summary: "Get the settings for a specific plugin.",
+    path: "/api/v1/settings/execution",
+    summary: "Get the settings for execution.",
     category: "Settings",
     gate: "loopback",
     transport: "http",
   },
   {
     method: "PUT",
-    path: "/api/v1/settings/plugins/:pluginId",
-    summary: "Save the settings for a specific plugin.",
+    path: "/api/v1/settings/execution",
+    summary: "Save the settings for execution.",
     category: "Settings",
     gate: "origin-write",
     transport: "http",
   },
 ];
 
-export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (context: PluginSettingsRouteContext) => Promise<boolean> {
-  return async function handlePluginSettingsRoute(context: PluginSettingsRouteContext): Promise<boolean> {
+export function createExecutionSettingsRouter(deps: ExecutionSettingsRouteDeps): (context: ExecutionSettingsRouteContext) => Promise<boolean> {
+  return async function handleExecutionSettingsRoute(context: ExecutionSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    const execution = pathname === "/api/v1/settings/execution" || pathname === `${PLUGIN_SETTINGS_PREFIX}terminal`;
-    if (!execution && !pathname.startsWith(PLUGIN_SETTINGS_PREFIX)) return false;
-    const rest = execution ? "terminal" : pathname.slice(PLUGIN_SETTINGS_PREFIX.length);
-    if (rest.includes("/")) return false;
-    let pluginId: string;
-    try {
-      pluginId = decodeURIComponent(rest);
-    } catch {
-      deps.writeJson(res, 400, { error: "invalid_plugin_id" });
-      return true;
-    }
-    if (!PLUGIN_ID_PATTERN.test(pluginId)) {
-      deps.writeJson(res, 400, { error: "invalid_plugin_id" });
-      return true;
-    }
+    if (pathname !== "/api/v1/settings/execution") return false;
     if (req.method === "GET") {
       const data = deps.consoleSettingsStore.load();
-      const value = (execution ? data.execution : data.plugins?.[pluginId]) ?? null;
+      const value = data.execution ?? null;
       deps.writeJson(res, 200, { value });
       return true;
     }
@@ -878,7 +863,7 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
         deps.writeJson(res, 401, { error: "unauthorized" });
         return true;
       }
-      if (!isPluginSettingsJsonRequest(req)) {
+      if (!isExecutionSettingsJsonRequest(req)) {
         deps.writeJson(res, 415, { error: "unsupported_media_type" });
         return true;
       }
@@ -887,16 +872,16 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
         deps.writeJson(res, 400, { error: "invalid_json" });
         return true;
       }
-      if (Buffer.byteLength(JSON.stringify(body), "utf8") > MAX_PLUGIN_SETTINGS_BYTES) {
+      if (Buffer.byteLength(JSON.stringify(body), "utf8") > MAX_EXECUTION_SETTINGS_BYTES) {
         deps.writeJson(res, 413, { error: "payload_too_large" });
         return true;
       }
       const updated = deps.consoleSettingsStore.update((current) => ({
         ...current,
         version: 1,
-        ...(execution ? { execution: preserveLegacyTerminalFont(current, body) } : { plugins: { ...current.plugins, [pluginId]: body as Record<string, unknown> } }),
+        execution: preserveLegacyTerminalFont(current, body),
       }));
-      deps.writeJson(res, 200, { value: (execution ? updated.execution : updated.plugins?.[pluginId]) ?? null });
+      deps.writeJson(res, 200, { value: updated.execution ?? null });
       return true;
     }
     deps.writeJson(res, 405, { error: "Method not allowed" });
@@ -905,7 +890,7 @@ export function createPluginSettingsRouter(deps: PluginSettingsRouteDeps): (cont
 }
 
 
-function isPluginSettingsJsonRequest(req: http.IncomingMessage): boolean {
+function isExecutionSettingsJsonRequest(req: http.IncomingMessage): boolean {
   const contentType = req.headers["content-type"];
   return typeof contentType === "string" && contentType.toLowerCase().split(";")[0]?.trim() === "application/json";
 }

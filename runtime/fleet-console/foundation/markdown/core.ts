@@ -62,7 +62,7 @@ interface ExtractedFrontmatter {
   content: string;
 }
 
-// 정본: runtime/fleet-plugins/codex/server/wiki/store.ts WIKI_LINK_PATTERN
+// 정본: runtime/fleet-console/features/codex/host/wiki/store.ts WIKI_LINK_PATTERN
 // 브라우저 번들에 Node 전용 저장 모듈을 포함하지 않도록 인라인한다. 두 정규식을 함께 유지한다.
 const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
 

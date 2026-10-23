@@ -27,7 +27,7 @@ const ALLOW_MARKER = /\/\/\s*fleet-allow-visible-spawn:\s*\S/;
 
 function productRoots() {
   const roots = ["foundation", "features", "core", "cli"].map((part) => path.join(repoRoot, "runtime/fleet-console", part));
-  const plugins = path.join(repoRoot, "runtime/fleet-plugins");
+  const plugins = path.join(repoRoot);
   for (const entry of safeReaddir(plugins)) roots.push(path.join(plugins, entry, "server"));
   roots.push(path.join(repoRoot, "runtime/fleet-desktop/src"));
   return roots;

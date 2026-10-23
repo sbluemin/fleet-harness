@@ -1,15 +1,13 @@
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 
-const VIRTUAL_FLEET_PLUGINS_ID = "virtual:fleet-plugins";
-const RESOLVED_VIRTUAL_FLEET_PLUGINS_ID = `\0${VIRTUAL_FLEET_PLUGINS_ID}`;
 
 // console 자체 HTTP 서버가 /console/ 경로에서 정적 산출물을 서빙하므로 base는 고정 계약이다.
 export default defineConfig({
   root: path.resolve(__dirname),
   base: "/console/",
-  plugins: [react(), fleetPluginsVirtualModule()],
+  plugins: [react()],
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
@@ -29,30 +27,3 @@ export default defineConfig({
     emptyOutDir: true,
   },
 });
-
-function fleetPluginsVirtualModule(): Plugin {
-  return {
-    name: "fleet-plugins-virtual-module",
-    resolveId(id) {
-      return id === VIRTUAL_FLEET_PLUGINS_ID ? RESOLVED_VIRTUAL_FLEET_PLUGINS_ID : null;
-    },
-    load(id) {
-      if (id !== RESOLVED_VIRTUAL_FLEET_PLUGINS_ID) return null;
-      const fileExplorerClientEntry = path.resolve(__dirname, "../../../fleet-plugins/file-explorer/client/index.tsx");
-      const diffClientEntry = path.resolve(__dirname, "../../../fleet-plugins/repository/client/index.tsx");
-      const quotaClientEntry = path.resolve(__dirname, "../../../fleet-plugins/quota/client/index.tsx");
-      const scuttlebuttClientEntry = path.resolve(__dirname, "../../../fleet-plugins/scuttlebutt/client/index.tsx");
-      const codexClientEntry = path.resolve(__dirname, "../../../fleet-plugins/codex/client/index.tsx");
-      return [
-        `import { plugins as fileExplorerPlugins } from ${JSON.stringify(fileExplorerClientEntry)};`,
-        `import { plugins as repositoryPlugins } from ${JSON.stringify(diffClientEntry)};`,
-        `import { plugins as quotaPlugins } from ${JSON.stringify(quotaClientEntry)};`,
-        `import { plugins as scuttlebuttPlugins } from ${JSON.stringify(scuttlebuttClientEntry)};`,
-        `import { plugins as codexPlugins } from ${JSON.stringify(codexClientEntry)};`,
-        // 합성 순서가 곧 rail 순서다(코어는 정렬 필드를 두지 않는다). Codex는 코어 내장
-        // 패널이던 시절 rail 최상위였고, 플러그인이 되어도 그 자리를 지킨다.
-        `export const plugins = [...codexPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
-      ].join("\n");
-    },
-  };
-}

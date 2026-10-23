@@ -1,7 +1,0 @@
-{
-  "id": "notes",
-  "name": "Notes",
-  "apiVersion": 1,
-  "client": "client/index.tsx",
-  "routes": "routes.ts"
-}

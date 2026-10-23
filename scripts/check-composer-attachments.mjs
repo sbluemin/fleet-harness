@@ -15,7 +15,6 @@ const clientRoots = [
   "runtime/fleet-console/features",
   "runtime/fleet-console/core/client",
   "runtime/fleet-console/sdk",
-  "runtime/fleet-plugins",
 ];
 const composerSurfaces = new Set([
   "composer.tsx",

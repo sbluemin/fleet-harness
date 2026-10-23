@@ -9,7 +9,7 @@ import { useT } from "../../../../../core/client/src/i18n/index.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../../core/client/src/integration/types.js";
 import { setActiveOperation, themePolarity } from "../../../../../core/client/src/integration/store.js";
 import { useHostCapabilities } from "../../../../../core/client/src/integration/use-host-capabilities.js";
-import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/plugin-registry.js";
+import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/feature-registry.js";
 import { isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/operations-sse.js";
 import { useMenuButtonKeyboard } from "../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";

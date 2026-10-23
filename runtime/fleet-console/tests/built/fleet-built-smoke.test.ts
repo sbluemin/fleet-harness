@@ -457,7 +457,7 @@ afterEach(async () => {
   // through the real path: both spellings name one slot, so the killed Console's leftovers are the next one's to reclaim.
   it.skipIf(process.platform === "win32")("leaves no process behind and reclaims the lock and leftovers after an external SIGKILL", async () => {
     const run = createRun("sigkill");
-    installPluginChildFixture(run);
+    installFeatureChildFixture(run);
     const linked = path.join(run.dir, "linked-root");
     fs.symlinkSync(run.root, linked, "dir");
     const group = spawnGroup(run, { env: { FLEET_DATA_DIR: linked, FLEET_CONSOLE_DATA_DIR: path.join(linked, "console") } });
@@ -465,8 +465,8 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consolePid);
     const attachment = await uploadAttachment(run, endpoint);
     await openWorkload(run, endpoint, { terminal: true });
-    const pluginChildren = await openPluginChildren(run, endpoint);
-    const started = [...descendantsOf(consolePid).filter((entry) => !pluginChildren.some((child) => child.pid === entry.pid)), ...pluginChildren];
+    const featureChildren = await openFeatureChildren(run, endpoint);
+    const started = [...descendantsOf(consolePid).filter((entry) => !featureChildren.some((child) => child.pid === entry.pid)), ...featureChildren];
 
     process.kill(consolePid, "SIGKILL");
     await group.consoleExit(5_000);
@@ -481,27 +481,27 @@ afterEach(async () => {
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
-  // L6n, e7874487:N9 (I2, I4; L6's plugin children on the normal stop path). The same hung plugin children must not hold a
-  // normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace — those whose
+  // L6n, e7874487:N9 (I2, I4; L6's feature children on the normal stop path). The same hung feature children must not hold a
+  // normal stop to the deadline: the single cleanup ends the features' registered groups after their grace — those whose
   // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
   // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
   // nothing it started outlives it.
   // 에이전트 helper도 리더가 SDK 종료로 사라진 뒤 파이프를 잡는다. 플러그인만의 stop으로 이 방어를 대체할 수 없다.
-  it.skipIf(process.platform === "win32")("ends an agent residual and hung plugin children on a normal stop and reports clean", async () => {
+  it.skipIf(process.platform === "win32")("ends an agent residual and hung feature children on a normal stop and reports clean", async () => {
     // claude-agent-sdk 0.3.306 close(): EOF grace 2000ms + 최종 SIGKILL까지 5000ms. 벤더 갱신 시 재측정한다.
     const sdkCloseMaxMs = 2_000 + 5_000;
     expect(Math.max(sdkCloseMaxMs, OWNED_GROUP_TERM_GRACE_MS) + PROCESS_TABLE_TIMEOUT_MS + ESCALATION_MARGIN_MS,
       "정지 grace는 SDK 종료와 겹쳐야 하고, 증명 조회와 스케줄링 여유까지 B_int 안에 들어야 한다").toBeLessThan(CONSOLE_STOP_DEADLINE_MS);
     const run = createRun("plugin-stop");
-    installPluginChildFixture(run);
+    installFeatureChildFixture(run);
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     const consoleProcess = spawnConsole(run);
     const startedAt = Date.now();
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
     expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
-    const pluginChildren = await openPluginChildren(run, endpoint);
-    const started = [...descendantsOf(consoleProcess.pid!).filter((entry) => !pluginChildren.some((child) => child.pid === entry.pid)), ...pluginChildren];
+    const featureChildren = await openFeatureChildren(run, endpoint);
+    const started = [...descendantsOf(consoleProcess.pid!).filter((entry) => !featureChildren.some((child) => child.pid === entry.pid)), ...featureChildren];
     await provableByStartTime(startedAt);
 
     const stoppedAt = Date.now();
@@ -510,7 +510,7 @@ afterEach(async () => {
     const elapsedMs = Date.now() - stoppedAt;
 
     console.log(`L6n stop timing ${JSON.stringify({ outcome: exitOutcome(run, consoleProcess.pid!), elapsedMs, marginMs: EXTERNAL_ESCALATION_MS - elapsedMs })}`);
-    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung plugin child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
+    lifecycleCheck("L6n", stop.status === 0, "a normal stop with a hung feature child is reported as stopped", { detail: { status: stop.status, stdout: stop.stdout.trim(), elapsedMs } });
     lifecycleCheck("L6n", exit.code === 0 && exit.signal === null && exitOutcome(run, consoleProcess.pid!) === "clean", "the Console ends by itself and records `clean`", { detail: { exit, outcome: exitOutcome(run, consoleProcess.pid!), failureLog: failureKinds(run) } });
     lifecycleCheck("L6n", elapsedMs < EXTERNAL_ESCALATION_MS, "I4: a clean stop returns before the actor's escalation (B_ext)", { detail: { elapsedMs } });
     const left = await survivors(run, started);
@@ -584,13 +584,13 @@ afterEach(async () => {
   // spawn 뒤 내부 libuv Job을 벗어나는 호출이 성공하면 장기 생존 자식이 stop과 함께 종료돼야 한다.
   // Start-Process는 headless runner 한계로 필수 역할에서 제외한다(계약의 powershell-intermediate 잔류).
   // N9-W2: 외부 CLI stop이 토큰 인증 정지 요청으로 cleanup을 실행하므로 실제 dist/cli.mjs stop으로 멈춘다.
-  it.skipIf(process.platform !== "win32")("ends a hung plugin child's grandchildren on an external stop and denies breakaway", async () => {
+  it.skipIf(process.platform !== "win32")("ends a hung feature child's grandchildren on an external stop and denies breakaway", async () => {
     const run = createRun("win-plugin-stop");
     const breakawayFile = path.join(run.dir, "breakaway.json");
     const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
-    run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN = "1";
-    run.env.PLUGIN_CHILD_BREAKAWAY_RESULT = pluginBreakawayFile;
-    installPluginChildFixture(run);
+    run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN = "1";
+    run.env.FEATURE_CHILD_BREAKAWAY_RESULT = pluginBreakawayFile;
+    installFeatureChildFixture(run);
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
     run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
@@ -598,8 +598,8 @@ afterEach(async () => {
     const endpoint = await waitForReady(run, consoleProcess.pid!);
     await openWorkload(run, endpoint, { terminal: false });
     expect(agentProcs(run).some((entry) => entry.role === "chat-residual"), "에이전트 잔여 helper가 실행되어야 한다").toBe(true);
-    const pluginChildren = await openPluginChildren(run, endpoint);
-    const started = [...pluginChildren, ...descendantsOf(consoleProcess.pid!)];
+    const featureChildren = await openFeatureChildren(run, endpoint);
+    const started = [...featureChildren, ...descendantsOf(consoleProcess.pid!)];
     type PluginBreakawayAttempt = { phase: string; nonDetachedSpawns: number; ok: boolean; err: number; pid: number; callerPid: number };
     const pluginBreakaway = JSON.parse(fs.readFileSync(pluginBreakawayFile, "utf8")) as { beforeSpawn: PluginBreakawayAttempt; afterSpawn: PluginBreakawayAttempt };
     const before = pluginBreakaway.beforeSpawn;
@@ -639,7 +639,7 @@ afterEach(async () => {
       expect(breakaway.err, `breakaway failed for an unexpected reason (${JSON.stringify(breakaway)})`).toBe(5);
     }
     for (const role of ["detached", "native"]) {
-      expect(pluginChildren.some((child) => child.command === `plugin-cli ${role}`), `${role} grandchild was not started`).toBe(true);
+      expect(featureChildren.some((child) => child.command === `feature-cli ${role}`), `${role} grandchild was not started`).toBe(true);
     }
     if (after.ok) {
       expect(processStartTime(after.pid), "stop 직전에도 성공한 breakaway 자식이 같은 생성 시각으로 살아 있어야 한다").toBe(pluginBreakawayStartedAt);
@@ -658,7 +658,7 @@ afterEach(async () => {
     if (after.ok) {
       expect(processStartTime(after.pid), `stop 뒤 성공한 breakaway 자식이 남으면 안 된다: pid=${after.pid}, startedAt=${pluginBreakawayStartedAt}`).not.toBe(pluginBreakawayStartedAt);
     }
-    lifecycleCheck("W1", left.length === 0, "I2: the plugin child and its grandchildren do not outlive the Console", { detail: { survivors: left, failureLog: failureKinds(run) } });
+    lifecycleCheck("W1", left.length === 0, "I2: the feature child and its grandchildren do not outlive the Console", { detail: { survivors: left, failureLog: failureKinds(run) } });
   }, 150_000);
 
   // W2. An uncaught exception while a fake agent, its MCP child, and a detached grandchild are running. The job closes
@@ -991,7 +991,7 @@ function windowsFakeAgentExe(): string {
 }
 
 /**
- * Grandchild setup baked into the stand-in, so the flag is not read from the plugin child's environment at runtime.
+ * Grandchild setup baked into the stand-in, so the flag is not read from the feature child's environment at runtime.
  * A failure is appended to the same pids file the timeout prints.
  */
 function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
@@ -1382,48 +1382,35 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   }
 }
 
-const PLUGIN_CHILD_ID = "lifecycle-child";
-
-/** Where the fixture plugin lives: the run's own `~/.fleet/plugins`, which the Console scans for external plugins. */
-function pluginChildRoot(run: LifecycleRun): string {
-  return path.join(run.env.HOME!, ".fleet", "plugins", PLUGIN_CHILD_ID);
+/** Repository fetches exercise the product's owned-process port without an extension loader. */
+function featureChildRoot(run: LifecycleRun): string {
+  return path.join(run.dir, "feature-child");
 }
 
-/**
- * A plugin whose only route starts `cli.mjs` through the owned-process port (`ctx.host.processes.spawnOwned`) and answers
- * once that child closes. The port is bound per plugin id the same way for built-in and external plugins, so a fixture
- * keeps the containment cases independent of any product plugin's CLI. Installed before the Console starts, because
- * plugins are discovered at boot; `openPluginChildren` writes the CLI stand-in later. On Windows `os.homedir()` reads
- * USERPROFILE, so the run points it at the same isolated home.
- */
-function installPluginChildFixture(run: LifecycleRun): void {
-  if (process.platform === "win32") run.env.USERPROFILE = run.env.HOME!;
-  const root = pluginChildRoot(run);
+function installFeatureChildFixture(run: LifecycleRun): void {
+  const root = featureChildRoot(run);
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(path.join(root, "plugin.json"), JSON.stringify({ id: PLUGIN_CHILD_ID, name: "Lifecycle child", apiVersion: 1, routes: "routes.mjs" }));
-  fs.writeFileSync(path.join(root, "routes.mjs"), [
-    "import path from 'node:path';",
-    "import { fileURLToPath } from 'node:url';",
-    "const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cli.mjs');",
-    "export default {",
-    "  register(ctx) {",
-    "    ctx.registerRouter('run', async ({ res }) => {",
-    "      const child = ctx.host.processes.spawnOwned({ command: process.execPath, args: [cli] });",
-    "      child.stdout?.resume();",
-    "      child.stderr?.resume();",
-    "      await new Promise((resolve) => { child.on('close', resolve); child.on('error', resolve); });",
-    "      res.writeHead(204);",
-    "      res.end();",
-    "      return true;",
-    `    }, { method: 'GET', path: '', summary: 'Run the lifecycle child.', category: 'Lifecycle fixture', gate: 'origin-write', transport: 'http' });`,
-    "  },",
+  fs.mkdirSync(path.join(run.theater, ".git"), { recursive: true });
+  // Interpose only the Git executable, not Console's ownership or containment implementation.
+  // Non-fetch probes return the fixture repository; fetch starts the same hostile CLI shapes as before.
+  const preload = writePreload(run, "repository-git.mjs", [
+    "import cp from 'node:child_process';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const original = cp.spawn;",
+    "cp.spawn = function(command, args, options) {",
+    "  if (command !== 'git') return original.call(this, command, args, options);",
+    `  if (args.includes('fetch')) return original.call(this, process.execPath, [${JSON.stringify(path.join(root, "cli.mjs"))}], options);`,
+    `  const output = args.includes('rev-parse') ? (args.includes('--abbrev-ref') ? 'main' : ${JSON.stringify(path.join(run.theater, ".git"))}) : args.includes('remote') || args.some(a => a.endsWith('.remote')) ? 'origin' : '';`,
+    "  return original.call(this, process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify(output + \"\\n\") + ')'], options);",
     "};",
-  ].join("\n"));
+    "syncBuiltinESMExports();",
+  ]);
+  run.env.NODE_OPTIONS = `--import ${pathToFileURL(preload).href}`;
 }
 
 /**
- * A plugin's own long-running children (N7): four requests to the fixture plugin each start its CLI stand-in once through
- * the plugin's owned-process port, and the stand-in hangs in the three shapes a CLI leaves behind. Two runs ignore SIGTERM
+ * A feature's own long-running children (N7): four requests to the Repository fixture each start its CLI stand-in once through
+ * the feature's owned-process port, and the stand-in hangs in the three shapes a CLI leaves behind. Two runs ignore SIGTERM
  * themselves. One run ends on SIGTERM but leaves a helper that ignores it and holds the run's inherited stdout and stderr
  * (N9). One run leaves the same helper and exits by itself before any stop, as a CLI that timed out does. The runs claim
  * those shapes in arrival order, so the four concurrent runs always split the same way. Only the Console's containment
@@ -1431,8 +1418,8 @@ function installPluginChildFixture(run: LifecycleRun): void {
  * longer the Console's descendants. The suite owns each one at once: one that escapes is reparented away from the Console
  * and would otherwise outlive the case.
  */
-async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
-  const pkg = pluginChildRoot(run);
+async function openFeatureChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
+  const pkg = featureChildRoot(run);
   const pids = path.join(pkg, "pids");
   fs.writeFileSync(path.join(pkg, "cli.mjs"), [
     "import { createRequire } from 'node:module';",
@@ -1443,7 +1430,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "const claim = (name) => { try { require('fs').mkdirSync(require('path').join(__dirname, name)); return true; } catch { return false; } };",
     "const role = claim('claim-gone') ? 'cli-gone' : claim('claim-honours') ? 'cli-honours' : 'cli-ignores';",
     // Windows 직접 게이트가 elected 리더의 첫 spawn보다 반드시 앞서 실행되도록 배치한다.
-    ...windowsGrandchildLines(run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN === "1", run.env.PLUGIN_CHILD_BREAKAWAY_RESULT),
+    ...windowsGrandchildLines(run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN === "1", run.env.FEATURE_CHILD_BREAKAWAY_RESULT),
     "if (role !== 'cli-ignores') {",
     "  const helper = require('child_process').spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);\"], { stdio: 'inherit' });",
     "  record(role === 'cli-gone' ? 'helper-gone' : 'helper', helper.pid);",
@@ -1455,25 +1442,27 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
     "}",
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
+  const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
+  const theater = await consoleApi<{ id?: string; theater?: { id: string } }>(endpoint, "/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
   // Each request answers only once the CLI does; the requests end with the Console.
   for (let request = 0; request < 4; request += 1) {
-    fetch(new URL(`plugins/${PLUGIN_CHILD_ID}/run`, endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+    void consoleApi(endpoint, "/api/v1/repository/fetch", { theaterId: theater.id ?? theater.theater?.id }).catch(() => {});
   }
   const recorded = () => fs.existsSync(pids)
     ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
     : [];
   // Four CLI runs and the two helpers.
-  await waitUntil(() => recorded().length >= 6, 20_000, "the fixture plugin did not start its CLI");
-  if (run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN === "1") {
+  await waitUntil(() => recorded().length >= 6, 20_000, "the Repository fixture did not start its CLI");
+  if (run.env.FEATURE_CHILD_WINDOWS_GRANDCHILDREN === "1") {
     const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));
-      return roles.has("detached") && roles.has("native") && run.env.PLUGIN_CHILD_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.PLUGIN_CHILD_BREAKAWAY_RESULT);
+      return roles.has("detached") && roles.has("native") && run.env.FEATURE_CHILD_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.FEATURE_CHILD_BREAKAWAY_RESULT);
     };
     const deadline = Date.now() + 40_000;
     while (!ready() && Date.now() < deadline) await delay(25);
     if (!ready()) {
       const body = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8") : "(no pids file)";
-      throw new Error(`the plugin child did not start its Windows grandchildren\n${body}`);
+      throw new Error(`the feature child did not start its Windows grandchildren\n${body}`);
     }
   }
   const entries = recorded();
@@ -1486,7 +1475,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   await waitUntil(() => !isAlive(gone!.pid), 10_000, "the timed-out CLI stand-in did not exit by itself");
   return entries.flatMap((entry) => {
     const startedAt = processStartTime(entry.pid);
-    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `plugin-cli ${entry.role}` }];
+    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `feature-cli ${entry.role}` }];
   });
 }
 

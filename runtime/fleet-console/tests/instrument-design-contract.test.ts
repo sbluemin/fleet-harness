@@ -19,22 +19,20 @@ const PRODUCT_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
   new URL("features/", CONSOLE_ROOT),
   new URL("sdk/", CONSOLE_ROOT),
-  new URL("../fleet-plugins/", CONSOLE_ROOT),
 ] as const;
 const CSS_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
   new URL("features/", CONSOLE_ROOT),
-  new URL("../fleet-plugins/", CONSOLE_ROOT),
 ] as const;
 const STANDALONE_CSS_SOURCES = [
   new URL("foundation/markdown/styles.css", CONSOLE_ROOT),
   new URL("foundation/font-picker/styles.css", CONSOLE_ROOT),
 ] as const;
-const CODEX_COMPONENTS_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/components.css", CONSOLE_ROOT);
-const CODEX_LAYOUT_CSS_PATH = new URL("../fleet-plugins/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
+const CODEX_COMPONENTS_CSS_PATH = new URL("features/codex/client/codex/styles/components.css", CONSOLE_ROOT);
+const CODEX_LAYOUT_CSS_PATH = new URL("features/codex/client/codex/styles/layout.css", CONSOLE_ROOT);
 const CSS_THEME_SOURCES = [
   new URL("core/client/src/styles/theme.css", CONSOLE_ROOT),
-  new URL("../fleet-plugins/codex/client/codex/styles/theme.css", CONSOLE_ROOT),
+  new URL("features/codex/client/codex/styles/theme.css", CONSOLE_ROOT),
 ] as const;
 const PRODUCT_SOURCE_SUFFIXES = [".ts", ".tsx"] as const;
 const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
@@ -47,7 +45,7 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
   "examples",
 ]);
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
-const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
+const SCUTTLEBUTT_CSS_PATH = new URL("../features/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../features/execution/client/agent/index.tsx", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/agent-cli.css", import.meta.url);
 const TERMINAL_SURFACE_PATH = new URL("../features/execution/client/terminal/shared/terminal-surface.tsx", import.meta.url);
@@ -55,10 +53,10 @@ const TERMINAL_CHAT_VIEW_PATH = new URL("../features/execution/client/agent/chat
 const TERMINAL_CHAT_COMPOSER_PATH = new URL("../features/execution/client/agent/chat/composer.tsx", import.meta.url);
 const TERMINAL_CHAT_COORDINATE_MENU_PATH = new URL("../features/execution/client/agent/chat/coordinate-menu.tsx", import.meta.url);
 const TERMINAL_CHAT_CSS_PATH = new URL("../features/execution/client/agent/chat/chat.css", import.meta.url);
-const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
-const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/quota-panel.tsx", import.meta.url);
-const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
-const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
+const QUOTA_CSS_PATH = new URL("../features/quota/client/quota.css", import.meta.url);
+const QUOTA_PANEL_PATH = new URL("../features/quota/client/quota-panel.tsx", import.meta.url);
+const FILE_EXPLORER_CSS_PATH = new URL("../features/file-explorer/client/explorer.css", import.meta.url);
+const REPOSITORY_CSS_PATH = new URL("../features/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);

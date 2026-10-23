@@ -5,7 +5,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "@fleet-console/sdk/plugin";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -254,7 +254,7 @@ interface SideBarClusterRowProps {
 export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, accentValue = null, onFocus, onSelect, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
   // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);

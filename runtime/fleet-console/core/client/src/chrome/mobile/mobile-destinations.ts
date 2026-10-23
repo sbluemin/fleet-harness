@@ -8,7 +8,7 @@ import { useAllOperationUseRequests, type OperationUseRequest } from "../../../.
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import { useConsoleLocale } from "../../i18n/index.js";
-import { operationClusterId } from "../../integration/plugin-registry.js";
+import { operationClusterId } from "../../integration/feature-registry.js";
 import type { OperationNode, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 

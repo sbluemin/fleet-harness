@@ -23,12 +23,12 @@ import { useConsoleLocale } from "../i18n/index.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
-import { usePluginRegistry } from "./plugin-registry.js";
+import { useFeatureRegistry } from "./feature-registry.js";
 import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 
 export function FloatingWidgetLayer() {
-  const { floatingWidgets } = usePluginRegistry();
+  const { floatingWidgets } = useFeatureRegistry();
   const language = useConsoleLocale();
   const navigate = useNavigate();
   const capabilities = useMemo(() => createHostCapabilities(), []);

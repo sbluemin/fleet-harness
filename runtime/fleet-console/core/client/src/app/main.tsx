@@ -1,16 +1,4 @@
 import { subscribeConsoleChannel } from "../integration/operations-sse.js";
-import * as reactNs from "react";
-import * as reactJsxRuntime from "react/jsx-runtime";
-import * as sdkPluginBrowser from "@fleet-console/sdk/plugin/browser";
-import * as sdkSettingsBrowser from "@fleet-console/sdk/settings/browser";
-import * as sdkOperationsBrowser from "@fleet-console/sdk/operations/browser";
-import * as sdkNotificationsBrowser from "@fleet-console/sdk/notifications/browser";
-import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
-import * as sdkComponentsFailureNotice from "@fleet-console/sdk/components/failure-notice";
-import * as sdkComponentsEffortTrack from "@fleet-console/sdk/components/effort-track";
-import * as sdkComponentsModelCoordinatePicker from "@fleet-console/sdk/components/model-coordinate-picker";
-import * as sdkComponentsLaunchProviderGlyphs from "@fleet-console/sdk/components/launch-provider-glyphs";
-import * as sdkComponentsShellGlyph from "@fleet-console/sdk/components/shell-glyph";
 import "@fontsource-variable/manrope";
 // Pretendard dynamic subset: 한글 폴백 서체 — 브라우저가 unicode-range로 필요한 subset woff2만 내려받는다.
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
@@ -45,7 +33,7 @@ import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { afterBootLane, armBootLane, bootLanePending, installBootFetchGate, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { announceDesktopReady } from "../integration/desktop-ready.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
-import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
+import { loadFeatureRegistry, FeatureRegistryProvider } from "../integration/feature-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
@@ -53,42 +41,6 @@ import { installMobileAppearance } from "../integration/mobile-appearance-store.
 import { bindConversationSurfaceLayout } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getRailStoreSnapshot } from "../chrome/rail/rail-store.js";
 import { closeTheaterInbox, readTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
-
-interface FleetConsoleRuntime {
-  readonly "react": typeof reactNs;
-  readonly "react/jsx-runtime": typeof reactJsxRuntime;
-  readonly "@fleet-console/sdk/plugin/browser": typeof sdkPluginBrowser;
-  readonly "@fleet-console/sdk/settings/browser": typeof sdkSettingsBrowser;
-  readonly "@fleet-console/sdk/operations/browser": typeof sdkOperationsBrowser;
-  readonly "@fleet-console/sdk/notifications/browser": typeof sdkNotificationsBrowser;
-  readonly "@fleet-console/sdk/react/browser": typeof sdkReactBrowser;
-  readonly "@fleet-console/sdk/components/failure-notice": typeof sdkComponentsFailureNotice;
-  readonly "@fleet-console/sdk/components/effort-track": typeof sdkComponentsEffortTrack;
-  readonly "@fleet-console/sdk/components/model-coordinate-picker": typeof sdkComponentsModelCoordinatePicker;
-  readonly "@fleet-console/sdk/components/launch-provider-glyphs": typeof sdkComponentsLaunchProviderGlyphs;
-  readonly "@fleet-console/sdk/components/shell-glyph": typeof sdkComponentsShellGlyph;
-}
-
-declare global {
-  var __fleetConsoleRuntime__: FleetConsoleRuntime;
-}
-
-globalThis.__fleetConsoleRuntime__ = {
-  "react": reactNs,
-  "react/jsx-runtime": reactJsxRuntime,
-  "@fleet-console/sdk/plugin/browser": sdkPluginBrowser,
-  "@fleet-console/sdk/settings/browser": sdkSettingsBrowser,
-  "@fleet-console/sdk/operations/browser": sdkOperationsBrowser,
-  "@fleet-console/sdk/notifications/browser": sdkNotificationsBrowser,
-  "@fleet-console/sdk/react/browser": sdkReactBrowser,
-  // shim은 이 네임스페이스에서 실제 모듈을 읽는다 — 정의만 등록하고 여기를 비워 두면
-  // 외부 플러그인이 로드되는 순간 "runtime shim unavailable"로 죽는다.
-  "@fleet-console/sdk/components/failure-notice": sdkComponentsFailureNotice,
-  "@fleet-console/sdk/components/effort-track": sdkComponentsEffortTrack,
-  "@fleet-console/sdk/components/model-coordinate-picker": sdkComponentsModelCoordinatePicker,
-  "@fleet-console/sdk/components/launch-provider-glyphs": sdkComponentsLaunchProviderGlyphs,
-  "@fleet-console/sdk/components/shell-glyph": sdkComponentsShellGlyph,
-};
 
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
 setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "dark");
@@ -115,7 +67,7 @@ if (app && !auxiliary && desktopShell) {
   window.setTimeout(openBootLane, 8_000);
 }
 
-const registryPromise = app && !auxiliary ? loadPluginRegistry() : null;
+const registryPromise = app && !auxiliary ? loadFeatureRegistry() : null;
 if (app && !auxiliary) startBootSnapshots();
 
 let migration = Promise.resolve(false);
@@ -177,11 +129,11 @@ if (app && hostPicker) {
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">
-        <PluginRegistryProvider value={registry}>
+        <FeatureRegistryProvider value={registry}>
           <ComposerTopEntriesProvider value={registry.composerTopEntries}>
             <GroupClusterProvider value={registry.operationClusters}><App /></GroupClusterProvider>
           </ComposerTopEntriesProvider>
-        </PluginRegistryProvider>
+        </FeatureRegistryProvider>
       </BrowserRouter>
     </StrictMode>,
   );

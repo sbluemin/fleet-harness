@@ -17,7 +17,7 @@ const fixture = vi.hoisted(() => {
     operationClusters: { subscribe: () => () => {}, get: () => noClusters },
   };
 });
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => fixture }));
+vi.mock("../core/client/src/integration/feature-registry.js", () => ({ useFeatureRegistry: () => fixture }));
 vi.mock("@fleet-console/sdk/operations/browser", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@fleet-console/sdk/operations/browser")>()),
   fetchOperationCatalog: async () => [],

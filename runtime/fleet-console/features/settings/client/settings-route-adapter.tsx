@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { buildCoreSettingsSections, collectPluginSettingsSections, resolveSettingsSectionId } from "./sections.js";
 import { openSettingsSurface } from "./settings-door.js";
 
@@ -21,7 +21,7 @@ import { openSettingsSurface } from "./settings-door.js";
 export function SettingsRouteAdapter() {
   const location = useLocation();
   const navigate = useNavigate();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const locale = useConsoleLocale();
   const t = useT();
 

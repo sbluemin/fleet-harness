@@ -1,0 +1,438 @@
+import { useSyncExternalStore } from "react";
+import type { FileReadWindow } from "../shared/types.js";
+
+export type ViewState =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean; diskStatus?: "changed" | "deleted"; window?: FileReadWindow }
+  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean; diskStatus?: "changed" | "deleted" }
+  | { kind: "binary"; name: string }
+  | { kind: "error"; message: string };
+
+/** 뷰어 칩 하나 — 경로당 정확히 하나만 존재한다(paseo의 결정적 탭 문법). */
+export interface OpenDocument {
+  readonly relativePath: string;
+  readonly name: string;
+  /** 단일 클릭 탐색용 슬롯 — 다음 미리보기가 대체하며, 고정된 문서는 여기에 들지 않는다. */
+  readonly preview?: boolean;
+}
+
+export interface DocSession {
+  readonly openDocs: readonly OpenDocument[];
+  readonly activePath: string | null;
+  readonly history: readonly string[];
+  readonly historyIndex: number;
+}
+
+export interface FileRevealTarget {
+  readonly theaterId: string;
+  readonly relativePath: string;
+  readonly requestId: string;
+  readonly kind?: "file" | "dir";
+  readonly keepFilter?: boolean;
+  readonly lineNumber?: number;
+  readonly column?: number;
+  readonly anchor?: string;
+  readonly ranges?: readonly { readonly start: number; readonly end: number }[];
+}
+
+interface TheaterViewState extends DocSession {
+  readonly selectedPath: string | null;
+  readonly revealTarget: FileRevealTarget | null;
+  readonly documentPaneOpen: boolean;
+  readonly discardedTabs: { readonly id: string; readonly count: number } | null;
+  /** 경로별 뷰 내용 캐시 — 칩 전환을 즉시 그리기 위한 메모리 전용 상태. */
+  readonly docStates: ReadonlyMap<string, ViewState>;
+}
+
+interface FileExplorerViewState extends TheaterViewState {
+  /** Wrap long lines in the code viewer — remembered for this Console session. */
+  readonly wrapLines: boolean;
+  readonly navigationError: { readonly id: string; readonly reason: "outside_theater" | "not_found" | "unsupported" | "no_handler" } | null;
+}
+
+type Listener = () => void;
+
+const SESSION_KEY_PREFIX = "fleet-console.fileExplorer.session.";
+const SESSION_OPEN_DOC_CAP = 20;
+
+export const EMPTY_DOC_SESSION: DocSession = {
+  openDocs: [],
+  activePath: null,
+  history: [],
+  historyIndex: -1,
+};
+
+const DEFAULT_THEATER_STATE: TheaterViewState = {
+  ...EMPTY_DOC_SESSION,
+  selectedPath: null,
+  revealTarget: null,
+  documentPaneOpen: false,
+  discardedTabs: null,
+  docStates: new Map(),
+};
+
+const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
+  ...DEFAULT_THEATER_STATE,
+  wrapLines: false,
+  navigationError: null,
+};
+
+const theaterStateMap = new Map<string, TheaterViewState>();
+/**
+ * 한 Theater 의 보기 상태(열린 문서·선택·드러낼 자리)를 지금 쓰는 대화. 데스크톱 대화의 도구 칸에서는 같은 Theater 의 두 대화가
+ * 서로의 문서를 보지 않는다(다른 워크트리의 파일이 다른 대화에 떠서 고쳐지는 일이 없게) — 대화가 바뀌면 떠나는 대화의 상태를 접어
+ * 두고 도착하는 대화의 것을 편다. 대화가 없는 자리(폰·오른쪽 사이드바)는 소유자 없이 지금처럼 Theater 하나다.
+ */
+const viewOwners = new Map<string, string>();
+const parkedViews = new Map<string, TheaterViewState>();
+
+function storageKey(theaterId: string): string {
+  const owner = viewOwners.get(theaterId);
+  return owner === undefined ? SESSION_KEY_PREFIX + theaterId : `${SESSION_KEY_PREFIX}${theaterId}@${owner}`;
+}
+
+/**
+ * 이 Theater 의 보기 상태를 그 대화의 것으로 세운다. 같은 대화면 아무 일도 하지 않는다. 처음 소유하는 대화는 지금의 상태를 이어받고,
+ * 그 뒤 다른 대화로 넘어가면 떠나는 대화의 상태를 접어 두고 도착하는 대화의 것(없으면 빈 상태 — 저장된 세션은 hydrate 가 그 대화의
+ * 열쇠로 읽는다)을 편다. 바뀌었으면 true.
+ */
+export function claimFileExplorerView(theaterId: string | null, owner: string | null | undefined): boolean {
+  if (!theaterId || !owner) return false;
+  const current = viewOwners.get(theaterId);
+  if (current === owner) return false;
+  if (current !== undefined) parkedViews.set(`${theaterId}\n${current}`, getOrDefault(theaterId));
+  viewOwners.set(theaterId, owner);
+  if (current !== undefined) {
+    const restored = parkedViews.get(`${theaterId}\n${owner}`) ?? null;
+    // 문서 내용 캐시(docStates)는 경로별 읽기 결과라 대화와 무관하다 — 그대로 둔다.
+    theaterStateMap.set(theaterId, restored ?? { ...DEFAULT_THEATER_STATE, docStates: getOrDefault(theaterId).docStates });
+    emit();
+  }
+  return true;
+}
+const snapshotMap = new Map<string, FileExplorerViewState>();
+const listeners = new Set<Listener>();
+/** 문서 범위 읽기의 늦은 응답이 더 최근 범위를 덮지 않게 하는 메모리 전용 세대. */
+const documentLoads = new Map<string, Map<string, symbol>>();
+
+export function beginDocumentLoad(theaterId: string, path: string): symbol {
+  const request = Symbol();
+  const loads = documentLoads.get(theaterId) ?? new Map<string, symbol>();
+  for (const key of loads.keys()) if (!getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === key)) loads.delete(key);
+  loads.set(path, request);
+  documentLoads.set(theaterId, loads);
+  return request;
+}
+
+export function isCurrentDocumentLoad(theaterId: string, path: string, request: symbol): boolean {
+  return documentLoads.get(theaterId)?.get(path) === request && getOrDefault(theaterId).openDocs.some((doc) => doc.relativePath === path);
+}
+let wrapLines = false;
+let navigationError: FileExplorerViewState["navigationError"] = null;
+
+export function showFileNavigationError(reason: NonNullable<FileExplorerViewState["navigationError"]>["reason"]): void {
+  navigationError = { id: crypto.randomUUID(), reason };
+  emit();
+}
+
+export function dismissFileNavigationError(id: string): void {
+  if (navigationError?.id !== id) return;
+  navigationError = null;
+  emit();
+}
+
+export function setFileRevealTarget(theaterId: string, target: FileRevealTarget): void {
+  patchTheaterState(theaterId, { revealTarget: target });
+}
+
+export function setDocumentPaneOpen(theaterId: string, open: boolean): void {
+  if (!theaterId) return;
+  patchTheaterState(theaterId, { documentPaneOpen: open });
+  persistDocSession(theaterId, getOrDefault(theaterId));
+}
+
+export function useFileExplorerViewState(theaterId: string | null): FileExplorerViewState {
+  return useSyncExternalStore(
+    subscribe,
+    () => getSnapshot(theaterId),
+    () => DEFAULT_SERVER_SNAPSHOT,
+  );
+}
+
+export function setSelectedPath(theaterId: string | null, selectedPath: string | null): void {
+  if (!theaterId) return;
+  patchTheaterState(theaterId, { selectedPath });
+}
+
+// ═══ 다중 열림 문서 세션 ═══════════════════════════════════════════════════════
+
+/** 순수 전이: 문서 활성화 — 칩이 없으면 만들고, 이력의 앞쪽 가지를 잘라 끝에 쌓는다. */
+function planDocumentActivation(session: DocSession, doc: OpenDocument): { readonly session: DocSession; readonly discarded: readonly OpenDocument[] } {
+  const existing = session.openDocs.find((item) => item.relativePath === doc.relativePath);
+  let candidates: readonly OpenDocument[];
+  if (existing) {
+    candidates = session.openDocs.map((item) => item.relativePath === doc.relativePath && !doc.preview ? { ...item, preview: false } : item);
+  } else {
+    // 고정 탭을 고른 것은 미리보기 슬롯을 지우지 않는다. 새 미리보기만 이전 미리보기를 대체한다.
+    candidates = [...session.openDocs.filter((item) => !doc.preview || !item.preview), doc];
+  }
+  const discarded = candidates.slice(0, Math.max(0, candidates.length - SESSION_OPEN_DOC_CAP));
+  const openDocs = candidates.slice(-SESSION_OPEN_DOC_CAP);
+  const openPaths = new Set(openDocs.map((item) => item.relativePath));
+  const kept = session.history.slice(0, session.historyIndex + 1).filter((path) => openPaths.has(path));
+  const history = kept.at(-1) === doc.relativePath ? kept : [...kept, doc.relativePath];
+  return { session: { openDocs, activePath: doc.relativePath, history, historyIndex: history.length - 1 }, discarded };
+}
+
+export function activateDocument(session: DocSession, doc: OpenDocument): DocSession {
+  return planDocumentActivation(session, doc).session;
+}
+
+/** 순수 전이: 이력 이동 — 닫힌 문서는 건너뛴다. */
+export function navigateDocumentHistory(session: DocSession, delta: -1 | 1): DocSession {
+  const openPaths = new Set(session.openDocs.map((d) => d.relativePath));
+  for (let i = session.historyIndex + delta; i >= 0 && i < session.history.length; i += delta) {
+    const candidate = session.history[i];
+    if (candidate !== undefined && openPaths.has(candidate)) {
+      return { ...session, activePath: candidate, historyIndex: i };
+    }
+  }
+  return session;
+}
+
+export function canNavigateDocumentHistory(session: DocSession, delta: -1 | 1): boolean {
+  return navigateDocumentHistory(session, delta) !== session;
+}
+
+/** 순수 전이: 문서 닫기 — 이력에서 해당 경로를 걷어내고, 활성은 직전 이력(없으면 마지막 칩)으로. */
+export function closeDocument(session: DocSession, relativePath: string): DocSession {
+  const openDocs = session.openDocs.filter((d) => d.relativePath !== relativePath);
+  const collapsed: string[] = [];
+  let historyIndex = -1;
+  for (let i = 0; i < session.history.length; i += 1) {
+    const entry = session.history[i];
+    if (entry === undefined || entry === relativePath) continue;
+    if (collapsed.at(-1) !== entry) collapsed.push(entry);
+    if (i <= session.historyIndex) historyIndex = collapsed.length - 1;
+  }
+  if (historyIndex < 0) historyIndex = collapsed.length - 1;
+  const activePath = session.activePath === relativePath
+    ? collapsed[historyIndex] ?? openDocs.at(-1)?.relativePath ?? null
+    : session.activePath;
+  return { openDocs, activePath, history: collapsed, historyIndex };
+}
+
+export function activateStoredDocument(theaterId: string | null, doc: OpenDocument, location: Partial<Pick<FileRevealTarget, "requestId" | "lineNumber" | "column" | "anchor" | "ranges" | "keepFilter">> = {}): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const { session: next, discarded } = planDocumentActivation(current, doc);
+  const keptPaths = new Set(next.openDocs.map((item) => item.relativePath));
+  const docStates = new Map([...current.docStates].filter(([path]) => keptPaths.has(path)));
+  const loads = documentLoads.get(theaterId);
+  for (const path of loads?.keys() ?? []) if (!keptPaths.has(path)) loads?.delete(path);
+  const discardedTabs = discarded.length > 0 ? { id: crypto.randomUUID(), count: discarded.length + (current.discardedTabs?.count ?? 0) } : current.discardedTabs;
+  const revealTarget: FileRevealTarget = { theaterId, relativePath: doc.relativePath, ...location, requestId: location.requestId ?? crypto.randomUUID() };
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, revealTarget, documentPaneOpen: true, docStates, discardedTabs });
+  persistDocSession(theaterId, next);
+}
+
+export function pinStoredDocument(theaterId: string | null, path: string): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  if (!current.openDocs.some((doc) => doc.relativePath === path && doc.preview)) return;
+  const next = { ...current, openDocs: current.openDocs.map((doc) => doc.relativePath === path ? { ...doc, preview: false } : doc) };
+  patchTheaterState(theaterId, { openDocs: next.openDocs });
+  persistDocSession(theaterId, next);
+}
+
+export function dismissDiscardedTabs(theaterId: string, id: string): void {
+  if (getOrDefault(theaterId).discardedTabs?.id === id) patchTheaterState(theaterId, { discardedTabs: null });
+}
+
+export function navigateStoredHistory(theaterId: string | null, delta: -1 | 1): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const next = navigateDocumentHistory(current, delta);
+  if (next === current) return;
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath });
+  persistDocSession(theaterId, next);
+}
+
+export function closeStoredDocument(theaterId: string | null, relativePath: string): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const next = closeDocument(current, relativePath);
+  const docStates = new Map(current.docStates);
+  docStates.delete(relativePath);
+  documentLoads.get(theaterId)?.delete(relativePath);
+  patchTheaterState(theaterId, { ...next, selectedPath: next.activePath, docStates, ...(next.openDocs.length === 0 ? { documentPaneOpen: false, revealTarget: null } : {}) });
+  persistDocSession(theaterId, next);
+}
+
+export function setDocViewState(theaterId: string | null, relativePath: string, viewState: ViewState): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  // 닫힌 문서의 늦은 응답은 캐시에 되살리지 않는다.
+  if (!current.openDocs.some((d) => d.relativePath === relativePath)) return;
+  const docStates = new Map(current.docStates);
+  docStates.set(relativePath, viewState);
+  patchTheaterState(theaterId, { docStates });
+}
+
+export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean, diskStatus: "changed" | "deleted" = "changed"): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const viewState = current.docStates.get(relativePath);
+  if (!viewState || (viewState.kind !== "code" && viewState.kind !== "image")) return;
+  const status = stale ? diskStatus : undefined;
+  if (Boolean(viewState.stale) === stale && viewState.diskStatus === status) return;
+  const docStates = new Map(current.docStates);
+  docStates.set(relativePath, { ...viewState, stale, diskStatus: status });
+  patchTheaterState(theaterId, { docStates });
+}
+
+/**
+ * 목록이 먼저 알려 준 mtime을 아직 mtime 없이 열려 있는 문서에 심는다.
+ * 검색이나 세션 복원으로 연 이미지는 부모 목록보다 먼저 화면에 서므로 mtime이 비어 있고,
+ * 그 상태로 두면 이후 디스크 변경이 영원히 표식 없이 지나간다.
+ */
+export function seedDocMtime(theaterId: string | null, relativePath: string, mtimeMs: number): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const viewState = current.docStates.get(relativePath);
+  if (!viewState || (viewState.kind !== "code" && viewState.kind !== "image")) return;
+  if (viewState.mtimeMs !== undefined) return;
+  const docStates = new Map(current.docStates);
+  docStates.set(relativePath, { ...viewState, mtimeMs });
+  patchTheaterState(theaterId, { docStates });
+}
+
+export function setWrapLines(nextWrap: boolean): void {
+  if (wrapLines === nextWrap) return;
+  wrapLines = nextWrap;
+  emit();
+}
+
+export function getFileExplorerSnapshot(theaterId: string | null): FileExplorerViewState {
+  return getSnapshot(theaterId);
+}
+
+/**
+ * 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다.
+ *
+ * **실제로 되살렸을 때만 `true`.** 문서 열을 세우는 것은 이 한 번뿐이어야 하기 때문이다:
+ * 마운트마다 세우면 사용자가 닫아 둔 열이 레일 탭을 오갈 때마다 되살아난다.
+ */
+export function hydrateStoredSession(theaterId: string | null): boolean {
+  if (!theaterId) return false;
+  const current = getOrDefault(theaterId);
+  if (current.openDocs.length > 0 || current.activePath !== null) return false;
+  const persisted = readDocSession(theaterId);
+  if (!persisted || persisted.openDocs.length === 0) return false;
+  patchTheaterState(theaterId, { ...persisted, selectedPath: persisted.activePath });
+  return true;
+}
+
+function emit(): void {
+  for (const listener of listeners) listener();
+}
+
+function getOrDefault(theaterId: string): TheaterViewState {
+  return theaterStateMap.get(theaterId) ?? DEFAULT_THEATER_STATE;
+}
+
+function getSnapshot(theaterId: string | null): FileExplorerViewState {
+  const key = theaterId ?? "__none__";
+  const base = theaterId != null ? getOrDefault(theaterId) : DEFAULT_THEATER_STATE;
+  const prev = snapshotMap.get(key);
+  if (
+    prev
+    && prev.selectedPath === base.selectedPath
+    && prev.openDocs === base.openDocs
+    && prev.activePath === base.activePath
+    && prev.history === base.history
+    && prev.historyIndex === base.historyIndex
+    && prev.docStates === base.docStates
+    && prev.wrapLines === wrapLines
+    && prev.revealTarget === base.revealTarget
+    && prev.documentPaneOpen === base.documentPaneOpen
+    && prev.discardedTabs === base.discardedTabs
+    && prev.navigationError === navigationError
+  ) {
+    return prev;
+  }
+  const next = { ...base, wrapLines, navigationError };
+  snapshotMap.set(key, next);
+  return next;
+}
+
+function patchTheaterState(theaterId: string, patch: Partial<TheaterViewState>): void {
+  theaterStateMap.set(theaterId, { ...getOrDefault(theaterId), ...patch });
+  emit();
+}
+
+function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+// ═══ 세션 지속 ═══════════════════════════════════════════════════════════════
+
+interface PersistedDocSession {
+  readonly openDocs: readonly OpenDocument[];
+  readonly activePath: string | null;
+  readonly documentPaneOpen: boolean;
+}
+
+function persistDocSession(theaterId: string, session: DocSession): void {
+  try {
+    const payload: PersistedDocSession = {
+      openDocs: session.openDocs,
+      activePath: session.activePath,
+      documentPaneOpen: getOrDefault(theaterId).documentPaneOpen,
+    };
+    if (payload.openDocs.length === 0) {
+      localStorage.removeItem(storageKey(theaterId));
+      return;
+    }
+    localStorage.setItem(storageKey(theaterId), JSON.stringify(payload));
+  } catch {
+    // localStorage 접근 실패 무시
+  }
+}
+
+function readDocSession(theaterId: string): (DocSession & { readonly documentPaneOpen: boolean }) | null {
+  try {
+    const raw = localStorage.getItem(storageKey(theaterId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedDocSession>;
+    if (!Array.isArray(parsed.openDocs)) return null;
+    const openDocs = parsed.openDocs
+      .filter((d): d is OpenDocument =>
+        typeof d === "object" && d !== null
+        && typeof (d as OpenDocument).relativePath === "string"
+        && typeof (d as OpenDocument).name === "string")
+      .slice(0, SESSION_OPEN_DOC_CAP)
+      .map((doc) => ({ relativePath: doc.relativePath, name: doc.name, preview: doc.preview === true }));
+    const previewIndex = openDocs.findIndex((doc) => doc.preview);
+    for (let index = previewIndex + 1; index < openDocs.length; index++) {
+      if (index >= 0 && openDocs[index]?.preview) openDocs[index] = { ...openDocs[index]!, preview: false };
+    }
+    if (openDocs.length === 0) return null;
+    const activePath = typeof parsed.activePath === "string"
+      && openDocs.some((d) => d.relativePath === parsed.activePath)
+      ? parsed.activePath
+      : openDocs.at(-1)?.relativePath ?? null;
+    // 이력은 지속하지 않는다 — 복원 세션은 활성 문서 하나짜리 이력으로 시작한다.
+    return {
+      openDocs,
+      activePath,
+      history: activePath ? [activePath] : [],
+      historyIndex: activePath ? 0 : -1,
+      documentPaneOpen: parsed.documentPaneOpen !== false,
+    };
+  } catch {
+    return null;
+  }
+}

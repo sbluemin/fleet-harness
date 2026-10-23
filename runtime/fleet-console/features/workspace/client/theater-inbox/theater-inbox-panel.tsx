@@ -6,7 +6,7 @@ import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "@fleet-c
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { conversationSurfaceInboxSectionId, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
+import { conversationSurfaceInboxSectionId, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { registerConversationOperationTab, useConversationOperationTabPanels } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
@@ -55,7 +55,7 @@ export interface TheaterInboxPanelProps {
 /** 가운데 칸에 선 플러그인 대화가 이 Theater 의 Inbox 섹션을 대신하면 그 대화와 섹션의 정준 id. */
 function useCenterSection(theaterId: string, language: ConsoleLocale): { readonly surface: ResolvedConversationSurface; readonly selection: ConversationSurfaceSelection; readonly sectionId: string } | null {
   const selection = useConversationSurface();
-  const { conversationSurfaces } = usePluginRegistry();
+  const { conversationSurfaces } = useFeatureRegistry();
   const theme = useConsoleState().activeTheme;
   return useMemo(() => {
     if (selection === null) return null;
@@ -81,7 +81,7 @@ function useCenterSection(theaterId: string, language: ConsoleLocale): { readonl
  */
 export function TheaterInboxPanel({ open, theater, sections, language, navigation, select, fallback }: TheaterInboxPanelProps) {
   const states = useSectionStates(sections, theater, language);
-  const { conversationSurfaces } = usePluginRegistry();
+  const { conversationSurfaces } = useFeatureRegistry();
   const center = useCenterSection(theater.id, language);
   const centerSectionId = center?.sectionId ?? null;
   const activePanelId = useRailActivePanelId();

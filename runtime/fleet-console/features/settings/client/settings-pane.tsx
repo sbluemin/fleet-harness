@@ -7,7 +7,7 @@ import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-con
 
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
   buildCoreSettingsSections,
@@ -156,7 +156,7 @@ export function hostSectionOf(
 function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;

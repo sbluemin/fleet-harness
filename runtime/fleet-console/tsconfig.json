@@ -44,12 +44,12 @@
     "cli/**/*.ts",
     "core/host/**/*.ts",
     "core/client/src/vite-env.d.ts",
-    "core/client/src/virtual-fleet-plugins.d.ts",
     "tests/**/*.ts",
     "tsup.config.ts",
     "vitest.config.ts",
     "features/*/host/**/*.ts",
     "features/*/tests/**/*.ts",
+    "features/*/tests/**/*.tsx",
     "features/updates/runtime/**/*.ts"
   ]
 }

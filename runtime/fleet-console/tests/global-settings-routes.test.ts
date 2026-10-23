@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter, createPluginSettingsRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
+import { createGlobalSettingsRouter, createExecutionSettingsRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
 
 const DEFAULT_REMOTE_ACCESS = {
@@ -64,7 +64,7 @@ describe("global settings routes", () => {
     expect(harness.currentGeneral()?.fonts).toEqual(changed);
     expect(harness.currentData().execution?.font).toEqual(serverFont);
     expect(harness.currentGeneral()?.uiFont).toEqual(uiFont);
-    const executionRouter = createPluginSettingsRouter({
+    const executionRouter = createExecutionSettingsRouter({
       consoleSettingsStore: harness.store, isAuthorized: () => true,
       readJsonBody: async () => ({ font: localFont, chatReadingWidth: "wide" }) as never,
       writeJson: () => {},

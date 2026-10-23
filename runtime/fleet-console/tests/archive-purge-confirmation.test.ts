@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { ApiError, type OperationDescription, type OperationPurgeConfirmation } from "@fleet-console/sdk/operations/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ archiveSections: [] }) }));
+vi.mock("../core/client/src/integration/feature-registry.js", () => ({ useFeatureRegistry: () => ({ archiveSections: [] }) }));
 const mocks = vi.hoisted(() => ({ fetchArchive: vi.fn(), preview: vi.fn(), purge: vi.fn(), undo: vi.fn(), restore: vi.fn() }));
 vi.mock("@fleet-console/sdk/operations/browser", async (original) => ({
   ...await original<object>(), fetchOperationArchive: mocks.fetchArchive, previewOperationPurge: mocks.preview,

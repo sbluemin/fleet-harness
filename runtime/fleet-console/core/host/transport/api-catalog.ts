@@ -3,7 +3,7 @@ import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import { DESKTOP_SHELL_API_CATALOG } from "../shell/desktop-contract.js";
 import { DESKTOP_SCREEN_PERMISSION_API_CATALOG, DESKTOP_SHELL_UPDATE_API_CATALOG, DESKTOP_THEME_API_CATALOG, DESKTOP_UPDATE_API_CATALOG, DESKTOP_WINDOW_COMMAND_API_CATALOG } from "../shell/desktop-contract.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
-import { PLUGIN_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
+import { EXECUTION_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { OPERATIONS_API_CATALOG } from "../../../features/execution/host/operations/operations-domain.js";
 import { AVATARS_API_CATALOG } from "../../../features/workspace/host/avatars.js";
 import { CONVERSATION_WORKBENCH_API_CATALOG } from "../../../features/workspace/host/conversation-workbench.js";
@@ -28,7 +28,7 @@ export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): 
     ...DESKTOP_SCREEN_PERMISSION_API_CATALOG,
     ...DESKTOP_WINDOW_COMMAND_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
-    ...PLUGIN_SETTINGS_API_CATALOG,
+    ...EXECUTION_SETTINGS_API_CATALOG,
     ...SYSTEM_FONTS_API_CATALOG,
     ...OPERATIONS_API_CATALOG,
     ...AVATARS_API_CATALOG,

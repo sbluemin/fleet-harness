@@ -34,7 +34,7 @@ const OUTPUT_MARKERS = {
 };
 
 const EXTRA_INPUTS = {
-  "@dotobokuri/fleet-console": ["runtime/fleet-plugins", "scripts"],
+  "@dotobokuri/fleet-console": ["scripts"],
 };
 
 /**
@@ -43,10 +43,6 @@ const EXTRA_INPUTS = {
  */
 const GENERATED_WHEN_SKIPPED = {
   "@dotobokuri/fleet-console": [
-    {
-      marker: "core/host/plugin-host/shim-keys.generated.ts",
-      script: "scripts/generate-fleet-console-shim-keys.mjs",
-    },
   ],
 };
 
