@@ -1,3 +1,5 @@
+import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
+import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createCodexFeature } from "../../../features/codex/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
@@ -2878,7 +2880,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         agent: scuttlebuttAgent,
       });
       pluginCleanupCallbacks.add(() => scuttlebuttFeature.dispose());
-      for (const feature of [codexFeature, quotaFeature, scuttlebuttFeature]) {
+      const fileExplorerFeature = createFileExplorerFeature({
+        paths: pluginHostCapabilities.paths, http: pluginHostCapabilities.http,
+        security: pluginHostCapabilities.security, consoleUse: consoleUse.forPlugin("file-explorer"),
+      });
+      pluginCleanupCallbacks.add(() => fileExplorerFeature.dispose());
+      const repositoryFeature = createRepositoryFeature({
+        paths: pluginHostCapabilities.paths, http: pluginHostCapabilities.http,
+        security: pluginHostCapabilities.security, consoleUse: consoleUse.forPlugin("repository"),
+        processes: { spawnOwned: (request) => {
+          const child = ownedProcesses.spawn({
+            command: request.command, args: request.args,
+            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:repository",
+          });
+          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
+        } },
+      });
+      pluginCleanupCallbacks.add(() => repositoryFeature.dispose());
+      for (const feature of [codexFeature, quotaFeature, scuttlebuttFeature, fileExplorerFeature, repositoryFeature]) {
         for (const route of feature.routes) {
           routeRegistry.register(route.path, route.handler);
           executionApiCatalog.push(...route.catalog);

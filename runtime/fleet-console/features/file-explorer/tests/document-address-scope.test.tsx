@@ -1,0 +1,131 @@
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { PaneContext } from "@fleet-console/sdk/pane";
+import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
+
+import { fileExplorerDocumentPane } from "../client/rail-panel.js";
+import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";
+
+/**
+ * 주소는 자기 Theater 안에서만 뜻이 있다.
+ *
+ * 문서 열은 `keepAlive`라 Theater를 갈아타도 인스턴스가 살아남고, 그 인스턴스가 들고 있는
+ * `params.path`는 **떠나온 Theater의 경로**다. 그것을 새 Theater에서 그대로 세우면 있지도 않은
+ * 문서를 열고, 그 Theater의 저장된 세션까지 그 경로로 덮어쓴다.
+ */
+
+let container: HTMLDivElement;
+let root: Root;
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+function paneCtx(theaterId: string, params: Record<string, string>): PaneContext {
+  const { navigate, shell, rail, consoleState, notifications } = createClientCapabilities();
+  return {
+    navigate, shell, rail, consoleState, notifications,
+    paneId: "file-explorer-document",
+    instanceId: "pane-1",
+    params,
+    role: "detail",
+    mount: "rail",
+    width: 420,
+    visible: true,
+    focused: false,
+    theaterId,
+    api: {} as PaneContext["api"],
+    lifecycle: {} as PaneContext["lifecycle"],
+    preferences: {} as PaneContext["preferences"],
+    panes: { open: vi.fn(), close: vi.fn(), replaceParams: vi.fn(), isOpen: () => true },
+    signal: new AbortController().signal,
+    language: "en",
+  };
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.stubGlobal("EventSource", class extends EventTarget { close() {} });
+  // 문서를 세우면 본문이 곧바로 읽기를 건다 — 빈 응답을 주면 뷰어가 내용 없는 코드 문서를
+  // 그리다 터진다. 이 테스트의 관심은 주소의 범위이므로 읽기는 최소한으로 성립시킨다.
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    relativePath: "src/index.ts",
+    content: "export const demo = 1;\n",
+    lang: "typescript",
+    binary: false,
+    truncated: false,
+    sizeBytes: 24,
+    mtimeMs: 1,
+  }), { status: 200, headers: { "Content-Type": "application/json" } })));
+  container = document.createElement("div");
+  document.body.replaceChildren(container);
+  act(() => { root = createRoot(container); });
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
+
+describe("보관한 문서의 다시 읽기", () => {
+  it("비활성 문서를 선택해도 이전 본문을 유지하고 명시적 다시 읽기로만 바꾼다", async () => {
+    let version = 1;
+    const reads: string[] = [];
+    vi.stubGlobal("EventSource", class extends EventTarget {
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() {}
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string);
+      const payload = url.endsWith("/disk-status")
+        ? { statuses: request.paths.map((relativePath: string) => ({ relativePath, state: "present", mtimeMs: version })) }
+        : { relativePath: request.relativePath, content: version === 1 ? "original-one" : "changed-one", lang: "text", binary: false, truncated: false, sizeBytes: 12, mtimeMs: version };
+      if (url.endsWith("/read")) reads.push(request.relativePath);
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const theater = "preserved-document-theater";
+    const render = (path: string, requestId: string) => fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path, requestId }));
+    await act(async () => { root.render(render("one.txt", "first")); });
+    await act(async () => { root.render(render("two.txt", "second")); });
+    version = 2;
+    await act(async () => { container.querySelector<HTMLButtonElement>('.fexp-tab-open[title="one.txt"]')!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("original-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: true });
+    expect(reads.filter((path) => path === "one.txt")).toHaveLength(1);
+    await act(async () => { container.querySelector<HTMLButtonElement>(".fexp-disk-banner button")!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("changed-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: false });
+  });
+});
+
+describe("문서 주소의 Theater 범위", () => {
+  it("떠나온 Theater의 경로를 새 Theater에 세우지 않는다", () => {
+    // 이전 Theater에서 읽던 문서를 들고 살아남은 인스턴스가 새 Theater에 마운트된다.
+    act(() => {
+      root.render(fileExplorerDocumentPane.render(paneCtx("theater-b", { path: "src/only-in-a.ts", theaterId: "theater-a" })));
+    });
+
+    expect(getFileExplorerSnapshot("theater-b").activePath).toBeNull();
+    expect(getFileExplorerSnapshot("theater-b").openDocs).toEqual([]);
+    // 그 Theater의 저장된 세션도 건드리지 않는다.
+    expect(window.localStorage.getItem("fleet-console.fileExplorer.session.theater-b")).toBeNull();
+  });
+
+  it("자기 Theater의 주소는 그대로 세운다", () => {
+    act(() => {
+      root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", { path: "src/index.ts", theaterId: "theater-a" })));
+    });
+
+    expect(getFileExplorerSnapshot("theater-a").activePath).toBe("src/index.ts");
+    // 활성 문서가 있어도 새 외부 요청만 한 번 소비한다. 이후 수동 선택은 옛 주소가 덮지 않는다.
+    const requested = { path: "src/other.ts", theaterId: "theater-a", requestId: "external-1", line: "10", column: "9" };
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", requested))); });
+    expect(getFileExplorerSnapshot("theater-a")).toMatchObject({ activePath: "src/other.ts", revealTarget: { requestId: "external-1", lineNumber: 10, column: 9 } });
+    act(() => { activateStoredDocument("theater-a", { relativePath: "src/index.ts", name: "index.ts" }); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx("theater-a", requested))); });
+    expect(getFileExplorerSnapshot("theater-a").activePath).toBe("src/index.ts");
+  });
+});

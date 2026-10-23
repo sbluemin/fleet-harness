@@ -49,6 +49,8 @@
     "tsup.config.ts",
     "vitest.config.ts",
     "features/*/host/**/*.ts",
+    "features/*/tests/**/*.ts",
+    "features/*/tests/**/*.tsx",
     "features/updates/runtime/**/*.ts"
   ]
 }

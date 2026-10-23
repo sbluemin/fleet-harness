@@ -1,0 +1,247 @@
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import type { FileExplorerMessageKey } from "../i18n/index.js";
+import type { FileReadWindow } from "../../shared/types.js";
+import { tokenize } from "../syntax/highlighter.js";
+
+/** Matches `.fexp-code-row` height (13px --t-md × 1.6, rounded). */
+const CODE_LINE_HEIGHT_PX = 21;
+const CODE_OVERSCAN_LINES = 8;
+/** 긴 한 줄의 토큰 DOM과 가로 레이아웃이 Console 전체를 막지 않도록 제한한다. */
+export const LONG_LINE_CHAR_CAP = 5000;
+/**
+ * 줄바꿈을 켜면 한 줄의 높이가 내용에 따라 달라져 고정 높이 가상화의 인덱스↔스크롤 대응이 깨진다
+ * (실측: 1,200줄 파일에서 끝까지 스크롤해도 1039행에서 멈춤). 그래서 줄바꿈 모드는 창을 나누지 않고
+ * 전부 그리며, 그것이 감당 가능한 줄 수까지만 줄바꿈을 허용한다.
+ */
+export const WRAP_LINE_BUDGET = 2000;
+
+export function canWrapLines(lineCount: number): boolean {
+  return lineCount <= WRAP_LINE_BUDGET;
+}
+
+interface CodeViewerProps {
+  readonly content: string;
+  readonly lang: string;
+  readonly truncated?: boolean;
+  readonly wrap?: boolean;
+  readonly readWindow?: FileReadWindow;
+  readonly target?: {
+    readonly lineNumber: number;
+    readonly column?: number;
+    readonly relativePath: string;
+    readonly requestId: string;
+    readonly ranges: readonly { readonly start: number; readonly end: number }[];
+  };
+  readonly t: Translate<FileExplorerMessageKey>;
+}
+
+export function visibleLineWindow(
+  scrollTop: number,
+  viewportHeight: number,
+  lineCount: number,
+  lineHeight: number = CODE_LINE_HEIGHT_PX,
+  overscan: number = CODE_OVERSCAN_LINES,
+): { readonly start: number; readonly end: number; readonly offsetY: number; readonly totalHeight: number } {
+  const totalHeight = Math.max(0, lineCount * lineHeight);
+  if (lineCount === 0) return { start: 0, end: 0, offsetY: 0, totalHeight: 0 };
+  // 브라우저가 짧아진 내용이나 커진 뷰포트에 맞춰 스크롤을 줄인 상태도 창에 반영한다.
+  const height = Math.max(0, viewportHeight);
+  const actualTop = Math.min(Math.max(0, scrollTop), Math.max(0, totalHeight - height));
+  const start = Math.max(0, Math.floor(actualTop / lineHeight) - overscan);
+  const end = Math.min(
+    lineCount,
+    Math.ceil((actualTop + height) / lineHeight) + overscan,
+  );
+  return { start, end, offsetY: start * lineHeight, totalHeight };
+}
+
+export function CodeViewer({ content, lang, truncated, wrap = false, readWindow, target, t }: CodeViewerProps) {
+  const lines = useMemo(() => content.split("\n"), [content]);
+  const longLineCount = useMemo(() => lines.filter((line) => line.length > LONG_LINE_CHAR_CAP).length, [lines]);
+  const [showFullLines, setShowFullLines] = useState(false);
+  useLayoutEffect(() => { setShowFullLines(false); }, [content]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const windowRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(480);
+  // 아래에 더 있음을 가장자리 페이드가 말한다 — 끝에 닿으면 페이드도 사라진다.
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const wrapping = wrap && canWrapLines(lines.length);
+
+  const syncViewport = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    setViewportHeight(node.clientHeight);
+    // 요청한 위치가 아니라 브라우저가 실제로 허용한 위치가 가상 창의 기준이다.
+    setScrollTop(node.scrollTop);
+    setCanScrollDown(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    syncViewport();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(syncViewport);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [lines.length, syncViewport, wrapping]);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !readWindow || target) return;
+    node.scrollTop = readWindow.mode === "tail" ? node.scrollHeight : 0;
+    syncViewport();
+  }, [content, readWindow?.mode, readWindow?.startByte, readWindow?.endByte, syncViewport, target?.requestId]);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !target) return;
+    const lineNumber = Math.min(lines.length, target.lineNumber);
+    if (!wrapping) {
+      const targetTop = Math.max(0, (lineNumber - 1) * CODE_LINE_HEIGHT_PX - node.clientHeight * 0.35);
+      node.scrollTop = targetTop;
+      syncViewport();
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = windowRef.current?.querySelector<HTMLElement>(".is-search-target");
+      if (wrapping) row?.scrollIntoView({ block: "center" });
+      const mark = row?.querySelector<HTMLElement>(".fexp-code-search-mark");
+      if (mark && !wrapping) {
+        const left = mark.getBoundingClientRect().left - node.getBoundingClientRect().left + node.scrollLeft;
+        node.scrollLeft = Math.max(0, left - node.clientWidth * 0.35);
+      }
+      syncViewport();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [content, lines.length, syncViewport, target?.lineNumber, target?.column, target?.relativePath, target?.requestId, wrapping]);
+
+  const windowed = visibleLineWindow(scrollTop, viewportHeight, lines.length);
+  // 줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 높이 격자에 얹으면 뒷줄이 도달 불가가 된다.
+  const { start, end, offsetY, totalHeight } = wrapping
+    ? { start: 0, end: lines.length, offsetY: 0, totalHeight: 0 }
+    : windowed;
+  const rendered = useMemo(() => {
+    return lines.slice(start, end).map((line) => line.length > LONG_LINE_CHAR_CAP
+      ? escapeHtml(showFullLines ? line : line.slice(0, LONG_LINE_CHAR_CAP))
+      : renderLine(line, lang));
+  }, [lang, lines, start, end, showFullLines]);
+  const rows = rendered.map((html, index) => {
+    const lineNumber = start + index + 1;
+    return (
+      <CodeRow
+        key={start + index}
+        lineNumber={lineNumber}
+        html={html}
+        target={target && lineNumber === Math.min(lines.length, target.lineNumber) ? {
+          ranges: target.ranges.length > 0 ? target.ranges : target.column && (lines[start + index]?.length ?? 0) > 0 ? [{
+            start: Math.min(target.column - 1, (lines[start + index]?.length ?? 1) - 1),
+            end: Math.min(target.column, lines[start + index]?.length ?? 0),
+          }] : [],
+        } : undefined}
+        rawLine={lines[start + index] ?? ""}
+        lang={lang}
+        plainLongLine={(lines[start + index]?.length ?? 0) > LONG_LINE_CHAR_CAP}
+      />
+    );
+  });
+
+  return (
+    <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}${scrollTop > 1 ? " is-scrolled" : ""}${canScrollDown ? " can-scroll-down" : ""}${truncated ? " is-truncated" : ""}`}>
+      {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
+      {longLineCount > 0 && (
+        <div className="fexp-long-line-notice" role="status">
+          <span>{t(showFullLines ? "fileExplorer.viewer.longLinesFull" : "fileExplorer.viewer.longLines", { count: longLineCount, cap: LONG_LINE_CHAR_CAP })}</span>
+          <button type="button" aria-expanded={showFullLines} onClick={() => setShowFullLines((current) => !current)}>{t(showFullLines ? "fileExplorer.viewer.collapseLongLines" : "fileExplorer.viewer.fullLongLines")}</button>
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        className="fexp-code-scroll"
+        role="region"
+        aria-label={t("fileExplorer.viewer.fileContentsAria")}
+        onScroll={syncViewport}
+      >
+        {wrapping ? (
+          <div className="fexp-code-sizer">
+            <div className="fexp-code-window" ref={windowRef}>
+              {rows}
+            </div>
+          </div>
+        ) : (
+          <div className="fexp-code-sizer" style={{ height: totalHeight }}>
+            <div className="fexp-code-window" ref={windowRef} style={{ transform: `translateY(${offsetY}px)` }}>
+              {rows}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodeRow({
+  lineNumber,
+  html,
+  target,
+  rawLine,
+  lang,
+  plainLongLine,
+}: {
+  readonly lineNumber: number;
+  readonly html: string;
+  readonly target?: { readonly ranges: readonly { readonly start: number; readonly end: number }[] };
+  readonly rawLine: string;
+  readonly lang: string;
+  readonly plainLongLine: boolean;
+}) {
+  const highlighted = !plainLongLine && target ? renderLineWithSearchRanges(rawLine, lang, target.ranges) : html;
+  return (
+    <div className={`fexp-code-row${target ? " is-search-target" : ""}`}>
+      <span className="fexp-line-num" aria-hidden="true">{lineNumber}</span>
+      <span
+        className="fexp-line-code"
+        dangerouslySetInnerHTML={{ __html: highlighted }}
+      />
+    </div>
+  );
+}
+
+export function renderLine(line: string, lang: string): string {
+  if (line.length > LONG_LINE_CHAR_CAP) return escapeHtml(line.slice(0, LONG_LINE_CHAR_CAP)) + " …";
+  if (lang === "plaintext" || lang === "markdown") return escapeHtml(line) || " ";
+  const tokens = tokenize(line, lang);
+  return tokens.map((tok) => {
+    const escaped = escapeHtml(tok.value);
+    return tok.kind === "text" ? escaped : `<span class="syn-${tok.kind}">${escaped}</span>`;
+  }).join("") || " ";
+}
+
+export function renderLineWithSearchRanges(
+  line: string,
+  lang: string,
+  ranges: readonly { readonly start: number; readonly end: number }[],
+): string {
+  if (line.length > LONG_LINE_CHAR_CAP) return renderLine(line, "plaintext");
+  const normalized = [...ranges]
+    .filter((range) => range.start >= 0 && range.end > range.start && range.end <= line.length)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  if (normalized.length === 0) return renderLine(line, lang);
+  let cursor = 0;
+  let rendered = "";
+  for (const range of normalized) {
+    if (range.start < cursor) continue;
+    rendered += renderLine(line.slice(cursor, range.start), lang);
+    rendered += `<mark class="fexp-code-search-mark">${escapeHtml(line.slice(range.start, range.end))}</mark>`;
+    cursor = range.end;
+  }
+  rendered += renderLine(line.slice(cursor), lang);
+  return rendered || " ";
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
