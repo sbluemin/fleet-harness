@@ -135,8 +135,8 @@ Choose a **Dark** or **Light** theme. You can pick interface and terminal fonts 
 
 ## Go deeper
 
-- [Fleet Development Reference](docs/fleet-development-reference.md): extend hosts, build plugins, and run an isolated development Console
-- [Console Agent SDK](docs/console-agent-sdk.md): the contracts plugins build on
+- [Fleet Development Reference](docs/fleet-development-reference.md): extend hosts, add Console features, and run an isolated development Console
+- [Console Agent SDK](docs/console-agent-sdk.md): how Console features run agent sessions and tools
 - [Admiral Workflow Reference](docs/admiral-workflow-reference.md): orchestration architecture and doctrine
 - [Desktop guide](runtime/fleet-desktop/README.md): artifacts, updates, and current limits
 - [Changelog](CHANGELOG.md): release history

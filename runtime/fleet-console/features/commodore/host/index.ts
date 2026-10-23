@@ -1,9 +1,16 @@
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { AttachmentHost } from "../../execution/shared/agent.js";
+import type { ModelRosterHost } from "../../ai-gateway/host/model-ports.js";
+import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
+import type { EventPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import path from "node:path";
 import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
-import type { CommodoreBoardAdapter, CommodoreEvent, FleetPluginCommodoreHost } from "@fleet-console/sdk/commodore";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
-import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { PluginMcpServerTools } from "@fleet-console/sdk/mcp";
+import type { CommodoreBoardAdapter, CommodoreBoardHost } from "../../objectives/shared/commodore-board.js";
+import type { CommodoreEvent } from "../shared/contracts/types.js";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../../settings/shared/experiments.js";
+import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
@@ -12,19 +19,19 @@ import { createCommodoreEntities } from "./entities.js";
 import { migrateCommodoreData } from "./migrate.js";
 import { CommodoreStoreError } from "./errors.js";
 import { hasLegacyKnowledge, legacyKnowledgeSources } from "./knowledge-sources.js";
-import { COMMODORE_CHANNEL } from "./types.js";
+import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
 
 export interface CommodoreFeatureDeps {
-  readonly paths: FleetPluginHostCapabilities["paths"];
-  readonly events: FleetPluginHostCapabilities["events"];
-  readonly experiments: FleetPluginHostCapabilities["experiments"];
-  readonly models: FleetPluginHostCapabilities["models"];
-  readonly attachments: FleetPluginHostCapabilities["attachments"];
-  readonly http: FleetPluginHostCapabilities["http"];
-  readonly security: FleetPluginHostCapabilities["security"];
+  readonly paths: WorkspacePaths;
+  readonly events: EventPort;
+  readonly experiments: (ExperimentsHost | undefined);
+  readonly models: (ModelRosterHost | undefined);
+  readonly attachments: (AttachmentHost | undefined);
+  readonly http: HttpPort;
+  readonly security: HttpSecurityPort;
   readonly agent: ConsoleResidentAgentDeps;
   /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
-  readonly knowledgeTools: (commodoreId: string) => readonly PluginMcpServerTools[];
+  readonly knowledgeTools: (commodoreId: string) => readonly McpServerTools[];
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -92,7 +99,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     knowledgeTools: deps.knowledgeTools,
     emit,
   });
-  const host: FleetPluginCommodoreHost = {
+  const host: CommodoreBoardHost = {
     registerBoard(adapter) {
       if (disposed) throw new Error("commodore_disposed");
       if (board) throw new Error("commodore_board_registered");

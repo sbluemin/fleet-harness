@@ -1,15 +1,15 @@
+import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "@fleet-console/sdk/commodore";
-import type { AgentEvent, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
-import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
-import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
-import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "@fleet-console/sdk/settings";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
+import type { AgentEvent, AgentInput, AgentSessionOptions } from "../features/execution/shared/agent.js";
+import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
+import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
+import { defineConsoleTool } from "../features/console-use/shared/actions.js";
+import { DEFAULT_EXPERIMENT_SETTINGS, resolveExperimentSettings } from "../features/settings/shared/experiments.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -20,12 +20,12 @@ import { workspaceHash } from "../features/workspace/host/theaters/theater-domai
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, DEFAULT_PATROL_MS, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
-import { COMMANDER_REST_MS, restClock } from "../../fleet-plugins/objectives/server/board-state.js";
-import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/host/types.js";
-import type { Objective, ObjectiveEvent } from "../../fleet-plugins/objectives/server/types.js";
-import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../../fleet-plugins/objectives/server/commodore-board.js";
+import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
+import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
+import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../features/objectives/shared/commodore-board.js";
+import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
+import { createCommodoreBoardWatch, PLANNED_CHECK_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
 
 /** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */
 function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" | "theaterIdsOf">) {
@@ -34,7 +34,7 @@ function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" 
 
 /** 기존 대표 시나리오는 실제 보드 어댑터와 feature의 SDK 경계를 함께 검증한다. */
 function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" | "theaterIds" | "cwd"> & CommodoreBoardWatchDeps & {
-  boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly PluginMcpTool[];
+  boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly ConsoleMcpTool[];
 }) {
   return createHostSupervisor({ ...deps, theaterIds: () => ["t1"], cwd: (id) => deps.store.read(id) ? deps.theater("t1")?.root ?? null : null, board: () => ({
     tools: (theaterId, turn) => deps.boardTools(theaterId, turn.readAttachments, turn.hasPersonMessage),
@@ -70,7 +70,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
       http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
       experiments: { read: () => experiments },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as CommodoreRouteContext;
   let clock = 1_000;
   const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++), ...(maxRetainedImageBytes !== undefined ? { maxRetainedImageBytes } : {}) });
   const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}, method?: string) => {

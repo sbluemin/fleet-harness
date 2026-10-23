@@ -1,5 +1,5 @@
-import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
+import type { OnboardingContribution } from "../../onboarding/shared/types.js";
 
 import { getT } from "./i18n.js";
 

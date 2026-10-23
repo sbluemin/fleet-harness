@@ -5,7 +5,7 @@ import { SettingsHelp } from "../../../core/client/src/chrome/components/setting
 import { getPaneStoreSnapshot } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { closeRailPanel, openRailPanel, useRailActivePanelId } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import {
   buildCoreSettingsSections,
@@ -61,7 +61,7 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 function SettingsModal({ section }: { readonly section: string | null }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;

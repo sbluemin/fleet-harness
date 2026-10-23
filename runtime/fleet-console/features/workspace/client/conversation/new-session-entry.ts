@@ -1,4 +1,4 @@
-import type { PluginMentionTargetAddress } from "@fleet-console/sdk/plugin";
+import type { MentionTargetAddress } from "../../../execution/shared/composer-ports.js";
 
 import { getState, openMobileNewSession, openNewSession, requestNewSessionFocus, seedNewSession } from "../../../../core/client/src/integration/store.js";
 import { navigateConsoleRoute } from "../../../../core/client/src/integration/console-location.js";
@@ -39,7 +39,7 @@ export function openDefaultNewSession(): void {
 export function openNewSessionComposer(options?: {
   readonly draft?: string;
   readonly mentionOperationId?: string;
-  readonly mentionTarget?: PluginMentionTargetAddress;
+  readonly mentionTarget?: MentionTargetAddress;
 }): void {
   const draft = typeof options?.draft === "string" ? options.draft : null;
   const mentionOperationId = options?.mentionOperationId ?? null;

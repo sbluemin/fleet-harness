@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
 import { browserEn, browserKo } from "./i18n.js";
 

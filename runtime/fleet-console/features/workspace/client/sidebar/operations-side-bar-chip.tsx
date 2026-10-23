@@ -1,14 +1,14 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { useAgentState } from "../../../execution/client/agent/store.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkLabel, type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationAvatar, mongleStateOfMark } from "../avatars.js";
@@ -456,16 +456,16 @@ function displayTitle(operation: OperationNode): string {
  * 읽게 한다. 활동은 비콘이 지므로 여기는 상태가 아니라 사실만 선다. 실패해도 칩은 살아야 한다.
  */
 function PluginOperationMarks({ operation }: { readonly operation: OperationNode }) {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const language = useConsoleLocale();
   const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   return (
     <>
       <OperationCaptionContributions operation={operation} language={language} surface="chip" />
       {descriptor?.operationMarks ? (
-        <PluginErrorBoundary fallback={<></>}>
+        <FeatureErrorBoundary fallback={<></>}>
           {descriptor.operationMarks({ operation, language, onClose: () => undefined })}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ) : null}
     </>
   );

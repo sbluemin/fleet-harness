@@ -2,12 +2,12 @@ import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
-import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
-import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
-import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
+import { theaterAvatarKey } from "../../workspace/shared/avatars.js";
+import type { AgentConversationProps } from "../../execution/shared/chat-renderer.js";
+import type { ConversationParticipant, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
+import type { Translate } from "@fleet-console/i18n";
+import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
+import type { ClientTheaterInboxCapability } from "../../workspace/shared/theater-inbox.js";
 
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";

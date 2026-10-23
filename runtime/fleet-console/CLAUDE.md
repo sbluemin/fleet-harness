@@ -1,29 +1,29 @@
 # Fleet Console
 
-`runtime/fleet-console` is the sole published host for Fleet Console and the `fleet` terminal launcher. The Console product — core plus built-ins under `../fleet-plugins/` — owns Console HTTP, streaming, PTY/provider/plugin runtime, durable state, and browser UI; `cli/` owns the published `fleet` entry: Console lifecycle, updates, and gateway configuration. It does not launch Claude Code.
+`runtime/fleet-console` is the sole published host for Fleet Console and the `fleet` terminal launcher. The Console product — core plus its features — owns Console HTTP, streaming, PTY/provider runtime, durable state, and browser UI; `cli/` owns the published `fleet` entry: Console lifecycle, updates, and gateway configuration. It does not launch Claude Code.
 
 ## Directory index
 
 | Directory | Responsibility |
 |---|---|
 | `cli/` | Published `fleet` entry: Console lifecycle, updates, and interactive gateway configuration |
-| `core/host/` | Bootstrap, transport, plugin adapters, and native-shell composition |
+| `core/host/` | Bootstrap, transport, feature composition, and native-shell composition |
 | `core/client/` | Application composition, global chrome, and feature integration |
-| `features/` | Vertical product owners: execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore |
-| `foundation/` | Agent runtime, process/infra primitives, process lifecycle contract IO, Markdown, and Font Picker |
+| `features/` | Vertical product owners: execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore, Objectives, Codex, File Explorer, Repository, Quota, Scuttlebutt |
+| `foundation/` | Agent runtime, process/infra primitives, process lifecycle contract IO, i18n, generic React UI helpers, Markdown, and Font Picker |
 | `protocol/` | Shared remote-access and Console-Desktop protocol contracts |
-| `sdk/` | Plugin-facing contracts and stateless helpers |
 | `tests/` | Service, security, state, and integration contracts |
-| `../fleet-plugins/` | Built-in plugin implementations |
 | `../fleet-desktop/` | Optional thin native shell |
 
 ## Domain boundaries
 
 - A **Theater** is any registered project root. An **Operation** is a Console-managed unit inside a Theater. A Codex workspace is one commodore's Fleet Wiki knowledge, identified by the commodore id.
-- Console features own execution, Chat/PTY session state, Gateway, Console Use, Browser, Computer Use, remote pairing, Workspace, Settings, and Updates. Core composes those capabilities and owns global chrome, transport admission, shell adapters, and plugin registries. Plugins own their extension panels and scoped runtime behavior; they consume Console capabilities without depending on another plugin’s mount path.
-- Desktop may supervise and display Console only through the public desktop protocol; it must not duplicate server, PTY, provider, plugin, state, or React behavior.
-- Host code may consume public APIs from features and foundation, but must not import any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
-- Built-ins are trusted static plugins. Installing an external plugin grants same-process Node and same-origin browser privileges; external plugins are not sandboxed.
+- Console features own execution, Chat/PTY session state, Gateway, Console Use, Browser, Computer Use, remote pairing, Workspace, Settings, and Updates. Core composes every feature through explicit dependency objects and owns global chrome, transport admission, shell adapters, and the feature registries. Window chrome and path selection stay with core: a feature pane receives resolved context and renders its body only.
+- Desktop may supervise and display Console only through the public desktop protocol; it must not duplicate server, PTY, provider, state, or React behavior.
+- Host code may consume public APIs from features and foundation, but must not import any package's implementation paths. Browser code remains Node-free. A shared contract lives with the feature that owns its domain, or in foundation when it is domain-free; do not add a catch-all contract package or broad facade/barrel exports over features or foundation.
+- Console has no plugin runtime: it discovers, installs, and loads no third-party extension code. Every product surface ships as a feature composed in source.
+- Codex, File Explorer, Objectives, Quota, Repository, and Scuttlebutt run AI work and session-scoped tools only through the ports `features/execution` provides (the `AgentHost` port in `features/execution/shared/agent.ts` and the Admiral MCP registry). They own their prompts, domain tool handlers, product state, and user approval; execution owns engines, isolated child resources, and teardown. They never construct Agent SDK engines or MCP execution servers themselves. Agent events are server-internal, not browser DTOs. Usage: `../../docs/console-agent-sdk.md`.
+- The owned-process port (`OwnedProcessPort.spawnOwned` in `foundation/process`) is spawn-only: a feature child that must end with the Console starts through it, and a child meant to outlive the Console never does. Never widen it to register existing pids, list or end the Console's children, or signal anything but the returned child. Contract: `../../docs/console-lifecycle-contract.md` (Children).
 
 ## Security and state constraints
 
@@ -33,17 +33,19 @@
 - A link publishes an address as much as a credential, and a device keeps only what the link told it. So the remote listener remembers the port it first opened on and reopens that one, rather than following the console's own port, which is free to move on every start; it never slides to another port on its own, because a device that cannot find the address it was given is unpaired in fact while the list still says otherwise. Releasing that port belongs with the acts that already void every pairing.
 - Console owns which other consoles this one can reach. The list and its certificate pins are reachable only from the loopback listener; a remote listener never serves or edits them. For the sidebar console section, Fleet Desktop hands the active document — local or remote — only a minimized view of that list (label, address, version, active flag, and a per-window opaque id, plus display-only kind, home, and reachability status) directly through the renderer, never through a console server, and never origins, pins, record ids, tokens, or access links. That document can only ask the shell to switch to an id, toggle the section, or request add, rename, or forget, which the shell validates and resolves against the home console. A saved host stores where to go and what certificate to trust, never a credential; a link's single-use grant lives in memory until the shell takes it, and is handed over exactly once.
 - Terminal WebSocket is the sole ticketed browser transport: an Origin-authorized HTTP route issues a short-lived one-use ticket consumed by the upgrade. Do not generalize that ticket into browser bearer authentication.
-- Provider session identities, transcripts, and raw filesystem paths may remain in sensitive server-side state but must not enter ordinary core or built-in browser DTOs, browser-visible logs, streams, or static assets. The Chat background-work surface is the one owner-decided exception: its job titles, progress, reports, tool trails, and shell output carry unfolded paths, because a folded coordinate cannot answer what a job actually touched. Credential masking still applies there, transcripts still travel as bounded tool trails and output tails rather than raw files, and provider session identities remain server-side.
+- Provider session identities, transcripts, and raw filesystem paths may remain in sensitive server-side state but must not enter ordinary core or feature browser DTOs, browser-visible logs, streams, or static assets. The Chat background-work surface is the one owner-decided exception: its job titles, progress, reports, tool trails, and shell output carry unfolded paths, because a folded coordinate cannot answer what a job actually touched. Credential masking still applies there, transcripts still travel as bounded tool trails and output tails rather than raw files, and provider session identities remain server-side.
 - Filesystem access requires lexical validation followed by containment checks on resolved real paths. Git revision input must reject option-like arguments even when no shell is used.
 - Shared markdown and Mermaid output must remain sanitized before DOM insertion; Mermaid stays strict with HTML labels disabled, and renderer-supplied bind functions are never executed.
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored terminal Operations are dormant until explicitly relaunched; restored Chat Operations stay live and idle, and their SDK child starts only on the next send or an explicit host preparation.
+- Browser preferences are local and volatile; settings are server-durable. Neither channel is a credential or raw-path store.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
 - The Fleet Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
 
 ## Design invariants
 
 - Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or agent identity uses the `--id-*` tones only as the caption and rail-chip title ink and the pastel body of a mongle avatar — borders stay state-owned and identity never repaints signal surfaces or the caption fill.
-- Core and built-in plugin CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so the dark and light themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
+- Core and feature CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so the dark and light themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
+- Feature stylesheets load into the whole Console document with no automatic scoping. In Codex, File Explorer, Objectives, Quota, Repository, and Scuttlebutt, scope new or changed selectors under a class the feature owns, prefixed with its name (such as `.codex-` or `.fexp-`), and restyle a shared core class such as `.markdown-body` only beneath such a class; older unprefixed Codex selectors are not a precedent. Tell host placements apart through the public `data-host-surface` attribute (`mobile-sheet`, `mobile-screen`), not internal host classes.
 - `tests/instrument-design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
 
 ## Distribution constraints
@@ -51,5 +53,4 @@
 - Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry does not start an AI Gateway listener of its own. Console's own listener keeps the loopback and remote rules in Security and state constraints.
 - Published Console artifacts are self-contained: workspace packages are bundled and must not survive as workspace-version dependencies.
 - The published `./desktop-protocol` subpath is a compatibility surface for shipped Desktop shells under always-latest Console installs; keep its export surface unchanged.
-- Host and built-in plugin bundles may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.
-- Built-in plugin server code must resolve package-level native or external dependencies from the Console package rather than the generated plugin cache; validate the affected path against the built distribution because source tests and builds can stay green.
+- Separately bundled entries (each `tsup.config.ts` entry, and the packages that ship their own copy) may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.

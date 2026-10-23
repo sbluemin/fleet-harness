@@ -1,6 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
-import type { MobileSubScreenSpec } from "@fleet-console/sdk/settings/browser";
+import type { MobileSubScreenSpec } from "../../../../../features/settings/client/mobile-host.js";
 
 /**
  * 설정 하위 화면 스택. 섹션 화면 위에 한 단씩 쌓이고, 위 막대의 ‹·뒤로가 맨 위를 걷는다.

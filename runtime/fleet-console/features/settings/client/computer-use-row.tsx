@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSelect } from "@fleet-console/sdk/react/browser";
-import type { ComputerUseBackendId } from "@fleet-console/sdk/settings";
-import { isComputerUseBackendId } from "@fleet-console/sdk/settings/browser";
-import { SettingsToggle, widenModelPickerPopup } from "@fleet-console/sdk/settings/browser";
+import { useSelect } from "@fleet-console/ui/react";
+import type { ComputerUseBackendId } from "../shared/experiments.js";
+import { isComputerUseBackendId } from "../shared/experiments.js";
+import { SettingsToggle, widenModelPickerPopup } from "./preferences-context.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { ComputerUseGlyph } from "./computer-use-glyph.js";
 import { useT } from "../../../core/client/src/i18n/index.js";

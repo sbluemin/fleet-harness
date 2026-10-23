@@ -7,22 +7,22 @@ describe("route registries", () => {
   it("dispatches HTTP routes by exact prefix order", async () => {
     const registry = new RouteRegistry();
     const handled: string[] = [];
-    registry.register("/plugins/demo", ({ pathname }) => {
+    registry.register("/api/v1/demo", ({ pathname }) => {
       handled.push(pathname);
       return true;
     });
 
-    const result = await registry.handle({ req: {} as never, res: {} as never, pathname: "/plugins/demo/api/ping" });
+    const result = await registry.handle({ req: {} as never, res: {} as never, pathname: "/api/v1/demo/api/ping" });
 
     expect(result).toBe(true);
-    expect(handled).toEqual(["/plugins/demo/api/ping"]);
+    expect(handled).toEqual(["/api/v1/demo/api/ping"]);
   });
 
   it("dispatches upgrade routes by exact prefix order", () => {
     const registry = new UpgradeRegistry();
-    registry.register("/plugins/demo/ws", () => true);
+    registry.register("/api/v1/demo/ws", () => true);
 
-    expect(registry.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/demo/ws/stream" })).toBe(true);
-    expect(registry.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/demo/api" })).toBe(false);
+    expect(registry.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/api/v1/demo/ws/stream" })).toBe(true);
+    expect(registry.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/api/v1/demo/api" })).toBe(false);
   });
 });

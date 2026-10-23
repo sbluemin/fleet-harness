@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import type { MobileBarMenuItem } from "@fleet-console/sdk/pane";
+import type { MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 import { openedByKeyboard } from "./mobile-input-modality.js";
 
 /**

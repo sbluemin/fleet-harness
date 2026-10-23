@@ -1,5 +1,5 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import { createConversationStream } from "@fleet-console/sdk/conversation";
+import * as React from "react";
+import { createConversationStream } from "../../../shared/conversation/stream.js";
 
 import { TerminalTicketError, buildTerminalWsUrl } from "../../terminal/shared/terminal-connection.js";
 import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatLogState } from "./chat-events.js";

@@ -1,4 +1,4 @@
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from "../../../execution/shared/operations/types.js";
 
 export type SideBarOperationAction =
   | "rename"

@@ -1,5 +1,5 @@
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
 /**
  * 그룹 대화 화면의 문구. 실행 기능의 큰 사전과 따로 두어, 같은 사전을 함께 고치는 다른 작업과 부딪히지 않게 한다.

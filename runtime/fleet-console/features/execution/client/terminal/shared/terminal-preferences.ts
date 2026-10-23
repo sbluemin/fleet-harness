@@ -1,4 +1,4 @@
-import { fontFamilyForAxis, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { fontFamilyForAxis, type ConsoleFontSettings } from "../../../../settings/shared/fonts.js";
 export type TerminalRenderer = "webgl" | "dom";
 
 export type TerminalInactiveFlush = "saving" | "balanced" | "instant";
@@ -261,7 +261,7 @@ function sanitizeCustomFontFamilyName(name: string): string {
 
 import { useSyncExternalStore } from "react";
 
-import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
+import type { ClientSettingsCapability } from "../../../../settings/shared/client-ports.js";
 
 
 interface TerminalPrefsState {
@@ -418,7 +418,7 @@ async function hydrateTerminalSettingsFromServer(): Promise<void> {
   const autoFoldEpoch = chatHistoryAutoFoldWriteEpoch;
   const behaviorEpoch = behaviorWriteEpoch;
   try {
-    const value = await settingsCapability.read(null);
+    const value = await settingsCapability.read();
     if (value !== null && behaviorEpoch === behaviorWriteEpoch) {
       const storedScrollback = value["scrollback"];
       const storedCopyOnSelect = value["copyOnSelect"];
@@ -458,8 +458,8 @@ async function pushChatReadingWidthToServer(width: ChatReadingWidth): Promise<vo
 
 export function mergeTerminalSettingsRecord(settings: ClientSettingsCapability, patch: Record<string, unknown>): Promise<void> {
   const merge = async () => {
-    const current = await settings.read(null);
-    await settings.write(null, { ...(current ?? {}), ...patch });
+    const current = await settings.read();
+    await settings.write({ ...(current ?? {}), ...patch });
   };
   const previous = terminalSettingsWriteFlight;
   const write = previous ? previous.catch(() => undefined).then(merge) : merge();

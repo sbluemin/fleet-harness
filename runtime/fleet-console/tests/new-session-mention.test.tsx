@@ -4,22 +4,22 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
+import type { ClientFeatureDescriptor } from "../features/workspace/shared/feature-surfaces.js";
 
 // 플러그인 행선지('@')로의 전달은 SDK 계약(mentionTargets·messageMentionTarget)이 호스트 컴포저에 닿는 유일한 길이다.
 // 새 세션 컴포저에서 목록을 열어 고르고 보내는 대표 경로가, 거절에도 문장·보낼 곳을 지키고 성공하면 옵션 없이 전달되는지 본다.
 const fixture = vi.hoisted(() => {
   const noClusters: never[] = [];
   return {
-    providers: [] as ClientExecutionProvider[],
+    providers: [] as ClientFeatureDescriptor[],
     theaterContributions: [] as never[],
     // '@' 묶음의 「시작 전」 판정이 사이드바와 같은 묶음 원천을 읽는다 — 이 경로에는 묶음이 없다.
     operationClusters: { subscribe: () => () => {}, get: () => noClusters },
   };
 });
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => fixture }));
-vi.mock("@fleet-console/sdk/operations/browser", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@fleet-console/sdk/operations/browser")>()),
+vi.mock("../core/client/src/integration/feature-registry.js", () => ({ useFeatureRegistry: () => fixture }));
+vi.mock("../features/execution/client/operations.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../features/execution/client/operations.js")>()),
   fetchOperationCatalog: async () => [],
 }));
 vi.mock("../features/workspace/client/conversation/new-session-playground.js", () => ({ NewSessionPlayground: () => null }));
@@ -53,7 +53,7 @@ it("delivers an '@'-picked plugin destination without launching, keeping the dra
       deliveries.push(args);
       if (reject) throw new Error("destination_busy");
     },
-  } as unknown as ClientExecutionProvider];
+  } as unknown as ClientFeatureDescriptor];
   const theater = { id: "th-a", label: "th-a", createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
   setState({ theaters: [theater], newSession: { theaterId: "th-a" }, newSessionSeed: null, newSessionRejection: null, pendingLaunch: null });
   const container = document.createElement("div");

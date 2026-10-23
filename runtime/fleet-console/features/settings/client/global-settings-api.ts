@@ -1,5 +1,6 @@
-import { DEFAULT_FONTS, readFontSettings, migrateTerminalFont } from "@fleet-console/sdk/settings/fonts";
-import { resolveExperimentSettings, sanitizeShortcutBindings } from "@fleet-console/sdk/settings/browser";
+import { DEFAULT_FONTS, readFontSettings, migrateTerminalFont } from "../shared/fonts.js";
+import { resolveExperimentSettings } from "../shared/experiments.js";
+import { sanitizeShortcutBindings } from "../shared/shortcuts.js";
 import { ApiError } from "../../../core/client/src/integration/api.js";
 import { normalizeUiFont } from "./ui-font.js";
 import { type ConsoleLanguagePreference, type GlobalSettingsMutationResult, type GlobalSettingsState } from "../../../core/client/src/integration/types.js";

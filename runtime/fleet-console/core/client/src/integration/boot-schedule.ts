@@ -14,7 +14,6 @@ import { fetchGroups, fetchOperations, fetchTheaterBootstrap } from "./api.js";
 const BOOT_CRITICAL_PATHS = new Set([
   "/api/v1/settings/global",
   "/api/v1/settings/fonts/migration",
-  "/plugin-runtime/manifest",
   "/api/v1/theaters",
   "/api/v1/operations",
   "/api/v1/operations/groups",

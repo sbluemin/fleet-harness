@@ -1,4 +1,4 @@
-import { ROSTER_FALLBACK_MODEL, resolveRosterCoordinate } from "@fleet-console/sdk/models";
+import { ROSTER_FALLBACK_MODEL, resolveRosterCoordinate } from "../../../ai-gateway/shared/models.js";
 import { buildModelRoster } from "../../../ai-gateway/host/model-roster.js";
 import fs from "node:fs";
 import { createRequire } from "node:module";

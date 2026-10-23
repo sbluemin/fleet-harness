@@ -6,9 +6,9 @@
  * tests/agent-chat-events.test.ts가 못 박는다.
  */
 
-import { normalizeComposerQuote, type ComposerQuote } from "@fleet-console/sdk/composer/quotes";
-import type { ConversationReference } from "@fleet-console/sdk/conversation";
-import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
+import { normalizeComposerQuote, type ComposerQuote } from "../../composer-primitives/quotes.js";
+import type { ConversationReference } from "../../../shared/conversation/references.js";
+import type { ConsoleActionInput } from "../../../../console-use/shared/control.js";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 서버가 도구 입력에서 접어 보낸다. */
 export interface AgentChatChange {

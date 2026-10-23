@@ -1,11 +1,12 @@
-import type { AgentChatTranscriptAttachment, AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { splitQuotedPrompt } from "@fleet-console/sdk/composer/quotes";
-import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { AgentChatTranscriptAttachment, AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "../../execution/shared/chat-renderer.js";
+import { splitQuotedPrompt } from "../../execution/client/composer-primitives/quotes.js";
+import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference } from "../../execution/shared/conversation/references.js";
+import { type ConversationSpeaker } from "../../execution/shared/conversation/types.js";
+import type { Translate } from "@fleet-console/i18n";
 
-import { undeliveredMessageSeqs } from "@fleet-console/sdk/commodore";
-import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
-import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
+import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 import { readCommodore } from "./commodore-state.js";
 import { clockTime } from "./commodore-header.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";

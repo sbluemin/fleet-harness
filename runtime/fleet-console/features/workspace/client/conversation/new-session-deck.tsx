@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ComposerDeck, ComposerDeckBand, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "@fleet-console/sdk/composer";
+import { ComposerDeck, ComposerDeckBand, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "../../../execution/client/composer-primitives/deck.js";
 
 /**
  * 새 세션 컴포저의 '/' 명령·값과 '@' 보낼 곳 목록 — SDK 컴포저 덱(`ComposerDeck`, 퀵 런치바 문법)에 싣는다. 덱은 캡슐 위에

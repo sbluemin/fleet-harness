@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
-import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "@fleet-console/sdk/plugin";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "../../../objectives/shared/operation-clusters.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -16,7 +16,7 @@ import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarRowFoldExpanded, type SideBarRowFoldKind } from "./operations-side-bar-store.js";
 import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
@@ -254,7 +254,7 @@ interface SideBarClusterRowProps {
 export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, accentValue = null, onFocus, onSelect, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
   // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
@@ -359,7 +359,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     }
     const operationId = anchor.operation.id;
     onFocus(operationId);
-    for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
+    registry.objectives.operationSelected(operationId);
   };
   const selectAnchor = () => {
     if (onSelect && anchor) onSelect(anchor.operation.id);

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CONTENT_SECURITY_POLICY } from "../../fleet-plugins/codex/server/codex/contracts.js";
+import { CONTENT_SECURITY_POLICY } from "../features/codex/shared/contracts.js";
 import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 

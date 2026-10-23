@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
-import { createConversationStream } from "@fleet-console/sdk/conversation";
+import { createConversationStream } from "../../features/execution/shared/conversation/stream.js";
 
 import {
   chatEventsFromSdkMessage,

@@ -6,10 +6,7 @@ type NodeRequire = ReturnType<typeof createRequire>;
 
 const FLEET_CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
 
-// 플러그인 번들은 esbuild로 즉석 번들되어 node_modules 밖(예: .fleet/console/plugin-cache)에
-// 써질 수 있다. 이때 external로 남는 npm 의존성(node-pty·ws)을 번들 파일 위치 기준으로
-// require하면 pnpm의 isolated 레이아웃에서는 해석에 실패한다. 대신 @dotobokuri/fleet-console
-// 패키지를 찾아 그 기준의 require를 반환해, 번들이 어디에 써지든·어느 OS든 external을 해석한다.
+// 네이티브 의존성은 배포된 Console 패키지를 기준으로 해석한다.
 export function resolveConsolePackageRequire(currentFile: string, fallback: NodeRequire): NodeRequire {
   return findConsolePackageRequire(currentFile) ?? fallback;
 }

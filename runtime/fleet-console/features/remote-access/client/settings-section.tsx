@@ -1,7 +1,8 @@
 import "@fleet-console/font-picker/styles.css";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
-import { SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import type { Translate } from "@fleet-console/i18n";
+import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
+import { SettingsGroup, SettingsRow, SettingsSubScreenRow, SettingsToggle } from "../../settings/client/preferences-context.js";
+import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";

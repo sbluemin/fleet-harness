@@ -1,4 +1,4 @@
-import type { ClientConsoleEventsCapability } from "@fleet-console/sdk/plugin";
+import type { ClientConsoleEventsCapability } from "../../../../workspace/shared/navigation-ports.js";
 import { useSyncExternalStore } from "react";
 
 /**

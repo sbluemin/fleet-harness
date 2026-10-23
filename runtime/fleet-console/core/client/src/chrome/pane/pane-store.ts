@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { PaneCloseContext, PaneMount, PaneOpenRequest, PaneRole } from "@fleet-console/sdk/pane";
+import type { PaneCloseContext, PaneMount, PaneOpenRequest, PaneRole } from "../../../../../features/workspace/shared/pane.js";
 
 /**
  * 표면에 서 있는 페인 인스턴스들.

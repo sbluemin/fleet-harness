@@ -1,8 +1,9 @@
-import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
+import type { ConsoleClientCapabilities } from "./client-capabilities.js";
+import { DEFAULT_FONTS } from "../../../../features/settings/shared/fonts.js";
 import { getGlobalSettingsStoreState, subscribe } from "../../../../features/settings/client/global-settings-store.js";
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
+import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 
-import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection } from "../../../../features/execution/client/agent/index.js";
+import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection, installAgentExecution } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { BrowserSessionHost } from "../../../../features/browser/client/browser-session-host.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
@@ -21,7 +22,7 @@ import "@fontsource/nanum-gothic-coding/korean-400.css";
 import "@fontsource/nanum-gothic-coding/korean-700.css";
 
 /** Console의 필수 기능. 플러그인 로딩이나 install 성공 여부에 종속되지 않는다. */
-export const consoleExecution: ClientExecutionProvider = {
+export const consoleExecution: ClientFeatureDescriptor = {
   ...agentExecution,
   id: null,
   railEntries: [globalShellEntry],
@@ -31,7 +32,10 @@ export const consoleExecution: ClientExecutionProvider = {
     // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내. 전역 브라우저 화면은 없다.
     { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} /> },
   ],
-  install: (ctx) => {
+
+};
+
+export function installConsoleExecution(ctx: ConsoleClientCapabilities): () => void {
     void preloadTerminalFallbackFonts();
     connectTerminalSettings(ctx.settings);
     connectTerminalFontSettings({
@@ -42,11 +46,10 @@ export const consoleExecution: ClientExecutionProvider = {
     installGlobalLinkRouter();
     const disconnectShellSession = connectShellSession(ctx.consoleEvents);
     const disconnectShellLaunchContext = connectShellLaunchContext(ctx.consoleState, { get: getViewedTheaterId, subscribe: subscribeViewedTheater });
-    const disposeAgent = agentExecution.install?.(ctx);
+    const disposeAgent = installAgentExecution(ctx);
     return () => {
       disconnectShellSession();
       disconnectShellLaunchContext();
       if (typeof disposeAgent === "function") disposeAgent();
     };
-  },
-};
+}

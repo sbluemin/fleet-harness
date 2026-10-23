@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { MentionTargetDescriptor, OperationClusterRow } from "@fleet-console/sdk/plugin";
+import type { MentionTargetDescriptor } from "../../../execution/shared/composer-ports.js";
+import type { OperationClusterRow } from "../../../objectives/shared/operation-clusters.js";
 
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, searchTokens, type OperationSearchEntry, type OperationSearchGroup } from "../../../../core/client/src/integration/operation-search.js";

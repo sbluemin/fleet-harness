@@ -3,8 +3,8 @@ import type http from "node:http";
 import path from "node:path";
 
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import type { ConversationWorkLocation } from "@fleet-console/sdk/pane";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { ConversationWorkLocation } from "../shared/pane.js";
 
 import {
   applyWorkbenchWrite,

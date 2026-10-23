@@ -1,15 +1,15 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 import { useT } from "../../i18n/index.js";
 import { navigateConsoleRoute } from "../../integration/console-location.js";
-import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { collectPluginSettingsSections } from "../../../../../features/settings/client/sections.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
-import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
+import { useExpandedSurfaceDescriptors } from "../../integration/feature-registry.js";
 import { SurfacePane } from "../expanded-surface/layer.js";
 import { closeExpandedSurface, useExpandedSurfaces } from "../expanded-surface/store.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -46,7 +46,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const tool = useMobileTool();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const settingsRows = collectPluginSettingsSections(registry.providers, language, t, "mobile").filter((section) => section.mobile?.pluginRow !== undefined);
   const bindings = useRailEntries();
   const activeRail = useRailActivePanelId();
@@ -159,10 +159,10 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
       <button type="button" onClick={close} aria-label={t("mobile.tools.close")}>×</button>
     </header>
     <div className="mobile-tool-sheet-body" ref={surfaceRef}>
-      <PluginErrorBoundary>
+      <FeatureErrorBoundary>
         {binding ? <RailSurface key={binding.entry.id} binding={binding} singlePane theaterId={theaterId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} /> : null}
         {instance && descriptor ? <SurfacePane key={instance.instanceId} instance={instance} descriptor={descriptor} index={0} paneCount={1} paneWidth={width} focused theaterId={theaterId} theme={theme} language={language} capabilities={capabilities} isLast onReportMinimum={ignoreMinimum} onDividerPointerDown={ignoreDivider} onDividerNudge={ignoreDivider} /> : null}
-      </PluginErrorBoundary>
+      </FeatureErrorBoundary>
     </div>
   </section>;
 }

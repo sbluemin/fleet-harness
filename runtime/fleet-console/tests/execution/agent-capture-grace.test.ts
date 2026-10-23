@@ -4,9 +4,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
+import type { OperationCreateInput, OperationNode, OperationPatchInput } from "../../features/execution/shared/operations/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";

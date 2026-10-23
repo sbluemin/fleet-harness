@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../shared/operations/types.js";
 
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
-import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
-import { ComposerChip } from "./composer-blocks.js";
+import { EffortTrack, gatedEffortNames, resolveRowEffort } from "../composer-primitives/effort-track.js";
+import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { ComposerChip } from "../composer-primitives/primitives.js";
 
 const POPOVER_GAP = 8;
 

@@ -3,7 +3,7 @@ import type http from "node:http";
 import { describe, expect, it } from "vitest";
 
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import { registerShellRoutes } from "../../features/execution/host/terminal/shell.js";
 import type { TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";

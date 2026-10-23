@@ -1,6 +1,7 @@
-import { ExperimentalBadge, SettingsCard, SettingsRow, SettingsToggle, isComputerUseBackendId } from "@fleet-console/sdk/settings/browser";
-import { Select } from "@fleet-console/sdk/react/browser";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { ExperimentalBadge, SettingsCard, SettingsRow, SettingsToggle } from "./preferences-context.js";
+import { isComputerUseBackendId } from "../shared/experiments.js";
+import { Select } from "./mobile-host.js";
+import type { ConsoleExperimentSettings } from "../shared/experiments.js";
 
 import { BACKENDS, ComputerUseRow, useComputerUseStatus } from "./computer-use-row.js";
 import { setGlobalSettingsField } from "./global-settings-store.js";

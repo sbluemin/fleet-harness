@@ -1,23 +1,20 @@
+import type { OperationKindDescriptor } from "../../shared/client-contract.js";
+import type { ExecutionClientDeps } from "../deps.js";
 import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
-import {
-CaptionActionButton,
-CaptionBrowserUseGlyph,
-CaptionChatGlyph,
-CaptionComputerUseGlyph,
-CaptionConsoleUseGlyph,
-CaptionTerminalGlyph,
-} from "@fleet-console/sdk/components/caption-actions";
-import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser";
-import type { ClientExecutionProvider, OperationMenuContext, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
-import { React, defineOperationKind } from "@fleet-console/sdk/plugin/browser";
-import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionChatGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph, CaptionTerminalGlyph } from "../../../workspace/client/components/caption-actions.js";
+import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { defineNotificationKind } from "../notifications.js";
+import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
+import type { OperationMenuContext, OperationRenderContext } from "../../shared/client-contract.js";
+import * as React from "react";
+import { SegmentedThumb } from "@fleet-console/ui/react";
+import { Select } from "../../../settings/client/mobile-host.js";
+import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
@@ -83,7 +80,7 @@ const TRACK_PHASE_COPY_KEYS = {
 // 상태줄 3행(cwd·모델·권한 모드) + 입력 컴포저 3행(테두리 2 + 프롬프트 1) + 사이 여백 1행.
 const AGENT_PREVIEW_CHROME_ROWS = 7;
 
-export const agentOperationKind = defineOperationKind({
+export const agentOperationKind: OperationKindDescriptor = ({
   pluginId: null,
   type: "agent",
   title: (locale) => getT(locale)("terminal.kind.agent"),
@@ -175,12 +172,11 @@ function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
     : "terminal.notifications.resumeFailedMessage");
 }
 
-export const agentExecution: ClientExecutionProvider = {
+export const agentExecution: ClientFeatureDescriptor = {
   id: null,
   operationKinds: [agentOperationKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
-  install: (ctx) => installAgentExecution(ctx),
   closeOperation: async (operationId) => {
     try {
       await terminateAgentSession(operationId);
@@ -252,10 +248,10 @@ export const operationKinds = [agentOperationKind] as const;
 
 // resumeOperation 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
-let installedNotifications: PluginInstallContext["notifications"] | null = null;
+let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
 
-let installedApi: PluginInstallContext["api"] | null = null;
-function installAgentExecution(ctx: PluginInstallContext): () => void {
+let installedApi: ExecutionClientDeps["api"] | null = null;
+export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
   installedApi = ctx.api;
   setUseRequestApi(ctx.api);

@@ -6,10 +6,10 @@ import path from "node:path";
 
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
-import { readOperationLaunch, withOperationLaunchPreset, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withOperationLaunchPreset, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "../../features/execution/shared/operations/types.js";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../../features/execution/host/agent/launch.js";

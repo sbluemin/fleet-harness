@@ -11,11 +11,10 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 | Reusable Console capabilities | `runtime/fleet-console/foundation/` |
 | Console product features | `runtime/fleet-console/features/` |
 | `fleet` terminal launcher, Console server and web product | `runtime/fleet-console/` |
-| Built-in Console plugins | `runtime/fleet-plugins/` |
 | Electron native shell | `runtime/fleet-desktop/` |
 | Mobile shell | `runtime/fleet-mobile/` |
 | Generation, packaging, and boundary checks | `scripts/` |
-| Development references / plugin integration examples | `docs/` / `examples/` |
+| Development references | `docs/` |
 | Task-specific execution and verification procedures | `.claude/skills/` |
 | Unreleased change records | `.changelog.d/` |
 
@@ -26,8 +25,8 @@ This file defines repository-wide boundaries. Apply child `CLAUDE.md` files alon
 
 ## Architecture boundaries
 
-- Dependencies flow from Console composition to features to foundation. Foundation must not import feature, core, CLI, or plugin implementations or contracts; host-specific behavior crosses explicit injected ports. Shared Fleet execution policy may live in foundation without importing product features.
-- Runtime hosts own composition, process lifecycle, UI, and host adapters. Console is the sole published host for the `fleet` launcher and Console web product. Built-ins live in `runtime/fleet-plugins/`; Desktop remains a shell over the Console public protocol.
+- Dependencies flow from Console composition to features to foundation. Foundation must not import feature, core, or CLI implementations or contracts; host-specific behavior crosses explicit injected ports. Shared Fleet execution policy may live in foundation without importing product features.
+- Runtime hosts own composition, process lifecycle, UI, and host adapters. Console is the sole published host for the `fleet` launcher and Console web product, and its product surfaces are Console features; Console has no plugin runtime and loads no third-party extension code. Desktop remains a shell over the Console public protocol.
 - Cross-package construction uses explicit dependency objects. Do not add DI containers, service locators, or hidden cross-layer lookups.
 - Consume other packages through declared exports only. Source deep imports must not create shadow APIs.
 

@@ -1,23 +1,26 @@
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { AttachmentHost } from "../../execution/shared/agent.js";
+import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
 import type http from "node:http";
 import { randomUUID } from "node:crypto";
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../shared/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
 import { validCommodoreImageId } from "./images.js";
 
-import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
-import { canonicalModelId } from "@fleet-console/sdk/models";
-import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
+import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation/references.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 export interface CommodoreRouteContext {
-  readonly host: Pick<FleetPluginHostCapabilities, "experiments" | "attachments" | "http" | "security">;
+  readonly host: { readonly experiments?: ExperimentsHost; readonly attachments?: AttachmentHost; readonly http: HttpPort; readonly security: HttpSecurityPort; };
 }
-import type { RouteHandler } from "@fleet-console/sdk/routing";
-import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "@fleet-console/sdk/settings";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
+import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "../../settings/shared/experiments.js";
 import { z } from "zod";
 
 import { CommodoreStoreError } from "./errors.js";
-import { decisionAnswersSchema } from "@fleet-console/sdk/commodore";
+import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
+import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
@@ -35,8 +38,8 @@ export interface CommodoreRoute {
   readonly handler: RouteHandler;
 }
 
-export type { CommodoreStateView } from "@fleet-console/sdk/commodore";
-import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
+export type { CommodoreStateView } from "../shared/contracts/types.js";
+import type { CommodoreStateView } from "../shared/contracts/types.js";
 
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {

@@ -1,4 +1,4 @@
-import { fontFamilyForAxis, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { fontFamilyForAxis, type ConsoleFontSettings } from "../shared/fonts.js";
 
 export function applyFontSettingsToDocument(fonts: ConsoleFontSettings): void {
   if (typeof document === "undefined") return;

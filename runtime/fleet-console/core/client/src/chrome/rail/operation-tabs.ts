@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
 
 /**
  * 대화 중심 화면의 오른쪽 패널 앞 묶음 — 지금 가운데 칸에 선 Operation 의 탭(구성원 등).

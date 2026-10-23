@@ -1,5 +1,5 @@
-import type { ComposerQuote, ComposerQuoteAttachResult, ComposerQuoteTarget } from "@fleet-console/sdk/composer/quotes";
-import type { ComposerQuoteReceiver, ComposerQuoteTargetOption } from "@fleet-console/sdk/plugin";
+import type { ComposerQuote, ComposerQuoteAttachResult, ComposerQuoteTarget } from "../../../../features/execution/client/composer-primitives/quotes.js";
+import type { ComposerQuoteReceiver, ComposerQuoteTargetOption } from "../../../../features/execution/shared/composer-ports.js";
 
 import { attachComposerQuote } from "../../../../features/execution/client/operation-view-state.js";
 import { getConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";

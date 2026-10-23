@@ -1,4 +1,4 @@
-import type { OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
+import type { OperationLaunchKind, OperationLaunchVariantGroup } from "../../shared/operations/types.js";
 import type { AiGatewaySelection } from "@fleet-console/ai-gateway";
 
 import { buildModelRoster, buildRosterFallbackGroup } from "../../../ai-gateway/host/model-roster.js";

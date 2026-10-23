@@ -1,4 +1,4 @@
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode } from "../shared/operations/types.js";
 
 /**
  * 사용 컨텍스트 — Fleet Browser·Console Use·Computer Use 가 「누구의 것인가」를 정하는 실행 도메인의 규칙.

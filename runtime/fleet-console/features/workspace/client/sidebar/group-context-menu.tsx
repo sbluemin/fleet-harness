@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { AccentToneList } from "@fleet-console/sdk/components/accent-tone-list";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { AccentToneList } from "../components/accent-tone-list.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { accentToneLabels, resolveAccentColor } from "../operation-accent.js";
@@ -321,15 +321,15 @@ function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () =
  * 본다. 실패해도 메뉴의 나머지는 살아야 하므로 조각만 조용히 비운다.
  */
 function PluginOperationMenuSection({ operation, onClose }: { operation: OperationNode; onClose: () => void }) {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const language = useConsoleLocale();
   const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   if (!descriptor?.operationMenu) return null;
   return (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       {descriptor.operationMenu({ operation, language, onClose })}
       <div className="group-context-menu-divider" aria-hidden="true" />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
 }
 

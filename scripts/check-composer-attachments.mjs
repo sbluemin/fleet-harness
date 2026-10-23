@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
  * 컴포저 첨부 SSOT 가드.
  *
  * 브라우저가 `/agent/attachments`를 직접 부르는 곳과, 컴포저 표면이 object URL을 직접 만드는 곳을
- * 허용 목록 밖으로 두지 않는다. 업로드·미리보기는 sdk/composer 스토어와 api.ts 포트만 가진다.
+ * 허용 목록 밖으로 두지 않는다. 업로드·미리보기는 execution composer primitives 스토어와 api.ts 포트만 가진다.
  */
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -14,8 +14,6 @@ const violations = [];
 const clientRoots = [
   "runtime/fleet-console/features",
   "runtime/fleet-console/core/client",
-  "runtime/fleet-console/sdk",
-  "runtime/fleet-plugins",
 ];
 const composerSurfaces = new Set([
   "composer.tsx",
@@ -46,7 +44,7 @@ function isSkipped(rel) {
 }
 
 function allowsAttachmentCall(rel) {
-  return rel.startsWith("runtime/fleet-console/sdk/composer/") || rel === "runtime/fleet-console/features/execution/client/agent/api.ts";
+  return rel.startsWith("runtime/fleet-console/features/execution/client/composer-primitives/") || rel === "runtime/fleet-console/features/execution/client/agent/api.ts";
 }
 
 for (const root of clientRoots) {
@@ -56,10 +54,10 @@ for (const root of clientRoots) {
     if (isSkipped(rel)) continue;
     const source = readFileSync(file, "utf8");
     if (source.includes("/agent/attachments") && !allowsAttachmentCall(rel)) {
-      violations.push(`${rel}: calls /agent/attachments outside sdk/composer and agent api.ts`);
+      violations.push(`${rel}: calls /agent/attachments outside execution composer primitives and agent api.ts`);
     }
-    const composerFile = composerSurfaces.has(path.basename(file)) || rel.startsWith("runtime/fleet-console/sdk/composer/");
-    if (composerFile && source.includes("createObjectURL") && !rel.startsWith("runtime/fleet-console/sdk/composer/")) {
+    const composerFile = composerSurfaces.has(path.basename(file)) || rel.startsWith("runtime/fleet-console/features/execution/client/composer-primitives/");
+    if (composerFile && source.includes("createObjectURL") && !rel.startsWith("runtime/fleet-console/features/execution/client/composer-primitives/")) {
       violations.push(`${rel}: creates an object URL outside the composer attachment store`);
     }
   }

@@ -1,4 +1,4 @@
-import type { ClientTheaterInboxCapability, TheaterInboxSnapshot } from "@fleet-console/sdk/theater-inbox";
+import type { ClientTheaterInboxCapability, TheaterInboxSnapshot } from "../../shared/theater-inbox.js";
 
 import { theaterInboxCapability } from "./store.js";
 

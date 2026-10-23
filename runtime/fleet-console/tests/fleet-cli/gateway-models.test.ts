@@ -8,9 +8,9 @@ import { createConsoleUseMcpHost } from "../../features/console-use/host/console
 import { createUseRequestBroker } from "../../features/console-use/host/use-requests.js";
 import { registerExperimentRoutes } from "../../features/execution/host/agent/experiments-routes.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import type { ConsoleUseMcpConnection } from "../../features/console-use/shared/tools.js";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../../features/settings/shared/experiments.js";
 
 let lifecycle: ConsoleUseMcpConnection | undefined;
 

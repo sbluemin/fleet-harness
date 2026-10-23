@@ -1,6 +1,6 @@
-import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "@fleet-console/sdk/composer";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "../../composer-primitives/deck.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import { getT } from "../i18n/index.js";
 import type { AgentChatCatalogEntry } from "./chat-events.js";
@@ -9,7 +9,7 @@ import type { ChatDeckSection, ChatDeckToken } from "./composer-deck.js";
 /**
  * 컴포저 위에 서는 능력 덱 — '/'(명령·스킬)와 '@'(에이전트).
  *
- * 덱의 상자·묶음 머리(글자 + 구분선)·행·키 문법은 네 컴포저가 같이 쓰는 SDK 덱(`@fleet-console/sdk/composer` `ComposerDeck`)이 소유한다.
+ * 덱의 상자·묶음 머리(글자 + 구분선)·행·키 문법은 네 컴포저가 같이 쓰는 SDK 덱(`Execution composer primitives` `ComposerDeck`)이 소유한다.
  * 여기는 이 표면에만 있는 내용을 싣는다: 섹션 아이콘, 플러그인 네임스페이스를 흐린 이름, 설명, 메타(Console 표식·에이전트 모델·인자
  * 문법), 묶음 머리의 개수, 로딩 뼈대와 「일치 없음」 블록. 행·메타의 `agent-chat-deck-*` 클래스는 그 내용의 외형만 진다.
  */

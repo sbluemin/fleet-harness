@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { SettingsCard, SettingsRow, SettingsToggle } from "./preferences-context.js";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { TheaterInfo } from "../../../core/client/src/integration/types.js";

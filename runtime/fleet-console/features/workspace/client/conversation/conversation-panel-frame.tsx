@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ConversationPanelLayout } from "@fleet-console/sdk/plugin";
+import type { ConversationPanelLayout } from "../../shared/conversation-surfaces.js";
 
 /**
  * 대화 중심 화면 오른쪽 패널의 본문 틀 — 패널 머리(ConversationPanelHeader)를 세우는 쪽이 본문 축의 기본값도 갖는다.

@@ -7,8 +7,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { Translate } from "@fleet-console/i18n";
+import type { OperationRuntimeState } from "../../../execution/shared/client-contract.js";
 
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
@@ -21,7 +21,7 @@ import { openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { operationAccentFromNode, resolveAccentColor } from "../operation-accent.js";
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeSideBarAddTheater, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
@@ -400,14 +400,14 @@ export function OperationsSideBar({
   const clusterIndex = useClusterIndex();
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 Theater·Operation 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   // 「더블클릭으로 열기」 — 켜면 칩·목표 줄의 한 번 클릭은 열지 않고 고른다. 무대는 그대로 두고 문맥(목표 등)만 옮긴다:
   // 코어의 선택 상태가 바뀌고, 열린 레일이 곧바로 따라오도록 지도 선택 알림도 함께 보낸다. 사이드바 밖의 경로는 그대로 연다.
   const doubleClickOpenSetting = useGlobalSettingsStore().state?.sideBarDoubleClickOpen === true;
   const doubleClickOpen = topStripVariant !== "compact" && doubleClickOpenSetting;
   const selectFromSideBar = useCallback((operationId: string) => {
     selectOperation(operationId);
-    for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
+    registry.objectives.operationSelected(operationId);
   }, [registry.providers]);
   const onSelect = doubleClickOpen ? selectFromSideBar : undefined;
   // 끄면 남은 선택도 함께 거둔다 — 보이지 않는 선택이 문맥을 붙들고 있으면 안 된다.
@@ -1243,7 +1243,7 @@ export function OperationsSideBar({
             ...(doubleClickOpen ? {
               onOpen: () => {
                 onFocus(contextMenuOperation.id);
-                if (activeContextMenu.fromRow) for (const provider of registry.providers) provider.onMapOperationSelected?.(contextMenuOperation.id);
+                if (activeContextMenu.fromRow) registry.objectives.operationSelected(contextMenuOperation.id);
               },
             } : {}),
             ...(activeContextMenu.fromRow && !activeContextMenu.renamable ? {} : { onRename: () => requestSideBarOperationAction(contextMenuOperation.id, "rename") }),

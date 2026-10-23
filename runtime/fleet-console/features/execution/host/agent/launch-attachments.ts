@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import type { AttachmentHost } from "../../shared/agent.js";
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
@@ -167,7 +167,7 @@ interface LaunchAttachmentEntry {
 
 export interface LaunchAttachmentStore {
   /** composition이 등록 id를 고정한다. 대기 메시지는 TTL 대신 release/dispose가 거둔다. */
-  forPlugin(pluginId: string): PluginAttachmentHost & { dispose(): void };
+  forPlugin(pluginId: string): AttachmentHost & { dispose(): void };
   /** 업로드 본문을 읽기 전에 부른다 — 상한이 찼는데 10MB를 다 받아 놓고 거절하면 상한의 목적이 없다. */
   assertSaveCapacity(): void;
   /** 바이트를 판정·저장하고 불투명 id를 돌려준다. 경로는 돌려주지 않는다. */

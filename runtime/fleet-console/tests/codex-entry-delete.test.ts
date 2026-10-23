@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
-import { createMemoryPaths, writeWikiEntry } from "../../fleet-plugins/codex/server/wiki/index.js";
+import { createMemoryPaths, writeWikiEntry } from "../features/codex/host/wiki/index.js";
 
 let server: CodexTestServer | null = null;
 let root = "";

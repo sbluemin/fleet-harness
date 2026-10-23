@@ -3,7 +3,7 @@
  *
  * 크롬(레일·대화 독·팔레트)은 여기서만 가져온다. 본체(settings-pane.tsx)는 플러그인
  * 레지스트리를 끌어오는데, 그 사슬을 크롬이 직접 물면 단위 테스트가 번들러 가상 모듈
- * (virtual:fleet-plugins)의 해석 단계에서 막힌다 — 대역은 pane-registry 한 곳에서 끊는다.
+ * (feature-registry)의 해석 단계에서 막힌다 — 대역은 pane-registry 한 곳에서 끊는다.
  */
 
 export const SETTINGS_RAIL_ENTRY_ID = "settings";

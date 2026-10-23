@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ClientMobileOperationCapability } from "../../../../../features/workspace/shared/mobile.js";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
+import type { OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
 
 import { useT } from "../../i18n/index.js";
-import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { operationHarnessLabel } from "./mobile-operation-label.js";

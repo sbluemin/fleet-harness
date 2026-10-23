@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { useT } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";

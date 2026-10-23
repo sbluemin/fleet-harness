@@ -1,5 +1,5 @@
-import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { ComputerUseBackendId } from "@fleet-console/sdk/settings";
+import { launchProviderGlyph } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
+import type { ComputerUseBackendId } from "../shared/experiments.js";
 
 // Cua 공식 심볼: https://github.com/trycua/cua/blob/39a206e637273385f39a41b3b8544e6d3ab5c099/docs/public/img/cua-logo-accent.svg
 // SkyComputerUse는 OpenAI Codex 런타임이므로 공용 Codex 마크를 사용한다.

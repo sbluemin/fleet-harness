@@ -10,11 +10,8 @@
  * 모델 이름을 추측하지 않고 "기본"이라고 말한다.
  */
 
-import {
-  launchProviderFromModelId,
-  type LaunchProviderGlyphId,
-} from "@fleet-console/sdk/components/launch-provider-glyphs";
-import { canonicalModelId } from "@fleet-console/sdk/models";
+import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { canonicalModelId } from "../../../../ai-gateway/shared/models.js";
 
 /** 게이트웨이 모델 id의 Console 접두. 표시에서는 벗긴다. */
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";

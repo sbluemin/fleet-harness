@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode } from "../../shared/operations/types.js";
 import { readAgentSession } from "./provider-session.js";
 
 const execFileAsync = promisify(execFile);

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { SettingsRow, SettingsToggle } from "../../../../../features/settings/client/preferences-context.js";
 
 import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -17,7 +17,7 @@ import {
   type PluginSettingsNavItem,
   type SettingsSectionId,
 } from "../../../../../features/settings/client/sections.js";
-import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { openConsoleSwitcher, setMobileColorMode, setMobileFontScale, useMobileAppearance, type MobileAppearanceSnapshot, type MobileColorMode, type MobileFontScale } from "../../integration/mobile-appearance-store.js";
 import { openWhatsNew } from "../../integration/store.js";
@@ -100,7 +100,7 @@ export function MobileSettingsPage({ embedded = false }: {
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields.size > 0;
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const locale = useConsoleLocale();
   const t = useT();
   const location = useLocation();

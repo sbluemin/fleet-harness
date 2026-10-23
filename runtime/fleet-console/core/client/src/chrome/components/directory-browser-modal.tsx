@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
+import { FailureNotice } from "../../../../../features/execution/client/components/failure-notice.js";
 
 import { ApiError, listTheaterFolders, type TheaterFolderListResponse } from "../../integration/api.js";
 import { describeTheaterFolderFailure } from "../../integration/failure-notices.js";

@@ -3,8 +3,9 @@ import { useHostCapabilities } from "../../../core/client/src/integration/use-ho
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ClientApiCapability, ClientExecutionProvider } from "@fleet-console/sdk/plugin";
+import type { OperationLaunchKind } from "../../execution/shared/operations/types.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientFeatureDescriptor } from "../shared/feature-surfaces.js";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterAlias, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../core/client/src/integration/active-operation-surface.js";
@@ -14,8 +15,8 @@ import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { operationAccentFromNode } from "./operation-accent.js";
 import { getTheaterGroupCollapse, pruneOperationAccents, toggleTheaterStatusAxis } from "./sidebar/group-collapse-store.js";
-import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { createHostCapabilities } from "../../../core/client/src/integration/feature-capabilities.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
@@ -54,7 +55,7 @@ interface OperationsProps {
 
 export function Operations({ state, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
   const viewedTheaterId = useViewedTheaterId();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const viewMode = useViewMode();
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
@@ -595,7 +596,7 @@ async function launchViaPlugin(
   kind: OperationLaunchKind,
   geometry: OperationGeometry,
   theaterId: string,
-  plugins: readonly ClientExecutionProvider[],
+  plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
 ): Promise<void> {
@@ -607,7 +608,7 @@ async function createLaunchedOperation(
   kind: OperationLaunchKind,
   geometry: OperationGeometry,
   theaterId: string,
-  plugins: readonly ClientExecutionProvider[],
+  plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
 ): Promise<void> {

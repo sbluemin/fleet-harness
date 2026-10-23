@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { SettingsHelpTip } from "@fleet-console/sdk/settings/browser";
+import { SettingsHelpTip } from "../../../../../features/settings/client/preferences-context.js";
 
 import { useT } from "../../i18n/index.js";
 

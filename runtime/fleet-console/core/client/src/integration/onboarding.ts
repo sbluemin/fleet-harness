@@ -1,4 +1,4 @@
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
+import type { OnboardingContribution } from "../../../../features/onboarding/shared/types.js";
 
 import { browserOnboarding } from "../../../../features/browser/client/onboarding.js";
 import { executionOnboarding } from "../../../../features/execution/client/onboarding.js";

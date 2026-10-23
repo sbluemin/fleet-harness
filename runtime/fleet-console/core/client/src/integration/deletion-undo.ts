@@ -1,4 +1,4 @@
-import type { OperationArchiveReceipt } from "@fleet-console/sdk/operations/browser";
+import type { OperationArchiveReceipt } from "../../../../features/execution/shared/operations/archive.js";
 
 import type { DeferredDeletionReceipt } from "./api.js";
 

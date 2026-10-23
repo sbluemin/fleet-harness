@@ -38,7 +38,6 @@ const ALLOWED = [
   "runtime/fleet-console/package.json",
   // 플러그인 런타임 번들러가 이 패키지를 external로 지정한다 — 이름만 쓰고 import하지 않는다.
   // 인라인되면 SDK가 자기 네이티브 바이너리를 못 찾으므로 이 지정이 정확성 요건이다.
-  "runtime/fleet-console/core/host/plugin-host/plugin-host.ts",
   "runtime/fleet-console/tests/published-manifest.test.ts",
   "scripts/pack-fleet-console-manifest.mjs",
   "scripts/check-dist-published-externals.test.mjs",

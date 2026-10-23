@@ -21,14 +21,14 @@ import type { AgentCliDetector } from "../features/execution/host/agent/agent-cl
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
 import { isClaudePathTrusted, trustClaudeTheater } from "../features/workspace/host/theaters/claude-trust.js";
-import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
+import { WorkspaceRegistry } from "../features/codex/host/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../features/execution/host/terminal/ws.js";
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
-  esbuildExternals: [] as string[][],
-  externalizeForReminderFixture: false,
+  startupGate: null as null | (() => Promise<void>),
+  cleanupHooks: new Map<string, () => void | Promise<void>>(),
   resolveProfile: null as null | ((...args: readonly unknown[]) => unknown),
 }));
 
@@ -43,20 +43,46 @@ vi.mock("@fleet-console/agent-runtime/fleet", async (importOriginal) => {
   };
 });
 
-vi.mock("esbuild", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("esbuild")>();
-  return {
-    ...actual,
-    build: (options: Parameters<typeof actual.build>[0]) => {
-      if (!fleetAdmiralMock.externalizeForReminderFixture) {
-        fleetAdmiralMock.esbuildExternals.push([...(options.external ?? [])]);
-        return actual.build(options);
-      }
-      const external = [...(options.external ?? []), "@fleet-console/agent-runtime/fleet"];
-      fleetAdmiralMock.esbuildExternals.push(external);
-      return actual.build({ ...options, external });
-    },
-  };
+vi.mock("../features/codex/host/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/codex/host/index.js")>();
+  return { ...actual, createCodexFeature: async (deps: Parameters<typeof actual.createCodexFeature>[0]) => {
+    await fleetAdmiralMock.startupGate?.();
+    const feature = await actual.createCodexFeature(deps);
+    return { ...feature, dispose: () => {
+      let pending: void | Promise<void>;
+      try { pending = fleetAdmiralMock.cleanupHooks.get("codex")?.(); }
+      catch (error) { void feature.dispose(); throw error; }
+      return Promise.resolve(pending).then(() => feature.dispose());
+    } };
+  } };
+});
+
+vi.mock("../features/file-explorer/host/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/file-explorer/host/index.js")>();
+  return { ...actual, createFileExplorerFeature: (deps: Parameters<typeof actual.createFileExplorerFeature>[0]) => {
+
+    const feature = actual.createFileExplorerFeature(deps);
+    return { ...feature, dispose: () => {
+      let pending: void | Promise<void>;
+      try { pending = fleetAdmiralMock.cleanupHooks.get("file-explorer")?.(); }
+      catch (error) { void feature.dispose(); throw error; }
+      return Promise.resolve(pending).then(() => feature.dispose());
+    } };
+  } };
+});
+
+vi.mock("../features/repository/host/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../features/repository/host/index.js")>();
+  return { ...actual, createRepositoryFeature: (deps: Parameters<typeof actual.createRepositoryFeature>[0]) => {
+
+    const feature = actual.createRepositoryFeature(deps);
+    return { ...feature, dispose: () => {
+      let pending: void | Promise<void>;
+      try { pending = fleetAdmiralMock.cleanupHooks.get("repository")?.(); }
+      catch (error) { void feature.dispose(); throw error; }
+      return Promise.resolve(pending).then(() => feature.dispose());
+    } };
+  } };
 });
 
 interface ServerFixture {
@@ -104,10 +130,10 @@ let previousStaticIndex: string | null | undefined;
 const CONSOLE_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 afterEach(async () => {
-  fleetAdmiralMock.externalizeForReminderFixture = false;
+  fleetAdmiralMock.startupGate = null;
+  fleetAdmiralMock.cleanupHooks.clear();
   for (const server of servers.splice(0)) await server.stop();
   fleetAdmiralMock.agentRuntimeQueue.length = 0;
-  fleetAdmiralMock.esbuildExternals.length = 0;
   fleetAdmiralMock.resolveProfile = null;
   delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
   delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
@@ -165,10 +191,8 @@ describe("console terminal observability", () => {
     const lockFile = path.join(dir, "console.lock");
     const entered = createDeferred<void>();
     const release = createDeferred<void>();
-    const hooks = globalThis as typeof globalThis & { __fleetStartupGate?: () => Promise<void> };
-    hooks.__fleetStartupGate = async () => { entered.resolve(); await release.promise; };
-    const plugin = createPluginPackageRoot({ demoRoutes: "export async function register() { await globalThis.__fleetStartupGate(); }" });
-    const deps = { port: 0, dataDir: fleetDataDir, pluginHomeDir: dir, release: plugin.release };
+    fleetAdmiralMock.startupGate = async () => { entered.resolve(); await release.promise; };
+    const deps = { port: 0, dataDir: fleetDataDir, release: { channel: "local" as const, version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } };
     // 폐기한 Skills 플러그인의 데이터만 걷힌다. 다른 플러그인의 데이터와 사용자 Claude 스킬은 남는다.
     const retiredData = path.join(consoleDir, "plugins", "skills");
     const retiredFile = path.join(retiredData, "cli", "node_modules", "skills", "package.json");
@@ -227,7 +251,7 @@ describe("console terminal observability", () => {
     } finally {
       release.resolve();
       await starting.catch(() => {});
-      delete hooks.__fleetStartupGate;
+      fleetAdmiralMock.startupGate = null;
     }
   });
 
@@ -256,23 +280,21 @@ describe("console terminal observability", () => {
   // (3b17763a), or in the same tick as the first (N3), when the second request overtakes the first into the cleanup.
   // N2 (POSIX): the update's own stop is the stop request that arms serve's deadline, before any worker signal arrives.
   it("finishes every overlapping stop request only after the one shutdown has ended", async () => {
-    const hooks = globalThis as typeof globalThis & { __fleetSlowCleanup?: () => Promise<void> };
-    const plugin = createPluginPackageRoot({ demoRoutes: "export function register(ctx) { ctx.host.lifecycle.registerCleanup(() => globalThis.__fleetSlowCleanup?.()); }" });
     const slowCleanup = (lockFile: string) => {
       const state = { entered: false, finished: false, lockHeldAtEnd: false };
-      hooks.__fleetSlowCleanup = async () => {
+      fleetAdmiralMock.cleanupHooks.set("codex", async () => {
         state.entered = true;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         state.lockHeldAtEnd = fs.existsSync(lockFile);
         state.finished = true;
-      };
+      });
       return state;
     };
     try {
       const stopRequests: string[] = [];
       const update = await startFixture({
         lifecycle: createConsoleServeLifecycle({ onStopRequested: (reason) => stopRequests.push(reason) }),
-        release: { ...plugin.release!, channel: "stable", version: "1.0.0" },
+        release: { packageRoot: CONSOLE_PACKAGE_ROOT, channel: "stable", version: "1.0.0" },
         updateCheck: {
           getStatus: () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
           refresh: async () => ({ updateAvailable: true, latestVersion: "9.9.9" }),
@@ -291,7 +313,7 @@ describe("console terminal observability", () => {
       lifecycleCheck("L7", !fs.existsSync(update.lockFile), "a stop requested during the update's own shutdown returns only after the lock is released");
       await vi.waitFor(() => expect(afterCleanupStarted.finished).toBe(true), { timeout: 10_000 });
 
-      const fixture = await startFixture({ release: plugin.release });
+      const fixture = await startFixture();
       const sameTick = slowCleanup(fixture.lockFile);
       const returned: Array<{ readonly cleanupFinished: boolean }> = [];
       const first = fixture.server.stop().then(() => { returned.push({ cleanupFinished: sameTick.finished }); });
@@ -301,38 +323,25 @@ describe("console terminal observability", () => {
       lifecycleCheck("L7-N3", sameTick.lockHeldAtEnd, "the lock is held until the shutdown's cleanup has finished");
       lifecycleCheck("L7-N3", returned.every((entry) => entry.cleanupFinished), "no overlapping stop returns before the shutdown's cleanup has finished");
     } finally {
-      delete hooks.__fleetSlowCleanup;
+      fleetAdmiralMock.cleanupHooks.clear();
     }
   });
 
-  // The public SDK lets a plugin register a synchronous cleanup. One that throws is one failed cleanup: the shutdown still
-  // runs every other plugin cleanup, logs that failure, and releases the runtime lock.
-  it("runs every plugin cleanup and releases the lock when one cleanup throws synchronously", async () => {
-    const hooks = globalThis as typeof globalThis & { __fleetCleanupRuns?: string[] };
+  // A feature cleanup may throw synchronously; other features and the lock must still be cleaned up.
+  it("runs every feature cleanup and releases the lock when one cleanup throws synchronously", async () => {
     const runs: string[] = [];
-    hooks.__fleetCleanupRuns = runs;
-    const plugin = createPluginPackageRoot({ demoRoutes: [
-      "export function register(ctx) {",
-      "  const runs = globalThis.__fleetCleanupRuns;",
-      "  ctx.host.lifecycle.registerCleanup(async () => { runs.push('before'); });",
-      "  ctx.host.lifecycle.registerCleanup(() => { runs.push('throws'); throw new Error('sync cleanup failure'); });",
-      "  ctx.host.lifecycle.registerCleanup(() => { runs.push('after-sync'); });",
-      "  ctx.host.lifecycle.registerCleanup(async () => { runs.push('after-async'); });",
-      "}",
-    ].join("\n") });
+    const fixture = await startFixture();
+    fleetAdmiralMock.cleanupHooks.set("codex", () => { runs.push("before"); });
+    fleetAdmiralMock.cleanupHooks.set("file-explorer", () => { runs.push("throws"); throw new Error("sync cleanup failure"); });
+    fleetAdmiralMock.cleanupHooks.set("repository", async () => { runs.push("after"); });
     const warn = vi.spyOn(console, "warn");
     try {
-      const fixture = await startFixture({ release: plugin.release });
       const stopError = await fixture.server.stop().then(() => null, (error: unknown) => error);
-      const failureLogs = warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Plugin cleanup failed:"));
       expect.soft(stopError).toBeNull();
-      expect.soft([...runs].sort()).toEqual(["after-async", "after-sync", "before", "throws"]);
+      expect.soft([...runs].sort()).toEqual(["after", "before", "throws"]);
       expect.soft(fs.existsSync(fixture.lockFile)).toBe(false);
-      expect.soft(failureLogs).toHaveLength(1);
-    } finally {
-      warn.mockRestore();
-      delete hooks.__fleetCleanupRuns;
-    }
+      expect.soft(warn.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("[fleet-console] Feature cleanup failed:"))).toHaveLength(1);
+    } finally { warn.mockRestore(); fleetAdmiralMock.cleanupHooks.clear(); }
   });
 
   // N9-W2: the token-authenticated stop request. Rejections never touch the shutdown, an accepted request runs the one
@@ -384,15 +393,12 @@ describe("console terminal observability", () => {
     const lockFile = path.join(dir, "console.lock");
     const entered = createDeferred<void>();
     const release = createDeferred<void>();
-    const hooks = globalThis as typeof globalThis & { __fleetStartupGate?: () => Promise<void> };
-    hooks.__fleetStartupGate = async () => { entered.resolve(); await release.promise; };
-    const plugin = createPluginPackageRoot({ demoRoutes: "export async function register() { await globalThis.__fleetStartupGate(); }" });
+    fleetAdmiralMock.startupGate = async () => { entered.resolve(); await release.promise; };
     const stopRequests: string[] = [];
     const server = createConsoleServer({
       port: 0,
       dataDir: fleetDataDir,
-      pluginHomeDir: dir,
-      release: plugin.release,
+      release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT },
       lifecycle: createConsoleServeLifecycle({ onStopRequested: (reason) => stopRequests.push(reason) }),
     });
     servers.push(server);
@@ -425,7 +431,7 @@ describe("console terminal observability", () => {
     } finally {
       release.resolve();
       await starting.catch(() => {});
-      delete hooks.__fleetStartupGate;
+      fleetAdmiralMock.startupGate = null;
     }
   }, 30_000);
 
@@ -724,7 +730,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const origin = new URL(fixture.endpoint).origin;
-    const response = await fetch(`${origin}/plugins/objectives/member/patch`, {
+    const response = await fetch(`${origin}/api/v1/objectives/member/patch`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ objectiveId: "commander-1", memberId: "member-1", patch: { subagents: false } }),
@@ -852,13 +858,13 @@ describe("console static and terminal ticket boundary", () => {
 
     const handled = handler.handleUpgrade({
       req: {
-        url: `${"/plugins/terminal"}/ws`,
+        url: `${"/api/v1/terminal"}/ws`,
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
       socket: { destroy: () => { destroyed += 1; } } as never,
       head: Buffer.alloc(0),
-      pathname: `${"/plugins/terminal"}/ws`,
+      pathname: `${"/api/v1/terminal"}/ws`,
     });
 
     expect(handled).toBe(true);
@@ -899,12 +905,7 @@ describe("console static and terminal ticket boundary", () => {
 });
 
 async function startReminderFixture(options: Parameters<typeof startFixture>[0] = {}): Promise<ServerFixture> {
-  fleetAdmiralMock.externalizeForReminderFixture = true;
-  try {
-    return await startFixture(options);
-  } finally {
-    fleetAdmiralMock.externalizeForReminderFixture = false;
-  }
+  return startFixture(options);
 }
 
 const MANAGED_ROOTS: string[] = [];
@@ -968,26 +969,6 @@ function createStubAgentCliDetector(overrides: Record<string, boolean> = {}): Ag
       version: null,
     })),
   };
-}
-
-function createPluginPackageRoot(options: { readonly demoRoutes: string; readonly demoRoutesFile?: "routes.mjs" | "routes.ts" }): { readonly release: ConsoleServerDeps["release"] } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-package-"));
-  tempDirs.push(dir);
-  const packageRoot = path.join(dir, "runtime", "fleet-console");
-  const pluginsRoot = path.join(dir, "runtime", "fleet-plugins");
-  writeTestPlugin(path.join(pluginsRoot, "terminal"), "terminal", [
-    "export function register(ctx) {",
-    "}",
-  ].join("\n"));
-  writeTestPlugin(path.join(pluginsRoot, "demo"), "demo", options.demoRoutes, options.demoRoutesFile);
-  fs.mkdirSync(packageRoot, { recursive: true });
-  return { release: { channel: "local", version: "test", packageRoot } };
-}
-
-function writeTestPlugin(pluginRoot: string, id: string, routes: string, routesFile: "routes.mjs" | "routes.ts" = "routes.mjs"): void {
-  fs.mkdirSync(pluginRoot, { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, "plugin.json"), JSON.stringify({ id, routes: routesFile }));
-  fs.writeFileSync(path.join(pluginRoot, routesFile), routes);
 }
 
 function createDeferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void } {

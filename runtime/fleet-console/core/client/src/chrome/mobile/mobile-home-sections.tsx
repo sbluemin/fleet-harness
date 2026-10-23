@@ -1,10 +1,10 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { operationAvatarKey } from "@fleet-console/sdk/avatars";
-import type { OperationCluster } from "@fleet-console/sdk/plugin";
-import type { RailEntryFinishedItem } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import { operationAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
+import type { OperationCluster } from "../../../../../features/objectives/shared/operation-clusters.js";
+import type { RailEntryFinishedItem } from "../../../../../features/workspace/shared/rail.js";
 
 import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";

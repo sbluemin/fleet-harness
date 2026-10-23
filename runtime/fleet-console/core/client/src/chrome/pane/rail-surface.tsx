@@ -1,16 +1,17 @@
 import { usePaneOverlay } from "./use-pane-overlay.js";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { OpenLinkHandler } from "@fleet-console/sdk/link";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { onboardingWorkSurface } from "@fleet-console/sdk/onboarding/anchors";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ConversationToolScope, PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
-import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { OpenLinkHandler } from "@fleet-console/link/core";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import { onboardingWorkSurface } from "../../../../../features/onboarding/shared/anchors.js";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ConversationToolScope, PaneDescriptor, PaneOpenRequest } from "../../../../../features/workspace/shared/pane.js";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 
-import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
@@ -142,7 +143,7 @@ export const RailSurface = memo(function RailSurface({
   useEffect(() => () => {
     for (const pane of panesRef.current) {
       if (pane.role === "primary" || pane.keepAlive === true) continue;
-      // 호스트가 닫는 모든 경로는 onClose를 통보한다(sdk/pane 계약) — 캡션 닫기와 같은 문.
+      // 호스트가 닫는 모든 경로는 onClose를 통보한다(Workspace pane 계약) — 캡션 닫기와 같은 문.
       // 빼먹으면 플러그인은 그 문서가 여전히 열려 있다 믿고 다음 상태 발행에서 되살린다.
       closePane(pane.id, pane.onClose ? { onClose: pane.onClose } : {});
     }

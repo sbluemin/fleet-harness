@@ -1,17 +1,17 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import * as React from "react";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
 import { useCodeBlockCopy } from "./code-block-copy.js";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
+import type { OperationRenderContext } from "../../../shared/client-contract.js";
+import { HistoryBand, useHistoryReveal } from "../../components/history-band.js";
 
 import { getT } from "../i18n/index.js";
 import { useViewMode } from "../../../../../core/client/src/integration/view-mode-store.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import { getTerminalPrefsSnapshot, useChatHistoryAutoFold, useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
-import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { CaptionReadingWidthGlyph } from "../../../../workspace/client/components/caption-actions.js";
 import { messageAgentSession, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { ToolDetail } from "./tool-detail.js";
@@ -55,7 +55,7 @@ import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
 import { isGroupConversationRoot, subscribeGroupClusters } from "./group-timeline-store.js";
 import { getState as getConsoleState, subscribe as subscribeConsoleState } from "../../../../../core/client/src/integration/store.js";
-import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
+import type { ConversationSpeaker } from "../../../shared/conversation/types.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 import "./chat-pending.css";
@@ -73,7 +73,7 @@ const HISTORY_PEEK_PX = 56;
 /**
  * Chat Mode의 Operation 본문 — 지휘 로그.
  *
- * 지시는 패널 하단의 귀속 컴포저에서 쓴다(sdk/composer 블록의 축약 조립 — 쉬는 한 줄로
+ * 지시는 패널 하단의 귀속 컴포저에서 쓴다(execution composer primitives 블록의 축약 조립 — 쉬는 한 줄로
  * 물러나 있다가 인터랙션에만 펼쳐진다). 새 세션 멘션 전달은 여전히 살아 있는 별도
  * 경로다. 모델이 멈춰 서서 물으면 그 자리에 카드가 서고, 카드 안에서 답한다 — 카드의 입력은
  * 새 턴을 만들지 않고 지금 그 질문에만 살며, 답하면 사라진다.

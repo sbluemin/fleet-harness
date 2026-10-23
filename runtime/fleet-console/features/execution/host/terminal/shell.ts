@@ -3,7 +3,7 @@ import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
 
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import type { ConsoleRuntimeContext } from "../context.js";
 import { registerRouter } from "../context.js";

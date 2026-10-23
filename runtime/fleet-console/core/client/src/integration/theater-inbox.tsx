@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
+import type { TheaterInboxAddress } from "../../../../features/workspace/shared/theater-inbox.js";
 
 import { useConsoleLocale } from "../i18n/index.js";
 import { useTheaterLabel } from "../hooks/use-store.js";
-import { usePluginRegistry } from "./plugin-registry.js";
+import { useFeatureRegistry } from "./feature-registry.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_SETTINGS_SECTION_ID, THEATER_SYSTEM_PROMPT_PAGE_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
@@ -27,7 +27,7 @@ const SYSTEM_PROMPT_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION
  * 폰 배치로 바뀌면 보던 섹션을 폰 화면에 넘기고 닫는다.
  */
 export function TheaterInboxHost() {
-  const { theaterInboxSections } = usePluginRegistry();
+  const { theaterInboxSections } = useFeatureRegistry();
   const language = useConsoleLocale();
   const mobile = useViewMode().effective === "mobile";
   const open = useTheaterInboxState();

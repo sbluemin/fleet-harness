@@ -1,4 +1,4 @@
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { theaterAvatarKey } from "../shared/avatars.js";
 
 import { KeyedAvatar } from "./avatars.js";
 import { useTheaterContributionFace } from "./theater-contributions.js";
@@ -8,7 +8,7 @@ import { useTheaterContributionFace } from "./theater-contributions.js";
  * 머리 표식과 함께 주는 얼굴(`header.face`)을 읽고, 아무도 주지 않으면 쉼이다. 머리 표식(자기 단추를 품을 수 있다)을 옮겨 심지
  * 않으므로 칩·메뉴 행·팔레트 옵션처럼 단추 안에도 설 수 있고, 크기는 자리에 맞춘다.
  *
- * 플러그인 레지스트리(virtual:fleet-plugins)를 읽으므로 avatars.tsx 밖 자기 모듈에 산다 — 아바타 모듈만 쓰는
+ * feature 레지스트리(feature-registry)를 읽으므로 avatars.tsx 밖 자기 모듈에 산다 — 아바타 모듈만 쓰는
  * 실행 본문·단위 테스트가 레지스트리 해석에 끌려가지 않게 한다.
  */
 export function TheaterAvatar({ theaterId, size, label, decorative, className }: {

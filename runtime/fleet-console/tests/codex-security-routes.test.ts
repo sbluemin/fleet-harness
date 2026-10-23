@@ -8,8 +8,8 @@ import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
-import { buildAllowedAccessSets } from "../../fleet-plugins/codex/server/codex/gateway.js";
-import { handleApiRequest } from "../../fleet-plugins/codex/server/codex/routes.js";
+import { buildAllowedAccessSets } from "../features/codex/host/codex/gateway.js";
+import { handleApiRequest } from "../features/codex/host/codex/routes.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 
 let server: CodexTestServer | null = null;

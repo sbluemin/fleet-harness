@@ -1,6 +1,6 @@
-import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
+import type { OnboardingContribution } from "../../onboarding/shared/types.js";
 
 // 이 기능의 온보딩 문구 — 투어·웰컴의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
 const messagesEn = {

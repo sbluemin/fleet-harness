@@ -5,11 +5,13 @@ import { ConsoleControlError, readConsoleUseFlag, type ConsoleControl } from "./
 import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
-import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { defineConsoleTool, type ConsoleActionSchema, type ConsoleTool, type ConsoleToolFilter, type ConsoleToolParse } from "@fleet-console/sdk/mcp/actions";
-import type { OperationNode, OperationArchiveReceipt } from "@fleet-console/sdk/operations";
-import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
-import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
+import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type ConsoleMcpTool } from "../shared/tools.js";
+import { type ConsoleCaller } from "../shared/control.js";
+import { defineConsoleTool, type ConsoleActionSchema, type ConsoleTool, type ConsoleToolFilter, type ConsoleToolParse } from "../shared/actions.js";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
+import type { OperationArchiveReceipt } from "../../execution/shared/operations/archive.js";
+import { liftNestedActivity } from "../../execution/shared/operations/activity.js";
+import { IDENTITY_TONES } from "../../workspace/shared/identity-tones.js";
 
 /**
  * Console 화면이 사람에게 여는 나머지 동사들의 호스트 어댑터. 각 묶음은 그것을 소유한 층이 채운다 —
@@ -646,9 +648,9 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   let disposed = false;
   const operationEnders = new Set<(operationId: string) => void>();
   // 플러그인이 실은 도구. 연결마다 호스트 기본 도구와 같은 래퍼(게이트·세션·중단)로 등록된다.
-  const contributed = new Map<string, { readonly pluginId: string; readonly tool: PluginMcpTool }>();
-  const registrars = new Set<(entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => void>();
-  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }, callerPluginId: string | undefined): ConsoleUseToolEntry => ({
+  const contributed = new Map<string, { readonly pluginId: string; readonly tool: ConsoleMcpTool }>();
+  const registrars = new Set<(entry: { readonly pluginId: string; readonly tool: ConsoleMcpTool }) => void>();
+  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: ConsoleMcpTool }, callerPluginId: string | undefined): ConsoleUseToolEntry => ({
     // 등록 검사가 actionSchema 를 요구하므로 여기서는 늘 있다.
     id: tool.name, schema: tool.actionSchema!,
     execute: async (args, ctx) => {
@@ -787,7 +789,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       };
       for (const entry of entries) registerEntry(entry);
       if (!parsers.size) throw new Error("Unavailable Console MCP tools");
-      const registerContributed = (entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => {
+      const registerContributed = (entry: { readonly pluginId: string; readonly tool: ConsoleMcpTool }) => {
         if (closed || parsers.has(entry.tool.name)) return;
         registerEntry(contributedSpec(entry, pluginId));
       };
@@ -836,7 +838,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       connections.add(connection);
       return connection;
   };
-  const contribute = (pluginId: string, tools: readonly PluginMcpTool[]) => {
+  const contribute = (pluginId: string, tools: readonly ConsoleMcpTool[]) => {
     if (disposed) throw new Error("Console MCP host is disposed");
     if (!tools.length) throw new Error("Console Use contribution must be nonempty");
     const names = tools.map((tool) => tool.name);

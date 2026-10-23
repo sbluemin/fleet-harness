@@ -1,4 +1,4 @@
-import type { PaneDescriptor, PaneWidthClass } from "@fleet-console/sdk/pane";
+import type { PaneDescriptor, PaneWidthClass } from "../../../../../features/workspace/shared/pane.js";
 
 /**
  * 레일 카드 폭의 단일 출처 — 등급표, 기본값 해석, 그리고 도구별 기억.

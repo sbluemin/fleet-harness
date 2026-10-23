@@ -1,11 +1,13 @@
-import { ComposerAttachmentViewer, ComposerQuoteList, composerT } from "@fleet-console/sdk/composer";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import { ComposerAttachmentViewer } from "../../composer-primitives/attachment-surface.js";
+import { ComposerQuoteList } from "../../composer-primitives/quote-tray.js";
+import { composerT } from "../../composer-primitives/messages.js";
+import * as React from "react";
 import { agentChatAttachmentPreviewUrl } from "../api.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatAttachment } from "./chat-events.js";
 
-/** 미리보기가 열 수 있는 같은 출처 API — 플러그인 경로와 사령관 feature의 첨부 경로뿐이다. */
-const PREVIEW_PREFIXES = ["/plugins/", "/api/v1/commodore/attachment?"] as const;
+/** 미리보기가 열 수 있는 같은 출처 API — 목표와 사령관 feature의 첨부 경로뿐이다. */
+const PREVIEW_PREFIXES = ["/api/v1/objectives/attachment/file?", "/api/v1/commodore/attachment?"] as const;
 
 /**
  * 보낸 이미지 — 말풍선 머리에 컴포저 칩과 같은 문법으로 선다.

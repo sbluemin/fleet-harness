@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Select } from "@fleet-console/sdk/react/browser";
+import { Select } from "../../settings/client/mobile-host.js";
 
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";

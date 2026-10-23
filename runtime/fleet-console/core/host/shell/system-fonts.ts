@@ -3,7 +3,7 @@ import type http from "node:http";
 
 import { normalizeSystemFonts, type SystemFontFace } from "@fleet-console/font-picker/classify";
 import type { SystemFontRecord, SystemFontsResponse } from "@fleet-console/font-picker/system-fonts";
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import fontList from "font-list";
 
 export interface SystemFontsService {

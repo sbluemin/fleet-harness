@@ -21,7 +21,7 @@ import type { TheaterSystemPromptService } from "../../../features/settings/host
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist", "launchKey"] as const;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"], theaterSystemPrompts: TheaterSystemPromptService) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/settings/host/storage-port.js").SettingsStorageHost, theaterSystemPrompts: TheaterSystemPromptService) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -108,7 +108,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,
-    stopForArchive: async (operation: import("@fleet-console/sdk/operations").OperationNode) => {
+    stopForArchive: async (operation: import("../../../features/execution/shared/operations/types.js").OperationNode) => {
       runtime.invalidateTicketsForSession(operation.id);
       if (operation.pluginId === null && operation.type === "agent") {
         await agent.stopForArchive(operation.id);
@@ -118,7 +118,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
       ctx.host.useRequests?.settle(operation.id);
       ctx.host.consoleUse.endOperationUse?.(operation.id);
     },
-    purgeOperation: (operation: import("@fleet-console/sdk/operations").OperationNode) => {
+    purgeOperation: (operation: import("../../../features/execution/shared/operations/types.js").OperationNode) => {
       if (operation.pluginId !== null || operation.type !== "agent") return;
       agent.purgeOperation(operation.id);
     },

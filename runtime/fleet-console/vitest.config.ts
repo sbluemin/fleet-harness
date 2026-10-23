@@ -24,7 +24,7 @@ export default defineConfig({
     // 외부화한 패키지는 Node가 자체 React를 읽는다. 렌더러도 Vite로 처리해 위 dedupe를 적용한다.
     server: { deps: { inline: ["@openuidev/react-lang"] } },
     environment: "node",
-    include: ["tests/**/*.test.{ts,tsx}", "features/*/host/**/*.test.ts", "features/*/client/**/*.test.{ts,tsx}"],
+    include: ["tests/**/*.test.{ts,tsx}", "features/*/tests/**/*.test.{ts,tsx}", "features/*/host/**/*.test.ts", "features/*/client/**/*.test.{ts,tsx}"],
     // built smoke self-skips unless FLEET_BUILT_SMOKE=1; keep it discoverable for explicit runs.
     // 파일의 첫 테스트는 그 파일 모듈 그래프의 transform/import 비용을 혼자 지불한다 — 전체 스위트를
     // 병렬로 돌릴 때 그 비용이 기본 5초를 넘겨서, 로직과 무관한 첫 테스트만 타임아웃으로 죽는다.

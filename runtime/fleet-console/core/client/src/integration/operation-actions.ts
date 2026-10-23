@@ -1,8 +1,10 @@
 // Operation lifecycle actions issued from chrome: archive a card, or resume a dormant
 // one in place.
 
-import { ApiError, archiveOperation, readOperationLaunch, wasOperationBornDormant, type OperationArchiveReceipt } from "@fleet-console/sdk/operations/browser";
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
+import { ApiError, archiveOperation } from "../../../../features/execution/client/operations.js";
+import { readOperationLaunch, wasOperationBornDormant } from "../../../../features/execution/shared/operations/types.js";
+import { type OperationArchiveReceipt } from "../../../../features/execution/shared/operations/archive.js";
+import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
 import type { OperationNode } from "./types.js";
 import { fetchOperations } from "./api.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
@@ -55,7 +57,7 @@ export async function archiveOperationFromUi(operationId: string): Promise<Archi
 export function resumeOperationInPlace(
   operationId: string,
   operations: readonly OperationNode[],
-  plugins: readonly ClientExecutionProvider[],
+  plugins: readonly ClientFeatureDescriptor[],
   focusFallback: (operationId: string) => void,
 ): void {
   if (getState().operationRuntimeHydration === "pending") return;
@@ -80,7 +82,7 @@ export function resumeOperationInPlace(
 export function resumeDormantOnOpen(
   operationId: string,
   operations: readonly OperationNode[],
-  plugins: readonly ClientExecutionProvider[],
+  plugins: readonly ClientFeatureDescriptor[],
 ): void {
   const operation = operations.find((candidate) => candidate.id === operationId);
   if (!operation) return;

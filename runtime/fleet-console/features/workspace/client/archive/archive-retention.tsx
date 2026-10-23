@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { SettingsSegments } from "@fleet-console/sdk/settings/browser";
+import { SettingsSegments } from "../../../settings/client/preferences-context.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ArchiveRetentionDays } from "../../../../core/client/src/integration/types.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";

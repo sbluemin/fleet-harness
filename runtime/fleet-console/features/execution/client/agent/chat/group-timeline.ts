@@ -1,4 +1,4 @@
-import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, OperationClusterConversation } from "@fleet-console/sdk/conversation";
+import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, OperationClusterConversation } from "../../../shared/conversation/types.js";
 import { isPersonQueueEntry, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;

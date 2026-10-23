@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 import { AgentGlyph } from "../agent-glyphs.js";
 import { getT } from "../i18n/index.js";

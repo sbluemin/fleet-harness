@@ -1,28 +1,16 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
-import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { readConsoleLockFile } from "@fleet-console/lifecycle";
+import type { OperationLaunchKind } from "../features/execution/shared/operations/types.js";
+import { assertOperationNode, fetchOperationCatalog } from "../features/execution/client/operations.js";
+import { readLaunchVariantGroups } from "../features/execution/shared/operations/launch-variants.js";
 import { CORE_AGENT_SENSITIVE_FIELDS } from "../core/host/bootstrap/execution.js";
 import { createOperationsRouter } from "../features/execution/host/operations/operations-domain.js";
 import { createSanitizedOpDto } from "../features/execution/host/operations/operations-domain.js";
 import { createOperationStore } from "../features/execution/host/operations/operations-domain.js";
-import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
 import type { OperationCreateInput, OperationNode } from "../features/execution/host/operations/operations-domain.js";
 
-const tempDirs: string[] = [];
-const servers: ConsoleServer[] = [];
-
-afterEach(async () => {
-  vi.restoreAllMocks();
-  await Promise.all(servers.splice(0).map((server) => server.stop()));
-  for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
-});
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe("operations platform", () => {
   it("creates, renames, and deletes OperationNodes", () => {
@@ -189,61 +177,4 @@ function makeOperation(input: Partial<OperationCreateInput> = {}): OperationCrea
     ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
     ...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
   };
-}
-
-async function dispatch(router: ReturnType<typeof createOperationsRouter>, method: string, pathname: string): Promise<unknown> {
-  const res = {};
-  await router({
-    req: { method, url: pathname } as never,
-    res: res as never,
-    pathname,
-  });
-  return (res as { readonly payload?: unknown }).payload;
-}
-
-async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-catalog-"));
-  tempDirs.push(dir);
-  const packageRoot = path.join(dir, "runtime", "fleet-console");
-  const pluginsRoot = path.join(dir, "runtime", "fleet-plugins");
-  const dataDir = path.join(dir, "fleet-home");
-  const lockFile = path.join(dir, "console.lock");
-  fs.mkdirSync(packageRoot, { recursive: true });
-  writeTestPlugin(path.join(pluginsRoot, "terminal"), "terminal", "Terminal", [
-    "export function register(ctx) {",
-    "  ctx.host.operations.registerLaunchCatalog(ctx.pluginId, () => [",
-    "    { id: 'shell', type: 'shell', title: 'Shell', cwd: '/secret' },",
-    "  ]);",
-    "  ctx.host.operations.registerLaunchCatalog(ctx.pluginId, () => [",
-    "    { id: 'shell', type: 'ignored-duplicate', title: 'Ignored Duplicate' },",
-    "    { id: 'agent', type: 'agent', title: 'Agent CLI' },",
-    "    {",
-    "      id: 'claude', type: 'agent', title: 'Claude', ignored: 'drop-me',",
-    "      launchViews: ['terminal', 'chat', 'bogus-surface'],",
-    "      variants: [{",
-    "        id: 'native', label: 'Claude', rows: [{",
-    "          id: 'fable', label: 'Fable', launch: { model: 'fable', invalid: false },",
-    "          chips: [{ id: 'max', label: 'MAX', launch: { model: 'fable', effort: 'max', invalid: 7 } }],",
-    "        }, { id: 'invalid', label: 'Invalid', launch: { model: false } }],",
-    "      }],",
-    "    },",
-    "  ]);",
-    "}",
-  ].join("\n"));
-  const server = createConsoleServer({
-    port: 0,
-    version: "test",
-    dataDir,
-    release: { channel: "local", version: "test", packageRoot } satisfies ConsoleServerDeps["release"],
-  });
-  servers.push(server);
-  const endpoint = await server.start({ dir, lockFile });
-  expect(readConsoleLockFile(lockFile)).not.toBeNull();
-  return { endpoint };
-}
-
-function writeTestPlugin(pluginRoot: string, id: string, name: string, routes: string): void {
-  fs.mkdirSync(pluginRoot, { recursive: true });
-  fs.writeFileSync(path.join(pluginRoot, "plugin.json"), JSON.stringify({ id, name, routes: "routes.mjs" }));
-  fs.writeFileSync(path.join(pluginRoot, "routes.mjs"), routes);
 }

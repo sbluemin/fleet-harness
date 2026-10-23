@@ -1,6 +1,6 @@
-import { theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
-import { useMongleLook } from "@fleet-console/sdk/avatars/browser";
-import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
+import { theaterAvatarKey, type MongleState } from "../../workspace/shared/avatars.js";
+import { useMongleLook } from "../../workspace/client/avatar-events.js";
+import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 
 /**
  * 사령관의 몽글 아바타 — Theater 마다 하나, 베이스 위에 왼쪽 위 brass 별 배지가 얹힌다.

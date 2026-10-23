@@ -1,7 +1,8 @@
-import type { OperationNode } from "@fleet-console/sdk/operations";
-import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
-export { sessionRuntime, sessionActivity } from "@fleet-console/sdk/operations/activity";
-import type { ClientNotificationsCapability, ClientOperationRuntimeCapability, ClientOperationsCapability, OperationActivity, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationNode } from "../../shared/operations/types.js";
+import { sessionRuntime } from "../../shared/operations/activity.js";
+export { sessionRuntime, sessionActivity } from "../../shared/operations/activity.js";
+import type { ClientNotificationsCapability } from "../../shared/notification-ports.js";
+import type { ClientOperationRuntimeCapability, ClientOperationsCapability, OperationActivity, OperationRuntimeState } from "../../shared/client-contract.js";
 
 import { currentTerminalLocale, getT } from "./i18n/index.js";
 import { fetchAgentState, fetchOperationsSnapshot, fetchSessions } from "./api.js";

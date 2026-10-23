@@ -1,0 +1,328 @@
+import { AGENT_EFFORTS, type AgentEffort } from "../../../ai-gateway/shared/models.js";
+import { isExperimentModelId, type ExperimentAideSelection } from "../../../settings/shared/experiments.js";
+import { z } from "zod";
+
+import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
+
+/**
+ * 사령관(Commodore) — UUID마다 하나, Console feature가 소유하는 자율 운영 상태의 브라우저 투영.
+ *
+ * Console 데이터의 `commodore/<UUID>/`에 산다: `state.json` 한 건(자율 운영·지시·정보·정보 출처·
+ * Theater 별 모델 좌표)과 `transcript.jsonl`(사령관 기록). 사람의 「지시」와 「정보」는 사령관 전용 도구로만 읽히고 시스템
+ * 프롬프트나 깨움 턴에는 실리지 않는다 — 그래서 상태의 진실은 이 파일이고, 세션은 매번 여기서 다시 읽는다. 서버 전용 `theaters: [{ path }]` 연결은 이 DTO에 실리지 않는다.
+ */
+
+export const COMMODORE_CHANNEL = "commodore";
+
+/** 지시 원문 상한. 사령관 도구가 통째로 돌려주므로 한 턴에 읽히는 크기여야 한다. */
+export const MAX_DIRECTIVE = 8_000;
+/** 정보 항목 하나의 본문 상한. */
+export const MAX_INTEL_TEXT = 4_000;
+/** 보관하는 정보 항목 수 — 넘치면 오래된 것부터 떨어진다(정보는 근거이지 명령이 아니라 유실이 상태를 깨지 않는다). */
+export const MAX_INTEL_ITEMS = 500;
+export const MAX_SOURCES = 32;
+export const MAX_SOURCE_LABEL = 120;
+export const MAX_SOURCE_LOCATOR = 512;
+/** 기록 읽기의 한 쪽 상한. */
+export const MAX_TRANSCRIPT_PAGE = 500;
+/** 기록 본문 조각 상한 — 한 항목의 text 는 이 길이로 잘린다. */
+export const MAX_TRANSCRIPT_TEXT = 16_000;
+/**
+ * 사람의 메시지 한 건이 본문 속에 둘 수 있는 지휘관(목표) 참조 수. 본문은 참조마다 표식 글자(SDK `CONVERSATION_REFERENCE_MARK`)를
+ * 그 자리에 하나씩 싣고, `references` 는 그 순서다 — 라우트가 둘의 짝과 각 목표(같은 Theater·실재)를 검증한 뒤에만 기록에 남긴다.
+ */
+export const MAX_COMMODORE_REFERENCES = 3;
+
+/**
+ * 순찰 간격(분) — 사람이 서랍에서 고르는 사다리. 사령관은 `next_wake` 로 이보다 일찍 깨어날 수 있지만 넘기지 못하고,
+ * 예약 없이 턴을 마치면 이 간격 뒤에 깨어난다. 보드 사건·지시·정보·메시지는 간격과 무관하게 바로 깨운다.
+ */
+export const COMMODORE_PATROL_MINUTES = [15, 30, 60, 120, 240, 480] as const;
+export const DEFAULT_PATROL_MINUTES = 60;
+export type CommodorePatrolMinutes = (typeof COMMODORE_PATROL_MINUTES)[number];
+export const commodorePatrolSchema = z.literal(COMMODORE_PATROL_MINUTES);
+
+const ids = z.string().min(1).max(128);
+/** Theater 별 강도는 Agent SDK 세션이 받는 사다리 전체(low…max)다. ULTRACODE는 하네스 능력이라 받지 않는다. */
+export const COMMODORE_EFFORTS = AGENT_EFFORTS;
+const effort = z.enum(COMMODORE_EFFORTS);
+const modelId = z.string().refine(isExperimentModelId, "invalid_model");
+
+export const commodoreSourceSchema = z.object({
+  id: ids,
+  /** 사령관의 읽기 전용 도구가 아는 종류 — GitHub 이슈 목록 또는 URL 한 개. */
+  kind: z.enum(["github-issues", "url"]),
+  label: z.string().trim().min(1).max(MAX_SOURCE_LABEL),
+  /** 종류에 따라 `owner/repo` 또는 URL. 자격증명은 두지 않는다. */
+  locator: z.string().trim().min(1).max(MAX_SOURCE_LOCATOR),
+}).strict();
+
+export const commodoreIntelSchema = z.object({
+  id: ids,
+  at: z.number().int().nonnegative(),
+  /** 누가 넣었는가 — 사람이 추가하면 `person`, 사령관이 출처에서 읽어 오면 그 출처 id. */
+  source: z.string().min(1).max(128),
+  text: z.string().min(1).max(MAX_INTEL_TEXT),
+  /** 사람이 본문을 마지막으로 고친 시각 — 고친 적이 없으면 없다. id·출처·자리(`at`)는 고쳐도 그대로다. */
+  editedAt: z.number().int().nonnegative().optional(),
+}).strict();
+
+export const commodoreDirectiveSchema = z.object({
+  text: z.string().max(MAX_DIRECTIVE),
+  /** 본문이 바뀔 때마다 1 씩 오른다. 사령관은 rev 로 "지난번 이후 바뀌었는가" 를 안다. */
+  rev: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+}).strict();
+
+/**
+ * 사령관이 사람에게 묻는 질문 — 보드 항목(결정 요청·기준 제안·검토·후속)이 아닌 물음. 목표에 매일 수도, 매이지 않을 수도 있다.
+ * 질문·선택지 상한은 지휘관의 결정 요청과 같다. 사람이 답하면 `settled.answers` 로 남고 사령관을 「사람이 답함」으로 깨우며,
+ * 사령관은 `asks` 도구로 답을 읽는다(`readAt`). 철회는 사령관만 한다. 끝난 질문은 다시 답할 수 없다.
+ */
+/** 동시에 서 있는 질문 수 상한. */
+export const MAX_OPEN_ASKS = 4;
+/** 보관하는 질문 수 — 서 있는 질문을 모두 두고, 끝난 질문은 최근 것부터 이 수까지. */
+export const MAX_KEPT_ASKS = 20;
+export const MAX_ASK_REASON = 300;
+const askOption = z.object({ id: ids, label: z.string().min(1).max(MAX_DECISION_LABEL), description: z.string().max(MAX_DECISION_DESCRIPTION).optional() }).strict();
+// 머리말은 생기기 전에 물은 질문에는 없다 — 그 질문도 그대로 읽는다.
+const askQuestion = z.object({ id: ids, header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(askOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict();
+const askAnswer = z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict();
+export const commodoreAskSchema = z.object({
+  id: ids,
+  at: z.number().int().nonnegative(),
+  reason: z.string().min(1).max(MAX_ASK_REASON),
+  /** 이 질문이 가리키는 목표 — 같은 Theater 의 목표. 매이지 않은 질문은 null. */
+  objectiveId: ids.nullable(),
+  questions: z.array(askQuestion).min(1).max(MAX_DECISION_QUESTIONS),
+  /** 끝난 질문 — 사람이 답했거나(answered, 답 포함) 사령관이 거뒀다(withdrawn). */
+  settled: z.object({
+    at: z.number().int().nonnegative(),
+    by: z.enum(["human", "commodore"]),
+    outcome: z.enum(["answered", "withdrawn"]),
+    answers: z.array(askAnswer).min(1).max(MAX_DECISION_QUESTIONS).optional(),
+  }).strict().optional(),
+  /** 사령관이 `asks` 도구로 답을 읽은 시각 — 읽지 않은 답은 자율 운영이 다시 켜질 때 다시 깨운다. */
+  readAt: z.number().int().nonnegative().optional(),
+}).strict();
+
+export const commodoreStateSchema = z.object({
+  /** 자율 운영 — 사이드바 Theater 머리의 사령관 글리프. 실험 기능이 꺼져 있으면 저장값과 무관하게 돌지 않는다. */
+  autonomy: z.boolean(),
+  directive: commodoreDirectiveSchema,
+  intel: z.array(commodoreIntelSchema).max(MAX_INTEL_ITEMS),
+  sources: z.array(commodoreSourceSchema).max(MAX_SOURCES),
+  /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
+  model: modelId.optional(),
+  effort: effort.optional(),
+  /**
+   * 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 보드의 지휘관 기본값이다. 강도는 모델 행의 사다리에서
+   * 고르므로 낱말만 검사한다(보드의 지휘관 프리셋과 같은 경계).
+   */
+  commanderModel: z.string().trim().min(1).max(128).optional(),
+  commanderEffort: z.string().trim().min(1).max(32).optional(),
+  /** 순찰 간격(분). 없으면 기본 60분이다. */
+  patrolMinutes: commodorePatrolSchema.optional(),
+  /** 자율 운영 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 자율 운영을 끄면 함께 지운다. */
+  stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).optional(),
+  /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
+  transcriptClearedThrough: z.number().int().nonnegative().optional(),
+  /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
+  language: z.enum(["en", "ko"]).optional(),
+  /** 사람에게 묻는 질문 — 서 있는 것과 최근에 끝난 것. */
+  asks: z.array(commodoreAskSchema).max(MAX_KEPT_ASKS).optional(),
+  /** 누적 운영 셈 — 세션 번호(교대·재시작마다 1 씩), 누적 비용, 보드에 쓴 행위 수. 감독자가 올린다. */
+  run: z.object({
+    session: z.number().int().nonnegative(),
+    costUsd: z.number().nonnegative(),
+    actions: z.number().int().nonnegative(),
+  }).strict().optional(),
+}).strict();
+
+export type CommodoreSource = z.output<typeof commodoreSourceSchema>;
+export type CommodoreIntel = z.output<typeof commodoreIntelSchema>;
+export type CommodoreDirective = z.output<typeof commodoreDirectiveSchema>;
+export type CommodoreState = z.output<typeof commodoreStateSchema>;
+export type CommodoreRunTotals = NonNullable<CommodoreState["run"]>;
+export type CommodoreAsk = z.output<typeof commodoreAskSchema>;
+
+export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, costUsd: 0, actions: 0 });
+
+/**
+ * 감독자가 말하는 지금 상태 — 저장되지 않는다. `off` 는 실험 기능이나 자율 운영이 꺼진 것, `idle` 은 다음 깨움을 기다리는 것,
+ * `turn` 은 사령관이 일하는 중, `retrying` 은 턴 오류 뒤 재시도 대기(`reason`·`retryAt`), `error` 는 재시도로도 못 푼 상태.
+ */
+/**
+ * 사령관 세션이 대화를 요약해 이어 가는 지점 — 모델 창에 대한 비율. 사령관은 이 지점에서 세션을 바꾸지 않고 같은 세션을 압축한다.
+ * 0.75 는 이전의 교대 지점이다: 한 세션이 쌓는 문맥과 턴마다 다시 읽는 비용이 교대 시절과 크게 달라지지 않게 같은 자리에 둔다.
+ */
+export const COMMODORE_COMPACT_RATIO = 0.75;
+
+/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 호스트가 이 값을 실행기의 자동 압축 창으로 옮긴다(Agent SDK `compactAt`). */
+export function commodoreCompactAt(contextWindow: number): number {
+  return Math.round(contextWindow * COMMODORE_COMPACT_RATIO);
+}
+
+export interface CommodoreRunStatus {
+  readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
+  readonly reason?: string;
+  /** 다음 깨움(순찰 또는 재시도)의 예정 시각(ms). */
+  readonly nextWakeAt?: number;
+  /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
+  readonly stalled?: readonly string[];
+  /**
+   * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰) — 셋은 같은 단위다. 한 턴도 끝나기 전에는 없다.
+   * Gateway 모델(비-Claude)은 호스트가 알려 준 실제 공급자 단위의 창과 Gateway 압축 지점이고, 호스트도 지점을 모르면 `compactAt` 이 없다.
+   */
+  readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt?: number };
+  /** 지금 열린 세션이 실제로 도는 모델·강도(로스터 폴백까지 푼 좌표). 설정을 바꿔도 다음 교대 전까지는 이 값이다. 열린 세션이 없으면 없다. */
+  readonly session?: { readonly model: string; readonly effort?: string };
+  readonly totals: CommodoreRunTotals;
+}
+
+export const EMPTY_COMMODORE_STATE: CommodoreState = Object.freeze({
+  autonomy: false,
+  directive: Object.freeze({ text: "", rev: 0, updatedAt: 0 }),
+  intel: Object.freeze([]) as unknown as CommodoreIntel[],
+  sources: Object.freeze([]) as unknown as CommodoreSource[],
+}) as CommodoreState;
+
+/** Theater 별 좌표 — null 은 실험 기능 기본값으로 되돌린다는 뜻이다. */
+export interface CommodoreCoordinates {
+  readonly model: string;
+  readonly effort: AgentEffort;
+}
+
+/**
+ * 사령관 기록 한 줄. 세션의 onEvent 를 플러그인이 정제해 쌓는다 — 프로바이더 세션 id·원시 경로는 들어오지 않는다.
+ * `seq` 는 Theater 안에서 단조 증가하고, 페이지 커서다.
+ */
+export type CommodoreTranscriptEntry =
+  | CommodoreTranscriptBase & { readonly kind: "wake"; readonly reasons: readonly string[] }
+  /**
+   * 바로 앞 wake 줄의 보드 범위 — 그 턴을 깨운 목표(woke)와, 지난 턴 뒤 사람이 운영하는 목표에 나서 깨우지 않은 보드 사건(held).
+   * `codes` 는 wake 토큰의 코드 낱말이다. 잘린 수는 `wokeMore`·`heldMore`. wake 줄은 그대로 두고 따로 남긴다 —
+   * 이 낱말을 모르는 옛 판은 이 줄만 깨진 줄처럼 건너뛰고 wake 줄은 읽는다.
+   */
+  | CommodoreTranscriptBase & { readonly kind: "wake-scope"; readonly woke: readonly CommodoreScopeItem[]; readonly held: readonly CommodoreScopeItem[]; readonly wokeMore?: number; readonly heldMore?: number }
+  | CommodoreTranscriptBase & { readonly kind: "text"; readonly text: string }
+  | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
+  | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
+  | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
+  /** `resumed`는 이전 버전 기록 읽기 호환용이다. 새 세션은 이 사건을 기록하지 않는다. */
+  /** 열린 세션(`stopped` 가 아닌 줄)에는 그 세션이 실제로 도는 모델·강도가 실린다 — 설정값이 아니라 로스터 폴백까지 푼 좌표다. */
+  | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "resumed" | "replaced" | "restarted" | "stopped"; readonly reason?: string; readonly model?: string; readonly effort?: string }
+  /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
+  | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
+  | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string; readonly preview?: true }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly { readonly id: string; readonly title: string }[] }
+  /** 자율 운영이 꺼질 때 아직 턴에 싣지 못한 사람의 메시지 — 기록의 그 `message` 줄 seq. 서랍이 그 메시지에 「전달되지 않음」을 단다. */
+  | CommodoreTranscriptBase & { readonly kind: "undelivered"; readonly seqs: readonly number[] }
+  /** 도는 턴이 사람의 메시지를 집어갔다 — 그 `message` 줄 seq. 그 말은 이 턴 안에서 읽혔다(채팅의 턴 중 주입과 같다). */
+  | CommodoreTranscriptBase & { readonly kind: "delivered"; readonly seqs: readonly number[] }
+  /** 「전달되지 않음」이었던 메시지를 다시 대기열에 실었다 — 자율 운영이 다시 서면 다음 턴이 읽는다. */
+  | CommodoreTranscriptBase & { readonly kind: "requeued"; readonly seqs: readonly number[] }
+  | CommodoreTranscriptBase & { readonly kind: "error"; readonly code: string; readonly retryAt?: number }
+  /** 사령관이 사람에게 물었다 — 질문·선택지 이름·사유·가리킨 목표. 답은 `ask-answered` 줄이 잇는다. */
+  | CommodoreTranscriptBase & { readonly kind: "ask"; readonly askId: string; readonly reason: string; readonly questions: readonly CommodoreAskLine[]; readonly objective?: { readonly id: string; readonly title: string } }
+  /** 사람이 답했다 — 질문마다 고른 선택지 이름과 직접 쓴 말. */
+  | CommodoreTranscriptBase & { readonly kind: "ask-answered"; readonly askId: string; readonly answers: readonly { readonly question: string; readonly selected: readonly string[]; readonly text: string }[] };
+
+/** 기록의 질문 한 줄 — 선택지는 이름만. */
+export interface CommodoreAskLine {
+  readonly text: string;
+  readonly options: readonly string[];
+  readonly multiSelect: boolean;
+}
+
+/** 깨움 범위의 목표 한 줄 — id, 그때의 운영 판정, 이 목표에 해당한 깨움 코드. */
+export interface CommodoreScopeItem {
+  readonly id: string;
+  readonly operator: "commodore" | "human";
+  readonly codes: readonly string[];
+}
+/** 깨움 범위 한 쪽에 싣는 목표 수 상한 — 넘는 수는 세기만 한다. */
+export const MAX_SCOPE_ITEMS = 64;
+
+export interface CommodoreTranscriptBase {
+  readonly seq: number;
+  readonly at: number;
+}
+
+/** 쌓을 때 넘기는 모양 — seq·at 는 저장소가 찍는다. */
+export type CommodoreTranscriptInput = CommodoreTranscriptEntry extends infer E ? E extends CommodoreTranscriptBase ? Omit<E, "seq" | "at"> : never : never;
+
+const transcriptBase = { seq: z.number().int().nonnegative(), at: z.number().int().nonnegative() };
+const text = z.string().max(MAX_TRANSCRIPT_TEXT);
+const scopeItem = z.object({ id: z.string().min(1).max(128), operator: z.enum(["commodore", "human"]), codes: z.array(z.string().max(32)).max(32) }).strict();
+export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
+  z.object({ ...transcriptBase, kind: z.literal("wake"), reasons: z.array(z.string().max(200)).max(32) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("wake-scope"), woke: z.array(scopeItem).max(MAX_SCOPE_ITEMS), held: z.array(scopeItem).max(MAX_SCOPE_ITEMS), wokeMore: z.number().int().positive().optional(), heldMore: z.number().int().positive().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("text"), text }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("thinking"), text }).strict(),
+  // 보드 행위는 action·objectiveId·title 로 서랍이 「목표 X 를 완료」 한 줄로 그린다 — 도구 인자 전체는 싣지 않는다.
+  // 거절은 코드 한 낱말만(`error`) — 도구 결과의 나머지(입력·힌트)는 싣지 않는다.
+  z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "resumed", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional(), model: z.string().min(1).max(200).optional(), effort: z.string().min(1).max(32).optional() }).strict(),
+  // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
+  z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids, preview: z.literal(true).optional() }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
+    // 본문 속 참조 — 이 낱말을 모르는 옛 판은 이 줄을 깨진 줄처럼 건너뛴다.
+    references: z.array(z.object({ id: ids, title: z.string().max(200) }).strict()).min(1).max(MAX_COMMODORE_REFERENCES).optional() }).strict(),
+  // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
+  z.object({ ...transcriptBase, kind: z.literal("undelivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("delivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("requeued"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("error"), code: z.string().max(64), retryAt: z.number().int().nonnegative().optional() }).strict(),
+  // 질문과 답 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
+  z.object({ ...transcriptBase, kind: z.literal("ask"), askId: ids, reason: z.string().max(MAX_ASK_REASON),
+    questions: z.array(z.object({ text: z.string().max(MAX_DECISION_QUESTION), options: z.array(z.string().max(MAX_DECISION_LABEL)).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
+    objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("ask-answered"), askId: ids,
+    answers: z.array(z.object({ question: z.string().max(MAX_DECISION_QUESTION), selected: z.array(z.string().max(MAX_DECISION_LABEL)).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
+]);
+
+/**
+ * 저장하지 않는 라이브 사건 — 턴 중 글자 흐름과 진행 중 도구 이름. 기록 줄이 정정 앵커라 놓쳐도 화면은 다음 확정 줄로 수렴한다.
+ * 도구는 이름만 싣는다(입력은 기록과 같이 싣지 않는다). 사고 내용은 싣지 않는다.
+ */
+export type CommodoreLiveEvent =
+  | { readonly kind: "text-delta"; readonly text: string }
+  | { readonly kind: "tool-start"; readonly name: string };
+
+/** 브라우저·감독자 양쪽으로 나가는 사건 — `commodore` 채널. */
+export type CommodoreEvent =
+  | { readonly op: "live"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly live: CommodoreLiveEvent }
+  | { readonly op: "state"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
+  | { readonly op: "transcript"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly entry: CommodoreTranscriptEntry }
+  | { readonly op: "run"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly run: CommodoreRunStatus }
+  /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
+  | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
+
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+
+/** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
+export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {
+  return (state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES) * 60_000;
+}
+
+export interface CommodoreStateView {
+  /** 보드 어댑터의 실행 가능 여부. 저장된 autonomy 스위치와 별개다. */
+  readonly boardReady: boolean;
+  readonly commodoreId: string;
+  readonly theaterIds: readonly string[];
+  readonly state: CommodoreState;
+  /** 실험 기능 「자율 운영」. 꺼져 있으면 Theater 머리의 사령관 글리프·서랍이 서지 않는다. */
+  readonly enabled: boolean;
+  /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
+  readonly defaults: ExperimentAideSelection;
+  /** 실험 기능과 자율 운영이 모두 켜져 있다 — 사이드바 Theater 플래그와 같은 값. */
+  readonly active: boolean;
+  /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
+  readonly run: CommodoreRunStatus;
+  /**
+   * 사람에게 묻는 질문의 보조 — 서 있는 질문 수와, 질문이 가리키는 목표의 제목(보드에서 사라졌으면 null).
+   * 질문·답 본문은 `state.asks` 다(물은 순서, settled 가 없으면 서 있다).
+   */
+  readonly asks: { readonly open: number; readonly objectives: Readonly<Record<string, { readonly title: string } | null>> };
+}

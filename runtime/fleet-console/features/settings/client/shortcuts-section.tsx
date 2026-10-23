@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { CompanionPanelDescriptor } from "../../execution/shared/client-contract.js";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { setGlobalSettingsField } from "./global-settings-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import {
   CORE_SHORTCUT_COMMANDS,
   chordFromKeyboardEvent,
@@ -52,7 +52,7 @@ export function ShortcutsCard({ state, saving }: {
 }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const overrides = useShortcutOverrides();
   const [recording, setRecording] = useState<RecordingSlot | null>(null);
   const [notes, setNotes] = useState<Readonly<Record<string, RowNote>>>({});

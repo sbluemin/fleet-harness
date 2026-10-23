@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
+import type { ClientFeatureDescriptor } from "../../shared/feature-surfaces.js";
 
 import type { OperationSearchGroup } from "../../../../core/client/src/integration/operation-search.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
@@ -25,7 +25,7 @@ export interface MentionSources {
   readonly latest: (picked: MentionTarget | null) => MentionTarget | null;
 }
 
-export function useMentionSources(state: ConsoleState, providers: readonly ClientExecutionProvider[], query: string | null): MentionSources {
+export function useMentionSources(state: ConsoleState, providers: readonly ClientFeatureDescriptor[], query: string | null): MentionSources {
   const messageableTypesByPlugin = useMemo(() => {
     const map = new Map<string | null, ReadonlySet<string>>();
     for (const plugin of providers) {

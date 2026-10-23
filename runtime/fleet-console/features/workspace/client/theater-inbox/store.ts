@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxFocusRequest, TheaterInboxOpenRequest, TheaterInboxSnapshot } from "@fleet-console/sdk/theater-inbox";
+import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxFocusRequest, TheaterInboxOpenRequest, TheaterInboxSnapshot } from "../../shared/theater-inbox.js";
 
 /**
  * Theater Inbox 의 열린 상태 — Theater 하나, 주소 하나, 닫힐 때 포커스를 돌려줄 입구 하나.

@@ -113,7 +113,7 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
   };
 }
 
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 import { fetchAgentState } from "../../execution/client/agent/api.js";
 import { hydrateAgentClis } from "../../execution/client/agent/store.js";

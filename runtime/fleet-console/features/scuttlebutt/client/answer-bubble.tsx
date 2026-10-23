@@ -1,0 +1,423 @@
+import { LiveLine } from "./components/live-line.js";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
+
+import type { AdmiralId } from "./chat-session.js";
+import { sourceLabel } from "./chat-card.js";
+import { currentExchange, type ChatEntry, type ChatState } from "./chat-store.js";
+import { copyCodeBlock, useCopyAnswer } from "./copy-answer.js";
+import { GrantLine } from "./grant-chips.js";
+import { liveStatus } from "./live-status.js";
+import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
+import type { AideGrants } from "./settings-store.js";
+import { useStreamedHtml } from "./streamed-html.js";
+
+/**
+ * 새 세션 컴포저의 '@'로 물은 답이 서는 자리.
+ *
+ * 지저귐 말풍선(`.scuttlebutt-bird-say`)은 `white-space: nowrap` 한 줄이라 문단을 담지 못한다 —
+ * 200자를 그리면 폭이 1,700px가 되어 화면을 넘는다. 그래서 봉투는 도착 알림 말풍선의 것
+ * (줄바꿈·닫기 버튼·좌표 추적)을 입되 폭과 본문 글자는 카드와 같다(420px·13px) — 「이어 묻기」로
+ * 넘어갈 때 답이 다른 상자에 다시 서지 않는다. 색만 지저귐의 brass를 쓴다.
+ * 도착 알림의 `positive`는 "끝났다"는 **상태**를 말하는 신호 채널이라 답변이 물려받으면 안 된다.
+ *
+ * 도착 알림과 다른 점 하나: **자동으로 사라지지 않는다.** 6초는 읽는 시간이 아니라 알아채는
+ * 시간이고, 답을 읽기 전에 지우면 물어본 사람이 잃는다.
+ *
+ * 말풍선은 **읽기 표면**이고 카드는 **대화 표면**이다. 답은 카드와 같은 마크다운 조판으로 여기서
+ * 끝까지 읽히고, 새 위아래로 남은 공간(최대 60vh)까지 자란 뒤에야 안에서 스크롤한다. 카드는 전문을
+ * 보는 곳이 아니라 이어 묻고 넘기는 곳이라 「이어 묻기」로 연다 — 다 보이는 답 아래의 「전문 보기」는
+ * 무엇이 더 있다는 거짓말이다.
+ */
+export function AnswerBubble({
+  admiral,
+  state,
+  mascot,
+  locale,
+  positionRevision,
+  docked = false,
+  grants,
+  onExpand,
+  onDismiss,
+}: {
+  readonly admiral: AdmiralId;
+  readonly state: ChatState;
+  readonly mascot: React.RefObject<HTMLButtonElement | null>;
+  readonly locale?: ConsoleLocale;
+  readonly positionRevision: number;
+  /**
+   * 사이드바에 둔 부관의 답. 닻이 글리프라 새 위아래가 아니라 글리프 아래(아래 자리가 없으면 위)에 서고, 여럿이 함께 답하면
+   * 오른쪽부터 나란히 선다(가장 늦게 물은 답이 글리프에 가장 가깝다). 세로로 쌓으면 두 번째 답이
+   * 첫 답 아래 화면 밖으로 밀린다.
+   */
+  readonly docked?: boolean;
+  /** 이 부관의 AI 확장 허용 — 머리의 권한 칩이 말한다. */
+  readonly grants: AideGrants;
+  readonly onExpand: () => void;
+  /** 닫힘은 포커스를 옮기지 않는다 — 말풍선은 포커스를 가져간 적이 없으므로 돌려줄 곳도 없다. */
+  readonly onDismiss: () => void;
+}) {
+  const bubbleRef = React.useRef<HTMLDivElement | null>(null);
+  const textRef = React.useRef<HTMLDivElement | null>(null);
+  /** 답이 도착해 포커스를 가져오기 직전에 서 있던 자리 — 닫으면 여기로 돌아간다. */
+  const returnRef = React.useRef<HTMLElement | null>(null);
+  const t = getT(locale);
+  const { copied, copy } = useCopyAnswer();
+
+  const updatePlacement = React.useCallback(() => {
+    const mascotElement = mascot.current;
+    const bubble = bubbleRef.current;
+    if (!mascotElement || !bubble) return;
+    const mascotRect = mascotElement.getBoundingClientRect();
+    const margin = 8;
+    const gap = 8;
+    const siblings = Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble"));
+    const text = textRef.current;
+    const chrome = text ? bubble.offsetHeight - text.offsetHeight : bubble.offsetHeight;
+    if (docked) {
+      const row = siblings.filter((sibling) => sibling.classList.contains("is-docked"));
+      // DOM 순서가 물은 순서다 — 마지막(가장 최근)이 오른쪽 끝, 앞선 답은 왼쪽으로 한 칸씩.
+      const slot = Math.max(0, row.length - 1 - row.indexOf(bubble));
+      const width = bubble.offsetWidth;
+      const top = mascotRect.bottom + gap;
+      // 글리프 아래 자리가 모자라면 답은 위로 선다.
+      const roomBelow = window.innerHeight - top - margin;
+      const roomAbove = mascotRect.top - gap - margin;
+      const dockAbove = roomAbove > roomBelow;
+      if (text) {
+        const ceiling = Math.min(window.innerHeight * 0.6, (dockAbove ? roomAbove : roomBelow) - chrome);
+        text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
+        const clipped = text.scrollHeight > text.clientHeight + 1;
+        text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
+        // 잘렸을 때만 Tab 순서에 든다(키보드로 굴리라고). 안 잘려도 -1은 남는다 — 답이 정착하면
+        // 본문이 포커스를 받아야 Escape 한 번으로 물었던 자리로 돌아간다.
+        text.setAttribute("tabindex", clipped ? "0" : "-1");
+      }
+      // 행의 오른쪽 끝은 창 가장자리가 아니라 **글리프 무리**의 오른쪽이다. 무리는 사이드바 맨 위 줄에 서고
+      // 그 오른쪽에는 줄의 단추 묶음이 더 있다 — 창 끝에 붙이면
+      // 답이 자기 부관에게서 떨어진다(인도 검수).
+      // 슬롯 계단은 무리 하나를 기준으로 유지한다: 말풍선마다 자기 글리프에 붙이면 동시 답이
+      // 같은 자리를 놓고 겹친다.
+      const cluster = document.querySelector(".scuttlebutt-dock")?.getBoundingClientRect();
+      const anchorRight = Math.min(cluster ? cluster.right : mascotRect.right, window.innerWidth - margin);
+      bubble.style.left = `${Math.max(margin, anchorRight - width - slot * (width + gap))}px`;
+      if (dockAbove) {
+        bubble.style.top = "";
+        bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap}px`;
+      } else {
+        bubble.style.bottom = "";
+        bubble.style.top = `${top}px`;
+      }
+      bubble.style.visibility = "visible";
+      return;
+    }
+    const alignRight = mascotRect.left + mascotRect.width / 2 > window.innerWidth / 2;
+    const measureLane = (above: boolean, left: number, width: number, height: number) => laneOffset({
+      bubble,
+      siblings,
+      left,
+      width,
+      height,
+      placeAbove: above,
+      anchorTop: mascotRect.top,
+      anchorBottom: mascotRect.bottom,
+      gap,
+    });
+    // 레인은 지난 프레임의 높이가 아니라 **답이 원하는 높이**(본문 전체, 60vh 상한)로 잰다. 실제 높이로
+    // 재면 레인 때문에 줄어든 말풍선이 다음 프레임에 앞 말풍선과 안 겹쳐 레인이 0이 되고, 다시 자라
+    // 겹치는 진동이 프레임마다 돈다. 원하는 높이는 상한이 어떻든 같으므로 한 값으로 정착한다.
+    const width = bubble.getBoundingClientRect().width;
+    const wanted = chrome + (text ? Math.min(text.scrollHeight, window.innerHeight * 0.6) : 0);
+    const laneLeft = clamp(alignRight ? mascotRect.right - width : mascotRect.left, margin, window.innerWidth - width - margin);
+    // 앞선 말풍선을 피해 물러선 만큼은 이미 쓰인 공간이다 — 그것을 빼지 않으면 뒤 말풍선이 남은 공간
+    // 전부로 자란 뒤 레인만큼 더 밀려 화면 밖에 선다(두 부관이 긴 답을 나란히 낼 때). 새가 있는 쪽
+    // (화면 반으로 가른 넓은 쪽)에 본문 한 줄도 못 세우면 반대쪽으로 연다 — 앞 답이 위를 다 썼으면 뒤 답은 아래다.
+    const roomOn = (above: boolean) => {
+      const lane = measureLane(above, laneLeft, width, wanted);
+      const free = above ? mascotRect.top - gap - margin : window.innerHeight - mascotRect.bottom - gap - margin;
+      return { above, lane, room: free - lane };
+    };
+    const preferred = roomOn(mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2);
+    const fallback = roomOn(!preferred.above);
+    const side = preferred.room >= ANSWER_MIN_HEIGHT_PX + chrome || preferred.room >= fallback.room ? preferred : fallback;
+    const placeAbove = side.above;
+    // 본문은 새 위(아래)로 남은 공간까지 자란다 — 고정 40vh는 화면 반이 비어 있어도 답을 접었다.
+    // 60vh를 넘기면 답이 아니라 벽이 되므로 거기서 멈추고 안에서 스크롤한다. 봉투(머리·출처·버튼)는
+    // 본문과 무관한 높이라, 봉투 전체에서 본문을 뺀 만큼을 가용 공간에서 덜어 본문 상한을 정한다.
+    if (text) {
+      const ceiling = Math.min(side.room, window.innerHeight * 0.6) - chrome;
+      text.style.maxHeight = `${Math.max(ANSWER_MIN_HEIGHT_PX, Math.floor(ceiling))}px`;
+      // 넘치는 답은 아래 가장자리를 흐려 "더 있다"고 말하고, 키보드로도 굴릴 수 있게 포커스 자리를 준다.
+      const clipped = text.scrollHeight > text.clientHeight + 1;
+      text.classList.toggle("is-clipped", clipped && text.scrollTop + text.clientHeight < text.scrollHeight - 1);
+      text.setAttribute("tabindex", clipped ? "0" : "-1");
+    }
+    // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
+    // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
+    // 겹치는 앞 말풍선만큼만 세로로 비켜선다 — 멀리 떨어진 말풍선까지 밀어내면 이유 없이 떠오른다.
+    const lane = side.lane;
+    // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다(도착 알림과 같다).
+    bubble.style.left = `${laneLeft}px`;
+    if (placeAbove) {
+      bubble.style.top = "";
+      bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap + lane}px`;
+    } else {
+      bubble.style.bottom = "";
+      bubble.style.top = `${mascotRect.bottom + gap + lane}px`;
+    }
+    bubble.style.visibility = "visible";
+  }, [docked, mascot]);
+
+  // 답하는 동안 부관은 정박하지만, 정박 전이·창 리사이즈·다른 새의 이동으로 좌표는 여전히 움직인다.
+  React.useLayoutEffect(() => {
+    let frame = window.requestAnimationFrame(function follow() {
+      updatePlacement();
+      frame = window.requestAnimationFrame(follow);
+    });
+    updatePlacement();
+    return () => window.cancelAnimationFrame(frame);
+  }, [positionRevision, updatePlacement]);
+
+  // 코드 펜스 중 `mermaid`는 렌더러가 빈 자리표시자로 바꿔 둔다 — 하이드레이터가 없으면 도식은 물론
+  // 원문까지 사라진다.
+  React.useEffect(() => {
+    const bubble = bubbleRef.current;
+    if (bubble) installDiagramHydrator(bubble, diagramHydratorLabels(locale));
+  }, [locale]);
+
+  const answer = readAnswer(state);
+  const sources = readAnswerSources(state);
+  const working = state.phase === "starting" || state.phase === "thinking";
+  const exchange = currentExchange(state);
+  const now = useNow(working);
+  const status = working ? liveStatus(exchange, locale, now) : null;
+  const answerHtml = useStreamedHtml(answer?.kind === "assistant" ? answer.text : "", working, locale);
+
+  // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
+  // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
+  // 뺏으면 사용자가 치던 글자가 말풍선으로 간다.
+  // 모달이 열려 있으면 그 안의 포커스를 빼앗지 않는다 — Escape 리스너와 같은 독점 계약. 그 답은 모달을
+  // 닫은 뒤 사용자가 스스로 찾아 읽는다(그때 돌아갈 자리도 없으므로 기억하지 않는다). 렌더 시점에
+  // 정하는 이유: 포커스를 옮기면 보조 기술이 본문을 읽으므로 라이브 영역은 같은 렌더에서 비워야 한다 —
+  // 효과에서 비우면 이미 채워진 영역이 한 번 낭독을 예약한 뒤라 답이 두 번 읽힌다.
+  const settledUnderModal = !working && document.querySelector('[aria-modal="true"]') !== null;
+
+  React.useEffect(() => {
+    if (working || settledUnderModal) return;
+    const bubble = bubbleRef.current;
+    const text = textRef.current;
+    if (!bubble || !text) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !bubble.contains(active)) {
+      // 다른 부관의 말풍선이 포커스를 들고 있으면 그 말풍선이 아니라 그것이 기억한 원래 자리를 잇는다 —
+      // 둘이 함께 답할 때 먼저 온 답을 먼저 닫으면 그 본문은 사라지고, 나중 답을 닫는 순간 돌아갈
+      // 곳이 없어진다. 원래 자리(터미널·입력창)는 말풍선을 몇 개 거치든 하나다.
+      const viaBubble = active.closest(".scuttlebutt-answer-bubble") !== null;
+      returnRef.current = viaBubble ? sharedReturnTarget : active;
+      if (!viaBubble) sharedReturnTarget = active;
+    }
+    text.focus({ preventScroll: true });
+  }, [working, settledUnderModal]);
+
+  // 닫으면 기억한 자리로 돌아간다 — 단, 포커스가 아직 말풍선(또는 문서)에 있을 때만이다. 사용자가
+  // 그새 다른 곳을 눌렀다면 그 자리가 지금의 자리이고, 되돌리면 그것을 뺏는다.
+  const dismiss = React.useCallback(() => {
+    const bubble = bubbleRef.current;
+    const active = document.activeElement;
+    const target = returnRef.current;
+    const parked = active === null || active === document.body || (bubble !== null && bubble.contains(active));
+    onDismiss();
+    if (parked && target?.isConnected) target.focus({ preventScroll: true });
+  }, [onDismiss]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      // 전면 표면이 같은 Escape를 아직 소비하지 않았을 수 있다 — 디스패치가 끝난 뒤 다시 본다
+      // (도착 알림과 같은 계약).
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        dismiss();
+      }, 0);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [dismiss]);
+  const name = t(`chat.label.${admiral}` as "chat.label.tori");
+
+  return (
+    <div
+      ref={bubbleRef}
+      className={`scuttlebutt-answer-bubble${docked ? " is-docked" : ""}`}
+      role="group"
+      aria-label={name}
+      onPointerDown={(event) => event.preventDefault()}
+    >
+      {/* 답은 한 글자씩 스트리밍된다 — 보이는 문단을 라이브 영역으로 두면 청크마다 전체가 다시
+          읽힌다. 상시 존재하는 이 영역은 턴이 정착한 뒤에만 내용을 갖고, 그래서 한 번만 읽힌다
+          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). 정착과 함께 본문에
+          포커스가 가면 보조 기술이 그 본문을 읽으므로 여기는 비운다 — 모달 뒤에서 정착해 포커스를
+          옮기지 않을 때만 라이브 영역이 답을 알린다. */}
+      <span className="scuttlebutt-answer-announce" aria-live="polite" aria-atomic="true">
+        {working || !settledUnderModal ? "" : answer?.text ?? ""}
+      </span>
+      <div className="scuttlebutt-answer-body">
+        <span className="scuttlebutt-answer-who">
+          {name}
+          <span className="scuttlebutt-answer-capability"><GrantLine grants={grants} locale={locale} compact /></span>
+        </span>
+        {/* 도는 동안의 진행은 Live line 한 줄이다 — 지금 하는 것과 경과가 제자리에서 갱신된다(카드와 같은 줄). */}
+        {status ? <LiveLine label={status.label} thinking={status.thinking} meta={status.meta} /> : null}
+        {answer === null
+          ? null
+          : answer.kind === "error"
+            ? <div ref={textRef} tabIndex={-1} className="scuttlebutt-answer-text is-error">{answer.text}</div>
+            : (
+              <div
+                ref={textRef}
+                tabIndex={-1}
+                className={`scuttlebutt-answer-text markdown-body${working ? " is-streaming" : ""}`}
+                onClick={(event) => copyCodeBlock(event, { copy: t("markdown.copy"), copied: t("action.copied"), failed: t("markdown.copyFailed") })}
+                dangerouslySetInnerHTML={{ __html: answerHtml }}
+              />
+            )}
+        {!working && sources.length > 0 ? (
+          <span className="scuttlebutt-sources">
+            <span className="scuttlebutt-sources-label">{t("sources.label")}</span>
+            {sources.map((url) => (
+              <a key={url} className="scuttlebutt-source" href={url} target="_blank" rel="noreferrer noopener" title={url}>{sourceLabel(url)}</a>
+            ))}
+          </span>
+        ) : null}
+        {/* 답은 여기서 다 읽힌다 — 다음 행동은 이어 묻기(카드) 아니면 복사다. */}
+        <span className="scuttlebutt-answer-foot">
+          <button type="button" className="scuttlebutt-answer-expand" onClick={onExpand}>
+            {t("answer.followUp")}
+          </button>
+          {!working && answer?.kind === "assistant" ? (
+            <button type="button" className="scuttlebutt-answer-expand" onClick={() => void copy(answer.text)}>
+              {copied ? t("action.copied") : t("action.copy")}
+            </button>
+          ) : null}
+        </span>
+      </div>
+      <button
+        type="button"
+        className="scuttlebutt-answer-dismiss"
+        aria-label={t("answer.dismiss")}
+        onClick={dismiss}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** 도는 동안만 1초 시계 — 경과가 Live line의 오른쪽 끝에 선다. */
+function useNow(live: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
+  return now;
+}
+
+/** 답 말풍선들이 공유하는 "원래 자리" — 마지막으로 말풍선 밖에서 포커스를 가져온 요소. */
+let sharedReturnTarget: HTMLElement | null = null;
+
+/** 본문이 이보다 낮아지면 한두 줄도 못 담는다 — 새가 화면 가장자리에 붙어도 이만큼은 읽힌다. */
+const ANSWER_MIN_HEIGHT_PX = 72;
+
+/**
+ * 지금 문답의 답만 읽는다. 아직 한 글자도 오지 않았으면 null이고, 그때는 상태 문구가 대신 선다 —
+ * 빈 말풍선은 "실패했나"로 읽힌다. 오류 문구는 마크다운이 아니라 그대로 선다.
+ *
+ * 답이 도구 행으로 끊기면 스토어는 뒤 조각을 새 항목으로 세운다 — 마지막 항목만 읽으면 도구 호출
+ * 앞에 쓴 문단이 통째로 빠진다. 카드가 모든 조각을 그리듯 여기서도 조각을 이어 붙인다.
+ */
+function readAnswer(state: ChatState): { readonly kind: "assistant" | "error"; readonly text: string } | null {
+  const entries = currentExchange(state);
+  const last = entries.at(-1);
+  if (last?.kind === "error" && last.text.length > 0) return { kind: "error", text: last.text };
+  const fragments = entries.filter((entry): entry is Extract<ChatEntry, { kind: "assistant" }> => entry.kind === "assistant" && entry.text.length > 0).map((entry) => entry.text);
+  if (fragments.length === 0) return null;
+  return { kind: "assistant", text: fragments.join("\n\n") };
+}
+
+function readAnswerSources(state: ChatState): readonly string[] {
+  const entries = currentExchange(state);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.kind === "assistant") return entry.sources;
+  }
+  return [];
+}
+
+/**
+ * 이 말풍선보다 먼저 선 말풍선 중 **가로로 실제 겹치는** 것들의 높이 합. 그만큼 마스코트에서
+ * 멀어지는 방향으로 비켜서면 답이 서로를 가리지 않는다.
+ *
+ * DOM 순서를 레인 순서로 쓴다 — 무리가 답변 목록 순서대로 렌더하므로 먼저 물은 답이 마스코트에
+ * 가장 가깝게 남고, 뒤에 온 답만 바깥으로 쌓인다.
+ */
+export interface LanePlacement {
+  readonly bubble: HTMLElement;
+  readonly siblings: readonly HTMLElement[];
+  readonly left: number;
+  readonly width: number;
+  readonly height: number;
+  /** 마스코트 위로 열리는가. 아래로 열리면 레인은 반대 방향으로 자란다. */
+  readonly placeAbove: boolean;
+  readonly anchorTop: number;
+  readonly anchorBottom: number;
+  readonly gap: number;
+}
+
+/**
+ * 앞선 말풍선을 피해 마스코트에서 멀어지는 거리.
+ *
+ * 높이를 더하는 것으로는 부족하다 — 마스코트마다 세로 위치가 다르면 한 칸 밀어도 그만큼 어긋난
+ * 만큼 다시 겹친다(정상 모션에서 47px 어긋난 두 부관으로 75×77px 겹침 실측). 그래서 **놓일 자리의
+ * 실제 사각형**으로 판정하고, 겹치는 형제의 바깥 변까지만 정확히 물러선다.
+ *
+ * DOM 순서를 레인 순서로 쓴다 — 무리가 답변 목록 순서대로 렌더하므로 먼저 물은 답이 마스코트에
+ * 가장 가깝게 남고, 뒤에 온 답만 바깥으로 쌓인다.
+ */
+export function laneOffset(input: LanePlacement): number {
+  const { bubble, siblings, left, width, height, placeAbove, anchorTop, anchorBottom, gap } = input;
+  const blockers: readonly DOMRect[] = siblings
+    .slice(0, Math.max(0, siblings.indexOf(bubble) === -1 ? siblings.length : siblings.indexOf(bubble)))
+    // 아직 좌표를 못 잰 형제(첫 프레임)는 건너뛴다 — 0,0에 있는 상자로 레인을 계산하면 튄다.
+    .filter((sibling) => sibling.style.visibility === "visible")
+    .map((sibling) => sibling.getBoundingClientRect())
+    .filter((rect) => rect.left < left + width && left < rect.left + rect.width);
+
+  let lane = 0;
+  // 한 번 훑는 것으로는 부족하다 — 마스코트 높이가 제각각이면 뒤쪽 형제를 피해 물러난 자리가 앞서
+  // 지나쳤던 형제 위로 되돌아갈 수 있다(세 부관이 겹칠 때 실측 재현). 자리가 더 움직이지 않을 때까지
+  // 다시 훑는다. 형제 수만큼만 돌므로(부관은 셋) 끝나지 않는 일은 없다.
+  for (let pass = 0; pass <= blockers.length; pass += 1) {
+    let moved = false;
+    for (const rect of blockers) {
+      const top = placeAbove ? anchorTop - gap - lane - height : anchorBottom + gap + lane;
+      if (top >= rect.bottom || rect.top >= top + height) continue;
+      // 겹치는 형제의 바깥 변 너머로 물러선다. 앞선 형제가 이미 더 큰 레인을 요구했으면 그것을 지킨다.
+      const next = Math.max(lane, placeAbove ? anchorTop - rect.top : rect.bottom - anchorBottom);
+      if (next > lane) {
+        lane = next;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return lane;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}

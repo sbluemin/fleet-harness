@@ -1,10 +1,10 @@
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import { canonicalModelId } from "@fleet-console/sdk/models";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../shared/operations/types.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 /**
  * 새 세션 실행의 순수 선택 로직 — 데스크톱 새 세션 화면과 모바일 새 세션 시트가 함께 쓴다.
  *
- * 컴포넌트에서 떼어 둔다 — 컴포넌트는 플러그인 레지스트리(virtual:fleet-plugins)를 끌어오므로, 여기 남겨야 단위 테스트가
+ * 컴포넌트에서 떼어 둔다 — 컴포넌트는 feature 레지스트리(feature-registry)를 끌어오므로, 여기 남겨야 단위 테스트가
  * 번들러 가상 모듈 없이 돈다.
  */
 

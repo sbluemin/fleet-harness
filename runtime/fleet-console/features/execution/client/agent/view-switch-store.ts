@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 /**
  * 뷰 전환의 두 조각을 잇는 자리.

@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 
-import type { ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { PaneContext, PaneDescriptor } from "../../../../../features/workspace/shared/pane.js";
+import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
 
-import { usePluginRegistry, type ResolvedRailEntry } from "../../integration/plugin-registry.js";
+import { useFeatureRegistry, type ResolvedRailEntry } from "../../integration/feature-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
 import { useConversationOperationTabPanels } from "../rail/operation-tabs.js";
 import { settingsPanes, settingsRailEntry } from "../../../../../features/settings/client/settings-pane.js";
@@ -159,7 +159,7 @@ function bindNative(
 }
 
 export function useRailEntries(side: "right" = "right"): readonly RailEntryBinding[] {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   // 레지스트리를 만드는 경로가 새 필드를 아직 싣지 않을 수 있다(외부 합성·테스트 대역). 그때
   // 레일 전체가 죽는 것보다 그 기여만 비어 있는 편이 낫다.
   const railPanels = registry.railPanels ?? [];
@@ -203,7 +203,7 @@ export function useDesktopRailEntries(side: "right" = "right"): readonly RailEnt
  * 그것도 주소로 찾혀야 한다. 옛 패널에서 투영된 것도 함께 실어 두 계약을 한 색인에 둔다.
  */
 export function usePaneIndex(): ReadonlyMap<string, PaneDescriptor> {
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const bindings = useRailEntries();
   const registered = registry.panes ?? [];
   return useMemo(() => {

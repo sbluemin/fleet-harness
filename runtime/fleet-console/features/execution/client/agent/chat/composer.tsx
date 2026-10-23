@@ -1,28 +1,16 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import {
-  AttachImageIcon,
-  ComposerAttachmentTray,
-  ComposerField,
-  ComposerQuoteTray,
-  ComposerInput,
-  ComposerMenu,
-  ComposerMenuItem,
-  ComposerPlusButton,
-  ComposerSubmitButton,
-  composerAttachmentNoticeText,
-  composerDeckKeyDown,
-  composerQuotePlaceholder,
-  composerT,
-  isUltracodeDisarmCaret,
-  nextUltracodeIgnored,
-  readUltracodeTokens,
-  renderUltracodeHighlight,
-  syncComposerHighlight,
-  useComposerAttachmentInput,
-} from "@fleet-console/sdk/composer";
+import * as React from "react";
+import type { OperationRenderContext } from "../../../shared/client-contract.js";
+import { AttachImageIcon } from "../../composer-primitives/icons.js";
+import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton } from "../../composer-primitives/attachment-surface.js";
+import { ComposerField, ComposerSubmitButton } from "../../composer-primitives/primitives.js";
+import { ComposerQuoteTray, composerQuotePlaceholder } from "../../composer-primitives/quote-tray.js";
+import { ComposerInput } from "../../composer-primitives/input.js";
+import { composerAttachmentNoticeText, composerT } from "../../composer-primitives/messages.js";
+import { composerDeckKeyDown } from "../../composer-primitives/deck.js";
+import { isUltracodeDisarmCaret, nextUltracodeIgnored, readUltracodeTokens, renderUltracodeHighlight, syncComposerHighlight } from "../../composer-primitives/ultracode.js";
+import { useComposerAttachmentInput } from "../../composer-primitives/attachment-input.js";
 
-import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "../../../../workspace/client/components/caption-actions.js";
 
 import { useMenuButtonKeyboard } from "../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { getT } from "../i18n/index.js";
@@ -124,7 +112,7 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
 }
 
 /**
- * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 새 세션).
+ * 채팅 패널에 귀속된 축약 컴포저 — execution composer primitives 블록의 두 번째 조립(첫 번째는 새 세션).
  *
  * 언제나 서 있다: 접힘도, 되돌아오는 한 줄도 없다. 읽던 자리에서 바로 쓰는 것이 이 패널의
  * 기본 동작이고, 매 턴 앞에 붙던 "펼치는 클릭" 하나가 그 기본을 가리고 있었다. 대신 크롬을
@@ -255,7 +243,7 @@ export function AgentChatComposer({
   // 대조해야 하므로 덱 블록보다 앞에 선다.
   const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
   const [catalogTried, setCatalogTried] = React.useState(false);
-  // `ultracode` 무장 — 새 세션과 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
+  // `ultracode` 무장 — 새 세션과 같은 부품(execution composer primitives)이 인식·미러 문법을 소유하고,
   // 상태(해제)와 표식만 이 조립이 진다. 무장은 초안에서 파생하고, 남는 것은 "이 초안에서 껐다"뿐이다.
   const highlightRef = React.useRef<HTMLDivElement | null>(null);
   const setUltracodeIgnored = draftState.setUltracodeIgnored;

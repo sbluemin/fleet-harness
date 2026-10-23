@@ -1,6 +1,6 @@
 import type { CliMessagePolicy } from "@fleet-console/agent-runtime/fleet";
 import type { ConsoleRuntimeContext, RequestLifetime } from "../context.js";
-import type { UpgradeHandler } from "@fleet-console/sdk/routing";
+import type { UpgradeHandler } from "@fleet-console/infra/http/routing";
 
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";

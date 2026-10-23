@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
+import type { OperationLaunchVariantGroup } from "../../../execution/shared/operations/types.js";
 
 import { LaunchModelEffort } from "../../../execution/client/components/launch-model-effort.js";
 import { writeNewSessionModelEffort } from "./new-session-preferences.js";

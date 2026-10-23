@@ -1,8 +1,8 @@
 import { OpenUINavigationContext } from "../../openui-boundary.js";
-import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
-import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
-import type { RailPanelContext } from "@fleet-console/sdk/rail";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import { CaptionTipHost } from "../../../../../workspace/client/components/caption-actions.js";
+import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
+import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
+import * as React from "react";
 
 import { getState, selectNestedBody, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";

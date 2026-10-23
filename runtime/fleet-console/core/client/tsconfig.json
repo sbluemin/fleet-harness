@@ -37,9 +37,6 @@
       ],
       "react/jsx-runtime": [
         "node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "virtual:fleet-plugins": [
-        "core/client/src/virtual-fleet-plugins.d.ts"
       ]
     },
     "typeRoots": [

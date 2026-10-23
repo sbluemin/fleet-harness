@@ -3,9 +3,9 @@
 // Installation of the window-level listeners stays in global-shortcuts.ts, which reads
 // the dialog module — folding it in here would make the two files import each other.
 
-import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
+import type { CompanionPanelDescriptor } from "../../../../features/execution/shared/client-contract.js";
 import type { CoreMessageKey } from "../i18n/index.js";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import { chordKeyLabels, isApplePlatform, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "./shortcut-bindings.js";
 

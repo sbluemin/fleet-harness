@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
+import { restoreOperationCluster } from "../../../../../features/execution/client/operations.js";
 
 import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
 

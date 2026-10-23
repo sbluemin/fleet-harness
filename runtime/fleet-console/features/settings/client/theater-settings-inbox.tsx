@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { SyncedTextarea } from "@fleet-console/sdk/composer";
-import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
+import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import { getT, useT } from "../../../core/client/src/i18n/index.js";
 import type { ClaudeCodeSystemPromptMode } from "./execution-settings.js";

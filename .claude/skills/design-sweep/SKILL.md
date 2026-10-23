@@ -1,6 +1,6 @@
 ---
 name: design-sweep
-description: Audit broad or recurring visual inconsistency across Fleet Console and built-in plugins. Use product-proposal for new UX direction and a direct fix for one already-diagnosed CSS defect.
+description: Audit broad or recurring visual inconsistency across Fleet Console core and features. Use product-proposal for new UX direction and a direct fix for one already-diagnosed CSS defect.
 ---
 
 # Design Sweep
@@ -9,7 +9,7 @@ Audit whether the product reads as one design system. Raw code values are candid
 
 ## Inputs and scope
 
-Default `<scope>` is core client styles plus all `runtime/fleet-plugins/*` CSS; honor a user-narrowed scope. Default `<depth>` is `full`; `quick` reports static candidates only and never repaints. Consult a prior sweep when available to avoid relitigating approved exceptions.
+Default `<scope>` is core client styles plus all `runtime/fleet-console/features/*` CSS; honor a user-narrowed scope. Default `<depth>` is `full`; `quick` reports static candidates only and never repaints. Consult a prior sweep when available to avoid relitigating approved exceptions.
 
 ## Execution
 

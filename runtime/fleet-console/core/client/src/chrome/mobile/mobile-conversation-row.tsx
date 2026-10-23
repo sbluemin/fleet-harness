@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
-import type { MongleState } from "@fleet-console/sdk/avatars";
-import type { OperationClusterRowMark } from "@fleet-console/sdk/plugin";
+import type { MongleState } from "../../../../../features/workspace/shared/avatars.js";
+import type { OperationClusterRowMark } from "../../../../../features/objectives/shared/operation-clusters.js";
 
 import { OperationAvatar, clusterFaceFacts, clusterWorkingMembers, mongleStateOfMark, type ClusterWorkingMember } from "../../../../../features/workspace/client/avatars.js";
 import { useClusterIndex, useOperationClusters, type ClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";

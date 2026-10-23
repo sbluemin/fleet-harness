@@ -7,7 +7,7 @@ const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const consoleRoot = path.join(repoRoot, "runtime/fleet-console");
 const foundation = path.join(consoleRoot, "foundation");
 const violations = [];
-const permitted = new Set(["@fleet-console/agent-runtime", "@fleet-console/process", "@fleet-console/infra", "@fleet-console/markdown", "@fleet-console/font-picker", "@fleet-console/sdk", "@fleet-console/protocol"]);
+const permitted = new Set(["@fleet-console/agent-runtime", "@fleet-console/process", "@fleet-console/infra", "@fleet-console/markdown", "@fleet-console/font-picker", "@fleet-console/i18n", "@fleet-console/ui", "@fleet-console/protocol"]);
 
 function files(root) {
   if (!existsSync(root)) return [];
@@ -23,7 +23,7 @@ function checkSpecifier(file, specifier) {
     const target = path.resolve(path.dirname(file), specifier);
     const substrate = path.join(foundation, "agent-runtime/src");
     if (["tools", "mcp", "claude"].some((part) => file.startsWith(path.join(substrate, part) + path.sep)) && target.startsWith(path.join(substrate, "fleet") + path.sep)) report(file, `substrate imports Fleet policy: ${specifier}`);
-    if (!target.startsWith(foundation + path.sep) && !target.startsWith(path.join(consoleRoot, "sdk") + path.sep) && !target.startsWith(path.join(consoleRoot, "protocol") + path.sep)) report(file, `foundation reaches outside its dependencies: ${specifier}`);
+    if (!target.startsWith(foundation + path.sep) && !target.startsWith(path.join(consoleRoot, "protocol") + path.sep)) report(file, `foundation reaches outside its dependencies: ${specifier}`);
   } else if (specifier.startsWith("@fleet-") || specifier.startsWith("@dotobokuri/")) {
     const name = specifier.split("/").slice(0, 2).join("/");
     if (!permitted.has(name)) report(file, `foundation imports ${specifier}`);
@@ -52,38 +52,7 @@ for (const file of files(foundation)) {
 for (const file of files(path.join(repoRoot, "packages"))) {
   if (/\.(?:[cm]?ts|tsx|json)$/.test(file)) report(file, "retired root packages tree still contains source or a manifest");
 }
-// Deprecated SDK model-picker surfaces stay exported for one release for external plugins only. Console code and
-// built-in plugins must already read the model roster (`ctx.models` / ModelCoordinatePicker); the SDK itself keeps the
-// deprecated implementations, and hosts may still provide the deprecated members as object-literal definitions.
-const DEPRECATED_SDK_IMPORTS = new Map([
-  ["@fleet-console/sdk/settings", ["CLAUDE_EXPERIMENT_MODEL_OPTIONS"]],
-  ["@fleet-console/sdk/settings/browser", ["CLAUDE_EXPERIMENT_MODEL_OPTIONS", "ModelPicker", "ModelPickerProps", "ModelPickerEffort", "useModelPickerOptions"]],
-]);
-const DEPRECATED_MEMBER_READS = new Set(["modelOptions", "experimentModelOptions", "ModelChoice"]);
-const builtInRoots = [consoleRoot, path.join(repoRoot, "runtime/fleet-plugins")];
-for (const file of builtInRoots.flatMap((root) => files(root))) {
-  if (!/\.(?:[cm]?ts|tsx)$/.test(file) || file.endsWith(".d.ts")) continue;
-  if (file.startsWith(path.join(consoleRoot, "sdk") + path.sep)) continue;
-  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
-  function visitDeprecated(node) {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      const banned = DEPRECATED_SDK_IMPORTS.get(node.moduleSpecifier.text);
-      const named = ts.isImportDeclaration(node)
-        ? node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings) ? node.importClause.namedBindings.elements : []
-        : node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : [];
-      for (const element of banned ? named : []) {
-        const imported = (element.propertyName ?? element.name).text;
-        if (banned.includes(imported)) report(file, `imports deprecated ${imported} from ${node.moduleSpecifier.text}; read the model roster instead`);
-      }
-    }
-    if (ts.isPropertyAccessExpression(node) && DEPRECATED_MEMBER_READS.has(node.name.text)) {
-      report(file, `reads deprecated .${node.name.text}; read the model roster (ctx.models / CoordinateChoice) instead`);
-    }
-    ts.forEachChild(node, visitDeprecated);
-  }
-  visitDeprecated(source);
-}
 if (violations.length) {
   console.error("Console boundary violations:\n" + violations.map((v) => `- ${v}`).join("\n"));
   process.exitCode = 1;
-} else console.log("Console foundation boundary and deprecated SDK model-picker guard passed");
+} else console.log("Console foundation boundary guard passed");

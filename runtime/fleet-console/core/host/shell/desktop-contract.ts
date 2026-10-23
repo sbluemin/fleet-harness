@@ -1,9 +1,9 @@
-import { DEFAULT_FONTS, fontFamilyForAxis, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { DEFAULT_FONTS, fontFamilyForAxis, type ConsoleFontSettings } from "../../../features/settings/shared/fonts.js";
 import type { DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type http from "node:http";
 
 import { DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopScreenPermissionSnapshot, isDesktopWindowCommandSnapshot, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { ConsoleThemeId } from "../../../features/settings/host/settings-domain.js";
 
 interface DesktopRouteContext {

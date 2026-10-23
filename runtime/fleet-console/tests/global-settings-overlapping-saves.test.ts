@@ -1,7 +1,7 @@
-import { DEFAULT_FONTS } from "@fleet-console/sdk/settings/fonts";
+import { DEFAULT_FONTS } from "../features/settings/shared/fonts.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../features/settings/shared/experiments.js";
 
 import type { GlobalSettingsState } from "../core/client/src/integration/types.js";
 

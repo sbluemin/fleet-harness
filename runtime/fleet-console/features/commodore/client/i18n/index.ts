@@ -1,5 +1,5 @@
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
 export const commodoreEn = {
   "commodore.board.commander.effortAuto": "Auto",

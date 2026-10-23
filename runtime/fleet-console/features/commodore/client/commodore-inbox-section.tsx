@@ -2,35 +2,21 @@ import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
-import {
-  AttachImageIcon,
-  ComposerAttachmentTray,
-  ComposerMenu,
-  ComposerMenuItem,
-  ComposerNotice,
-  ComposerPlusButton,
-  ComposerSendButton,
-  ComposerQuoteTray,
-  composeQuotedPrompt,
-  composerAttachmentNoticeText,
-  composerQuotePlaceholder,
-  composerQuoteValues,
-  composerT,
-  createComposerAttachments,
-  createComposerQuotes,
-  isComposerAttachmentCandidate,
-  useComposerAttachmentSnapshot,
-  useComposerQuotes,
-  type ComposerQuote,
-  type ComposerQuoteAttachResult,
-} from "@fleet-console/sdk/composer";
-import { referencePlainText } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
-import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
+import { CaptionTipHost } from "../../workspace/client/components/caption-actions.js";
+import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
+import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../execution/client/composer-primitives/attachment-surface.js";
+import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../execution/client/composer-primitives/quote-tray.js";
+import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuote, type ComposerQuoteAttachResult } from "../../execution/client/composer-primitives/quotes.js";
+import { composerAttachmentNoticeText, composerT } from "../../execution/client/composer-primitives/messages.js";
+import { createComposerAttachments } from "../../execution/client/composer-primitives/attachment-store.js";
+import { isComposerAttachmentCandidate } from "../../execution/client/composer-primitives/attachments.js";
+import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
+import { referencePlainText } from "../../execution/shared/conversation/references.js";
+import type { Translate } from "@fleet-console/i18n";
+import { SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
+import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextTokens, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
@@ -852,7 +838,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
 
 /**
  * 캡슐은 지휘관 대화 입력창(그룹 입력창)과 같은 부품이다 — 왼쪽 「+」 원, 가운데 입력, 오른쪽 보내기 원, 캡슐 맨 위 첨부 줄,
- * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`@fleet-console/sdk/composer`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
+ * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
 function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear }: CommodoreComposerProps) {

@@ -1,4 +1,4 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import { getT } from "../../agent/i18n/index.js";
 import type { TerminalKeyId } from "./terminal-key-sequences.js";

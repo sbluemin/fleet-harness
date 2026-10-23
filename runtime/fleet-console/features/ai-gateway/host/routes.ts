@@ -1,9 +1,10 @@
-import type { FleetPluginHostCapabilities, ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 interface GatewayHostContext {
   readonly host: {
-    readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
+    readonly lifecycle: Pick<CleanupPort, "registerCleanup">;
   };
   readonly dataDir: string;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;

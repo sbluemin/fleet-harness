@@ -1,7 +1,8 @@
 export type { ConsoleUpdateApplyFailureResponse } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleUpdateFailureReason, ConsoleUpdateFailureStage, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle";
-import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
-import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
+import type { ConsoleFontSettings } from "../../../features/settings/shared/fonts.js";
+import type { ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
+import type { ShortcutBindings } from "../../../features/settings/shared/shortcuts.js";
 import type { ConsoleThemeId, UiFontSettings } from "../../../features/settings/host/settings-domain.js";
 
 export interface ConsoleLockPayload {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../../../../../features/workspace/client/components/archive-glyph.js";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 

@@ -1,4 +1,4 @@
-import type { FailureNoticeProps } from "@fleet-console/sdk/components/failure-notice";
+import type { FailureNoticeProps } from "../../../../features/execution/client/components/failure-notice.js";
 
 import type { CoreMessageKey } from "../i18n/index.js";
 

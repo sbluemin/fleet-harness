@@ -42,6 +42,31 @@
       "types": "./dist/workspace-dir/workspace-dir.d.ts",
       "import": "./dist/workspace-dir/workspace-dir.js",
       "require": "./dist/workspace-dir/workspace-dir.cjs"
+    },
+    "./http/routing": {
+      "types": "./dist/http/routing.d.ts",
+      "import": "./dist/http/routing.js",
+      "require": "./dist/http/routing.cjs"
+    },
+    "./http/catalog": {
+      "types": "./dist/http/catalog.d.ts",
+      "import": "./dist/http/catalog.js",
+      "require": "./dist/http/catalog.cjs"
+    },
+    "./http/client-ports": {
+      "types": "./dist/http/client-ports.d.ts",
+      "import": "./dist/http/client-ports.js",
+      "require": "./dist/http/client-ports.cjs"
+    },
+    "./http/host-ports": {
+      "types": "./dist/http/host-ports.d.ts",
+      "import": "./dist/http/host-ports.js",
+      "require": "./dist/http/host-ports.cjs"
+    },
+    "./http/mcp-transport": {
+      "types": "./dist/http/mcp-transport.d.ts",
+      "import": "./dist/http/mcp-transport.js",
+      "require": "./dist/http/mcp-transport.cjs"
     }
   },
   "typesVersions": {
@@ -54,6 +79,21 @@
       ],
       "workspace-dir": [
         "dist/workspace-dir/workspace-dir.d.ts"
+      ],
+      "http/routing": [
+        "dist/http/routing.d.ts"
+      ],
+      "http/catalog": [
+        "dist/http/catalog.d.ts"
+      ],
+      "http/client-ports": [
+        "dist/http/client-ports.d.ts"
+      ],
+      "http/host-ports": [
+        "dist/http/host-ports.d.ts"
+      ],
+      "http/mcp-transport": [
+        "dist/http/mcp-transport.d.ts"
       ]
     }
   },

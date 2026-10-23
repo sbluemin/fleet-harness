@@ -1,17 +1,11 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
-import {
-  launchProviderCaption,
-  launchProviderFromGroupId,
-  launchProviderFromModelId,
-  launchProviderGlyph,
-  type LaunchProviderGlyphId,
-} from "@fleet-console/sdk/components/launch-provider-glyphs";
+import type { OperationLaunchVariantRow } from "../../../shared/operations/types.js";
+import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "../../operations.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../../../ai-gateway/client/components/launch-provider-glyphs.js";
 
-import { EffortTrack, resolveRowEffort } from "../../components/effort-track.js";
+import { EffortTrack, resolveRowEffort } from "../../composer-primitives/effort-track.js";
 import { cancelAgentChatCoordinates, changeAgentChatCoordinates } from "../api.js";
 import { getT } from "../i18n/index.js";
 import { useMobileSurface } from "../mobile-surface.js";

@@ -1,11 +1,11 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { ArchiveSectionDescriptor } from "@fleet-console/sdk/plugin";
+import type { ArchiveSectionDescriptor } from "../../../execution/shared/archive-surfaces.js";
 
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openArchiveSheet, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 
 export interface ArchiveSectionCount {
@@ -18,7 +18,7 @@ export interface ArchiveSectionCount {
  * 스냅숏은 수의 나열이라 같은 수면 같은 문자열이다.
  */
 export function useArchiveSections(query = "", theaterIds?: readonly string[]): readonly ArchiveSectionCount[] {
-  const { archiveSections } = usePluginRegistry();
+  const { archiveSections } = useFeatureRegistry();
   const registeredIds = useConsoleState().theaters.map((theater) => theater.id);
   const idsKey = JSON.stringify(theaterIds ?? registeredIds);
   const subscribe = useCallback((listener: () => void) => {

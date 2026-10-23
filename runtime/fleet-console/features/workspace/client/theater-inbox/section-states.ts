@@ -1,7 +1,7 @@
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
-import type { TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConsoleTheaterSummary } from "../../shared/console-state.js";
+import type { TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../shared/theater-inbox.js";
 
 /** 호스트가 정준 id 를 붙인 섹션. 순서가 곧 목록 순서다(호스트의 「Theater 설정」이 맨 앞). */
 export interface ResolvedTheaterInboxSection {

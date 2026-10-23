@@ -1,11 +1,14 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../../execution/shared/operations/types.js";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 
-import { ComposerAttachmentTray, ComposerDeckCategory, type ComposerAttachments, type ComposerMessageKey } from "@fleet-console/sdk/composer";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import { ComposerAttachmentTray } from "../../../execution/client/composer-primitives/attachment-surface.js";
+import { ComposerDeckCategory } from "../../../execution/client/composer-primitives/deck.js";
+import { type ComposerAttachments } from "../../../execution/client/composer-primitives/attachment-store.js";
+import { type ComposerMessageKey } from "../../../execution/client/composer-primitives/messages.js";
+import type { Translate } from "@fleet-console/i18n";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";

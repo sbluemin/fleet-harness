@@ -1,7 +1,7 @@
-import type { OpenResult } from "@fleet-console/sdk/navigation";
-import type { PaneDescriptor, PaneOpenRequest, PaneTarget } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
-import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
+import type { OpenResult } from "../../../../../features/workspace/shared/navigation.js";
+import type { PaneDescriptor, PaneOpenRequest, PaneTarget } from "../../../../../features/workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../../../../features/workspace/shared/rail.js";
+import type { ExpandedSurfaceOpenRequest } from "../../../../../features/workspace/shared/expanded-surface.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
 
 export interface PaneTargetBinding {

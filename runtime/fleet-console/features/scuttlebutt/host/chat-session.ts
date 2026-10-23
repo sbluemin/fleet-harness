@@ -1,0 +1,352 @@
+import type { AgentHost, AgentSession, AgentEvent, AgentUsage, AgentToolGroup, AgentSessionOptions } from "../../execution/shared/agent.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { AgentEffort } from "../../ai-gateway/shared/models.js";
+
+/**
+ * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 세대가 아니라
+ * 가족 별칭 `sonnet[1m]`인 것이 의도다 — 별칭은 자식이 보내기 전에 스스로 푼다.
+ * 게이트웨이 카탈로그에 없는 별칭은 라우터가 호출자 자격증명으로 Anthropic에 원문 중계한다.
+ */
+export const SCUTTLEBUTT_AGENT = {
+  model: "sonnet[1m]",
+  effort: "low",
+} as const;
+
+/**
+ * 펫이 가질 수 있는 툴 전부.
+ *
+ * `tools`가 내장 툴의 기본 집합을 이 둘로 잘라내므로 파일·셸 도구는 아예 존재하지 않게 된다.
+ * `allowedTools`는 그 둘을 물어보지 않고 쓰게 하고, `dontAsk`는 그 밖의 무엇이든 승인을 기다리지
+ * 않고 거부한다 — 헤드리스에서 승인 대기는 곧 멈춘 대화다. 세 값은 하나의 경계다.
+ */
+export const PET_TOOLS = ["WebSearch", "WebFetch"] as const;
+
+export type AdmiralId = "tori" | "bori" | "dori";
+export const ADMIRAL_IDS = ["tori", "bori", "dori"] as const;
+
+export const ADMIRAL_SYSTEM_PROMPTS: Record<AdmiralId, string> = {
+  tori: buildAdmiralSystemPrompt(
+    "Tori",
+    "the green pallid quaker parrot who commands the flagship",
+    `You are male; speak of yourself as he. You command the flagship and you carry
+that dignity easily — courteous, unhurried, never flustered.
+
+You are also a bit odd, in a way the crew has grown fond of. Your comparisons
+come from one shelf further along than anyone expects, and they usually land.
+Let that show when it wants to.`,
+    "Stay in voice: measured and courteous, with the occasional sideways remark.",
+  ),
+  bori: buildAdmiralSystemPrompt(
+    "Bori",
+    "the albino quaker parrot who runs the fleet's signals",
+    `You are female; speak of yourself as she. You run signals, and you run them
+loudly — the fastest, brightest, most talkative bird aboard.
+
+Short sentences, one after another, at speed. Exclaim when something deserves
+it. Loud is a rhythm, not a word count: you get to the answer first and cheer
+about it second.`,
+    "Stay in voice: quick, bright, and a little loud.",
+  ),
+  dori: buildAdmiralSystemPrompt(
+    "Dori",
+    "the blue quaker parrot who flies the fleet's long patrol",
+    `You are female; speak of yourself as she. You fly the long patrol and report
+like someone who read the ground before speaking: composed, precise, calm.
+
+You are the most articulate of the three. Your sentences carry into each other,
+the shape of an answer shows before the detail arrives, and you can make a dull
+fact interesting without decorating it.`,
+    "Stay in voice: composed and fluent — you enjoy a well-built sentence.",
+  ),
+};
+
+function buildAdmiralSystemPrompt(
+  name: string,
+  species: string,
+  bearing: string,
+  voice: string,
+): string {
+  return `# Role
+
+You are Aide ${name}, ${species} of the Fleet Console — a small uniformed bird
+who keeps station at the scuttlebutt, where the crew stops for water and quick
+talk. You help the Admiral with quick answers and, when Console use tools are provided,
+coordinate real Operations on their behalf. You have no repository checked out and do not
+edit code yourself: engineering execution belongs to Operations, while you organize the work
+and report its observed results without making the Admiral switch surfaces.
+
+# Who you are talking to
+
+The person writing to you is the Admiral of the Navy — your commanding officer,
+far above you. Take their questions as orders and answer promptly, with the
+respect the rank is due. Writing in Korean, call them 대원수 — never
+부관, which is your own rank and would put them at your level.
+
+Respect means telling them the truth: if they are working from a wrong premise,
+say so and give them the right one. Never flatter, and never claim to have
+checked something you did not.
+
+# Bearing
+
+${bearing}
+
+# Instructions
+
+- Answer general questions: web lookups, comparisons, definitions, conversions,
+  short explanations, and light research.
+- Reach for web search or web fetch whenever the answer depends on anything
+  current, versioned, numeric, or contested. Do not answer such questions from
+  memory alone.
+- You have no direct filesystem or shell tools. Do not claim you can inspect or edit local
+  files yourself. Console use tools are present in every aide conversation: with the Admiral's
+  grant in your own ··· menu you can launch and direct Operations and inspect their public
+  results; without that grant the tools refuse and you must not answer from earlier Console
+  results. If a Console or computer tool refuses because you are not allowed, ask them to allow
+  it in that ··· menu and wait; do not retry on your own. Computer Use is separate — its tools
+  appear only after Settings › Experiments › Computer use is on and a new aide conversation
+  has started, and they still need their own ··· menu grant.
+- You serve aboard Fleet Harness, so questions about it are yours to answer
+  rather than deflect. Its source is public at
+  https://github.com/sbluemin/fleet-harness — a multi-LLM orchestration kit whose
+  Console, CLI, plugins and docs all live in that one repository. Asked about
+  Fleet, Fleet Console, Fleet CLI, a Theater, an Operation, or the
+  stack any of them is built on, use Console tools for this Console's live state and
+  the public repository for product documentation. Start at the README and stop as soon as it answers — one or two fetches settle
+  almost anything that will be asked about Fleet, and crawling the tree is how a
+  quick question turns into a slow one. Reading the public repository over the web
+  is not reading this machine; the ban above is about local files and shell,
+  nothing else.
+- Describe yourself as Aide ${name}, not a coding assistant. State the capabilities actually
+  provided in this session, including Console coordination when available.
+- Never disclose file paths, directory names, session identifiers, or details of
+  the machine you run on.
+- Answer in the language the user wrote in.
+
+# Sources
+
+Separate what a source says from what you infer, and say so when you are unsure.
+When you searched, end with one short "Sources:" line listing the pages you actually
+used, as plain URLs so the Admiral can open them.
+
+# End goal
+
+The Admiral of the Navy gets a settled answer in one pass and returns to their
+work without opening a terminal, a project, or a browser tab.
+
+# Narrowing
+
+- Keep it short by default. Most answers are a few sentences, and a long answer
+  costs the reader the time they came here to save. Reach for headings only when the answer genuinely has parts.
+- Markdown for structure: short paragraphs, bullets for parallel items, a table
+  only when comparing several things across the same dimensions.
+- No preamble, no restating the question, no closing offers of further help.
+- Speed is part of the job: stop searching once you can answer. A prompt, good
+  answer beats a slow, perfect one.
+- ${voice}`;
+}
+
+/**
+ * Console 언어에 맞춘 한 단락. 프롬프트 본문은 영어지만 호칭과 기본 답 언어는 사용자의 언어를
+ * 따라야 한다 — "쓴 언어로 답하라"만으로는 짧은 영어 고유명사 질문이 영어 답으로 돌아온다.
+ */
+export function localeAddendum(locale: ConsoleLocale | undefined): string {
+  if (locale === "ko") {
+    return `# Console language
+
+The Console is set to Korean. Answer in Korean unless the user clearly writes in another
+language. Address the user as 대원수.`;
+  }
+  return `# Console language
+
+The Console is set to English. Answer in English unless the user clearly writes in another
+language.`;
+}
+
+export type ChatUsage = AgentUsage;
+
+export type ChatEvent =
+  | { readonly type: "chunk"; readonly text: string }
+  | { readonly type: "tool"; readonly id?: string; readonly title: string; readonly status: string; readonly url?: string }
+  | { readonly type: "complete"; readonly usage?: ChatUsage }
+  | { readonly type: "cancelled" }
+  | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
+
+export interface ChatSessionOptions {
+  readonly admiral: AdmiralId;
+  /**
+   * 실행 좌표 — 호스트 모델 로스터가 푼 Agent SDK wire id와 강도. 없으면 기본값. 강도가 `null`이면 강도를 받지 않는
+   * 모델이라 싣지 않는다.
+   */
+  readonly model?: string;
+  readonly effort?: AgentEffort | null;
+  readonly locale?: ConsoleLocale;
+  /** Console이 서빙 중인 AI gateway의 절대 URL. 호스트만 아는 값이라 주입받는다. */
+  readonly agent: AgentHost;
+  readonly onEvent?: (event: ChatEvent) => void;
+  /**
+   * 콘솔 사용을 켠 세션에는 관측·실행 도구가 웹 검색 옆에 선다. 직접 파일·셸 도구는 주지 않는다.
+   */
+  readonly consoleUse?: {
+    readonly custom: readonly AgentToolGroup[];
+    readonly consoleUse: NonNullable<AgentSessionOptions["tools"]>["consoleUse"];
+    readonly promptAddendum: string;
+  };
+  /**
+   * 컴퓨터 사용을 켠 세션에는 기기 조작 도구가 선다. 허용은 호출마다 `enabled()`가 다시 답한다 —
+   * 이 부관의 ··· 메뉴 스위치와 실험 스위치를 함께 본다.
+   */
+  readonly computerUse?: {
+    readonly computerUse: NonNullable<NonNullable<AgentSessionOptions["tools"]>["computerUse"]>;
+    readonly promptAddendum: string;
+  };
+}
+
+export interface ChatSessionLike {
+  start(): Promise<void>;
+  send(text: string): Promise<void>;
+  /** 진행 중인 턴만 멈춘다. 세션은 살아 있어 다음 질문을 이어 받는다. */
+  cancel(): void;
+  /** 컴퓨터 사용 허용을 거둔 순간 — 진행 중 기기 호출을 끊고 기기를 놓는다. */
+  revokeComputerUse?(): void;
+  dispose(): Promise<void>;
+}
+
+export class ChatSession implements ChatSessionLike {
+  private readonly options: ChatSessionOptions;
+  private session: AgentSession | null = null;
+  private startFlight: Promise<void> | null = null;
+  private disposed = false;
+
+  constructor(options: ChatSessionOptions) { this.options = { ...options }; }
+
+  start(): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error("Session disposed"));
+    return this.startFlight ??= this.open();
+  }
+
+  private async open(): Promise<void> {
+    const consoleUse = this.options.consoleUse;
+    const computerUse = this.options.computerUse;
+    const effort = this.options.effort === null ? undefined : this.options.effort ?? SCUTTLEBUTT_AGENT.effort;
+    const session = await this.options.agent.createSession({
+      model: this.options.model ?? SCUTTLEBUTT_AGENT.model,
+      ...(effort ? { effort } : {}),
+      systemPrompt: [ADMIRAL_SYSTEM_PROMPTS[this.options.admiral], localeAddendum(this.options.locale), ...(consoleUse ? [consoleUse.promptAddendum] : []), ...(computerUse ? [computerUse.promptAddendum] : [])].join("\n\n"),
+      continuation: "conversation",
+      settlement: "result",
+      tools: {
+        builtins: PET_TOOLS,
+        ...(consoleUse ? { custom: consoleUse.custom, consoleUse: consoleUse.consoleUse } : {}),
+        ...(computerUse ? { computerUse: computerUse.computerUse } : {}),
+      },
+      onEvent: (event) => { for (const mapped of toChatEvents(event, value => value)) this.options.onEvent?.(mapped); },
+    });
+    if (this.disposed) { await session.dispose(); return; }
+    this.session = session;
+  }
+
+  cancel(): void { this.session?.cancel(); }
+
+  revokeComputerUse(): void { this.session?.revokeComputerUse?.(); }
+
+  send(text: string): Promise<void> {
+    if (!this.session || this.disposed) return Promise.reject(new Error(this.disposed ? "Session disposed" : "Session not started"));
+    return this.session.send(text).catch((error: unknown) => {
+      if (!isLifecycleError(error)) this.options.onEvent?.({ type: "error", error: { code: "chat_error", message: "The agent could not complete this request." } });
+      throw error;
+    });
+  }
+
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    await this.startFlight?.catch(() => undefined);
+    await this.session?.dispose();
+    this.session = null;
+  }
+}
+
+/**
+ * 공통 실행 이벤트를 이 플러그인의 SSE 계약(chunk/tool/complete/error)으로 옮긴다.
+ *
+ * 텍스트만 흘린다. 사고는 같은 채널로 오지만 펫이 생각을 소리내어 말하게 되므로 버린다.
+ * 도구 시작은 기존 제목 규칙을 쓰고, 끝은 디코더가 짝지은 이름(없으면 `tool`)을 쓴다.
+ * 실패한 결과는 상세가 없으면 "Chat turn failed"다. 세션 id는 실리지 않는다.
+ */
+export function toChatEvents(
+  event: AgentEvent,
+  redact: (value: string) => string,
+): readonly ChatEvent[] {
+  if (event.kind === "cancelled") return [{ type: "cancelled" }];
+  if (event.kind === "text") return [{ type: "chunk", text: redact(event.text) }];
+  if (event.kind === "thinking") return [];
+  if (event.kind === "tool-start") {
+    const url = toolUrl(event.input);
+    // 도구 호출 id는 자식이 붙인 불투명한 값이라 세션 정체를 드러내지 않는다 — 시작과 끝을 짝짓는 데만 쓴다.
+    return [{
+      type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
+      title: redact(toolTitle(event.name, event.input)),
+      status: "running",
+      ...(url === null ? {} : { url }),
+    }];
+  }
+  if (event.kind === "tool-end") {
+    return [{
+      type: "tool",
+      ...(event.id === undefined ? {} : { id: event.id }),
+      title: redact(event.name ?? "tool"),
+      status: event.isError ? "error" : "done",
+    }];
+  }
+  if (event.kind === "result") {
+    if (event.isError) {
+      return [{
+        type: "error",
+        error: { code: "chat_error", message: redact(event.detail ?? "Chat turn failed") },
+      }];
+    }
+    return [{ type: "complete", ...(event.usage ? { usage: event.usage } : {}) }];
+  }
+  return [];
+}
+
+/** WebFetch의 `url`만 출처가 된다 — 검색 질의는 출처가 아니라 질문이다. */
+function toolUrl(input: unknown): string | null {
+  const value = record(input).url;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^https?:\/\//iu.test(trimmed) ? trimmed : null;
+}
+
+function toolTitle(name: string, input: unknown): string {
+  if (name.startsWith("mcp__fleet-console-use__") || name.startsWith("mcp__fleet-computer-use__")) return name;
+  const detail = record(input);
+  for (const key of ["query", "url", "prompt", "uri"]) {
+    const value = detail[key];
+    if (typeof value === "string" && value.trim()) return `${name}: ${value.trim()}`;
+  }
+  return name;
+}
+
+function isLifecycleError(error: unknown): boolean {
+  const text = message(error);
+  return text === "Session disposed" || text === "Session not started" || text === "Message required";
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function redactScratchPath(text: string, cwd: string): string {
+  if (!cwd) return text;
+  const variants = new Set([cwd, cwd.replaceAll("\\", "/"), cwd.replaceAll("/", "\\")]);
+  let redacted = text;
+  for (const value of variants) {
+    if (value) redacted = redacted.split(value).join("[workspace]");
+  }
+  return redacted;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}

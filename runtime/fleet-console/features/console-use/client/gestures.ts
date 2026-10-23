@@ -9,7 +9,7 @@
  * 표식은 잠깐이고(GAZE_MS / MARK_MS), 걷히기 직전 잠깐 `leaving` 이 되어 페이드할 틈을 준다.
  */
 
-import type { OperationArchiveReceipt } from "@fleet-console/sdk/operations/browser";
+import type { OperationArchiveReceipt } from "../../execution/shared/operations/archive.js";
 
 export const CONSOLE_USE_CALL_CHANNEL = "console-use:call";
 export const OPERATION_CLOSING_CHANNEL = "operation:closing";

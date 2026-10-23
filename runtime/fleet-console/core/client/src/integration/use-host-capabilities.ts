@@ -1,6 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useRailEntries } from "../chrome/pane/pane-registry.js";
-import { createHostCapabilities } from "./plugin-capabilities.js";
+import { createHostCapabilities } from "./feature-capabilities.js";
 
 export function useHostCapabilities(resync?: () => void) {
   const railBindings = useRailEntries();

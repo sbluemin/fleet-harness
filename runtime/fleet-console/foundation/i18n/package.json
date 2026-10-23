@@ -1,0 +1,27 @@
+{
+  "name": "@fleet-console/i18n",
+  "version": "1.254.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types.ts",
+      "default": "./types.ts"
+    },
+    "./format": {
+      "types": "./format.ts",
+      "default": "./format.ts"
+    },
+    "./translate": {
+      "types": "./translate.ts",
+      "default": "./translate.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

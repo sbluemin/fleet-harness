@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailPanelContext } from "@fleet-console/sdk/rail";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { PaneDescriptor } from "../../../../../features/workspace/shared/pane.js";
+import type { RailPanelContext } from "../../../../../features/workspace/shared/rail.js";
 
 import { readAgentChatSessionCoordinates } from "../../../../../features/execution/client/agent/chat/session-coordinates.js";
 import { useCommanderLedgerChosen } from "../../../../../features/execution/client/agent/chat/group/commander-ledger.js";
@@ -249,7 +249,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
           </>
         ) : tab.kind === "panel" ? (
           <div className="mobile-info-panel" key={tab.id}>
-            <PluginErrorBoundary fallback={null}>{tab.render(panelContext)}</PluginErrorBoundary>
+            <FeatureErrorBoundary fallback={null}>{tab.render(panelContext)}</FeatureErrorBoundary>
           </div>
         ) : (
           <div className="mobile-info-panel" key={tab.id}>
@@ -291,9 +291,9 @@ function MobileConversationPane({ paneId, operationId, theaterId, panelContext }
   const descriptor = usePaneIndex().get(paneId);
   if (!descriptor) return null;
   return (
-    <PluginErrorBoundary fallback={null}>
+    <FeatureErrorBoundary fallback={null}>
       <MobileConversationPaneBody key={`${paneId}:${operationId}`} descriptor={descriptor} operationId={operationId} theaterId={theaterId} panelContext={panelContext} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
 }
 

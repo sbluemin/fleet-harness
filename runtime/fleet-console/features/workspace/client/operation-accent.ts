@@ -1,5 +1,5 @@
-import type { Translate } from "@fleet-console/sdk/i18n";
-import { normalizeIdentityTone, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
+import type { Translate } from "@fleet-console/i18n";
+import { normalizeIdentityTone, type IdentityTone } from "../shared/identity-tones.js";
 
 import type { CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import type { OperationNode } from "../../../core/client/src/integration/types.js";
@@ -17,7 +17,7 @@ const TONE_LABEL_KEYS: Readonly<Record<IdentityTone, CoreMessageKey>> = {
   rose: "sidebar.accent.rose",
 };
 
-/** 톤 피커(`@fleet-console/sdk/components/accent-tone-list`)에 넘기는 호스트 문구. */
+/** 톤 피커(`Workspace accent-tone-list`)에 넘기는 호스트 문구. */
 export function accentToneLabels(t: Translate<CoreMessageKey>) {
   return {
     tone: (key: IdentityTone) => t(TONE_LABEL_KEYS[key]),

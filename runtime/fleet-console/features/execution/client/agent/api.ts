@@ -1,4 +1,4 @@
-import type { OperationGeometry, OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationGeometry, OperationNode } from "../../shared/operations/types.js";
 import {
   readAgentChatCatalogPayload,
   readAgentChatJobDetailPayload,

@@ -2,14 +2,12 @@ import { useViewedTheaterId } from "../../../../core/client/src/integration/view
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import {
-  ApiError, previewOperationPurge, previewOperationBatch, purgeArchivedOperations, restoreArchivedOperations,
-  restoreOperationCluster, undoOperationPurge, readOperationLaunch, OPERATION_PURGE_GRACE_MS,
-  type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation, type OperationPurgeResult,
-} from "@fleet-console/sdk/operations/browser";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { ApiError, previewOperationPurge, previewOperationBatch, purgeArchivedOperations, restoreArchivedOperations, restoreOperationCluster, undoOperationPurge } from "../../../execution/client/operations.js";
+import { readOperationLaunch } from "../../../execution/shared/operations/types.js";
+import { OPERATION_PURGE_GRACE_MS, type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation, type OperationPurgeResult } from "../../../execution/shared/operations/archive.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { closeArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { fetchOperations } from "../../../../core/client/src/integration/api.js";

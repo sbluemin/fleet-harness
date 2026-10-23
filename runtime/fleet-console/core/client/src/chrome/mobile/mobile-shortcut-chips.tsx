@@ -1,7 +1,7 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import type { ReactNode } from "react";
 
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";

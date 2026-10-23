@@ -1,13 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
-import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
+import type { SettingsSectionDescriptor, SettingsSectionGroup } from "../shared/types.js";
 
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
   buildCoreSettingsSections,
@@ -156,7 +156,7 @@ export function hostSectionOf(
 function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
   const t = useT();
   const locale = useConsoleLocale();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;

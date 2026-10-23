@@ -1,20 +1,21 @@
 import type { ConsoleResidentAgentHost } from "../../execution/host/agent/console-resident.js";
 import { Buffer } from "node:buffer";
-import type { AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
-import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
-import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
-import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import type { AgentInputBlock, AttachmentHost } from "../../execution/shared/agent.js";
+import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { canonicalModelId, isAgentEffort } from "../../ai-gateway/shared/models.js";
+import type { ModelRosterHost } from "../../ai-gateway/host/model-ports.js";
+import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "../../settings/shared/experiments.js";
 
-import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "@fleet-console/sdk/commodore";
+import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "../../objectives/shared/commodore-board.js";
 import { CommodoreStoreError } from "./errors.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
-import { undeliveredMessageSeqs } from "../shared/delivery.js";
-import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/attachment-budget.js";
-import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "./types.js";
+import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
+import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 
 /**
  * 감독자 — 사령관 UUID마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
@@ -41,19 +42,19 @@ export interface CommodoreSupervisorDeps {
   readonly theaterIds: (commodoreId: string) => readonly string[];
   readonly cwd: (commodoreId: string) => string | null;
   readonly agent: ConsoleResidentAgentHost;
-  readonly attachments?: PluginAttachmentHost;
+  readonly attachments?: AttachmentHost;
   readonly experiments: () => ConsoleExperimentSettings;
   readonly subscribeExperiments?: (listener: () => void) => () => void;
   /**
    * Console의 모델 로스터 해석 — 저장 좌표를 Agent SDK wire id로 풀고, Gateway에서 끈 모델은 저장값을 고쳐 쓰지 않은 채
    * 폴백 좌표로 연다. 없는 호스트에서는 저장 좌표를 그대로 쓴다.
    */
-  readonly models?: Pick<FleetPluginModelsHost, "resolve" | "pinClaudeVersion">;
+  readonly models?: Pick<ModelRosterHost, "resolve" | "pinClaudeVersion">;
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (commodoreId: string) => { readonly label: string; readonly root: string } | null;
   readonly board: () => CommodoreBoardAdapter | null;
   /** 호스트가 이 사령관에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
-  readonly knowledgeTools?: (commodoreId: string) => readonly PluginMcpServerTools[];
+  readonly knowledgeTools?: (commodoreId: string) => readonly McpServerTools[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -217,7 +218,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (!message?.messageId) throw unavailable();
       return { id, messageId: message.messageId };
     });
-    const messages = new Map<string, ReturnType<PluginAttachmentHost["read"]>>();
+    const messages = new Map<string, ReturnType<AttachmentHost["read"]>>();
     for (const { messageId } of selected) if (!messages.has(messageId)) {
       try { messages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
       catch { throw unavailable(); }
@@ -228,7 +229,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return image;
     });
   };
-  const boardTools = (runner: Runner): readonly PluginMcpTool[] => {
+  const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
     const turn: CommodoreTurnBindings = {
       readAttachments: turnAttachments(runner),
       hasPersonMessage: () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0,

@@ -243,7 +243,7 @@ Run any live probe **several times**. Provider behavior is not deterministic —
 arguments on this wire have returned truncated JSON in roughly 1 run in 5, independent of the
 gateway — so a single clean run proves nothing.
 
-Use the browser path when the question involves Console — launch wiring, PTY, plugin
+Use the browser path when the question involves Console — launch wiring, PTY, feature
 routes, what the operator actually sees.
 
 ## Headless Claude Code against the owned Console

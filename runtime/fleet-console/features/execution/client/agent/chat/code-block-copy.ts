@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 import type { getT } from "../i18n/index.js";
 
 const CODE_COPY_COPIED_MS = 1_200;

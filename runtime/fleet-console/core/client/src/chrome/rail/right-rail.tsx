@@ -3,11 +3,11 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "../../../../../features/workspace/shared/rail.js";
 
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import "../../styles/rail.css";
@@ -426,7 +426,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
     [bindings],
   );
   const paneEntries = listedBindings.filter((binding) => binding.panes.length > 0);
-  // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
+  // 합성 순서가 곧 레일 순서다(feature-registry). 동작 엔트리를 종류별로 앞세우면 등록
   // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
   // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
   // 범위(entry.scope)만은 순서 위에 선다: Theater를 다루는 도구가 먼저, Console 전체의 도구가

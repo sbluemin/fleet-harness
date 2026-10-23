@@ -1,7 +1,7 @@
-import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { MentionChip } from "@fleet-console/sdk/composer";
-import { splitReferenceText, type ConversationReference } from "@fleet-console/sdk/conversation";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { AgentChatReferenceHost } from "../../../shared/chat-renderer.js";
+import { MentionChip } from "../../composer-primitives/mention-chip.js";
+import { splitReferenceText, type ConversationReference } from "../../../shared/conversation/references.js";
+import * as React from "react";
 
 /**
  * 사람이 문면 속에 둔 참조를 그 자리의 토큰으로 — 플러그인 기록(SDK `ctx.chat.Transcript`·`Conversation`)의 평문 말풍선만 쓴다.

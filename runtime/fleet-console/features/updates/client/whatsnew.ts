@@ -4,7 +4,7 @@
 
 import type { ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes } from "../../../core/client/src/integration/types.js";
 import type { ReleaseNotesLocale } from "../../../core/client/src/integration/types.js";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 import { applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch } from "../../../core/client/src/integration/store.js";
 import { fetchReleaseNotes } from "../../../core/client/src/integration/api.js";
 import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";

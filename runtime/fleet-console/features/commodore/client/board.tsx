@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "@fleet-console/sdk/commodore";
+import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../../objectives/shared/commodore-board-client.js";
 
 let board: CommodoreBoardClient | null = null;
 const EMPTY: CommodoreBoardSnapshot = { loaded: false, objectives: [] };

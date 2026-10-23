@@ -3,8 +3,8 @@ import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
 import { z } from "zod";
-import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
 import { GLOBAL_BROWSER_OWNER_ID, invalidTargetMessage, type BrowserService } from "./service.js";
 import { createBrowserToolSpecs, type BrowserToolCtx, type BrowserToolDeps } from "./tools.js";
 import { operationIdFromSessionLabel } from "../../computer-use/host/mcp.js";

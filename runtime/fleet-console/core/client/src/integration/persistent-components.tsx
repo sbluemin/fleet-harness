@@ -1,11 +1,11 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 
-import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { PersistentComponentContext } from "../../../../features/workspace/shared/surface-contracts.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 
 import { useConsoleLocale } from "../i18n/index.js";
-import { usePluginRegistry } from "./plugin-registry.js";
+import { useFeatureRegistry } from "./feature-registry.js";
 import { getState, subscribe } from "./store.js";
 import { useViewMode } from "./view-mode-store.js";
 
@@ -21,7 +21,7 @@ import { useViewMode } from "./view-mode-store.js";
  * 아무 일도 하지 않는다.
  */
 export function PersistentPluginComponents() {
-  const { persistentComponents } = usePluginRegistry();
+  const { persistentComponents } = useFeatureRegistry();
   // 값은 쓰지 않는다 — 주소 변화로 이 층을 다시 그리게 하는 것이 목적이다.
   useLocation();
   const language = useConsoleLocale();
@@ -34,9 +34,9 @@ export function PersistentPluginComponents() {
   return (
     <>
       {persistentComponents.map((descriptor) => (
-        <PluginErrorBoundary key={descriptor.id}>
+        <FeatureErrorBoundary key={descriptor.id}>
           <PersistentComponent render={descriptor.render} context={context} />
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </>
   );

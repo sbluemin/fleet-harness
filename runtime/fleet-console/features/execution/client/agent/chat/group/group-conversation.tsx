@@ -1,7 +1,7 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { React } from "@fleet-console/sdk/plugin/browser";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import * as React from "react";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
@@ -9,8 +9,8 @@ import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
 import { getT } from "../../i18n/index.js";
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
-import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
+import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";

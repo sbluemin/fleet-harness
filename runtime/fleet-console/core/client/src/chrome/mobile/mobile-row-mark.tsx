@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationClusterRowMark } from "@fleet-console/sdk/plugin";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationClusterRowMark } from "../../../../../features/objectives/shared/operation-clusters.js";
 
 import { useConsoleLocale } from "../../i18n/index.js";
 

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
 import { useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";

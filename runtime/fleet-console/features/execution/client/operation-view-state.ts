@@ -1,5 +1,6 @@
-import { composeQuotedPrompt, composerQuoteValues, createComposerAttachments, createComposerQuotes, type ComposerAttachmentNotice, type ComposerAttachmentRecord, type ComposerAttachments, type ComposerQuote, type ComposerQuoteAttachResult, type ComposerQuoteItem } from "@fleet-console/sdk/composer";
-import type { ClientConsoleStateCapability } from "@fleet-console/sdk/plugin";
+import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuote, type ComposerQuoteAttachResult, type ComposerQuoteItem } from "./composer-primitives/quotes.js";
+import { createComposerAttachments, type ComposerAttachmentNotice, type ComposerAttachmentRecord, type ComposerAttachments } from "./composer-primitives/attachment-store.js";
+import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 
 import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } from "./agent/api.js";
 

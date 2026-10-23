@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@fleet-console/agent-runtime/claude";
 import { createConsoleResidentAgentHost } from "../features/execution/host/agent/console-resident.js";
 import { createPluginAgentHost } from "../features/execution/host/agent/plugin-agent.js";
-import type { AgentEvent } from "@fleet-console/sdk/agent";
+import type { AgentEvent } from "../features/execution/shared/agent.js";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });

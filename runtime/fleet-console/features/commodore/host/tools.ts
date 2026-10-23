@@ -3,15 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import { z } from "zod";
 
-import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "@fleet-console/sdk/commodore";
+import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
 import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
-import { MEMORY_STALE_MS } from "../shared/memory-stale.js";
-import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
+import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
+import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
@@ -52,7 +52,7 @@ export interface CommodoreToolsOptions {
   readonly execute?: CommandExecute;
 }
 
-export function createCommodoreTools(options: CommodoreToolsOptions): readonly PluginMcpTool[] {
+export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
   const now = options.now ?? Date.now;
   const run = options.execute ?? defaultExecute;
   const state = () => {
@@ -60,7 +60,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
     if (!current) throw new Error("theater_unavailable");
     return current;
   };
-  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, body: (args: z.output<S>, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
+  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, body: (args: z.output<S>, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown): ConsoleMcpTool => ({
     name, description, inputSchema: z.toJSONSchema(schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});

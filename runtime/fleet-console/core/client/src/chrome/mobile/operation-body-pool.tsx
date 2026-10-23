@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ClientMobileOperationCapability, ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { ClientMobileOperationCapability } from "../../../../../features/workspace/shared/mobile.js";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
+import type { OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
 
-import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import { useT } from "../../i18n/index.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
 
@@ -271,15 +273,15 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
   } satisfies OperationRenderContext;
 
   return createPortal(
-    <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("workspace.plugin.operationFailed")}</div>}>
+    <FeatureErrorBoundary fallback={<div className="fc-plugin-error">{t("workspace.plugin.operationFailed")}</div>}>
       <PluginBody render={descriptor.render!} context={context} />
-    </PluginErrorBoundary>,
+    </FeatureErrorBoundary>,
     mountNode,
   );
 }
 
 // render를 JSX children 자리에서 바로 호출하면 그 평가가 PooledOperationBody의 렌더 중에 일어난다.
-// 그 시점에는 PluginErrorBoundary가 아직 트리에 없어 플러그인의 동기 throw를 잡지 못하고 셸까지 올라간다.
+// 그 시점에는 FeatureErrorBoundary가 아직 트리에 없어 플러그인의 동기 throw를 잡지 못하고 셸까지 올라간다.
 // 호출을 바운더리 자식 컴포넌트 안으로 내려 캔버스 경로(PluginOperationRenderer)와 같은 보호를 유지한다.
 function PluginBody({ render, context }: {
   readonly render: NonNullable<OperationKindDescriptor["render"]>;

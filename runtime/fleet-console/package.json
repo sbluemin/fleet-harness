@@ -44,16 +44,15 @@
   },
   "scripts": {
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
-    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && pnpm generate:shim-keys && tsup && node ../../scripts/generate-plugin-dist-manifests.mjs && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
+    "build": "pnpm boundary:guard && pnpm generate:admiral-assets && tsup && node ../../scripts/check-dist-node-protocol.mjs && node ../../scripts/check-dist-published-externals.mjs && pnpm generate:desktop-protocol-declaration && pnpm verify:desktop-protocol && vite build --config core/client/vite.config.ts",
     "dev": "vite --config core/client/vite.config.ts",
     "generate:admiral-assets": "node ../../scripts/generate-fleet-admiral-assets.mjs",
     "generate:desktop-protocol-declaration": "tsup core/host/shell/desktop-protocol.ts --dts --dts-resolve --dts-only --out-dir dist --format esm --no-config",
-    "generate:shim-keys": "node ../../scripts/generate-fleet-console-shim-keys.mjs",
-    "predev": "pnpm generate:admiral-assets && pnpm generate:shim-keys",
+    "predev": "pnpm generate:admiral-assets",
     "prepack": "node ../../scripts/pack-fleet-console-manifest.mjs prepack",
     "postpack": "node ../../scripts/pack-fleet-console-manifest.mjs postpack",
-    "test": "pnpm generate:admiral-assets && pnpm generate:shim-keys && vitest run",
-    "typecheck": "pnpm generate:admiral-assets && pnpm generate:shim-keys && tsc --noEmit --incremental -p tsconfig.json && tsc --noEmit --incremental -p core/client/tsconfig.json",
+    "test": "pnpm generate:admiral-assets && vitest run",
+    "typecheck": "pnpm generate:admiral-assets && tsc --noEmit --incremental -p tsconfig.json && tsc --noEmit --incremental -p core/client/tsconfig.json",
     "verify:desktop-protocol": "node verify-desktop-protocol-compatibility.mjs"
   },
   "dependencies": {
@@ -68,8 +67,6 @@
     "@fleet-console/link": "workspace:*",
     "@fleet-console/lifecycle": "workspace:*",
     "@fleet-console/computer-use": "workspace:*",
-    "@fleet-console/sdk": "workspace:*",
-    "@fleet-plugins/codex": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@vscode/ripgrep": "1.18.0",
     "@xterm/addon-fit": "0.12.0-beta.299",
@@ -78,7 +75,6 @@
     "@xterm/addon-web-links": "0.13.0-beta.301",
     "@xterm/addon-webgl": "0.20.0-beta.298",
     "@xterm/xterm": "6.1.0-beta.302",
-    "esbuild": "0.27.7",
     "fflate": "0.8.2",
     "font-list": "^2.1.0",
     "koffi": "3.3.2",
@@ -92,7 +88,10 @@
     "tar": "7.5.22",
     "ws": "^8.18.0",
     "zod": "^4.4.1",
-    "@fleet-console/updates": "workspace:*"
+    "@fleet-console/updates": "workspace:*",
+    "typebox": "^1.1.24",
+    "@fleet-console/i18n": "workspace:*",
+    "@fleet-console/ui": "workspace:*"
   },
   "devDependencies": {
     "@fleet-console/protocol": "workspace:*",

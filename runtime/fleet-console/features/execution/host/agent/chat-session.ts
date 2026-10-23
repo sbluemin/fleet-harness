@@ -106,7 +106,7 @@ interface ChatCoordinates {
 export type AgentChatCoordinatesResult =
   | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }
   | { readonly ok: false; readonly error: "invalid_effort" | "context_exceeds_window" }
-  | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause };
+  | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: import("../../../console-use/shared/control.js").ConsoleCoordinatesFailureCause };
 
 export interface AgentChatSessionSeed {
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
@@ -209,7 +209,7 @@ export interface AgentChatSessionSeed {
   readonly reportActivity: (working: boolean) => boolean;
   /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Console Use·Computer Use)이 여기서 내려간다. */
   readonly onTurnSettled?: () => void;
-  readonly onTurnEnd?: (output: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"]) => void;
+  readonly onTurnEnd?: (output: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"]) => void;
   /**
    * 턴이 닫힐 때 transcript의 마지막 cwd로 위치 보고를 보정한다. 실행별 hook 바인딩이
    * 있으면 그 바인딩을 통해 보고하고, 없는 호출자는 이 콜백을 쓴다.
@@ -717,7 +717,7 @@ async function readFileTail(file: string, windowBytes: number): Promise<{ readon
  * 모델·강도 변경을 거절한 원 예외를 옮긴다 — 문자열을 자르지 않고 스택(호스트 경로)은 싣지 않는다. SDK 가 붙이는 분류·종료 좌표를 함께 싣고,
  * 문장에서는 자격 증명 모양만 치환한다(SDK 는 control 응답 오류를 마스킹 없이 넘기고, Gateway 는 공급자 본문을 그대로 중계한다).
  */
-function coordinatesFailureCause(error: unknown): import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause {
+function coordinatesFailureCause(error: unknown): import("../../../console-use/shared/control.js").ConsoleCoordinatesFailureCause {
   if (!(error instanceof Error)) return { message: maskSecrets(String(error)) };
   const tagged = error as { readonly code?: unknown; readonly errorClass?: unknown; readonly exitCode?: unknown; readonly signal?: unknown };
   const code = tagged.code;
@@ -812,7 +812,7 @@ class AgentChatSession {
    */
   private turnApiError: string | undefined;
   /** 마지막으로 닫힌 턴의 보고와 그 `turn-end` 줄의 seq — 관측(`readConsoleOutput`)이 종료 이벤트와 같은 값을 말하게 한다. */
-  private endedTurnReport: { readonly seq: number; readonly report: import("@fleet-console/sdk/mcp").ConsoleTurnReport } | undefined;
+  private endedTurnReport: { readonly seq: number; readonly report: import("../../../console-use/shared/control.js").ConsoleTurnReport } | undefined;
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -1010,7 +1010,7 @@ class AgentChatSession {
     this.coordinatesRefusal = null;
   }
   /** 자식이 마지막으로 거절한 좌표와 그 원 예외. 그 좌표를 곧바로 적용하려던 호출자가 실패 사유로 돌려준다. */
-  private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("@fleet-console/sdk/mcp").ConsoleCoordinatesFailureCause } | null = null;
+  private coordinatesRefusal: { readonly target: ChatCoordinates; readonly cause: import("../../../console-use/shared/control.js").ConsoleCoordinatesFailureCause } | null = null;
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -1187,7 +1187,7 @@ class AgentChatSession {
     return this.seed.canReportActivity();
   }
 
-  private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] } | undefined;
+  private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] } | undefined;
 
   /**
    * Console Use 의 전사 페이지 — 저널을 seq 순으로 잘라 준다. 표시용 이벤트(델타·큐·맥박)는 빼고
@@ -1221,7 +1221,7 @@ class AgentChatSession {
     return [...rows.values()];
   }
 
-  readConsoleOutput(): import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] {
+  readConsoleOutput(): import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] {
     const busy = this.pendingTurns > 0 || this.turnOpen || this.settlingStoppedTurn;
     if (this.consoleOutputCache?.seq === this.seq && this.consoleOutputCache.busy === busy) return this.consoleOutputCache.value;
     const start = this.journal.findLastIndex(({ event }) => event.kind === "dispatch" || event.kind === "turn-start");
@@ -1230,7 +1230,7 @@ class AgentChatSession {
     const endEntry = entries.findLast(({ event }) => event.kind === "turn-end");
     const ending = endEntry?.event;
     const safe = chatShellTailFromOutput(text, { cwd: this.seed.cwd });
-    const value: import("@fleet-console/sdk/mcp").ConsoleOperationObservation["output"] = {
+    const value: import("../../../console-use/shared/control.js").ConsoleOperationObservation["output"] = {
       status: text ? "available" : "unavailable", ...(text ? { text: safe.tail, truncated: safe.truncated || start < 0 } : {}),
       revision: endEntry?.seq ?? this.seq,
       outcome: busy ? "running" : ending?.kind === "turn-end" ? (ending.stopped ? "interrupted" : ending.ok ? "succeeded" : "failed") : "unknown",
@@ -1456,7 +1456,7 @@ class AgentChatSession {
    * 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용하는 비행 내내 남고, 성공하면 같은 동기 블록에서 좌표가 바뀐 뒤에야 비워진다 —
    * 그래서 "예약 없음 + 옛 좌표"는 적용 중이 아니라 적용되지 않았다는 뜻이다(버림·실패·취소).
    */
-  readCoordinates(): import("@fleet-console/sdk/mcp").ConsoleCoordinates {
+  readCoordinates(): import("../../../console-use/shared/control.js").ConsoleCoordinates {
     const pending = this.pendingCoordinates;
     const refused = this.coordinatesRefusal;
     return {
@@ -3188,7 +3188,7 @@ class AgentChatSession {
    * 대기 중인 디스패치를 여기서 푼다. 그것이 풀려야 큐에 있던 다음 메시지가 시작하고, 풀리지
    * 않으면 세션은 조용히 멈춘 채 사용자의 다음 문장을 영영 받지 않는다.
    */
-  private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string; readonly failure?: import("@fleet-console/sdk/mcp").ConsoleTurnFailure }): void {
+  private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string; readonly failure?: import("../../../console-use/shared/control.js").ConsoleTurnFailure }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
     this.stepReporter?.turnClosed();
@@ -3207,7 +3207,7 @@ class AgentChatSession {
     // 세션 간 메시지를 관측하는 세션만 보고를 싣는다 — 관측하지 않으면 빈 sentTo 는 "보내지 않았다"가 아니라 "모른다"다.
     const answer = end.ok !== false && end.stopped !== true ? this.turnRawAnswer ?? end.answer : undefined;
     this.turnRawAnswer = undefined;
-    const report: import("@fleet-console/sdk/mcp").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
+    const report: import("../../../console-use/shared/control.js").ConsoleTurnReport | undefined = this.seed.onSessionMessageSent === undefined ? undefined : {
       sentTo: this.turnSentTo, byPerson: this.turnByPerson, ...(answer === undefined ? {} : { answer }),
       pendingWork: this.liveJobs.size > 0 || this.turnScheduledWake,
     };

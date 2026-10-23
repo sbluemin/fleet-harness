@@ -1,3 +1,9 @@
+import type { SettingsStorageHost } from "../../settings/host/storage-port.js";
+import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
@@ -34,19 +40,19 @@ import {
   type AiGatewayStoredSettings,
   type GatewayAssignmentExposure,
 } from "@fleet-console/ai-gateway";
-import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 interface GatewayStartContext {
   readonly basePath: string;
   readonly dataDir: string;
   readonly legacyDataDir: string;
   readonly host: {
-    readonly paths: Pick<FleetPluginHostCapabilities["paths"], "consoleDataDir" | "fleetDataDir">;
-    readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
-    readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
-    readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
-    readonly server: Pick<FleetPluginHostCapabilities["server"], "origin">;
-    readonly storage: Pick<FleetPluginHostCapabilities["storage"], "readJson">;
+    readonly paths: Pick<WorkspacePaths, "consoleDataDir" | "fleetDataDir">;
+    readonly lifecycle: Pick<CleanupPort, "registerCleanup">;
+    readonly http: Pick<HttpPort, "readJsonBody" | "writeJson">;
+    readonly security: Pick<HttpSecurityPort, "isTerminalAuthorized">;
+    readonly server: Pick<ServerOriginPort, "origin">;
+    readonly storage: Pick<SettingsStorageHost, "readJson">;
   };
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   /**

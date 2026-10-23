@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OnboardingTour, OnboardingTourStep } from "@fleet-console/sdk/onboarding";
-import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE, ONBOARDING_WORK_SURFACE_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OnboardingTour, OnboardingTourStep } from "../shared/types.js";
+import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE, ONBOARDING_WORK_SURFACE_SELECTOR } from "../shared/anchors.js";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { onboardingT } from "./i18n.js";

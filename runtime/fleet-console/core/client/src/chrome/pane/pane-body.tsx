@@ -1,17 +1,14 @@
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { OpenLinkHandler } from "@fleet-console/sdk/link";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ConversationToolScope, PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "@fleet-console/sdk/pane";
-import type {
-  ClientApiCapability,
-  ClientExpandedSurfacesCapability,
-  ClientLifecycleCapability,
-  ClientPreferencesCapability,
-  ConsoleTheme,
-} from "@fleet-console/sdk/plugin";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { OpenLinkHandler } from "@fleet-console/link/core";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ConversationToolScope, PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "../../../../../features/workspace/shared/pane.js";
+import type { ClientApiCapability, ClientLifecycleCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
+import type { ClientPreferencesCapability } from "../../../../../features/settings/shared/client-ports.js";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 
 import type { HostPaneContext } from "./pane-registry.js";
 import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";

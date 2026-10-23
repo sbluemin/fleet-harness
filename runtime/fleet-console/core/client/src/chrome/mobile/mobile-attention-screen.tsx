@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
 import { useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";

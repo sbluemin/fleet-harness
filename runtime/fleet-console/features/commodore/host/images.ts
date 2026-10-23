@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import type { AttachmentHost } from "../../execution/shared/agent.js";
 
-import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "../shared/attachment-budget.js";
+import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_RETAINED_IMAGE_BYTES } from "../shared/contracts/attachment-budget.js";
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EXTENSIONS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" } as const;
-type Image = ReturnType<PluginAttachmentHost["read"]>[number];
+type Image = ReturnType<AttachmentHost["read"]>[number];
 
 export function validCommodoreImageId(id: string): boolean { return ID.test(id); }
 

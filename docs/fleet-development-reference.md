@@ -5,12 +5,12 @@
 Fleet Console is the sole published owner of the CLI launcher and web product. Private workspace identities are implementation boundaries, not separately published products.
 
 - `runtime/fleet-console/cli/` owns `fleet` argv and process lifecycle for Console management and gateway configuration. It does not launch Claude Code.
-- `runtime/fleet-console/core/host/` owns bootstrap, transport, plugin adapters, and native-shell composition.
+- `runtime/fleet-console/core/host/` owns bootstrap, transport, feature composition, and native-shell composition.
 - `runtime/fleet-console/core/client/src/` owns app composition, chrome, and integration.
-- `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, and Updates.
-- `runtime/fleet-console/foundation/` owns Agent runtime, process/infra primitives, Markdown, and Font Picker.
-- `runtime/fleet-console/sdk/` and `protocol/` own plugin and shell contracts.
-- Built-ins remain under `runtime/fleet-plugins/`; Wiki belongs to Codex, not CLI injection.
+- `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding, Commodore, Objectives, Codex, File Explorer, Repository, Quota, and Scuttlebutt. Console has no plugin runtime; a new product surface is a feature.
+- `runtime/fleet-console/foundation/` owns Agent runtime, process/infra primitives, i18n, generic React UI helpers, Markdown, and Font Picker.
+- `runtime/fleet-console/protocol/` owns shell contracts. A contract shared between features lives with the feature that owns its domain, or in foundation when it is domain-free.
+- Wiki belongs to the Codex feature, not CLI injection.
 - Desktop and Mobile remain thin shells; Desktop does not duplicate Console runtime or UI.
 
 ## 2. Where New Work Goes
@@ -21,11 +21,11 @@ Updates owns version/registry primitives and its UI/API; CLI, Console, and Deskt
 
 ## 3. Import Rules
 
-- Foundation must not import feature, core, CLI, or plugin implementations or contracts.
+- Foundation must not import feature, core, or CLI implementations or contracts.
 - Agent substrate (`tools`, `mcp`, `claude`) must not import Fleet execution policy (`fleet`). Gateway model meanings and delegation registrations arrive through explicit ports.
 - Consume private workspace packages through declared exports; never deep-import another package's source.
 - Keep headless runtime imports free of UI/host startup side effects. Browser graphs remain Node-free.
-- Core coordinates durable state through one writer and composes plugin capability adapters. Avoid mutable shared capability bags, DI containers, and service locators.
+- Core coordinates durable state through one writer and composes features through explicit dependency objects. Avoid mutable shared capability bags, DI containers, and service locators.
 - Published Console bins and `./cli`, `./desktop-protocol`, `./access-protocol` exports remain compatible. Private package renames do not change HTTP/MCP/storage identities.
 
 ## 4. State Synchronization

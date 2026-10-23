@@ -1,6 +1,6 @@
 import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, fetchTheaters, resumeConsoleSession } from "./api.js";
 import { refreshOperationArchive } from "./operation-archive.js";
-import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
+import { OPERATION_CLUSTER_CHANGED_EVENT } from "../../../../features/execution/shared/operations/archive.js";
 import type { SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";

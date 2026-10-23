@@ -1,17 +1,14 @@
 import { useDetailOverlayLeft } from "../rail/rail-store.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
-import type {
-  ExpandedSurfaceContext,
-  ExpandedSurfaceDescriptor,
-} from "@fleet-console/sdk/expanded-surface";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ConversationToolScope } from "@fleet-console/sdk/pane";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../../../../features/workspace/shared/expanded-surface.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConversationToolScope } from "../../../../../features/workspace/shared/pane.js";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { useT } from "../../i18n/index.js";
-import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";
 import { getState } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
@@ -221,7 +218,7 @@ export function SurfacePane({
         <div ref={floatRef} className="expanded-surface-pane-float">
           {descriptor?.tools ? (
             <div className="expanded-surface-pane-tools">
-              <PluginErrorBoundary><SurfacePanePart render={descriptor.tools} context={context} /></PluginErrorBoundary>
+              <FeatureErrorBoundary><SurfacePanePart render={descriptor.tools} context={context} /></FeatureErrorBoundary>
             </div>
           ) : null}
           {descriptor?.ownsClose ? null : <button
@@ -239,15 +236,15 @@ export function SurfacePane({
         <div className="expanded-surface-pane-body">
           {descriptor?.aside ? (
             <aside className="expanded-surface-pane-aside">
-              <PluginErrorBoundary><SurfacePanePart render={descriptor.aside} context={context} /></PluginErrorBoundary>
+              <FeatureErrorBoundary><SurfacePanePart render={descriptor.aside} context={context} /></FeatureErrorBoundary>
             </aside>
           ) : null}
           <div className="expanded-surface-pane-main">
-            <PluginErrorBoundary>
+            <FeatureErrorBoundary>
               {descriptor
                 ? <SurfacePanePart render={descriptor.render} context={context} />
                 : <MissingSurface surfaceId={instance.surfaceId} />}
-            </PluginErrorBoundary>
+            </FeatureErrorBoundary>
           </div>
         </div>
       </section>
@@ -293,7 +290,7 @@ export function MissingSurface({ surfaceId }: { readonly surfaceId: string }) {
 /**
  * 플러그인 콜백은 경계 **아래에서** 불려야 한다.
  *
- * `<PluginErrorBoundary>{descriptor.render(ctx)}</PluginErrorBoundary>`는 그렇지 않다 —
+ * `<FeatureErrorBoundary>{descriptor.render(ctx)}</FeatureErrorBoundary>`는 그렇지 않다 —
  * 자식은 부모의 렌더 중에 평가되므로, 던지는 순간 경계는 아직 트리에 없고 예외는 그대로
  * 위로 올라가 Operations 화면을 통째로 무너뜨린다. 한 칸 아래 컴포넌트로 미뤄야 잡힌다.
  */

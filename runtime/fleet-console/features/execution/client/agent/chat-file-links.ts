@@ -1,7 +1,7 @@
 import type { RenderMarkdownOptions } from "@fleet-console/markdown/core";
 import { parseFileRef, isAbsolute } from "@fleet-console/markdown/file-ref";
 import type { MarkdownLinkActivation } from "@fleet-console/markdown/link-activation";
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 
 export function createChatFileLinkPorts(theaterId: string, navigate: ClientNavigateCapability, onFailure: (reason: "unsupported" | "failed" | null) => void): {
   readonly resolveLink: NonNullable<RenderMarkdownOptions["resolveLink"]>;

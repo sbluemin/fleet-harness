@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk, type ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import { claudeGatewayModelPolicy, difficultyQuestionId, resolveAiGatewaySelection, type AiGatewayStoredSettings, type RoutingChoice, type RoutingDifficultyQuestion } from "@fleet-console/ai-gateway";
-import { ROSTER_FALLBACK_MODEL, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "@fleet-console/sdk/models";
+import { ROSTER_FALLBACK_MODEL, isAgentEffort, resolveRosterCoordinate, rosterRowEfforts } from "../shared/models.js";
 import { buildModelRoster, rosterWireModelId } from "./model-roster.js";
 
 interface RoutingModelTurn {

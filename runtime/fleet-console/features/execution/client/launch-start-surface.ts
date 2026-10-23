@@ -11,7 +11,7 @@
  * 이것은 이 브라우저의 습관이지 Console이 소유한 작전 상태가 아니다.
  */
 
-import type { OperationLaunchView } from "@fleet-console/sdk/operations";
+import type { OperationLaunchView } from "../shared/operations/types.js";
 
 const STORAGE_KEY = "fleet-console.launchMenu.startSurface";
 

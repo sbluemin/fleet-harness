@@ -2,7 +2,6 @@ import { getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-th
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
 import { takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
@@ -18,7 +17,7 @@ import { UpdateCurtain } from "../../../../features/updates/client/update-curtai
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
 import { openArchiveSheet } from "../integration/operation-archive.js";
 import type { ArchiveOutcome } from "../integration/operation-actions.js";
-import { ApiError, undoOperationArchive } from "@fleet-console/sdk/operations/browser";
+import { ApiError, undoOperationArchive } from "../../../../features/execution/client/operations.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
@@ -31,11 +30,11 @@ import { useGlobalSettingsStore } from "../../../../features/settings/client/glo
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../integration/global-shortcuts.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { createHostCapabilities } from "../integration/plugin-capabilities.js";
+import { createHostCapabilities } from "../integration/feature-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries, useRailEntries } from "../chrome/pane/pane-registry.js";
-import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
+import { useFeatureRegistry, useExpandedSurfaceDescriptors } from "../integration/feature-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
@@ -95,7 +94,7 @@ function ConnectedApp() {
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const location = useLocation();
-  const registry = usePluginRegistry();
+  const registry = useFeatureRegistry();
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
@@ -145,7 +144,6 @@ function ConnectedApp() {
   // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
   // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
   const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
-  const [pluginFailuresNotice, setPluginFailuresNotice] = useState(registry.failures.length > 0);
   const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
   const activeThemePolarity = themePolarity(state.activeTheme);
   useEffect(() => {
@@ -249,10 +247,7 @@ function ConnectedApp() {
       const capabilities = createHostCapabilities(() => {
         void fetchOperations().then(hydrateOperations).catch(() => {});
       }, { railBindings: () => railBindingsRef.current, commodore: registry.commodore });
-      for (const plugin of registry.providers) {
-        const cleanup = plugin.install?.(capabilities);
-        if (typeof cleanup === "function") cleanups.push(cleanup);
-      }
+      cleanups.push(registry.install(capabilities));
     };
     if (bootLanePending()) void afterBootLane().then(install);
     else install();
@@ -612,17 +607,6 @@ function ConnectedApp() {
         />
         <ControlCurtain />
         <ToastHost>
-          {/* 준비되지 않은 플러그인은 패널이 그냥 없는 것으로 보였다 — 서버 로그에만 남아
-              운영자에게는 이유가 도달하지 않았다. 한 번은 말하고 지나간다. */}
-          <Toast
-            open={pluginFailuresNotice}
-            tone="warn"
-            title={t(registry.failures.length === 1 ? "chrome.toast.pluginSkipped_one" : "chrome.toast.pluginSkipped_other", { count: registry.failures.length })}
-            message={registry.failures.map((failure) => failure.reason === "unsupported_api_version"
-              ? t("chrome.toast.pluginSkippedApiVersion", { name: failure.name ?? failure.id, version: SDK_API_VERSION })
-              : failure.name ?? failure.id).join(", ")}
-            onDismiss={() => setPluginFailuresNotice(false)}
-          />
           <Toast
             open={themeNotice !== null}
             tone="info"

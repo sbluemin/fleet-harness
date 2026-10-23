@@ -1,4 +1,4 @@
-import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { RailEntryDescriptor, RailPanelContext } from "../../../../workspace/shared/rail.js";
 
 import { getT } from "../../agent/i18n/index.js";
 

@@ -1,4 +1,4 @@
-import type { AgentDecisionCardProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentDecisionCardProps } from "../../../shared/chat-renderer.js";
 
 import { DecisionCard } from "./group/group-cards.js";
 import { ConversationTheaterContext } from "./group/speaker-mark.js";

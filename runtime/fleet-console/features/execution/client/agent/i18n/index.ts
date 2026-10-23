@@ -1,9 +1,9 @@
 import { browserEn, browserKo } from "../../../../browser/client/i18n.js";
 import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
 import type { OpenUIHydratorLabels } from "@fleet-console/markdown/openui";
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
+import * as React from "react";
 import { MOBILE_MESSAGES } from "./mobile-messages.js";
 
 

@@ -1,7 +1,7 @@
+import type { OperationsHost } from "../../execution/host/operations/ports.js";
 import type { ConsoleUseActions, SidebarPosition } from "../../console-use/host/console-use.js";
 import type { createOperationStore, OperationNode } from "../../execution/host/operations/operations-domain.js";
 import type { createDeferredDeletionCoordinator } from "./deferred-deletion.js";
-import type { FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 const OPERATION_CLOSING_EVENT_CHANNEL = "operation:closing";
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const CONSOLE_REVEAL_EVENT_CHANNEL = "operation:reveal";
@@ -18,9 +18,9 @@ function insertPosition<T extends { readonly id: string }>(remaining: readonly T
 interface WorkspaceActionDeps {
   readonly operations: ReturnType<typeof createOperationStore>;
   readonly deletionCoordinator: ReturnType<typeof createDeferredDeletionCoordinator>;
-  readonly archive?: (id: string) => Promise<import("@fleet-console/sdk/operations").OperationArchiveReceipt>;
+  readonly archive?: (id: string) => Promise<import("../../execution/shared/operations/archive.js").OperationArchiveReceipt>;
   readonly listOperationUse: NonNullable<ConsoleUseActions["using"]>;
-  readonly patchOperation: FleetPluginHostCapabilities["operations"]["patch"];
+  readonly patchOperation: OperationsHost["patch"];
   readonly publishPluginEvent: (channel: string, payload: unknown) => void;
   readonly persistDurableState: () => void;
   readonly broadcastGroupRemoved: (id: string, theaterId: string) => void;

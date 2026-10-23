@@ -1,10 +1,13 @@
 export type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyFailureResponse } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleUpdateFailureStage, ConsoleUpdateFailureReason, ConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import type { ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
-import type { ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
-import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console/sdk/settings";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ConsoleFontSettings } from "../../../../features/settings/shared/fonts.js";
+import type { ConsoleExperimentSettings } from "../../../../features/settings/shared/experiments.js";
+import type { ShortcutBindings } from "../../../../features/settings/shared/shortcuts.js";
+import type { OperationLaunchKind } from "../../../../features/execution/shared/operations/types.js";
+import type { ApiCatalogEntry as SdkApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { ConsoleTheme } from "../../../../features/settings/shared/theme.js";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "../../../../features/execution/shared/client-contract.js";
 
 export type ThemeId = "dark" | "light";
 
@@ -52,7 +55,7 @@ export interface NewSessionRejection {
 export interface NewSessionSeed {
   readonly draft: string | null;
   readonly mentionOperationId: string | null;
-  readonly mentionTarget: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress | null;
+  readonly mentionTarget: import("../../../../features/execution/shared/composer-ports.js").MentionTargetAddress | null;
 }
 
 /** 컴포저 밖(거절 칸·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */

@@ -7,7 +7,7 @@ import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import { createCommodoreFeature, type CommodoreFeatureDeps } from "../features/commodore/host/index.js";
 import { migrateCommodoreData } from "../features/commodore/host/migrate.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
-import { EMPTY_COMMODORE_STATE } from "../features/commodore/host/types.js";
+import { EMPTY_COMMODORE_STATE } from "../features/commodore/shared/contracts/types.js";
 
 /** 데이터 이동과 조건부 삭제는 한 기동 경계에서 검증한다. 이름 변형별 단위 테스트로 쪼개지 않는다. */
 it("migrates legacy workspaces before eager issuance, resumes interrupted commits and preserves unresolved data before destructive cleanup", async () => {

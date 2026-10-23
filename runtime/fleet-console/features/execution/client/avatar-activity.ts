@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { MongleActivity } from "@fleet-console/sdk/avatars";
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { MongleActivity } from "../../workspace/shared/avatars.js";
+import type { OperationRuntimeState } from "../shared/client-contract.js";
 
 import { getState as getConsoleState, subscribe as subscribeConsole } from "../../../core/client/src/integration/store.js";
 import { getSessionStep, subscribeSessionStep } from "./agent/store.js";

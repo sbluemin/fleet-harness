@@ -1,7 +1,7 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "../../../execution/shared/client-contract.js";
 
 import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival, resetDepartureForTests, resetIdleArrivalForTests } from "../../../execution/client/operation-marks.js";
 import { resolveOperationActivity } from "../../../execution/client/operation-activity.js";

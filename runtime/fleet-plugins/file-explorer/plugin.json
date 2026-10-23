@@ -1,7 +1,0 @@
-{
-  "id": "file-explorer",
-  "name": "File Explorer",
-  "apiVersion": 1,
-  "routes": "routes.ts",
-  "client": "client/index.tsx"
-}
