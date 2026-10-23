@@ -44,33 +44,13 @@ Once any session created by the failed route has verified cleanup, an unavailabl
 
 ## Open with instrumentation
 
-Register errors, rejections, and WebSocket lifecycle before the first page load (prefer the Write tool for the script file):
+Register errors, rejections, `console.error`, and WebSocket lifecycle before the first page load by passing [`scripts/page-diagnostics.js`](../scripts/page-diagnostics.js) as the first `--init-script`. Pass it by path rather than retyping or trimming a copy: a verification script without its `console.error` hook left a "0 errors" claim unverifiable. Put scenario probes and [fetch mocks](#mock-page-api-responses-before-navigation) in a second `--init-script` file on the same `open`; agent-browser 0.27.0 ran both, in the order given (measured 2026-10-23). Write that file with the Write tool or a quoted heredoc (`<<'EOF'`): an unquoted heredoc expands `$name` and backticks, so template literals in the JavaScript change silently and the run measures something else.
 
 ```bash
-INIT="<scratchpad>/fleet-console-e2e-init-<unique-id>.js"
-cat > "$INIT" <<'EOF'
-(() => {
-  const state = window.__fleetE2E = { errors: [], rejections: [], consoleErrors: [], sockets: [] };
-  addEventListener('error', e => state.errors.push({ message: e.message, stack: e.error?.stack || '' }), true);
-  addEventListener('unhandledrejection', e => state.rejections.push(String(e.reason?.stack || e.reason)));
-  const nativeConsoleError = console.error.bind(console);
-  console.error = (...args) => { state.consoleErrors.push(args.map(String).join(' ')); nativeConsoleError(...args); };
-  const Native = window.WebSocket;
-  function Tracked(...args) {
-    const socket = new Native(...args);
-    const target = new URL(String(args[0]), location.href);
-    const record = { url: target.origin + target.pathname, closed: false }; // query can carry a WS ticket; never record it
-    state.sockets.push(record);
-    socket.addEventListener('close', () => { record.closed = true; });
-    return socket;
-  }
-  Tracked.prototype = Native.prototype;
-  Object.setPrototypeOf(Tracked, Native);
-  window.WebSocket = Tracked;
-})();
-EOF
-
-AGENT_BROWSER_IDLE_TIMEOUT_MS=1800000 ab --session fleet-console-e2e-20260725-a7c3 --headed false open --init-script "$INIT" "http://127.0.0.1:<port>/console/operations"
+AGENT_BROWSER_IDLE_TIMEOUT_MS=1800000 ab --session fleet-console-e2e-20260725-a7c3 --headed false open \
+  --init-script <worktree>/.claude/skills/console-e2e/scripts/page-diagnostics.js \
+  [--init-script <scratchpad>/fleet-console-e2e-probe-<unique-id>.js] \
+  "http://127.0.0.1:<port>/console/operations"
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ```
 
@@ -80,7 +60,7 @@ Replace `/console/operations` only when the scenario targets another route. `--h
 
 For page-level API fixtures, use a `window.fetch` wrapper in `open --init-script`, not `agent-browser network route`. In a Console verification run, `network route` did not intercept the app's fetches; accepting the route command is not evidence that a fixture reached the page. This is the preferred page-fetch recipe, not a claim that network routing never works.
 
-Append the following to the **same** init script as the diagnostics above, before opening a new owned browser session. This example supplies an empty Agent CLI launch list without probing installed CLIs through this endpoint; replace the exact path and JSON with the current endpoint's browser DTO for the scenario.
+Put the following in the scenario's second `--init-script` file, next to the diagnostics above, before opening a new owned browser session. This example supplies an empty Agent CLI launch list without probing installed CLIs through this endpoint; replace the exact path and JSON with the current endpoint's browser DTO for the scenario.
 
 ```js
 (() => {
@@ -104,13 +84,13 @@ Append the following to the **same** init script as the diagnostics above, befor
 })();
 ```
 
-Use the instrumented `open --init-script "$INIT"` command above; do not first open the app and then install the wrapper with `eval`. After the app's normal load/action, inspect the hit list (without manually fetching the endpoint just to make it nonempty):
+Use the instrumented `open` command above with both `--init-script` files; do not first open the app and then install the wrapper with `eval`. After the app's normal load/action, inspect the hit list (without manually fetching the endpoint just to make it nonempty):
 
 ```bash
 ab --session fleet-console-e2e-20260725-a7c3 eval 'JSON.stringify(window.__fleetE2EMockHits)'
 ```
 
-Require a matching hit **and** the expected UI state before claiming interception. A wrapper-created response does not reach the network, so a missing network-log entry is not a failure by itself. If the init script must change after opening, clean up the owned session and reopen with a new unique id and the complete script; do not accumulate browsers while debugging a missed first-load request.
+Require a matching hit **and** the expected UI state before claiming interception. A wrapper-created response does not reach the network, so a missing network-log entry is not a failure by itself. If the init script must change after opening, clean up the owned session and reopen with a new unique id and the complete scripts; do not accumulate browsers while debugging a missed first-load request.
 
 When the wrapper is a guard that keeps a billable action off the network (for example a forced `429` before a provider turn), prove the hit before the paid trigger. Fire the same endpoint and method through a no-cost path first, either the first-load request or a non-billable UI action, and require the hit and UI state above. With no hit, stop before the paid trigger. An error-returning guard can make the app retry the same request on its own, so a rising hit count does not show that the paid trigger was intercepted: record the count and time just before the trigger, and require a hit you can attribute to it. A trigger that navigates or reloads reruns the init script and starts a new list. A wrapper installed with `eval` after load can miss more than the first-load request: in one run a plugin had already bound `fetch`, so a later request bypassed the wrapper and a paid turn went through; registering the wrapper before a reload fixed it. A route that attaches to an already-loaded page, such as Desktop `connect <cdp-port>` or [Fleet Browser](fleet-browser.md), offers no init script through its driver, so do not run a paid trigger behind a wrapper installed there.
 
@@ -123,6 +103,7 @@ These CLI behaviors have produced false results in Console runs. Recheck them ag
 - **Installation:** when `agent-browser` is not on `PATH`, back-to-back `npx` calls can fail with `ENOTEMPTY` while npm renames its cache and then do nothing. After the first `npx` run, call the cached `node_modules/.bin/agent-browser` directly. `~/.npm/_npx` can keep older versions beside it, so use the cache whose `--version` matches `npx --yes agent-browser --version` and check its `--help` for the options the run needs: a cached 0.21.0 has no `--init-script` and opens the script path as the URL, leaving `chrome-error://`. An empty result or `MODULE_NOT_FOUND` from a cache being reinstalled by another session is a tooling failure, not product evidence.
 - **Init script:** `--init-script` registers only on the command that launches the browser. Make the instrumented `open` the session's first command; if a launch leaves `about:blank` or any earlier command already started the browser, clean up and reopen. The script runs before `document.documentElement` exists, so observe `document`. Confirm a global it sets before trusting measurements.
 - **Eval scope:** every `eval` runs in the same page scope until reload, so a repeated top-level `const` throws on the second call and returns nothing. Wrap multi-statement scripts in an IIFE.
+- **Clearing a field:** in agent-browser 0.27.0 on macOS headless (measured 2026-10-23 on the Theater alias input), `fill <sel> ""` empties the DOM value with one untrusted `input` event that React's `onChange` ignores. The component state and its Enter commit therefore keep the old value. `fill` with non-empty text does reach the state, through a trusted `insertText` input. `press Meta+a` and `press Control+a` do not select the field's text there, so a following Backspace deletes one character. To clear a controlled field, `eval` its `focus()` and `select()`, then `press Backspace`. Confirm the result through what the field commits (the saved value or the request), not the DOM `value`.
 - **Double click:** `dblclick` sends one click with `detail=2`. A double-submit or double-delete race needs two real presses (CDP `Input.dispatchMouseEvent` with a real gap).
 - **Wheel:** `mouse wheel` dispatches at `(0, 0)` even after `mouse move`. Scroll an inner pane with `scroll <direction> <px> --selector <pane>` and read `scrollTop`; any claim about wheel hit testing needs CDP `mouseWheel` at the checked point.
 - **Off-screen targets:** `click` on an element below the fold can report success without firing. Run `scrollintoview` and the [pointer target preflight](verification.md#pointer-target-preflight) first.
