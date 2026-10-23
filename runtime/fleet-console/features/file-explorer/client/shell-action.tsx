@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ClientShellCapability, ShellOpenAtResult } from "@fleet-console/sdk/navigation";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ClientShellCapability, ShellOpenAtResult } from "../../workspace/shared/navigation.js";
+import type { Translate } from "@fleet-console/i18n";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 
 type ShellReason = Extract<ShellOpenAtResult, { readonly ok: false }>["reason"] | "failed";

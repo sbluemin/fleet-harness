@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
-import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "@fleet-console/sdk/avatars/browser";
-import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
-import type { OperationCluster } from "@fleet-console/sdk/plugin";
-import { MongleAvatarPicker, type MongleAvatarPickerLabels, type MongleAvatarPreviewState } from "@fleet-console/sdk/components/mongle-avatar-picker";
-import { IDENTITY_TONES, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
+import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
+import { MongleAvatar } from "./components/mongle-avatar.js";
+import type { OperationCluster } from "../../objectives/shared/operation-clusters.js";
+import { MongleAvatarPicker, type MongleAvatarPickerLabels, type MongleAvatarPreviewState } from "./components/mongle-avatar-picker.js";
+import { IDENTITY_TONES, type IdentityTone } from "../shared/identity-tones.js";
 
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";

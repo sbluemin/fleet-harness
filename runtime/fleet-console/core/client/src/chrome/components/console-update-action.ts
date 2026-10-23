@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
 import { setState } from "../../integration/store.js";

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { AccentToneList } from "@fleet-console/sdk/components/accent-tone-list";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { AccentToneList } from "../components/accent-tone-list.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
@@ -326,10 +326,10 @@ function PluginOperationMenuSection({ operation, onClose }: { operation: Operati
   const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
   if (!descriptor?.operationMenu) return null;
   return (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       {descriptor.operationMenu({ operation, language, onClose })}
       <div className="group-context-menu-divider" aria-hidden="true" />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
 }
 

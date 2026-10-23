@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot, CommodoreClientHost } from "@fleet-console/sdk/commodore";
-export { askObjectiveTitle } from "@fleet-console/sdk/commodore";
+import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../shared/commodore-board-client.js";
+import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
+export { askObjectiveTitle } from "../../commodore/shared/contracts/client-helpers.js";
 import { followupsJudgeable, livePersonHold, reasonAwaits } from "../shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";

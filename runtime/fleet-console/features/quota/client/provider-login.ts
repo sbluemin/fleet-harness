@@ -1,5 +1,5 @@
 import type { LoginStart, LoginStatus } from "@fleet-console/ai-gateway";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 
 import { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
 
@@ -100,7 +100,7 @@ async function poll(api: ClientApiCapability, provider: LoginProvider, captured:
   let status: LoginStatus | null = null;
   let missing = false;
   try {
-    const response = await api.fetch(null, `quota/${provider}/status?loginId=${encodeURIComponent(current.loginId)}`);
+    const response = await api.fetch(`quota/${provider}/status?loginId=${encodeURIComponent(current.loginId)}`);
     if (response.ok) status = await response.json() as LoginStatus;
     else missing = response.status === 404;
   } catch {
@@ -143,7 +143,7 @@ export async function startLogin(api: ClientApiCapability, provider: LoginProvid
   const captured = bump(provider);
   setState(provider, { phase: "starting" });
   try {
-    const response = await api.fetch(null, `quota/${provider}/start`, {
+    const response = await api.fetch(`quota/${provider}/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
@@ -171,7 +171,7 @@ export function cancelLogin(api: ClientApiCapability, provider: LoginProvider): 
   bump(provider);
   setState(provider, IDLE);
   if (current.phase !== "pending") return;
-  void api.fetch(null, `quota/${provider}/cancel`, {
+  void api.fetch(`quota/${provider}/cancel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ loginId: current.loginId }),

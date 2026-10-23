@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
-import { composerAttachmentNoticeText, composerT, createComposerAttachments, nextUltracodeIgnored, readUltracodeTokens, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
+import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "../../../execution/shared/operations/types.js";
+import { fetchOperationCatalog } from "../../../execution/client/operations.js";
+import { composerAttachmentNoticeText, composerT } from "../../../execution/client/composer-primitives/messages.js";
+import { createComposerAttachments } from "../../../execution/client/composer-primitives/attachment-store.js";
+import { nextUltracodeIgnored, readUltracodeTokens } from "../../../execution/client/composer-primitives/ultracode.js";
+import { useComposerAttachmentSnapshot } from "../../../execution/client/composer-primitives/attachment-input.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -12,7 +15,7 @@ import { closeMobileNewSession, consumeNewSessionRejection, consumeNewSessionSee
 import type { LaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
-import { resolveRowEffort } from "../../../execution/client/components/effort-track.js";
+import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
 import { resolveNewSessionTheaterId } from "./new-session-entry.js";

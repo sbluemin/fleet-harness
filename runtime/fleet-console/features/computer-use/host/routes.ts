@@ -1,5 +1,5 @@
 import type * as http from "node:http";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import type { CuaDriverInstaller } from "@fleet-console/computer-use";
 import type { ComputerUseService } from "./computer-use.js";
 interface ComputerUseRouteDeps {

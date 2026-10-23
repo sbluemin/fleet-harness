@@ -1,9 +1,9 @@
+import type { FileExplorerRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClipboardUnavailableError, copyPathToClipboard } from "../host/path-actions.js";
@@ -86,7 +86,7 @@ function makeContext(
   body: Record<string, unknown>,
   writes: JsonWrite[],
   authorized = true,
-): FleetPluginServerContext {
+): FileExplorerRouteContext {
   return {
     host: {
       http: {
@@ -96,7 +96,7 @@ function makeContext(
       security: { isTerminalAuthorized: () => authorized },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as FileExplorerRouteContext;
 }
 
 function makeResponse(): { readonly value: http.ServerResponse; readonly end: ReturnType<typeof vi.fn> } {

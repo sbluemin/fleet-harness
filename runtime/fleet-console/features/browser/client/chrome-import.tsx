@@ -1,5 +1,5 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import { Select } from "@fleet-console/sdk/react/browser";
+import * as React from "react";
+import { Select } from "../../settings/client/mobile-host.js";
 
 import type { getT } from "./i18n.js";
 

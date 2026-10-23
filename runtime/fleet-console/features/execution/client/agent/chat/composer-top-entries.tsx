@@ -1,6 +1,6 @@
 import { createContext, useContext, useRef, type ReactNode } from "react";
-import type { ComposerTopEntryDescriptor } from "@fleet-console/sdk/plugin";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { ComposerTopEntryDescriptor } from "../../../../workspace/shared/surface-contracts.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { useViewMode } from "../../../../../core/client/src/integration/view-mode-store.js";
 
 // 호스트 조합 루트가 레지스트리 기여를 명시적으로 주입한다. 플러그인은 이 호스트 번들의 Context를 읽지 않는다.
@@ -18,7 +18,7 @@ export function ComposerTopEntries({ leading }: { readonly leading?: ReactNode }
     <span className="conversation-composer-top-content" ref={popoverAnchorRef}>
     {entries.map((entry) => {
       const Render = entry.render;
-      return <PluginErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} layout={layout} /></PluginErrorBoundary>;
+      return <FeatureErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} layout={layout} /></FeatureErrorBoundary>;
     })}
   </span></div>;
 }

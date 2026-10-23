@@ -1,5 +1,5 @@
 import type { SearchAddon } from "@xterm/addon-search";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useEffect, useRef, useState } from "react";
 
 import { getT } from "../../agent/i18n/index.js";

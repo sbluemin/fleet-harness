@@ -1,8 +1,8 @@
-import { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "@fleet-console/sdk/commodore";
-export { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "@fleet-console/sdk/commodore";
+import { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "../../commodore/shared/contracts/questions.js";
+export { MAX_DECISION_QUESTIONS, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_LABEL, MAX_DECISION_DESCRIPTION, MAX_DECISION_ANSWER, MAX_SHORT_INPUT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, decisionQuestionSchema, type DecisionQuestionInput, decisionAnswersSchema, type DecisionAnswersInput, storedDecisionHeader, ownAnswer } from "../../commodore/shared/contracts/questions.js";
 import { z } from "zod";
-import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
-import { canonicalModelId } from "@fleet-console/sdk/models";
+import type { ConsoleCoordinatesFailureCause, ConsoleTurnFailure } from "../../console-use/shared/control.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 /** 살아 있는 구성원의 직전 실패와 표시 횟수. acknowledge는 inbox만 해소한다. */
 export interface ObjectiveMemberFailure extends ConsoleTurnFailure {

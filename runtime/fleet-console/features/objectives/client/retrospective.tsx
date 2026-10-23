@@ -3,7 +3,7 @@
  * 각 쌍은 목표의 맥락 없이 따로 읽히므로 줄마다 두 칸을 나란히 둔다.
  */
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { ObjectiveActor } from "../shared/types.js";
 import { handedOffWithoutRetro } from "./actors.js";

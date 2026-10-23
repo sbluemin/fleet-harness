@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { CompanionPanelDescriptor } from "../../execution/shared/client-contract.js";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { setGlobalSettingsField } from "./global-settings-store.js";

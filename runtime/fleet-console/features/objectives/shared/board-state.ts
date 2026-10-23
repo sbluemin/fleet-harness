@@ -1,4 +1,4 @@
-import type { ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleOperationObservation } from "../../console-use/shared/control.js";
 import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 
 export const STALL_MS = 30 * 60_000;

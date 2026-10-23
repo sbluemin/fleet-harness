@@ -2,7 +2,7 @@ import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
-import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
+import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { clampTheaterAlias, createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath, saveTheaterAlias } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";

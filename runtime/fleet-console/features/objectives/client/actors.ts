@@ -1,4 +1,4 @@
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { Objective, ObjectiveActionKind, ObjectiveActor } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";

@@ -9,7 +9,7 @@ import { getViewModeSnapshot } from "../../../core/client/src/integration/view-m
  * 데스크톱 설정은 화면 가운데 모달로 선다 — 대화의 세부 정보 자리인 오른쪽 패널은 그대로 남는다.
  * 모바일은 자기 설정 화면을 쓰고, 같은 섹션 레지스트리·본문을 공유한다.
  * 모달의 열림·섹션은 이 모듈이 진다(호스트 번들 안의 모듈 상태 — 플러그인은 pane 목표로 들어오고, 그 길은
- * plugin-capabilities 의 showTarget 이 이 문으로 돌린다).
+ * feature-capabilities 의 showTarget 이 이 문으로 돌린다).
  */
 
 interface SettingsModalState {

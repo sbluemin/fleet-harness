@@ -1,4 +1,4 @@
-import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ScuttlebuttClientDeps } from "./deps.js";
 
 import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
@@ -9,11 +9,11 @@ import type { ConsoleSnapshotPayload } from "./chat-session.js";
  * 전역으로 항상 열려 있고, 부관 자신의 grant가 실제 허용이다.
  */
 
-let consoleState: PluginInstallContext["consoleState"] | null = null;
-let experiments: PluginInstallContext["experiments"] | null = null;
-let models: PluginInstallContext["models"] | null = null;
+let consoleState: ScuttlebuttClientDeps["consoleState"] | null = null;
+let experiments: ScuttlebuttClientDeps["experiments"] | null = null;
+let models: ScuttlebuttClientDeps["models"] | null = null;
 
-export function connectConsoleRead(context: PluginInstallContext): void {
+export function connectConsoleRead(context: ScuttlebuttClientDeps): void {
   consoleState = context.consoleState;
   experiments = context.experiments;
   models = context.models ?? null;
@@ -51,6 +51,6 @@ export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
  * 부관 좌표의 선택지 — Console의 모델 로스터(Agent SDK 대상) 능력. 화면은 `useModelRoster(aideModels(), "agent")`로 읽는다
  * (마운트가 읽기를 시작하고, Settings › AI Gateway에서 모델을 켜고 끄면 다른 탭·기기 포함 다시 그린다).
  */
-export function aideModels(): PluginInstallContext["models"] | null {
+export function aideModels(): ScuttlebuttClientDeps["models"] | null {
   return models;
 }

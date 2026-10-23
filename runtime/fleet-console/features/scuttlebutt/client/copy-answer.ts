@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 /**
  * 답 복사 버튼의 상태. 말풍선과 카드가 같은 손잡이를 쓴다 — 두 표면의 복사가 서로 다른 시간·실패

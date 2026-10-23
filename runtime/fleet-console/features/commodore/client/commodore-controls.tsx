@@ -1,8 +1,8 @@
-import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "@fleet-console/sdk/components/model-coordinate-picker";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models";
+import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import type { Translate } from "@fleet-console/i18n";
+import { isAgentEffort, type ModelRosterTarget } from "../../ai-gateway/shared/models.js";
 
-import type { CommodorePatrolMinutes } from "@fleet-console/sdk/commodore";
+import type { CommodorePatrolMinutes } from "../shared/contracts/types.js";
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./defaults.js";

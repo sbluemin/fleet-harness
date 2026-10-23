@@ -1,13 +1,13 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationLaunchVariantRow } from "../../../shared/operations/types.js";
 
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
-import { resolveRowEffort } from "../../components/effort-track.js";
+import { resolveRowEffort } from "../../composer-primitives/effort-track.js";
 import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-effort-gate.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatCoordinatePair } from "./chat-events.js";

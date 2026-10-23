@@ -1,7 +1,7 @@
 import { resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { describe, expect, it } from "vitest";
 
-import { parseModelRoster, resolveRosterCoordinate } from "@fleet-console/sdk/models";
+import { parseModelRoster, resolveRosterCoordinate } from "../../features/ai-gateway/shared/models.js";
 
 import { buildAgentCliLaunchKinds } from "../../features/execution/host/agent/agent-cli-launch-kinds.js";
 import { buildModelRoster, createModelRosterHost } from "../../features/ai-gateway/host/model-roster.js";

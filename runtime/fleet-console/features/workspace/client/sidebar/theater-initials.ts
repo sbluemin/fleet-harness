@@ -1,4 +1,4 @@
-import { theaterInitials as computeInitials } from "@fleet-console/sdk/components/theater-badge";
+import { theaterInitials as computeInitials } from "../components/theater-badge.js";
 
 // 사이드바 칩·섹션 머리가 렌더마다 부른다 — 이름별 계산 결과만 캐시한다.
 const initialsCache = new Map<string, string>();

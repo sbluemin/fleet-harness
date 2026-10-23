@@ -1,9 +1,9 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../host/git-executor.js";
 import { HARD_CAP_DEPTH, NESTED_BRANCH_CAP, REPOS_CAP, handleRepositoryRepos, resolveNestedRepoCandidates, resolveRepoBranch, scanRepos, type ScannedRepo } from "../host/repos.js";
@@ -23,8 +23,8 @@ async function initGitRepo(dir: string, commit = false): Promise<void> {
   }
 }
 
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
-  return { host: { http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }) }, security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath } } } as unknown as FleetPluginServerContext;
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
+  return { host: { http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }) }, security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath } } } as unknown as RepositoryRouteContext;
 }
 
 async function discover(theaterPath: string, body: Record<string, unknown> = { theaterId: "theater" }): Promise<ReposResult> {

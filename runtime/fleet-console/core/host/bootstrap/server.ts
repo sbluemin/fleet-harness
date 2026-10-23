@@ -1,3 +1,6 @@
+import type { OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../../../features/execution/shared/operations/types.js";
+import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
+import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
 import { createRepositoryFeature } from "../../../features/repository/host/index.js";
@@ -37,9 +40,9 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
-import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
-import { resolveExperimentSettings, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { readLaunchVariantGroups } from "../../../features/execution/shared/operations/launch-variants.js";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, type OperationLaunchChangedEvent } from "../../../features/execution/shared/operations/types.js";
+import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -74,7 +77,7 @@ import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
 import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
-import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createExecutionSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createSettingsDocumentRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
@@ -83,7 +86,7 @@ import { deletionOperations, STATE_VERSION, backupDurableStateV3, backupDurableS
 import { migrateLegacyCaptures } from "../../../features/workspace/host/legacy-capture-migration.js";
 import type { TheaterRegistration } from "../../../features/workspace/host/theaters/theater-domain.js";
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
-import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "@fleet-console/sdk/plugin";
+
 import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopScreenPermissionRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
@@ -656,7 +659,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let commodore: CommodoreFeature | null = null;
   let objectives: ObjectivesFeature | null = null;
   let releaseObjectivesBoard: (() => void) | null = null;
-  const pluginTheaterFlags = new Map<string, (theaterId: string) => boolean>();
 
   /**
    * Theater 생명주기. 플러그인이 Theater마다 자기 저장소를 열고 닫으려면 이 순간들을
@@ -992,17 +994,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return owner?.ok ? owner.commodoreId : null;
     },
   });
-  const consoleFeaturePorts: FleetPluginHostCapabilities = {
-    commodore: {
-      registerBoard: (adapter) => { if (!commodore) throw new Error("commodore_unavailable"); return commodore.host.registerBoard(adapter); },
-      commander: (theaterId) => commodore?.host.commander(theaterId) ?? null,
-    },
-    agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
+  const consoleFeaturePorts: ConsoleHostPorts = {
     consoleUse,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
-      register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
       // 사령관 id와 그 디렉터리는 호스트가 정한다 — 부르는 쪽이 경로를 건네지 않으므로 다른 사령관·임의 경로로 묶을 수 없다.
       bindCommodore: (commodoreId) => {
         const directory = commodore?.knowledge.directory(commodoreId);
@@ -1143,7 +1139,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     paths: {
       fleetDataDir,
       consoleDataDir: durablePaths.dir,
-      pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
       listTheaterIds: () => theaters.list().map((theater) => theater.id),
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
@@ -1159,14 +1154,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ids: () => commodore?.knowledge.ids() ?? [],
       commodoreForContext: (contextId) => commodore ? commodore.knowledge.forContext(contextId) : { ok: false, reason: "unavailable" },
       legacyKnowledgeSources: (commodoreId) => commodore?.knowledge.legacySources(commodoreId) ?? [],
-    },
-    theaterFlags: {
-      register: (flag: string, resolve: (theaterId: string) => boolean) => {
-        pluginTheaterFlags.set(flag, resolve);
-        return () => {
-          if (pluginTheaterFlags.get(flag) === resolve) pluginTheaterFlags.delete(flag);
-        };
-      },
     },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
     models: createModelRosterHost({ readSettings: gatewaySettings.read, ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); } }),
@@ -1203,7 +1190,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       },
     },
   };
-  const createFeatureConsoleControl = (pluginId: string): NonNullable<FleetPluginHostCapabilities["consoleControl"]> => ({
+  const createFeatureConsoleControl = (pluginId: string): NonNullable<(ConsoleControlHost | undefined)> => ({
     request: async (input) => {
       consoleAgentOwners.add(pluginId);
       // 전달이 끝날 때까지 기다린다 — 결과는 남지 않는다. 멈춘 전달이 플러그인을 붙잡지 않게 시한을 둔다(전달 자체는 계속된다).
@@ -1432,7 +1419,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
   });
-  const executionSettingsRouter = createExecutionSettingsRouter({
+  const executionSettingsRouter = createSettingsDocumentRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
@@ -2025,19 +2012,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return theaters.list().map((theater) => toTheaterInfo(theater, true));
   }
 
-  /** 플러그인이 등록한 플래그. 해석이 던지면 그 플래그만 빠진다 — 목록 전체를 잃지 않는다. */
-  function resolveTheaterFlags(theaterId: string): Record<string, boolean> {
-    const flags: Record<string, boolean> = {};
-    for (const [flag, resolve] of pluginTheaterFlags) {
-      try {
-        flags[flag] = resolve(theaterId);
-      } catch {
-        // 소유 플러그인이 답하지 못하면 그 사실을 조용히 참으로 바꾸지 않는다.
-      }
-    }
-    return flags;
-  }
-
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
     return {
       id: theater.id,
@@ -2046,9 +2020,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
       ...(theater.alias !== undefined ? { alias: theater.alias } : {}),
-      ...resolveTheaterFlags(theater.id),
       commodoreActive: commodore?.active(theater.id) ?? false,
-      hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
+      hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === null && operation.type === "agent").length,
     };
   }
@@ -2060,13 +2033,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function resolveWikiServerStatus(theaterId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
     if (!theaterId) return "unknown";
     if (!theaters.get(theaterId)) return "unknown";
-    const resolve = pluginTheaterFlags.get("hasWiki");
-    if (!resolve) return "unknown";
-    try {
-      return resolve(theaterId) ? "available" : "unavailable";
-    } catch {
-      return "unknown";
-    }
+    return commodore?.knowledge.forContext(theaterId).ok ? "available" : "unavailable";
   }
 
   /** An accepted update stops this Console from inside: the same stop request a signal makes, with the same deadline. */

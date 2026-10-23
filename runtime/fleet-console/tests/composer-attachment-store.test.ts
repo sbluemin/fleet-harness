@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createComposerAttachments } from "../sdk/composer/attachment-store.js";
+import { createComposerAttachments } from "../features/execution/client/composer-primitives/attachment-store.js";
 
 /**
  * 업로드 토큰이 만료된 뒤의 전송 거절.

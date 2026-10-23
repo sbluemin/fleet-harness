@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import type { ConsoleOperationSummary } from "@fleet-console/sdk/plugin";
-import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
-import type { RailEntryAttentionItem, RailEntryFinishedItem } from "@fleet-console/sdk/rail";
-import { SettingsCard, SettingsRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import type { ConsoleOperationSummary } from "../../execution/shared/client-contract.js";
+import type { MobileBarMenuItem, PaneContext } from "../../workspace/shared/pane.js";
+import type { RailEntryAttentionItem, RailEntryFinishedItem } from "../../workspace/shared/rail.js";
+import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
+import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
-import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
+import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";

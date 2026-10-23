@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import { useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { refreshConsole, useConsoleUpdateAction, useVersionRefresh } from "./console-update-action.js";

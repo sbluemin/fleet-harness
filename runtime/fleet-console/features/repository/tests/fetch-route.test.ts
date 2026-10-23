@@ -1,8 +1,8 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { classifyFetchError, handleRepositoryFetch } from "../host/fetch.js";
@@ -48,7 +48,7 @@ function makeContext(
   body: Record<string, unknown>,
   writes: JsonWrite[],
   authorized = true,
-): FleetPluginServerContext {
+): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -58,7 +58,7 @@ function makeContext(
       security: { isTerminalAuthorized: () => authorized },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 describe("Repository fetch route", () => {
@@ -132,7 +132,7 @@ describe("Repository fetch route", () => {
         security: { isTerminalAuthorized: () => false },
         paths: { resolveTheaterPath: () => fixture.clonePath },
       },
-    } as unknown as FleetPluginServerContext;
+    } as unknown as RepositoryRouteContext;
 
     await handleRepositoryFetch({ method: "POST" } as never, {} as never, ctx);
 

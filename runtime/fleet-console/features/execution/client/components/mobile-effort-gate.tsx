@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationLaunchVariantRow } from "../../shared/operations/types.js";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { buildEffortDeck } from "../launch-selection.js";

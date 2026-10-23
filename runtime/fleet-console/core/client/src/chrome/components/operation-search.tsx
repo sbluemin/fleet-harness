@@ -6,16 +6,16 @@ import { openDefaultNewSession } from "../../../../../features/workspace/client/
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
-import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
+import { createHostPaneTargetPorts } from "../../integration/feature-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
-import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
+import type { ClientFeatureDescriptor } from "../../../../../features/workspace/shared/feature-surfaces.js";
+import type { PaneSearchResult, PaneTarget } from "../../../../../features/workspace/shared/pane.js";
 import { openExpandedSurface } from "../expanded-surface/store.js";
 import { useDesktopRailEntries } from "../pane/pane-registry.js";
-import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
-import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
+import type { RailPanelDescriptor, RailSearchResult } from "../../../../../features/workspace/shared/rail.js";
+import type { TheaterInboxSectionDescriptor } from "../../../../../features/workspace/shared/theater-inbox.js";
 
 import { OperationNameMark } from "../../../../../features/execution/client/components/operation-name-mark.js";
 import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "../../../../../features/execution/client/components/operation-workspace-context.js";
@@ -44,7 +44,7 @@ import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectio
 import { resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { archiveOperationFromUi, resumeOperationInPlace, type ArchiveOutcome } from "../../integration/operation-actions.js";
 import { openArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../integration/operation-archive.js";
-import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
+import { restoreOperationCluster } from "../../../../../features/execution/client/operations.js";
 import { fetchOperations } from "../../integration/api.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import {
@@ -83,7 +83,7 @@ interface OperationSearchProps {
   readonly state: ConsoleState;
   readonly railPanels: readonly PaletteSearchPanel[];
   // feature-registry 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
-  readonly plugins: readonly ClientExecutionProvider[];
+  readonly plugins: readonly ClientFeatureDescriptor[];
   // 같은 이유로 Theater Inbox 섹션(사령관 등)도 prop으로 받는다 — 팔레트가 그 Theater 의 섹션 행을 범용으로 세운다.
   readonly theaterSections: readonly TheaterInboxSectionDescriptor[];
   // 팔레트 보관도 대화 화면·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.

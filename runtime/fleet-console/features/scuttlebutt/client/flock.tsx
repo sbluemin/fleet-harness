@@ -1,5 +1,6 @@
-import type { FloatingWidgetContext } from "@fleet-console/sdk/floating";
-import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import type { FloatingWidgetContext } from "../../workspace/shared/floating.js";
+import * as React from "react";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import { AnswerBubble } from "./answer-bubble.js";
 import { birdVisual } from "./bird-state.js";
@@ -124,7 +125,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   // 대화는 카드보다 오래 산다 — 카드를 닫아도 답이 끝까지 도착해야 완료 연출이 나온다.
   const sessions = React.useMemo(() => MORPHS.map((admiral) => createChatSession({
     admiral,
-    fetch: (path, init) => context.api.fetch(null, `scuttlebutt/${path.replace(/^\//, "")}`, init),
+    fetch: (path, init) => context.api.fetch(`scuttlebutt/${path.replace(/^\//, "")}`, init),
     locale: () => localeRef.current,
     launch: () => {
       const current = getScuttlebuttSettings();

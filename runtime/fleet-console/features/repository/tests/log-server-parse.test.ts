@@ -1,9 +1,9 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { runGit } from "../host/git-executor.js";
 import { annotateHeadReachability, handleRepositoryLog, isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelain } from "../host/log.js";
@@ -16,7 +16,7 @@ async function initGitRepo(dir: string): Promise<void> {
   await runGit(["config", "user.name", "Test"], { cwd: dir });
 }
 
-function makeLogContext(theaterPath: string, writes: { status: number; payload: unknown }[], body: unknown = { theaterId: "theater" }): FleetPluginServerContext {
+function makeLogContext(theaterPath: string, writes: { status: number; payload: unknown }[], body: unknown = { theaterId: "theater" }): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -26,7 +26,7 @@ function makeLogContext(theaterPath: string, writes: { status: number; payload: 
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 const HASH_A = "0123456789abcdef0123456789abcdef01234567";

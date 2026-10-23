@@ -1,4 +1,4 @@
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { theaterAvatarKey } from "../shared/avatars.js";
 
 import { KeyedAvatar } from "./avatars.js";
 import { useTheaterContributionFace } from "./theater-contributions.js";

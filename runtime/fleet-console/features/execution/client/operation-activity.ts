@@ -1,4 +1,4 @@
-import type { OperationActivity, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationActivity, OperationRuntimeHydration, OperationRuntimeState } from "../shared/client-contract.js";
 
 import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";
 import { getT } from "../../../core/client/src/i18n/index.js";

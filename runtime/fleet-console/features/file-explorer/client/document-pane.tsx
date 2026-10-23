@@ -9,15 +9,15 @@ import {
   type RefObject,
 } from "react";
 
-import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import { CaptionActionButton } from "../../workspace/client/components/caption-actions.js";
+import type { PaneContext } from "../../workspace/shared/pane.js";
 
 import type { FileReadRequest, FolderEntry, FolderListResult } from "../shared/types.js";
 import { ReadWindowControls } from "./read-window.js";
 import { performFileContextAction, type FileContextAction } from "./context-menu.js";
 import { loadDocument, nameOfPath, refreshDocumentDiskStatus } from "./doc-loader.js";
 import { breadcrumbSegments, buildViewerMetaParts, type BreadcrumbSegment } from "./format.js";
-import { FileIcon } from "@fleet-console/sdk/components/file-icon";
+import { FileIcon } from "./components/file-icon.js";
 import { makeFilesClient } from "./files-client.js";
 import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";

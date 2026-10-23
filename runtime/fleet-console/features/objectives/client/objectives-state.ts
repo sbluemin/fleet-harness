@@ -1,7 +1,11 @@
+import type { ObjectivesClientDeps } from "./deps.js";
 import { useEffect, useSyncExternalStore } from "react";
 
-import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
-import type { ClientApiCapability, ConsoleOperationSummary, OperationRuntimeHydration, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import { OPERATION_PURGED_EVENT } from "../../execution/shared/operations/archive.js";
+import { accessOperation, describeOperation } from "../../execution/client/operations.js";
+import { readOperationLaunch } from "../../execution/shared/operations/types.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ConsoleOperationSummary, OperationRuntimeHydration } from "../../execution/shared/client-contract.js";
 
 import type { Objective, ObjectiveEvent, PersonHoldTarget } from "../shared/types.js";
 
@@ -42,7 +46,7 @@ const listeners = new Set<() => void>();
 /** 대화 중심 화면 가운데 칸의 시작 전 목표 화면(fresh-conversation.tsx 의 conversationSurface). */
 export const FRESH_SURFACE_ID = "objective-fresh";
 
-let installed: PluginInstallContext | null = null;
+let installed: ObjectivesClientDeps | null = null;
 let reveal: RevealTarget | null = null;
 // useSyncExternalStore 는 스냅샷의 참조가 같아야 멈춘다 — 호스트의 getOperations 가 매번 새 배열을 줄 수 있으므로 여기서 한 번만 받아 둔다.
 let operationsSnapshot: readonly ConsoleOperationSummary[] = [];
@@ -301,7 +305,7 @@ function loadRegisteredTheaters(api: ClientApiCapability): void {
   });
 }
 
-export function installObjectiveState(ctx: PluginInstallContext): () => void {
+export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   installed = ctx;
   // 실패 장부는 새 설치에서 처음부터다 — 확정 실패로 정착시킨 Theater 도 다시 묻는다.
   for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent) unsettle(theaterId);
@@ -481,7 +485,7 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await api.fetch(null, `/api/v1/objectives${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    response = await api.fetch(`/objectives${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch (error) {
     // 호스트가 !ok 응답을 먼저 ApiError 로 끊어 post 의 코드 추출에 닿지 않는다 —
     // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.
@@ -725,7 +729,7 @@ export function followedOperationId(): string | null {
 }
 
 /** 목표가 따라가는 Operation — 사이드바에서 열지 않고 고른 것이 있으면 그것, 없으면 캔버스의 활성 Operation. */
-function contextOperationId(host: PluginInstallContext | null = installed): string | null {
+function contextOperationId(host: ObjectivesClientDeps | null = installed): string | null {
   return host?.consoleState.getSelectedOperationId?.() ?? host?.consoleState.getActiveOperationId() ?? null;
 }
 

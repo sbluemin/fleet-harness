@@ -1,10 +1,10 @@
-import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/sdk/components/caption-actions";
-import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
-import { LiveFold, LiveLine, LiveStep } from "@fleet-console/sdk/components/live-line";
+import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../../workspace/client/components/caption-actions.js";
+import { HistoryBand, useHistoryReveal } from "../../execution/client/components/history-band.js";
+import { LiveFold, LiveLine, LiveStep } from "./components/live-line.js";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { createPortal } from "react-dom";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import { exchanges, lastAnswer, type ChatEntry, type ChatState } from "./chat-store.js";
 import type { AdmiralId } from "./chat-session.js";
@@ -17,7 +17,7 @@ import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
 import type { AideGrants } from "./settings-store.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 import { useStreamedHtml } from "./streamed-html.js";
-import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
 /** 어느 실험이 켜져 있는가 — 켜진 확장만 메뉴에 행으로 선다(Operation 메뉴와 같다). */
 export interface AideExtensionAvailability {

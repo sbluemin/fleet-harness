@@ -1,8 +1,8 @@
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
-import type { OperationCluster } from "@fleet-console/sdk/plugin";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
+import type { OperationCluster } from "../../../../../objectives/shared/operation-clusters.js";
+import * as React from "react";
 
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { ConsoleState } from "../../../../../../core/client/src/integration/types.js";

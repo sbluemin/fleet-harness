@@ -1,5 +1,9 @@
-import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import {
   handleFilesClipboard,
@@ -15,8 +19,9 @@ import {
 import { handleFilesSearch } from "./tree-services.js";
 import { createFileExplorerConsoleTools } from "./console-tools.js";
 
-export interface FileExplorerFeatureDeps extends Pick<FleetPluginHostCapabilities, "paths" | "http" | "security"> {
-  readonly consoleUse: FleetPluginHostCapabilities["consoleUse"];
+export interface FileExplorerFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort;
+
+  readonly consoleUse: ConsoleUseMcpHost;
 }
 export interface FileExplorerRouteContext { readonly host: FileExplorerFeatureDeps }
 export function createFileExplorerFeature(deps: FileExplorerFeatureDeps) {

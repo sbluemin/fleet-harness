@@ -1,7 +1,7 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
-import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
-import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
+import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
+import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
 

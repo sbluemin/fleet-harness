@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentHost, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import type { AgentHost, AgentSessionOptions } from "../../execution/shared/agent.js";
 import { ChatSession, toChatEvents, type ChatEvent } from "../host/chat-session.js";
 
 describe("Scuttlebutt Console Agent integration", () => {

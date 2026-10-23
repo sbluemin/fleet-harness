@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 import { FILE_READ_BYTE_CAP, type FileReadRequest, type FileReadWindow } from "../shared/types.js";
 import { formatByteSize } from "./format.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";

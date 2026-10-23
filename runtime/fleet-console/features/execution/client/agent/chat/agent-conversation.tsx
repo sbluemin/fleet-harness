@@ -1,6 +1,6 @@
 import { OpenUIPluginBoundary } from "../openui-boundary.js";
-import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { AgentConversationProps } from "../../../shared/chat-renderer.js";
+import * as React from "react";
 
 import { ChatReferenceContext } from "./chat-reference.js";
 import { GroupConversation, type BoardActionRecordRequest, type ConversationLogSnapshot } from "./group/group-conversation.js";

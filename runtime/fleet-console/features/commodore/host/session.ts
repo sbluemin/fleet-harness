@@ -1,11 +1,12 @@
-import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "@fleet-console/sdk/agent";
+import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
-import type { PluginMcpServerTools, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
 
@@ -28,9 +29,9 @@ export interface CommodoreSessionOptions {
   readonly store: CommodoreStore;
   readonly coordinates: CommodoreSessionCoordinates;
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
-  readonly boardTools: readonly PluginMcpTool[];
+  readonly boardTools: readonly ConsoleMcpTool[];
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
-  readonly knowledgeTools?: readonly PluginMcpServerTools[];
+  readonly knowledgeTools?: readonly McpServerTools[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
@@ -120,7 +121,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     record({ kind: "tool", name: described.name, ...(described.summary ? { summary: described.summary } : {}), ...(ok === undefined ? {} : { ok }), ...(described.action ? { action: described.action } : {}), ...(described.objectiveId ? { objectiveId: described.objectiveId } : {}), ...(described.title ? { title: described.title } : {}), ...(error ? { error } : {}) });
   };
   /** 결과의 `error` 코드만 기억하는 감싸기 — 결과 자체는 그대로 돌려준다. */
-  const observed = (tool: PluginMcpTool): PluginMcpTool => ({
+  const observed = (tool: ConsoleMcpTool): ConsoleMcpTool => ({
     ...tool,
     execute: async (args, context) => {
       const result = await tool.execute(args, context);

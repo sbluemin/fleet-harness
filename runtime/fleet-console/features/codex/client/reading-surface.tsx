@@ -1,4 +1,4 @@
-import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../workspace/shared/expanded-surface.js";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { CodexReadingSheet } from "./codex-reading-sheet.js";

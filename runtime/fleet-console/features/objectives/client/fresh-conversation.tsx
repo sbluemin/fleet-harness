@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
-import { operationAvatarKey } from "@fleet-console/sdk/avatars";
-import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
+import { operationAvatarKey } from "../../workspace/shared/avatars.js";
+import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 
 import type { Objective } from "../shared/types.js";
 import { getT } from "./i18n/index.js";

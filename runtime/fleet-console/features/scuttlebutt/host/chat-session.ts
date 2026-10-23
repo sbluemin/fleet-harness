@@ -1,6 +1,6 @@
-import type { AgentHost, AgentSession, AgentEvent, AgentUsage, AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { AgentEffort } from "@fleet-console/sdk/models";
+import type { AgentHost, AgentSession, AgentEvent, AgentUsage, AgentToolGroup, AgentSessionOptions } from "../../execution/shared/agent.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { AgentEffort } from "../../ai-gateway/shared/models.js";
 
 /**
  * 기본 모델·강도. 사용자가 설정에서 고르지 않았을 때의 값이다. 구체 세대가 아니라

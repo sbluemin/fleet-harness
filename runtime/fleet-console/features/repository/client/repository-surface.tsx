@@ -1,4 +1,4 @@
-import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../workspace/shared/expanded-surface.js";
 
 import { getT } from "./i18n/index.js";
 import { RepositoryPanel } from "./rail-panel.js";

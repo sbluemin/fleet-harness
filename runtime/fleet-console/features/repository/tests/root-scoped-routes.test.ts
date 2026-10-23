@@ -1,9 +1,9 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { handleRepositoryCommit } from "../host/commit.js";
 import { handleRepositoryCommitFile } from "../host/commit-file.js";
@@ -126,7 +126,7 @@ async function createRootRepo(tmpDir: string): Promise<RootRepoFixture> {
   return { theaterPath, head, typeChangeHead, renameHead, mergeHead };
 }
 
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -136,7 +136,7 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 function readPayload<T>(writes: readonly JsonWrite[]): T {

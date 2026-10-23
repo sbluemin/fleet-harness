@@ -858,13 +858,13 @@ describe("console static and terminal ticket boundary", () => {
 
     const handled = handler.handleUpgrade({
       req: {
-        url: `${"/plugins/terminal"}/ws`,
+        url: `${"/api/v1/terminal"}/ws`,
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
       socket: { destroy: () => { destroyed += 1; } } as never,
       head: Buffer.alloc(0),
-      pathname: `${"/plugins/terminal"}/ws`,
+      pathname: `${"/api/v1/terminal"}/ws`,
     });
 
     expect(handled).toBe(true);

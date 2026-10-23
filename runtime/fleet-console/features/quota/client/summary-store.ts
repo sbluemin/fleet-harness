@@ -1,4 +1,4 @@
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 
 import type { QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
@@ -121,7 +121,7 @@ async function readSummary(): Promise<void> {
   let revalidating = false;
   try {
     // 그릴 것이 없을 때만 만료된 캐시라도 먼저 받는다 — 패널의 첫 읽기와 같은 규칙.
-    const response = await capability.fetch(null, snapshot.data === null ? "quota/summary?stale=1" : "quota/summary");
+    const response = await capability.fetch(snapshot.data === null ? "quota/summary?stale=1" : "quota/summary");
     if (!response.ok) return;
     const result = await response.json() as SummaryResponse;
     // 그사이 패널이 열렸으면 패널의 답이 이긴다 — 늦게 온 이 답이 패널이 실은 값을 덮지 않게.

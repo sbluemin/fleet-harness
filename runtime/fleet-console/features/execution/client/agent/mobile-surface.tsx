@@ -1,6 +1,7 @@
-import type { MobileBarMenuItem } from "@fleet-console/sdk/pane";
-import type { ClientMobileOperationCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { MobileBarMenuItem } from "../../../workspace/shared/pane.js";
+import type { ClientMobileOperationCapability } from "../../../workspace/shared/mobile.js";
+import type { OperationRenderContext } from "../../shared/client-contract.js";
+import * as React from "react";
 
 /*
  * 모바일 Operation 화면 — 셸이 상단 막대와 ⋮을 그리고, 본문은 그 아래 전부를 쓴다.

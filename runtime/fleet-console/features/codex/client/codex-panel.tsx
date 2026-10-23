@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { PaneContext, PaneDescriptor } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
 import { getT, useT } from "./i18n/index.js";
 import { useConsoleLocale } from "./reader-store.js";

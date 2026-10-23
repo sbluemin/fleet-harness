@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { MentionTargetDescriptor } from "../../execution/shared/composer-ports.js";
 
 import type { AdmiralId } from "./chat-session.js";
 

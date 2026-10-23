@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { AttachImageIcon } from "@fleet-console/sdk/composer";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { ObjectiveAttachment, Objective } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";

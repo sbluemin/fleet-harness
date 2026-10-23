@@ -17,8 +17,8 @@ import { CommodoreStoreError } from "./errors.js";
  * 인덱스를 다시 만들고 마지막에 알린다. 읽기는 세 단계 밖의 파일·링크를 건너뛰고, 깨진 항목은 빼고 보여 준다.
  */
 
-import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "@fleet-console/sdk/commodore";
-export { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "@fleet-console/sdk/commodore";
+import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "../shared/contracts/memory.js";
+export { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry, type MemorySource } from "../shared/contracts/memory.js";
 
 export const MAX_MEMORY_ENTRIES = 200;
 export const MAX_MEMORY_LINKS = 10;

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { OPERATION_PURGE_GRACE_MS, type OperationAccessIntent, type OperationAccessResult, type OperationArchiveCapability, type OperationArchiveReceipt, type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation } from "@fleet-console/sdk/operations";
+import { OPERATION_PURGE_GRACE_MS, type OperationAccessIntent, type OperationAccessResult, type OperationArchiveCapability, type OperationArchiveReceipt, type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation } from "../../execution/shared/operations/archive.js";
 import type { OperationNode, OperationStore } from "../../execution/host/operations/operations-domain.js";
 import type { DurableConsoleState } from "./durable-state.js";
 import { archiveEvent, archiveSessionNodes, OperationArchiveError, type ArchivedOperation, type ArchiveLifecycleEvent, type OperationArchiveStorage } from "./operation-archive-storage.js";

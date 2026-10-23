@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import { ownAnswer, type Decision, type Objective, type PersonHoldTarget } from "../shared/types.js";
 import { actorDid } from "./actors.js";

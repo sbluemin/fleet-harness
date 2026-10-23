@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
-import type { OperationCluster } from "@fleet-console/sdk/plugin";
+import type { ClientNavigateCapability } from "../../shared/navigation.js";
+import type { OperationCluster } from "../../../objectives/shared/operation-clusters.js";
 
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 

@@ -23,9 +23,9 @@ import { isTerminalSearchShortcut, TerminalSearchBar } from "./terminal-search-b
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
-import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme, type MobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
+import { FailureNotice } from "../../components/failure-notice.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme, type MobileScheme } from "../../../../settings/shared/mobile-scheme.js";
 
 import { getT } from "../../agent/i18n/index.js";
 import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";

@@ -1,17 +1,18 @@
+import type { CommodoreClientDeps } from "./deps.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
-import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
-import { createConversationStream } from "@fleet-console/sdk/conversation";
+import { uploadComposerAttachment, discardComposerAttachment } from "../../execution/client/composer-primitives/attachments.js";
+import { createConversationStream } from "../../execution/shared/conversation/stream.js";
 
-import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps, AgentLedgerProps } from "@fleet-console/sdk/components/agent-chat-transcript";
-import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
-import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
-import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
+import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps, AgentLedgerProps } from "../../execution/shared/chat-renderer.js";
+import type { ModelRoster, ModelRosterTarget } from "../../ai-gateway/shared/models.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
-import type { MemoryEntry } from "@fleet-console/sdk/commodore";
-import type { CommodoreStateView } from "@fleet-console/sdk/commodore";
-import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
+import type { MemoryEntry } from "../shared/contracts/memory.js";
+import type { CommodoreStateView } from "../shared/contracts/types.js";
+import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { postCommodore as post } from "./request.js";
-export { askObjectiveTitle } from "@fleet-console/sdk/commodore";
+export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
  * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
@@ -63,7 +64,7 @@ const TRANSCRIPT_PAGE = 200;
 /** 기록은 화면에 보이는 만큼만 붙들고 있다 — 오래 켜 둔 서랍이 끝없이 자라지 않게. */
 const MAX_HELD_ENTRIES = 2_000;
 
-let installed: PluginInstallContext | null = null;
+let installed: CommodoreClientDeps | null = null;
 const theaters = new Map<string, TheaterCommodore>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
@@ -169,7 +170,7 @@ function commodoreNamesKey(): string {
 export function subscribeCommodoreMentions(listener: () => void): () => void { return subscribeCommodore(listener); }
 export function commodoreTheaterIds(): readonly string[] { return installed?.consoleState.getTheaters().map((theater) => theater.id) ?? []; }
 
-export function installCommodoreState(ctx: PluginInstallContext): () => void {
+export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
@@ -581,11 +582,11 @@ export async function answerCommodoreAsk(theaterId: string, askId: string, answe
 
 export function uploadCommodoreAttachment(file: Blob): Promise<{ readonly id: string }> {
   if (!installed) return Promise.reject(new Error("not_installed"));
-  return uploadComposerAttachment(file, (path, init) => installed!.api.fetch(null, path, init));
+  return uploadComposerAttachment(file, (path, init) => installed!.api.fetch(path, init));
 }
 export function discardCommodoreAttachment(id: string): Promise<void> {
   if (!installed) return Promise.reject(new Error("not_installed"));
-  return discardComposerAttachment(id, (path, init) => installed!.api.fetch(null, path, init));
+  return discardComposerAttachment(id, (path, init) => installed!.api.fetch(path, init));
 }
 
 /** `references` — 본문 속 지휘관 참조의 목표 id(본문의 표식 글자 순서). 서버가 짝·Theater·실재를 검증한다. */

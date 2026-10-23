@@ -1,4 +1,5 @@
-import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { AdmiralId } from "./chat-session.js";
 import { activateDock, readDockSnapshot, registerDockGlyph, subscribeDock, writeDock } from "./dock-store.js";

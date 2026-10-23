@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 import { extensionOf, isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type ObjectiveMission } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { graphLayout, horizontalLayout, type Point } from "./graph-layout.js";

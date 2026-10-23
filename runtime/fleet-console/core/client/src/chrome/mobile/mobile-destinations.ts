@@ -1,8 +1,8 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "../../../../../features/workspace/shared/rail.js";
 
 import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";

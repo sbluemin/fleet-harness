@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { RepositoryRouteContext } from "./index.js";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { defineConsoleTool } from "../../console-use/shared/actions.js";
 import { z } from "zod";
 
 import { InvalidRepoError, isNoHeadError, literalPathspec, parseDiffFileList, parseNumstat, resolveGitCwd } from "./diff.js";
@@ -38,7 +38,7 @@ function gitError(error: unknown): never {
   throw error;
 }
 
-export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): readonly PluginMcpTool[] {
+export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): readonly ConsoleMcpTool[] {
   const cwdOf = async (theaterId: string, worktree: string | undefined) => {
     const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!theaterPath) throw new ToolError("unknown_theater");

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
+import type { TheaterInboxAddress } from "../../../../features/workspace/shared/theater-inbox.js";
 
 import { useConsoleLocale } from "../i18n/index.js";
 import { useTheaterLabel } from "../hooks/use-store.js";

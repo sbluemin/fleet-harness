@@ -1,7 +1,7 @@
-import type { ConversationDecision, ConversationHold, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "@fleet-console/sdk/conversation";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConversationDecision, ConversationHold, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "../../../../shared/conversation/types.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import * as React from "react";
 
 import type { OperationUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
 import { getT } from "../../i18n/index.js";

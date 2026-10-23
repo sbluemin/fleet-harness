@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 import { createPortal } from "react-dom";
 import { openInDefaultOsBrowser } from "@fleet-console/link/core";
 

@@ -1,7 +1,7 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "@fleet-console/sdk/conversation";
-import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../../../../shared/conversation/types.js";
+import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
+import * as React from "react";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";

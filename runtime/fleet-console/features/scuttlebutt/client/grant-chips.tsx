@@ -1,8 +1,8 @@
 import { createPortal } from "react-dom";
 
-import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/sdk/components/caption-actions";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../../workspace/client/components/caption-actions.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import { ChatSurfaceContext } from "./head-action.js";
 import { getT } from "./scuttlebutt-catalog.js";

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
 
-import type { FleetPluginProcessesHost } from "@fleet-console/sdk/plugin";
+import type { OwnedProcessPort } from "@fleet-console/process";
 import type { RepositoryRouteContext } from "./index.js";
 
 import { InvalidRepoError, resolveGitCwd } from "./diff.js";
@@ -140,7 +140,7 @@ async function readThrottleResult(gitDirs: readonly string[], commonDir: string)
   return { ok: true, skipped: "throttled", lastFetchAt: newest.toISOString() };
 }
 
-async function fetchRepository(gitCwd: string, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
+async function fetchRepository(gitCwd: string, processes?: OwnedProcessPort): Promise<FetchResult> {
   const remote = await resolveDefaultRemote(gitCwd);
   if (!remote) throw new NoRemoteError();
   const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
@@ -200,12 +200,12 @@ async function fetchHeadCandidates(identity: GitIdentity): Promise<readonly stri
   return [...candidates];
 }
 
-async function runAutoFetch(gitCwd: string, identity: GitIdentity, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
+async function runAutoFetch(gitCwd: string, identity: GitIdentity, processes?: OwnedProcessPort): Promise<FetchResult> {
   const throttled = await readThrottleResult(await fetchHeadCandidates(identity), identity.commonDir);
   return throttled ?? fetchRepository(gitCwd, processes);
 }
 
-async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity, processes?: FleetPluginProcessesHost): Promise<FetchResult> {
+async function fetchAutoSingleFlight(gitCwd: string, identity: GitIdentity, processes?: OwnedProcessPort): Promise<FetchResult> {
   const key = identity.commonDir;
   const existing = autoFetchInFlight.get(key);
   if (existing) {

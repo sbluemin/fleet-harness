@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "./types.js";
+import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "../shared/contracts/types.js";
 import { CommodoreStoreError } from "./errors.js";
 
 export const COMMODORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

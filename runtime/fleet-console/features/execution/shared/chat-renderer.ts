@@ -1,0 +1,208 @@
+import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
+export type { OpenUIOpenPort, OpenUIOpenTarget } from "@fleet-console/markdown/openui";
+import type { ComposerQuote } from "../client/composer-primitives/quotes.js";
+import type { ComponentType, ReactNode } from "react";
+
+import type { ConversationReference } from "./conversation/references.js";
+import type { ConversationDecision, ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "./conversation/types.js";
+
+/**
+ * Agent chat transcript — the Operation chat view's turn renderer, offered to plugins that keep their own agent transcript.
+ *
+ * The host owns the renderer (ledger, work fold, answer markdown, live line) and its styles; a plugin hands over an ordered
+ * event list and gets the same grammar Operation chat uses. The vocabulary is the public subset of the Operation chat stream
+ * a plugin-owned session can produce, plus `note` for transcript dividers. Nothing here reaches a provider session.
+ */
+
+/** Who opened a turn when it was not the person — a plugin acting for them. `label` is the shown name; without it the plugin id shows. */
+export interface AgentChatTranscriptOrigin {
+  readonly kind: "plugin";
+  readonly pluginId: string;
+  readonly label?: string;
+}
+
+/** Reference-only attachments never open the Operation preview route. */
+/** `quote` — 다른 표면이 입력창에 붙여 보낸 인용(`Execution composer quotes`). */
+/** `preview` — image bytes at the Objectives attachment route (`/api/v1/objectives/attachment/file?…`) or the Commodore feature's attachment route (`/api/v1/commodore/attachment?…`); never a host filesystem path. */
+export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
+
+/**
+ * References the person placed inside their words. The text carries `CONVERSATION_REFERENCE_MARK` (`Execution conversation`)
+ * once per reference, in order; a plain-text bubble shows a token in each place. The author verifies the pairing before sending.
+ */
+export type AgentChatTranscriptReference = ConversationReference;
+
+/**
+ * What a reference token does and wears — the plugin owns its targets. Without `open` a token is not a button; without `mark` it shows
+ * only its label. `describe` is the token's accessible name (defaults to the label).
+ */
+export interface AgentChatReferenceHost {
+  readonly open?: (id: string) => void;
+  readonly mark?: (id: string) => ReactNode;
+  readonly describe?: (reference: AgentChatTranscriptReference) => string;
+}
+
+export type AgentChatTranscriptEvent =
+  /** Opens a turn. With `by` it is a plugin's line (origin row); without it the person's bubble. */
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
+  /** A message a running turn picked up — stays inside that turn. */
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
+  | { readonly kind: "turn-start"; readonly at?: number }
+  /** A completed text block — markdown. The last one before `turn-end` becomes the answer. */
+  | { readonly kind: "text"; readonly text: string }
+  /** Live-only character delta; the next `text` is its correction anchor. */
+  | { readonly kind: "text-delta"; readonly text: string }
+  /** Live-only: a tool call whose input is still streaming. A later `tool` with the same id fills it. */
+  | { readonly kind: "tool-start"; readonly id: string; readonly name: string }
+  /**
+   * A tool call — name and one human line. Full inputs never belong here. `references` pairs with `CONVERSATION_REFERENCE_MARK`
+   * in `detail` as in a bubble; the line shows each as its plain label, a text button when the host's `references.open` is given.
+   */
+  | { readonly kind: "tool"; readonly name: string; readonly detail: string; readonly id?: string; readonly references?: readonly AgentChatTranscriptReference[] }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly stopped?: boolean }
+  /** A divider between turns — a session change, a failure notice. Closes any open turn. */
+  | { readonly kind: "note"; readonly text: string; readonly at?: number; readonly tone?: "warn" };
+
+/** One event and when it happened — the time drives the elapsed clock and thinking gaps. */
+export interface AgentChatTranscriptEntry {
+  readonly event: AgentChatTranscriptEvent;
+  readonly at?: number;
+}
+
+export interface AgentChatTranscriptProps {
+  readonly entries: readonly AgentChatTranscriptEntry[];
+  readonly language: "en" | "ko";
+  /** Phone layout — answer actions and spacing follow the mobile chat surface. */
+  readonly mobile?: boolean;
+  /**
+   * Bring the turn that was running at this time into view and mark it briefly. A new `nonce` repeats the request for the
+   * same time.
+   */
+  readonly reveal?: { readonly at: number; readonly nonce: number } | null;
+  /** How the person's inline references open and look. */
+  readonly references?: AgentChatReferenceHost;
+  /**
+   * Draw fenced `openui-lang` blocks in the agent's answers as small generative UI, the way the Console draws them for the
+   * Commodore and Commanders. Off by default: the block stays a code block. A block that cannot be drawn stays a code block.
+   */
+  readonly openui?: boolean;
+  /**
+   * Send the clicked answer as the person's message through this record's normal send path. Called only for a trusted click on a
+   * finished block, once per mounted block; drawing, replay and synthetic clicks never send. Leave the composer's draft untouched.
+   * Without this port, send buttons remain inert (a read-only record).
+   */
+  readonly onOpenUISend?: (text: string) => void;
+  /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
+  readonly openUIOpen?: OpenUIOpenPort;
+}
+
+/**
+ * Agent conversation — the conversation-layout grammar Operations use (the person's bubbles on the right, speakers' bubbles on
+ * the left with their mongle mark and name, quiet centre lines for everything that is not speech, a working line above the
+ * composer), offered to plugins that keep their own conversation. Entries are the public group timeline vocabulary plus `note`.
+ */
+export type AgentConversationEntry =
+  | GroupTimelineEntry
+  /** A quiet centre line that is not anyone's speech — a session change, a failure notice. */
+  | { readonly kind: "note"; readonly id: string; readonly at: number | null; readonly text: string; readonly tone?: "warn" };
+
+export interface AgentConversationProps {
+  readonly entries: readonly AgentConversationEntry[];
+  /** Who takes part and what they are doing now — the latest bubble mark of each speaker shows that face. */
+  readonly participants: readonly ConversationParticipant[];
+  /** Speakers working right now — the working line above the composer. */
+  readonly working: readonly ConversationSpeaker[];
+  readonly language: "en" | "ko";
+  /** The Theater a `commodore` speaker belongs to — its mongle is that Theater's avatar. */
+  readonly theaterId?: string;
+  /** Still reading the first page — the empty line says so instead of `empty`. */
+  readonly loading?: boolean;
+  /** The line shown when there are no entries. */
+  readonly empty?: string;
+  /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */
+  readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
+  /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
+  readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  /**
+   * A participant's ledger — the plugin's full turn record for that speaker. When given, the participant's name on its bubbles and
+   * its mark and words on the working line open it, with the hit rules an Operation conversation uses (the name is the tab stop,
+   * the mark a pointer copy). Omit it while there is no ledger to open; nothing then pretends to be pressable.
+   */
+  readonly openLedger?: ((speaker: ConversationSpeaker) => void) | null;
+  /** A board-action line's link (`label`) and what it opens. Without it the line only unfolds its reason. */
+  readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
+  /** After the latest entries, inside the scrolling log and above the working line. Follows the bottom while the person is there. */
+  readonly cards?: ReactNode;
+  /** Below the working line — the plugin's own composer or a way back. */
+  readonly composer?: ReactNode;
+  /** Opt this conversation into the host's plugin summaries above the composer. Omitted on read-only records. */
+  readonly composerTopEntries?: boolean;
+  /** How the person's inline references (a message's `references`) open and look. */
+  readonly references?: AgentChatReferenceHost;
+  /**
+   * Send a clicked answer as the person's message. Same contract as `AgentChatTranscriptProps.onOpenUISend`: one trusted click,
+   * one send, leaving the composer's draft untouched. Omit it on read-only conversations.
+   */
+  readonly onOpenUISend?: (text: string) => void;
+  /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
+  readonly openUIOpen?: OpenUIOpenPort;
+}
+
+/**
+ * Decision card — the card a group conversation shows when someone waits on the person's answer (questions, choices, an own
+ * answer, where the answer goes), offered to plugins that ask the person from their own surface. The card sends only through
+ * `decision.answer`; without it the send button stays locked. A rejection keeps the person's choices and shows one failure line.
+ */
+export interface AgentDecisionCardProps {
+  readonly decision: ConversationDecision;
+  /** Who asks — their mark and name head the card. */
+  readonly asker: ConversationSpeaker | null;
+  readonly language: "en" | "ko";
+  /** The Theater a `commodore` asker belongs to — its mark is that Theater's avatar. */
+  readonly theaterId?: string;
+  /** Phone layout — the open link reads as the phone's objective view. */
+  readonly mobile?: boolean;
+  /** The answer was accepted — the plugin takes the card down. */
+  readonly onAnswered: (decisionId: string) => void;
+}
+
+/**
+ * A participant's ledger — the read-only frame an Operation conversation opens for its commander: a band with the speaker's mark,
+ * "<name>'s ledger · read only" and a way back to the conversation, the turn record as the scrolling log with the Operation log's
+ * gutters and column (the reading-width preference applies), and the session's read-only model line at the foot. Entries use the
+ * transcript vocabulary. The plugin decides when the ledger stands in for its conversation.
+ */
+export interface AgentLedgerProps {
+  /** Whose ledger this is — its mark and name in the band. */
+  readonly speaker: ConversationSpeaker;
+  /** The Theater a `commodore` speaker belongs to — its mongle is that Theater's avatar. */
+  readonly theaterId?: string;
+  readonly language: "en" | "ko";
+  /** Close the ledger and return to the conversation. */
+  readonly onBack: () => void;
+  readonly entries: readonly AgentChatTranscriptEntry[];
+  /** Bring the turn that was running at this time into view and mark it briefly. A new `nonce` repeats the request. */
+  readonly reveal?: { readonly at: number; readonly nonce: number } | null;
+  /** Older entries exist above the first one — a text button at the top of the log reads them. */
+  readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
+  readonly references?: AgentChatReferenceHost;
+  /**
+   * The model and effort the session actually runs, as the runtime names them (for example `sonnet[1m]`, `medium`) — not a setting
+   * that applies later. A missing effort reads as the model default; `null` when the session is unknown, and no coordinate is shown.
+   */
+  readonly coordinates?: { readonly model: string | null; readonly effort: string | null } | null;
+  /** Draw fenced `openui-lang` blocks in the answers as generative UI — the same opt-in as `AgentChatTranscriptProps.openui`. */
+  readonly openui?: boolean;
+  /** Navigation is available in a read-only ledger too; send actions remain inert. */
+  readonly openUIOpen?: OpenUIOpenPort;
+}
+
+/** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */
+export interface ClientAgentChatCapability {
+  readonly Transcript: ComponentType<AgentChatTranscriptProps>;
+  readonly Conversation: ComponentType<AgentConversationProps>;
+  readonly DecisionCard: ComponentType<AgentDecisionCardProps>;
+  readonly Ledger: ComponentType<AgentLedgerProps>;
+  readonly ComposerTopEntries?: ComponentType;
+}

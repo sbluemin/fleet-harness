@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginStorageHost } from "@fleet-console/sdk/plugin";
+import type { SettingsStorageHost } from "../../features/settings/host/storage-port.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {

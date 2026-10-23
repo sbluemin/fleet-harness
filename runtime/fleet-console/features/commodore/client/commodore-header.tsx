@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 
-import { mongleStateOf, type MongleState } from "@fleet-console/sdk/avatars";
-import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
+import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
+import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "../../workspace/shared/surface-contracts.js";
 
 import {
   loadCommodore,
@@ -20,7 +20,7 @@ import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { isCommodoreConversationActive } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
-import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
+import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 

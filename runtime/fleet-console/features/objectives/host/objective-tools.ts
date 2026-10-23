@@ -1,4 +1,5 @@
-import { inputIssues, type ConsoleCaller, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { type ConsoleCaller } from "../../console-use/shared/control.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import path from "node:path";
 
@@ -52,7 +53,7 @@ const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS
 /** request_decision 이 사람의 답을 기다리는 최대 시간. 그 뒤의 답은 프롬프트로 간다. */
 export const DECISION_WAIT_MS = 5 * 60_000;
 
-export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly PluginMcpTool[] {
+export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
   const decisionWaitMs = options?.decisionWaitMs ?? DECISION_WAIT_MS;
   const { objectiveView: boardView } = createBoardViews(ctx, store);
   const objectiveView = (objective: Objective) => { prStatus?.refresh(objective.id); return boardView(store.find(objective.id) ?? objective); };
@@ -129,7 +130,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     if (properties?.revise) delete properties.revise.additionalProperties;
     return json;
   };
-  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
+  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown): ConsoleMcpTool => ({
     name, description, inputSchema: advertisedSchema(name, schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
@@ -158,7 +159,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     }));
   };
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
-  const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
+  const commanderTool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, objective: Objective, caller: ConsoleCaller, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> | unknown) =>
     tool(name, `Commander only. ${description}`, schema, (args, caller, context) => {
       const objective = find((args as { objectiveId: string }).objectiveId);
       const role = roleIn(objective, caller);

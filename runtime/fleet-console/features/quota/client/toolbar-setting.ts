@@ -1,4 +1,4 @@
-import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
+import type { ClientSettingsCapability } from "../../settings/shared/client-ports.js";
 
 import { PROVIDER_ORDER_DEFAULT, sanitizeProviderSet, toggledProviderSet, type ProviderId } from "../shared/provider-order.js";
 
@@ -40,7 +40,7 @@ function emit(): void {
 export function connectQuotaToolbarSetting(next: ClientSettingsCapability): () => void {
   capability = next;
   // 첫 읽기를 쓰기 줄의 맨 앞에 세운다 — 쓰기가 읽어 온 문서 위에 얹히고, 늦은 읽기가 새 값을 덮지 않는다.
-  writeChain = next.read("quota").then((value) => {
+  writeChain = next.read().then((value) => {
     if (capability !== next) return;
     document_ = value ?? {};
     persisted = { toolbarProviders: storedToolbarProviders(value?.toolbarProviders), loaded: true };
@@ -85,7 +85,7 @@ function writeQuotaToolbarProviders(providers: readonly ProviderId[]): Promise<v
   const run = writeChain.then(async () => {
     const nextDocument = { ...document_, toolbarProviders: providers };
     try {
-      await capability?.write("quota", nextDocument);
+      await capability?.write(nextDocument);
       document_ = nextDocument;
       persisted = next;
     } catch (error) {

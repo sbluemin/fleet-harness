@@ -3,8 +3,8 @@ import { useMarkdownLinkResolver } from "./markdown-link-boundary.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { installOpenUIHydrator, releaseOpenUIHydrator } from "@fleet-console/markdown/openui";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import { diagramHydratorLabels, getT, openUIHydratorLabels } from "./i18n/index.js";
 

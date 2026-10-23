@@ -1,9 +1,9 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 
 import { getState, subscribe } from "../../integration/store.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/feature-registry.js";
@@ -94,13 +94,13 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   if (!binding || binding.panes.length === 0) return null;
   return (
     <section ref={screenRef} className="mobile-plugin-screen" data-host-surface="mobile-screen" aria-label={title}>
-      <PluginErrorBoundary>
+      <FeatureErrorBoundary>
         <MobileBarContext.Provider value={bar}>
           {activeRail === entryId ? (
             <RailSurface key={entryId} binding={binding} singlePane theaterId={theaterId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} />
           ) : null}
         </MobileBarContext.Provider>
-      </PluginErrorBoundary>
+      </FeatureErrorBoundary>
     </section>
   );
 }
@@ -145,7 +145,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
   return (
     <section className="mobile-plugin-screen mobile-surface-screen" data-host-surface="mobile-screen" aria-label={title}>
       <div className="mobile-surface-screen-body" ref={bodyRef}>
-        <PluginErrorBoundary>
+        <FeatureErrorBoundary>
           {instance && descriptor ? (
             <SurfacePane
               key={instance.instanceId}
@@ -165,7 +165,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
               onDividerNudge={() => undefined}
             />
           ) : null}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       </div>
     </section>
   );

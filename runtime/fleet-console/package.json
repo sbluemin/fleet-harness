@@ -67,7 +67,6 @@
     "@fleet-console/link": "workspace:*",
     "@fleet-console/lifecycle": "workspace:*",
     "@fleet-console/computer-use": "workspace:*",
-    "@fleet-console/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@vscode/ripgrep": "1.18.0",
     "@xterm/addon-fit": "0.12.0-beta.299",
@@ -90,7 +89,9 @@
     "ws": "^8.18.0",
     "zod": "^4.4.1",
     "@fleet-console/updates": "workspace:*",
-    "typebox": "^1.1.24"
+    "typebox": "^1.1.24",
+    "@fleet-console/i18n": "workspace:*",
+    "@fleet-console/ui": "workspace:*"
   },
   "devDependencies": {
     "@fleet-console/protocol": "workspace:*",

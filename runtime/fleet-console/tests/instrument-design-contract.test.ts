@@ -18,7 +18,6 @@ const CLIENT_ROOT = new URL("../core/client/src/", import.meta.url);
 const PRODUCT_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
   new URL("features/", CONSOLE_ROOT),
-  new URL("sdk/", CONSOLE_ROOT),
 ] as const;
 const CSS_SOURCE_ROOTS = [
   new URL("core/client/src/", CONSOLE_ROOT),
@@ -59,9 +58,8 @@ const FILE_EXPLORER_CSS_PATH = new URL("../features/file-explorer/client/explore
 const REPOSITORY_CSS_PATH = new URL("../features/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
 const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
-const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
-const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
-const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
+const SDK_RAIL_TYPES_PATH = new URL("../features/workspace/shared/rail.ts", import.meta.url);
+const SDK_CAPTION_ACTIONS_PATH = new URL("../features/workspace/client/components/caption-actions.tsx", import.meta.url);
 const OWNED_SOURCES = [
   "app/app.tsx",
   "../../../features/workspace/client/conversation/new-session.tsx",
@@ -616,23 +614,6 @@ describe("Instrument core design contract", () => {
     expect(tipReveal).not.toContain(":focus-within");
   });
 
-  it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
-    const types = externalSource(SDK_RAIL_TYPES_PATH);
-    const version = externalSource(SDK_VERSION_PATH);
-    const rightRail = source("chrome/rail/right-rail.tsx");
-    expect(version).toContain("SDK_API_VERSION = 1");
-    for (const field of ["RailPathContext", "pathContext", "selectPathContext", "pathAware"]) expect(types).toContain(field);
-    expect(types.match(/@deprecated/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(rightRail).toContain("useSyncExternalStore(");
-    expect(rightRail).toContain("getState().theaters.find");
-    expect(rightRail).toContain("theater.id === theaterId");
-    expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
-    expect(types).toContain("readonly theme?: ConsoleTheme;");
-    expect(rightRail).toContain("theme,");
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]");
-    expect(rightRail).not.toContain("selectPathContext");
-    expect(rightRail).not.toContain(".pathAware");
-  });
 
   it("removes ambient radar, panel pulse, perimeter wake, and anchor surfaces", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
@@ -2642,9 +2623,9 @@ describe("Effort track interaction grammar", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const composer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
 
-    // 인식·미러·해제 문법은 공용 부품(sdk/composer)에서 온다 — 이 조립은
+    // 인식·미러·해제 문법은 공용 부품(execution composer primitives)에서 온다 — 이 조립은
     // 상태와 표식만 진다. 무장은 초안과 해제 여부에서만 나온다.
-    expect(composer).toContain('} from "@fleet-console/sdk/composer";');
+    expect(composer).toContain('} from "../../composer-primitives/ultracode.js";');
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
     expect(composer).toContain('${ultracodeArmed ? " is-ultracode" : ""}');
     // 미러는 한 층이고 구간마다 클래스를 싣는다 — `ultracode` 무장과 덱이 완성한 좌표가 같은
@@ -2888,9 +2869,9 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
-    // 트랙 원본은 컴포저 블록 패키지(sdk/composer)에 산다 — sdk/components/effort-track.tsx는
+    // 트랙 원본은 컴포저 블록 패키지(execution composer primitives)에 산다 — features/execution/client/components/effort-track.tsx는
     // 하위호환 재수출 셔임이라 계약이 읽을 소스가 아니다.
-    const trackSource = externalSource(new URL("sdk/composer/effort-track.tsx", CONSOLE_ROOT));
+    const trackSource = externalSource(new URL("features/execution/client/composer-primitives/effort-track.tsx", CONSOLE_ROOT));
 
     // 게이트 장치는 트랙 우측의 ✦ 토글 하나다. 닫힘·열림이 같은 26px 버튼의 두 상태라
     // 마운트 교체(26px→18px)가 없고, 게이트가 열려도 라벨이 밀리지 않는다.

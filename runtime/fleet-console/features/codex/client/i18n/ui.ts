@@ -1,6 +1,6 @@
 import type { RenderMarkdownOptions } from "@fleet-console/markdown/core";
 import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { CodexMessageKey } from "./messages.js";
 

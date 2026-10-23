@@ -1,4 +1,4 @@
-import type { OpenUIOpenPort, OpenUIOpenTarget } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { OpenUIOpenPort, OpenUIOpenTarget } from "../../execution/shared/chat-renderer.js";
 import type { Objective } from "../shared/types.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { findAnyObjective, findFinishedObjective, openObjectiveFromCluster, readTheater, revealObjective } from "./objectives-state.js";

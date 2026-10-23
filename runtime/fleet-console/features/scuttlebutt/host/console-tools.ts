@@ -1,9 +1,9 @@
-import type { AgentToolGroup, AgentSessionOptions } from "@fleet-console/sdk/agent";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { AgentToolGroup, AgentSessionOptions } from "../../execution/shared/agent.js";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import { z } from "zod";
 import { createWikiWorkspaceResolver, buildBriefingToolConfig, buildReadToolConfig } from "../../codex/host/wiki/read-api.js";
 import type { ScuttlebuttRouteContext } from "./index.js";
-import type { ConsoleUseSnapshot } from "@fleet-console/sdk/mcp";
+import type { ConsoleUseSnapshot } from "../../console-use/shared/tools.js";
 
 /** 콘솔 사용: 호스트 관측·실행 도구와 Theater Wiki 읽기를 부관 세션에 연결한다. 실제 허용은 부관 grant다. */
 
@@ -106,7 +106,7 @@ export async function createConsoleUseTools(ctx: ScuttlebuttRouteContext, snapsh
   const gated = <Args, Extra>(run: (args: Args, extra: Extra) => Promise<ReturnType<typeof text>>) =>
     async (args: Args, extra: Extra) => (enabled() ? run(args, extra) : text({ error: "console_read_disabled", hint: "The user turned Console reading off. Do not answer from earlier Console results." }));
 
-  const defineTool = <T extends Record<string, unknown>>(name: string, description: string, shape: z.ZodRawShape, execute: (args: T, extra: unknown) => Promise<unknown>): PluginMcpTool => ({
+  const defineTool = <T extends Record<string, unknown>>(name: string, description: string, shape: z.ZodRawShape, execute: (args: T, extra: unknown) => Promise<unknown>): ConsoleMcpTool => ({
     name, description, inputSchema: z.toJSONSchema(z.object(shape)),
     execute: (args, context) => execute(args as T, context),
   });

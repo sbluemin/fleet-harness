@@ -1,6 +1,6 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useMemo, useRef } from "react";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
 import { useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";

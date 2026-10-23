@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import type { ScuttlebuttRouteContext } from "./index.js";
-import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "@fleet-console/sdk/settings";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentModelId } from "../../settings/shared/experiments.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { isAgentEffort, type AgentEffort } from "../../ai-gateway/shared/models.js";
 
 import { COMPUTER_PROMPT_ADDENDUM, createConsoleUseTools, isConsoleSnapshot, type ConsoleSnapshot } from "./console-tools.js";
 

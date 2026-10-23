@@ -4,8 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PaneContext } from "@fleet-console/sdk/pane";
-import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
+import type { PaneContext } from "../../workspace/shared/pane.js";
+import { createClientCapabilities } from "../../../core/client/src/integration/http-capabilities.js";
 
 import { fileExplorerDocumentPane } from "../client/rail-panel.js";
 import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";

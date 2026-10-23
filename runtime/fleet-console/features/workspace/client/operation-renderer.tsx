@@ -1,14 +1,28 @@
+import type { ClientRailCapability } from "../shared/navigation-ports.js";
+import type { ClientShellCapability } from "../shared/navigation.js";
+import type { ClientNavigateCapability } from "../shared/navigation.js";
+import type { ClientComposerCapability } from "../../execution/shared/composer-ports.js";
+import type { ClientOperationStatusDetailCapability } from "../../execution/shared/client-contract.js";
+import type { ClientOperationRuntimeCapability } from "../../execution/shared/client-contract.js";
+import type { ClientSettingsCapability } from "../../settings/shared/client-ports.js";
+import type { ClientPreferencesCapability } from "../../settings/shared/client-ports.js";
+import type { ClientOperationsCapability } from "../../execution/shared/client-contract.js";
+import type { ClientNotificationsCapability } from "../../execution/shared/notification-ports.js";
+import type { ClientTerminalCapability } from "../../execution/shared/client-contract.js";
+import type { ClientLifecycleCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ConsoleTheme, OperationRenderContext, OperationRuntimeState, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConsoleTheme } from "../../settings/shared/theme.js";
+import type { OperationRenderContext, OperationRuntimeState } from "../../execution/shared/client-contract.js";
 
 import type { OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 
 export interface PluginOperationRendererProps {
   readonly active: boolean;
   readonly keyboardFocusRequestId?: number;
-  readonly capabilities: PluginInstallContext;
+  readonly capabilities: OperationSurfaceDeps;
   readonly geometry: OperationGeometry;
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
@@ -85,4 +99,20 @@ export function PluginOperationRenderer({
     onSetCompanionPanelVisible,
     ...(companionPanelIds === undefined ? {} : { companionPanelIds }),
   }) as ReactNode;
+}
+
+export interface OperationSurfaceDeps {
+  readonly api: ClientApiCapability;
+  readonly lifecycle: ClientLifecycleCapability;
+  readonly terminal: ClientTerminalCapability;
+  readonly notifications: ClientNotificationsCapability;
+  readonly operations: ClientOperationsCapability;
+  readonly preferences: ClientPreferencesCapability;
+  readonly settings: ClientSettingsCapability;
+  readonly runtime: ClientOperationRuntimeCapability;
+  readonly statusDetail: ClientOperationStatusDetailCapability;
+  readonly composer: ClientComposerCapability;
+  readonly navigate: ClientNavigateCapability;
+  readonly shell: ClientShellCapability;
+  readonly rail: ClientRailCapability;
 }

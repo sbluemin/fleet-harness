@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import type { UpgradeHandler } from "@fleet-console/sdk/routing";
+import type { UpgradeHandler } from "@fleet-console/infra/http/routing";
 
 import type { RequestLifetime } from "../context.js";
 import { resolveConsolePackageRequire } from "./console-require.js";

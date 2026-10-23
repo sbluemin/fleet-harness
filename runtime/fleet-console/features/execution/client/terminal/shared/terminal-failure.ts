@@ -1,5 +1,5 @@
-import type { FailureNoticeProps } from "@fleet-console/sdk/components/failure-notice";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { FailureNoticeProps } from "../../components/failure-notice.js";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { TerminalMessageKey } from "../../agent/i18n/index.js";
 

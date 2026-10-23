@@ -1,5 +1,5 @@
-import type { ComposerQuoteAttachResult, ComposerQuoteKind } from "@fleet-console/sdk/composer/quotes";
-import type { ComposerQuoteTargetOption } from "@fleet-console/sdk/plugin";
+import type { ComposerQuoteAttachResult, ComposerQuoteKind } from "../../../execution/client/composer-primitives/quotes.js";
+import type { ComposerQuoteTargetOption } from "../../../execution/shared/composer-ports.js";
 
 import { getT, resolveActiveLocale } from "../i18n/index.js";
 import { hostCapabilities } from "../host.js";

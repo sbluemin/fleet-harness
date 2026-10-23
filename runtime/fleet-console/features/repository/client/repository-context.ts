@@ -1,6 +1,6 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { ConversationToolScope } from "@fleet-console/sdk/pane";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ConversationToolScope } from "../../workspace/shared/pane.js";
 
 /**
  * 저장소 화면이 호스트에게서 실제로 받는 것.

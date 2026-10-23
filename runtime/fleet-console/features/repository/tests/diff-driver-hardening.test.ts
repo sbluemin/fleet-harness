@@ -1,9 +1,9 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { handleRepositoryCompareFile } from "../host/compare-file.js";
 import { handleRepositoryCommitFile } from "../host/commit-file.js";
@@ -25,7 +25,7 @@ async function initGitRepo(dir: string): Promise<void> {
   await runGit(["config", "user.name", "Test"], { cwd: dir });
 }
 
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -35,7 +35,7 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 // repo-local .gitattributes + .git/config의 custom diff driver/textconv가

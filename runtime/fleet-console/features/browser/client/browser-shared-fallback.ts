@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 /**
  * Desktop shared 중 링크를 내 브라우저로 열 때, 세션당 한 번 안내한다.

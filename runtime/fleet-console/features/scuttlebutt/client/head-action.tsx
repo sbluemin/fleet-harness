@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 /** 포털로 나간 메뉴·설명도 자기 입력 표면의 모달 경계를 따른다. */
 export const ChatSurfaceContext = React.createContext<"floating" | "composer">("floating");

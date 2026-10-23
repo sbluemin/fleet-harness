@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheaterSummary, TheaterContribution, TheaterFace } from "@fleet-console/sdk/plugin";
-import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
-import type { MongleState } from "@fleet-console/sdk/avatars";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { ConsoleTheaterSummary } from "../shared/console-state.js";
+import type { TheaterContribution, TheaterFace } from "../shared/surface-contracts.js";
+import type { TheaterInboxAddress } from "../shared/theater-inbox.js";
+import type { MongleState } from "../shared/avatars.js";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
@@ -26,9 +27,9 @@ export function TheaterContributionRows({ theater }: TheaterContributionProps) {
   return (
     <div className="side-bar-theater-contributions" data-theater-id={theater.id}>
       {rows.map((contribution) => (
-        <PluginErrorBoundary key={contribution.id} fallback={<></>}>
+        <FeatureErrorBoundary key={contribution.id} fallback={<></>}>
           {contribution.row?.({ ...base, theaterInbox: scopedTheaterInbox(contribution.id) })}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </div>
   );
@@ -44,9 +45,9 @@ export function TheaterContributionMenuItems({ theater, onClose }: TheaterContri
   return (
     <>
       {menus.map((contribution) => (
-        <PluginErrorBoundary key={contribution.id} fallback={<></>}>
+        <FeatureErrorBoundary key={contribution.id} fallback={<></>}>
           {contribution.menu?.({ ...base, theaterInbox: scopedTheaterInbox(contribution.id) })}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </>
   );
@@ -90,9 +91,9 @@ export function useTheaterContributionMark(theater: ConsoleTheaterSummary): Reac
   const owner = ownerId === null ? null : marks.find((contribution) => contribution.id === ownerId) ?? null;
   if (!owner?.mark) return null;
   return (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       {owner.mark({ theater, active: true, language, theaterInbox: scopedTheaterInbox(owner.id) })}
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import type { MobileCoordinateChoiceProps, MobileModelChoiceProps, MobileModelGroup } from "@fleet-console/sdk/settings/browser";
-import { clampRosterEffort, findRosterRow, rosterRowEfforts } from "@fleet-console/sdk/models";
-import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
+import type { MobileCoordinateChoiceProps, MobileModelChoiceProps, MobileModelGroup } from "../../../../../features/settings/client/mobile-host.js";
+import { clampRosterEffort, findRosterRow, rosterRowEfforts } from "../../../../../features/ai-gateway/shared/models.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph } from "../../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
 
 import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";

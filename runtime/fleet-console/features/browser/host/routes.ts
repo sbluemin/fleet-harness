@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { writeImageToClipboard } from "./clipboard.js";
 

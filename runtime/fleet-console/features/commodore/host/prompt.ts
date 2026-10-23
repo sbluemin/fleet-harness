@@ -6,7 +6,7 @@
  * 읽지 않으므로 Theater 의 CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
+import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation/references.js";
 
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";

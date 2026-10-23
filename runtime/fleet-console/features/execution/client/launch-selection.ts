@@ -1,5 +1,5 @@
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import { canonicalModelId } from "@fleet-console/sdk/models";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../shared/operations/types.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 /**
  * 새 세션 실행의 순수 선택 로직 — 데스크톱 새 세션 화면과 모바일 새 세션 시트가 함께 쓴다.

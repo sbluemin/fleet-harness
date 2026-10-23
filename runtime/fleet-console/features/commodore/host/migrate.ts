@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { COMMODORE_ID, commodoreEntitySchema } from "./entities.js";
 import { writeFileAtomic } from "./store.js";
-import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "./types.js";
+import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "../shared/contracts/types.js";
 
 const MARKER = ".migration.json";
 const markerSchema = z.object({

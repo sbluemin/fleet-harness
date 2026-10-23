@@ -1,6 +1,6 @@
-import type { FloatingWidgetOperationsCapability } from "@fleet-console/sdk/floating";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { FloatingWidgetOperationsCapability } from "../../workspace/shared/floating.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import {
   createNoticeQueue,

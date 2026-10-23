@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
-import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
+import type { Translate } from "@fleet-console/i18n";
+import { FileIcon, FolderIcon } from "../../file-explorer/client/components/file-icon.js";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { BlobResult, DiffFileEntry, TreeEntry, TreeResult } from "../shared/types.js";
@@ -53,7 +53,7 @@ export function CommitTreeView({ ctx, repoRel, fullHash, commitFiles, selectedPa
       next.set(dirPath, { kind: "loading" });
       return next;
     });
-    ctx.api.fetch(null, "repository/tree", {
+    ctx.api.fetch("repository/tree", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: fullHash, ...(dirPath ? { dirPath } : {}) }),
@@ -187,7 +187,7 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
     // 다른 파일로 옮기는 동안 옛 내용을 흐리게 남긴다 — 매번 "불러오는 중"으로 갈아 끼우면 표가 비었다 다시 차며 깜빡인다.
     setState((current) => current.kind === "ok" ? current : { kind: "loading" });
     setPending(true);
-    ctx.api.fetch(null, "repository/blob", {
+    ctx.api.fetch("repository/blob", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: fullHash, filePath: path }),

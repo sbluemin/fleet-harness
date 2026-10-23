@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { OnboardingContribution } from "../shared/types.js";
 
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { EntryHints, hasPendingHint, type EntryHintCandidate, type EntryHintPorts } from "./entry-hint.js";

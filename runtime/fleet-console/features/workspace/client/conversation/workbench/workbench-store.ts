@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceOpenRequest } from "../../../shared/expanded-surface.js";
 
 import {
   CONVERSATION_WORKBENCH_API_PATH,

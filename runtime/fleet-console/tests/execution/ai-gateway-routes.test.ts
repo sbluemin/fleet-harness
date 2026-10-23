@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { describe, expect, it, vi } from "vitest";
 
 import { registerAiGatewayRoutes } from "../../features/ai-gateway/host/routes.js";

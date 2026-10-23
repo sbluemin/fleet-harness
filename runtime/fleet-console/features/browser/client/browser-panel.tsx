@@ -1,7 +1,7 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import * as React from "react";
+import type { OperationRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
-import { CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
 
 import { getT } from "./i18n.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";

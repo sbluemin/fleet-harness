@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 
-import { ModelCoordinatePicker, modelCoordinateDisplay } from "@fleet-console/sdk/components/model-coordinate-picker";
-import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "@fleet-console/sdk/models";
-import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
-import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
-import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
+import { ModelCoordinatePicker, modelCoordinateDisplay } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "../../ai-gateway/shared/models.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
+import type { LocalizedText, Translate } from "@fleet-console/i18n";
+import type { OperationLaunchVariantRow } from "../../execution/shared/operations/types.js";
+import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
+import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
 import { memberFailureReason } from "../shared/signals.js";
 import type { Objective, ObjectiveMember } from "../shared/types.js";

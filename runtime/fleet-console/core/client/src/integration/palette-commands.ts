@@ -1,8 +1,8 @@
 import { getViewedTheaterId } from "./viewed-theater.js";
 import type { ReactNode } from "react";
 
-import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { LocalizedText, Translate } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";

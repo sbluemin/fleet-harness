@@ -1,4 +1,4 @@
-import { OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
+import { OPERATION_CATALOG_CHANGED_EVENT } from "../../execution/client/operations.js";
 
 export interface AiGatewayModelSelection {
   readonly id: string;
@@ -220,7 +220,7 @@ function isCompactCeiling(value: unknown): value is CompactCeiling | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 70 && value <= 99;
 }
 
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.

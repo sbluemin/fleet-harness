@@ -1,6 +1,6 @@
-import { mongleStateOf, operationAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
-import { useMongleLook } from "@fleet-console/sdk/avatars/browser";
-import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
+import { mongleStateOf, operationAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../../workspace/shared/avatars.js";
+import { useMongleLook } from "../../workspace/client/avatar-events.js";
+import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 
 import type { Objective } from "../shared/types.js";
 

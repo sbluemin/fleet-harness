@@ -1,5 +1,5 @@
-import { canonicalModelId } from "@fleet-console/sdk/models";
-import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
+import { readLaunchVariantGroups } from "../../execution/shared/operations/launch-variants.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { ObjectiveStoreError } from "./store.js";

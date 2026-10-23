@@ -49,6 +49,9 @@ importers:
       '@fleet-console/font-picker':
         specifier: workspace:*
         version: link:foundation/font-picker
+      '@fleet-console/i18n':
+        specifier: workspace:*
+        version: link:foundation/i18n
       '@fleet-console/infra':
         specifier: workspace:*
         version: link:foundation/infra
@@ -64,9 +67,9 @@ importers:
       '@fleet-console/process':
         specifier: workspace:*
         version: link:foundation/process
-      '@fleet-console/sdk':
+      '@fleet-console/ui':
         specifier: workspace:*
-        version: link:sdk
+        version: link:foundation/ui
       '@fleet-console/updates':
         specifier: workspace:*
         version: link:features/updates
@@ -317,6 +320,12 @@ importers:
         specifier: ^4.0.13
         version: 4.1.10(@types/node@24.12.2)(jsdom@27.4.0(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
+  runtime/fleet-console/foundation/i18n:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
   runtime/fleet-console/foundation/infra:
     devDependencies:
       '@types/node':
@@ -412,36 +421,30 @@ importers:
         specifier: ^4.0.13
         version: 4.1.10(@types/node@24.12.2)(jsdom@29.1.1(@noble/hashes@2.2.0)(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.21.0)(yaml@2.8.3))
 
+  runtime/fleet-console/foundation/ui:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.8)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
   runtime/fleet-console/protocol:
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
         version: 24.12.2
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-
-  runtime/fleet-console/sdk:
-    dependencies:
-      '@fleet-console/link':
-        specifier: workspace:*
-        version: link:../foundation/link
-      '@fleet-console/markdown':
-        specifier: workspace:*
-        version: link:../foundation/markdown
-      react:
-        specifier: ^19.0.0
-        version: 19.2.7
-      zod:
-        specifier: ^4.4.1
-        version: 4.4.1
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.17
       typescript:
         specifier: ^6.0.2
         version: 6.0.3

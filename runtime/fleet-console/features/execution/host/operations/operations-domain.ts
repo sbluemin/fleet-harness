@@ -1,15 +1,9 @@
-import type {
-  OperationCreateInput as SdkOperationCreateInput,
-  OperationGroupedEvent,
-  OperationGroupRemovedEvent,
-  OperationNode as SdkOperationNode,
-  OperationPatchInput as SdkOperationPatchInput,
-  ChildSession,
-} from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin } from "../../shared/operations/types.js";
+import type { OperationCreateInput as SdkOperationCreateInput, OperationGroupedEvent, OperationGroupRemovedEvent, OperationNode as SdkOperationNode, OperationPatchInput as SdkOperationPatchInput, ChildSession } from "../../shared/operations/types.js";
 
-import { isOperationGroupColor } from "@fleet-console/sdk/operations/identity-tones";
+import { isOperationGroupColor } from "../../../workspace/shared/identity-tones.js";
 
-export type { OperationGeometry, OperationTimestamps } from "@fleet-console/sdk/operations";
+export type { OperationGeometry, OperationTimestamps } from "../../shared/operations/types.js";
 
 export interface OperationGroup {
   readonly id: string;
@@ -481,10 +475,10 @@ function sanitizeReplacementNodes(nextNodes: readonly OperationNode[]): readonly
 
 import type http from "node:http";
 
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 
 import type { DeferredDeletionReceipt } from "../../../workspace/host/deferred-deletion.js";
-import type { OperationCatalogPlugin } from "@fleet-console/sdk/plugin";
+
 
 export interface OperationsRouterDeps {
   readonly store: OperationStore;

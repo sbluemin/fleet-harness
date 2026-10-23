@@ -1,7 +1,8 @@
-import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
-import type { ClientConsoleStateCapability, PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import type { ShellOpenAtRequest as ShellCwdHint } from "@fleet-console/sdk/navigation";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../../../workspace/shared/expanded-surface.js";
+import type { ClientConsoleStateCapability } from "../../../../workspace/shared/console-state.js";
+import type { PersistentComponentContext } from "../../../../workspace/shared/surface-contracts.js";
+import type { ShellOpenAtRequest as ShellCwdHint } from "../../../../workspace/shared/navigation.js";
+import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { getT } from "../../agent/i18n/index.js";
@@ -12,7 +13,7 @@ import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/co
 import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, useShellSession } from "./shell-session-store.js";
-import { requestShellOpenAt, requestShellRestartAt } from "@fleet-console/sdk/navigation/browser";
+import { requestShellOpenAt, requestShellRestartAt } from "../../../../workspace/client/navigation-events.js";
 import "./shell.css";
 
 /**

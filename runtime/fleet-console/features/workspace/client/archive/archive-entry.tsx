@@ -1,8 +1,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { ArchiveSectionDescriptor } from "@fleet-console/sdk/plugin";
+import type { ArchiveSectionDescriptor } from "../../../execution/shared/archive-surfaces.js";
 
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openArchiveSheet, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";

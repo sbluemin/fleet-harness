@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 
-import type { ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { PaneContext, PaneDescriptor } from "../../../../../features/workspace/shared/pane.js";
+import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
 
 import { useFeatureRegistry, type ResolvedRailEntry } from "../../integration/feature-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";

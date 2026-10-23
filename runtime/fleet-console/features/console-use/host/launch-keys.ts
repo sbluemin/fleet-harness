@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
 
 /**
  * 멱등 기동 키 원장 — 플러그인이 붙인 키 하나에 Operation 이 많아야 하나 생기고, 사람이 지운 키는 다시 생기지 않게 한다.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import type { PaneContext } from "@fleet-console/sdk/pane";
+import type { PaneContext } from "../../workspace/shared/pane.js";
 
 import type { SearchEntry } from "../shared/contracts.js";
 import { fetchSearch } from "./codex/api.js";

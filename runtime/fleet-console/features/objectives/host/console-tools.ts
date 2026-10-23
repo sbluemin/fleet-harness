@@ -1,7 +1,8 @@
-import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
-export type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "@fleet-console/sdk/commodore";
-import { type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mcp/actions";
+import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../shared/commodore-board.js";
+export type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../shared/commodore-board.js";
+import { type ConsoleCaller } from "../../console-use/shared/control.js";
+import { type ConsoleUseCallTarget, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { defineConsoleTool, type ConsoleToolFilter } from "../../console-use/shared/actions.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { z } from "zod";
 
@@ -128,12 +129,12 @@ const detailTool = defineConsoleTool({
 type ListCall = Extract<ReturnType<typeof listTool.parse>, { ok: true }>["call"];
 type DetailCall = Extract<ReturnType<typeof detailTool.parse>, { ok: true }>["call"];
 
-export function createObjectiveConsoleTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly PluginMcpTool[] {
+export function createObjectiveConsoleTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ConsoleMcpTool[] {
   return createBoardTools(ctx, store, launch);
 }
 
 /** 호스트가 호출자를 넣지 않는 사령관 전용 도구. Theater는 모델 입력이 아니라 생성 때 고정한다. */
-export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly PluginMcpTool[] {
+export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   // 호스트와 플러그인 번들은 오류 클래스도 따로 갖는다 — 공개 포트의 거절을 보드 오류로 옮겨 코드·힌트를 보존한다.
   const read: CommodoreAttachmentReader | undefined = readAttachments ? (ids) => {
     try { return readAttachments(ids); }
@@ -147,7 +148,7 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
-function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly PluginMcpTool[] {
+function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   const { languageOf, sessions } = createBoardViews(ctx, store);
   const { rowView, historyView, detailRead } = createConsoleBoardViews(ctx, store);
   const modelCatalog = createModelCatalog(ctx);
@@ -194,7 +195,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   const stringIds = (value: unknown): string[] => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
   const refusal = (parsed: { readonly error: string; readonly issues?: readonly unknown[] }) => refuse(parsed.error, parsed.issues ? { issues: parsed.issues } : {});
 
-  const list: PluginMcpTool = listTool.plugin({
+  const list: ConsoleMcpTool = listTool.plugin({
     surface: {
       panelId: "objectives",
       describe: (args) => {
@@ -276,7 +277,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     },
   }, boundFilter);
 
-  const detail: PluginMcpTool = detailTool.plugin({
+  const detail: ConsoleMcpTool = detailTool.plugin({
     surface: {
       panelId: "objectives",
       describe: (args) => {

@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
 import { openInDefaultOsBrowser } from "@fleet-console/link/core";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 import { LinkOpenCard, type LinkOpenAt } from "../../../browser/client/link-open-card.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 

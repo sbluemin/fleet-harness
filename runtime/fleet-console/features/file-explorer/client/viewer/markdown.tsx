@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { renderMarkdown, type RenderMarkdownOptions } from "@fleet-console/markdown/core";
 import { bindMarkdownLinkActivation, type MarkdownLinkTarget } from "@fleet-console/markdown/link-activation";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import "@fleet-console/markdown/styles.css";
 
 import { diagramHydratorLabels, getT, markdownCopyOptions, type FileExplorerMessageKey } from "../i18n/index.js";

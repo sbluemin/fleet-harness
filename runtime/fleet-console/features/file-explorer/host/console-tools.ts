@@ -1,6 +1,6 @@
 import type { FileExplorerRouteContext } from "./index.js";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { defineConsoleTool } from "../../console-use/shared/actions.js";
 import { z } from "zod";
 
 import { FileReadError, readFileForTheater } from "./file-reader.js";
@@ -19,7 +19,7 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: Array.isArray(value) ? { items: value } : value as Record<string, unknown>, isError: false };
 }
 
-export function createFileExplorerConsoleTools(ctx: FileExplorerRouteContext): readonly PluginMcpTool[] {
+export function createFileExplorerConsoleTools(ctx: FileExplorerRouteContext): readonly ConsoleMcpTool[] {
   const rootOf = (theaterId: string) => {
     const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!theaterPath) throw new Error("unknown_theater");

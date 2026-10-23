@@ -1,4 +1,4 @@
-import type { GroupConversationActions, GroupWriteResult } from "@fleet-console/sdk/conversation";
+import type { GroupConversationActions, GroupWriteResult } from "../../execution/shared/conversation/types.js";
 import type { Objective } from "../shared/types.js";
 import { objectiveBoardActions } from "./board-actions.js";
 import { commodoreLanguage } from "./board-commodore.js";

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { SettingsRow, SettingsToggle } from "../../../../../features/settings/client/preferences-context.js";
 
 import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useLocation, useNavigate } from "react-router-dom";

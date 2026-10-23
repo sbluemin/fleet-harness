@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
+import { onboardingBoundary } from "../../onboarding/shared/anchors.js";
 import { createPortal } from "react-dom";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { OpenLinkHandler } from "@fleet-console/sdk/link";
-import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { OpenLinkHandler } from "@fleet-console/link/core";
+import type { StatusGlyphState } from "./components/status-glyph.js";
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../shared/signals.js";
 import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../shared/types.js";
@@ -37,7 +37,7 @@ import {
 import { FollowupBatchResults, FollowupCandidateList, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
-import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
 export interface ObjectiveContext {
   readonly theaterId: string | null;

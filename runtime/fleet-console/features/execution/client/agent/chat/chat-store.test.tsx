@@ -9,15 +9,15 @@ import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } f
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
 import { HistoryFoldButton } from "./composer.js";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
-import type { GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
-import type { OperationClusterSource } from "@fleet-console/sdk/plugin";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../../../../settings/shared/experiments.js";
+import type { GroupTimelineSnapshot } from "../../../shared/conversation/types.js";
+import type { OperationClusterSource } from "../../../../objectives/shared/operation-clusters.js";
 import { clearOperationRuntime, getState, setOperationRuntime, setState } from "../../../../../core/client/src/integration/store.js";
 import { getAgentState, setAgentState } from "../store.js";
 import { GroupClusterProvider, installGroupTimeline, useGroupTimeline } from "./group-timeline-store.js";
 import { setFoldTurns } from "./group/fold-turns.js";
 import { disposeOperationViewState, getComposerDraft, installOperationViewState, readTerminalViewPosition, saveTerminalViewPosition } from "../../operation-view-state.js";
-import type { ClientConsoleStateCapability } from "@fleet-console/sdk/plugin";
+import type { ClientConsoleStateCapability } from "../../../../workspace/shared/console-state.js";
 
 class FakeWebSocket implements ChatWebSocketLike {
   static instances: FakeWebSocket[] = [];
@@ -320,7 +320,7 @@ describe("AgentChatView history auto-fold", () => {
     let stored: Record<string, unknown> = { chatReadingWidth: "wide", chatHistoryAutoFold: false };
     connectTerminalSettings({
       read: async () => stored,
-      write: async (_pluginId, value) => { stored = value; },
+      write: async (value) => { stored = value; },
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));

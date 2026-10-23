@@ -1,21 +1,27 @@
+import { createSettingsDocumentApi } from "../../../../features/settings/client/document-api.js";
+import type { ConsoleClientCapabilities } from "./client-capabilities.js";
 import { createObjectivesClient, objectivesCommodoreBoard } from "../../../../features/objectives/client/index.js";
 import { createCommodoreClient } from "../../../../features/commodore/client/index.js";
-import type { CommodoreClientHost } from "@fleet-console/sdk/commodore";
-import { consoleExecution } from "./execution.js";
+import type { CommodoreClientHost } from "../../../../features/commodore/shared/contracts/client.js";
+import { consoleExecution, installConsoleExecution } from "./execution.js";
 import { createContext, useContext, useMemo } from "react";
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
-import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
-import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
-import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
-import type {
-  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, ConversationSurfaceDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
-import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
-import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
-import { codexClient } from "../../../../features/codex/client/index.js";
-import { quotaClient } from "../../../../features/quota/client/index.js";
-import { scuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
+import type { OnboardingContribution } from "../../../../features/onboarding/shared/types.js";
+import type { ExpandedSurfaceDescriptor } from "../../../../features/workspace/shared/expanded-surface.js";
+import type { FloatingWidgetDescriptor } from "../../../../features/workspace/shared/floating.js";
+import type { NotificationKindDescriptor } from "../../../../features/execution/shared/notifications.js";
+import type { ArchiveSectionDescriptor } from "../../../../features/execution/shared/archive-surfaces.js";
+import type { OperationCaptionContribution, TheaterContribution, CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, PersistentComponentDescriptor } from "../../../../features/workspace/shared/surface-contracts.js";
+import type { OperationCluster, OperationClusterSource } from "../../../../features/objectives/shared/operation-clusters.js";
+import type { OperationKindDescriptor } from "../../../../features/execution/shared/client-contract.js";
+import type { ClientFeatureDescriptor } from "../../../../features/workspace/shared/feature-surfaces.js";
+import type { ConversationSurfaceDescriptor } from "../../../../features/workspace/shared/conversation-surfaces.js";
+import type { PaneDescriptor } from "../../../../features/workspace/shared/pane.js";
+import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../features/workspace/shared/rail.js";
+import type { SettingsSectionDescriptor } from "../../../../features/settings/shared/types.js";
+import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
+import { codexClient, installCodexClient } from "../../../../features/codex/client/index.js";
+import { quotaClient, installQuotaClient } from "../../../../features/quota/client/index.js";
+import { scuttlebuttClient, installScuttlebuttClient } from "../../../../features/scuttlebutt/client/index.js";
 import { fileExplorerClient } from "../../../../features/file-explorer/client/index.js";
 import { repositoryClient } from "../../../../features/repository/client/index.js";
 const builtInPlugins = [codexClient, fileExplorerClient, repositoryClient, quotaClient, scuttlebuttClient];
@@ -38,8 +44,10 @@ export function conversationSurfaceInboxSectionId(surface: ResolvedConversationS
 }
 
 export interface FeatureRegistry {
+  readonly objectives: ReturnType<typeof createObjectivesClient>;
+  install(deps: ConsoleClientCapabilities): () => void;
   readonly commodore: CommodoreClientHost;
-  readonly providers: readonly ClientExecutionProvider[];
+  readonly providers: readonly ClientFeatureDescriptor[];
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
@@ -88,9 +96,10 @@ export function useFeatureRegistry(): FeatureRegistry {
   return useContext(FeatureRegistryContext);
 }
 
-function createFeatureRegistry(plugins: readonly FleetClientPlugin[]): FeatureRegistry {
+function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): FeatureRegistry {
   const commodore = createCommodoreClient(objectivesCommodoreBoard);
-  const providers: readonly ClientExecutionProvider[] = [consoleExecution, commodore.plugin, ...plugins, createObjectivesClient(commodore.host)];
+  const objectives = createObjectivesClient(commodore.host);
+  const providers: readonly ClientFeatureDescriptor[] = [consoleExecution, commodore.plugin, ...plugins, objectives.surface];
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
@@ -144,6 +153,11 @@ function createFeatureRegistry(plugins: readonly FleetClientPlugin[]): FeatureRe
     }
   }
   return {
+    install(deps) {
+      const cleanups = [installConsoleExecution(deps), commodore.install({ chat: deps.chat, rail: deps.rail, api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, composer: deps.composer, conversation: deps.conversation, theaterInbox: deps.theaterInbox, operations: deps.operations, navigate: deps.navigate }), objectives.install({ api: deps.api, consoleEvents: deps.consoleEvents, consoleState: deps.consoleState, operations: deps.operations, preferences: deps.preferences, runtime: deps.runtime, rail: deps.rail, conversation: deps.conversation, models: deps.models, navigate: deps.navigate, navigation: deps.navigation, composer: deps.composer, surfaces: deps.surfaces, notifications: deps.notifications }), installCodexClient({ consoleState: deps.consoleState, navigation: deps.navigation, surfaces: deps.surfaces, rail: deps.rail, composer: deps.composer, operations: deps.operations, consoleEvents: deps.consoleEvents }), installQuotaClient({ api: deps.api, settings: createSettingsDocumentApi("/api/v1/settings/quota") }), installScuttlebuttClient({ consoleState: deps.consoleState, experiments: deps.experiments, models: deps.models, settings: createSettingsDocumentApi("/api/v1/settings/scuttlebutt") })];
+      return () => { for (const cleanup of cleanups.reverse()) cleanup(); };
+    },
+    objectives,
     commodore: commodore.host,
     providers,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),

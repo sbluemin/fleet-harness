@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
-import type { MemoryBranch } from "@fleet-console/sdk/commodore";
+import type { MemoryBranch } from "../shared/contracts/memory.js";
 import { MEMORY_BRANCH_HINT, MEMORY_BRANCH_LABEL, memoryDay, memoryDayTime, memoryLinks, useCommodoreMemoryTree } from "./commodore-memory.js";
 import { loadCommodoreMemory } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";

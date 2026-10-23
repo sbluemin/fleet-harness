@@ -1,16 +1,17 @@
 import { FontMenu } from "./font-menu.js";
 import { fontCjkScripts } from "../../execution/client/terminal/shared/cjk-coverage.js";
-import { DEFAULT_FONTS, FONT_BUILT_INS, FONT_SIZE_RANGES, fontFamilyForAxis, type FontAxis, type FontAxisSettings, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { DEFAULT_FONTS, FONT_BUILT_INS, FONT_SIZE_RANGES, fontFamilyForAxis, type FontAxis, type FontAxisSettings, type ConsoleFontSettings } from "../shared/fonts.js";
 import { type FontPickerInstalledFont, type FontPickerLabels } from "@fleet-console/font-picker/browser";
 import { correctHostMonospace } from "@fleet-console/font-picker/local-fonts";
 import { fontResolves } from "@fleet-console/font-picker/resolve";
 import "@fleet-console/font-picker/styles.css";
 import { SystemFontsFetchError, fetchSystemFonts } from "@fleet-console/font-picker/system-fonts";
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
-import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "@fleet-console/sdk/settings";
-import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import { FeatureErrorBoundary, SegmentedThumb } from "@fleet-console/ui/react";
+import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "../shared/types.js";
+import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle } from "./preferences-context.js";
+import { useMobileSettingsHost } from "./mobile-host.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -207,7 +208,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 
-// 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 PluginErrorBoundary에 잡힌다.
+// 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 FeatureErrorBoundary에 잡힌다.
 export function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
 }
@@ -216,9 +217,9 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
-      <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
+      <FeatureErrorBoundary fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
         <PluginSettingsSectionBody render={pluginSection.render} />
-      </PluginErrorBoundary>
+      </FeatureErrorBoundary>
     ) : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>;
   }
   switch (sectionId) {
@@ -266,9 +267,9 @@ export function renderEmbeddedPluginSections(pluginSections: readonly PluginSett
   return pluginSections
     .filter((section) => section.group === "experiments")
     .map((section) => (
-      <PluginErrorBoundary key={section.id} fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
+      <FeatureErrorBoundary key={section.id} fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
         {section.render ? <PluginSettingsSectionBody render={section.render} /> : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>}
-      </PluginErrorBoundary>
+      </FeatureErrorBoundary>
     ));
 }
 

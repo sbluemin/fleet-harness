@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { GroupConversationActions } from "@fleet-console/sdk/conversation";
+import type { GroupConversationActions } from "../../../shared/conversation/types.js";
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
 import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../computer-use/client/computer-screen-share.js";
 import { useGroupClusters } from "./group-timeline-store.js";

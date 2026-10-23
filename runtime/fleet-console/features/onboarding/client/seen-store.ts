@@ -1,4 +1,4 @@
-import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
+import type { OnboardingContribution } from "../shared/types.js";
 
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField } from "../../settings/client/global-settings-store.js";
 

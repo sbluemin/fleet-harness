@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import type { OperationCluster } from "@fleet-console/sdk/plugin";
+import type { OperationCluster } from "../../../objectives/shared/operation-clusters.js";
 
 /** 그룹 대화의 `board-action` 줄 하나 — 줄의 목표(묶음 conversation.operationId)·줄 id·시각. */
 export interface BoardActionRecordRequest {

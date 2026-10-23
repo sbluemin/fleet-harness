@@ -1,7 +1,8 @@
-import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
-import type { CommodoreClientHost } from "@fleet-console/sdk/commodore";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { ObjectivesClientDeps } from "./deps.js";
+import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
+import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
+import type { PaneDescriptor } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
 import { installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./board-commodore.js";
 import { objectivesClusterSource } from "./clusters.js";
@@ -94,7 +95,7 @@ export const objectivesEntry: RailEntryDescriptor = {
     const api = objectivesApi();
     if (!api) return [];
     await loadTheater(api, theaterId);
-    const response = await api.fetch(null, "/api/v1/objectives/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
+    const response = await api.fetch("/objectives/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
     if (!response.ok) return [];
     const result = await response.json() as { objectives: { id: string; title: string; done?: boolean }[] };
     const t = getT(language);
@@ -109,10 +110,8 @@ export const objectivesEntry: RailEntryDescriptor = {
 
 export { commodoreBoard as objectivesCommodoreBoard } from "./board-commodore.js";
 
-export function createObjectivesClient(commodore: CommodoreClientHost): ClientExecutionProvider {
-  return {
-    id: "objectives",
-    install: (ctx) => {
+export function createObjectivesClient(commodore: CommodoreClientHost) {
+  const install = (ctx: ObjectivesClientDeps): (() => void) => {
       const dispose = installObjectiveState(ctx);
       const disposeCommodore = installCommodoreHost(commodore);
       // 시작 전 목표의 시작 화면도 같은 능력으로 가운데 칸에 선다.
@@ -120,8 +119,11 @@ export function createObjectivesClient(commodore: CommodoreClientHost): ClientEx
       // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
       const disposeRoster = installLaunchRoster(ctx.models);
       return () => { disposeRoster(); disposeFresh(); disposeCommodore(); dispose(); };
-    },
-    onMapOperationSelected: handleMapOperationSelected,
+
+  };
+  const surface: ClientFeatureDescriptor = {
+    id: "objectives",
+
     railEntries: [objectivesEntry],
     onboarding: objectivesOnboarding,
     panes: [objectivesPane, objectivesMobileDetailPane],
@@ -129,4 +131,5 @@ export function createObjectivesClient(commodore: CommodoreClientHost): ClientEx
     operationClusters: objectivesClusterSource,
     conversationSurfaces: [freshConversationSurface],
   };
+  return { surface, install, operationSelected: handleMapOperationSelected };
 }

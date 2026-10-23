@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../host/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../shared/types.js";
@@ -25,7 +25,7 @@ import { LIST_TIMEOUT_MS } from "./files-client.js";
 import type { FileRevealTarget } from "./view-store.js";
 import { findReferencedFile, FileNavigationError } from "./file-navigation.js";
 
-import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
+import { FileIcon, FolderIcon } from "./components/file-icon.js";
 import { FilePeek } from "./peek.js";
 export interface ListFolderOptions {
   /** 취소 — 효과 정리에서 낡은 요청을 걷는다. */

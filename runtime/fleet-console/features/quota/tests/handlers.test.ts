@@ -1,6 +1,6 @@
+import type { QuotaRouteContext } from "../host/index.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService } from "@fleet-console/ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
@@ -34,7 +34,7 @@ function harness(
         writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }),
       },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as QuotaRouteContext;
   const req = {
     method,
     url,

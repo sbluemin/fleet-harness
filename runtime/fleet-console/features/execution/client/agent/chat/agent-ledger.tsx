@@ -1,7 +1,7 @@
 import { OpenUIPluginBoundary } from "../openui-boundary.js";
-import type { AgentLedgerProps } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { React } from "@fleet-console/sdk/plugin/browser";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import type { AgentLedgerProps } from "../../../shared/chat-renderer.js";
+import * as React from "react";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { getT } from "../i18n/index.js";

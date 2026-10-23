@@ -1,5 +1,5 @@
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { OperationRenderContext } from "../../shared/client-contract.js";
+import * as React from "react";
 
 import { requestBrowserOpen, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";

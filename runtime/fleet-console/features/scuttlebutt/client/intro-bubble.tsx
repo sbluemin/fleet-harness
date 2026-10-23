@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import type { AdmiralId } from "./chat-session.js";
 import { placeNoticeBubble } from "./notice-bubble.js";

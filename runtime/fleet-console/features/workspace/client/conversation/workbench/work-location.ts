@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { ConversationWorkLocation } from "@fleet-console/sdk/pane";
+import type { ConversationWorkLocation } from "../../../shared/pane.js";
 
 import { CONVERSATION_WORKBENCH_API_PATH } from "../../../shared/conversation-workbench.js";
 

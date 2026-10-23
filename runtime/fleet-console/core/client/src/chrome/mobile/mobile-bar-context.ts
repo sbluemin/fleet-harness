@@ -1,6 +1,6 @@
 import { createContext, createElement, Fragment, useContext, useEffect, useMemo, useRef } from "react";
 
-import type { ClientMobileBarCapability, MobileBarSpec } from "@fleet-console/sdk/pane";
+import type { ClientMobileBarCapability, MobileBarSpec } from "../../../../../features/workspace/shared/pane.js";
 
 import { pushBackLayer } from "./mobile-back.js";
 import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";

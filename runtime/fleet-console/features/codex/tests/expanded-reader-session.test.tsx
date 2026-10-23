@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import type { ExpandedSurfaceContext } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceContext } from "../../workspace/shared/expanded-surface.js";
 import { bindCodexHost } from "../client/host.js";
 import { codexReadingSurface } from "../client/reading-surface.js";
 import { expandCodexReader, getReaderState, openCodexReader } from "../client/reader-store.js";

@@ -7,7 +7,7 @@ import {
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
-import { DEFAULT_OPERATION_GROUP_COLOR, isOperationGroupColor } from "@fleet-console/sdk/operations/identity-tones";
+import { DEFAULT_OPERATION_GROUP_COLOR, isOperationGroupColor } from "../shared/identity-tones.js";
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
 import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "../../execution/host/operations/operations-domain.js";

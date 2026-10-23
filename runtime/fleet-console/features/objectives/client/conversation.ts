@@ -1,7 +1,7 @@
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { ModelRoster } from "@fleet-console/sdk/models";
+import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { Translate } from "@fleet-console/i18n";
+import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { decisionTurn } from "./board-commodore.js";

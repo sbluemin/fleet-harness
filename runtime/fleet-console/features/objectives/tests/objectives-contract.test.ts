@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
-import type { ConsoleActionInput, PluginMcpTool } from "@fleet-console/sdk/mcp";
-import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
+import type { ConsoleActionInput } from "../../console-use/shared/control.js";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { OperationGroupedEvent, OperationNode } from "../../execution/shared/operations/types.js";
 import type { ObjectivesFeatureDeps } from "../host/deps.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -99,9 +100,9 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const deliveries: ConsoleActionInput[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const outcomes = new Map<string, "running" | "succeeded" | "completed" | "failed" | "interrupted" | "unknown">();
-  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("@fleet-console/sdk/mcp").ConsoleTurnReport }>();
-  const turnEndListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void>();
-  const sessionMessageListeners = new Set<(event: import("@fleet-console/sdk/mcp").ConsoleSessionMessage) => void>();
+  const outputDetails = new Map<string, { readonly revision: number; readonly failure?: InjectedFailure; readonly report?: import("../../console-use/shared/control.js").ConsoleTurnReport }>();
+  const turnEndListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void>();
+  const sessionMessageListeners = new Set<(event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void>();
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
@@ -120,11 +121,11 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const reservedKeys = new Set<string>();
   // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
   // coordinates — 떠 있는 채팅의 자식이 다음 좌표 변경 하나를 거절한다(호스트가 돌려주는 결과 그대로).
-  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("@fleet-console/sdk/mcp").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
+  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("../../console-use/shared/control.js").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const operationsHost = {
-    create: (input: import("@fleet-console/sdk/operations").OperationCreateInput) => {
+    create: (input: import("../../execution/shared/operations/types.js").OperationCreateInput) => {
       const id = input.id!;
       if (operations.has(id) || archivedOperations.has(id)) throw new Error("operation_id_taken");
       const node = add(id, { type: input.type, pluginId: input.pluginId, title: input.title, payload: input.payload ?? {},
@@ -233,8 +234,8 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
       // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
       transcript: async (operationId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${operationId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
       observe: observeSession,
-      subscribeTurnEnds: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
-      subscribeSessionMessages: (listener: (event: import("@fleet-console/sdk/mcp").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
+      subscribeTurnEnds: (listener: (event: import("../../console-use/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
+      subscribeSessionMessages: (listener: (event: import("../../console-use/shared/control.js").ConsoleSessionMessage) => void) => { sessionMessageListeners.add(listener); return () => { sessionMessageListeners.delete(listener); }; },
       // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
       sleep: async (operationId: string) => {
         if (surfaceOf(operationId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
@@ -294,7 +295,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
   const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
-  const [consoleTool, consoleDetail] = createObjectiveConsoleTools(ctx, store, launch) as [PluginMcpTool, PluginMcpTool];
+  const [consoleTool, consoleDetail] = createObjectiveConsoleTools(ctx, store, launch) as [ConsoleMcpTool, ConsoleMcpTool];
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
     routeBody = body;
     routeResult = { status: 0, value: null };
@@ -1340,7 +1341,7 @@ describe("Objectives contract", () => {
     await launch.archive(shelved.id);
     const archivedAt = new Map([[started.id, 100], [shelved.id, 200]]);
     let revision = 1;
-    const purge = vi.fn(async (confirmation: import("@fleet-console/sdk/operations").OperationPurgeConfirmation) => {
+    const purge = vi.fn(async (confirmation: import("../../execution/shared/operations/archive.js").OperationPurgeConfirmation) => {
       if (confirmation.revision !== revision) throw new Error("archive_revision_conflict");
       revision += 1;
       return { operationIds: confirmation.operationIds, revision, purgeId: `purge-${confirmation.targetId}`, purgeAt: 10_500 };
@@ -2057,7 +2058,7 @@ describe("Objectives contract", () => {
     });
     const firstImage = image();
     let hasPersonMessage = false;
-    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1", readAttachments, () => hasPersonMessage) as [PluginMcpTool, PluginMcpTool];
+    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1", readAttachments, () => hasPersonMessage) as [ConsoleMcpTool, ConsoleMcpTool];
     // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
     const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
     const board = async (args: Record<string, unknown>) => {
@@ -2764,7 +2765,7 @@ describe("Objectives contract", () => {
       launch.watchLiveOutcomes();
       // 정상 종료 대표 경우 — 신호도 통지도 없다. 배정 뒤 아직 보고하지 않은 구성원이라도 ① 사람이 입력창에서 연 턴 ② 보고를 관측하지 않는
       // 표면(터미널)의 턴 ③ 외부 대기(백그라운드 셸·모니터·깨움 예약)를 걸고 닫은 턴은 멈춘 턴이 아니다.
-      const turn = (revision: number, outcome: "succeeded" | "completed", report?: Omit<import("@fleet-console/sdk/mcp").ConsoleTurnReport, "pendingWork"> & { pendingWork?: boolean }) => {
+      const turn = (revision: number, outcome: "succeeded" | "completed", report?: Omit<import("../../console-use/shared/control.js").ConsoleTurnReport, "pendingWork"> & { pendingWork?: boolean }) => {
         outcomes.set(memberId, outcome);
         outputDetails.set(memberId, { revision, ...(report ? { report: { pendingWork: false, ...report } } : {}) });
         h.emitTurnEnd(memberId);

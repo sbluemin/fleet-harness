@@ -7,9 +7,9 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-import { readOperationLaunch, withSubagentSpawn, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withSubagentSpawn, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "../../features/execution/shared/operations/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { chatOriginLabel, readChatJournalEvent, type AgentChatOrigin } from "../../features/execution/client/agent/chat/chat-events.js";
@@ -99,9 +99,9 @@ describe("agent chat mode routes", () => {
     };
     const owner = { kind: "plugin" as const, pluginId: "objectives" };
     Object.assign(harness.operation(sessionId)!.payload, { launchedBy: owner });
-    const turnEnds: import("@fleet-console/sdk/mcp").ConsoleTurnEnd[] = [];
+    const turnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds(owner, (event) => turnEnds.push(event)));
-    const otherTurnEnds: import("@fleet-console/sdk/mcp").ConsoleTurnEnd[] = [];
+    const otherTurnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId: "other" }, (event) => otherTurnEnds.push(event)));
     await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Continue the mission" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "Continue the mission" }) });
@@ -327,7 +327,7 @@ describe("agent chat mode routes", () => {
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
     // 세션 간 메시지 도착은 보낸·받은 Operation 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
     const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).operationId;
-    const arrivals: import("@fleet-console/sdk/mcp").ConsoleSessionMessage[] = [];
+    const arrivals: import("../../features/console-use/shared/control.js").ConsoleSessionMessage[] = [];
     cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
     harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
     harness.emitToLatest(settled("call-peer", true));
@@ -341,7 +341,7 @@ describe("agent chat mode routes", () => {
 
     // SDK 원시 오류 result만 도착해도 실패 구조와 종료 포트가 만들어진다. 모델 텍스트·도구 호출은 주입하지 않는다.
     const apiError = "API Error: 529 The backend is temporarily overloaded. Please retry.";
-    const turnEnds: import("@fleet-console/sdk/mcp").ConsoleTurnEnd[] = [];
+    const turnEnds: import("../../features/console-use/shared/control.js").ConsoleTurnEnd[] = [];
     cleanups.push(harness.consoleControl.subscribeTurnEnds(plugin, (event) => turnEnds.push(event)));
     const sendsBefore = harness.sends.length;
     harness.emitToLatest({ type: "result", subtype: "error_during_execution", is_error: true, errors: [apiError], duration_ms: 1 });

@@ -1,9 +1,9 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
-import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
+import type { OperationLaunchKind } from "../features/execution/shared/operations/types.js";
+import { assertOperationNode, fetchOperationCatalog } from "../features/execution/client/operations.js";
+import { readLaunchVariantGroups } from "../features/execution/shared/operations/launch-variants.js";
 import { CORE_AGENT_SENSITIVE_FIELDS } from "../core/host/bootstrap/execution.js";
 import { createOperationsRouter } from "../features/execution/host/operations/operations-domain.js";
 import { createSanitizedOpDto } from "../features/execution/host/operations/operations-domain.js";

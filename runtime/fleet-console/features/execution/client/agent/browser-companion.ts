@@ -1,4 +1,4 @@
-import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRenderContext } from "../../shared/client-contract.js";
 
 /** Operation Browser companion의 id — 캡션의 지구본 문, Alt+B, 링크 열기가 같은 이름을 부른다. */
 export const BROWSER_COMPANION_ID = "browser";

@@ -17,7 +17,7 @@ import { UpdateCurtain } from "../../../../features/updates/client/update-curtai
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
 import { openArchiveSheet } from "../integration/operation-archive.js";
 import type { ArchiveOutcome } from "../integration/operation-actions.js";
-import { ApiError, undoOperationArchive } from "@fleet-console/sdk/operations/browser";
+import { ApiError, undoOperationArchive } from "../../../../features/execution/client/operations.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
@@ -30,7 +30,7 @@ import { useGlobalSettingsStore } from "../../../../features/settings/client/glo
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../integration/global-shortcuts.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { createHostCapabilities } from "../integration/plugin-capabilities.js";
+import { createHostCapabilities } from "../integration/feature-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries, useRailEntries } from "../chrome/pane/pane-registry.js";
@@ -247,10 +247,7 @@ function ConnectedApp() {
       const capabilities = createHostCapabilities(() => {
         void fetchOperations().then(hydrateOperations).catch(() => {});
       }, { railBindings: () => railBindingsRef.current, commodore: registry.commodore });
-      for (const plugin of registry.providers) {
-        const cleanup = plugin.install?.(capabilities);
-        if (typeof cleanup === "function") cleanups.push(cleanup);
-      }
+      cleanups.push(registry.install(capabilities));
     };
     if (bootLanePending()) void afterBootLane().then(install);
     else install();

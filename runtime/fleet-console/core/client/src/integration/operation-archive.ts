@@ -8,12 +8,8 @@ import { useSyncExternalStore } from "react";
 import { getState, requestOperationKeyboardFocus, setActiveOperation } from "./store.js";
 import { closeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 
-import {
-  OPERATION_ARCHIVE_CHANGED_EVENT,
-  OPERATION_CLUSTER_CHANGED_EVENT,
-  fetchOperationArchive,
-  type OperationArchiveSnapshot,
-} from "@fleet-console/sdk/operations/browser";
+import { OPERATION_ARCHIVE_CHANGED_EVENT, OPERATION_CLUSTER_CHANGED_EVENT, type OperationArchiveSnapshot } from "../../../../features/execution/shared/operations/archive.js";
+import { fetchOperationArchive } from "../../../../features/execution/client/operations.js";
 
 interface ArchiveState {
   readonly total: number;

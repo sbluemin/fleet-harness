@@ -1,8 +1,11 @@
+import type { ExecutionClientDeps } from "../deps.js";
 // @vitest-environment jsdom
 
 import { act, createElement, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { ClientApiCapability, ClientNotificationsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientNotificationsCapability } from "../../shared/notification-ports.js";
+import type { OperationRenderContext } from "../../shared/client-contract.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // 표면 인스턴스마다 마운트 여부와 마지막 onExit를 남긴다 — 옛 PTY의 늦은 종료를 그 표면의 onExit로 흉내 낸다.

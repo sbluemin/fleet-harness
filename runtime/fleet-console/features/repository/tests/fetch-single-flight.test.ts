@@ -1,8 +1,8 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runGitMock = vi.hoisted(() => vi.fn());
@@ -65,7 +65,7 @@ function gitResult(stdout = "", stderr = "") {
   return { stdout, stderr, truncated: false, stderrTruncated: false };
 }
 
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -75,7 +75,7 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 type GitResult = ReturnType<typeof gitResult>;

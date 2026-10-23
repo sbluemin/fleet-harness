@@ -1,8 +1,8 @@
+import type { RepositoryRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runGit } from "../host/git-executor.js";
@@ -16,7 +16,7 @@ interface JsonWrite {
   readonly payload: unknown;
 }
 
-function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): FleetPluginServerContext {
+function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
   return {
     host: {
       http: {
@@ -26,7 +26,7 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as RepositoryRouteContext;
 }
 
 const req = { method: "POST" } as never;

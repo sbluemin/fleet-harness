@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 
 /**
  * 원장의 글리프 알파벳 — 집계 절·라이브 꼬리·잡 앵커·작업 면이 같은 어휘를 쓴다.

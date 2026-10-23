@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { MobileInputSpec } from "@fleet-console/sdk/settings/browser";
+import type { MobileInputSpec } from "../../../../../features/settings/client/mobile-host.js";
 
 import { useT } from "../../i18n/index.js";
 import { MobileSheet } from "./mobile-sheet.js";

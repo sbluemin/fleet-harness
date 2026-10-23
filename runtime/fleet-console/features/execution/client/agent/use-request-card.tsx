@@ -1,7 +1,7 @@
-import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "@fleet-console/sdk/components/caption-actions";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ExecutionClientDeps } from "../deps.js";
+import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../../../workspace/client/components/caption-actions.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 import { useOperationUseRequests, type OperationUseRequest } from "../../../computer-use/client/computer-screen-share.js";
 import { answerUseRequest } from "./experiments-api.js";
 import { getT } from "./i18n/index.js";
@@ -18,9 +18,9 @@ import { getViewModeSnapshot } from "../../../../core/client/src/integration/vie
  * 버튼은 클릭이나 Tab 으로만 닿고, 누르고 있는 키의 반복 입력으로는 확정되지 않는다.
  */
 
-let cardApi: PluginInstallContext["api"] | null = null;
+let cardApi: ExecutionClientDeps["api"] | null = null;
 /** 실행 플러그인 설치 때 한 번 — 카드는 채팅 뷰 안에서도 그려지므로 install context 를 받지 못한다. */
-export function setUseRequestApi(api: PluginInstallContext["api"] | null): void {
+export function setUseRequestApi(api: ExecutionClientDeps["api"] | null): void {
   cardApi = api;
 }
 

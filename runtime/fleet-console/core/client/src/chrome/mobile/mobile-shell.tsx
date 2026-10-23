@@ -3,9 +3,10 @@ import { publishConversationClusters, publishConversationSubject } from "../../.
 import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
 import { useEffect, useState } from "react";
 
-import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
+import type { OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
 
-import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 
 import { useT } from "../../i18n/index.js";
 import { selectNestedBody } from "../../integration/store.js";

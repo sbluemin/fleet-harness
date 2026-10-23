@@ -1,12 +1,13 @@
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
-import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, composerDeckActiveIndex, composerDeckKeyDown, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "@fleet-console/sdk/composer";
-import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { AgentChatReferenceHost } from "../../execution/shared/chat-renderer.js";
+import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, composerDeckActiveIndex, composerDeckKeyDown } from "../../execution/client/composer-primitives/deck.js";
+import { MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "../../execution/client/composer-primitives/mention-chip.js";
+import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation/references.js";
+import type { Translate } from "@fleet-console/i18n";
 
-import type { CommodoreBoardObjective as Objective } from "@fleet-console/sdk/commodore";
+import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 import type { CommodoreObjectiveIndex } from "./commodore-chat.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./board.js";

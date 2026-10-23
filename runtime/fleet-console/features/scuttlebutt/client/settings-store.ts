@@ -1,5 +1,5 @@
-import { canonicalModelId, isAgentEffort, type AgentEffort } from "@fleet-console/sdk/models";
-import type { ClientSettingsCapability } from "@fleet-console/sdk/plugin";
+import { canonicalModelId, isAgentEffort, type AgentEffort } from "../../ai-gateway/shared/models.js";
+import type { ClientSettingsCapability } from "../../settings/shared/client-ports.js";
 
 import { DEFAULT_BIRD_WIDTH, clampBirdWidth } from "./roaming.js";
 
@@ -105,7 +105,7 @@ const listeners = new Set<() => void>();
 
 export function connectScuttlebuttSettings(nextCapability: ClientSettingsCapability): () => void {
   capability = nextCapability;
-  void nextCapability.read("scuttlebutt").then((value) => {
+  void nextCapability.read().then((value) => {
     if (capability !== nextCapability) return;
     settings = persisted = parseSettings(value);
     emit();
@@ -145,7 +145,7 @@ export async function writeScuttlebuttSettings(
     emit();
     const attempted = settings;
     try {
-      await capability?.write("scuttlebutt", { ...attempted });
+      await capability?.write({ ...attempted });
       persisted = attempted;
     } catch (error) {
       settings = persisted;

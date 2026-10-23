@@ -18,8 +18,6 @@ export default defineConfig({
       "@xterm/addon-unicode11": path.resolve(__dirname, "../../node_modules/@xterm/addon-unicode11"),
       "@xterm/addon-webgl": path.resolve(__dirname, "../../node_modules/@xterm/addon-webgl"),
       "@xterm/xterm": path.resolve(__dirname, "../../node_modules/@xterm/xterm"),
-      // SDK source-only 패키지: 비패키지 플러그인(file-explorer)은 심링크 없어 alias 필요
-      "@fleet-console/sdk": path.resolve(__dirname, "../../sdk"),
     },
   },
   build: {

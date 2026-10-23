@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
+import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "../../../../../features/workspace/shared/expanded-surface.js";
 
 /**
  * 확대 표면 스토어 — 열린 페인의 순서 있는 목록과 폭 가중치를 소유한다.

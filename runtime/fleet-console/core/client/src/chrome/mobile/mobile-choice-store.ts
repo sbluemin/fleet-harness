@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { MobileChoiceOption, MobileChoiceSpec } from "@fleet-console/sdk/settings/browser";
+import type { MobileChoiceOption, MobileChoiceSpec } from "../../../../../features/settings/client/mobile-host.js";
 
 /**
  * 설정의 선택 팝업 상태(P-1). 한 번에 하나만 열린다 — 열린 동안 다시 열면 앞의 것을 바꾼다.

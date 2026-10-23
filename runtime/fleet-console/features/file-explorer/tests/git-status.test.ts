@@ -1,9 +1,9 @@
+import type { FileExplorerRouteContext } from "../host/index.js";
 import fs from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleFilesGitStatus } from "../host/tree-services.js";
@@ -97,7 +97,7 @@ describe("handleFilesGitStatus", () => {
         paths: { resolveTheaterPath: () => theaterPath },
         security: { isTerminalAuthorized: () => true },
       },
-    } as unknown as FleetPluginServerContext;
+    } as unknown as FileExplorerRouteContext;
 
     try {
       await handleFilesGitStatus(

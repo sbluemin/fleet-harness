@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
 // 엔진 자신의 문구만 둔다 — 힌트·투어의 내용 문구는 각 기여가 소유한다.
 const onboardingEn = {

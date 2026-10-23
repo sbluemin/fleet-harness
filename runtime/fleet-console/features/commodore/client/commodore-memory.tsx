@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
-import type { MemoryBranch, MemoryEntry } from "@fleet-console/sdk/commodore";
-import { MEMORY_STALE_MS } from "@fleet-console/sdk/commodore";
+import type { MemoryBranch, MemoryEntry } from "../shared/contracts/memory.js";
+import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
 import { useCommodoreMemory } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { revealObjective } from "./board.js";

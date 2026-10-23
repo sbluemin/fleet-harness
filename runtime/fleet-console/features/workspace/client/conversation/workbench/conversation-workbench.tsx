@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationKindDescriptor } from "../../../../execution/shared/client-contract.js";
 
 import type { WorkbenchLayout, WorkbenchTile } from "../../../shared/conversation-workbench.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
@@ -669,17 +669,17 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
     <div className="workbench-tile-surface">
       {descriptor?.aside ? (
         <aside className="expanded-surface-pane-aside">
-          <PluginErrorBoundary><SurfacePanePart render={descriptor.aside} context={context} /></PluginErrorBoundary>
+          <FeatureErrorBoundary><SurfacePanePart render={descriptor.aside} context={context} /></FeatureErrorBoundary>
         </aside>
       ) : null}
       <div className="expanded-surface-pane-main">
-        <PluginErrorBoundary>
+        <FeatureErrorBoundary>
           {descriptor ? <SurfacePanePart render={descriptor.render} context={context} /> : <MissingSurface surfaceId={tile.surfaceId} />}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       </div>
     </div>
   );
-  const tools = descriptor?.tools ? <PluginErrorBoundary fallback={null}><SurfacePanePart render={descriptor.tools} context={context} /></PluginErrorBoundary> : null;
+  const tools = descriptor?.tools ? <FeatureErrorBoundary fallback={null}><SurfacePanePart render={descriptor.tools} context={context} /></FeatureErrorBoundary> : null;
   return <TileFrame {...props} parts={{ title, icon: entryIcon(binding), tools, body }} />;
 }
 
@@ -757,14 +757,14 @@ function OperationBrowserTile(props: WorkbenchTileViewProps & { readonly operati
     bodyLive: !hidden,
   } as const;
   const titleNode = companion.caption === undefined ? <span className="workbench-tile-name">{resolveLocalizedText(companion.title, language)}</span> : (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       <PluginOperationRenderer {...shared} render={companion.caption} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
   const body = (
-    <PluginErrorBoundary fallback={null}>
+    <FeatureErrorBoundary fallback={null}>
       <PluginOperationRenderer {...shared} render={companion.render} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
   return <TileFrame {...props} parts={{ title, titleNode, body, bodyRef }} />;
 }

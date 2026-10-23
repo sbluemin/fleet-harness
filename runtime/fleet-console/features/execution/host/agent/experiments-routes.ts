@@ -1,9 +1,10 @@
+import type { OperationNode } from "../../shared/operations/types.js";
 import type { ConsoleRuntimeContext } from "../context.js";
 import type http from "node:http";
 
-import type { OperationNode } from "@fleet-console/sdk/plugin";
+
 import { registerRouter } from "../context.js";
-import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS, type ConsoleExperimentSettings } from "../../../settings/shared/experiments.js";
 
 /**
  * Agent Operation 하나에 실험 능력(Console 사용·Computer Use)을 허용하거나 거두는 서버 몫. 설정이 꺼진

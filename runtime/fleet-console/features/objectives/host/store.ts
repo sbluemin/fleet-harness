@@ -4,9 +4,10 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
-import { canonicalModelId } from "@fleet-console/sdk/models";
-import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
-import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
+import { readOperationLaunch, type OperationNode } from "../../execution/shared/operations/types.js";
+import { type OperationDescription } from "../../execution/shared/operations/archive.js";
+import type { ConsoleTurnFailure } from "../../console-use/shared/control.js";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
 import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, objectiveOperator, type HoldSubject } from "../shared/board-state.js";

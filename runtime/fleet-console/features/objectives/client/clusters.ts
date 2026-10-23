@@ -1,7 +1,8 @@
-import type { ConversationMemberProfile, GroupBoardActions } from "@fleet-console/sdk/conversation";
-import type { LocalizedText } from "@fleet-console/sdk/i18n";
-import type { ModelRoster } from "@fleet-console/sdk/models";
-import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
+import type { ConversationMemberProfile, GroupBoardActions } from "../../execution/shared/conversation/types.js";
+import type { LocalizedText } from "@fleet-console/i18n";
+import type { ModelRoster } from "../../ai-gateway/shared/models.js";
+import type { ConsoleOperationSummary } from "../../execution/shared/client-contract.js";
+import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "../shared/operation-clusters.js";
 
 import { inboxReasons, livePersonHold, stalledObjectives, type BoardObservation, type BoardObserver } from "../shared/board-state.js";
 import { memberFailureReason } from "../shared/signals.js";

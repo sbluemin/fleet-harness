@@ -1,18 +1,12 @@
-import type { ApiCatalogEntry, FleetPluginHostCapabilities, FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
-import {
-  MODEL_ROSTER_CHANGED_CHANNEL,
-  ROSTER_FALLBACK_GROUP_ID,
-  ROSTER_FALLBACK_MODEL,
-  isModelRosterTarget,
-  resolveRosterCoordinate,
-  type ModelCoordinate,
-  type ModelRoster,
-  type ModelRosterRow,
-  type ModelRosterTarget,
-  type ResolvedWireCoordinate,
-} from "@fleet-console/sdk/models";
+import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
+import type { EventPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { ModelRosterHost } from "./model-ports.js";
+import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../execution/shared/operations/types.js";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
+import { MODEL_ROSTER_CHANGED_CHANNEL, ROSTER_FALLBACK_GROUP_ID, ROSTER_FALLBACK_MODEL, isModelRosterTarget, resolveRosterCoordinate, type ModelCoordinate, type ModelRoster, type ModelRosterRow, type ModelRosterTarget, type ResolvedWireCoordinate } from "../shared/models.js";
 import {
   bareModelName,
   buildGatewayModelQuota,
@@ -182,7 +176,7 @@ export function createModelRosterHost(deps: {
   readonly subscribe?: (listener: () => void) => () => void;
   /** 설치된 Claude Code에게 별칭이 가리키는 버전을 묻는다. 없으면 별칭 고정은 받은 값을 돌려준다. */
   readonly ensureClaudeNativeModels?: () => Promise<void>;
-}): FleetPluginModelsHost {
+}): ModelRosterHost {
   const roster = (target: ModelRosterTarget): ModelRoster => {
     let settings: AiGatewayStoredSettings | undefined;
     try {
@@ -215,10 +209,10 @@ export function createModelRosterHost(deps: {
 
 interface ModelRosterRouteContext {
   readonly host: {
-    readonly http: Pick<FleetPluginHostCapabilities["http"], "writeJson">;
-    readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
-    readonly events: Pick<FleetPluginHostCapabilities["events"], "publish" | "registerSseChannel">;
-    readonly lifecycle: Pick<FleetPluginHostCapabilities["lifecycle"], "registerCleanup">;
+    readonly http: Pick<HttpPort, "writeJson">;
+    readonly security: Pick<HttpSecurityPort, "isTerminalAuthorized">;
+    readonly events: Pick<EventPort, "publish" | "registerSseChannel">;
+    readonly lifecycle: Pick<CleanupPort, "registerCleanup">;
   };
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
@@ -229,7 +223,7 @@ interface ModelRosterRouteContext {
  *
  * 돌려주는 `notify`는 로스터가 바뀐 직후 부른다 — 열린 모든 화면(다른 탭·모바일 포함)이 다시 읽는다.
  */
-export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: FleetPluginModelsHost): { readonly notify: () => void } {
+export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: ModelRosterHost): { readonly notify: () => void } {
   ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(MODEL_ROSTER_CHANGED_CHANNEL));
   ctx.registerRouter("models/roster", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }

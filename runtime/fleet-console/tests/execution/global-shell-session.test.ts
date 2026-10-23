@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/execution/host/terminal/shell.js";
 import type { TerminalLaunchResolver, TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";

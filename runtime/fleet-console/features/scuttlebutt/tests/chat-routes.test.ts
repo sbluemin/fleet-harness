@@ -1,13 +1,15 @@
+import type { ScuttlebuttRouteContext } from "../host/index.js";
 import { EventEmitter } from "node:events";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../../settings/shared/experiments.js";
 import { createChatRoutes, type ChatRouteDeps } from "../host/chat-routes.js";
 
-function registerChatRoutes(ctx: FleetPluginServerContext, deps?: ChatRouteDeps) {
+type ChatHarnessContext = ScuttlebuttRouteContext & { registerRouter(path: string, handler: RouteHandler): void };
+
+function registerChatRoutes(ctx: ChatHarnessContext, deps?: ChatRouteDeps) {
   const chat = createChatRoutes(ctx, deps);
   ctx.registerRouter("/api/v1/scuttlebutt/chat", chat.handler);
   return chat.registry;
@@ -147,7 +149,7 @@ describe("Agent SDK availability", () => {
 });
 
 function createHarness(authorized: boolean, body: unknown = {}, origin: string | null = "http://127.0.0.1:43210"): {
-  readonly ctx: FleetPluginServerContext;
+  readonly ctx: ChatHarnessContext;
   readonly handler: () => RouteHandler;
   readonly writeJson: ReturnType<typeof vi.fn>;
 } {
@@ -170,7 +172,7 @@ function createHarness(authorized: boolean, body: unknown = {}, origin: string |
       server: { origin: () => origin },
       lifecycle: { registerCleanup: vi.fn(() => () => undefined) },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as ChatHarnessContext;
   return {
     ctx,
     handler: () => {

@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
-import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
+import type { SettingsSectionDescriptor, SettingsSectionGroup } from "../shared/types.js";
 
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";

@@ -1,6 +1,6 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import * as React from "react";
 
 import { markdownRenderOptions } from "./scuttlebutt-catalog.js";
 

@@ -1,8 +1,8 @@
 import { useMemo, useLayoutEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
-import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "@fleet-console/sdk/commodore";
+import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "../../objectives/shared/commodore-board-client.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
 import { revealObjective, useObjectiveTheater } from "./board.js";
 

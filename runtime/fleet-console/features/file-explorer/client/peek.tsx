@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 
 import type { FileReadResult } from "../shared/types.js";
 import { knownMtime } from "./entry-stats.js";
-import { FileIcon } from "@fleet-console/sdk/components/file-icon";
+import { FileIcon } from "./components/file-icon.js";
 import { formatByteSize, formatRelativeTime } from "./format.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";

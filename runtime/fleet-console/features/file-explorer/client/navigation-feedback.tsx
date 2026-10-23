@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 import { getT } from "./i18n/index.js";
 import { dismissFileNavigationError, useFileExplorerViewState } from "./view-store.js";
 

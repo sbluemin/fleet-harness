@@ -1,4 +1,4 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import type { FileDiskStatus, FileReadRequest, FileReadResult } from "../shared/types.js";
 import { knownMtime, knownSize, noteEntryMtime, noteEntryStats } from "./entry-stats.js";

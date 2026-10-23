@@ -1,4 +1,4 @@
-import { gestureFromEvent } from "@fleet-console/sdk/link/browser";
+import { gestureFromEvent } from "@fleet-console/link/core";
 
 import { linkParts } from "./http-links.js";
 import { useObjectiveLinkOpen } from "./link-open-context.js";

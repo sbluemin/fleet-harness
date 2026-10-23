@@ -1,4 +1,4 @@
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { RepositoryMessageKey } from "./i18n/index.js";
 

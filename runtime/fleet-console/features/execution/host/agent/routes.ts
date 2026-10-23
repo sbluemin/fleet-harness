@@ -8,11 +8,11 @@ import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createDelayedPtyWriter, cre
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
-import type { ConsoleCaller, ConsoleCoordinatesResult } from "@fleet-console/sdk/mcp";
-import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
+import type { ConsoleCaller, ConsoleCoordinatesResult } from "../../../console-use/shared/control.js";
+import { sessionRuntime } from "../../shared/operations/activity.js";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../../../console-use/host/console-control.js";
-import { readOperationLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "../../shared/operations/types.js";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
 import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel, TERMINAL_PRIOR_WRITER_ALIVE } from "../terminal/index.js";

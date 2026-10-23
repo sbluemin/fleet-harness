@@ -1,9 +1,9 @@
+import type { FileExplorerRouteContext } from "../host/index.js";
 import fs from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { FileReadError, readFileForTheater, type FileReadResult } from "../host/file-reader.js";
@@ -78,7 +78,7 @@ describe("Files bounded reads", () => {
       const ctx = { host: {
         security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath },
         http: { readJsonBody: async () => ({ theaterId: "fixture", relativePath: "large.log", window }), writeJson: (_res: unknown, code: number, body: unknown) => { status = code; payload = body; } },
-      } } as unknown as FleetPluginServerContext;
+      } } as unknown as FileExplorerRouteContext;
       await handleFilesRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(JSON.stringify(payload)).not.toContain(tmpDir);
       const result = payload as FileReadResult;
@@ -113,7 +113,7 @@ describe("Files reference resolution", () => {
         security: { isTerminalAuthorized: () => true },
         paths: { resolveTheaterPath: () => theaterPath },
         http: { readJsonBody: async () => ({ theaterId: "fixture", path: requestedPath, pathKind }), writeJson: (_res: unknown, status: number, body: unknown) => { response = { status, body }; } },
-      } } as unknown as FleetPluginServerContext;
+      } } as unknown as FileExplorerRouteContext;
       await handleFilesResolve({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(JSON.stringify(response)).not.toContain(tmpDir);
       return response;
@@ -127,7 +127,7 @@ describe("Files reference resolution", () => {
     const statusContext = { host: {
       security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath },
       http: { readJsonBody: async () => ({ theaterId: "fixture", paths: ["normal.txt", "link-outside.txt", "missing.txt"] }), writeJson: (_res: unknown, _status: number, body: unknown) => { diskStatus = body; } },
-    } } as unknown as FleetPluginServerContext;
+    } } as unknown as FileExplorerRouteContext;
     await handleFilesDiskStatus({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, statusContext);
     expect(diskStatus).toEqual({ statuses: [
       { relativePath: "normal.txt", state: "present", mtimeMs: expect.any(Number) },

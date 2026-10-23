@@ -1,5 +1,5 @@
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
 
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 
@@ -12,9 +12,9 @@ export function OperationCaptionContributions({ operation, language, surface }: 
   return (
     <>
       {registry.operationCaptionContributions.map((contribution) => (
-        <PluginErrorBoundary key={contribution.id} fallback={<></>}>
+        <FeatureErrorBoundary key={contribution.id} fallback={<></>}>
           {contribution.render({ operation, language, surface })}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </>
   );

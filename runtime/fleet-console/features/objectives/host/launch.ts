@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
-import { canonicalModelId } from "@fleet-console/sdk/models";
-import { readOperationLaunch, withOperationChatSurface, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "../../console-use/shared/control.js";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
+import { readOperationLaunch, withOperationChatSurface, withOperationLaunchPreset, type OperationGroupedEvent } from "../../execution/shared/operations/types.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
@@ -131,7 +131,7 @@ export interface LaunchService {
   /** `attachmentIds` 는 사람이 입력창에서 올린 이미지 — 사람 입력(`actor: "human"`)일 때만 받는 세션 한 곳에 실린다. 지휘관 사본에는 싣지 않는다. */
   message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions, attachmentIds?: readonly string[]): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
   /** 사람의 방송 — live 대상만 동시에 보내고, 휴면·미관측은 깨우지 않는다. */
-  broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult>;
+  broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("../../execution/shared/conversation/types.js").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
   /** 전체 압축 — 지휘관과 operationId 가 있는 모든 구성원에게 "/compact" 를 보낸다. 큐잉·깨움·거절은 호스트 전달 경로가 정한다. */
@@ -1765,7 +1765,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const current = editableObjective(objectiveId);
       const ids = [current.id, ...current.members.map((member) => member.id)];
       const humanId = randomUUID();
-      const targets = await Promise.all(ids.map(async (targetId): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult["targets"][number]> => {
+      const targets = await Promise.all(ids.map(async (targetId): Promise<import("../../execution/shared/conversation/types.js").GroupWriteResult["targets"][number]> => {
         if (!ctx.operations.get(targetId)) return { targetId, outcome: "skipped", reason: "unknown_operation" };
         if (ctx.consoleControl?.observe(targetId)?.lifecycle !== "live") return { targetId, outcome: "skipped", reason: "session_not_live" };
         try {

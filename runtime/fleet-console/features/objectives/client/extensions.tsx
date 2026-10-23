@@ -1,4 +1,4 @@
-import type { Translate, ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { Translate, ConsoleLocale } from "@fleet-console/i18n";
 
 import type { Objective } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";

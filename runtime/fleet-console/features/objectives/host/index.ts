@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
-import type { CommodoreBoardAdapter } from "@fleet-console/sdk/commodore";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "../../execution/shared/operations/types.js";
+import type { CommodoreBoardAdapter } from "../shared/commodore-board.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools } from "./console-tools.js";

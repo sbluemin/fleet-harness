@@ -1,4 +1,4 @@
-import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "@fleet-console/sdk/settings/fonts";
+import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "../shared/fonts.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -12,8 +12,9 @@ import {
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import { DEFAULT_EXPERIMENT_SETTINGS, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, isShortcutBindingsInput, resolveExperimentSettings, sanitizeShortcutBindings, type ConsoleExperimentSettings, type ComputerUseBackendId, type ShortcutBindings } from "@fleet-console/sdk/settings";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import { DEFAULT_EXPERIMENT_SETTINGS, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings, type ConsoleExperimentSettings, type ComputerUseBackendId } from "../shared/experiments.js";
+import { isShortcutBindingsInput, sanitizeShortcutBindings, type ShortcutBindings } from "../shared/shortcuts.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../../../core/host/transport/console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
 
@@ -829,32 +830,23 @@ interface ExecutionSettingsRouteContext {
 
 const MAX_EXECUTION_SETTINGS_BYTES = 32 * 1024;
 
-export const EXECUTION_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
-  {
-    method: "GET",
-    path: "/api/v1/settings/execution",
-    summary: "Get the settings for execution.",
-    category: "Settings",
-    gate: "loopback",
-    transport: "http",
-  },
-  {
-    method: "PUT",
-    path: "/api/v1/settings/execution",
-    summary: "Save the settings for execution.",
-    category: "Settings",
-    gate: "origin-write",
-    transport: "http",
-  },
+export const SETTINGS_DOCUMENT_API_CATALOG: readonly ApiCatalogEntry[] = [
+  ...["execution", "quota", "scuttlebutt"].flatMap((name): ApiCatalogEntry[] => [
+    { method: "GET", path: `/api/v1/settings/${name}`, summary: "Read feature settings.", category: "Settings", gate: "loopback", transport: "http" },
+    { method: "PUT", path: `/api/v1/settings/${name}`, summary: "Save feature settings.", category: "Settings", gate: "origin-write", transport: "http" },
+  ]),
 ];
 
-export function createExecutionSettingsRouter(deps: ExecutionSettingsRouteDeps): (context: ExecutionSettingsRouteContext) => Promise<boolean> {
+export function createSettingsDocumentRouter(deps: ExecutionSettingsRouteDeps): (context: ExecutionSettingsRouteContext) => Promise<boolean> {
   return async function handleExecutionSettingsRoute(context: ExecutionSettingsRouteContext): Promise<boolean> {
     const { req, res, pathname } = context;
-    if (pathname !== "/api/v1/settings/execution") return false;
+    const key = pathname === "/api/v1/settings/execution" ? "execution"
+      : pathname === "/api/v1/settings/quota" ? "quota"
+      : pathname === "/api/v1/settings/scuttlebutt" ? "scuttlebutt" : null;
+    if (key === null) return false;
     if (req.method === "GET") {
       const data = deps.consoleSettingsStore.load();
-      const value = data.execution ?? null;
+      const value = (key === "execution" ? data.execution : data.plugins?.[key]) ?? null;
       deps.writeJson(res, 200, { value });
       return true;
     }
@@ -879,9 +871,9 @@ export function createExecutionSettingsRouter(deps: ExecutionSettingsRouteDeps):
       const updated = deps.consoleSettingsStore.update((current) => ({
         ...current,
         version: 1,
-        execution: preserveLegacyTerminalFont(current, body),
+        ...(key === "execution" ? { execution: preserveLegacyTerminalFont(current, body) } : { plugins: { ...current.plugins, [key]: body as Record<string, unknown> } }),
       }));
-      deps.writeJson(res, 200, { value: updated.execution ?? null });
+      deps.writeJson(res, 200, { value: (key === "execution" ? updated.execution : updated.plugins?.[key]) ?? null });
       return true;
     }
     deps.writeJson(res, 405, { error: "Method not allowed" });

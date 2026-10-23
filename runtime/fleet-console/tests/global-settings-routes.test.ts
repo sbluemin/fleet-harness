@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter, createExecutionSettingsRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
+import { createGlobalSettingsRouter, createSettingsDocumentRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
 
 const DEFAULT_REMOTE_ACCESS = {
@@ -39,7 +39,7 @@ describe("global settings routes", () => {
     const uiFont = { source: "system", familyName: "A Font's Name", size: 15 } as const;
     const localFont = { source: "custom", customName: "Local Code", cjkFallbackName: "Local CJK", size: 16 };
     const serverFont = { source: "curated", id: "fira-code", customName: "", cjkFallbackName: "Apple SD Gothic Neo", size: 13 };
-    const options: RouterHarnessOptions = { general: { uiFont }, execution: { font: serverFont }, body: { terminal: localFont } };
+    const options: RouterHarnessOptions = { general: { uiFont }, execution: { font: serverFont }, plugins: { quota: { claudeConnected: true }, scuttlebutt: { tori: true, introduced: true } }, body: { terminal: localFont } };
     const harness = createRouterHarness(options);
     await harness.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
     const migrated = harness.currentGeneral()?.fonts;
@@ -64,13 +64,14 @@ describe("global settings routes", () => {
     expect(harness.currentGeneral()?.fonts).toEqual(changed);
     expect(harness.currentData().execution?.font).toEqual(serverFont);
     expect(harness.currentGeneral()?.uiFont).toEqual(uiFont);
-    const executionRouter = createExecutionSettingsRouter({
+    const executionRouter = createSettingsDocumentRouter({
       consoleSettingsStore: harness.store, isAuthorized: () => true,
       readJsonBody: async () => ({ font: localFont, chatReadingWidth: "wide" }) as never,
       writeJson: () => {},
     });
     await executionRouter({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/execution" });
     expect(harness.currentData().execution).toEqual({ font: serverFont, chatReadingWidth: "wide" });
+    expect(harness.currentData().plugins).toEqual({ quota: { claudeConnected: true }, scuttlebutt: { tori: true, introduced: true } });
     const local = createRouterHarness({ general: { uiFont }, body: { terminal: localFont } });
     await local.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
     expect(local.currentGeneral()?.fonts?.code).toEqual({ font: { source: "system", familyName: localFont.customName }, size: 16, cjk: localFont.cjkFallbackName });

@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { AgentEffort } from "@fleet-console/sdk/models";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { AgentEffort } from "../../ai-gateway/shared/models.js";
 
 import {
   appendNotice,

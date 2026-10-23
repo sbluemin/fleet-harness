@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { FollowupBatch, FollowupCandidate, FollowupEvidence } from "./followups.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";

@@ -1,28 +1,13 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import type {
-  FloatingWidgetArrival,
-  FloatingWidgetArrivalsCapability,
-  FloatingWidgetAwaiting,
-  FloatingWidgetAwaitingsCapability,
-  FloatingWidgetComposerCapability,
-  FloatingWidgetContext,
-  FloatingWidgetDeparture,
-  FloatingWidgetDeparturesCapability,
-  FloatingWidgetDescriptor,
-  FloatingWidgetFleetSignals,
-  FloatingWidgetKeepOutCapability,
-  FloatingWidgetOperationsCapability,
-  FloatingWidgetRect,
-  FloatingWidgetSignalsCapability,
-} from "@fleet-console/sdk/floating";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { FloatingWidgetArrival, FloatingWidgetArrivalsCapability, FloatingWidgetAwaiting, FloatingWidgetAwaitingsCapability, FloatingWidgetComposerCapability, FloatingWidgetContext, FloatingWidgetDeparture, FloatingWidgetDeparturesCapability, FloatingWidgetDescriptor, FloatingWidgetFleetSignals, FloatingWidgetKeepOutCapability, FloatingWidgetOperationsCapability, FloatingWidgetRect, FloatingWidgetSignalsCapability } from "../../../../features/workspace/shared/floating.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 
 import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
-import { createHostCapabilities } from "./plugin-capabilities.js";
+import { createHostCapabilities } from "./feature-capabilities.js";
 import { useFeatureRegistry } from "./feature-registry.js";
 import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
@@ -73,9 +58,9 @@ export function FloatingWidgetLayer() {
     <div className="floating-widget-layer">
       {floatingWidgets.map((descriptor) => (
         <div key={descriptor.id} className="floating-widget">
-          <PluginErrorBoundary>
+          <FeatureErrorBoundary>
             <FloatingWidget descriptor={descriptor} context={context} />
-          </PluginErrorBoundary>
+          </FeatureErrorBoundary>
         </div>
       ))}
     </div>

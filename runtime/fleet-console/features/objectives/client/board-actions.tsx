@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
-import type { GroupBoardAction, GroupBoardActions, GroupBoardPanelContext, GroupBoardRunResult } from "@fleet-console/sdk/conversation";
-import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
+import type { GroupBoardAction, GroupBoardActions, GroupBoardPanelContext, GroupBoardRunResult } from "../../execution/shared/conversation/types.js";
+import type { LocalizedText, Translate } from "@fleet-console/i18n";
 
 import { MAX_CONTEXT, ROUTING_PREVIEW_TTL_MS, type Objective, type ObjectiveEditKind, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { nonHumanEditors } from "./actors.js";

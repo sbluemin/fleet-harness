@@ -1,6 +1,6 @@
 import { useRef, useState, useSyncExternalStore } from "react";
-import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
-import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
+import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "../../workspace/shared/rail.js";
 
 import { unseenRecords, type Objective } from "../shared/types.js";
 import { DatePicker } from "./date-picker.js";

@@ -1,5 +1,5 @@
-import type { ComposerQuote, ComposerQuoteAttachResult } from "@fleet-console/sdk/composer/quotes";
-import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
+import type { ComposerQuote, ComposerQuoteAttachResult } from "../../execution/client/composer-primitives/quotes.js";
+import type { MentionTargetDescriptor } from "../../execution/shared/composer-ports.js";
 
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { attachQuoteToCommodoreComposer } from "./commodore-inbox-section.js";

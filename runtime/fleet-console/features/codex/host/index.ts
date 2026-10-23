@@ -1,6 +1,13 @@
-import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
-import type { PluginMcpTool, PluginAdmiralMcpRegistration } from "@fleet-console/sdk/mcp";
+import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { EventPort } from "@fleet-console/infra/http/host-ports";
+import type { KnowledgeHost } from "./knowledge-port.js";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import type { AdmiralMcpRegistration } from "../../execution/shared/admiral-mcp.js";
 import { createWikiWorkspaceResolver } from "./wiki/index.js";
 
 import { createCodexMcpTools } from "./wiki-mcp.js";
@@ -12,8 +19,9 @@ import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexFileRouter } from "./codex/file-routes.js";
 
 export const CODEX_MCP_SERVER_NAME = "fleet-codex";
-export interface CodexFeatureDeps extends Pick<FleetPluginHostCapabilities, "knowledge" | "events" | "security" | "http" | "paths" | "server"> {
-  readonly registerMcp: (name: string, tools: readonly PluginMcpTool[], options: PluginAdmiralMcpRegistration) => () => void;
+export interface CodexFeatureDeps { readonly knowledge?: KnowledgeHost; readonly events: EventPort; readonly security: HttpSecurityPort; readonly http: HttpPort; readonly paths: WorkspacePaths; readonly server: ServerOriginPort;
+
+  readonly registerMcp: (name: string, tools: readonly ConsoleMcpTool[], options: AdmiralMcpRegistration) => () => void;
 }
 export async function createCodexFeature(deps: CodexFeatureDeps) {
   const ctx = { host: deps };

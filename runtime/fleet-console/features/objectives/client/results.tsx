@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 
 import type { Objective, ObjectiveMission, ObjectiveResult, PrObservation } from "../shared/types.js";
 import { AttachmentView } from "./attachments.js";

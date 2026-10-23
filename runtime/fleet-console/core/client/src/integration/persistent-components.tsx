@@ -1,8 +1,8 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 
-import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { PersistentComponentContext } from "../../../../features/workspace/shared/surface-contracts.js";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 
 import { useConsoleLocale } from "../i18n/index.js";
 import { useFeatureRegistry } from "./feature-registry.js";
@@ -34,9 +34,9 @@ export function PersistentPluginComponents() {
   return (
     <>
       {persistentComponents.map((descriptor) => (
-        <PluginErrorBoundary key={descriptor.id}>
+        <FeatureErrorBoundary key={descriptor.id}>
           <PersistentComponent render={descriptor.render} context={context} />
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </>
   );

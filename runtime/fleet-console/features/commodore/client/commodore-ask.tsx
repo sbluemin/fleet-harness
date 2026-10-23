@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { ConversationDecision, ConversationSpeaker } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
+import type { Translate } from "@fleet-console/i18n";
 
-import type { CommodoreAsk } from "@fleet-console/sdk/commodore";
-import { MAX_DECISION_ANSWER_INPUT } from "@fleet-console/sdk/commodore";
+import type { CommodoreAsk } from "../shared/contracts/types.js";
+import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
 import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, openAsks, useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, openObjectiveOnPhone, revealObjective, useObjectiveTheater } from "./board.js";

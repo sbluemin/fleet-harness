@@ -1,10 +1,10 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import { launchProviderGlyph } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import * as React from "react";
 
-import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
-import type { ConversationMemberProfile, ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
+import { operationAvatarKey, theaterAvatarKey } from "../../../../../workspace/shared/avatars.js";
+import type { ConversationMemberProfile, ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { ledgerTarget, participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";

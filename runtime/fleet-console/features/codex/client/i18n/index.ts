@@ -1,7 +1,7 @@
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import { createTranslator } from "@fleet-console/sdk/i18n/translate";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { createTranslator } from "@fleet-console/i18n/translate";
 
-export { formatAbsoluteDateTime, formatDate, formatRelativeTime } from "@fleet-console/sdk/i18n/format";
+export { formatAbsoluteDateTime, formatDate, formatRelativeTime } from "@fleet-console/i18n/format";
 
 import { CODEX_MESSAGES, type CodexMessageKey } from "./messages.js";
 

@@ -1,13 +1,9 @@
-import type {
-  ClientComposerCapability,
-  ClientConsoleStateCapability,
-  ClientExpandedSurfacesCapability,
-  ClientNavigationCapability,
-  ClientOperationsCapability,
-  ClientRailCapability,
-  ConsoleTheme,
-} from "@fleet-console/sdk/plugin";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ClientComposerCapability } from "../../execution/shared/composer-ports.js";
+import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
+import type { ClientExpandedSurfacesCapability, ClientNavigationCapability, ClientRailCapability } from "../../workspace/shared/navigation-ports.js";
+import type { ClientOperationsCapability } from "../../execution/shared/client-contract.js";
+import type { ConsoleTheme } from "../../settings/shared/theme.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import { resolveActiveLocale, setActiveLocale } from "./i18n/index.js";
 

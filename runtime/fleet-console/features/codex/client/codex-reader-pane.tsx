@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
-import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
-import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import { CaptionActionButton } from "../../workspace/client/components/caption-actions.js";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/ui/react";
+import type { PaneContext, PaneDescriptor } from "../../workspace/shared/pane.js";
 
 import {
   getCodexReaderDocumentState,

@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 
-import type { OperationCluster, OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
+import type { OperationCluster, OperationClusterMember, OperationClusterProgress } from "../../objectives/shared/operation-clusters.js";
 
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 

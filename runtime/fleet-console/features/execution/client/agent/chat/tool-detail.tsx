@@ -1,4 +1,4 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
+import * as React from "react";
 import { highlightCodeSnippet } from "@fleet-console/markdown/core";
 import { diffSnippetLines, type SnippetDiffLine } from "@fleet-console/markdown/diff";
 import { StreamedMarkdown } from "../streamed-markdown.js";

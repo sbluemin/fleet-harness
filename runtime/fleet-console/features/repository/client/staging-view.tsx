@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "./icons.js";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../shared/types.js";
@@ -12,7 +12,7 @@ import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
-import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -260,7 +260,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   // Amend를 켜는 순간 HEAD의 제목·본문을 물려받는다 — 빈 칸에서 다시 쓰게 하지 않는 Fork 문법.
   const prefillFromHead = useCallback(() => {
     if (!ctx.theaterId || !workstate?.headSha) return;
-    ctx.api.fetch(null, "repository/commit", {
+    ctx.api.fetch("repository/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: workstate.headSha }),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { RepositoryMessageKey } from "./i18n/index.js";
 import { installPointerDragLifecycle } from "./rail-layout.js";

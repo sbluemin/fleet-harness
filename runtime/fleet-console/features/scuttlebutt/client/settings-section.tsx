@@ -1,16 +1,10 @@
-import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
-import { isAgentEffort } from "@fleet-console/sdk/models";
-import { React, useModelRoster, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
-import {
-  ExperimentalBadge,
-  SettingsCard,
-  SettingsHelpTip,
-  SettingsRow,
-  SettingsSlider,
-  SettingsToggle,
-  defineSettingsSection,
-  useMobileSettingsHost,
-} from "@fleet-console/sdk/settings/browser";
+import { ModelCoordinatePicker } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { isAgentEffort } from "../../ai-gateway/shared/models.js";
+import * as React from "react";
+import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
+import { ExperimentalBadge, SettingsCard, SettingsHelpTip, SettingsRow, SettingsSlider, SettingsToggle, defineSettingsSection } from "../../settings/client/preferences-context.js";
+import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { aideModels } from "./console-read.js";
 

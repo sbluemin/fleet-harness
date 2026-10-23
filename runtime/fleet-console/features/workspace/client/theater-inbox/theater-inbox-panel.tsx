@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
-import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConsoleTheaterSummary } from "../../shared/console-state.js";
+import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "../../shared/theater-inbox.js";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -243,9 +243,9 @@ function TheaterInboxPanelPage({ theater, language, section, pageId, navigation,
       layout={page?.layout}
       footer={applies ? <p className="theater-inbox-applies"><span>{t("theaterInbox.applies")}</span>{applies}</p> : null}
     >
-      <PluginErrorBoundary>
+      <FeatureErrorBoundary>
         {section.descriptor.render({ theater, language, pageId, visible: true, focusRequest, links, navigation })}
-      </PluginErrorBoundary>
+      </FeatureErrorBoundary>
     </ConversationPanelFrame>
   );
 }

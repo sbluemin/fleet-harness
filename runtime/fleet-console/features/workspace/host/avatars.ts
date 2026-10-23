@@ -2,8 +2,8 @@ import type http from "node:http";
 import path from "node:path";
 
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
-import { applyAvatarWrite, AVATARS_API_PATH, sanitizeAvatarBook, sanitizeAvatarWrite, type MongleLook } from "@fleet-console/sdk/avatars";
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import { applyAvatarWrite, AVATARS_API_PATH, sanitizeAvatarBook, sanitizeAvatarWrite, type MongleLook } from "../shared/avatars.js";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 
 /**
  * 몽글 아바타 책 — 키(`theater:<id>`·`operation:<id>`) → 모습. Console 서버가 유일한 writer 다.

@@ -1,5 +1,5 @@
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
+import * as React from "react";
 
 import type { TerminalFileLinks } from "../terminal/shared/terminal-file-links.js";
 

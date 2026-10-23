@@ -1,6 +1,6 @@
 import { isAbsolute, parseFileRef, type FileRef } from "@fleet-console/markdown/file-ref";
-import type { PaneTarget } from "@fleet-console/sdk/pane";
-import type { OpenFileRequest } from "@fleet-console/sdk/navigation";
+import type { PaneTarget } from "../../workspace/shared/pane.js";
+import type { OpenFileRequest } from "../../workspace/shared/navigation.js";
 import type { FileResolveResult } from "../host/file-resolver.js";
 
 export const DOCUMENT_PANE_ID = "file-explorer-document";

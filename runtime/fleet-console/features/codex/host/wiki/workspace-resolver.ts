@@ -2,13 +2,13 @@ import * as fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-import type { FleetPluginKnowledgeHost } from "@fleet-console/sdk/plugin";
+import type { KnowledgeHost } from "../knowledge-port.js";
 
 import { createMemoryPaths } from "./paths.js";
 import type { MemoryPaths } from "./types.js";
 
 /** Wiki가 호스트에서 받는 것 — 사령관 id로 정해지는 root와, 이주 한 번에만 쓰는 옛 원본 목록. */
-export type WikiKnowledgeHost = Pick<FleetPluginKnowledgeHost, "root" | "ids" | "legacyKnowledgeSources">;
+export type WikiKnowledgeHost = Pick<KnowledgeHost, "root" | "ids" | "legacyKnowledgeSources">;
 export interface WikiWorkspaceResolverDependencies {
   /** 없는 호스트에서는 지식 기능을 거부한다 — 옛 위치로 되돌아가지 않는다. */
   readonly knowledge: WikiKnowledgeHost | undefined;

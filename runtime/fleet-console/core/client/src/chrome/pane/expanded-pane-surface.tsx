@@ -1,5 +1,5 @@
-import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../../../../features/workspace/shared/expanded-surface.js";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { getExpandedSurfaceState, openExpandedSurface } from "../expanded-surface/store.js";
@@ -58,13 +58,13 @@ function resolvePaneTitle(ctx: ExpandedSurfaceContext, language: string): string
 
 // 표면 제목은 렌더 밖(호스트 스토어)에서 불리므로 훅을 쓸 수 없다. 레지스트리 스냅샷을
 // 마지막 렌더에서 받아 두고 그 사본을 읽는다 — 페인 목록은 플러그인 로드 뒤 바뀌지 않는다.
-let paneIndexSnapshot: ReadonlyMap<string, import("@fleet-console/sdk/pane").PaneDescriptor> = new Map();
+let paneIndexSnapshot: ReadonlyMap<string, import("../../../../../features/workspace/shared/pane.js").PaneDescriptor> = new Map();
 
 function readPaneDescriptor(paneId: string) {
   return paneIndexSnapshot.get(paneId);
 }
 
-function toPaneContext(ctx: ExpandedSurfaceContext, role: import("@fleet-console/sdk/pane").PaneRole) {
+function toPaneContext(ctx: ExpandedSurfaceContext, role: import("../../../../../features/workspace/shared/pane.js").PaneRole) {
   return {
     paneId: ctx.params.paneId ?? "",
     instanceId: ctx.instanceId,
@@ -111,7 +111,7 @@ function ExpandedPaneContent({
   descriptor,
   ctx,
 }: {
-  readonly descriptor: import("@fleet-console/sdk/pane").PaneDescriptor;
+  readonly descriptor: import("../../../../../features/workspace/shared/pane.js").PaneDescriptor;
   readonly ctx: ExpandedSurfaceContext;
 }) {
   const index = usePaneIndex();

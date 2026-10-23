@@ -2,9 +2,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { Terminal, type ILink } from "@xterm/xterm";
 import { createFileLinkProvider } from "../features/execution/client/terminal/shared/terminal-file-links.js";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
+import type { PaneDescriptor } from "../features/workspace/shared/pane.js";
 import { parseFileRef, isAbsolute } from "@fleet-console/markdown/file-ref";
-import { createHostCapabilities, createHostPaneTargetPorts } from "../core/client/src/integration/plugin-capabilities.js";
+import { createHostCapabilities, createHostPaneTargetPorts } from "../core/client/src/integration/feature-capabilities.js";
 import { landPaneTarget, type PaneTargetBinding } from "../core/client/src/chrome/pane/pane-target.js";
 import { getPaneStoreSnapshot, __resetPaneStoreForTests } from "../core/client/src/chrome/pane/pane-store.js";
 import { getRailStoreSnapshot } from "../core/client/src/chrome/rail/rail-store.js";

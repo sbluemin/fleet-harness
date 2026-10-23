@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OnboardingEntryHint } from "@fleet-console/sdk/onboarding";
-import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OnboardingEntryHint } from "../shared/types.js";
+import { ONBOARDING_TOUR_LAYER_SELECTOR } from "../shared/anchors.js";
 
 import { onboardingT } from "./i18n.js";
 import { rememberSeen } from "./seen-store.js";

@@ -1,10 +1,10 @@
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
-import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
-import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
-import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { normalizeOperationOwner } from "../../../../features/execution/shared/operations/types.js";
+import { liftNestedActivity } from "../../../../features/execution/shared/operations/activity.js";
+import type { ClientNotification } from "../../../../features/execution/shared/notifications.js";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "../../../../features/execution/shared/client-contract.js";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { fetchOperations, putOperationOrder } from "./api.js";

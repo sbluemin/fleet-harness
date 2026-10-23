@@ -1,6 +1,6 @@
 import { parseFileRef, isAbsolute, type FileRef } from "@fleet-console/markdown/file-ref";
 import { bindMarkdownLinkActivation } from "@fleet-console/markdown/link-activation";
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 import { fetchFilePeek, fetchFileRefs, CodexRequestError } from "./api.js";
 import { getT, resolveActiveLocale } from "../i18n/index.js";
 import { escapeHtml } from "./utils.js";

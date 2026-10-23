@@ -3,11 +3,11 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeConsoleUseGestures } from "../../../../../features/console-use/client/gestures.js";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "../../../../../features/workspace/shared/rail.js";
 
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import "../../styles/rail.css";

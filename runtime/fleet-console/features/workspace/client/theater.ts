@@ -26,7 +26,7 @@ import { describeTheaterRegistrationError } from "../../../core/client/src/integ
 import { getT } from "../../../core/client/src/i18n/index.js";
 import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
+import type { OperationLaunchKind } from "../../execution/shared/operations/types.js";
 
 // ─── register and forget ───────────────────────────────────────────────────────
 

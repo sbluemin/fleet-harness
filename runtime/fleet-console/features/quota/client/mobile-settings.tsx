@@ -1,7 +1,7 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
-import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
+import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 
 import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
 import { getT } from "./i18n/index.js";

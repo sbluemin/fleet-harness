@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { SidebarFooterEntryContext } from "@fleet-console/sdk/plugin";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import type { SidebarFooterEntryContext } from "../../shared/surface-contracts.js";
 import { DEPUTY_COMMAND_BAND_ENTRY_ID, useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -56,7 +56,7 @@ function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
   if (!sidebarFooterEntries.length) return null;
   return <div className="sidebar-footer-entries" ref={ref}><span className="sidebar-footer-entries-content">{sidebarFooterEntries.map((entry) => {
     const Render = entry.render;
-    return <PluginErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} /></PluginErrorBoundary>;
+    return <FeatureErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} /></FeatureErrorBoundary>;
   })}</span></div>;
 }
 

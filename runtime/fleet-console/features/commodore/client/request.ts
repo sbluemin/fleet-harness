@@ -1,4 +1,4 @@
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import { serverReached } from "./board.js";
 
 const resolutions = new WeakMap<ClientApiCapability, Map<string, Promise<string>>>();
@@ -23,7 +23,7 @@ export async function postCommodore<T>(api: ClientApiCapability, path: string, b
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
   let response: Response;
-  try { response = await api.fetch(null, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  try { response = await api.fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch (error) {
     const failure = error as { name?: unknown; status?: unknown; body?: { error?: unknown } } | null;
     const code = failure?.body?.error;

@@ -1,5 +1,6 @@
-import type { ClientApiCapability, ClientExperimentsCapability } from "@fleet-console/sdk/plugin";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientExperimentsCapability } from "../../../settings/shared/client-ports.js";
+import type { ConsoleExperimentSettings } from "../../../settings/shared/experiments.js";
 
 /**
  * install에서 받은 실험 설정 능력 — 렌더 밖(store)에서도 읽고 구독해야 하므로 모듈 스코프에 둔다.
@@ -63,7 +64,7 @@ export function readComputerUseEnabled(payload: Record<string, unknown> | undefi
 }
 
 export async function setComputerUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/computer-use`, {
+  await api.fetch(`experiments/sessions/${encodeURIComponent(operationId)}/computer-use`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled, language }),
@@ -72,7 +73,7 @@ export async function setComputerUse(api: ClientApiCapability, operationId: stri
 
 /** 패널 안 허용 요청에 답한다. 실패(이미 풀린 요청·실험 꺼짐)는 던진다 — 카드가 다시 누르게 한다. */
 export async function answerUseRequest(api: ClientApiCapability, input: { readonly operationId: string; readonly requestId: string; readonly capability: "console" | "computer"; readonly decision: "deny" | "turn" | "always"; readonly language: "en" | "ko" }): Promise<void> {
-  const response = await api.fetch(null, `experiments/sessions/${encodeURIComponent(input.operationId)}/use-requests/${encodeURIComponent(input.requestId)}`, {
+  const response = await api.fetch(`experiments/sessions/${encodeURIComponent(input.operationId)}/use-requests/${encodeURIComponent(input.requestId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision: input.decision, capability: input.capability, language: input.language }),
@@ -81,7 +82,7 @@ export async function answerUseRequest(api: ClientApiCapability, input: { readon
 }
 
 export async function setConsoleUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
+  await api.fetch(`experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled, language }),

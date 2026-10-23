@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { OpenUIOpenPort, OpenUIOpenTarget } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { OpenUIOpenPort, OpenUIOpenTarget } from "../../execution/shared/chat-renderer.js";
 import { finishedObjectives, readTheater } from "./board.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex } from "./commodore-reference-input.js";
 

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import { inputIssues, type AdmiralMcpSession, type ConsoleCaller, type PluginAdmiralMcpRegistration, type PluginMcpServerTools, type PluginMcpTool } from "@fleet-console/sdk/mcp";
+import { inputIssues, type ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { type AdmiralMcpSession, type AdmiralMcpRegistration, type McpServerTools } from "../shared/admiral-mcp.js";
+import { type ConsoleCaller } from "../../console-use/shared/control.js";
 import { z } from "zod";
 
 export interface AdmiralMcpHostOptions {
@@ -26,7 +28,7 @@ const unscopedLabel = (label: string | undefined): string | null => {
 
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
 export function createAdmiralMcpHost(transport?: McpHttpTransport, options: AdmiralMcpHostOptions = {}) {
-  type ToolRunner = { readonly tool: PluginMcpTool; readonly run: (args: unknown, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> };
+  type ToolRunner = { readonly tool: ConsoleMcpTool; readonly run: (args: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) => Promise<unknown> };
   type Registration = {
     manager: ReturnType<typeof createExecutorSessionManager>;
     stop(): Promise<void>;
@@ -37,7 +39,7 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
   const retiring = new Set<Promise<void>>();
   let disposed = false;
   return {
-    register(name: string, tools: readonly PluginMcpTool[], registration: PluginAdmiralMcpRegistration = {}): () => void {
+    register(name: string, tools: readonly ConsoleMcpTool[], registration: AdmiralMcpRegistration = {}): () => void {
       if (disposed) throw new Error("Admiral MCP host is disposed");
       if (!/^fleet-[a-z0-9][a-z0-9-]*$/.test(name) || name === "fleet-console-use" || name === "fleet-core" || name === "fleet-ai-gateway" || name === "fleet-computer-use") throw new Error("Invalid Admiral MCP name");
       if (registrations.has(name)) throw new Error(`Admiral MCP already registered: ${name}`);
@@ -50,7 +52,7 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
         if (!/^[a-zA-Z0-9_-]+$/.test(tool.name)) throw new Error("Invalid Admiral MCP tool name");
         const schema = z.fromJSONSchema(tool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
         // 서빙 경로와 사령관 묶음 경로가 같은 선검사(내려간 서버·인자 검증)를 지난다. 호출자·cwd 는 부르는 쪽이 정한다.
-        const run = async (args: unknown, context: Parameters<PluginMcpTool["execute"]>[1]) => {
+        const run = async (args: unknown, context: Parameters<ConsoleMcpTool["execute"]>[1]) => {
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Admiral MCP is unavailable" }], isError: true };
           const parsed = schema.safeParse(args);
           if (!parsed.success) return { content: [{ type: "text", text: JSON.stringify({ error: "Invalid MCP arguments", issues: inputIssues(parsed.error.issues) }) }], isError: true };
@@ -87,11 +89,11 @@ export function createAdmiralMcpHost(transport?: McpHttpTransport, options: Admi
      * `commodoreScoped` 서버들의 도구를 사령관 하나(호스트가 정한 id와 그 디렉터리)에 묶는다. 부르는 쪽이 넘긴 cwd·사령관은 버리고
      * 이 값으로 부른다 — 모델이나 세션 자리가 다른 사령관을 고를 수 없다. 호출자는 싣지 않는다(fail-closed).
      */
-    bindCommodore(commodoreId: string, directory: string): PluginMcpServerTools[] {
+    bindCommodore(commodoreId: string, directory: string): McpServerTools[] {
       if (disposed) return [];
       return [...registrations].flatMap(([name, entry]) => entry.commodoreTools ? [{
         name,
-        tools: entry.commodoreTools.map(({ tool, run }): PluginMcpTool => ({
+        tools: entry.commodoreTools.map(({ tool, run }): ConsoleMcpTool => ({
           name: tool.name, description: tool.description, inputSchema: tool.inputSchema,
           execute: (args, context) => run(args, { cwd: directory, commodoreId, ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}), ...(context.signal ? { signal: context.signal } : {}) }),
         })),

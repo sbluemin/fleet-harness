@@ -1,10 +1,11 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
+import type { OperationKindDescriptor } from "../../../execution/shared/client-contract.js";
+import type { RailEntryDescriptor } from "../../shared/rail.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -25,14 +26,14 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
-import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -276,9 +277,9 @@ export function ConversationSideBarDeputies() {
   return (
     <div ref={ref} className="conversation-side-deputies" role="group" aria-label={t("conversation.side.pinnedAria")}>
       {pinned.map((entry) => (
-        <PluginErrorBoundary key={entry.id} fallback={null}>
+        <FeatureErrorBoundary key={entry.id} fallback={null}>
           <PluginEntry render={entry.render} />
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ))}
     </div>
   );
@@ -1158,7 +1159,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       ...(tab.defaultWidth === undefined ? {} : { defaultWidth: tab.defaultWidth }),
       ...(section ? { section } : {}),
       // 본문 배치는 패널 머리와 같은 축의 공통 틀이 진다 — 탭이 `fill` 을 선언하지 않으면 가운데 읽기 열이다.
-      render: () => <ConversationPanelFrame layout={tab.layout}><PluginErrorBoundary fallback={null}>{tab.render(context)}</PluginErrorBoundary></ConversationPanelFrame>,
+      render: () => <ConversationPanelFrame layout={tab.layout}><FeatureErrorBoundary fallback={null}>{tab.render(context)}</FeatureErrorBoundary></ConversationPanelFrame>,
     }));
     return () => {
       for (const dispose of disposers) dispose();
@@ -1209,12 +1210,12 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
           </button>
-          {hasActions ? <span className="conversation-pill-controls"><PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary></span> : null}
+          {hasActions ? <span className="conversation-pill-controls"><FeatureErrorBoundary fallback={null}>{actions}</FeatureErrorBoundary></span> : null}
         </div>
         {tools(browser)}
       </div>
       <div className="conversation-body is-surface">
-        <PluginErrorBoundary fallback={null}>{descriptor.render(context)}</PluginErrorBoundary>
+        <FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary>
       </div>
     </div>
   );
@@ -1344,20 +1345,20 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   };
   const captionView = captionRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language }) ?? null;
   const viewSwitch = descriptor?.captionViewSwitch === undefined ? null : (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       <PluginOperationRenderer {...captionRender} render={descriptor.captionViewSwitch} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
   // 지구본(tools-lead)은 플릿 브라우저 문이다 — 웹 브라우저 Console 에서는 세우지 않는다(시안 v2 규칙 g).
   const toolsLead = descriptor?.captionToolsLead === undefined || !isDesktopShell() ? null : (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       <PluginOperationRenderer {...captionRender} render={descriptor.captionToolsLead} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
   const shelf = descriptor?.captionActions === undefined ? null : (
-    <PluginErrorBoundary fallback={<></>}>
+    <FeatureErrorBoundary fallback={<></>}>
       <PluginOperationRenderer {...captionRender} render={descriptor.captionActions} />
-    </PluginErrorBoundary>
+    </FeatureErrorBoundary>
   );
   const hasPillControls = captionView !== null || viewSwitch !== null;
   // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Operation 의 합집합, 지휘관 제외.

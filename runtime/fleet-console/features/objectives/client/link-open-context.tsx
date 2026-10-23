@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { OpenLinkHandler } from "@fleet-console/sdk/link";
+import type { OpenLinkHandler } from "@fleet-console/link/core";
 
 /**
  * 목표 패널 트리의 링크 열기 길 — 호스트(RailPanelContext·ExpandedSurfaceContext)가

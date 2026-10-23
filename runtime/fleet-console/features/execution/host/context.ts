@@ -1,19 +1,30 @@
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
+import type { OperationsHost } from "./operations/ports.js";
+import type { AdmiralMcpHost } from "../shared/admiral-mcp.js";
+import type { ExperimentsHost } from "../../settings/shared/experiment-ports.js";
+import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
+import type { EventPort } from "@fleet-console/infra/http/host-ports";
+import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
+import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
-import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { RouteHandler, UpgradeHandler } from "@fleet-console/sdk/routing";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/routing";
 
-export type ConsoleRuntimeHost = Pick<FleetPluginHostCapabilities, "consoleUse" | "mcpTransport" | "events" | "server" | "http" | "security" | "lifecycle" | "experiments"> & {
-  readonly admiralMcp: Pick<FleetPluginHostCapabilities["admiralMcp"], "connect">;
+export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
+  readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeOperation(operationId: string): void; endParticipant(operationId: string): void };
   readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeOperation(operationId: string): void | Promise<void>; interruptOperation(operationId: string): number; bindTerminalPaste(paste: (operationId: string) => boolean): () => void; endAgentSession(operationId: string): void };
   /** 패널 안 허용 요청(콘솔 사용·컴퓨터 사용). 답하는 라우트와 턴 종료가 쓴다. */
   readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
   readonly useContext?: import("./use-context.js").UseContext;
-  readonly operations: Pick<FleetPluginHostCapabilities["operations"], "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
-  readonly paths: Omit<FleetPluginHostCapabilities["paths"], "pluginDataDir">;
+  readonly operations: Pick<OperationsHost, "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
+  readonly paths: Omit<WorkspacePaths, "pluginDataDir">;
   /**
    * 이 요청이 입장한 접속의 수명. 원격 리스너에서는 그 원격 세션이고, 루프백에서는 끝나지 않는다.
    * 판정은 리스너와 세션을 아는 Console이 하고, 실행 기능은 묻기만 한다. 이 능력이 없는 호스트에서는

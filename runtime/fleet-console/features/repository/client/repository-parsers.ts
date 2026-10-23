@@ -1,4 +1,4 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 
 import type { LogCommitEntry, RepoCandidate } from "../shared/types.js";
 import { getT } from "./i18n/index.js";

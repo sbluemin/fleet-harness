@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import type { Translate } from "@fleet-console/i18n";
+import type { StatusGlyphState } from "./components/status-glyph.js";
 
 import type { Objective } from "../shared/types.js";
 import { memberFailureNote, originTitleOf } from "./clusters.js";

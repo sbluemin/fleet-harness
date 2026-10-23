@@ -1,6 +1,8 @@
+import type { ExecutionClientDeps } from "../../deps.js";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
-import { createConversationStream, type ConversationParticipant, type ConversationPreview, type ConversationSpeaker, type GroupTimelineSnapshot, type OperationClusterConversation } from "@fleet-console/sdk/conversation";
-import type { OperationClusterSource, PluginInstallContext } from "@fleet-console/sdk/plugin";
+import { createConversationStream } from "../../../shared/conversation/stream.js";
+import { type ConversationParticipant, type ConversationPreview, type ConversationSpeaker, type GroupTimelineSnapshot, type OperationClusterConversation } from "../../../shared/conversation/types.js";
+import type { OperationClusterSource } from "../../../../objectives/shared/operation-clusters.js";
 import { getState, ownOperationRuntime, subscribe as subscribeConsole } from "../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
@@ -125,8 +127,8 @@ const getRevision = () => revision;
  * 주인은 호스트가 실은 `conversation.subjectOperationId()` 이고, 목록 홈에서는 null 이라 아무것도 열지 않는다.
  */
 export function installGroupTimeline(ctx: {
-  readonly experiments: Pick<PluginInstallContext["experiments"], "read" | "subscribe">;
-  readonly conversation?: Pick<NonNullable<PluginInstallContext["conversation"]>, "isActive" | "subscribe" | "subjectOperationId">;
+  readonly experiments: Pick<ExecutionClientDeps["experiments"], "read" | "subscribe">;
+  readonly conversation?: Pick<NonNullable<ExecutionClientDeps["conversation"]>, "isActive" | "subscribe" | "subjectOperationId">;
 }): () => void {
   let disposed = false;
   const sync = () => {

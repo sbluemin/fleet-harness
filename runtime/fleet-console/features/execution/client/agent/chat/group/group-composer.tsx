@@ -1,33 +1,16 @@
-import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "@fleet-console/sdk/conversation";
-import {
-  AttachImageIcon,
-  ComposerAttachmentTray,
-  ComposerDeck,
-  ComposerQuoteTray,
-  ComposerDeckGroup,
-  ComposerDeckRow,
-  ComposerMenu,
-  ComposerMenuHeading,
-  ComposerMenuItem,
-  ComposerMenuSeparator,
-  ComposerNotice,
-  ComposerPlusButton,
-  ComposerSendButton,
-  MentionChip,
-  composerAttachmentNoticeText,
-  composerDeckKeyDown,
-  composeQuotedPrompt,
-  composerQuotePlaceholder,
-  composerQuoteValues,
-  composerT,
-  createComposerAttachments,
-  useComposerAttachmentInput,
-  useComposerAttachmentSnapshot,
-  useComposerQuotes,
-} from "@fleet-console/sdk/composer";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "../../../../shared/conversation/types.js";
+import { AttachImageIcon } from "../../../composer-primitives/icons.js";
+import { ComposerAttachmentTray, ComposerMenu, ComposerMenuHeading, ComposerMenuItem, ComposerMenuSeparator, ComposerNotice, ComposerPlusButton, ComposerSendButton } from "../../../composer-primitives/attachment-surface.js";
+import { ComposerDeck, ComposerDeckGroup, ComposerDeckRow, composerDeckKeyDown } from "../../../composer-primitives/deck.js";
+import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "../../../composer-primitives/quote-tray.js";
+import { MentionChip } from "../../../composer-primitives/mention-chip.js";
+import { composerAttachmentNoticeText, composerT } from "../../../composer-primitives/messages.js";
+import { composeQuotedPrompt, composerQuoteValues } from "../../../composer-primitives/quotes.js";
+import { createComposerAttachments } from "../../../composer-primitives/attachment-store.js";
+import { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "../../../composer-primitives/attachment-input.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import * as React from "react";
 
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";

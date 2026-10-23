@@ -1,0 +1,29 @@
+{
+  "name": "@fleet-console/ui",
+  "version": "1.254.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./react": {
+      "types": "./react.tsx",
+      "default": "./react.tsx"
+    },
+    "./store": {
+      "types": "./store.ts",
+      "default": "./store.ts"
+    }
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^6.0.2"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

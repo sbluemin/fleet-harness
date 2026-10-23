@@ -2,15 +2,16 @@ import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { AgentConversationEntry, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
-import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { ClientMobileBarCapability, PaneContext } from "@fleet-console/sdk/pane";
-import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
-import { chromeRowHeight, useChromeHeightProperty, useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
-import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
+import type { AgentConversationEntry, AgentConversationProps } from "../../execution/shared/chat-renderer.js";
+import type { ConversationParticipant, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
+import type { Translate } from "@fleet-console/i18n";
+import type { ClientMobileBarCapability, PaneContext } from "../../workspace/shared/pane.js";
+import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "../../workspace/shared/rail.js";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/ui/react";
+import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
+import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "@fleet-console/sdk/commodore";
+import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";

@@ -1,8 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, parseModelRoster, type ModelRoster, type ModelRosterTarget } from "@fleet-console/sdk/models";
-import { OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
-import { launchProviderFromGroupId } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { ExperimentModelOption } from "@fleet-console/sdk/settings";
+import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, parseModelRoster, type ModelRoster, type ModelRosterTarget } from "../shared/models.js";
+import { OPERATION_CATALOG_CHANGED_EVENT } from "../../execution/client/operations.js";
+import { launchProviderFromGroupId } from "./components/launch-provider-glyphs.js";
+import type { ExperimentModelOption } from "../../settings/shared/experiments.js";
 
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "../../../core/client/src/integration/operations-sse.js";
 

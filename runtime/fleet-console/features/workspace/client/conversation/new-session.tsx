@@ -1,17 +1,22 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView } from "../../../execution/shared/operations/types.js";
+import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "../../../execution/client/operations.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, openNewSession, requestLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
-import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerDeckActiveIndex, composerDeckKeyDown, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
-import { launchProviderFromGroupId, launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
+import { AttachImageIcon } from "../../../execution/client/composer-primitives/icons.js";
+import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton } from "../../../execution/client/composer-primitives/attachment-surface.js";
+import { composerAttachmentNoticeText, composerT } from "../../../execution/client/composer-primitives/messages.js";
+import { composerDeckActiveIndex, composerDeckKeyDown } from "../../../execution/client/composer-primitives/deck.js";
+import { createComposerAttachments } from "../../../execution/client/composer-primitives/attachment-store.js";
+import { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "../../../execution/client/composer-primitives/attachment-input.js";
+import { launchProviderFromGroupId, launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
-import { resolveRowEffort } from "../../../execution/client/components/effort-track.js";
+import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";

@@ -1,10 +1,12 @@
-import type { FleetPluginHostCapabilities, ApiCatalogEntry } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 interface ExecutionSettingsContext {
   readonly host: {
-    readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
-    readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized">;
+    readonly http: Pick<HttpPort, "readJsonBody" | "writeJson">;
+    readonly security: Pick<HttpSecurityPort, "isTerminalAuthorized">;
   };
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }

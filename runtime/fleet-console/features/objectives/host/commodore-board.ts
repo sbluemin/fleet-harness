@@ -1,5 +1,5 @@
-import type { CommodoreBoardWakeCode, CommodoreBoardWatch, CommodoreTurnBindings, CommodoreWakeSink } from "@fleet-console/sdk/commodore";
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { CommodoreBoardWakeCode, CommodoreBoardWatch, CommodoreTurnBindings, CommodoreWakeSink } from "../shared/commodore-board.js";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, stalledObjectives, stallEpisode, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../shared/board-state.js";
 import type { Objective, ObjectiveEvent } from "../shared/types.js";
 
@@ -146,7 +146,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   cleanups.push(() => clearInterval(plannedTimer));
 
   /** 보드 도구를 감싸 사령관이 쓰는 목표를 표시한다 — 쓰는 동안과 끝난 뒤 잠깐, 그 목표의 상태 변화는 사령관 자신의 것이다. */
-  const selfAttributed = (runner: Runner, tool: PluginMcpTool, turn: CommodoreTurnBindings): PluginMcpTool => ({
+  const selfAttributed = (runner: Runner, tool: ConsoleMcpTool, turn: CommodoreTurnBindings): ConsoleMcpTool => ({
     ...tool,
     execute: async (args, context) => {
       // 종료 알림은 보드를 변경하는 마지막 기회가 아니다. 이미 실행 중인 쓰기를 되돌리지는 않는다.

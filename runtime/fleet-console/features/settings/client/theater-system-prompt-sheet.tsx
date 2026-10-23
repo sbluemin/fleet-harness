@@ -7,7 +7,7 @@ import "./theater-system-prompt-sheet.css";
 import { MobileGroupLabel, MobileRadioRow } from "./settings-mobile.js";
 import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { getMobileSheetStack, popMobileSheet, pushMobileSheet, type MobileSheetKind } from "../../../core/client/src/chrome/mobile/mobile-store.js";
-import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import {
   isNearPromptLimit,
   isOverPromptLimit,

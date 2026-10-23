@@ -1,4 +1,4 @@
-import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { AgentClientState, AgentCliMetadata, SessionInfo, SessionStep, TurnState } from "./types.js";
 

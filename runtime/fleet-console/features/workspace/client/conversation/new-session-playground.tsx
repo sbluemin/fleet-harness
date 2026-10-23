@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { MONGLE_BASES, type MongleActivity, type MongleRole } from "@fleet-console/sdk/avatars";
-import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
-import { IDENTITY_TONES, isIdentityTone, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
+import { MONGLE_BASES, type MongleActivity, type MongleRole } from "../../shared/avatars.js";
+import { MongleAvatar } from "../components/mongle-avatar.js";
+import { IDENTITY_TONES, isIdentityTone, type IdentityTone } from "../../shared/identity-tones.js";
 
 import "./new-session-playground.css";
 

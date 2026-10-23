@@ -1,7 +1,9 @@
-import { definePlugin } from "@fleet-console/sdk/plugin/browser";
-import type { CommodoreBoardClient, CommodoreClientHost, CommodoreClientSnapshot } from "@fleet-console/sdk/commodore";
-import type { PaneDescriptor } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { CommodoreClientDeps } from "./deps.js";
+import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
+import type { CommodoreBoardClient } from "../../objectives/shared/commodore-board-client.js";
+import type { CommodoreClientHost, CommodoreClientSnapshot } from "../shared/contracts/client.js";
+import type { PaneDescriptor } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
@@ -67,15 +69,17 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     subscribeConversation: subscribeCommodoreConversationActive,
     renderRowGlyph: (_theaterId, operated = true) => operated ? renderCommodoreRowGlyph() : renderCommodoreRowGlyphOff(),
   };
-  const plugin = definePlugin({
-    id: "commodore",
-    install: (ctx) => {
+  const install = (ctx: CommodoreClientDeps): (() => void) => {
       const offBoard = installCommodoreBoard(board);
       const offState = installCommodoreState(ctx);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
       const offQuotes = ctx.composer.receiveQuotes?.("commodore", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets });
       return () => { offQuotes?.(); offConversation(); offState(); offBoard(); snapshots.clear(); };
-    },
+
+  };
+  const plugin: ClientFeatureDescriptor = {
+    id: "commodore",
+
     railEntries: [commodoreEntry],
     panes: [commodoreMobilePane],
     theaterContributions: [commodoreTheaterContribution],
@@ -85,6 +89,6 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
     persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
     conversationSurfaces: [commodoreConversationSurface],
-  });
-  return { plugin, host };
+  };
+  return { plugin, host, install };
 }

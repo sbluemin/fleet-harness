@@ -1,4 +1,4 @@
-import { isRosterFallbackGroup } from "@fleet-console/sdk/models";
+import { isRosterFallbackGroup } from "../shared/models.js";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { pluginSettingsSectionId } from "../../settings/client/settings-entry.js";

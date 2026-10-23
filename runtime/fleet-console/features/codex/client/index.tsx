@@ -1,7 +1,8 @@
+import type { CodexClientDeps } from "./deps.js";
 import { useEffect } from "react";
 
-import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { PersistentComponentContext } from "../../workspace/shared/surface-contracts.js";
+import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
 
 import { bindCodexHost, setConsoleLocale, setConsoleTheme } from "./host.js";
 import { refreshCodexLocale } from "./codex-host.js";
@@ -15,7 +16,7 @@ import "./codex/styles/theme.css";
 import "./codex/styles/layout.css";
 import "./codex/styles/components.css";
 
-export const codexClient: FleetClientPlugin = {
+export const codexClient: ClientFeatureDescriptor = {
   id: "codex",
   railEntries: [codexEntry],
   panes: [codexPane, codexReaderPane],
@@ -23,32 +24,7 @@ export const codexClient: FleetClientPlugin = {
   // 리더 주소는 패널이 닫혀 있어도 살아 있어야 한다 — 새로고침·공유 링크·뒤로가기가
   // 패널을 여는 쪽이지, 패널이 열려 있어야 도는 것이 아니다.
   persistentComponents: [{ id: "codex-console-facts", render: (ctx) => <CodexConsoleFacts ctx={ctx} /> }],
-  install: (ctx) => {
-    // 명령형 DOM 컨트롤러들이 렌더 밖에서 호스트 사실을 읽는다 — 코어 스토어를 직접
-    // import하던 자리를, 호스트가 건네준 능력 하나로 대체한다.
-    bindCodexHost({
-      consoleState: ctx.consoleState,
-      navigation: ctx.navigation,
-      surfaces: ctx.surfaces,
-      rail: ctx.rail,
-      composer: ctx.composer,
-      operations: ctx.operations,
-    });
-    // 서버는 감시 결과를 콘솔 공용 스트림으로 계속 밀어 보낸다 — 받는 쪽이 없으면 그
-    // 프레임은 버려지고, 화면은 파일이 바뀌어도 낡은 채로 남는다. 감시가 끊겼다는 통보
-    // 역시 여기로 오므로, 이 구독이 없으면 폴링 폴백도 영영 켜지지 않는다.
-    const stopChanged = ctx.consoleEvents.subscribe(CODEX_CHANGED_EVENT, (payload) => {
-      const frame = readChangedFrame(payload);
-      if (frame) applyCodexChanged(frame.workspaceId, frame.scopes);
-    });
-    const stopWatch = ctx.consoleEvents.subscribe(CODEX_WATCH_EVENT, (payload) => {
-      const frame = readWatchFrame(payload);
-      if (frame) applyCodexWatchState(frame.workspaceId, frame.state);
-    });
-    // 스트림이 끊겼다 붙는 사이의 변경 통지는 다시 오지 않는다 — 보고 있던 워크스페이스를 한 번 따라잡는다.
-    const stopReconnect = ctx.consoleEvents.onReconnect?.(() => revalidateCodexNow());
-    return () => { stopChanged(); stopWatch(); stopReconnect?.(); };
-  },
+
 };
 
 // 프레임은 네트워크에서 온다 — 모양을 믿지 않고 확인한 것만 통과시킨다.
@@ -89,3 +65,31 @@ function CodexConsoleFacts({ ctx }: { readonly ctx: PersistentComponentContext }
 }
 
 export { setConsoleLocale, setConsoleTheme };
+
+export function installCodexClient(ctx: CodexClientDeps): () => void {
+    // 명령형 DOM 컨트롤러들이 렌더 밖에서 호스트 사실을 읽는다 — 코어 스토어를 직접
+    // import하던 자리를, 호스트가 건네준 능력 하나로 대체한다.
+    bindCodexHost({
+      consoleState: ctx.consoleState,
+      navigation: ctx.navigation,
+      surfaces: ctx.surfaces,
+      rail: ctx.rail,
+      composer: ctx.composer,
+      operations: ctx.operations,
+    });
+    // 서버는 감시 결과를 콘솔 공용 스트림으로 계속 밀어 보낸다 — 받는 쪽이 없으면 그
+    // 프레임은 버려지고, 화면은 파일이 바뀌어도 낡은 채로 남는다. 감시가 끊겼다는 통보
+    // 역시 여기로 오므로, 이 구독이 없으면 폴링 폴백도 영영 켜지지 않는다.
+    const stopChanged = ctx.consoleEvents.subscribe(CODEX_CHANGED_EVENT, (payload) => {
+      const frame = readChangedFrame(payload);
+      if (frame) applyCodexChanged(frame.workspaceId, frame.scopes);
+    });
+    const stopWatch = ctx.consoleEvents.subscribe(CODEX_WATCH_EVENT, (payload) => {
+      const frame = readWatchFrame(payload);
+      if (frame) applyCodexWatchState(frame.workspaceId, frame.state);
+    });
+    // 스트림이 끊겼다 붙는 사이의 변경 통지는 다시 오지 않는다 — 보고 있던 워크스페이스를 한 번 따라잡는다.
+    const stopReconnect = ctx.consoleEvents.onReconnect?.(() => revalidateCodexNow());
+    return () => { stopChanged(); stopWatch(); stopReconnect?.(); };
+
+}

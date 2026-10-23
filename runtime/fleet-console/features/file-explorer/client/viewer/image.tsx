@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import { formatByteSize } from "../format.js";
 import type { FileExplorerMessageKey } from "../i18n/index.js";

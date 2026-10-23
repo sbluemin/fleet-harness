@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { MobileScheme } from "@fleet-console/sdk/settings/mobile-scheme";
+import type { MobileScheme } from "../../../../features/settings/shared/mobile-scheme.js";
 
 /*
  * 모바일 겉모습(색상 모드·글자 배율) — 기기 단위 모바일 선호다. Console 서버 설정

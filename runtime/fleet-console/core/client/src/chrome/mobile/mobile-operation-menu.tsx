@@ -1,4 +1,4 @@
-import type { MobileBarMenuItem } from "@fleet-console/sdk/pane";
+import type { MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 
 import type { useT } from "../../i18n/index.js";
 import type { OperationNode } from "../../integration/types.js";

@@ -8,7 +8,6 @@ import reactHooks from "eslint-plugin-react-hooks";
 // console-use 의 useScope), 테스트도 오탐을 내므로 뺀다.
 const FILES = [
   "runtime/fleet-console/**/client/**/*.{ts,tsx}", // core/client + features/*/client
-  "runtime/fleet-console/sdk/**/*.{ts,tsx}", // 플러그인에 공개되는 React 컴포넌트·훅
   "runtime/fleet-console/foundation/**/*.tsx", // foundation 의 브라우저 표면(font-picker/browser.tsx 등)
 ];
 const IGNORES = [

@@ -1,9 +1,9 @@
-import { inputIssues } from "@fleet-console/sdk/mcp";
+import { inputIssues } from "../../console-use/shared/tools.js";
 import fs from "node:fs";
 import type http from "node:http";
 
 import type { ObjectivesFeatureDeps } from "./deps.js";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { z } from "zod";
 
 import { createObjectiveActions } from "./actions.js";

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { useAgentState } from "../../../execution/client/agent/store.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
@@ -8,7 +8,7 @@ import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
-import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkLabel, type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationAvatar, mongleStateOfMark } from "../avatars.js";
@@ -463,9 +463,9 @@ function PluginOperationMarks({ operation }: { readonly operation: OperationNode
     <>
       <OperationCaptionContributions operation={operation} language={language} surface="chip" />
       {descriptor?.operationMarks ? (
-        <PluginErrorBoundary fallback={<></>}>
+        <FeatureErrorBoundary fallback={<></>}>
           {descriptor.operationMarks({ operation, language, onClose: () => undefined })}
-        </PluginErrorBoundary>
+        </FeatureErrorBoundary>
       ) : null}
     </>
   );

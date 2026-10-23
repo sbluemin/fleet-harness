@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
-import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
@@ -697,7 +697,7 @@ export function useQuotaData(api: ClientApiCapability) {
   const postForSummary = useCallback((path: string, body: Readonly<Record<string, unknown>>) => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
-    api.fetch(null, `quota/${path}`, {
+    api.fetch(`quota/${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -741,7 +741,7 @@ export function useQuotaData(api: ClientApiCapability) {
       : force !== false
         ? `summary?forceProvider=${encodeURIComponent(force)}`
         : data === null ? "summary?stale=1" : "summary";
-    api.fetch(null, `quota/${path}`)
+    api.fetch(`quota/${path}`)
       .then((response) => {
         if (!response.ok) throw new Error("summary_failed");
         return response.json() as Promise<SummaryResponse>;

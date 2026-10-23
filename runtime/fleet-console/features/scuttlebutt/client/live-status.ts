@@ -1,5 +1,5 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { formatLiveElapsed } from "@fleet-console/sdk/components/live-line";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import { formatLiveElapsed } from "./components/live-line.js";
 
 import { exchangeReceipt, exchangeTools, type ChatEntry, type ChatState } from "./chat-store.js";
 import { getT } from "./scuttlebutt-catalog.js";

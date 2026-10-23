@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { PaneContext, PaneDescriptor, PaneSearchResult } from "@fleet-console/sdk/pane";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { PaneContext, PaneDescriptor, PaneSearchResult } from "../../workspace/shared/pane.js";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import { parseFileRef } from "@fleet-console/markdown/file-ref";
-import { FileIcon, FolderIcon } from "@fleet-console/sdk/components/file-icon";
+import { FileIcon, FolderIcon } from "./components/file-icon.js";
 
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../shared/types.js";
 import "./explorer.css";

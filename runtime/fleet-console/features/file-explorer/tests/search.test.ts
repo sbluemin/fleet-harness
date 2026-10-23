@@ -1,3 +1,4 @@
+import type { FileExplorerRouteContext } from "../host/index.js";
 import { EventEmitter } from "node:events";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
@@ -5,7 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import type http from "node:http";
 
-import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { handleFilesSearch, listTheaterContents, searchTheaterFiles } from "../host/tree-services.js";
@@ -37,7 +37,7 @@ function searchContext(body: {
   readonly includeHidden?: unknown;
   readonly scope?: unknown;
 }): {
-  readonly ctx: FleetPluginServerContext;
+  readonly ctx: FileExplorerRouteContext;
   readonly writes: Array<{ readonly status: number; readonly body: unknown }>;
 } {
   const writes: Array<{ readonly status: number; readonly body: unknown }> = [];
@@ -50,7 +50,7 @@ function searchContext(body: {
       security: { isTerminalAuthorized: () => true },
       paths: { resolveTheaterPath: () => theaterPath },
     },
-  } as unknown as FleetPluginServerContext;
+  } as unknown as FileExplorerRouteContext;
   return { ctx, writes };
 }
 

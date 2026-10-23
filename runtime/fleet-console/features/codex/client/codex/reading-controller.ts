@@ -1,8 +1,8 @@
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 import type { TocItem } from "@fleet-console/markdown/core";
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
+import type { Translate } from "@fleet-console/i18n";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 import { mountCodexFileLinks, resolveCodexFileLink } from "./file-links.js";
 
 import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, type CoreMessageKey } from "../i18n/index.js";

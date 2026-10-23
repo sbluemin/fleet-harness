@@ -1,5 +1,5 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";

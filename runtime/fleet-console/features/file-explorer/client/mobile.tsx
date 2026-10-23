@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
-import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import type { MobileBarMenuItem, PaneContext } from "../../workspace/shared/pane.js";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import type { FolderEntry, FolderListResult } from "../shared/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";

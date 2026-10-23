@@ -1,14 +1,14 @@
 import { parseFileRef } from "@fleet-console/markdown/file-ref";
 import type { ReactNode } from "react";
 import type { OperationActivityVisual } from "../../../../features/execution/client/operation-activity.js";
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
-import type { LocalizedText } from "@fleet-console/sdk/i18n";
-import type { PaneSearchProvider, PaneSearchResult } from "@fleet-console/sdk/pane";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
+import { resolveLocalizedText } from "@fleet-console/i18n/translate";
+import type { OperationRuntimeState } from "../../../../features/execution/shared/client-contract.js";
+import type { LocalizedText } from "@fleet-console/i18n";
+import type { PaneSearchProvider, PaneSearchResult } from "../../../../features/workspace/shared/pane.js";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
 
-import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../features/execution/client/components/launch-provider-glyphs.js";
+import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { fuzzyMatchPaletteLabel, searchTokens } from "./palette-match.js";

@@ -1,4 +1,4 @@
-import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 /** Wiki 도구 저작 메타데이터. 실행 엔진이나 MCP 서버를 포함하지 않는다. */
 export interface WikiToolSpec {
   readonly id: string;
@@ -10,7 +10,7 @@ export interface WikiToolSpec {
   readonly whenNotToUse: readonly string[];
   readonly usageGuidelines: readonly string[];
   readonly parameters: object;
-  readonly execute: PluginMcpTool["execute"];
+  readonly execute: ConsoleMcpTool["execute"];
 }
 
 import {
@@ -220,7 +220,7 @@ function buildWikiToolSpec(
     whenNotToUse: usage.whenNotToUse,
     usageGuidelines: config.promptGuidelines,
     parameters: config.parameters as Record<string, unknown>,
-    execute: async (args: unknown, ctx: Parameters<PluginMcpTool["execute"]>[1]) => {
+    execute: async (args: unknown, ctx: Parameters<ConsoleMcpTool["execute"]>[1]) => {
       // 위키는 호스트가 실어 준 사령관의 것뿐이다 — cwd나 모델 인자로 다른 위키를 고를 수 없다.
       let paths: MemoryPaths;
       try {
@@ -246,7 +246,7 @@ export function modelFacingWikiToolDescription(spec: Pick<WikiToolSpec, "descrip
   return [...new Set(lines.map((line) => line.trim()).filter(Boolean))].join("\n");
 }
 
-export function createCodexMcpTools(resolver?: WikiWorkspaceResolver): PluginMcpTool[] {
+export function createCodexMcpTools(resolver?: WikiWorkspaceResolver): ConsoleMcpTool[] {
   return getWikiToolSpecs(resolver).map((spec) => ({
     name: spec.id, description: modelFacingWikiToolDescription(spec),
     inputSchema: spec.parameters as Record<string, unknown>, execute: spec.execute,

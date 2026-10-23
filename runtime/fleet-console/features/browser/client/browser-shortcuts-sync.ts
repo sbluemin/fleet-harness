@@ -1,5 +1,5 @@
-import { React } from "@fleet-console/sdk/plugin/browser";
-import type { CompanionPanelDescriptor } from "@fleet-console/sdk/plugin";
+import * as React from "react";
+import type { CompanionPanelDescriptor } from "../../execution/shared/client-contract.js";
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";

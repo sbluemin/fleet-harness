@@ -1,0 +1,32 @@
+import type { AttachmentHost } from "../../../features/execution/shared/agent.js";
+import type { ConsoleUseMcpHost } from "../../../features/console-use/shared/tools.js";
+import type { AdmiralMcpHost } from "../../../features/execution/shared/admiral-mcp.js";
+import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
+import type { KnowledgeHost } from "../../../features/codex/host/knowledge-port.js";
+import type { ExperimentsHost } from "../../../features/settings/shared/experiment-ports.js";
+import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
+import type { EventPort, CleanupPort, HttpSecurityPort, HttpPort, ServerOriginPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
+import type { SettingsStorageHost } from "../../../features/settings/host/storage-port.js";
+import type { OwnedProcessPort } from "@fleet-console/process";
+import type { OperationsHost } from "../../../features/execution/host/operations/ports.js";
+import type { ModelRosterHost } from "../../../features/ai-gateway/host/model-ports.js";
+export interface ConsoleHostPorts {
+  readonly attachments?: AttachmentHost;
+  readonly consoleUse: ConsoleUseMcpHost;
+  readonly admiralMcp: Pick<AdmiralMcpHost, "connect" | "bindCommodore">;
+  readonly mcpTransport?: McpTransport;
+  readonly operations: OperationsHost;
+  readonly events: EventPort;
+  readonly paths: WorkspacePaths;
+  readonly server: ServerOriginPort;
+  readonly storage: SettingsStorageHost;
+  readonly http: HttpPort;
+  readonly security: HttpSecurityPort;
+  readonly lifecycle: CleanupPort;
+  readonly knowledge?: KnowledgeHost;
+  readonly consoleControl?: ConsoleControlHost;
+  readonly experiments?: ExperimentsHost;
+  readonly models?: ModelRosterHost;
+  readonly processes?: OwnedProcessPort;
+}

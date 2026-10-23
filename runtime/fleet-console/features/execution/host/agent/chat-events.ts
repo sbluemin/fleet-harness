@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
-import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
+import type { ConsoleActionInput } from "../../../console-use/shared/control.js";
 
 import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command-policy.js";
-import { splitQuotedPrompt, type ComposerQuote } from "@fleet-console/sdk/composer/quotes";
+import { splitQuotedPrompt, type ComposerQuote } from "../../client/composer-primitives/quotes.js";
 import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /**
@@ -296,7 +296,7 @@ export type AgentChatStreamEvent =
    * `stopped`는 사용자가 끊은 턴이다 — 실패와 같은 자리에 두지 않는 이유는 결말이 다르기 때문이다.
    * 실패는 "하려던 일이 안 됐다"이고 중지는 "하려던 일을 그만두게 했다"이며, 후자에는 고칠 것이 없다.
    */
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean; readonly failure?: import("@fleet-console/sdk/mcp").ConsoleTurnFailure }
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean; readonly failure?: import("../../../console-use/shared/control.js").ConsoleTurnFailure }
   /**
    * 턴보다 오래 사는 작업 하나가 등록됐다. 이 축이 원장의 턴 시계와 별개로 존재해야 하는
    * 이유는 단순하다 — 백그라운드 작업은 정의상 턴을 넘겨서 살고, 턴 시계 하나로는 그것을

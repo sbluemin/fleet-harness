@@ -1,6 +1,7 @@
 import type http from "node:http";
-import type { OperationAccessIntent, OperationAccessResult, OperationDescription, OperationNode, OperationPurgeConfirmation } from "@fleet-console/sdk/operations";
-import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+import type { OperationAccessIntent, OperationAccessResult, OperationDescription, OperationPurgeConfirmation } from "../../execution/shared/operations/archive.js";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { OperationArchiveCoordinator } from "./operation-archive.js";
 import { OperationArchiveError } from "./operation-archive-storage.js";
 

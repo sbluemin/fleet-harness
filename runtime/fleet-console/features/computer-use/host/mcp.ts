@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
-import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
+import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode } from "../../execution/shared/operations/types.js";
 import type { ComputerUseService } from "./computer-use.js";
 
 export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";

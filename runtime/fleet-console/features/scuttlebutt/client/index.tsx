@@ -1,5 +1,6 @@
-import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
-import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { ScuttlebuttClientDeps } from "./deps.js";
+import type { MentionTargetDescriptor } from "../../execution/shared/composer-ports.js";
+import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
 
 import { connectConsoleRead } from "./console-read.js";
 import { grantCapabilityLabel, grantDescription } from "./grant-chips.js";
@@ -51,7 +52,7 @@ async function messageMentionTarget(targetId: string, text: string): Promise<voi
   await bridge.ask(targetId as AdmiralId, text);
 }
 
-export const scuttlebuttClient: FleetClientPlugin = {
+export const scuttlebuttClient: ClientFeatureDescriptor = {
   id: "scuttlebutt",
   floatingWidgets: [{ id: "mascot", render: (context) => <ScuttlebuttFlock context={context} /> }],
   // 「사이드바에 두기」로 둔 부관의 글리프. 로케일은 무리가 독 스토어에 반응적으로 싣는다 — 호스트 슬롯은 문맥을 주지 않는다.
@@ -60,8 +61,11 @@ export const scuttlebuttClient: FleetClientPlugin = {
   mentionTargets,
   subscribeMentionTargets: subscribeScuttlebuttMentions,
   messageMentionTarget,
-  install: (context) => {
+
+};
+
+export function installScuttlebuttClient(context: ScuttlebuttClientDeps): () => void {
     connectConsoleRead(context);
     return connectScuttlebuttSettings(context.settings);
-  },
-};
+
+}

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import type { AgentInput, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import type { AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
 import { createAgentSessionHost, type AgentSessionHostDeps } from "./agent-session.js";
 
 export interface ConsoleResidentSession extends AgentSession {

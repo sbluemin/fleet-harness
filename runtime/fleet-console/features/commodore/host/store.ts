@@ -3,36 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { canonicalModelId } from "@fleet-console/sdk/models";
+import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { createCommodoreImages } from "./images.js";
 import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
 import { CommodoreStoreError } from "./errors.js";
-import {
-  commodoreStateSchema,
-  commodoreTranscriptEntrySchema,
-  EMPTY_COMMODORE_STATE,
-  EMPTY_RUN_TOTALS,
-  MAX_DIRECTIVE,
-  MAX_INTEL_ITEMS,
-  MAX_INTEL_TEXT,
-  MAX_KEPT_ASKS,
-  MAX_OPEN_ASKS,
-  MAX_ASK_REASON,
-  MAX_SOURCES,
-  MAX_TRANSCRIPT_PAGE,
-  type CommodoreAsk,
-  type CommodoreCoordinates,
-  type CommodoreEvent,
-  type CommodorePatrolMinutes,
-  type CommodoreIntel,
-  type CommodoreRunTotals,
-  type CommodoreSource,
-  type CommodoreState,
-  type CommodoreStateChange,
-  type CommodoreTranscriptEntry,
-  type CommodoreTranscriptInput,
-} from "./types.js";
+import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodorePatrolMinutes, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
  * 사령관 상태 저장소 — Console 데이터의 `commodore/<UUID>/` 하나.

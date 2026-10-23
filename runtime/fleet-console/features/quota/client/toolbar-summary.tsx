@@ -2,9 +2,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ComposerTopEntryContext } from "@fleet-console/sdk/plugin";
-import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ComposerTopEntryContext } from "../../workspace/shared/surface-contracts.js";
+import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/ai-gateway";
 import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-order.js";

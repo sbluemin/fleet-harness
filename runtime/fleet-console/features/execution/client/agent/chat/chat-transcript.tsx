@@ -1,6 +1,6 @@
 import { OpenUIPluginBoundary } from "../openui-boundary.js";
-import { React } from "@fleet-console/sdk/plugin/browser";
-import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentChatTranscriptProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import * as React from "react";
+import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentChatTranscriptProps } from "../../../shared/chat-renderer.js";
 
 import { MobileSurfaceProvider } from "../mobile-surface.js";
 import { initialAgentChatLogState, reduceAgentChatLog, type AgentChatClockedEvent, type AgentChatJob, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";

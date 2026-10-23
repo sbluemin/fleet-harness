@@ -68,7 +68,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
     const settle = () => { if (!cancelled) setPending(false); };
 
     if (compare) {
-      ctx.api.fetch(null, "repository/compare-file", {
+      ctx.api.fetch("repository/compare-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: compare.theaterId, repoRel: compare.repoRel, base: compare.base, head: compare.head, filePath: file.path, ...(file.oldPath ? { oldPath: file.oldPath } : {}) }),
@@ -80,7 +80,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
       }).finally(settle);
     } else if (commit) {
-      ctx.api.fetch(null, "repository/commit-file", {
+      ctx.api.fetch("repository/commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: commit.theaterId, repoRel: commit.repoRel, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}) }),
@@ -92,7 +92,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
         if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
       }).finally(settle);
     } else {
-      ctx.api.fetch(null, "repository/file", {
+      ctx.api.fetch("repository/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, filePath: file.path, mode }),

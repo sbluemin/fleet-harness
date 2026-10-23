@@ -1,6 +1,6 @@
 import { spawn, type SpawnOptions } from "node:child_process";
 import { withHidden } from "@fleet-console/process";
-import type { FleetPluginOwnedProcess, FleetPluginProcessesHost } from "@fleet-console/sdk/plugin";
+import type { OwnedChild, OwnedProcessPort } from "@fleet-console/process";
 
 export type GitErrorCode = "timeout" | "non_zero_exit" | "spawn_failed" | "no_git_repo" | "git_unavailable";
 
@@ -63,7 +63,7 @@ export function runGit(
      * (git-remote-https, ssh, a filter process) with it. The other commands are local and run no hooks (every
      * hook-capable command here sets core.hooksPath to the null device), so they run as plain children.
      */
-    readonly processes?: FleetPluginProcessesHost;
+    readonly processes?: OwnedProcessPort;
   },
 ): Promise<GitRunResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -76,7 +76,7 @@ export function runGit(
       return;
     }
     let child;
-    let owned: FleetPluginOwnedProcess | undefined;
+    let owned: OwnedChild | undefined;
     try {
       if (opts.processes) {
         owned = opts.processes.spawnOwned({ command: "git", args: hardenedArgs, cwd: opts.cwd, env: sanitizeGitEnvironment(process.env) });

@@ -1,5 +1,10 @@
-import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
-import type { RouteHandler } from "@fleet-console/sdk/routing";
+import type { ConsoleUseMcpHost } from "../../console-use/shared/tools.js";
+import type { OwnedProcessPort } from "@fleet-console/process";
+import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
+import type { HttpPort } from "@fleet-console/infra/http/host-ports";
+import type { WorkspacePaths } from "../../workspace/host/path-port.js";
+import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
+import type { RouteHandler } from "@fleet-console/infra/http/routing";
 
 import { handleRepositoryCommit } from "./commit.js";
 import { handleRepositoryCommitCreate } from "./commit-create.js";
@@ -22,8 +27,9 @@ import { handleRepositoryWorkstate } from "./workstate.js";
 import { handleRepositoryWorktrees } from "./worktrees.js";
 import { createRepositoryConsoleTools } from "./console-tools.js";
 
-export interface RepositoryFeatureDeps extends Pick<FleetPluginHostCapabilities, "paths" | "http" | "security" | "processes"> {
-  readonly consoleUse: FleetPluginHostCapabilities["consoleUse"];
+export interface RepositoryFeatureDeps { readonly paths: WorkspacePaths; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly processes?: OwnedProcessPort;
+
+  readonly consoleUse: ConsoleUseMcpHost;
 }
 export interface RepositoryRouteContext { readonly host: RepositoryFeatureDeps }
 export function createRepositoryFeature(deps: RepositoryFeatureDeps) {

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 
 import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
-import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import type { Translate } from "@fleet-console/i18n";
+import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
 import { REPOSITORY_SURFACE_ID } from "./repository-context.js";
 import type { RepositoryContext } from "./repository-context.js";
@@ -462,7 +462,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     setReposError(false);
     setReposLoaded(false);
-    ctx.api.fetch(null, "repository/repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, maxDepth: scanDepth }) })
+    ctx.api.fetch("repository/repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, maxDepth: scanDepth }) })
       .then((response) => response.json() as Promise<ReposResult>)
       .then((value) => { if (!cancelled) { setRepos(value.repos); setReposTruncated(value.truncated === true); setReposLoaded(true); } })
       .catch(() => { if (!cancelled) setReposError(true); });
@@ -478,7 +478,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setWorktreesError(false);
     setWorktreesForRepoRel(null);
     setWorktreesPending(true);
-    ctx.api.fetch(null, "repository/worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
+    ctx.api.fetch("repository/worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
       .then((response) => response.json() as Promise<WorktreesResult>)
       .then((value) => {
         if (!cancelled) {
@@ -522,7 +522,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     setRefsError(false);
     setRefsPending(true);
-    ctx.api.fetch(null, "repository/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+    ctx.api.fetch("repository/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
       .then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject())
       .then((value) => { if (!cancelled) setRefs(value); })
       .catch(() => { if (!cancelled) setRefsError(true); })
@@ -563,7 +563,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   useEffect(() => {
     if (!ctx.theaterId) { setWorkstate(null); return; }
     let cancelled = false;
-    ctx.api.fetch(null, "repository/workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+    ctx.api.fetch("repository/workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
       .then((response) => response.ok ? response.json() as Promise<WorkstateResult> : Promise.reject(new Error("workstate_failed")))
       .then((value) => { if (!cancelled) { setWorkstate(value); setWorkstateFailed(false); } })
       // 실패를 null로 접으면 병합·리베이스·index lock 경고와 ahead/behind가 함께 사라지고 쓰기 verb가

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type RefObject } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { Translate } from "@fleet-console/i18n";
 
 import type { DiffFileEntry } from "../shared/types.js";
 import { readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";

@@ -1,4 +1,4 @@
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useSyncExternalStore } from "react";
 
 import { setCodexReaderExpandedForSession } from "./codex-host.js";

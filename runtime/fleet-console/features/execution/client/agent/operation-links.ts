@@ -1,7 +1,7 @@
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
-import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
-import { React } from "@fleet-console/sdk/plugin/browser";
+import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
+import * as React from "react";
 
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";

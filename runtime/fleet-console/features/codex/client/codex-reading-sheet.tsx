@@ -32,7 +32,7 @@ type Overlay = "none" | "switcher" | "source";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@fleet-console/sdk/navigation").ClientNavigateCapability }) {
+export function CodexReadingSheet({ navigate }: { readonly navigate?: import("../../workspace/shared/navigation.js").ClientNavigateCapability }) {
   const t = useT();
   const history = useSyncExternalStore(
     subscribeCodexReaderHistory,
