@@ -430,13 +430,23 @@ describe("openui hydrator containment", () => {
     expect(inert!.querySelector("[data-openui-owned] button")).toBeNull();
     const [streaming] = await hydrated(["```openui-lang", source].join("\n"), { streaming: true, open });
     expect([...streaming!.querySelectorAll<HTMLButtonElement>("[data-openui-owned] button")].every((button) => button.disabled)).toBe(true);
+    // 대상만 거부된 단일 @OpenUrl은 카드를 남기고 그 단추만 누를 수 없는 라벨이 된다. 다른 형태의 액션은 블록을 거절한다.
+    const targets = ["javascript:alert(1)", "http://example.com/", "https://github.com@evil.example/x", "https://GitHub.com/", `https://example.com/${"a".repeat(8173)}`];
     const refused = await hydrated([
-      ...["javascript:alert(1)", "http://example.com/", "https://github.com@evil.example/x", "https://GitHub.com/"].map((target) => `root = Card("x", [Button("X", @OpenUrl(${JSON.stringify(target)}))])`),
+      ...targets.map((target) => `root = Card("x", [Callout("남는다"), Button("X", @OpenUrl(${JSON.stringify(target)}))])`),
       'root = Card("x", [Button("X", @Run("anything"))])',
       'root = Card("x", [Button("X", Action([@ToAssistant("X"), @OpenUrl("https://example.com/")]))])',
       'root = Card("x", [Button("X", @ToAssistant("X", {secret: "hidden"}))])',
     ].map((program) => ["```openui-lang", program, "```"].join("\n")).join("\n\n"), { open });
-    expect(refused.every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
+    const inertTargets = refused.slice(0, targets.length);
+    expect(inertTargets.map((candidate) => candidate.dataset.openuiState)).toEqual(targets.map(() => "rendered"));
+    for (const [i, candidate] of inertTargets.entries()) {
+      expect(candidate.querySelector(".openui-callout-text")?.textContent).toBe("남는다");
+      expect(candidate.querySelector("[data-openui-owned] button, a, [href]")).toBeNull();
+      expect(candidate.querySelector<HTMLElement>(".openui-inert")?.title).toBe(targets[i]);
+    }
+    expect(refused.slice(targets.length).every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
+    inertTargets.forEach((candidate) => candidate.querySelector<HTMLElement>(".openui-inert")!.click());
     expect(open.open).not.toHaveBeenCalled();
   });
 

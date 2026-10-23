@@ -263,12 +263,30 @@ const Choices = defineComponent({
 });
 
 // 등록 때는 액션 문법을 알리지만, 판정은 단일 리터럴 단계만 허용한다. Action·Run·상태 변경은 실행기에 닿지 않는다.
+const literalAction = z.object({ k: z.literal("Comp"), name: z.enum(["OpenUrl", "ToAssistant"]), args: z.tuple([z.object({ k: z.literal("Str"), v: z.string() }).strict()]), mappedProps: z.record(z.string(), z.unknown()).optional() }).strict();
+const runtimePlan = z.object({ steps: z.tuple([z.union([
+  z.object({ type: z.literal("open_url"), url: z.string() }).strict(),
+  // 업스트림은 context를 생략해도 undefined 키를 붙인다. 정의된 숨은 값은 여전히 거절한다.
+  z.object({ type: z.literal("continue_conversation"), message: z.string(), context: z.undefined().optional() }).strict(),
+])]) }).strict();
+// 형태는 단일 @OpenUrl 리터럴인데 대상만 거부된 단추 — 블록 전체를 코드로 떨구지 않고 누를 수 없는 라벨로 남긴다.
+// 대상 판정은 그대로라 권한은 넓어지지 않는다. 다른 형태의 액션(Run·Action·숨은 인자)은 여전히 블록을 거절한다.
+function refusedSourceOpen(value: unknown): string | null {
+  const action = literalAction.safeParse(value);
+  return action.success && action.data.name === "OpenUrl" && !parseOpenUIOpenTarget(action.data.args[0].v) ? action.data.args[0].v : null;
+}
+function refusedRuntimeOpen(value: unknown): string | null {
+  const plan = runtimePlan.safeParse(value);
+  const step = plan.success ? plan.data.steps[0] : null;
+  return step?.type === "open_url" && !parseOpenUIOpenTarget(step.url) ? step.url : null;
+}
+const buttonAction = (value: unknown, label: unknown) => sourceAction(value, label) !== null || refusedSourceOpen(value) !== null;
 function sourceAction(value: unknown, label: unknown): SafeAction | null {
   if (value == null) {
     const message = sendableReply(label);
     return message ? { type: "send", message, max: 200 } : null;
   }
-  const action = z.object({ k: z.literal("Comp"), name: z.enum(["OpenUrl", "ToAssistant"]), args: z.tuple([z.object({ k: z.literal("Str"), v: z.string() }).strict()]), mappedProps: z.record(z.string(), z.unknown()).optional() }).strict().safeParse(value);
+  const action = literalAction.safeParse(value);
   if (!action.success) return null;
   const raw = action.data.args[0].v;
   if (action.data.name === "OpenUrl") return parseOpenUIOpenTarget(raw) ? { type: "open", url: raw } : null;
@@ -277,11 +295,7 @@ function sourceAction(value: unknown, label: unknown): SafeAction | null {
 }
 function runtimeAction(value: unknown, label: unknown): SafeAction | null {
   if (value == null) return sourceAction(value, label);
-  const plan = z.object({ steps: z.tuple([z.union([
-    z.object({ type: z.literal("open_url"), url: z.string() }).strict(),
-    // 업스트림은 context를 생략해도 undefined 키를 붙인다. 정의된 숨은 값은 여전히 거절한다.
-    z.object({ type: z.literal("continue_conversation"), message: z.string(), context: z.undefined().optional() }).strict(),
-  ])]) }).strict().safeParse(value);
+  const plan = runtimePlan.safeParse(value);
   if (!plan.success) return null;
   const step = plan.data.steps[0];
   if (step.type === "open_url") return parseOpenUIOpenTarget(step.url) ? { type: "open", url: step.url } : null;
@@ -293,7 +307,10 @@ function ActionButton({ label, action }: { label: string; action: unknown }) {
   const trigger = useTriggerAction();
   const key = React.useId();
   const safe = runtimeAction(action, label);
-  if (!safe) return null;
+  if (!safe) {
+    const refused = refusedRuntimeOpen(action);
+    return refused === null ? null : <span className="openui-inert is-inert" title={refused}><span>{label}</span></span>;
+  }
   const target = safe.type === "open" ? parseOpenUIOpenTarget(safe.url) : null;
   const tail = target?.kind === "https" ? target.hostname : target?.kind === "objective" ? `objective:${target.id.slice(0, 8)}` : target?.kind === "mission" ? `mission:${target.number}` : null;
   const contents = <><span>{label}</span>{tail ? <span className={`openui-button-tail${target?.kind === "https" ? "" : " is-internal"}`}>{tail}</span> : null}</>;
@@ -521,7 +538,7 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
     .refine((p) => p.done <= p.total),
   Choices: z.object({ items: z.array(element("Choice")).min(2).max(4) }),
   Choice: z.object({ label: short(40), reply, why: line(120, true).nullish(), effect: line(120, true).nullish() }),
-  Button: z.object({ label: line(40), action: z.unknown().optional() }).refine((p) => sourceAction(p.action, p.label) !== null),
+  Button: z.object({ label: line(40), action: z.unknown().optional() }).refine((p) => buttonAction(p.action, p.label)),
   Form: z.object({ fields: z.array(element("Input", "Select")).min(1).max(4), template: z.string(), submit: line(24) }),
   Input: inputLimit,
   Select: selectLimit,
@@ -672,7 +689,7 @@ export function judge(source: string, final: boolean): Verdict {
     if (!limit || (final && !limit.safeParse(node.props).success)) return false;
     if ((node.typeName === "Choices" || node.typeName === "Form") && ++choices > 1) return false;
     if (node.typeName === "Form" && final && !formReady(node.props)) return false;
-    return Object.entries(node.props).every(([key, child]) => node.typeName === "Button" && key === "action" ? sourceAction(child, node.props.label) !== null : visit(child));
+    return Object.entries(node.props).every(([key, child]) => node.typeName === "Button" && key === "action" ? buttonAction(child, node.props.label) : visit(child));
   };
   return visit(root) ? { kind: "render" } : no;
 }
