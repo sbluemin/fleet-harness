@@ -81,7 +81,7 @@ export interface ConsoleGeneralSettings {
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
   /**
-   * 사이드바에서 Operation 을 더블클릭해야 여는지. 켜면 한 번 클릭은 선택만 하고 목표 같은 문맥만 옮긴다.
+   * 사이드바에서 Objective 을 더블클릭해야 여는지. 켜면 한 번 클릭은 선택만 하고 목표 같은 문맥만 옮긴다.
    * 부재는 꺼짐(한 번 클릭으로 열기)이다 — 손에 익은 동작을 바꾸는 선호라 켜는 쪽이 사람의 선택이어야 한다.
    */
   readonly sideBarDoubleClickOpen?: boolean;
@@ -104,7 +104,7 @@ export interface ConsoleGeneralSettings {
    */
   readonly shortcuts?: ShortcutBindings;
   /**
-   * 보관 Operation 자동 정리 일수. null·부재는 꺼짐이다. 7·30·90만 유효하다.
+   * 보관 Objective 자동 정리 일수. null·부재는 꺼짐이다. 7·30·90만 유효하다.
    */
   readonly archiveRetentionDays?: ArchiveRetentionDays;
 }
@@ -167,7 +167,7 @@ export function isValidRemoteBindHost(value: unknown): value is string {
 }
 
 /**
- * Operation 브라우저 설정. `defaultProfile` 은 새 Operation 의 브라우저가 처음 열릴 때 쓰는 세션 —
+ * Objective 브라우저 설정. `defaultProfile` 은 새 Objective 의 브라우저가 처음 열릴 때 쓰는 세션 —
  * `null`(없음)이면 임시 세션, 문자열이면 그 이름의 영속 프로필이다. 공장 기본은 임시다: 에이전트가 모는
  * 브라우저라 로그인이 저절로 남으면 안 되고, 남기기로 한 것은 사람의 선택이어야 한다.
  */

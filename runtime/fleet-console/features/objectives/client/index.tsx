@@ -10,10 +10,10 @@ import { installLaunchRoster } from "./launch-control.js";
 import { connectFreshConversation, freshConversationSurface, goToObjective } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
 import { objectiveConversationTabs, objectiveMobileConversationTabs } from "./head-tabs.js";
-import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
+import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfObjective, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
+import { viewedTheaterId, handleMapObjectiveSelected, installObjectiveState, loadTheater, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 const OBJECTIVES_ENTRY_ID = "objectives";
@@ -39,14 +39,14 @@ export const objectivesPane: PaneDescriptor = {
 };
 
 /**
- * 폰 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Operation(`params.operationId`)을 실어 세운다.
+ * 폰 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Objective(`params.objectiveId`)을 실어 세운다.
  * 데스크톱 보드는 이 페인을 열지 않는다.
  */
 export const objectivesMobileDetailPane: PaneDescriptor = {
   id: OBJECTIVE_MOBILE_DETAIL_PANE,
   role: "detail",
   mounts: ["rail"],
-  title: (ctx) => objectiveOfOperation(ctx.params.operationId ?? "")?.title ?? getT(ctx.language)("objectives.panel.title"),
+  title: (ctx) => objectiveOfObjective(ctx.params.objectiveId ?? "")?.title ?? getT(ctx.language)("objectives.panel.title"),
   // 머리는 호스트의 정보 화면이 그린다 — 페인 캡션을 겹쳐 세우지 않는다.
   hideCaption: true,
   render: (ctx) => <MobileConversationObjective ctx={ctx} />,
@@ -60,9 +60,9 @@ export const objectivesEntry: RailEntryDescriptor = {
   // primary 가 맨 앞이어야 한다 — 레일 표면은 첫 primary 를 세운다. 상세는 폰 대화 정보 화면의 탭 본문이다.
   panes: [OBJECTIVE_SURFACE_ID, OBJECTIVE_MOBILE_DETAIL_PANE],
   activate: (ctx) => toggleObjectivePanel(ctx.rail),
-  // 표면은 활성 Operation 의 목표로 열린다 — 입구를 누르는 순간 활성이 풀리면 따라갈 목표가 사라진다.
-  keepsOperationActive: true,
-  // 대화 중심 화면의 Operation 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
+  // 표면은 활성 Objective 의 목표로 열린다 — 입구를 누르는 순간 활성이 풀리면 따라갈 목표가 사라진다.
+  keepsObjectiveActive: true,
+  // 대화 중심 화면의 Objective 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
   conversationTab: true,
   // 그 글자 단추는 목표가 있는 대화에서 상세의 오늘·기한(위 줄)과 세 탭(목표·구성원·결과물)으로 펼쳐진다. 구성원은 대상의 구성원 탭을 대신한다.
   conversationTabs: objectiveConversationTabs,
@@ -77,7 +77,7 @@ export const objectivesEntry: RailEntryDescriptor = {
     },
     count: (theaterId) => (isCommodoreConversationActive() ? 0 : personTurnCount(theaterId)),
     label: (count, locale) => getT(locale)("objectives.requests.badge", { count }),
-    // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표의 대화 「목표」 탭(지휘관 Operation 이 없으면 목표 화면).
+    // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표의 대화 「목표」 탭(지휘관 Objective 이 없으면 목표 화면).
     items: decisionAttentionItems,
   },
   // 폰에는 목표 보드(목록)를 따로 두지 않는다 — 홈 칩 없이(`chip: false`) 목적지 화면만 남아 착지한 목표 하나를 세우고(시작 전 목표 등),
@@ -85,7 +85,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   // 아이콘은 시안 아이콘 한 벌(impl-spec §A)이다 — 「확인 필요」 행의 출처 표식에 쓴다. 데스크톱 레일 아이콘은 그대로.
   mobile: {
     destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title"), chip: false },
-    conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, tabs: objectiveMobileConversationTabs, shown: { subscribe: subscribeObjective, get: (operationId) => objectiveOfOperation(operationId) !== null } },
+    conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, tabs: objectiveMobileConversationTabs, shown: { subscribe: subscribeObjective, get: (objectiveId) => objectiveOfObjective(objectiveId) !== null } },
     // 홈 「완료 N」(접힘) — 끝난 목표. 시작 전 목표는 호스트가 묶음 줄(`row.glyph: "fresh"`)로 「시작 전 N」에 세운다.
     // 원천은 완료로 지휘관이 보관된 목표다 — 살아 있는 대화 행과 겹치지 않는다.
     finished: { subscribe: subscribeFinishedObjectives, items: finishedObjectiveItems },
@@ -127,9 +127,9 @@ export function createObjectivesClient(commodore: CommodoreClientHost) {
     railEntries: [objectivesEntry],
     onboarding: objectivesOnboarding,
     panes: [objectivesPane, objectivesMobileDetailPane],
-    // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
-    operationClusters: objectivesClusterSource,
+    // 지휘관과 담당 Objective은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
+    objectiveRecordClusters: objectivesClusterSource,
     conversationSurfaces: [freshConversationSurface],
   };
-  return { surface, install, operationSelected: handleMapOperationSelected };
+  return { surface, install, objectiveRecordSelected: handleMapObjectiveSelected };
 }

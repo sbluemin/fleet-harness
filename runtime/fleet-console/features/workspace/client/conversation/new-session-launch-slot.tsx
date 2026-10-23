@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { OperationLaunchVariantGroup } from "../../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchVariantGroup } from "../../../objectives/shared/records/types.js";
 
 import { LaunchModelEffort } from "../../../execution/client/components/launch-model-effort.js";
 import { writeNewSessionModelEffort } from "./new-session-preferences.js";
@@ -12,7 +12,7 @@ export interface NewSessionLaunchChoice {
 
 export interface NewSessionLaunchSlotProps {
   /** 모델·강도 변형을 선언한 실행 종류의 로스터(`kind.variants`) — AI Gateway 에서 켠 모델 그대로다. 카탈로그를 읽기 전에는 빈 배열. */
-  readonly groups: readonly OperationLaunchVariantGroup[];
+  readonly groups: readonly ObjectiveLaunchVariantGroup[];
   /** 지금 고른 값. 처음에는 새 세션 기억(없으면 기본 Opus)으로 채워져 온다. */
   readonly value: NewSessionLaunchChoice;
   /** 고른 값을 새 세션 화면에 돌려준다. 기억(writeNewSessionModelEffort 등)을 쓸지는 이 칸이 정한다. */

@@ -27,7 +27,7 @@ export function httpLinkHref(text: string): string | null {
 /**
  * 터미널에서 주소를 여는 한 경로 — OSC 8 하이퍼링크와 본문에서 찾아낸 맨 URL이 같은 문을 지난다.
  *
- * 수식 없는 왼클릭은 「어디서 열까」를 묻는 문(Operation CLI·전역 Shell의 카드 — 그 물음 자체가
+ * 수식 없는 왼클릭은 「어디서 열까」를 묻는 문(Objective CLI·전역 Shell의 카드 — 그 물음 자체가
  * 확인이다)으로 가고, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다. 문도 직접 열기도 맡지
  * 않으면 옛 계약 그대로 확인을 받고 새 창으로 연다.
  */
@@ -76,7 +76,7 @@ export const TERMINAL_OPTIONS = {
   convertEol: false,
   cursorBlink: true,
   cursorStyle: "block" as const,
-  // linkHandler는 여기에 없다 — 링크를 어디서 여는지는 표면마다 다르므로(Operation은 고르는 문,
+  // linkHandler는 여기에 없다 — 링크를 어디서 여는지는 표면마다 다르므로(Objective은 고르는 문,
   // 전역 Shell은 확인 뒤 새 창) 마운트할 때 terminal-surface가 자기 경로를 싣는다.
   // xterm의 기본 OSC 8 처리는 about:blank를 먼저 열고 URL을 나중에 넣는데, 샌드박스된 Desktop은
   // 그 빈 팝업을 정당하게 거부한다. 그래서 어느 경로든 검증된 URL을 첫 요청에 함께 싣는다.

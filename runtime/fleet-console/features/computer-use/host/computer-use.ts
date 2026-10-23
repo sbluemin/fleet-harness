@@ -94,7 +94,7 @@ export class ComputerUseService {
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
-    /** activeOwner() 결과가 바뀔 때마다 불린다 — 호스트가 operation-use 스냅샷을 밀어낸다. */
+    /** activeOwner() 결과가 바뀔 때마다 불린다 — 호스트가 objective-use 스냅샷을 밀어낸다. */
     readonly onActiveOwnerChange?: (owner: string | null) => void;
   }) {}
 

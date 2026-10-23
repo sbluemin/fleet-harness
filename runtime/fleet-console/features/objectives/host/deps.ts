@@ -3,7 +3,7 @@ import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { ConsoleControlHost } from "../../console-use/shared/control-port.js";
-import type { OperationsHost } from "../../execution/host/operations/ports.js";
+import type { ObjectiveRecordsHost } from "./records/ports.js";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
@@ -14,7 +14,7 @@ export interface ObjectivesFeatureDeps {
   readonly storage?: import("./storage.js").ObjectiveBoardStorage;
   readonly paths: WorkspacePaths;
   readonly events: EventPort;
-  readonly operations: OperationsHost;
+  readonly objectiveRecords: ObjectiveRecordsHost;
   readonly consoleControl?: (ConsoleControlHost | undefined);
   readonly server: ServerOriginPort;
   readonly http: HttpPort;

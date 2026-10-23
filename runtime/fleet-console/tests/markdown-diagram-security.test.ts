@@ -183,7 +183,7 @@ describe("diagram hydrator security", () => {
 it("delegates only host-classified Markdown links without trusting source metadata", async () => {
   const openFile = vi.fn(async () => ({ ok: false as const, reason: "no_handler" as const }));
   const onFailure = vi.fn();
-  const ports = createChatFileLinkPorts("operation-theater", { openFile, openWikiEntry: async () => ({ ok: true }) }, onFailure);
+  const ports = createChatFileLinkPorts("objective-theater", { openFile, openWikiEntry: async () => ({ ok: true }) }, onFailure);
   const container = document.createElement("div");
   const windows = String.raw`C:\Users\hbkang\Desktop\99. Cowork\PPW_플랫폼서비스_설정기능_사전점의_체크리스트_20261007.md`;
   container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1)) [coord](src/api/server.ts:10:9) [num](javascript:1) [data](data:text/html;base64,PHNjcmlwdD4=) [vb](vbscript:MsgBox(1)) [scheme](C:alert(1))' + ` [drive](<${windows}>)`, { resolveLink: ports.resolveLink, siteLinks: true }).html;
@@ -192,7 +192,7 @@ it("delegates only host-classified Markdown links without trusting source metada
   const click = new MouseEvent("click", { bubbles: true, cancelable: true });
   file!.dispatchEvent(click);
   expect(click.defaultPrevented).toBe(true);
-  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "operation-theater", path: "src/main.ts", pathKind: "theater-relative", line: 12, column: 3, source: "agent-chat" });
+  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "objective-theater", path: "src/main.ts", pathKind: "theater-relative", line: 12, column: 3, source: "agent-chat" });
   const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
   file!.dispatchEvent(enter);
   expect(enter.defaultPrevented).toBe(true);
@@ -205,10 +205,10 @@ it("delegates only host-classified Markdown links without trusting source metada
   expect(container.querySelector('[href^="javascript:"]')).toBeNull();
   const coord = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "coord")!;
   coord.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "operation-theater", path: "src/api/server.ts", pathKind: "theater-relative", line: 10, column: 9, source: "agent-chat" });
+  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "objective-theater", path: "src/api/server.ts", pathKind: "theater-relative", line: 10, column: 9, source: "agent-chat" });
   const drive = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "drive")!;
   drive.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "operation-theater", path: windows.replaceAll("\\", "/"), pathKind: "absolute", source: "agent-chat" });
+  expect(openFile).toHaveBeenLastCalledWith({ theaterId: "objective-theater", path: windows.replaceAll("\\", "/"), pathKind: "absolute", source: "agent-chat" });
   for (const label of ["bad", "num", "data", "vb", "scheme"]) {
     const blocked = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === label)!;
     expect(blocked.getAttribute("href")).toBeNull();

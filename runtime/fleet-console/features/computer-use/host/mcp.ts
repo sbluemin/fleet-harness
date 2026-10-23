@@ -4,7 +4,7 @@ import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-consol
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
-import type { OperationNode } from "../../execution/shared/operations/types.js";
+import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { ComputerUseService } from "./computer-use.js";
 
 export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";
@@ -14,24 +14,24 @@ export interface ComputerUseMcpDeps {
   readonly service: ComputerUseService;
   readonly onFailure?: (kind: string, error: unknown) => void;
   /**
-   * 호출자 Operation 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
-   * 그 Operation의 토글을 둘 다 요구한다 — 콘솔 사용과 같은 정책이다. 없으면(테스트·플러그인 없는
+   * 호출자 Objective 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
+   * 그 Objective의 토글을 둘 다 요구한다 — 콘솔 사용과 같은 정책이다. 없으면(테스트·플러그인 없는
    * 구성) 실험 플래그만 본다.
    */
-  readonly operations?: () => readonly OperationNode[];
-  readonly resolveOperation?: (id: string) => OperationNode | null;
+  readonly objectiveRecords?: () => readonly ObjectiveRecord[];
+  readonly resolveObjective?: (id: string) => ObjectiveRecord | null;
   readonly experimentEnabled?: () => boolean;
   readonly language?: () => "en" | "ko" | null;
   /**
    * 패널 안 허용 요청 — 콘솔 사용과 같은 요청 브로커를 호스트 조립이 주입한다(이 기능은 콘솔 사용 구현을 모른다).
-   * 주어지면 허용받지 않은 Operation 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다.
+   * 주어지면 허용받지 않은 Objective 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다.
    */
   readonly requests?: ComputerUseRequestPort;
   /**
    * 호출한 세션 → 사용 컨텍스트. 자식 세션은 루트(contextId)의 허용과 기기를 함께 쓴다. `shared` 는 자식 세션이 있는 묶음이라는
-   * 뜻이고, 그때만 기기 소유자를 루트 하나로 정규화해 참가자들이 직렬로 나눠 쓴다. 없으면 호출한 Operation 자신이다.
+   * 뜻이고, 그때만 기기 소유자를 루트 하나로 정규화해 참가자들이 직렬로 나눠 쓴다. 없으면 호출한 Objective 자신이다.
    */
-  readonly useContext?: (operationId: string) => ComputerUseScope | null;
+  readonly useContext?: (objectiveId: string) => ComputerUseScope | null;
   /** 공유 묶음에서 기기를 쓰는 참가자가 바뀌었다 — 호스트가 사용 스냅숏(조작자)을 다시 흘린다. */
   readonly onActorChange?: () => void;
 }
@@ -42,17 +42,17 @@ export interface ComputerUseScope {
   readonly shared: boolean;
 }
 
-function scopeOf(deps: ComputerUseMcpDeps, operationId: string): ComputerUseScope {
-  return deps.useContext?.(operationId) ?? { contextId: operationId, participantId: operationId, shared: false };
+function scopeOf(deps: ComputerUseMcpDeps, objectiveId: string): ComputerUseScope {
+  return deps.useContext?.(objectiveId) ?? { contextId: objectiveId, participantId: objectiveId, shared: false };
 }
 
-/** Operation 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
-const OPERATION_REQUEST_NOTE = "Permission: needs this Operation's Computer Use toggle or a per-turn allowance from the request card in the Operation panel. Otherwise the call waits up to four minutes for the person's answer; a per-turn allowance ends with your turn. If declined or unanswered, do not request Computer Use again this turn.";
+/** Objective 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
+const OBJECTIVE_REQUEST_NOTE = "Permission: needs this Objective's Computer Use toggle or a per-turn allowance from the request card in the Objective panel. Otherwise the call waits up to four minutes for the person's answer; a per-turn allowance ends with your turn. If declined or unanswered, do not request Computer Use again this turn.";
 
 /** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
 export interface ComputerUseRequestPort {
   hold(input: {
-    readonly operationId: string;
+    readonly objectiveId: string;
     readonly participantId?: string;
     readonly capability: "computer";
     readonly tool: string;
@@ -60,8 +60,8 @@ export interface ComputerUseRequestPort {
     readonly authorized: () => boolean;
     readonly withdrawn?: () => boolean;
   }): Promise<"turn" | "always" | "authorized" | "declined" | "no_response" | "stopped" | "withdrawn">;
-  granted(operationId: string, capability: "computer"): boolean;
-  touch(operationId: string, capability: "computer"): void;
+  granted(objectiveId: string, capability: "computer"): boolean;
+  touch(objectiveId: string, capability: "computer"): void;
 }
 
 export function readComputerUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
@@ -72,30 +72,30 @@ export function readComputerUseFlag(payload: Record<string, unknown> | undefined
   return { enabled: true, language: record.language === "ko" ? "ko" : "en" };
 }
 
-/** 세션 라벨 → 호출자 Operation id. Chat 세션은 `chat:` 접두를 단다(콘솔 사용과 같은 규약). */
-export function operationIdFromSessionLabel(label: string | undefined): string {
+/** 세션 라벨 → 호출자 Objective id. Chat 세션은 `chat:` 접두를 단다(콘솔 사용과 같은 규약). */
+export function objectiveIdFromSessionLabel(label: string | undefined): string {
   const value = label ?? "";
   return value.startsWith("chat:") ? value.slice(5) : value;
 }
 
-type ComputerUseRefusal = "experiment_disabled" | "operation_not_authorized" | "plugin_not_authorized" | "caller_unresolved" | "declined_by_user" | "no_response";
+type ComputerUseRefusal = "experiment_disabled" | "objectiveRecord_not_authorized" | "plugin_not_authorized" | "caller_unresolved" | "declined_by_user" | "no_response";
 
 const REFUSAL_REMEDY = {
   experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Computer Use"] },
-  operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Computer Use"] },
+  objectiveRecord_not_authorized: { actor: "user", surface: "objectiveRecord_panel", path: ["Objective menu", "Computer Use"] },
   plugin_not_authorized: { actor: "user", surface: "caller_menu", path: ["Caller menu", "Computer Use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
-  declined_by_user: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Computer Use request"] },
-  no_response: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Computer Use request"] },
+  declined_by_user: { actor: "user", surface: "objectiveRecord_panel", path: ["Objective panel", "Computer Use request"] },
+  no_response: { actor: "user", surface: "objectiveRecord_panel", path: ["Objective panel", "Computer Use request"] },
 } as const satisfies Record<ComputerUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ComputerUseRefusal, string> = {
   experiment_disabled: "Computer Use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Settings > Experiments > Computer Use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
-  operation_not_authorized: "This Operation has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use (컴퓨터 사용 in the Korean interface) in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  objectiveRecord_not_authorized: "This 목표 has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use (컴퓨터 사용 in the Korean interface) in this 목표's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   plugin_not_authorized: "You have not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in your own ··· menu, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
-  caller_unresolved: "This session is not bound to a Console Operation, so Computer Use can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the computer.",
-  declined_by_user: "The person declined this Computer Use request in the Operation panel. Do not request Computer Use again in this turn and do not look for another route to the user's computer. Continue the task without the computer, and tell the person what you could not do.",
-  no_response: "Nobody answered the Computer Use request in the Operation panel within four minutes, so the host refused this call. Do not keep calling Computer Use tools in this turn. Continue without the computer, and tell the person they can allow it from the panel card the next time you ask.",
+  caller_unresolved: "This session is not bound to a Console Objective, so Computer Use can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the computer.",
+  declined_by_user: "The person declined this Computer Use request in the Objective panel. Do not request Computer Use again in this turn and do not look for another route to the user's computer. Continue the task without the computer, and tell the person what you could not do.",
+  no_response: "Nobody answered the Computer Use request in the Objective panel within four minutes, so the host refused this call. Do not keep calling Computer Use tools in this turn. Continue without the computer, and tell the person they can allow it from the panel card the next time you ask.",
 };
 
 const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> = {
@@ -103,21 +103,21 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
     en: "Computer Use is turned off. Turn on Settings > Experiments > Computer Use — it applies immediately, with no restart.",
     ko: "컴퓨터 사용이 꺼져 있습니다. 설정 > 실험 기능 > 컴퓨터 사용을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
-  operation_not_authorized: {
-    en: "This Operation is not allowed to use the computer. Turn on Computer Use in this Operation's ··· menu — it applies immediately, with no restart.",
-    ko: "이 Operation에 컴퓨터 사용이 허용되지 않았습니다. 이 Operation의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
+  objectiveRecord_not_authorized: {
+    en: "This Objective is not allowed to use the computer. Turn on Computer Use in this Objective's ··· menu — it applies immediately, with no restart.",
+    ko: "이 목표에 컴퓨터 사용이 허용되지 않았습니다. 이 목표의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   plugin_not_authorized: {
     en: "Computer Use is not allowed here. Turn on Computer Use in the ··· menu of the one you are talking to — it applies immediately, with no restart.",
     ko: "여기에는 컴퓨터 사용이 허용되지 않았습니다. 대화 상대의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   caller_unresolved: {
-    en: "This session is not bound to a Console Operation, so Computer Use is unavailable to it.",
-    ko: "이 세션은 Console Operation에 묶여 있지 않아 컴퓨터 사용을 쓸 수 없습니다.",
+    en: "This session is not bound to a Console Objective, so Computer Use is unavailable to it.",
+    ko: "이 세션은 Console 목표에 묶여 있지 않아 컴퓨터 사용을 쓸 수 없습니다.",
   },
   declined_by_user: {
-    en: "You declined Computer Use for this Operation. It continues without the computer.",
-    ko: "이 Operation의 컴퓨터 사용을 거절했습니다. 컴퓨터 없이 계속합니다.",
+    en: "You declined Computer Use for this Objective. It continues without the computer.",
+    ko: "이 목표의 컴퓨터 사용을 거절했습니다. 컴퓨터 없이 계속합니다.",
   },
   no_response: {
     en: "The Computer Use request got no answer, so it was declined. It continues without the computer.",
@@ -125,43 +125,43 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
   },
 };
 
-function refuse(reason: ComputerUseRefusal, operationId: string | null, language: "en" | "ko") {
+function refuse(reason: ComputerUseRefusal, objectiveId: string | null, language: "en" | "ko") {
   // 거절·무응답은 이번 턴에서 다시 두드릴 길이 아니다.
-  const actionable = reason === "experiment_disabled" || reason === "operation_not_authorized" || reason === "plugin_not_authorized";
+  const actionable = reason === "experiment_disabled" || reason === "objectiveRecord_not_authorized" || reason === "plugin_not_authorized";
   return { content: [{ type: "text" as const, text: JSON.stringify({
     error: "computer_use_not_authorized", reason,
     retryable: actionable, retryAfter: actionable ? "user_action" : "never",
-    remedy: { ...REFUSAL_REMEDY[reason], ...(operationId ? { operationId } : {}) },
+    remedy: { ...REFUSAL_REMEDY[reason], ...(objectiveId ? { objectiveId } : {}) },
     agentInstruction: REFUSAL_INSTRUCTION[reason],
     message: REFUSAL_MESSAGE[reason][language],
   }) }], isError: true };
 }
 
 /**
- * 호출자 Operation 단위 판정 — 콘솔 사용과 같은 규칙이다. 실험 플래그와 그 Operation의 토글이
+ * 호출자 Objective 단위 판정 — 콘솔 사용과 같은 규칙이다. 실험 플래그와 그 Objective의 토글이
  * 둘 다 참일 때만 통과하고, 어느 쪽이 막았는지를 구분해 돌려준다. 신원이 풀리지 않으면 거부한다.
  */
-function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | undefined): { readonly reason: ComputerUseRefusal; readonly operationId: string | null; readonly language: "en" | "ko" } | null {
-  if (!deps.operations) return null;
+function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | undefined): { readonly reason: ComputerUseRefusal; readonly objectiveId: string | null; readonly language: "en" | "ko" } | null {
+  if (!deps.objectiveRecords) return null;
   // 자식 세션의 허용은 루트의 것이다 — 판정은 루트 노드의 payload 와 루트 키의 허가로 한다.
-  const id = scopeOf(deps, operationIdFromSessionLabel(sessionLabel)).contextId;
+  const id = scopeOf(deps, objectiveIdFromSessionLabel(sessionLabel)).contextId;
   const fallback = deps.language?.() ?? "en";
-  const operation = deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
-  if (!operation) return { reason: "caller_unresolved", operationId: null, language: fallback };
-  const flag = readComputerUseFlag(operation.payload);
+  const objectiveRecord = deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id);
+  if (!objectiveRecord) return { reason: "caller_unresolved", objectiveId: null, language: fallback };
+  const flag = readComputerUseFlag(objectiveRecord);
   const language = flag?.language ?? fallback;
-  if (deps.experimentEnabled?.() !== true) return { reason: "experiment_disabled", operationId: operation.id, language };
-  if (!flag && deps.requests?.granted(operation.id, "computer") !== true) return { reason: "operation_not_authorized", operationId: operation.id, language };
+  if (deps.experimentEnabled?.() !== true) return { reason: "experiment_disabled", objectiveId: objectiveRecord.id, language };
+  if (!flag && deps.requests?.granted(objectiveRecord.id, "computer") !== true) return { reason: "objectiveRecord_not_authorized", objectiveId: objectiveRecord.id, language };
   return null;
 }
 
 function denyComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string | undefined) {
   const denial = computerUseDenial(deps, sessionLabel);
-  return denial ? refuse(denial.reason, denial.operationId, denial.language) : null;
+  return denial ? refuse(denial.reason, denial.objectiveId, denial.language) : null;
 }
 
 /**
- * 허용받지 않은 Operation 호출을 붙잡아 그 패널에 허용 요청 카드를 띄운다. 카드는 그 Operation의 허용만 묻는다 —
+ * 허용받지 않은 Objective 호출을 붙잡아 그 패널에 허용 요청 카드를 띄운다. 카드는 그 Objective의 허용만 묻는다 —
  * 실험 스위치를 끈 것은 사람이 이미 내린 답이므로 붙잡지 않고 바로 거부하고, 기다리는 사이 스위치가 꺼지면
  * 카드를 거두고 같은 사유로 거부한다.
  */
@@ -169,20 +169,20 @@ async function holdComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string, t
   const denial = computerUseDenial(deps, sessionLabel);
   if (!denial) return null;
   const requests = deps.requests;
-  if (!requests || !denial.operationId || denial.reason !== "operation_not_authorized") return refuse(denial.reason, denial.operationId, denial.language);
+  if (!requests || !denial.objectiveId || denial.reason !== "objectiveRecord_not_authorized") return refuse(denial.reason, denial.objectiveId, denial.language);
   const outcome = await requests.hold({
-    operationId: denial.operationId,
-    participantId: scopeOf(deps, operationIdFromSessionLabel(sessionLabel)).participantId,
+    objectiveId: denial.objectiveId,
+    participantId: scopeOf(deps, objectiveIdFromSessionLabel(sessionLabel)).participantId,
     capability: "computer",
     tool,
     signal,
     authorized: () => computerUseDenial(deps, sessionLabel) === null,
     withdrawn: () => deps.experimentEnabled?.() !== true,
   });
-  if (outcome === "declined") return refuse("declined_by_user", denial.operationId, denial.language);
-  if (outcome === "no_response") return refuse("no_response", denial.operationId, denial.language);
-  if (outcome === "withdrawn") return refuse("experiment_disabled", denial.operationId, denial.language);
-  if (outcome === "stopped") return refuse(denial.reason, denial.operationId, denial.language);
+  if (outcome === "declined") return refuse("declined_by_user", denial.objectiveId, denial.language);
+  if (outcome === "no_response") return refuse("no_response", denial.objectiveId, denial.language);
+  if (outcome === "withdrawn") return refuse("experiment_disabled", denial.objectiveId, denial.language);
+  if (outcome === "stopped") return refuse(denial.reason, denial.objectiveId, denial.language);
   return denyComputerUse(deps, sessionLabel);
 }
 export interface ComputerUseMcpConnection extends AdmiralMcpSession {
@@ -190,7 +190,7 @@ export interface ComputerUseMcpConnection extends AdmiralMcpSession {
   dispose(): Promise<void>;
 }
 
-/** 플러그인 에이전트 세션 하나에 묻어 들어가는 기기 조작 서버 — Operation 신원이 없는 호출자용. */
+/** 플러그인 에이전트 세션 하나에 묻어 들어가는 기기 조작 서버 — Objective 신원이 없는 호출자용. */
 export interface ComputerUsePluginConnection {
   readonly embeddedServer: ClaudeGatewayMcpServer;
   readonly toolNames: readonly string[];
@@ -208,19 +208,19 @@ export interface ComputerUsePluginOptions {
 export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   const connections = new Set<ComputerUseMcpConnection>();
   const pluginConnections = new Set<ComputerUsePluginConnection>();
-  // 진행 중인 도구 호출을 호출자 Operation별로 기억한다 — 허용을 거둘 때 아직 기기를 잡기 전
+  // 진행 중인 도구 호출을 호출자 Objective별로 기억한다 — 허용을 거둘 때 아직 기기를 잡기 전
   // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
   const inFlight = new Map<string, Set<AbortController>>();
-  const operationOwners = new Map<string, string>();
+  const objectiveRecordOwners = new Map<string, string>();
   // 기기를 지금 쓰는(마지막으로 부른) 참가자 — 공유 소유자에서는 루트와 다르다. 캡처 스냅숏의 actor 가 읽는다.
   const ownerActors = new Map<string, string>();
   // 연결마다 공유 묶음을 가진다 — 턴 종료·허용 회수가 모든 연결의 묶음에 닿도록 호스트가 이 고리를 돈다.
   const groupHooks = new Set<{ leave(contextId: string, participantId: string): boolean; revoke(contextId: string): void }>();
   let disposed = false;
   return {
-    operationIdForOwner: (owner: string) => operationOwners.get(owner) ?? null,
-    /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Operation 자신이다. */
-    actorForOwner: (owner: string) => ownerActors.get(owner) ?? operationOwners.get(owner) ?? null,
+    objectiveIdForOwner: (owner: string) => objectiveRecordOwners.get(owner) ?? null,
+    /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Objective 자신이다. */
+    actorForOwner: (owner: string) => ownerActors.get(owner) ?? objectiveRecordOwners.get(owner) ?? null,
     connect(): ComputerUseMcpConnection {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
       const prefix = randomUUID();
@@ -250,7 +250,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         group.lifetime.abort();
         deps.service.release(group.label);
         owners.delete(group.label);
-        operationOwners.delete(group.label);
+        objectiveRecordOwners.delete(group.label);
         ownerActors.delete(group.label);
       };
       /** 한 참가자가 묶음에서 빠진다 — 그 참가자의 호출만 끊고, 남은 참가자가 없으면 기기를 놓는다. 묶음이 있었으면 true. */
@@ -273,7 +273,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         }
         const shared = group;
         owners.add(shared.label);
-        operationOwners.set(shared.label, scope.contextId);
+        objectiveRecordOwners.set(shared.label, scope.contextId);
         if (spec.id === "computer_end") {
           // 부른 참가자의 참여만 끝낸다 — 기기는 마지막 참가자가 빠질 때 놓는다.
           leaveGroup(scope.contextId, scope.participantId);
@@ -301,28 +301,28 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       };
       for (const spec of deps.service.specs()) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
-        registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OPERATION_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
+        registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OBJECTIVE_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
           const parsed = schema.safeParse(args);
           if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
-          // 허용은 도구 호출마다 다시 읽는다 — Operation 토글과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
-          // Operation의 허용을 받지 않았으면 패널에서 사람의 답을 기다린다.
+          // 허용은 도구 호출마다 다시 읽는다 — Objective 토글과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
+          // Objective의 허용을 받지 않았으면 패널에서 사람의 답을 기다린다.
           const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
           if (denied) return denied;
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
-          const scope = scopeOf(deps, operationIdFromSessionLabel(context.sessionLabel));
+          const scope = scopeOf(deps, objectiveIdFromSessionLabel(context.sessionLabel));
           deps.requests?.touch(scope.contextId, "computer");
           if (scope.shared) return runShared(spec, parsed.data, context, scope);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
-          const operationId = operationIdFromSessionLabel(context.sessionLabel);
-          operationOwners.set(sessionLabel, operationId);
+          const objectiveId = objectiveIdFromSessionLabel(context.sessionLabel);
+          objectiveRecordOwners.set(sessionLabel, objectiveId);
           const call = new AbortController();
-          const calls = inFlight.get(operationId) ?? new Set<AbortController>();
+          const calls = inFlight.get(objectiveId) ?? new Set<AbortController>();
           calls.add(call);
-          inFlight.set(operationId, calls);
+          inFlight.set(objectiveId, calls);
           const signals = [call.signal, controller.signal, ...(context.signal ? [context.signal] : [])];
           return spec.execute(parsed.data, { ...context, sessionLabel, signal: AbortSignal.any(signals) })
-            .finally(() => { calls.delete(call); if (calls.size === 0) inFlight.delete(operationId); });
+            .finally(() => { calls.delete(call); if (calls.size === 0) inFlight.delete(objectiveId); });
         } });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_COMPUTER_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
@@ -332,14 +332,14 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const release = (label: string) => {
         const id = owner(label);
         // 터미널(PTY) 루트의 라벨은 루트 id 그대로라 공유 묶음의 소유자 라벨과 같아진다 — 그 기기는 묶음이 마지막 참가자와 함께 놓는다.
-        if (![...groups.values()].some((group) => group.label === id)) { deps.service.release(id); owners.delete(id); operationOwners.delete(id); ownerActors.delete(id); }
+        if (![...groups.values()].some((group) => group.label === id)) { deps.service.release(id); owners.delete(id); objectiveRecordOwners.delete(id); ownerActors.delete(id); }
         // 공유 묶음의 참가자라면 그 참가자만 묶음에서 뺀다 — 같은 기기를 쓰는 다른 참가자의 호출은 그대로 간다.
-        const scope = scopeOf(deps, operationIdFromSessionLabel(label));
+        const scope = scopeOf(deps, objectiveIdFromSessionLabel(label));
         leaveGroup(scope.contextId, scope.participantId);
       };
       const cleanup = () => {
         for (const contextId of [...groups.keys()]) releaseGroup(contextId);
-        for (const id of owners) { deps.service.release(id); operationOwners.delete(id); ownerActors.delete(id); }
+        for (const id of owners) { deps.service.release(id); objectiveRecordOwners.delete(id); ownerActors.delete(id); }
         owners.clear(); manager.cleanup();
       };
       const connection: ComputerUseMcpConnection = {
@@ -371,10 +371,10 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       return connection;
     },
     /**
-     * Operation이 아닌 호출자(플러그인 에이전트 세션)에게 붙는 서버. HTTP 세션 토큰 대신 세션에
+     * Objective이 아닌 호출자(플러그인 에이전트 세션)에게 붙는 서버. HTTP 세션 토큰 대신 세션에
      * 묻어 들어가는 임베디드 서버이고, 허용은 호출마다 `enabled()`와 실험 스위치를 함께 묻는다 —
      * 콘솔 사용의 플러그인 연결과 같은 정책이다. 소유자 라벨은 연결마다 유일해 `revoke()`가 자기
-     * 것만 놓는다. 실험 스위치가 꺼져 있으면 서버를 내주지 않는다(null) — Operation 런치와 같이 꺼진 채
+     * 것만 놓는다. 실험 스위치가 꺼져 있으면 서버를 내주지 않는다(null) — Objective 런치와 같이 꺼진 채
      * 연 세션에는 도구가 없다.
      */
     connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null {
@@ -428,26 +428,26 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       return connection;
     },
     /**
-     * 한 Operation의 허용을 거둘 때 부른다. 그 Operation(터미널·Chat 세션 어느 쪽이든)의 진행 중
+     * 한 Objective의 허용을 거둘 때 부른다. 그 Objective(터미널·Chat 세션 어느 쪽이든)의 진행 중
      * 호출을 끊고, 기기를 잡고 있으면 즉시 놓는다 — 다음 호출이 거부되는 것만으로는 이미 인가를
      * 통과해 대상을 풀고 있는 호출이나 진행 중인 조작이 멈추지 않는다.
      */
-    revokeOperation(operationId: string): void {
+    revokeObjective(objectiveId: string): void {
       // 자식 세션의 허용은 루트의 것이라 거두는 것도 루트 전체다(묶음의 모든 참가자 호출과 기기).
-      const contextId = scopeOf(deps, operationId).contextId;
+      const contextId = scopeOf(deps, objectiveId).contextId;
       for (const call of inFlight.get(contextId) ?? []) call.abort();
       for (const hook of groupHooks) hook.revoke(contextId);
       deps.service.releaseWhere((label) => label.endsWith(`:${contextId}`) || label.endsWith(`:chat:${contextId}`));
     },
     /**
      * 한 참가자의 턴이 끝났다. 공유 묶음이면 그 참가자의 호출만 끊고 묶음에서 빼며, 기기는 마지막 참가자가 빠질 때 놓는다.
-     * 공유 묶음이 아니면 예전처럼 그 Operation 의 허용을 거둘 때와 같다(진행 중 호출을 끊고 기기를 놓는다).
+     * 공유 묶음이 아니면 예전처럼 그 Objective 의 허용을 거둘 때와 같다(진행 중 호출을 끊고 기기를 놓는다).
      */
-    endParticipant(operationId: string): void {
-      const scope = scopeOf(deps, operationId);
+    endParticipant(objectiveId: string): void {
+      const scope = scopeOf(deps, objectiveId);
       if (scope.shared) { for (const hook of groupHooks) hook.leave(scope.contextId, scope.participantId); return; }
-      for (const call of inFlight.get(operationId) ?? []) call.abort();
-      deps.service.releaseWhere((label) => label.endsWith(`:${operationId}`) || label.endsWith(`:chat:${operationId}`));
+      for (const call of inFlight.get(objectiveId) ?? []) call.abort();
+      deps.service.releaseWhere((label) => label.endsWith(`:${objectiveId}`) || label.endsWith(`:chat:${objectiveId}`));
     },
     async dispose(): Promise<void> {
       disposed = true;

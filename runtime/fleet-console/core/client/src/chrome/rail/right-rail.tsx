@@ -5,7 +5,7 @@ import { consoleUseWrapClassName, consoleUseWrapLabel, getPanelWrap, subscribeCo
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../../../../features/objectives/shared/records/types.js";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "../../../../../features/workspace/shared/rail.js";
 
@@ -16,7 +16,7 @@ import { useGlobalSettingsStore } from "../../../../../features/settings/client/
 import { useT } from "../../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../../integration/store.js";
-import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
 import { dismissRailPanel, openRailPanel, presentRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
@@ -38,7 +38,7 @@ import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
 interface RightRailProps {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
-  readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly onLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   /**
    * 열린 카드 맨 위에 서는 머리 — 대화 중심 화면이 도구 글자 탭을 싣는다. 없으면 카드는 지금처럼 본문뿐이다.
    */
@@ -69,12 +69,12 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
  * 도구 패널 카드 — 화면 오른쪽에 뜨는 부유 카드. 도구 아이콘은 여기 없다: 대화 중심 화면이 패널 머리에
  * 도구 탭(RailToolIcons)을 세우고, 카드는 켜진 도구가 있을 때만 선다.
  */
-// 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
-export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation, header, reservedArenaWidth = 148 }: RightRailProps) {
+// 부모(ObjectiveRecords)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
+export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjective, header, reservedArenaWidth = 148 }: RightRailProps) {
   const t = useT();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
-  const baseCtx = useRailPanelContext(theaterId, api, onLaunchOperation);
+  const baseCtx = useRailPanelContext(theaterId, api, onLaunchObjective);
   const language = baseCtx.language;
   const rootRef = useRef<HTMLDivElement>(null);
   const activePanelId = useRailActivePanelId();
@@ -364,7 +364,7 @@ export type RailToolContext = RailPanelContext & { readonly language: ConsoleLoc
 export function useRailPanelContext(
   theaterId: string | null,
   api: ClientApiCapability,
-  onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void,
+  onLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void,
 ): RailToolContext {
   const railCapabilities = useHostCapabilities();
   const t = useT();
@@ -385,10 +385,10 @@ export function useRailPanelContext(
     theme,
     surfaces: railCapabilities.surfaces,
     rail: railCapabilities.rail,
-    launchOperation: onLaunchOperation,
+    launchObjective: onLaunchObjective,
     // 레일 패널의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
     openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
-  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation, railCapabilities]);
+  }), [theaterId, theaterLabel, api, language, theme, onLaunchObjective, railCapabilities]);
 }
 
 /**
@@ -406,7 +406,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
   readonly scope?: "all" | "core" | "tools";
   /** 코어 탭 가운데 세울 것만 고른다 — 대화 중심 화면의 패널 머리가 고른 Theater 섹션의 탭만 세울 때 쓴다. */
   readonly coreFilter?: (entryId: string) => boolean;
-  /** 플러그인 도구 가운데 세울 것만 고른다 — 대화 중심 화면의 Operation 대화가 도구 줄 대신 남길 도구(conversationTab)만 세울 때 쓴다. */
+  /** 플러그인 도구 가운데 세울 것만 고른다 — 대화 중심 화면의 Objective 대화가 도구 줄 대신 남길 도구(conversationTab)만 세울 때 쓴다. */
   readonly toolFilter?: (entry: RailEntryDescriptor) => boolean;
   /**
    * 플러그인 도구의 켜짐을 대신 말한다 — 대화 칸의 도구 캡슐은 도구가 오른쪽 사이드바가 아니라 대화별 도구 칸에 열리므로 그 칸의
@@ -599,7 +599,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
           theme={ctx.theme}
           surfaces={ctx.surfaces}
           onRequestExtraWidth={handleRequestExtraWidth}
-          onLaunchOperation={ctx.launchOperation}
+          onLaunchObjective={ctx.launchObjective}
           openLink={ctx.openLink}
         />
       </div>
@@ -668,8 +668,8 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       disabled={context.theaterId === null && entry.scope !== "fleet"}
       // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
-      // 선언한 도구만 활성 해제 가드를 넘는다(active-operation-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
-      data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}
+      // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
+      data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}
       onClick={handleClick}
     >
       {text ? <span className="right-rail-ico-label">{title}</span> : icon}
@@ -727,7 +727,7 @@ function RailConversationTabs({ entry, tabs, context, language, isActive }: {
             aria-pressed={pressed}
             aria-label={named}
             data-tip={named}
-            data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}
+            data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}
             onClick={() => openConversationTab(entry, context, tab.id, isActive)}
           >
             <span className="right-rail-ico-label">{title}</span>

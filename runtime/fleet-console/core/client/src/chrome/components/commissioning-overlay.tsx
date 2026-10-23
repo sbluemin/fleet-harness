@@ -132,10 +132,10 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
                     primaryActionRef.current = node;
                   }}
                   className="commissioning-primary-action"
-                  to="/operations"
+                  to="/objectives"
                   onClick={closeOnboarding}
                 >
-                  {t("chrome.commissioning.goToOperationsArrow")}
+                  {t("chrome.commissioning.goToObjectiveRecordsArrow")}
                 </Link>
               ) : null}
             </div>

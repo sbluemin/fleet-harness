@@ -52,7 +52,7 @@ Console 삭제는 POST /api/entry/:id/delete의 expectedHash 필수, 선택적 r
 
 ## 사령관 지식 위치와 이주
 
-- Wiki 위치의 정체성은 사령관 id 하나다. root는 Console 조합이 Codex feature에 주입한 지식 root 포트(`knowledge.root(commodoreId)`) = `<consoleDataDir>/commodore/{uuid}/knowledge`다. Codex는 Theater·cwd를 위치 입력으로 받지 않는다. MCP 도구는 호스트가 실어 준 `context.commodoreId`(Operation 세션은 세션 소속의 사령관, 사령관 세션은 `bindCommodore`)만 쓰고, 없으면 `knowledge_unavailable`이다. 화면 맥락→사령관 대응(`commodoreForContext`)과 발급은 호스트가 한다.
+- Wiki 위치의 정체성은 사령관 id 하나다. root는 Console 조합이 Codex feature에 주입한 지식 root 포트(`knowledge.root(commodoreId)`) = `<consoleDataDir>/commodore/{uuid}/knowledge`다. Codex는 Theater·cwd를 위치 입력으로 받지 않는다. MCP 도구는 호스트가 실어 준 `context.commodoreId`(Objective 세션은 세션 소속의 사령관, 사령관 세션은 `bindCommodore`)만 쓰고, 없으면 `knowledge_unavailable`이다. 화면 맥락→사령관 대응(`commodoreForContext`)과 발급은 호스트가 한다.
 - 옛 위키(`workspaces/<cwd 키>/knowledge`)는 `legacyKnowledgeSources(commodoreId)`가 내는 원본 중 내용이 있는 첫 것 하나만 옮긴다. 이 대응은 이주에만 쓴다. 기동 시 Codex 등록 첫머리의 `migrateAll()`이 모든 사령관을 옮기고, resolve는 프로세스에서 처음 볼 때 같은 절차를 한 번 더 확인한다.
 - 디렉터리 lock은 쓰지 않는다. 슬롯 writer는 `console.lock` 소유 프로세스 하나이고 이주는 동기다. 중단 재개는 `<사령관 디렉터리>/knowledge.migration.json` 저널(`prepared`→`committed`→`source-retiring`)이 맡고 커밋점은 rename 한 번이다. EXDEV에서는 `knowledge.migrating-<tx>`로 복사·인벤토리 대조 후 rename하고, 커밋된 사본과 바이트가 같을 때만 원본을 `knowledge.retired-<tx>`로 치운 뒤 지운다.
 - 새 root에 이미 내용이 있으면 옛 원본은 건드리지 않고 경고만 남긴다. 원본·대상에 절대·탈출·dangling·디렉터리 링크나 특수 파일이 있으면 아무것도 쓰기 전에 그 사령관을 fail-closed로 막는다. 트리 안 일반 파일을 가리키는 상대 링크는 링크로 옮긴다.

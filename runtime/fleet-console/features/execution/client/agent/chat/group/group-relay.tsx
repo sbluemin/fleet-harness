@@ -21,7 +21,7 @@ import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } fro
  * 「채팅 닫기」. 오른쪽에서 밀려 들어오고 뒤의 기록은 조금 왼쪽으로 밀리며 흐려진다(움직임 줄이기면 바로 바뀐다). 열면 포커스가 화면으로
  * 가고 Esc·「채팅 닫기」로 닫으면 누른 줄로 돌아온다. 원장은 보낸 이 ⇄ 받는 이의 구성원 이름이 연다.
  *
- * 보낸 이 ⇄ 받는 이는 대화 주인 Operation 의 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)이 그 자리에서 바뀌어 보인다
+ * 보낸 이 ⇄ 받는 이는 대화 주인 Objective 의 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)이 그 자리에서 바뀌어 보인다
  * (`publishConversationPillTakeover`) — 대화 화면은 그 줄을 덮지 않는다. 그 pill 이 없는 대화(플러그인 대화 등)에서만 화면 맨 위에
  * 같은 칩을 대신 세운다. pill 의 칩은 화면 밖 DOM 이지만 화면이 소유한다 — 접근성 트리에서는 화면이 `aria-owns` 로 품고, Tab 순환의 첫 자리다.
  *
@@ -187,31 +187,31 @@ function trapTab(event: React.KeyboardEvent<HTMLElement>, root: HTMLElement, own
 }
 
 /** 대화 화면 — 연 전언이 없으면 아무것도 그리지 않는다. 다른 전언을 열면 새 화면으로 선다. */
-export function RelayConversation({ selected, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillOperationId = null }: RelayLayerPorts & {
+export function RelayConversation({ selected, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillObjectiveId = null }: RelayLayerPorts & {
   readonly entries: readonly AgentConversationEntry[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
-  readonly onOpenLedger?: ((operationId: string) => void) | undefined;
+  readonly onOpenLedger?: ((objectiveId: string) => void) | undefined;
   /** 메시지 위 가운데 시각 — 그룹 대화의 시각 줄과 같은 문구. */
   readonly timeLabel: (at: number) => string;
-  /** 머리 pill 을 바꿀 대화 주인 Operation — 그 pill 이 서 있으면 보낸 이 ⇄ 받는 이를 거기에 보인다. 없으면 화면 안에 칩을 둔다. */
-  readonly pillOperationId?: string | null | undefined;
+  /** 머리 pill 을 바꿀 대화 주인 Objective — 그 pill 이 서 있으면 보낸 이 ⇄ 받는 이를 거기에 보인다. 없으면 화면 안에 칩을 둔다. */
+  readonly pillObjectiveId?: string | null | undefined;
 }) {
   const entry = selected === null ? undefined : entries.find((candidate) => candidate.id === selected);
   if (!entry || !isRelay(entry)) return null;
-  return <RelayLayer key={entry.id} entry={entry} origin={origin} onDismiss={onDismiss} entries={entries} participants={participants} language={language} onOpenLedger={onOpenLedger} timeLabel={timeLabel} pillOperationId={pillOperationId} />;
+  return <RelayLayer key={entry.id} entry={entry} origin={origin} onDismiss={onDismiss} entries={entries} participants={participants} language={language} onOpenLedger={onOpenLedger} timeLabel={timeLabel} pillObjectiveId={pillObjectiveId} />;
 }
 
-function RelayLayer({ entry, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillOperationId }: {
+function RelayLayer({ entry, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel, pillObjectiveId }: {
   readonly entry: RelayEntry;
   readonly origin: React.RefObject<HTMLElement | null>;
   readonly onDismiss: () => void;
   readonly entries: readonly AgentConversationEntry[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
-  readonly onOpenLedger: ((operationId: string) => void) | undefined;
+  readonly onOpenLedger: ((objectiveId: string) => void) | undefined;
   readonly timeLabel: (at: number) => string;
-  readonly pillOperationId: string | null;
+  readonly pillObjectiveId: string | null;
 }) {
   const t = getGroupT(language);
   const ledgerOf = React.useContext(LedgerTargetContext);
@@ -223,9 +223,9 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const returnFocus = React.useRef(false);
   const titleId = React.useId();
   const pairId = React.useId();
-  const hosted = useConversationPillHosted(pillOperationId);
+  const hosted = useConversationPillHosted(pillObjectiveId);
 
-  // 폰 배치에서는 하드웨어·브라우저 뒤로와 상단 ‹ 가 Operation 을 떠나지 않고 이 화면부터 닫는다(좌표 시트와 같은 계약) — 열린 동안
+  // 폰 배치에서는 하드웨어·브라우저 뒤로와 상단 ‹ 가 Objective 을 떠나지 않고 이 화면부터 닫는다(좌표 시트와 같은 계약) — 열린 동안
   // history 항목 하나와 뒤로 층 하나를 올린다. 데스크톱은 올리지 않는다(브라우저 뒤로도 지금 그대로다).
   const phone = useViewMode().effective === "mobile";
   const historyRef = React.useRef<number | null>(null);
@@ -333,10 +333,10 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
 
   // 원장으로 가면 그 자리가 원장 틀로 바뀐다 — 화면을 먼저 내리고 연다. 폰 배치면 history 항목이 걷힌 다음에 옮긴다(걷기 전에 옮기면
   // 새 상태가 걷히는 항목에 쓰여 사라진다).
-  const openLedger = (operationId: string) => {
+  const openLedger = (objectiveId: string) => {
     if (closing.current) return;
     closing.current = true;
-    runAfterOverlayRelease(takeBackPaths(), () => { onDismiss(); onOpenLedger?.(operationId); });
+    runAfterOverlayRelease(takeBackPaths(), () => { onDismiss(); onOpenLedger?.(objectiveId); });
   };
   const onKey = (event: React.KeyboardEvent<HTMLElement>) => {
     const root = rootRef.current;
@@ -379,17 +379,17 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
 
   const names = [partyName(sender), ...recipients.map(partyName)].join(", ");
   const ledgerKey = [sender, ...recipients].map((party) => ledgerFor(party) ?? "").join(",");
-  // 머리 pill 에 보일 칩 — 화면이 선 동안(밀려 들어온 뒤부터 내려가기 시작할 때까지) 주인 Operation 의 pill 을 이것으로 바꾼다.
+  // 머리 pill 에 보일 칩 — 화면이 선 동안(밀려 들어온 뒤부터 내려가기 시작할 때까지) 주인 Objective 의 pill 을 이것으로 바꾼다.
   const takeover = React.useMemo(() => ({
     key: `relay:${entry.id}`,
     label: t("group.relay.title", { names }),
     content: <span id={pairId} className="group-relay-pill" onKeyDown={(event) => actions.current.onKey(event)}>{pairBody("pill")}</span>,
   }), [entry.id, names, ledgerKey, language, pairId]); // eslint-disable-line react-hooks/exhaustive-deps -- 칩 모양은 이름·원장 대상·언어만 바꾼다.
   React.useLayoutEffect(() => {
-    if (!hosted || !open || pillOperationId === null) return;
-    publishConversationPillTakeover(pillOperationId, takeover);
-    return () => publishConversationPillTakeover(pillOperationId, null);
-  }, [hosted, open, pillOperationId, takeover]);
+    if (!hosted || !open || pillObjectiveId === null) return;
+    publishConversationPillTakeover(pillObjectiveId, takeover);
+    return () => publishConversationPillTakeover(pillObjectiveId, null);
+  }, [hosted, open, pillObjectiveId, takeover]);
   const owned = hosted && open;
   return (
     <div

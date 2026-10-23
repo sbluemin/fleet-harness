@@ -104,7 +104,7 @@ export interface CodexHealthResponse {
   logUnreadable?: true;
 }
 
-/** Operation SSE 채널 위의 Codex 이벤트 이름 — 클라이언트 리스너와 한 글자도 달라선 안 된다. */
+/** Objective SSE 채널 위의 Codex 이벤트 이름 — 클라이언트 리스너와 한 글자도 달라선 안 된다. */
 export const CODEX_CHANGED_EVENT = "codex:changed";
 export const CODEX_WATCH_EVENT = "codex:watch";
 

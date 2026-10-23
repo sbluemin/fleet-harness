@@ -28,7 +28,7 @@ import "./settings-modal.css";
  * 오른쪽 본문은 그대로 서 있고, Enter 는 첫 결과로 간다.
  */
 export function SettingsModalHost({ visible, mobile }: {
-  /** 대화 중심 화면이 지금 그려져 있는가(데스크톱 + Operations 화면). */
+  /** 대화 중심 화면이 지금 그려져 있는가(데스크톱 + ObjectiveRecords 화면). */
   readonly visible: boolean;
   readonly mobile: boolean;
 }) {

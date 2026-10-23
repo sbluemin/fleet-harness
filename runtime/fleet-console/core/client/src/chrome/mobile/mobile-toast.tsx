@@ -65,12 +65,12 @@ export function MobileActionToast({ open, text, actions }: { readonly open: bool
   );
 }
 
-// 보관한 Operation의 제목 — 보관 뒤에는 목록에서 사라지므로 토스트가 부를 수 있게 보관하는 순간 적어 둔다.
+// 보관한 Objective의 제목 — 보관 뒤에는 목록에서 사라지므로 토스트가 부를 수 있게 보관하는 순간 적어 둔다.
 const archivedTitles = new Map<string, string>();
-export function rememberArchivedTitle(operationId: string, title: string): void {
-  archivedTitles.set(operationId, title);
+export function rememberArchivedTitle(objectiveId: string, title: string): void {
+  archivedTitles.set(objectiveId, title);
   if (archivedTitles.size > 20) archivedTitles.delete(archivedTitles.keys().next().value as string);
 }
-export function recallArchivedTitle(operationId: string): string | undefined {
-  return archivedTitles.get(operationId);
+export function recallArchivedTitle(objectiveId: string): string | undefined {
+  return archivedTitles.get(objectiveId);
 }

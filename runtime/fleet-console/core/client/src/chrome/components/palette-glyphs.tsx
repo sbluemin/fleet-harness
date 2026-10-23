@@ -19,13 +19,13 @@ function Glyph({ children }: { readonly children: ReactNode }) {
 
 const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry">, ReactNode>> = {
   "theater-add": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M8 5.5v5M5.5 8h5" /></Glyph>,
-  "operation-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
-  "operation-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
-  "operation-resume": <Glyph><path d="M5 3.5v9l7.5-4.5z" /></Glyph>,
-  "operation-archive": <ArchiveGlyph strokeWidth={1.125} />,
-  "operation-rename": <Glyph><path d="M3 13l.9-3.4L10.6 2.9a1.3 1.3 0 0 1 1.8 0l.7.7a1.3 1.3 0 0 1 0 1.8L6.4 12.1z" /><path d="M9.7 3.8l2.5 2.5" /></Glyph>,
-  "operation-group": <Glyph><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3-5.7 5.7z" /><circle cx="5.5" cy="5.5" r=".9" fill="currentColor" stroke="none" /></Glyph>,
-  "operation-accent": <Glyph><path d="M8 2.5s4 4.2 4 7a4 4 0 0 1-8 0c0-2.8 4-7 4-7z" /></Glyph>,
+  "objective-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
+  "objective-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
+  "objective-resume": <Glyph><path d="M5 3.5v9l7.5-4.5z" /></Glyph>,
+  "objective-archive": <ArchiveGlyph strokeWidth={1.125} />,
+  "objective-rename": <Glyph><path d="M3 13l.9-3.4L10.6 2.9a1.3 1.3 0 0 1 1.8 0l.7.7a1.3 1.3 0 0 1 0 1.8L6.4 12.1z" /><path d="M9.7 3.8l2.5 2.5" /></Glyph>,
+  "objective-group": <Glyph><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3-5.7 5.7z" /><circle cx="5.5" cy="5.5" r=".9" fill="currentColor" stroke="none" /></Glyph>,
+  "objective-accent": <Glyph><path d="M8 2.5s4 4.2 4 7a4 4 0 0 1-8 0c0-2.8 4-7 4-7z" /></Glyph>,
   "view-status-axis": <Glyph><rect x="2.5" y="2.5" width="11" height="3.2" rx="1" /><rect x="2.5" y="6.4" width="11" height="3.2" rx="1" /><rect x="2.5" y="10.3" width="11" height="3.2" rx="1" /></Glyph>,
   "console-rail": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M10.5 2.5v11" /></Glyph>,
   "console-band": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 5.5h11" /></Glyph>,
@@ -39,7 +39,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "r
 
 const SECTION_GLYPHS: Readonly<Record<"recent" | PaletteCommandGroup, ReactNode>> = {
   recent: <Glyph><circle cx="8" cy="8" r="6" /><path d="M8 4.8V8l2.2 1.4" /></Glyph>,
-  "current-operation": <Glyph><rect x="3" y="3" width="10" height="10" rx="2" /></Glyph>,
+  "current-objectiveRecord": <Glyph><rect x="3" y="3" width="10" height="10" rx="2" /></Glyph>,
   theater: <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M5.5 10.5V6.2m0 0h2.6m-2.6 2.1h2.1" /></Glyph>,
   view: LINE_GLYPHS["view-status-axis"],
   panel: LINE_GLYPHS["console-rail"],
@@ -47,29 +47,29 @@ const SECTION_GLYPHS: Readonly<Record<"recent" | PaletteCommandGroup, ReactNode>
 };
 
 export function PaletteSectionGlyph({ section }: { readonly section: "recent" | PaletteCommandGroup }) {
-  return <span className="operation-search-section-glyph" aria-hidden="true">{SECTION_GLYPHS[section]}</span>;
+  return <span className="objective-search-section-glyph" aria-hidden="true">{SECTION_GLYPHS[section]}</span>;
 }
 
 /** 패널 검색 결과(파일·Codex 문서) 행의 선행 글리프 — 그 패널을 여는 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => ReactNode) | undefined }) {
   const node = typeof icon === "function" ? icon() : icon;
-  return <span className="operation-search-command-glyph operation-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;
+  return <span className="objective-search-command-glyph objective-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;
 }
 
 /** 명령 행의 선행 글리프. Theater는 그 Theater 의 사령관 아바타(사이드바 머리와 같은 얼굴), 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteCommandGlyph({ command }: { readonly command: PaletteCommandEntry }) {
   if (command.glyph === "theater-avatar") {
     return (
-      <span className="operation-search-command-glyph" aria-hidden="true">
+      <span className="objective-search-command-glyph" aria-hidden="true">
         {command.theaterAvatar ? <TheaterAvatar theaterId={command.theaterAvatar.id} size={16} label={command.theaterAvatar.label} decorative /> : null}
       </span>
     );
   }
   if (command.glyph === "rail-entry") return <PaletteRailIcon icon={command.railIcon} />;
-  return <span className="operation-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;
+  return <span className="objective-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;
 }
 
-/** Operation 행 동작 띠의 글리프 — 같은 어휘를 쓴다. */
+/** Objective 행 동작 띠의 글리프 — 같은 어휘를 쓴다. */
 export function PaletteActionGlyph({ glyph }: { readonly glyph: Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry"> }) {
-  return <span className="operation-search-action-glyph" aria-hidden="true">{LINE_GLYPHS[glyph]}</span>;
+  return <span className="objective-search-action-glyph" aria-hidden="true">{LINE_GLYPHS[glyph]}</span>;
 }

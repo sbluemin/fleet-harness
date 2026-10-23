@@ -22,7 +22,7 @@ import "./group-chat.css";
  * 그룹 대화 — 지휘관과 구성원의 원장을 한 줄기로 읽는 가운데 칸 본문(읽기 표면).
  *
  * 이 컴포넌트는 구독자일 뿐이다: 스냅숏은 실행 기능 전역 설치 수명의 집계(`useGroupTimeline`)가 주고, 여기서는 연결을
- * 열거나 닫지 않는다. 화면을 닫거나 다른 Operation 을 골라도 세션과 연결은 그대로다.
+ * 열거나 닫지 않는다. 화면을 닫거나 다른 Objective 을 골라도 세션과 연결은 그대로다.
  *
  * 문법: 사람 말은 오른쪽 말풍선, 지휘관·구성원 말은 왼쪽 말풍선(표식·이름). 구성원끼리 주고받은 전언은 가운데 한 줄
  * (「보낸 사람 [아바타 이름]」)로 두어 사람에게 한 말과 섞이지 않게 한다 — 누르면 대화 칸 전체를 덮는 대화 화면이 같은 참여자
@@ -45,7 +45,7 @@ export interface GroupConversationProps {
   readonly snapshot: ConversationLogSnapshot;
   readonly language: ConsoleLocale | undefined;
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
-  readonly onOpenLedger?: (operationId: string) => void;
+  readonly onOpenLedger?: (objectiveId: string) => void;
   /**
    * 사령관 행위 줄에서 그 행위의 기록을 연다 — 임무 14 계약(`useOpenBoardActionRecord()` 가 돌려주는 함수)과 같은 모양이다.
    * 기록이 없는 줄이면 여는 쪽이 아무 일도 하지 않으므로 단추는 늘 둔다.
@@ -77,8 +77,8 @@ export interface GroupConversationProps {
   readonly overlay?: React.ReactNode;
   /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
   readonly computerActor?: string | null;
-  /** 전언 대화 화면이 머리 pill 을 바꿀 대화 주인 Operation — 주지 않으면(플러그인 대화) 화면 안에 보낸 이 ⇄ 받는 이 칩을 둔다. */
-  readonly pillOperationId?: string;
+  /** 전언 대화 화면이 머리 pill 을 바꿀 대화 주인 Objective — 주지 않으면(플러그인 대화) 화면 안에 보낸 이 ⇄ 받는 이 칩을 둔다. */
+  readonly pillObjectiveId?: string;
   /**
    * 사람이 누른 OpenUI 답을 이 말의 화자에게 기존 전송 경로로 보낸다. 초안은 건드리지 않는다.
    * 포트 없는 읽기 전용 대화는 정적 칩이다.
@@ -98,7 +98,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId, onOpenUISend }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillObjectiveId, onOpenUISend }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -233,7 +233,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   }, [reveal, growth, setFollowing]);
 
   // 화면에 서는 줄 — 턴 접기를 켜면 접힌 말은 칩 하나로, 말풍선에 옮긴 보고 줄은 빠진다. 끄면 원장 줄 그대로다.
-  const items = React.useMemo(() => fold ? foldTimeline(entries, snapshot.participants, snapshot.rootOperationId) : entries.map((entry): TimelineItem => ({ kind: "entry", entry })), [entries, fold, snapshot.participants, snapshot.rootOperationId]);
+  const items = React.useMemo(() => fold ? foldTimeline(entries, snapshot.participants, snapshot.rootObjectiveId) : entries.map((entry): TimelineItem => ({ kind: "entry", entry })), [entries, fold, snapshot.participants, snapshot.rootObjectiveId]);
   // 칩은 말풍선 묶음을 끊는 자리(null)다. 시각 줄은 칩도 그 자리의 첫 말로 센다.
   const flow = React.useMemo(() => items.map((item) => item.kind === "entry" ? item.entry : null), [items]);
   const anchors = React.useMemo(() => items.map((item) => item.kind === "entry" ? item.entry : item.anchor), [items]);
@@ -247,7 +247,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const showMark = showsSpeakerMarks(snapshot.participants);
   const now = Date.now();
 
-  const unavailableNames = snapshot.unavailableOperationIds
+  const unavailableNames = snapshot.unavailableObjectiveIds
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
   const inlineWorking = Boolean(renderComposerWithWorking || (composerTopEntries && composer));
@@ -304,7 +304,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
             <button type="button" className="group-chat-link group-chat-older" disabled={older.loading} onClick={older.load}>{older.label}</button>
           ) : null}
           {snapshot.truncated ? <p className="group-chat-notice">{t("group.truncated")}</p> : null}
-          {snapshot.unavailableOperationIds.length > 0 ? (
+          {snapshot.unavailableObjectiveIds.length > 0 ? (
             <p className="group-chat-notice">
               {unavailableNames.length > 0 ? t("group.unavailable", { names: unavailableNames.join(", ") }) : t("group.unavailableOne")}
             </p>
@@ -355,14 +355,14 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
           {composer ? <div className="group-chat-dock-composer">{composer}</div> : null}
         </>}
       </div>
-      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillOperationId={pillOperationId} />
+      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillObjectiveId={pillObjectiveId} />
       {overlay}
     </div>
   );
 }
 
 /**
- * 한 참여자의 원장을 그룹 대화 자리에 세우는 틀 — 위에 「읽기 전용」 머리, 가운데 그 Operation 의 기존 본문(셸이 주는
+ * 한 참여자의 원장을 그룹 대화 자리에 세우는 틀 — 위에 「읽기 전용」 머리, 가운데 그 Objective 의 기존 본문(셸이 주는
  * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널). 대화로 돌아가는 길은 머리 끝의 「대화로 돌아가기」다 —
  * 원장은 말풍선 머리에서도 열리고 오른쪽 「구성원」 탭은 닫혀 있거나 다른 탭일 수 있으므로, 돌아갈 단서를 틀 안에 둔다.
  * 「구성원」 탭에서 보고 있는 줄을 다시 누르는 길도 그대로 남는다. 콜백이 없으면 그 링크는 서지 않는다.
@@ -388,7 +388,7 @@ export function GroupLedgerFrame({ speaker, language, onBack, notice, children }
     // 전언 화면과 머리 pill 이 모두 걷힌 다음 받는다 — 어느 입구로 열어도 같은 원장 틀이 포커스를 맡는다.
     const frame = requestAnimationFrame(() => (backRef.current ?? ledgerRef.current)?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [speaker.operationId]);
+  }, [speaker.objectiveId]);
   return (
     <div ref={ledgerRef} className="group-ledger" tabIndex={-1}>
       <div ref={headRef} className="group-ledger-head">
@@ -402,8 +402,8 @@ export function GroupLedgerFrame({ speaker, language, onBack, notice, children }
   );
 }
 
-function findSpeaker(snapshot: ConversationLogSnapshot, operationId: string): ConversationSpeaker | null {
-  return snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
+function findSpeaker(snapshot: ConversationLogSnapshot, objectiveId: string): ConversationSpeaker | null {
+  return snapshot.participants.find((participant) => participant.speaker.objectiveId === objectiveId)?.speaker ?? null;
 }
 
 function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: ConversationSpeaker): boolean {
@@ -475,10 +475,10 @@ const NOTE_MAX_CHARS = 200;
  *   전달에 실패한 줄은 늘 남는다.
  * 구성원이 아닌 말(사람·지휘관·보드 없는 루트·사령관·플러그인 대화)과 그 밖의 줄은 그대로다. 그 말은 턴이 있어도 칩으로 접지 않는다.
  */
-function foldTimeline(entries: readonly AgentConversationEntry[], participants: readonly ConversationParticipant[], rootOperationId: string | null): readonly TimelineItem[] {
+function foldTimeline(entries: readonly AgentConversationEntry[], participants: readonly ConversationParticipant[], rootObjectiveId: string | null): readonly TimelineItem[] {
   const turns = new Map<string, MessageEntry[]>();
   for (const entry of entries) {
-    // 구성원 말만 접는다. 지휘관·보드 없는 루트(operation)·사령관·사람은 턴이 있어도, 흐르는 중에도 말풍선으로 남긴다.
+    // 구성원 말만 접는다. 지휘관·보드 없는 루트(objectiveRecord)·사령관·사람은 턴이 있어도, 흐르는 중에도 말풍선으로 남긴다.
     if (entry.kind !== "message" || entry.speaker.kind !== "member" || !entry.turn || !bubbleShown(entry)) continue;
     const list = turns.get(entry.turn);
     if (list) list.push(entry); else turns.set(entry.turn, [entry]);
@@ -500,15 +500,15 @@ function foldTimeline(entries: readonly AgentConversationEntry[], participants: 
     if (bubbles.length > 0) answers.set(turn, bubbles[bubbles.length - 1]!.id);
   }
   // 말풍선으로 옮길 보고 줄 — 받는 이가 모두 지휘관(목표가 아닌 묶음이면 루트)인 구성원의 전언이다.
-  const toLead = (recipient: ConversationSpeaker) => recipient.kind === "commander" || (rootOperationId !== null && recipient.operationId === rootOperationId);
+  const toLead = (recipient: ConversationSpeaker) => recipient.kind === "commander" || (rootObjectiveId !== null && recipient.objectiveId === rootObjectiveId);
   const reports = new Map<string, DelegationEntry>();
   const moved = new Set<string>();
   for (const entry of entries) {
     if (entry.kind !== "delegation" || entry.sender.kind !== "member" || !entry.turn || deliveryFailure(entry) !== null) continue;
     const pending = openTurns.has(entry.turn) || writing.has(entry.turn);
-    // 도구 결과가 오기 전 받는 이는 이름 힌트뿐이다(Operation 미확정). 지휘관 보고인지 모르는 동안은 열린 턴이면 기다린다 —
+    // 도구 결과가 오기 전 받는 이는 이름 힌트뿐이다(Objective 미확정). 지휘관 보고인지 모르는 동안은 열린 턴이면 기다린다 —
     // 풀린 뒤 지휘관이 아니면 줄로 서고, 턴이 끝나도 풀리지 않으면 정보가 사라지지 않게 줄로 선다.
-    if (entry.recipients.length === 0 || entry.recipients.some((recipient) => !recipient.operationId && recipient.kind !== "commander")) {
+    if (entry.recipients.length === 0 || entry.recipients.some((recipient) => !recipient.objectiveId && recipient.kind !== "commander")) {
       if (pending) moved.add(entry.id);
       continue;
     }
@@ -1070,7 +1070,7 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
   readonly working: readonly ConversationSpeaker[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
-  readonly onOpenLedger?: (operationId: string) => void;
+  readonly onOpenLedger?: (objectiveId: string) => void;
   /** 컴퓨터를 지금 조작하는 참여자. 일하는 사람 중에 있으면 낱말 뒤에 도구 꼬리가 붙는다. */
   readonly computerActor?: string | null;
   /** 같은 줄에서는 빈 높이를 예약하지 않고, 좁아져 이름이 접혀도 표식으로 원장을 열 수 있다. */
@@ -1101,7 +1101,7 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
 
 /** 진행 줄의 도구 꼬리 — 조작자가 일하는 사람 중에 있을 때만. 한 명이면 「· 컴퓨터 사용」, 여럿이면 누구인지 밝힌다. */
 function toolTail(working: readonly ConversationSpeaker[], actor: string | null, t: ReturnType<typeof getGroupT>): React.ReactNode {
-  const speaker = actor ? working.find((candidate) => candidate.operationId === actor) : undefined;
+  const speaker = actor ? working.find((candidate) => candidate.objectiveId === actor) : undefined;
   if (!speaker) return null;
   return <span className="group-chat-working-tool">{working.length === 1 ? t("group.working.computer") : t("group.working.computerBy", { name: speaker.name })}</span>;
 }
@@ -1115,7 +1115,7 @@ function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
   readonly targets: readonly (string | null)[];
   readonly t: ReturnType<typeof getGroupT>;
   readonly openLabel: (speaker: ConversationSpeaker) => string;
-  readonly onOpenLedger: ((operationId: string) => void) | undefined;
+  readonly onOpenLedger: ((objectiveId: string) => void) | undefined;
 }) {
   if (working.length === 1) {
     const speaker = working[0]!;
@@ -1153,7 +1153,7 @@ export function activityKey(activity: Exclude<ConversationParticipant["activity"
   return `group.activity.${activity}` as const;
 }
 
-/** 구성원 점·낱말이 그리는 활동 — Operation 표시 어휘와 같게 background 를 running 으로 접는다. 원시 활동은 중단 버튼 판정이 그대로 읽는다. */
+/** 구성원 점·낱말이 그리는 활동 — Objective 표시 어휘와 같게 background 를 running 으로 접는다. 원시 활동은 중단 버튼 판정이 그대로 읽는다. */
 export function memberActivityVisual(activity: ConversationParticipant["activity"]): Exclude<ConversationParticipant["activity"], "background"> {
   return activity === "background" ? "running" : activity;
 }

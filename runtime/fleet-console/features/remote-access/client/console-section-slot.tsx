@@ -16,7 +16,7 @@ export function ConsoleSectionSlot({ compact }: { readonly compact: boolean }) {
   const [anchor, setAnchor] = useState<Element | null>(null);
   const command = (value: ConsoleSectionCommand) => location.assign(consoleSectionCommandUrl(location.origin, value));
   useLayoutEffect(() => {
-    setAnchor(root.current?.closest(".operations-side-bar")?.querySelector("[data-remote-console-anchor]") ?? null);
+    setAnchor(root.current?.closest(".objective-records-side-bar")?.querySelector("[data-remote-console-anchor]") ?? null);
   }, [compact]);
   useEffect(() => {
     if (!capable) { setState(null); return; }

@@ -700,7 +700,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
 
 /**
  * 지휘관(목표)의 몽글 얼굴 — 목록 행·입력 토큰·기록 토큰이 같이 쓴다. 보드에서 사라진 목표면 비운다(제목 글자만 남는다).
- * 활동은 지휘관 Operation 의 끌어올린 활동이고, 턴 뒤 백그라운드 작업은 진행 중으로 접는다(보드와 같은 셈).
+ * 활동은 지휘관 Objective 의 끌어올린 활동이고, 턴 뒤 백그라운드 작업은 진행 중으로 접는다(보드와 같은 셈).
  */
 export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
   useObjectiveTheater(theaterId);

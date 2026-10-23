@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
-import type { OperationLaunchVariantChip, OperationLaunchVariantRow } from "../../shared/operations/types.js";
+import type { ObjectiveLaunchVariantChip, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
 /** 트랙 좌우 안쪽 여백 — 손잡이 반지름과 같아야 양 끝 스톱에서 손잡이가 트랙을 넘지 않는다. */
 const EDGE = 13;
@@ -20,7 +20,7 @@ interface EffortSlot {
 }
 
 export interface EffortTrackProps {
-  readonly row: OperationLaunchVariantRow;
+  readonly row: ObjectiveLaunchVariantRow;
   /** 선택된 강도. `null`은 강도를 비운 상태(모델 기본값)다. */
   readonly value: string | null;
   readonly onChange: (effort: string | null) => void;
@@ -130,7 +130,7 @@ export function EffortTrack({
   }, [apexOpen, clearCollapseTimer, gatedRungs, setApexOpen, value]);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
-    const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
+    const byId = new Map<string, ObjectiveLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
     const visibleRungs = apexOpen ? ladder : ordinaryRungs;
     const rungs = visibleRungs.map((id) => ({
       id,
@@ -406,7 +406,7 @@ export function EffortTrack({
  * 이 행의 강도 사다리를 낮은 단부터 늘어놓는다. 축이 없으면 내놓은 단만이 축이고, 축에 없는 단이
  * 오면 뒤에 붙여 사다리가 늘어도 조용히 사라지지 않는다.
  */
-function ladderRungs(row: OperationLaunchVariantRow): readonly string[] {
+function ladderRungs(row: ObjectiveLaunchVariantRow): readonly string[] {
   const offered = (row.chips ?? []).map((chip) => chip.id);
   const axis = row.effortAxis ?? offered;
   return [...axis, ...offered.filter((id) => !axis.includes(id))];
@@ -416,7 +416,7 @@ function ladderRungs(row: OperationLaunchVariantRow): readonly string[] {
  * 사다리 위 이 강도의 자리. 트랙을 열지 않고도 몇 번째 단인지 보여야 하는 표식(캔버스 실행 메뉴의
  * 강도 손잡이)이 쓴다. 자동은 0단이다 — 사다리를 쓰지 않는 상태이지 최소 단이 아니다.
  */
-export function effortLadderPosition(row: OperationLaunchVariantRow, effort: string | null): {
+export function effortLadderPosition(row: ObjectiveLaunchVariantRow, effort: string | null): {
   readonly rung: number;
   readonly total: number;
 } {
@@ -434,7 +434,7 @@ export function effortLadderPosition(row: OperationLaunchVariantRow, effort: str
  * "Show " 같은 빈 aria-label이 남는다. 이름 없는 단은 트랙이 스톱 라벨에 쓰는 것과 같은
  * 폴백(id 대문자)으로 채운다.
  */
-export function gatedEffortNames(row: OperationLaunchVariantRow | null): string {
+export function gatedEffortNames(row: ObjectiveLaunchVariantRow | null): string {
   if (!row) return "";
   const gated = new Set(row.gatedEfforts ?? []);
   const byId = new Map((row.chips ?? []).map((chip) => [chip.id, chip.label]));
@@ -445,7 +445,7 @@ export function gatedEffortNames(row: OperationLaunchVariantRow | null): string 
 }
 
 /** 기억해 둔 강도가 이 모델 사다리에 없으면 비운 상태로 떨어진다. */
-export function resolveRowEffort(row: OperationLaunchVariantRow | null, effort: string | null): string | null {
+export function resolveRowEffort(row: ObjectiveLaunchVariantRow | null, effort: string | null): string | null {
   if (!row || effort === null) return null;
   return row.chips?.some((chip) => chip.id === effort) ? effort : null;
 }
@@ -465,7 +465,7 @@ export function EffortGaugeGlyph({ rung, total }: { readonly rung: number; reado
   const width = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
   return (
     <svg
-      className="operation-launch-variant-effort-gauge"
+      className="objective-launch-variant-effort-gauge"
       viewBox={`0 0 ${width} ${GAUGE_HEIGHT}`}
       width={width}
       height={GAUGE_HEIGHT}

@@ -1,4 +1,4 @@
-/* Operation Browser companion — 캡션 밴드는 호스트가 그리고, 여기서는 탭·탐색·화면·상태줄만 채운다.
+/* Objective Browser companion — 캡션 밴드는 호스트가 그리고, 여기서는 탭·탐색·화면·상태줄만 채운다.
    색은 채널 규약대로: 에이전트 조작은 --agent-control-badge(배지 채널), 오류는 coral, 라이브는 aurora,
    위치·포커스는 brass. */
 .op-browser { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ink-deep); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); }
@@ -167,7 +167,7 @@
 .op-browser__comment-ok:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 
-/* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Operation 의 정체다 ---- */
+/* ---- 세션 표식 — 임시인가 내 프로필인가. 캡션에 상주하는 이 Objective 의 정체다 ---- */
 /* 글리프 하나로 말한다: 상자도 테두리도 두지 않아 옆의 화면 크기 글리프와 같은 결로 패널에 붙는다.
    brass 는 위치·초점 채널이므로 쓰지 않는다 — 영속은 "남는다"는 **상태**라 signal 의 positive 를 든다. */
 .op-browser__profile { position: relative; flex: none; align-self: center; }

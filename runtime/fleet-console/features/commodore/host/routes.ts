@@ -124,7 +124,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: autonomy, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
-    { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore glyph on the sidebar Theater header).", handler: json(commodoreRef.extend({ autonomy: z.boolean() }).strict(), ({ commodoreId, autonomy }) => {
+    { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous objectiveRecord on or off (the Commodore glyph on the sidebar Theater header).", handler: json(commodoreRef.extend({ autonomy: z.boolean() }).strict(), ({ commodoreId, autonomy }) => {
       read(commodoreId);
       if (autonomy && !experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
       if (autonomy && hooks.boardReady && !hooks.boardReady()) throw new CommodoreStoreError("commodore_inactive");
@@ -148,13 +148,13 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
     { name: "commodore/patrol", method: "POST", summary: "Set or clear a Theater's Commodore patrol interval in minutes; cleared falls back to 60. The Commodore can patrol sooner but not later; board events, the directive, intel and messages still wake it at once.", handler: json(commodoreRef.extend({ minutes: commodorePatrolSchema.nullable() }).strict(), ({ commodoreId, minutes }) => { read(commodoreId); return view(commodoreId, store.setPatrol(commodoreId, minutes)); }) },
-    { name: "commodore/stop-at", method: "POST", summary: "Schedule the end of autonomous operation at an epoch-millisecond timestamp, or pass null to cancel it. Requires running autonomy and a future timestamp.", handler: json(commodoreRef.extend({ stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).nullable() }).strict(), ({ commodoreId, stopAt }) => {
+    { name: "commodore/stop-at", method: "POST", summary: "Schedule the end of autonomous objectiveRecord at an epoch-millisecond timestamp, or pass null to cancel it. Requires running autonomy and a future timestamp.", handler: json(commodoreRef.extend({ stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).nullable() }).strict(), ({ commodoreId, stopAt }) => {
       read(commodoreId);
       if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
       if (!hooks.run?.(commodoreId)) throw new CommodoreStoreError("commodore_inactive");
       return view(commodoreId, store.setStopAt(commodoreId, stopAt));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the Theater's autonomous objectiveRecord is off.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       const state = read(commodoreId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.

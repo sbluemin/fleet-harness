@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 
 import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
-import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../../../../features/objectives/shared/records/types.js";
 import type { PaneContext, PaneDescriptor } from "../../../../../features/workspace/shared/pane.js";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
 
 import { useFeatureRegistry, type ResolvedRailEntry } from "../../integration/feature-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
-import { useConversationOperationTabPanels } from "../rail/operation-tabs.js";
+import { useConversationObjectiveTabPanels } from "../rail/objective-tabs.js";
 import { settingsPanes, settingsRailEntry } from "../../../../../features/settings/client/settings-pane.js";
 
 /**
@@ -31,7 +31,7 @@ import { settingsPanes, settingsRailEntry } from "../../../../../features/settin
  */
 export interface HostPaneContext extends PaneContext {
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
-  readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly legacyLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   /**
    * 옛 `railPanels`가 자기 폭을 요구하던 창구.
    *
@@ -91,7 +91,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
         // 이 요구는 표면의 extra-width 힌트로 그대로 흘려보낸다.
         requestExtraWidth: ctx.requestExtraWidth,
         surfaces: ctx.legacySurfaces,
-        launchOperation: ctx.legacyLaunchOperation,
+        launchObjective: ctx.legacyLaunchObjective,
         // 옛 계약의 경로 문맥 — 대화의 도구 칸이면 그 대화의 작업 위치, 아니면 Theater 루트다.
         pathContext: ctx.conversation
           ? { kind: ctx.conversation.location.kind, relPath: ctx.conversation.location.relative === "" ? null : ctx.conversation.location.relative, label: ctx.conversation.location.label }
@@ -166,7 +166,7 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
   const railEntries = registry.railEntries ?? [];
   const panes = registry.panes ?? [];
   // 대화 중심 화면이 서 있는 동안만 비어 있지 않다 — 꺼진 Console 의 목록은 그대로다.
-  const operationTabs = useConversationOperationTabPanels();
+  const objectiveRecordTabs = useConversationObjectiveTabPanels();
 
   return useMemo(() => {
     // 코어 네이티브 기여 — 설정 표면. 플러그인 레지스트리를 거치지 않는 이유는 소유 때문이다:
@@ -178,12 +178,12 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
 
     // 코어가 먼저, 그다음 플러그인 — 합성 순서는 옛 레지스트리와 같다. 같은 id를 가진
     // 네이티브 등록이 있으면 투영을 버린다: 옮겨 온 쪽이 언제나 이긴다.
-    const coreProjected = [...operationTabs, ...BUILT_IN_RAIL_PANELS].filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
+    const coreProjected = [...objectiveRecordTabs, ...BUILT_IN_RAIL_PANELS].filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel, true));
     const pluginProjected = railPanels.filter((panel) => !nativeIds.has(panel.id)).map((panel) => projectPanel(panel));
 
     return [...coreNative, ...coreProjected, ...native.filter((binding) => !coreNative.some((core) => core.entry.id === binding.entry.id)), ...pluginProjected]
       .filter((binding) => (binding.entry.side ?? "right") === side);
-  }, [operationTabs, panes, railEntries, railPanels, side]);
+  }, [objectiveRecordTabs, panes, railEntries, railPanels, side]);
 }
 
 /**

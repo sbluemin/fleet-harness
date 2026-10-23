@@ -56,7 +56,7 @@ export interface TerminalLaunchResolverDeps {
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
-  readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
+  readonly bindWorkspaceHook?: (objectiveId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
@@ -177,7 +177,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     }
     // FLEET_TERMINAL_CMD는 Agent CLI 실행을 통째로 대체한다 — 모델·강도·resume·시스템 프롬프트·
     // MCP 설정·플러그인 디렉터리와 마찬가지로 런치 프롬프트도 실을 자리가 없다. 임의 명령의 argv
-    // 계약을 알 수 없어 사용자 텍스트를 뒤에 붙일 수 없기 때문이다. 조용히 버리면 Operation은
+    // 계약을 알 수 없어 사용자 텍스트를 뒤에 붙일 수 없기 때문이다. 조용히 버리면 Objective은
     // 열렸는데 아무 지시도 받지 못한 세션이 남으므로, 프롬프트를 들고 온 런치는 아예 거부한다.
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override && context?.prompt) {
@@ -252,7 +252,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
-  readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
+  readonly bindWorkspaceHook?: (objectiveId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
   readonly sessionName?: string;
@@ -460,7 +460,7 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
 
 function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined, colorScheme?: "light" | "dark"): NodeJS.ProcessEnv {
   const launchEnv = stripConsoleInternalEnv(env);
-  // Console Operation은 상위 Claude의 하위 세션이 아니라 독립 transcript를 갖는다.
+  // Console Objective은 상위 Claude의 하위 세션이 아니라 독립 transcript를 갖는다.
   delete launchEnv.CLAUDE_CODE_CHILD_SESSION;
   return withTerminalCapabilities({
     ...launchEnv,

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * 이 기계의 OS 클립보드에 PNG 한 장을 올린다 — Operation Browser 의 스크린샷을 터미널 CLI 에 붙여넣는 길.
+ * 이 기계의 OS 클립보드에 PNG 한 장을 올린다 — Objective Browser 의 스크린샷을 터미널 CLI 에 붙여넣는 길.
  *
  * 왜 서버가 올리는가: 터미널 CLI 는 자기가 도는 기계의 클립보드를 읽는다. 패널(렌더러)이 올린 클립보드는 창을 든
  * 기계의 것이라 원격 콘솔이면 엉뚱한 기계이고, 같은 기계여도 Chromium 이 붙여넣기 키보다 늦게 실제 데이터를

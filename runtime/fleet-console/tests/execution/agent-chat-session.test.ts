@@ -257,9 +257,9 @@ function fakeClaudeSession(
   };
 }
 
-async function drainTurn(registry: AgentChatRegistry, operationId: string): Promise<void> {
+async function drainTurn(registry: AgentChatRegistry, objectiveId: string): Promise<void> {
   await vi.waitFor(() => {
-    expect(registry.isBusy(operationId)).toBe(false);
+    expect(registry.isBusy(objectiveId)).toBe(false);
   });
 }
 

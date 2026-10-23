@@ -292,7 +292,7 @@ export function MissingSurface({ surfaceId }: { readonly surfaceId: string }) {
  *
  * `<FeatureErrorBoundary>{descriptor.render(ctx)}</FeatureErrorBoundary>`는 그렇지 않다 —
  * 자식은 부모의 렌더 중에 평가되므로, 던지는 순간 경계는 아직 트리에 없고 예외는 그대로
- * 위로 올라가 Operations 화면을 통째로 무너뜨린다. 한 칸 아래 컴포넌트로 미뤄야 잡힌다.
+ * 위로 올라가 ObjectiveRecords 화면을 통째로 무너뜨린다. 한 칸 아래 컴포넌트로 미뤄야 잡힌다.
  */
 export function SurfacePanePart({
   render,

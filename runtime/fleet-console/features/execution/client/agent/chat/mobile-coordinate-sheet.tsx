@@ -1,7 +1,7 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import * as React from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantRow } from "../../../shared/operations/types.js";
+import type { ObjectiveLaunchVariantRow } from "../../../../objectives/shared/records/types.js";
 
 import { MobileSheet } from "../../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../../core/client/src/chrome/mobile/mobile-back.js";
@@ -16,11 +16,11 @@ import "../../components/mobile-launch-sheet.css";
 export interface MobileCoordinateGroup {
   readonly id: string;
   readonly caption: string;
-  readonly rows: readonly OperationLaunchVariantRow[];
+  readonly rows: readonly ObjectiveLaunchVariantRow[];
 }
 
 /**
- * 모바일 Operation 입력창의 모델 알약이 여는 모델 시트(impl-spec S-11b, S-27) — 새 작업 시트의 모델 시트와 같은 문법이다:
+ * 모바일 Objective 입력창의 모델 알약이 여는 모델 시트(impl-spec S-11b, S-27) — 새 작업 시트의 모델 시트와 같은 문법이다:
  * 라디오 묶음 행으로 모델을 고르고, 그 아래 「추론 강도」 글자 탭으로 강도를 고른다. 고르면 값만 바뀌고 시트는 열려 있다.
  * 데스크톱 좌표 메뉴와 같은 카탈로그·적용 경로(`apply`)를 쓰므로, 두 표면이 같은 세션 좌표를 다르게 바꾸지 않는다.
  */
@@ -86,7 +86,7 @@ export function MobileCoordinateSheet({
     if (model && effort !== targetEffort) onApply({ model, effort });
   };
   const { deck, toggleGate } = useMobileEffortGate(targetRow, targetEffort, t("terminal.chat.coordAutoEffort"), pickEffort);
-  const tooLarge = (row: OperationLaunchVariantRow) => occupied !== null && row.contextWindow !== undefined
+  const tooLarge = (row: ObjectiveLaunchVariantRow) => occupied !== null && row.contextWindow !== undefined
     && occupied > row.contextWindow && row.launch.model !== current?.model;
   const anyBlocked = rows.some(tooLarge);
 
@@ -132,7 +132,7 @@ export function MobileCoordinateSheet({
         <>
           <h3 className="mls-glab">{t("terminal.chat.coordMenuEffortTrack")}</h3>
           <MobileEffortTabs deck={deck} label={t("terminal.chat.coordMenuEffortTrack")} onPick={pickEffort} />
-          {/* 옵션은 펼치기 한 행뿐이다 — 다이나믹 워크플로우는 새 작업 전용이라 Operation 시트에 두지 않는다(S-56 NT-1d). */}
+          {/* 옵션은 펼치기 한 행뿐이다 — 다이나믹 워크플로우는 새 작업 전용이라 Objective 시트에 두지 않는다(S-56 NT-1d). */}
           {deck.hasGate ? <h3 className="mls-glab is-options">{t("terminal.chat.coordSheetOptions")}</h3> : null}
           {deck.hasGate ? (
             <div className="mls-grp">

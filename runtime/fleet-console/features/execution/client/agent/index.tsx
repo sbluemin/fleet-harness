@@ -1,4 +1,4 @@
-import type { OperationKindDescriptor } from "../../shared/client-contract.js";
+import type { ObjectiveKindDescriptor } from "../../shared/client-contract.js";
 import type { ExecutionClientDeps } from "../deps.js";
 import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
@@ -10,29 +10,29 @@ import { launchProviderGlyph } from "../../../ai-gateway/client/components/launc
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
-import type { OperationMenuContext, OperationRenderContext } from "../../shared/client-contract.js";
+import type { ObjectiveMenuContext, ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
 import { SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
-import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
+import { subscribeConsoleChannel } from "../../../../core/client/src/integration/objective-records-sse.js";
+import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
-import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
-import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
+import { gestureCallerLabel, getObjectiveWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
-import { disposeOperationViewState, installOperationViewState } from "../operation-view-state.js";
+import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
 import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
-import { useOperationLinks } from "./operation-links.js";
+import { useObjectiveLinks } from "./objective-links.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
-import { MobileGlyph, MobileSurfaceProvider, mobileOperationOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileOperationLike } from "./mobile-surface.js";
+import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileObjectiveLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
-import { OPERATION_REVEAL_EVENT_CHANNEL, getOperationReveal, isOperationRevealEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, recordOperationReveal, setComputerUse, setConsoleUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeOperationReveals, type OperationReveal } from "./experiments-api.js";
+import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setConsoleUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 
@@ -80,31 +80,31 @@ const TRACK_PHASE_COPY_KEYS = {
 // 상태줄 3행(cwd·모델·권한 모드) + 입력 컴포저 3행(테두리 2 + 프롬프트 1) + 사이 여백 1행.
 const AGENT_PREVIEW_CHROME_ROWS = 7;
 
-export const agentOperationKind: OperationKindDescriptor = ({
+export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   pluginId: null,
   type: "agent",
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: () => "Claude Code",
-  render: (context) => <AgentOperationView context={context} />,
+  render: (context) => <AgentObjectiveView context={context} />,
   // 뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
   // 대화 머리는 두 캡슐로 가른다: 전환은 보기 캡슐, 지구본은 도구 캡슐 맨 앞. 표식·말풍선은 동작 묶음에 남는다.
   captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
   captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
   captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
-  // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
+  // 이 Objective에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
-  operationMenu: (context) => <AgentOperationMenu context={context} />,
+  objectiveRecordMenu: (context) => <AgentObjectiveMenu context={context} />,
   // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
-  operationMarks: (context) => <AgentOperationMarks context={context} />,
+  objectiveRecordMarks: (context) => <AgentObjectiveMarks context={context} />,
   // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
   // 실행 중에도 갱신되지 않으므로 호스트 프리뷰는 이 밴드를 프레임 밖으로 밀어낼 수 있다.
   // 밴드의 단위는 px가 아니라 행이다: 셀 높이가 글꼴 크기를 따르므로(TERMINAL_OPTIONS.lineHeight
   // = 1) 현재 글꼴 크기를 곱해 지원 범위(10~22px) 어디서도 같은 행 수가 잘리게 한다.
-  // 순정 셸(shellOperationKind)은 바닥까지 출력이 흐르므로 이 값을 선언하지 않는다.
+  // 순정 셸(shellObjectiveKind)은 바닥까지 출력이 흐르므로 이 값을 선언하지 않는다.
   previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
-    // Operation Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
+    // Objective Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
     { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, caption: (context) => <BrowserCaption context={context} services={browserServices} />, render: (context) => <BrowserPanel context={context} services={browserServices} /> },
   ],
 });
@@ -174,39 +174,39 @@ function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
 
 export const agentExecution: ClientFeatureDescriptor = {
   id: null,
-  operationKinds: [agentOperationKind],
+  objectiveRecordKinds: [agentObjectiveKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
   notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
-  closeOperation: async (operationId) => {
+  closeObjective: async (objectiveId) => {
     try {
-      await terminateAgentSession(operationId);
+      await terminateAgentSession(objectiveId);
     } finally {
-      disposeViewSwitch(operationId);
-      disposeOperationViewState(operationId);
-      removeSession(operationId);
+      disposeViewSwitch(objectiveId);
+      disposeObjectiveViewState(objectiveId);
+      removeSession(objectiveId);
     }
   },
-  resumeOperation: async (operationId) => {
+  resumeObjective: async (objectiveId) => {
     // 팔레트·사이드바 등 프레임 밖 resume 진입점. 패널의 Start fresh 판정과 같은 근거를 쓴다 —
     // 재개 마커가 없으면 서버가 409 resume_unavailable 로 거절하므로 fresh 로 보낸다.
     try {
-      await resumeSession(operationId, { fresh: await shouldResumeFresh(operationId) });
-      installedNotifications?.dismiss(operationId);
+      await resumeSession(objectiveId, { fresh: await shouldResumeFresh(objectiveId) });
+      installedNotifications?.dismiss(objectiveId);
     } catch (error) {
       installedNotifications?.emit({
         kind: agentResumeFailedNotification.id,
-        operationId,
+        objectiveId,
         message: resumeFailureMessage(error, currentTerminalLocale()),
       });
       throw error;
     }
   },
   // 새 세션 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
-  messageableOperationTypes: ["agent"],
-  messageOperation: async (operationId, text, attachmentIds) => {
-    await messageAgentSession(operationId, text, attachmentIds);
+  messageableObjectiveTypes: ["agent"],
+  messageObjective: async (objectiveId, text, attachmentIds) => {
+    await messageAgentSession(objectiveId, text, attachmentIds);
   },
-  // 새 세션 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
+  // 새 세션 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageObjective과 같은 계약).
   uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),
   discardLaunchAttachment: async (id) => discardLaunchAttachment(id),
   launch: async ({ theaterId, kind, variant, geometry }) => {
@@ -244,9 +244,9 @@ export { AgentLedger } from "./chat/agent-ledger.js";
 /** 컴포저 위쪽 호스트 요약 줄 — 코어가 플러그인 install 컨텍스트의 `chat.ComposerTopEntries` 로 넘긴다. */
 export { ComposerTopEntries } from "./chat/composer-top-entries.js";
 
-export const operationKinds = [agentOperationKind] as const;
+export const objectiveRecordKinds = [agentObjectiveKind] as const;
 
-// resumeOperation 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
+// resumeObjective 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
 
@@ -256,38 +256,38 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedApi = ctx.api;
   setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
-  const disposeViewState = installOperationViewState(ctx.consoleState);
+  const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
   const disposeGroupConversation = installGroupConversationSurface();
-  // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Operation 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
+  // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Objective 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
-  const disposeReveal = ctx.consoleEvents.subscribe(OPERATION_REVEAL_EVENT_CHANNEL, (payload) => {
-    if (!isOperationRevealEvent(payload)) return;
-    recordOperationReveal(payload);
+  const disposeReveal = ctx.consoleEvents.subscribe(OBJECTIVE_REVEAL_EVENT_CHANNEL, (payload) => {
+    if (!isObjectiveRevealEvent(payload)) return;
+    recordObjectiveReveal(payload);
     const active = document.activeElement;
     const typing = active instanceof HTMLElement && (active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA");
     if (typing) return;
-    focusConsoleOperation(payload.operationId);
-    requestOperationKeyboardFocus(payload.operationId);
+    focusConsoleObjective(payload.objectiveId);
+    requestObjectiveKeyboardFocus(payload.objectiveId);
   });
   // 이 플러그인은 런타임 축의 권위를 가진다 — 첫 스냅샷이 도착하기 전까지는 그 축을 신뢰할 수 없다고
   // 먼저 선언하고 시작한다.
   ctx.runtime.setHydration("pending");
   // 서버 보관 종료 뒤에는 클라이언트 캐시만 해제한다. 늦은 stop 요청이 복원된 세션을 끊지 않는다.
-  const disposeArchive = ctx.consoleEvents.subscribe("operation:cluster-changed", (payload) => {
+  const disposeArchive = ctx.consoleEvents.subscribe("objective:cluster-changed", (payload) => {
     const ids = (payload as { removedIds?: unknown } | null)?.removedIds;
     if (!Array.isArray(ids)) return;
     for (const id of ids) if (typeof id === "string") {
       disposeViewSwitch(id);
-      disposeOperationViewState(id);
+      disposeObjectiveViewState(id);
       removeSession(id);
     }
   });
   const disposeConnection = startAgentConnection({
-    operations: ctx.operations,
+    objectiveRecords: ctx.objectiveRecords,
     notifications: ctx.notifications,
     runtime: ctx.runtime,
-    refreshOperations: ctx.api.resync,
+    refreshObjectiveRecords: ctx.api.resync,
   });
   return () => {
     installedNotifications = null;
@@ -379,12 +379,12 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
-function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
+function isCompanionPanelVisible(context: ObjectiveRenderContext, companionId: string): boolean {
   return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
 }
 
 function toggleCompanionPanel(
-  context: OperationRenderContext,
+  context: ObjectiveRenderContext,
   companionId: string,
   clusterIds: readonly string[] = [companionId],
 ): void {
@@ -405,48 +405,48 @@ function toggleCompanionPanel(
 }
 
 /** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 브라우저만 내준다. */
-function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
+function offersCompanion(context: ObjectiveRenderContext, companionId: string): boolean {
   return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
 }
 
 /**
- * 모바일 Operation 화면에서는 셸이 막대를 그리고 보기 전환은 ⋮ 항목이 진다(AgentMobileMenu) — 캡션 선반을
+ * 모바일 Objective 화면에서는 셸이 막대를 그리고 보기 전환은 ⋮ 항목이 진다(AgentMobileMenu) — 캡션 선반을
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
 /** 대화 머리가 요청하는 조각. shelf 는 표식·말풍선만, 전환과 지구본은 각 캡슐이 가져간다. */
 type AgentCaptionPart = "shelf" | "view-switch" | "tools-lead";
 
-function AgentCaptionActions({ context, part = "shelf" }: { readonly context: OperationRenderContext; readonly part?: AgentCaptionPart }) {
-  if (mobileOperationOf(context)) return null;
+function AgentCaptionActions({ context, part = "shelf" }: { readonly context: ObjectiveRenderContext; readonly part?: AgentCaptionPart }) {
+  if (mobileObjectiveOf(context)) return null;
   return <AgentCaptionActionsBody context={context} part={part} />;
 }
 
-function AgentCaptionActionsBody({ context, part }: { readonly context: OperationRenderContext; readonly part: AgentCaptionPart }) {
+function AgentCaptionActionsBody({ context, part }: { readonly context: ObjectiveRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
   const state = useAgentState();
-  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const { terminalPending } = useViewSwitchState(context.operationId);
-  const chatMode = context.operation.payload.chatMode === true;
-  const groupConversation = useHasGroupConversation(context.operation.parentOperationId ?? context.operationId);
+  const session = state.sessions[context.objectiveId] ?? sessionFromObjective(context);
+  const { terminalPending } = useViewSwitchState(context.objectiveId);
+  const chatMode = context.objectiveRecord.chatMode === true;
+  const groupConversation = useHasGroupConversation(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
   // 투어 앵커는 사용자가 이 마운트에서 직접 채팅 뷰로 넘어온 뒤에만 선다 — 본문의 판정과 같다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
 
   const openTerminal = React.useCallback(async () => {
-    setTerminalHandoff(context.operationId, { pending: true, error: "none" });
+    setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
     try {
-      await openTerminalForOperation(context);
+      await openTerminalForObjective(context);
     } catch {
-      setTerminalHandoff(context.operationId, { error: "failed" });
+      setTerminalHandoff(context.objectiveId, { error: "failed" });
     } finally {
-      setTerminalHandoff(context.operationId, { pending: false });
+      setTerminalHandoff(context.objectiveId, { pending: false });
     }
   }, [context]);
 
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
-  const using = useOperationUse(context.operation.parentOperationId ?? context.operationId);
+  const using = useObjectiveUse(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
@@ -487,7 +487,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Operatio
     <CaptionActionButton
       actionId="view-switch"
       label={t("terminal.chat.openAria")}
-      onClick={() => { setChatPromptOpen(context.operationId, true); }}
+      onClick={() => { setChatPromptOpen(context.objectiveId, true); }}
     >
       <CaptionChatGlyph />
     </CaptionActionButton>
@@ -495,9 +495,9 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Operatio
 
   // console_reveal·Console Use 시선의 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
   // 산 이벤트에만 뜬다(지난 사건은 다시 튀어나오지 않는다).
-  const liveReveal = React.useSyncExternalStore(subscribeOperationReveals, () => getOperationReveal(context.operationId), () => null);
-  // Console Use 시선 — 에이전트가 이 Operation 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
-  const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationWrap(context.operationId)?.gesture ?? null, () => null);
+  const liveReveal = React.useSyncExternalStore(subscribeObjectiveReveals, () => getObjectiveReveal(context.objectiveId), () => null);
+  // Console Use 시선 — 에이전트가 이 Objective 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
+  const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getObjectiveWrap(context.objectiveId)?.gesture ?? null, () => null);
   const bubble = liveReveal || liveGaze
     ? <span className="session-watch-host">
         <RevealBubble context={context} reveal={liveReveal} />
@@ -512,16 +512,16 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Operatio
   if (!using.console && !using.computer && bubble === null) return null;
   return (
     <>
-      <span className="agent-operation-marks">
-        <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
-        <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
+      <span className="agent-objective-marks">
+        <ObjectiveUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
+        <ObjectiveUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
       {bubble}
     </>
   );
 }
 
-function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer" | "browser"; label: string }) {
+function ObjectiveUseBadge({ active, kind, label }: { active: boolean; kind: "console" | "computer" | "browser"; label: string }) {
   const [present, setPresent] = React.useState(active);
   React.useEffect(() => {
     if (active) { setPresent(true); return; }
@@ -538,7 +538,7 @@ function OperationUseBadge({ active, kind, label }: { active: boolean; kind: "co
  * console_reveal 의 말풍선 — 캡션 동작 선반 끝(··· 버튼 왼쪽) 아래에 선다. 어떤 누름·입력이든 닫는다: 사유는
  * 알려야 하지만 화면을 차지해서는 안 된다. 산 사건에만 뜬다.
  */
-function RevealBubble({ context, reveal }: { readonly context: OperationRenderContext; readonly reveal: OperationReveal | null }) {
+function RevealBubble({ context, reveal }: { readonly context: ObjectiveRenderContext; readonly reveal: ObjectiveReveal | null }) {
   const t = getT(context.language ?? "en");
   const [visibleFor, setVisibleFor] = React.useState<number | null>(null);
   const keyRef = React.useRef<number | null>(null);
@@ -569,15 +569,15 @@ function RevealBubble({ context, reveal }: { readonly context: OperationRenderCo
 }
 
 /** 채팅 → 터미널. 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살린다(서버 ticket 가드). */
-async function openTerminalForOperation(context: OperationRenderContext): Promise<void> {
-  await exitAgentChat(context.operationId);
+async function openTerminalForObjective(context: ObjectiveRenderContext): Promise<void> {
+  await exitAgentChat(context.objectiveId);
   try {
-    await resumeSession(context.operationId);
-    context.notifications.dismiss(context.operationId);
+    await resumeSession(context.objectiveId);
+    context.notifications.dismiss(context.objectiveId);
   } catch (error) {
     context.notifications.emit({
       kind: agentResumeFailedNotification.id,
-      operationId: context.operationId,
+      objectiveId: context.objectiveId,
       message: resumeFailureMessage(error, context.language),
     });
     throw error;
@@ -598,17 +598,17 @@ function removeExitedSession(sessionId: string, mountedGeneration: string | unde
 const SORTIE_RIBBON_INLINE_LIMIT = 2;
 
 /**
- * 모바일 Operation 화면이면 본문 전체를 모바일 판정으로 감싸고(CSS는 `[data-mobile-surface]`만 읽는다)
+ * 모바일 Objective 화면이면 본문 전체를 모바일 판정으로 감싸고(CSS는 `[data-mobile-surface]`만 읽는다)
  * ⋮ 항목을 셸에 올린다. 데스크톱은 감싸지 않아 DOM이 그대로다.
  */
-function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
-  const mobile = mobileOperationOf(context);
-  if (!mobile) return <AgentOperationBody context={context} />;
+function AgentObjectiveView({ context }: { readonly context: ObjectiveRenderContext }) {
+  const mobile = mobileObjectiveOf(context);
+  if (!mobile) return <AgentObjectiveBody context={context} />;
   return (
     <MobileSurfaceProvider mobile>
       <AgentMobileMenu context={context} mobile={mobile} />
       <div className="agent-mobile-surface" data-mobile-surface="">
-        <AgentOperationBody context={context} />
+        <AgentObjectiveBody context={context} />
       </div>
     </MobileSurfaceProvider>
   );
@@ -616,31 +616,31 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
 /**
  * 모바일 ⋮의 에이전트 항목(impl-spec S-08). 보기 전환은 지금 보기의 반대이고, 채팅→터미널은 바로, 터미널→채팅은
- * 확인 시트(S-14)를 거친다. 「컴퓨터 사용 계속 허용」은 이 Operation의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
+ * 확인 시트(S-14)를 거친다. 「컴퓨터 사용 계속 허용」은 이 Objective의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
  * 실험이 꺼져 있으면 서지 않는다(D7). 캡션의 같은 동작과 같은 경로를 탄다.
  */
-function AgentMobileMenu({ context, mobile }: { readonly context: OperationRenderContext; readonly mobile: MobileOperationLike }) {
+function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRenderContext; readonly mobile: MobileObjectiveLike }) {
   const t = getT(context.language ?? "en");
   const state = useAgentState();
-  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const chatMode = context.operation.payload.chatMode === true;
-  const { terminalPending } = useViewSwitchState(context.operationId);
+  const session = state.sessions[context.objectiveId] ?? sessionFromObjective(context);
+  const chatMode = context.objectiveRecord.chatMode === true;
+  const { terminalPending } = useViewSwitchState(context.objectiveId);
   const experiments = useExperimentsSnapshot();
-  const computerUseEnabled = readComputerUseEnabled(context.operation.payload);
+  const computerUseEnabled = readComputerUseEnabled(context.objectiveRecord);
   const [usePending, setUsePending] = React.useState(false);
   const canSwitch = chatMode || session.status !== "dormant";
   // 「턴 접기」는 접힐 구성원 말이 있을 때만 — 데스크톱 머리 버튼과 같은 판정이다.
-  const canFoldTurns = useConversationHasFoldableMembers(context.operationId) && chatMode;
+  const canFoldTurns = useConversationHasFoldableMembers(context.objectiveId) && chatMode;
   const foldTurns = useFoldTurns();
 
   const toTerminal = async () => {
-    setTerminalHandoff(context.operationId, { pending: true, error: "none" });
+    setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
     try {
-      await openTerminalForOperation(context);
+      await openTerminalForObjective(context);
     } catch {
-      setTerminalHandoff(context.operationId, { error: "failed" });
+      setTerminalHandoff(context.objectiveId, { error: "failed" });
     } finally {
-      setTerminalHandoff(context.operationId, { pending: false });
+      setTerminalHandoff(context.objectiveId, { pending: false });
     }
   };
   const toChat = async () => {
@@ -652,17 +652,17 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
     });
     if (!confirmed) return;
     try {
-      await convertAgentSessionToChat(context.operationId);
+      await convertAgentSessionToChat(context.objectiveId);
     } catch {
       // 무엇이 끝나야 넘어갈 수 있는지(바쁨 사유)는 본문의 전환 오버레이가 이미 말한다 — 거기서 다시 묻는다.
-      setChatPromptOpen(context.operationId, true);
+      setChatPromptOpen(context.objectiveId, true);
     }
   };
   const toggleComputerUse = () => {
     if (usePending || !installedApi) return;
     setUsePending(true);
     const api = installedApi;
-    void setComputerUse(api, context.operationId, !computerUseEnabled, context.language ?? "en")
+    void setComputerUse(api, context.objectiveId, !computerUseEnabled, context.language ?? "en")
       .then(() => api.resync())
       .catch(() => undefined)
       .finally(() => setUsePending(false));
@@ -701,23 +701,23 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
   return null;
 }
 
-function AgentOperationBody({ context }: { readonly context: OperationRenderContext }) {
+function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderContext }) {
   const t = getT(context.language ?? "en");
   const mobileSurface = useMobileSurface();
   // CLI 확인 줄은 입력 대기 신호(훅이 지는 축)가 선 동안만 — 터미널 출력을 해석해 추정하지 않는다.
   const awaitingInput = context.runtimeState?.lifecycle === "live" && context.runtimeState.activity === "awaiting";
   const state = useAgentState();
-  const observed = state.sessions[context.operationId];
-  const session = observed ?? sessionFromOperation(context);
-  const chatMode = context.operation.payload.chatMode === true;
+  const observed = state.sessions[context.objectiveId];
+  const session = observed ?? sessionFromObjective(context);
+  const chatMode = context.objectiveRecord.chatMode === true;
   const sessionStatus = session.status;
-  const { chatPromptOpen } = useViewSwitchState(context.operationId);
+  const { chatPromptOpen } = useViewSwitchState(context.objectiveId);
   React.useEffect(() => {
     // 확인 오버레이는 라이브 터미널 분기 전용이다 — PTY 종료·채팅 전환으로 분기를 떠나면
     // 상태를 걷어 재개 시 낡은 다이얼로그가 되살아나지 않게 한다(이전 ChatModeEntry의
     // 언마운트-폐기와 등가).
-    if (sessionStatus === "dormant" || chatMode) setChatPromptOpen(context.operationId, false);
-  }, [context.operationId, sessionStatus, chatMode]);
+    if (sessionStatus === "dormant" || chatMode) setChatPromptOpen(context.objectiveId, false);
+  }, [context.objectiveId, sessionStatus, chatMode]);
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
   // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
   // 떠버린다. "직접 연 순간에만"이 이 투어의 판정이다.
@@ -725,22 +725,22 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
-  // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(operation-links).
-  const links = useOperationLinks({
-    operationId: context.operationId,
-    theaterId: context.operation.theaterId,
+  // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(objective-links).
+  const links = useObjectiveLinks({
+    objectiveId: context.objectiveId,
+    theaterId: context.objectiveRecord.theaterId,
     language: context.language,
     navigate: context.navigate,
     openCompanion: () => openBrowserCompanion(context),
   });
   const fileLinkFailure = links.fileLinkFailure;
-  const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
+  const terminalFileLinks = useAgentTerminalFileLinks(context.objectiveId, context.objectiveRecord.theaterId, context.navigate);
   // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
-  const groupConversation = useHasGroupConversation(context.operationId);
-  const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.operationId === context.operationId)?.conversation?.openUIOpen;
+  const groupConversation = useHasGroupConversation(context.objectiveId);
+  const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === context.objectiveId)?.conversation?.openUIOpen;
   const foldTurns = useFoldTurns();
   // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
-  const commanderLedger = useCommanderLedgerFramed(context.operationId);
+  const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
 
   if (chatMode) {
     const chatView = (
@@ -750,9 +750,9 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
     return (
       <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
         {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
-          ? <MobileGroupConversation root={context.operation} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
+          ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
           : chatView}
-        {commanderLedger ? null : <ComputerScreenShare operationId={context.operationId} />}
+        {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}
         {links.card}
       </MarkdownLinkBoundary>
     );
@@ -761,7 +761,7 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
-        <DormantOperationView context={context} session={session} />
+        <DormantObjectiveView context={context} session={session} />
         {session.resumeAvailable ? <DormantChatEntry context={context} /> : null}
       </div>
     );
@@ -770,12 +770,12 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   return (
     <div className="agent-stream-host">
       {/* 전환을 누르는 곳은 캡션이고, 무엇이 끝나야 넘어갈 수 있는지 말하는 이 오버레이는 본문이다. */}
-      {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.operationId, false)} /> : null}
+      {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.objectiveId, false)} /> : null}
       {/* 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
           옛 표면이 남고, 그 연결은 옛 PTY의 종료(4001)로 재접속을 멈춘다. 새 표면이 새 티켓으로 새 PTY에 붙는다. */}
       <TerminalSurface
         key={session.generation}
-        operationId={session.sessionId}
+        objectiveId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
         active={context.active}
@@ -785,42 +785,42 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         theme={context.theme}
         mobile={mobileSurface}
         awaitingConfirm={mobileSurface && awaitingInput}
-        {...(mobileSurface ? { mobileDockTop: <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
+        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
         locale={context.language}
-        onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
+        onStatusDetail={(detail) => context.statusDetail.set(context.objectiveId, detail)}
         onOpenLink={links.choose}
         onOpenLinkDirect={links.openDirect}
         knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
         fileLinks={terminalFileLinks}
         onExit={() => removeExitedSession(session.sessionId, session.generation)}
       />
-      <ComputerScreenShare operationId={context.operationId} />
+      <ComputerScreenShare objectiveId={context.objectiveId} />
       {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
-      {mobileSurface ? null : <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
+      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
       {links.card}
     </div>
   );
 }
 
 /**
- * Operation 메뉴의 실험 섹션 — 이 세션에 대한 사용 스위치. 설정에서 켠 실험만 행으로 서고, 켜져
- * 있는지는 Operation payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 무엇을 허용하는지는 툴팁과
+ * Objective 메뉴의 실험 섹션 — 이 세션에 대한 사용 스위치. 설정에서 켠 실험만 행으로 서고, 켜져
+ * 있는지는 Objective payload가 말한다(서버가 쓴다). 행은 한 줄이다 — 무엇을 허용하는지는 툴팁과
  * 접근성 라벨이 진다. 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
  */
-function AgentOperationMenu({ context }: { readonly context: OperationMenuContext }) {
+function AgentObjectiveMenu({ context }: { readonly context: ObjectiveMenuContext }) {
   const t = getT(context.language);
   const experiments = useExperimentsSnapshot();
-  const payload = context.operation.payload;
+  const payload = context.objectiveRecord;
   const [pending, setPending] = React.useState<"console" | "computer" | null>(null);
   // 자식 세션(목표 구성원)에는 사용 스위치가 없다 — 허용은 루트(지휘관)의 것이고 호스트도 자식 스위치를 거부한다.
-  if (!experiments || !installedApi || context.operation.parentOperationId) return null;
+  if (!experiments || !installedApi || context.objectiveRecord.parentObjectiveId) return null;
   const api = installedApi;
   const language = context.language;
   const toggle = (kind: "console" | "computer", next: boolean) => {
     setPending(kind);
     const request = kind === "console"
-      ? setConsoleUse(api, context.operation.id, next, language)
-      : setComputerUse(api, context.operation.id, next, language);
+      ? setConsoleUse(api, context.objectiveRecord.id, next, language)
+      : setComputerUse(api, context.objectiveRecord.id, next, language);
     void request.then(() => api.resync()).catch(() => undefined).finally(() => setPending(null));
   };
   const consoleUseEnabled = readConsoleUseEnabled(payload);
@@ -844,7 +844,7 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
           aria-label={`${row.name} · ${row.hint}`}
           title={row.hint}
           disabled={pending !== null}
-          data-operation-menu-item={row.id}
+          data-objective-menu-item={row.id}
           onClick={() => toggle(row.kind, !row.checked)}
         >
           <span className="group-context-menu-item__glyph" aria-hidden="true">{row.glyph}</span>
@@ -857,14 +857,14 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
 }
 
 /** 사용 배지는 캡션과 같은 수명을 공유한다. */
-function AgentOperationMarks({ context }: { readonly context: OperationMenuContext }) {
+function AgentObjectiveMarks({ context }: { readonly context: ObjectiveMenuContext }) {
   const t = getT(context.language);
-  const using = useOperationUse(context.operation.id);
+  const using = useObjectiveUse(context.objectiveRecord.id);
   return (
-    <span className="agent-operation-marks">
-      <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
-      <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
-      <OperationUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />
+    <span className="agent-objective-marks">
+      <ObjectiveUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
+      <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+      <ObjectiveUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />
     </span>
   );
 }
@@ -886,16 +886,16 @@ function chatConvertBusyKey(reason: string | null): "terminal.chat.convertBusy" 
 }
 
 /** Chat view 전환 확인 오버레이 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
-function ChatModeInterstitial({ context, onClose }: { readonly context: OperationRenderContext; readonly onClose: () => void }) {
+function ChatModeInterstitial({ context, onClose }: { readonly context: ObjectiveRenderContext; readonly onClose: () => void }) {
   const t = getT(context.language ?? "en");
   const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
   // 무엇이 끝나야 전환되는지 — 서버가 구분해 보내 준 사유. 알 수 없으면 뭉뚱그린 문구로 내려간다.
   const [busyReason, setBusyReason] = React.useState<string | null>(null);
-  const titleId = `agent-chat-inter-${context.operationId}`;
+  const titleId = `agent-chat-inter-${context.objectiveId}`;
   const convert = React.useCallback(async () => {
     setState("converting");
     try {
-      await convertAgentSessionToChat(context.operationId);
+      await convertAgentSessionToChat(context.objectiveId);
       // payload.chatMode 반영이 뷰를 전환한다 — 여기서는 오버레이만 닫는다.
       onClose();
     } catch (error) {
@@ -903,7 +903,7 @@ function ChatModeInterstitial({ context, onClose }: { readonly context: Operatio
       setBusyReason(busy && error instanceof AgentApiError ? error.reason ?? null : null);
       setState(busy ? "busy" : "error");
     }
-  }, [context.operationId, onClose]);
+  }, [context.objectiveId, onClose]);
   return (
     <div className="agent-chat-interstitial" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
           <div className="agent-chat-inter-card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
@@ -941,7 +941,7 @@ function ChatModeInterstitial({ context, onClose }: { readonly context: Operatio
 }
 
 /** 휴면 카드 위의 chat 진입 고스트 — 죽일 PTY조차 없는 가장 안전한 전환 경로다. */
-function DormantChatEntry({ context }: { readonly context: OperationRenderContext }) {
+function DormantChatEntry({ context }: { readonly context: ObjectiveRenderContext }) {
   const t = getT(context.language ?? "en");
   const [state, setState] = React.useState<"idle" | "working" | "error">("idle");
   return (
@@ -952,7 +952,7 @@ function DormantChatEntry({ context }: { readonly context: OperationRenderContex
       aria-label={t("terminal.chat.dormantOpenAria")}
       onClick={() => {
         setState("working");
-        void convertAgentSessionToChat(context.operationId)
+        void convertAgentSessionToChat(context.objectiveId)
           .catch(() => { setState("error"); })
           .then(() => { setState((current) => current === "error" ? current : "idle"); });
       }}
@@ -1043,19 +1043,19 @@ async function resumeSession(sessionId: string, options?: { readonly fresh?: boo
   selectSession(sessionId);
 }
 
-// 패널 DormantOperationView 의 freshOnly(!session.resumeAvailable) 와 같은 판정.
+// 패널 DormantObjectiveView 의 freshOnly(!session.resumeAvailable) 와 같은 판정.
 // 세션 스냅샷이 아직 없으면 호스트 DTO 의 파생 마커를 읽는다. 조회가 실패하면
 // fresh 를 추측하지 않는다 — 재개 가능한 Claude 세션을 지울 수 있다.
-async function shouldResumeFresh(operationId: string): Promise<boolean> {
-  const session = getAgentState().sessions[operationId];
+async function shouldResumeFresh(objectiveId: string): Promise<boolean> {
+  const session = getAgentState().sessions[objectiveId];
   if (session) return !session.resumeAvailable;
   try {
-    const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`);
+    const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`);
     if (!response.ok) return false;
     const payload = await response.json() as {
-      readonly operation?: { readonly payload?: { readonly resumeAvailable?: unknown } };
+      readonly objectiveRecord?: { readonly payload?: { readonly resumeAvailable?: unknown } };
     };
-    return payload.operation?.payload?.resumeAvailable !== true;
+    return payload.objectiveRecord?.payload?.resumeAvailable !== true;
   } catch {
     return false;
   }
@@ -1063,7 +1063,7 @@ async function shouldResumeFresh(operationId: string): Promise<boolean> {
 
 // dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
 // Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
-function DormantOperationView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
+function DormantObjectiveView({ context, session }: { readonly context: ObjectiveRenderContext; readonly session: SessionInfo }) {
   const t = getT(context.language ?? "en");
   const freshOnly = !session.resumeAvailable;
   const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error" | "launch-option-error">("idle");
@@ -1077,7 +1077,7 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
       setResumeState(isLaunchOptionError(error) ? "launch-option-error" : "error");
       context.notifications.emit({
         kind: agentResumeFailedNotification.id,
-        operationId: session.sessionId,
+        objectiveId: session.sessionId,
         message: resumeFailureMessage(error, context.language),
       });
     }
@@ -1085,27 +1085,27 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
 
   if (resumeState === "error" || resumeState === "launch-option-error") {
     return (
-      <div className="operation-dormant operation-dormant--error" role="alert">
-        <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
-        <p className="operation-dormant-error">
+      <div className="objective-dormant objective-dormant--error" role="alert">
+        <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
+        <p className="objective-dormant-error">
           {resumeState === "launch-option-error"
             ? t("terminal.dormant.resumeLaunchOptionFailedBody", { name: session.label || session.cwdLabel })
             : freshOnly
               ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
               : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
-        <div className="operation-dormant-error-actions">
+        <div className="objective-dormant-error-actions">
           {freshOnly ? (
-            <button type="button" className="operation-dormant-action" onClick={() => { void resume(true); }}>
+            <button type="button" className="objective-dormant-action" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           ) : (
-            <button type="button" className="operation-dormant-action" onClick={() => { void resume(false); }}>
+            <button type="button" className="objective-dormant-action" onClick={() => { void resume(false); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           )}
           {resumeState === "launch-option-error" || freshOnly ? null : (
-            <button type="button" className="operation-dormant-action operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
+            <button type="button" className="objective-dormant-action objective-dormant-action--ghost" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.startFresh")}
             </button>
           )}
@@ -1115,9 +1115,9 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   }
 
   return (
-    <button type="button" className="operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
-      <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
-      <span className={`operation-dormant-action${resumeState === "resuming" ? " operation-dormant-action--pending" : ""}`}>
+    <button type="button" className="objective-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
+      <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
+      <span className={`objective-dormant-action${resumeState === "resuming" ? " objective-dormant-action--pending" : ""}`}>
         {resumeState === "resuming"
           ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
           : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}
@@ -1126,19 +1126,19 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   );
 }
 
-function sessionFromOperation(context: OperationRenderContext): SessionInfo {
+function sessionFromObjective(context: ObjectiveRenderContext): SessionInfo {
   return {
-    sessionId: context.operation.id,
-    terminalSessionId: context.operation.id,
-    cwdLabel: context.operation.title || "Workspace",
-    label: context.operation.title,
+    sessionId: context.objectiveRecord.id,
+    terminalSessionId: context.objectiveRecord.id,
+    cwdLabel: context.objectiveRecord.title || "Workspace",
+    label: context.objectiveRecord.title,
     status: "dormant",
     turnState: "none",
-    createdAt: context.operation.ts.createdAt,
+    createdAt: context.objectiveRecord.ts.createdAt,
     theaterId: context.theaterId,
-    tenantId: readPayloadString(context.operation.payload, "tenantId") ?? undefined,
-    registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
-    resumeAvailable: context.operation.payload.resumeAvailable === true,
+    tenantId: readPayloadString(context.objectiveRecord, "tenantId") ?? undefined,
+    registrationId: readPayloadString(context.objectiveRecord, "registrationId") ?? undefined,
+    resumeAvailable: context.objectiveRecord.resumeAvailable === true,
   };
 }
 

@@ -1,4 +1,4 @@
-import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, OperationClusterConversation } from "../../../shared/conversation/types.js";
+import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, ObjectiveClusterConversation } from "../../../shared/conversation/types.js";
 import { isPersonQueueEntry, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;
@@ -21,7 +21,7 @@ export interface ConversationJournal {
   readonly queueSeen: ReadonlyMap<string, number>;
 }
 export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map() };
-const operationSpeaker = (id: string): ConversationSpeaker => ({ kind: "operation", operationId: id, name: id });
+const objectiveRecordSpeaker = (id: string): ConversationSpeaker => ({ kind: "objectiveRecord", objectiveId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
 const atOf = (entry: AgentChatJournalEvent): number | null => {
@@ -30,38 +30,38 @@ const atOf = (entry: AgentChatJournalEvent): number | null => {
 };
 
 /** 가려진 공개 Chat 사건만 읽는다. received는 활동/턴을 열지 않고, 사고는 표시 원장에 들어오지 않는다. */
-export function reduceConversationJournal(state: ConversationJournal, row: AgentChatJournalEvent, operationId: string): ConversationJournal {
+export function reduceConversationJournal(state: ConversationJournal, row: AgentChatJournalEvent, objectiveId: string): ConversationJournal {
   const event = row.event;
   if (event.kind === "cleared") return EMPTY_CONVERSATION_JOURNAL;
   let entries = [...state.entries];
   let draftId = state.draftId;
   let turn = state.turn ?? null;
-  const id = `message:${operationId}:${row.seq}`;
+  const id = `message:${objectiveId}:${row.seq}`;
   // 턴 좌표는 그 턴을 연 사건의 seq 다. 여는 사건 없이 말이 먼저 오면(중간부터 읽은 기록) 그 말이 턴을 연다.
-  const turnOf = () => turn ?? (turn = `turn:${operationId}:${row.seq}`);
+  const turnOf = () => turn ?? (turn = `turn:${objectiveId}:${row.seq}`);
   const at = atOf(row);
-  const speaker = operationSpeaker(operationId);
+  const speaker = objectiveRecordSpeaker(objectiveId);
   switch (event.kind) {
     case "dispatch":
     case "turn-inject": {
       // 지시는 새 턴을 연다. 도는 턴에 끼워 넣은 말(turn-inject)은 그 턴 안이다.
-      if (event.kind === "dispatch") turn = `turn:${operationId}:${row.seq}`;
+      if (event.kind === "dispatch") turn = `turn:${objectiveId}:${row.seq}`;
       const origin = event.by;
       // 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시는 발화자가 아니라 출처다 — 말풍선이 아닌 가운데 알림 줄로 선다.
       if (origin?.kind === "plugin" && !origin.humanInput) {
-        entries.push({ kind: "plugin-notice", id, at, operationId, pluginId: origin.pluginId, recipient: speaker, text: event.text,
+        entries.push({ kind: "plugin-notice", id, at, objectiveId, pluginId: origin.pluginId, recipient: speaker, text: event.text,
           ...(event.format === "markdown" ? { format: "markdown" as const } : {}) });
         break;
       }
       const human = origin?.kind === "plugin" ? origin.humanInput : undefined;
       const via = human?.act;
       const by: ConversationSpeaker = human?.author === "commodore" ? { kind: "commodore", name: "Commodore" }
-        : origin?.kind === "operation" ? { kind: "operation", operationId: origin.operationId, name: origin.title }
+        : origin?.kind === "objectiveRecord" ? { kind: "objectiveRecord", objectiveId: origin.objectiveId, name: origin.title }
           : { kind: "human", name: "Human" };
       // 보드 행위에 덧붙인 말은 프롬프트 속 인용 그대로 표시 문면이 된다 — 다시 연 뒤에도 같은 구간이 서도록 인용은 호스트에 두고 여기서 걷는다.
       const text = via ? unquote(event.text) : event.text;
-      const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : via ? speaker : undefined;
-      entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, operationId, speaker: by, text,
+      const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : undefined;
+      entries.push({ kind: "message", id: human ? `human:${human.id}` : id, at, objectiveId, speaker: by, text,
         ...((event.format || by.kind !== "human") && !via ? { format: "markdown" as const } : {}),
         ...(event.attachments?.length ? { attachments: event.attachments } : {}), streaming: false,
         ...(recipient ? { recipient } : {}), ...(human?.copy ? { copied: true } : {}), ...(via ? { via } : {}) });
@@ -72,7 +72,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       if (existing?.kind === "message") entries = entries.map((entry) => entry === existing ? { ...existing, text: (existing.text + event.text).slice(0, TEXT_CAP) } : entry);
       else {
         draftId = id;
-        entries.push({ kind: "message", id, at, operationId, speaker, text: event.text.slice(0, TEXT_CAP), format: "markdown", streaming: true, turn: turnOf() });
+        entries.push({ kind: "message", id, at, objectiveId, speaker, text: event.text.slice(0, TEXT_CAP), format: "markdown", streaming: true, turn: turnOf() });
       }
       break;
     }
@@ -81,7 +81,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       // 새 id·완료 시각으로 다시 넣으면 말풍선이 다시 그려지고, 병렬로 말하는 중이면 다른 발화자의 말 아래로 자리를 옮긴다.
       const draft = draftId ? entries.find((entry) => entry.id === draftId) : undefined;
       if (draft?.kind === "message") entries = entries.map((entry) => entry === draft ? { ...draft, text: event.text, streaming: false } : entry);
-      else entries.push({ kind: "message", id, at, operationId, speaker, text: event.text, format: "markdown", streaming: false, turn: turnOf() });
+      else entries.push({ kind: "message", id, at, objectiveId, speaker, text: event.text, format: "markdown", streaming: false, turn: turnOf() });
       draftId = null;
       break;
     }
@@ -91,25 +91,25 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       const split = message.indexOf("\n");
       const hasRecipient = message.startsWith("→ ");
       const recipient = hasRecipient ? message.slice(2, split < 0 ? undefined : split) : "";
-      entries.push({ kind: "delegation", id: `delegation:${operationId}:${event.id}`, at, sender: speaker,
-        recipients: recipient ? [{ kind: "operation", name: recipient }] : [], text: hasRecipient ? (split < 0 ? "" : message.slice(split + 1)) : message,
+      entries.push({ kind: "delegation", id: `delegation:${objectiveId}:${event.id}`, at, sender: speaker,
+        recipients: recipient ? [{ kind: "objectiveRecord", name: recipient }] : [], text: hasRecipient ? (split < 0 ? "" : message.slice(split + 1)) : message,
         result: "", received: false, turn: turnOf() });
       break;
     }
     case "tool-result": {
-      const target = `delegation:${operationId}:${event.id}`;
+      const target = `delegation:${objectiveId}:${event.id}`;
       const result = event.toolDetail?.sections.filter((section) => section.kind === "result").map((section) => section.text).join("\n") || event.summary;
       entries = entries.map((entry) => entry.kind === "delegation" && entry.id === target ? { ...entry, result, ok: event.ok,
-        ...(event.recipientOperationId ? { recipients: [operationSpeaker(event.recipientOperationId)] } : {}) } : entry);
+        ...(event.recipientObjectiveId ? { recipients: [objectiveRecordSpeaker(event.recipientObjectiveId)] } : {}) } : entry);
       break;
     }
     case "received":
-      entries.push({ kind: "delegation", id: `delegation:${event.id}`, at, sender: { kind: "operation", name: event.from, ...(event.senderOperationId ? { operationId: event.senderOperationId } : {}) }, recipients: [speaker], text: event.text, result: "", received: true });
+      entries.push({ kind: "delegation", id: `delegation:${event.id}`, at, sender: { kind: "objectiveRecord", name: event.from, ...(event.senderObjectiveId ? { objectiveId: event.senderObjectiveId } : {}) }, recipients: [speaker], text: event.text, result: "", received: true });
       break;
     case "turn-start":
       // 지시가 이미 연 턴이면 그 턴이 이어진다. 다른 세션의 말이 깨운 턴은 여기서 열린다.
       if (turn !== null) return state;
-      turn = `turn:${operationId}:${row.seq}`;
+      turn = `turn:${objectiveId}:${row.seq}`;
       break;
     case "turn-end":
       entries = entries.map((entry) => entry.kind === "message" && entry.streaming ? { ...entry, streaming: false } : entry);
@@ -140,7 +140,7 @@ const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slic
  * 델타가 도착할 때마다 대기 말을 다시 만들면 그 말풍선이 매번 다시 그려진다.
  */
 const pendingPrompts = new WeakMap<readonly AgentChatQueueEntry[], { readonly floor: number | null; readonly built: readonly GroupTimelineEntry[] }>();
-function queuedPrompts(operationId: string, journal: ConversationJournal): readonly GroupTimelineEntry[] {
+function queuedPrompts(objectiveId: string, journal: ConversationJournal): readonly GroupTimelineEntry[] {
   // 앞선 예약이 처리되기 시작하면 그 확정 말은 집어간 시각에 선다. 남은 대기 말은 그보다 위로 올라가지 않는다 —
   // 아직 처리 전인 말이 이미 처리된 앞 말보다 먼저 보낸 것처럼 읽히지 않게. 그 밖의 말 사이에서는 처음 자리를 지킨다.
   const floor = journal.entries.reduce<number | null>((max, entry) => entry.kind === "message" && entry.speaker.kind === "human" && entry.at !== null && (max === null || entry.at > max) ? entry.at : max, null);
@@ -156,13 +156,13 @@ function queuedPrompts(operationId: string, journal: ConversationJournal): reado
     const at = seen === null ? null : last !== null && seen <= last ? last + 0.001 : seen;
     if (at !== null) last = at;
     const human = entry.by?.kind === "plugin" ? entry.by.humanInput : undefined;
-    const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : undefined;
+    const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : undefined;
     built.push({
       kind: "message",
       // 사람이 보드로 보낸 말은 확정 말과 같은 id 다. 처리가 시작되면 그 말이 이 자리를 그대로 잇고, 둘은 동시에 서지 않는다.
-      id: human ? `human:${human.id}` : `pending:${operationId}:${entry.id}`,
+      id: human ? `human:${human.id}` : `pending:${objectiveId}:${entry.id}`,
       at,
-      operationId,
+      objectiveId,
       speaker: { kind: "human", name: "Human" },
       // 보드 행위에 덧붙인 말은 인용으로 실려 온다 — 확정 말과 같은 문면이 되도록 같은 자리에서 걷는다.
       text: human?.act ? unquote(entry.text) : entry.text,
@@ -189,22 +189,22 @@ function resolvedEntry(item: GroupTimelineEntry, speakers: readonly Conversation
 }
 
 export function composeGroupTimeline(input: {
-  readonly rootOperationId: string | null;
+  readonly rootObjectiveId: string | null;
   readonly participants: readonly ConversationParticipant[];
   readonly journals: ReadonlyMap<string, ConversationJournal>;
-  readonly board?: OperationClusterConversation;
+  readonly board?: ObjectiveClusterConversation;
   readonly loading?: boolean;
-  readonly unavailableOperationIds?: readonly string[];
+  readonly unavailableObjectiveIds?: readonly string[];
 }): GroupTimelineSnapshot {
-  const speakers = new Map(input.participants.flatMap(({ speaker }) => speaker.operationId ? [[speaker.operationId, speaker] as const] : []));
-  const resolve = (speaker: ConversationSpeaker): ConversationSpeaker => speaker.kind === "human" || !speaker.operationId ? speaker : speakers.get(speaker.operationId) ?? speaker;
+  const speakers = new Map(input.participants.flatMap(({ speaker }) => speaker.objectiveId ? [[speaker.objectiveId, speaker] as const] : []));
+  const resolve = (speaker: ConversationSpeaker): ConversationSpeaker => speaker.kind === "human" || !speaker.objectiveId ? speaker : speakers.get(speaker.objectiveId) ?? speaker;
   const entries = new Map<string, GroupTimelineEntry>();
   const waiting: GroupTimelineEntry[] = [];
   let truncated = input.board?.truncated === true;
-  for (const [operationId, journal] of input.journals) {
-    if (!speakers.has(operationId)) continue;
+  for (const [objectiveId, journal] of input.journals) {
+    if (!speakers.has(objectiveId)) continue;
     truncated ||= journal.truncated;
-    waiting.push(...queuedPrompts(operationId, journal));
+    waiting.push(...queuedPrompts(objectiveId, journal));
     for (const item of journal.entries) {
       if (item.kind === "message") {
         const previous = entries.get(item.id);
@@ -229,9 +229,9 @@ export function composeGroupTimeline(input: {
       const previous = entries.get(item.id);
       if (previous?.kind !== "delegation") { entries.set(item.id, next); continue; }
       const received = previous.received || next.received;
-      // 수신 DTO가 있으면 모호한 런치 이름 힌트 대신 서버가 확정한 수신 Operation을 쓴다.
-      const recipients = [...previous.recipients, ...next.recipients].filter((recipient) => !received || recipient.operationId);
-      const unique = new Map(recipients.map((recipient) => [recipient.operationId ?? recipient.name, recipient]));
+      // 수신 DTO가 있으면 모호한 런치 이름 힌트 대신 서버가 확정한 수신 Objective을 쓴다.
+      const recipients = [...previous.recipients, ...next.recipients].filter((recipient) => !received || recipient.objectiveId);
+      const unique = new Map(recipients.map((recipient) => [recipient.objectiveId ?? recipient.name, recipient]));
       const turn = previous.turn ?? next.turn;
       entries.set(item.id, { ...previous, sender, recipients: [...unique.values()], received,
         text: previous.text || next.text, result: previous.result || next.result, ...(turn ? { turn } : {}),
@@ -259,7 +259,7 @@ export function composeGroupTimeline(input: {
   const preview: ConversationPreview | null = decision
     ? { kind: "decision", text: oneLine(decision.title), at: decision.createdAt }
     : last?.kind === "message" ? { kind: "message", text: oneLine(last.text), at: last.at, speaker: last.speaker } : null;
-  return { rootOperationId: input.rootOperationId, entries: ordered, participants: input.participants,
+  return { rootObjectiveId: input.rootObjectiveId, entries: ordered, participants: input.participants,
     working: input.participants.filter((participant) => participant.activity === "running").map((participant) => participant.speaker),
-    decision, holds: input.board?.holds ?? [], preview, loading: input.loading ?? false, truncated, unavailableOperationIds: input.unavailableOperationIds ?? [] };
+    decision, holds: input.board?.holds ?? [], preview, loading: input.loading ?? false, truncated, unavailableObjectiveIds: input.unavailableObjectiveIds ?? [] };
 }

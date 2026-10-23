@@ -6,15 +6,15 @@ import type { ClientConsoleStateCapability } from "../../workspace/shared/consol
 import type { ClientConversationCapability } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
 import type { ClientNotificationsCapability } from "../../execution/shared/notification-ports.js";
-import type { ClientOperationRuntimeCapability, ClientOperationsCapability } from "../../execution/shared/client-contract.js";
+import type { ClientObjectiveRuntimeCapability, ClientObjectiveRecordsCapability } from "../../execution/shared/client-contract.js";
 import type { ClientPreferencesCapability } from "../../settings/shared/client-ports.js";
 export interface ObjectivesClientDeps {
   readonly api: ClientApiCapability;
   readonly consoleEvents: ClientConsoleEventsCapability;
   readonly consoleState: ClientConsoleStateCapability;
-  readonly operations: ClientOperationsCapability;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
   readonly preferences: ClientPreferencesCapability;
-  readonly runtime: ClientOperationRuntimeCapability;
+  readonly runtime: ClientObjectiveRuntimeCapability;
   readonly rail: ClientRailCapability;
   readonly conversation?: ClientConversationCapability;
   readonly models: ClientModelsCapability;

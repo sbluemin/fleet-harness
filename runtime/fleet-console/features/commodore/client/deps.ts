@@ -9,7 +9,7 @@ import type { ClientConsoleStateCapability } from "../../workspace/shared/consol
 import type { ClientConversationCapability } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientExperimentsCapability } from "../../settings/shared/client-ports.js";
 import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
-import type { ClientOperationsCapability } from "../../execution/shared/client-contract.js";
+import type { ClientObjectiveRecordsCapability } from "../../execution/shared/client-contract.js";
 export interface CommodoreClientDeps {
   readonly chat: ClientAgentChatCapability;
   readonly rail: ClientRailCapability;
@@ -21,6 +21,6 @@ export interface CommodoreClientDeps {
   readonly composer: ClientComposerCapability;
   readonly conversation?: ClientConversationCapability;
   readonly theaterInbox?: ClientTheaterInboxCapability;
-  readonly operations: ClientOperationsCapability;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
   readonly navigate: ClientNavigateCapability;
 }

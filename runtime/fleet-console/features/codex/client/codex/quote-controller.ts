@@ -135,7 +135,7 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
       window.getSelection()?.removeAllRanges();
       clearSelection();
       // 지금 보이지 않는 지휘관이면 그 대화로 데려간다 — 붙은 칩과 다음 할 일(지시 쓰기)이 거기 있다.
-      if (option.target.kind === "operation" && !option.current) hostCapabilities.bound()?.operations?.focus(option.target.operationId);
+      if (option.target.kind === "objectiveRecord" && !option.current) hostCapabilities.bound()?.objectiveRecords?.focus(option.target.objectiveId);
     }
   };
 

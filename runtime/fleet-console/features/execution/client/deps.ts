@@ -4,15 +4,15 @@ import type { ClientConsoleStateCapability } from "../../workspace/shared/consol
 import type { ClientConversationCapability } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientExperimentsCapability } from "../../settings/shared/client-ports.js";
 import type { ClientNotificationsCapability } from "../shared/notification-ports.js";
-import type { ClientOperationRuntimeCapability, ClientOperationStatusDetailCapability, ClientOperationsCapability } from "../shared/client-contract.js";
+import type { ClientObjectiveRuntimeCapability, ClientObjectiveStatusDetailCapability, ClientObjectiveRecordsCapability } from "../shared/client-contract.js";
 export interface ExecutionClientDeps {
   readonly api: ClientApiCapability;
   readonly notifications: ClientNotificationsCapability;
   readonly consoleState: ClientConsoleStateCapability;
-  readonly runtime: ClientOperationRuntimeCapability;
-  readonly statusDetail: ClientOperationStatusDetailCapability;
+  readonly runtime: ClientObjectiveRuntimeCapability;
+  readonly statusDetail: ClientObjectiveStatusDetailCapability;
   readonly experiments: ClientExperimentsCapability;
   readonly conversation?: ClientConversationCapability;
   readonly consoleEvents: ClientConsoleEventsCapability;
-  readonly operations: ClientOperationsCapability;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
 }

@@ -58,7 +58,7 @@ export interface FollowupBatchItem {
     readonly evidence: readonly FollowupEvidence[];
   };
   readonly state: FollowupBatchItemState;
-  readonly operationId: string | null;
+  readonly objectiveId: string | null;
   readonly error: string | null;
   readonly attempts: number;
   readonly settledAt: number | null;
@@ -148,7 +148,7 @@ function asBatchItem(value: unknown): FollowupBatchItem | null {
       evidence,
     },
     state: value.state,
-    operationId: typeof value.operationId === "string" ? value.operationId : null,
+    objectiveId: typeof value.objectiveId === "string" ? value.objectiveId : null,
     error: typeof value.error === "string" ? value.error : null,
     attempts: typeof value.attempts === "number" ? value.attempts : 0,
     settledAt: typeof value.settledAt === "number" ? value.settledAt : null,

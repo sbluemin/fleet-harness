@@ -4,20 +4,20 @@ import type { ReactNode } from "react";
 import type { PaneDescriptor } from "./pane.js";
 import type { ExpandedSurfaceDescriptor } from "./expanded-surface.js";
 import type { FloatingWidgetDescriptor } from "./floating.js";
-import type { OperationLaunchKind, OperationNode } from "../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind, ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "./rail.js";
 import type { NotificationKindDescriptor } from "../../execution/shared/notifications.js";
 import type { ExperimentModelOption } from "../../settings/shared/experiments.js";
 import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
-import type { LaunchContext, OperationKindDescriptor } from "../../execution/shared/client-contract.js";
+import type { LaunchContext, ObjectiveKindDescriptor } from "../../execution/shared/client-contract.js";
 import type { MentionTargetDescriptor } from "../../execution/shared/composer-ports.js";
-import type { CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, PersistentComponentDescriptor, OperationCaptionContribution, TheaterContribution } from "./surface-contracts.js";
+import type { CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, ComposerTopEntryDescriptor, PersistentComponentDescriptor, ObjectiveCaptionContribution, TheaterContribution } from "./surface-contracts.js";
 import type { ConversationSurfaceDescriptor } from "./conversation-surfaces.js";
 import type { ArchiveSectionDescriptor } from "../../execution/shared/archive-surfaces.js";
-import type { OperationClusterSource } from "../../objectives/shared/operation-clusters.js";
+import type { ObjectiveClusterSource } from "../../objectives/shared/objective-clusters.js";
 export interface ClientFeatureDescriptor {
   readonly id: string | null;
-  readonly operationKinds?: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds?: readonly ObjectiveKindDescriptor[];
   readonly settingsSections?: readonly SettingsSectionDescriptor[];
   readonly notificationKinds?: readonly NotificationKindDescriptor[];
   /**
@@ -54,19 +54,19 @@ export interface ClientFeatureDescriptor {
    */
   readonly expandedSurfaces?: readonly ExpandedSurfaceDescriptor[];
   /**
-   * 다른 플러그인이 소유한 Operation 의 캡션·사이드바 칩에 얹는 표식.
+   * 다른 플러그인이 소유한 Objective 의 캡션·사이드바 칩에 얹는 표식.
    *
-   * `captionActions`·`operationMarks` 는 Operation 종류의 소유자만 그린다. 그러나 "이 Operation 이 어느 목표에
-   * 연결돼 있는가"처럼 Operation 을 소유하지 않는 플러그인이 아는 사실도 그 자리에 서야 한다. 호스트가 캡션의
+   * `captionActions`·`objectiveRecordMarks` 는 Objective 종류의 소유자만 그린다. 그러나 "이 Objective 이 어느 목표에
+   * 연결돼 있는가"처럼 Objective 을 소유하지 않는 플러그인이 아는 사실도 그 자리에 서야 한다. 호스트가 캡션의
    * 액션 무리 앞과 칩의 이름 뒤에 그린다. 그릴 것이 없으면 null 을 돌려주고, 그러면 자리도 없다.
    */
-  readonly operationCaptionContributions?: readonly OperationCaptionContribution[];
+  readonly objectiveRecordCaptionContributions?: readonly ObjectiveCaptionContribution[];
   /**
    * Theater 하나에 딸린 플러그인의 자리 — 사이드바 Theater 머리의 표식·이름 물결·머리가 여는 Inbox 칸, 머리 바로 아래 줄, Theater 동작(우클릭) 메뉴의 항목.
    *
    * Theater 머리와 메뉴는 코어가 소유하지만, Theater 단위로 도는 플러그인의 상태(예: 그 Theater 를 운영하는 세션)는
-   * 플러그인이 안다. 호스트는 자리·순서·접힘·메뉴의 키보드 이동만 소유하고 본문은 플러그인이 그린다. Operation 단위의
-   * `operationMenu`·`operationMarks` 와 같은 모양이다.
+   * 플러그인이 안다. 호스트는 자리·순서·접힘·메뉴의 키보드 이동만 소유하고 본문은 플러그인이 그린다. Objective 단위의
+   * `objectiveRecordMenu`·`objectiveRecordMarks` 와 같은 모양이다.
    */
   readonly theaterContributions?: readonly TheaterContribution[];
   /**
@@ -75,15 +75,15 @@ export interface ClientFeatureDescriptor {
    */
   readonly theaterInboxSections?: readonly TheaterInboxSectionDescriptor[];
   /**
-   * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
+   * 한 실행 구조에 묶인 Objective 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
    * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
    * 캡션에 진척도 띠(와 단계 목록), 뿌리 패널 본문에 구성원 세션으로 바꿔 보는 노드 줄(「N 노드」, N 은 members
-   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 `childSessions`
+   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 `sessions`
    * 저장 관계이고, 진행의 진실은 플러그인 쪽에 남는다.
    * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
    */
-  readonly operationClusters?: OperationClusterSource;
+  readonly objectiveRecordClusters?: ObjectiveClusterSource;
   /**
    * 보관함 시트 안의 칸 — 플러그인이 소유한 "끝났거나 치운 것"(완료한 목표·정리한 목표)이 Core 의 보관된 세션 곁에 선다.
    * 호스트는 칸의 자리·머리·사이드바 보관함 입구의 개수만 그리고, 본문과 복원·영구 삭제는 플러그인이 그린다.
@@ -102,34 +102,34 @@ export interface ClientFeatureDescriptor {
    */
   readonly persistentComponents?: readonly PersistentComponentDescriptor[];
   /**
-   * 대화 중심 화면(실험 기능)의 가운데 칸에 서는 플러그인 대화 — Operation 대신 플러그인이 소유한 대화(예: 사령관)를
+   * 대화 중심 화면(실험 기능)의 가운데 칸에 서는 플러그인 대화 — Objective 대신 플러그인이 소유한 대화(예: 사령관)를
    * 세운다. 호스트는 칸의 자리·머리 pill·오른쪽 패널 앞 묶음의 탭 자리를 소유하고, 본문과 탭 본문은 플러그인이 그린다.
    * 여는 것은 `ctx.conversation.open(id)` 이다. 대화 중심 화면이 꺼져 있으면 호스트는 이 기여를 읽지 않는다.
    */
   readonly conversationSurfaces?: readonly ConversationSurfaceDescriptor[];
   readonly launch?: (ctx: LaunchContext) => Promise<{ readonly id: string }>;
-  readonly closeOperation?: (operationId: string) => void | Promise<void>;
+  readonly closeObjective?: (objectiveId: string) => void | Promise<void>;
   /**
-   * Optional host→plugin resume request for a dormant Operation (e.g. a palette command).
-   * Plugins without resumable sessions omit it; the host falls back to focusing the Operation.
+   * Optional host→plugin resume request for a dormant Objective (e.g. a palette command).
+   * Plugins without resumable sessions omit it; the host falls back to focusing the Objective.
    */
-  readonly resumeOperation?: (operationId: string) => void | Promise<void>;
+  readonly resumeObjective?: (objectiveId: string) => void | Promise<void>;
   /**
-   * Operation types (OperationNode.type) this plugin accepts host-forwarded user
-   * messages for. New session `@` mentions list only Operations whose plugin declares
-   * their type here alongside `messageOperation`.
+   * Objective types (ObjectiveRecord.type) this plugin accepts host-forwarded user
+   * messages for. New session `@` mentions list only ObjectiveRecords whose plugin declares
+   * their type here alongside `messageObjective`.
    */
-  readonly messageableOperationTypes?: readonly string[];
+  readonly messageableObjectiveTypes?: readonly string[];
   /**
-   * Host→plugin request to deliver user text to an Operation's live session.
-   * A dormant Operation is resumed by the plugin before delivery. Optional attachment
+   * Host→plugin request to deliver user text to an Objective's live session.
+   * A dormant Objective is resumed by the plugin before delivery. Optional attachment
    * ids (from `uploadLaunchAttachment`) ride along and the plugin's server composes
    * the stored file paths after the text. Rejects with an Error whose `message` is
    * the server rejection code when one is available.
    */
-  readonly messageOperation?: (operationId: string, text: string, attachmentIds?: readonly string[]) => Promise<void>;
+  readonly messageObjective?: (objectiveId: string, text: string, attachmentIds?: readonly string[]) => Promise<void>;
   /**
-   * 지금 행선지가 될 수 있는 비-Operation 대상들. 덱이 열릴 때마다 다시 읽히므로 설정으로
+   * 지금 행선지가 될 수 있는 비-Objective 대상들. 덱이 열릴 때마다 다시 읽히므로 설정으로
    * 켜고 끈 결과가 그대로 반영된다 — 정적 배열로 두면 로스터가 마운트 시점에 굳는다.
    * 이 함수와 `messageMentionTarget`을 **함께** 선언한 플러그인의 대상만 덱에 오른다.
    */
@@ -137,7 +137,7 @@ export interface ClientFeatureDescriptor {
   /** 근무표·로케일·권한이 바뀌면 호스트가 목록과 선택 좌표를 다시 읽는다. */
   readonly subscribeMentionTargets?: (listener: () => void) => () => void;
   /**
-   * Host→plugin request to deliver user text to a non-Operation mention target.
+   * Host→plugin request to deliver user text to a non-Objective mention target.
    * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
    * forwarded — the host refuses that combination before calling. Rejects with an Error
    * whose `message` is the server rejection code when one is available.
@@ -154,7 +154,7 @@ export interface ClientFeatureDescriptor {
   readonly uploadLaunchAttachment?: (file: Blob) => Promise<{ readonly id: string }>;
   /** Best-effort discard of an uploaded-but-unsent attachment (composer chip removal). */
   readonly discardLaunchAttachment?: (id: string) => Promise<void>;
-  readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
+  readonly renderLaunchIcon?: (kind: ObjectiveLaunchKind) => ReactNode;
   /**
    * @deprecated 모델 선택지는 이제 코어의 모델 로스터(`ctx.models`) 하나가 소유한다. 호스트는 이 값을 더 읽지 않는다.
    * Fleet 1.215.0에서 제거한다.

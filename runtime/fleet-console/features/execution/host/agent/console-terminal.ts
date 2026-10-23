@@ -1,10 +1,10 @@
 import { promises as fs, statSync } from "node:fs";
-import type { ConsoleOperationObservation } from "../../../console-use/shared/control.js";
+import type { ConsoleObjectiveObservation } from "../../../console-use/shared/control.js";
 import { chatShellTailFromOutput } from "./chat-events.js";
 import { LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX } from "@fleet-console/agent-runtime/fleet";
 
 export type TerminalOutcome = "completed" | "failed" | "interrupted" | "unknown";
-type PublicOutput = ConsoleOperationObservation["output"];
+type PublicOutput = ConsoleObjectiveObservation["output"];
 interface PendingTurn {
   readonly prompt: string;
   readonly firstTurn: boolean;
@@ -17,9 +17,9 @@ interface OutputState { generation: number; output: PublicOutput; transcriptOffs
 
 /** PTY 화면 바이트가 아니라 CLI가 남긴 공개 답변과 턴 경계를 읽는다. */
 export function createConsoleTerminalObserver(deps: {
-  readonly transcript: (operationId: string) => string | undefined;
-  readonly cwd: (operationId: string) => string | undefined;
-  readonly onTurnEnd?: (operationId: string, output: PublicOutput) => void;
+  readonly transcript: (objectiveId: string) => string | undefined;
+  readonly cwd: (objectiveId: string) => string | undefined;
+  readonly onTurnEnd?: (objectiveId: string, output: PublicOutput) => void;
 }) {
   const pending = new Map<string, PendingTurn>();
   const outputs = new Map<string, OutputState>();

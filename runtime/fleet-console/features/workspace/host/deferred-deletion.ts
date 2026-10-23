@@ -1,19 +1,19 @@
 import crypto from "node:crypto";
 
-import { deletionOperations, type DurableDeletionTombstone, type DurableOperationGroup } from "./durable-state.js";
-import type { ArchivedOperation } from "./operation-archive-storage.js";
-import type { OperationNode, OperationStore } from "../../execution/host/operations/operations-domain.js";
-import { DELETION_GRACE_MS } from "../../execution/host/operations/operations-domain.js";
+import { deletionObjectiveRecords, type DurableDeletionTombstone, type DurableObjectiveGroup } from "./durable-state.js";
+import type { ArchivedObjective } from "./objective-archive-storage.js";
+import type { ObjectiveRecord, ObjectiveRecordsStore } from "../../objectives/host/records/objective-records-domain.js";
+import { DELETION_GRACE_MS } from "../../objectives/host/records/objective-records-domain.js";
 import type { TheaterRegistration } from "./theaters/theater-domain.js";
 import type { TheaterRegistry } from "./theaters/theater-domain.js";
 
 export interface DeferredDeletionReceipt {
   readonly deletionId: string;
-  readonly kind: "operation" | "theater";
+  readonly kind: "objectiveRecord" | "theater";
   readonly targetId: string;
   readonly expiresAt: number;
-  /** Theater 잊기의 기존 toast에 표시할 보관 Operation 수. */
-  readonly archivedOperationCount?: number;
+  /** Theater 잊기의 기존 toast에 표시할 보관 Objective 수. */
+  readonly archivedObjectiveCount?: number;
 }
 
 export interface DeferredDeletionResponse {
@@ -23,7 +23,7 @@ export interface DeferredDeletionResponse {
 
 export interface DeferredRestoreResponse {
   readonly ok: true;
-  readonly kind: "operation" | "theater";
+  readonly kind: "objectiveRecord" | "theater";
   readonly targetId: string;
 }
 
@@ -40,39 +40,39 @@ export class DeferredDeletionError extends Error {
 export interface DeferredDeletionCoordinator {
   readonly list: () => readonly DurableDeletionTombstone[];
   readonly load: (tombstones: readonly DurableDeletionTombstone[]) => void;
-  readonly deleteOperation: (operationId: string) => DeferredDeletionReceipt | null;
+  readonly deleteObjective: (objectiveId: string) => DeferredDeletionReceipt | null;
   readonly deleteTheater: (theaterId: string) => DeferredDeletionReceipt | null;
   readonly restore: (deletionId: string) => Promise<DeferredRestoreResponse>;
   readonly sweepExpired: () => void;
-  readonly hasPendingOperation: (operationId: string) => boolean;
+  readonly hasPendingObjective: (objectiveId: string) => boolean;
   readonly hasPendingTheater: (theaterId: string) => boolean;
   readonly dispose: () => void;
 }
 
 interface DeferredDeletionCoordinatorDeps {
-  readonly operations: OperationStore;
+  readonly objectiveRecords: ObjectiveRecordsStore;
   readonly theaters: TheaterRegistry;
-  readonly save: (tombstones: readonly DurableDeletionTombstone[], archives?: readonly ArchivedOperation[]) => void;
-  readonly archives?: () => readonly ArchivedOperation[];
+  readonly save: (tombstones: readonly DurableDeletionTombstone[], archives?: readonly ArchivedObjective[]) => void;
+  readonly archives?: () => readonly ArchivedObjective[];
   readonly assertMutable?: (id: string) => void;
   readonly publish: (channel: string, payload: unknown) => void;
   readonly unregisterTheaterWorkspaces: (theaterId: string) => void;
   readonly validateTheaterRestore: (theater: TheaterRegistration) => Promise<void>;
   readonly registerTheaterWorkspace: (theater: TheaterRegistration) => Promise<void>;
   /**
-   * 유예가 끝난 Operation 의 흔적을 지우기 **전에** 관련 자원을 정리한다. 던지면 tombstone 을 그대로 남겨
+   * 유예가 끝난 Objective 의 흔적을 지우기 **전에** 관련 자원을 정리한다. 던지면 tombstone 을 그대로 남겨
    * 이번 정리를 미루고 다시 시도한다.
    */
-  readonly beforePurge?: (operations: readonly OperationNode[], tombstone: DurableDeletionTombstone) => void;
+  readonly beforePurge?: (objectiveRecords: readonly ObjectiveRecord[], tombstone: DurableDeletionTombstone) => void;
   readonly now?: () => number;
   readonly randomId?: () => string;
   readonly setTimer?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
   readonly clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
-const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
-const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
-const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
+const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
+const OBJECTIVE_RESTORED_EVENT_CHANNEL = "objective:restored";
+const OBJECTIVE_PURGED_EVENT_CHANNEL = "objective:purged";
 const PURGE_RETRY_MS = 1_000;
 
 export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordinatorDeps): DeferredDeletionCoordinator {
@@ -94,47 +94,47 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     schedule();
   }
 
-  function deleteOperation(operationId: string): DeferredDeletionReceipt | null {
+  function deleteObjective(objectiveId: string): DeferredDeletionReceipt | null {
     sweepExpired();
-    const existing = tombstones.find((item) => deletionOperations(item).some((node) => node.id === operationId));
+    const existing = tombstones.find((item) => deletionObjectiveRecords(item).some((node) => node.id === objectiveId));
     if (existing) return toReceipt(existing);
     // 자식 세션은 부모와 함께 저장한다. 합성 실행 뷰를 독립 묘비로 만들지 않는다.
-    if (deps.operations.getChild(operationId)) return null;
+    if (deps.objectiveRecords.getChild(objectiveId)) return null;
     const archives = deps.archives?.() ?? [];
-    const all = [...deps.operations.list(), ...archives.map((entry) => entry.operation)];
-    const operation = all.find((node) => node.id === operationId);
-    if (!operation) return null;
-    const ids = new Set([operationId]);
+    const all = [...deps.objectiveRecords.list(), ...archives.map((entry) => entry.objectiveRecord)];
+    const objectiveRecord = all.find((node) => node.id === objectiveId);
+    if (!objectiveRecord) return null;
+    const ids = new Set([objectiveId]);
     let previousSize = -1;
     while (previousSize !== ids.size) {
       previousSize = ids.size;
-      for (const node of all) if (node.parentOperationId && ids.has(node.parentOperationId)) ids.add(node.id);
+      for (const node of all) if (node.parentObjectiveId && ids.has(node.parentObjectiveId)) ids.add(node.id);
     }
     const affected = all.filter((node) => ids.has(node.id));
     for (const node of affected) deps.assertMutable?.(node.id);
-    const archived = Object.fromEntries(archives.filter((entry) => ids.has(entry.operation.id)).map((entry) => [entry.operation.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
-    const previousOperations = deps.operations.list();
+    const archived = Object.fromEntries(archives.filter((entry) => ids.has(entry.objectiveRecord.id)).map((entry) => [entry.objectiveRecord.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
+    const previousObjectiveRecords = deps.objectiveRecords.list();
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
       deletionId: randomId(),
-      targetId: operation.id,
+      targetId: objectiveRecord.id,
       deletedAt,
       expiresAt: deletedAt + DELETION_GRACE_MS,
-      kind: "operation",
-      operation,
-      ...(affected.length > 1 ? { descendants: affected.filter((node) => node.id !== operationId) } : {}),
+      kind: "objectiveRecord",
+      objectiveRecord,
+      ...(affected.length > 1 ? { descendants: affected.filter((node) => node.id !== objectiveId) } : {}),
       ...(Object.keys(archived).length ? { archived } : {}),
     };
     const nextTombstones = [...tombstones, tombstone];
-    for (const node of affected) deps.operations.delete(node.id);
+    for (const node of affected) deps.objectiveRecords.delete(node.id);
     try {
-      deps.save(nextTombstones, archives.filter((entry) => !ids.has(entry.operation.id)));
+      deps.save(nextTombstones, archives.filter((entry) => !ids.has(entry.objectiveRecord.id)));
     } catch (error) {
-      deps.operations.replace(previousOperations);
+      deps.objectiveRecords.replace(previousObjectiveRecords);
       throw error;
     }
     tombstones = nextTombstones;
-    for (const node of affected) publishOperation(OPERATION_DELETED_EVENT_CHANNEL, node);
+    for (const node of affected) publishObjective(OBJECTIVE_DELETED_EVENT_CHANNEL, node);
     schedule();
     return toReceipt(tombstone);
   }
@@ -146,13 +146,13 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const theater = deps.theaters.get(theaterId);
     if (!theater) return null;
     const previousTheaters = deps.theaters.list();
-    const previousOperations = deps.operations.list();
-    const previousGroups = deps.operations.listAllGroups();
+    const previousObjectiveRecords = deps.objectiveRecords.list();
+    const previousGroups = deps.objectiveRecords.listAllGroups();
     const archives = deps.archives?.() ?? [];
-    const archived = Object.fromEntries(archives.filter((entry) => entry.operation.theaterId === theaterId).map((entry) => [entry.operation.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
-    const deletedOperations = [...deps.operations.listByTheater(theaterId), ...archives.filter((entry) => entry.operation.theaterId === theaterId).map((entry) => entry.operation)];
-    for (const node of deletedOperations) deps.assertMutable?.(node.id);
-    const deletedGroups = deps.operations.listGroups(theaterId);
+    const archived = Object.fromEntries(archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => [entry.objectiveRecord.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
+    const deletedObjectiveRecords = [...deps.objectiveRecords.listByTheater(theaterId), ...archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => entry.objectiveRecord)];
+    for (const node of deletedObjectiveRecords) deps.assertMutable?.(node.id);
+    const deletedGroups = deps.objectiveRecords.listGroups(theaterId);
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
       deletionId: randomId(),
@@ -161,24 +161,24 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       expiresAt: deletedAt + DELETION_GRACE_MS,
       kind: "theater",
       theater,
-      operations: deletedOperations,
+      objectiveRecords: deletedObjectiveRecords,
       groups: deletedGroups,
       ...(Object.keys(archived).length ? { archived } : {}),
     };
     const nextTombstones = [...tombstones, tombstone];
     deps.theaters.remove(theaterId);
-    deps.operations.deleteByTheater(theaterId);
+    deps.objectiveRecords.deleteByTheater(theaterId);
     try {
-      deps.save(nextTombstones, archives.filter((entry) => entry.operation.theaterId !== theaterId));
+      deps.save(nextTombstones, archives.filter((entry) => entry.objectiveRecord.theaterId !== theaterId));
     } catch (error) {
       deps.theaters.restore(previousTheaters);
-      deps.operations.replace(previousOperations);
-      deps.operations.replaceGroups(previousGroups);
+      deps.objectiveRecords.replace(previousObjectiveRecords);
+      deps.objectiveRecords.replaceGroups(previousGroups);
       throw error;
     }
     tombstones = nextTombstones;
     deps.unregisterTheaterWorkspaces(theaterId);
-    for (const operation of deletedOperations) publishOperation(OPERATION_DELETED_EVENT_CHANNEL, operation);
+    for (const objectiveRecord of deletedObjectiveRecords) publishObjective(OBJECTIVE_DELETED_EVENT_CHANNEL, objectiveRecord);
     schedule();
     return toReceipt(tombstone);
   }
@@ -191,53 +191,53 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       throw new DeferredDeletionError(404, "deletion_not_found");
     }
     const archives = deps.archives?.() ?? [];
-    const restoredNodes = deletionOperations(tombstone);
+    const restoredNodes = deletionObjectiveRecords(tombstone);
     const archivedIds = new Set(Object.keys(tombstone.archived ?? {}));
-    const restoredArchives = restoredNodes.filter((node) => archivedIds.has(node.id)).map((operation) => ({ operation, ...tombstone.archived![operation.id]! }));
+    const restoredArchives = restoredNodes.filter((node) => archivedIds.has(node.id)).map((objectiveRecord) => ({ objectiveRecord, ...tombstone.archived![objectiveRecord.id]! }));
     const activeRestores = restoredNodes.filter((node) => !archivedIds.has(node.id));
-    if (tombstone.kind === "operation") {
-      if (restoredNodes.some((node) => deps.operations.get(node.id) || archives.some((entry) => entry.operation.id === node.id)) || !deps.theaters.get(tombstone.operation.theaterId)) {
+    if (tombstone.kind === "objectiveRecord") {
+      if (restoredNodes.some((node) => deps.objectiveRecords.get(node.id) || archives.some((entry) => entry.objectiveRecord.id === node.id)) || !deps.theaters.get(tombstone.objectiveRecord.theaterId)) {
         throw new DeferredDeletionError(409, "restore_conflict");
       }
-      const previousOperations = deps.operations.list();
+      const previousObjectiveRecords = deps.objectiveRecords.list();
       const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
-      deps.operations.replace([...previousOperations, ...activeRestores]);
+      deps.objectiveRecords.replace([...previousObjectiveRecords, ...activeRestores]);
       try {
         deps.save(nextTombstones, [...archives, ...restoredArchives]);
       } catch (error) {
-        deps.operations.replace(previousOperations);
+        deps.objectiveRecords.replace(previousObjectiveRecords);
         throw error;
       }
       tombstones = nextTombstones;
-      for (const node of activeRestores) publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, node);
+      for (const node of activeRestores) publishObjective(OBJECTIVE_RESTORED_EVENT_CHANNEL, node);
       schedule();
       return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
     }
 
     await deps.validateTheaterRestore(tombstone.theater);
     if (deps.theaters.get(tombstone.targetId)
-      || tombstone.operations.some((operation) => deps.operations.get(operation.id) || archives.some((entry) => entry.operation.id === operation.id))
-      || hasGroupConflict(tombstone.groups, deps.operations.listAllGroups())) {
+      || tombstone.objectiveRecords.some((objectiveRecord) => deps.objectiveRecords.get(objectiveRecord.id) || archives.some((entry) => entry.objectiveRecord.id === objectiveRecord.id))
+      || hasGroupConflict(tombstone.groups, deps.objectiveRecords.listAllGroups())) {
       throw new DeferredDeletionError(409, "restore_conflict");
     }
     const previousTheaters = deps.theaters.list();
-    const previousOperations = deps.operations.list();
-    const previousGroups = deps.operations.listAllGroups();
+    const previousObjectiveRecords = deps.objectiveRecords.list();
+    const previousGroups = deps.objectiveRecords.listAllGroups();
     const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
     deps.theaters.restore([...previousTheaters, tombstone.theater]);
-    deps.operations.replace([...previousOperations, ...activeRestores]);
-    deps.operations.replaceGroups([...previousGroups, ...tombstone.groups]);
+    deps.objectiveRecords.replace([...previousObjectiveRecords, ...activeRestores]);
+    deps.objectiveRecords.replaceGroups([...previousGroups, ...tombstone.groups]);
     try {
       deps.save(nextTombstones, [...archives, ...restoredArchives]);
     } catch (error) {
       deps.theaters.restore(previousTheaters);
-      deps.operations.replace(previousOperations);
-      deps.operations.replaceGroups(previousGroups);
+      deps.objectiveRecords.replace(previousObjectiveRecords);
+      deps.objectiveRecords.replaceGroups(previousGroups);
       throw error;
     }
     tombstones = nextTombstones;
     await deps.registerTheaterWorkspace(tombstone.theater);
-    for (const operation of activeRestores) publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, operation);
+    for (const objectiveRecord of activeRestores) publishObjective(OBJECTIVE_RESTORED_EVENT_CHANNEL, objectiveRecord);
     schedule();
     return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
   }
@@ -249,7 +249,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const expired = due.filter((item) => {
       if (!deps.beforePurge) return true;
       try {
-        deps.beforePurge(deletionOperations(item), item);
+        deps.beforePurge(deletionObjectiveRecords(item), item);
         purgeRetryAt.delete(item.deletionId);
         return true;
       } catch {
@@ -272,14 +272,14 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     }
     tombstones = nextTombstones;
     for (const tombstone of expired) {
-      for (const operation of deletionOperations(tombstone)) publishOperation(OPERATION_PURGED_EVENT_CHANNEL, operation);
+      for (const objectiveRecord of deletionObjectiveRecords(tombstone)) publishObjective(OBJECTIVE_PURGED_EVENT_CHANNEL, objectiveRecord);
     }
     schedule();
   }
 
-  function hasPendingOperation(operationId: string): boolean {
+  function hasPendingObjective(objectiveId: string): boolean {
     sweepExpired();
-    return tombstones.some((item) => deletionOperations(item).some((operation) => operation.id === operationId || operation.childSessions?.some((child) => child.id === operationId)));
+    return tombstones.some((item) => deletionObjectiveRecords(item).some((objectiveRecord) => objectiveRecord.id === objectiveId || objectiveRecord.sessions?.some((child) => child.id === objectiveId)));
   }
 
   function hasPendingTheater(theaterId: string): boolean {
@@ -318,19 +318,19 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     timer = null;
   }
 
-  function publishOperation(channel: string, operation: OperationNode): void {
+  function publishObjective(channel: string, objectiveRecord: ObjectiveRecord): void {
     deps.publish(channel, {
-      operationId: operation.id,
-      pluginId: operation.pluginId,
-      type: operation.type,
-      ...(channel === OPERATION_RESTORED_EVENT_CHANNEL ? { operation } : {}),
+      objectiveId: objectiveRecord.id,
+      pluginId: null,
+      type: "agent",
+      ...(channel === OBJECTIVE_RESTORED_EVENT_CHANNEL ? { objectiveRecord } : {}),
     });
-    for (const child of operation.childSessions ?? []) {
+    for (const child of objectiveRecord.sessions ?? []) {
       deps.publish(channel, {
-        operationId: child.id,
+        objectiveId: child.id,
         pluginId: null,
         type: "agent",
-        ...(channel === OPERATION_RESTORED_EVENT_CHANNEL ? { operation: deps.operations.get(child.id) } : {}),
+        ...(channel === OBJECTIVE_RESTORED_EVENT_CHANNEL ? { objectiveRecord: deps.objectiveRecords.get(child.id) } : {}),
       });
     }
   }
@@ -338,11 +338,11 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
   return {
     list,
     load,
-    deleteOperation,
+    deleteObjective,
     deleteTheater,
     restore,
     sweepExpired,
-    hasPendingOperation,
+    hasPendingObjective,
     hasPendingTheater,
     dispose,
   };
@@ -354,11 +354,11 @@ function toReceipt(tombstone: DurableDeletionTombstone): DeferredDeletionReceipt
     kind: tombstone.kind,
     targetId: tombstone.targetId,
     expiresAt: tombstone.expiresAt,
-    archivedOperationCount: Object.keys(tombstone.archived ?? {}).length,
+    archivedObjectiveCount: Object.keys(tombstone.archived ?? {}).length,
   };
 }
 
-function hasGroupConflict(groups: readonly DurableOperationGroup[], existing: readonly DurableOperationGroup[]): boolean {
+function hasGroupConflict(groups: readonly DurableObjectiveGroup[], existing: readonly DurableObjectiveGroup[]): boolean {
   const existingIds = new Set(existing.map((group) => group.id));
   return groups.some((group) => existingIds.has(group.id));
 }

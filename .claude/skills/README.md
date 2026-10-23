@@ -27,7 +27,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Escape from a Console modal reaches a background shortcut | console-e2e browser route; agent-browser with init instrumentation, setup/verification, actual focus and shortcut checks, owned-session cleanup |
 | Browser verification with agent-browser unavailable | console-e2e browser fallback; record reason, Fleet Browser owned-tab cleanup, no permission bypass |
 | Verify a Console modal inside Electron | console-e2e Desktop route; keep owned CDP renderer for SPA checks, do not substitute a browser tab |
-| Give me a URL to try this branch myself | console-handoff; verify seed/PID, open in this Operation's Fleet Browser, leave server and tab running |
+| Give me a URL to try this branch myself | console-handoff; verify seed/PID, open in this Objective's Fleet Browser, leave server and tab running |
 | Reopen a closed Windows Desktop window from the tray | console-e2e Desktop native lane; Windows headed evidence, not macOS/CDP substitution |
 | Reduce Gateway loop requests with the same prompt | ai-gateway-loop-optimization; standalone when caller/host is irrelevant, frozen before/after workload |
 | Consolidate package micro-files and proxies | clean-code; public consumers and approved batches, no file-count-only deletion |

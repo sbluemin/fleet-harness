@@ -7,7 +7,7 @@ import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
 
 /**
- * Session Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
+ * Session Browser — Objective마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
  * Console 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 본다.
  *
  * 정책 세 줄:
@@ -50,17 +50,17 @@ export type ViewportPreset = "responsive" | "mobile" | "tablet";
 export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
 /**
- * 예전에 전역 Fleet 브라우저가 쓰던 소유자 id. 기능은 제거됐지만 이 문자열은 Operation·Session 이
+ * 예전에 전역 Fleet 브라우저가 쓰던 소유자 id. 기능은 제거됐지만 이 문자열은 Objective·Session 이
  * 될 수 없다 — 남은 상태나 옛 요청이 다른 Session 에 붙으면 안 된다.
  */
 export const GLOBAL_BROWSER_OWNER_ID = "global" as const;
 
-export interface BrowserOperationState {
-  readonly owner?: { readonly kind: "operation"; readonly operationId: string };
-  readonly operationId: string;
-  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
+export interface BrowserObjectiveState {
+  readonly owner?: { readonly kind: "objectiveRecord"; readonly objectiveId: string };
+  readonly objectiveId: string;
+  /** 이 Objective 이 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
   readonly profile: string | null;
-  /** 새 Operation 의 브라우저가 처음 열릴 때 쓰는 세션. Console 전체의 설정이라 모든 Operation 의 상태가 같은 값을 싣는다. */
+  /** 새 Objective 의 브라우저가 처음 열릴 때 쓰는 세션. Console 전체의 설정이라 모든 Objective 의 상태가 같은 값을 싣는다. */
   readonly defaultProfile: string | null;
   readonly tabs: readonly BrowserTabState[];
   readonly activeTabId: string | null;
@@ -74,10 +74,10 @@ export interface BrowserOperationState {
   readonly reason: BrowserUnavailableReason | null;
 }
 
-export type BrowserState = BrowserOperationState;
+export type BrowserState = BrowserObjectiveState;
 
 /**
- * 상태를 듣는 쪽. 구독은 Operation 마다가 아니라 서비스 하나에 걸린다 — 화면으로 나가는 길이 이미 열려 있는 Operation
+ * 상태를 듣는 쪽. 구독은 Objective 마다가 아니라 서비스 하나에 걸린다 — 화면으로 나가는 길이 이미 열려 있는 Objective
  * 스트림 하나이기 때문이다. 브라우저 상태만을 위해 화면이 스트림을 하나 더 열면 그 연결이 origin 당 여섯 개뿐인
  * 예산을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 큐에 갇힌다.
  */
@@ -168,8 +168,8 @@ interface Tab {
   viewportReapply?: ReturnType<typeof setTimeout>;
 }
 
-interface OperationBrowser {
-  readonly operationId: string;
+interface ObjectiveBrowser {
+  readonly objectiveId: string;
   contextId: string;
   /** 리셋 전에 시작한 생성은 새 컨텍스트나 탭을 등록할 수 없다. */
   resetGeneration: number;
@@ -189,7 +189,7 @@ interface OperationBrowser {
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
   /**
    * 진행 중 호출을 부른 참가자(호출한 세션). 자식 세션들이 루트의 브라우저를 함께 쓰므로, 한 참가자의 턴 종료·중단은
-   * 그 참가자의 호출만 끊어야 한다. 일반 Operation 은 참가자가 늘 자기 자신이다.
+   * 그 참가자의 호출만 끊어야 한다. 일반 Objective 은 참가자가 늘 자기 자신이다.
    */
   callParticipants: Map<AbortController, string>;
   /** 참가자 단위 「중단」 세대 — 배치가 자기 참가자의 중단만 이어 보도록 `interruptSerial` 에 더해진다. */
@@ -199,7 +199,7 @@ interface OperationBrowser {
   /** 에이전트가 누르고 있는 포인터 버튼 — 드래그 동안 mouseMoved 가 버튼을 실어야 한다. */
   pointer: { button: "left" | "right" | "middle"; buttons: number } | null;
   /**
-   * 아직 `tabs` 에 들어가지 못한, 만드는 중인 탭의 수. 뷰가 붙기를 기다리는 동안 이 Operation 의 마지막 탭이
+   * 아직 `tabs` 에 들어가지 못한, 만드는 중인 탭의 수. 뷰가 붙기를 기다리는 동안 이 Objective 의 마지막 탭이
    * 닫히면 「탭이 없다」로 읽혀 컨텍스트가 거둬지고, 붙는 중이던 뷰가 그 자리에서 죽는다. 사람과 에이전트가
    * 같은 탭을 함께 쓰므로 이 겹침은 실제로 일어난다.
    */
@@ -263,7 +263,7 @@ export interface BrowserServiceDeps {
   readonly log: (message: string) => void;
   /** 창을 든 Desktop 이 제공하는 네이티브 뷰 엔진 — 유일한 엔진이다. */
   readonly desktop: DesktopEngine;
-  /** 새 Operation 의 기본 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
+  /** 새 Objective 의 기본 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
   readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
 }
 
@@ -273,7 +273,7 @@ export interface BrowserServiceStatus {
   readonly reason: BrowserUnavailableReason | null;
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
-  readonly operations: readonly string[];
+  readonly objectiveRecords: readonly string[];
 }
 
 /** 페이지가 선언한 아이콘, 없으면 /favicon.ico. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다. */
@@ -314,7 +314,7 @@ export class BrowserService {
   private disposed = false;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
-  private readonly operations = new Map<string, OperationBrowser>();
+  private readonly objectiveRecords = new Map<string, ObjectiveBrowser>();
   private readonly stateListeners = new Set<BrowserStateListener>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   /** 셸의 Chromium 이 보고한 일반 Chrome UA 와 브랜드 메타데이터 — 엔진을 집을 때 만든다. */
@@ -328,7 +328,7 @@ export class BrowserService {
 
   status(): BrowserServiceStatus {
     const { available, reason } = this.availability();
-    return { enabled: this.deps.enabled(), available, reason, engine: this.engine, engineError: this.engineError, operations: [...this.operations.keys()] };
+    return { enabled: this.deps.enabled(), available, reason, engine: this.engine, engineError: this.engineError, objectiveRecords: [...this.objectiveRecords.keys()] };
   }
 
   /** 정책의 답에 엔진의 실제 연결을 겹친다 — 호스트가 정해졌어도 그 셸이 붙어 있지 않으면 Desktop 이 없는 것이다. */
@@ -356,11 +356,11 @@ export class BrowserService {
     this.emitAvailability();
     if (closing) {
       this.deps.log("browser paused: closing every tab");
-      for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); op.callParticipants.clear(); this.endAgentSession(op.operationId, "revoke"); }
+      for (const op of this.objectiveRecords.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); op.callParticipants.clear(); this.endAgentSession(op.objectiveId, "revoke"); }
       void this.stopEngine();
       return;
     }
-    for (const op of this.operations.values()) this.emitState(op);
+    for (const op of this.objectiveRecords.values()) this.emitState(op);
   }
 
   // ---------- 엔진 ----------
@@ -387,7 +387,7 @@ export class BrowserService {
     this.unsubscribeEvents = null;
     this.identity = null;
     if (this.engine !== "failed") this.engine = "idle";
-    for (const op of this.operations.values()) {
+    for (const op of this.objectiveRecords.values()) {
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
       op.tabs.clear();
       op.activeTabId = null;
@@ -399,7 +399,7 @@ export class BrowserService {
   private scheduleIdle(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      const busy = [...this.operations.values()].some((op) => op.tabs.size > 0 || op.agentCalls.size > 0);
+      const busy = [...this.objectiveRecords.values()].some((op) => op.tabs.size > 0 || op.agentCalls.size > 0);
       if (!busy) void this.stopEngine();
     }, IDLE_SHUTDOWN_MS);
   }
@@ -414,38 +414,38 @@ export class BrowserService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const op of this.operations.values()) {
+    for (const op of this.objectiveRecords.values()) {
       for (const call of op.agentCalls) call.abort();
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     }
     this.stateListeners.clear();
     this.availabilityListeners.clear();
     await this.stopEngine();
-    this.operations.clear();
+    this.objectiveRecords.clear();
   }
 
-  // ---------- Operation 컨텍스트 ----------
+  // ---------- Objective 컨텍스트 ----------
 
   private observationSerial = 0;
 
-  private operation(operationId: string): OperationBrowser {
+  private objectiveRecord(objectiveId: string): ObjectiveBrowser {
     // 예약 id 로 Session 을 만들거나 옛 전역 탭을 다른 소유자에 붙이지 않는다.
-    if (operationId === GLOBAL_BROWSER_OWNER_ID) throw new BrowserPolicyError("browser_owner_reserved", "That id is reserved and is not a Fleet Browser.");
-    let op = this.operations.get(operationId);
+    if (objectiveId === GLOBAL_BROWSER_OWNER_ID) throw new BrowserPolicyError("browser_owner_reserved", "That id is reserved and is not a Fleet Browser.");
+    let op = this.objectiveRecords.get(objectiveId);
     if (!op) {
-      // 새로 열리는 Operation 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
+      // 새로 열리는 Objective 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { operationId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
-      this.operations.set(operationId, op);
+      op = { objectiveId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
+      this.objectiveRecords.set(objectiveId, op);
     }
     return op;
   }
 
-  private assertContextGeneration(op: OperationBrowser, generation: number): void {
+  private assertContextGeneration(op: ObjectiveBrowser, generation: number): void {
     if (op.resetGeneration !== generation) throw new BrowserPolicyError("browser_call_interrupted", "The tab creation was interrupted because its browser session was reset. Do not retry automatically.");
   }
 
-  private async context(op: OperationBrowser): Promise<{ client: CdpClient; contextId: string }> {
+  private async context(op: ObjectiveBrowser): Promise<{ client: CdpClient; contextId: string }> {
     const generation = op.resetGeneration;
     const client = await this.engineClient();
     this.assertContextGeneration(op, generation);
@@ -462,17 +462,17 @@ export class BrowserService {
   }
 
   /** 패널이 알려 준 자기 자리 — 네이티브 뷰가 놓일 창 좌표. null 이면 감춘다. */
-  place(operationId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
-    this.operation(operationId);
-    this.deps.desktop.place(operationId, placement);
+  place(objectiveId: string, placement: { bounds: DesktopBrowserBounds; visible: boolean } | null): void {
+    this.objectiveRecord(objectiveId);
+    this.deps.desktop.place(objectiveId, placement);
   }
 
-  state(operationId: string): BrowserOperationState {
-    const op = this.operation(operationId);
+  state(objectiveId: string): BrowserObjectiveState {
+    const op = this.objectiveRecord(objectiveId);
     const { available, reason } = this.availability();
     return {
-      owner: { kind: "operation", operationId },
-      operationId,
+      owner: { kind: "objectiveRecord", objectiveId },
+      objectiveId,
       profile: op.profile,
       defaultProfile: this.defaultProfile(),
       available,
@@ -487,7 +487,7 @@ export class BrowserService {
     };
   }
 
-  /** 어느 Operation 의 것이든 상태가 바뀌면 듣는다 — 프레임은 자기 `operationId` 를 싣고 간다. */
+  /** 어느 Objective 의 것이든 상태가 바뀌면 듣는다 — 프레임은 자기 `objectiveId` 를 싣고 간다. */
   onState(listener: BrowserStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
@@ -504,8 +504,8 @@ export class BrowserService {
     for (const listener of this.availabilityListeners) { try { listener(notice); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
-  private emitState(op: OperationBrowser): void {
-    const state = this.state(op.operationId);
+  private emitState(op: ObjectiveBrowser): void {
+    const state = this.state(op.objectiveId);
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
@@ -513,22 +513,22 @@ export class BrowserService {
     this.deps.desktop.setShortcuts(shortcuts);
   }
 
-  /** 허용 회수·Operation 종료 — 진행 중 에이전트 호출을 끊고 탭과 컨텍스트를 닫는다. */
-  async closeOperation(operationId: string): Promise<void> {
-    const op = this.operations.get(operationId);
+  /** 허용 회수·Objective 종료 — 진행 중 에이전트 호출을 끊고 탭과 컨텍스트를 닫는다. */
+  async closeObjective(objectiveId: string): Promise<void> {
+    const op = this.objectiveRecords.get(objectiveId);
     if (!op) return;
     await this.resetContext(op);
-    this.endAgentSession(operationId, "revoke");
+    this.endAgentSession(objectiveId, "revoke");
     this.emitState(op);
-    this.operations.delete(operationId);
+    this.objectiveRecords.delete(objectiveId);
     this.scheduleIdle();
   }
 
   /**
-   * 이 Operation 의 탭과 브라우저 컨텍스트를 거둔다. 영속 프로필의 **디스크 저장소는 건드리지 않는다** —
-   * 컨텍스트는 이 Operation 의 것이지만 프로필은 모두의 것이다.
+   * 이 Objective 의 탭과 브라우저 컨텍스트를 거둔다. 영속 프로필의 **디스크 저장소는 건드리지 않는다** —
+   * 컨텍스트는 이 Objective 의 것이지만 프로필은 모두의 것이다.
    */
-  private async resetContext(op: OperationBrowser): Promise<void> {
+  private async resetContext(op: ObjectiveBrowser): Promise<void> {
     // 첫 await 전에 무효화한다 — 빈 contextId여도 진행 중 생성은 더 이상 등록할 수 없다.
     op.resetGeneration += 1;
     for (const call of op.agentCalls) call.abort();
@@ -541,8 +541,8 @@ export class BrowserService {
     op.activeTabId = null;
   }
 
-  /** 이 Operation 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
-  private async disposeContext(op: OperationBrowser): Promise<void> {
+  /** 이 Objective 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
+  private async disposeContext(op: ObjectiveBrowser): Promise<void> {
     const client = this.client;
     if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
     op.contextId = "";
@@ -552,8 +552,8 @@ export class BrowserService {
    * 지금까지 「중단」이 눌린 횟수 — 여러 호출로 이어지는 실행(배치)이 시작 시점과 비교해 멈춘다. 참가자를 주면 그 참가자를
    * 겨눈 중단도 더한다(다른 참가자의 턴 종료는 이 배치를 멈추지 않는다).
    */
-  interruptSerial(operationId: string, participantId?: string): number {
-    const op = this.operations.get(operationId);
+  interruptSerial(objectiveId: string, participantId?: string): number {
+    const op = this.objectiveRecords.get(objectiveId);
     if (!op) return 0;
     return op.interruptSerial + (participantId ? op.participantSerials.get(participantId) ?? 0 : 0);
   }
@@ -562,14 +562,14 @@ export class BrowserService {
    * 「중단」 — 허용은 남기고 지금 도는 에이전트 호출만 끊는다. 참가자를 주면 그 참가자의 호출만 끊고 그를 사용 세션에서 뺀다 —
    * 세션은 남은 참가자가 없을 때만 닫는다. 참가자 없이 부르면(사람의 중단 버튼) 이 브라우저의 모든 호출을 끊는다.
    */
-  interrupt(operationId: string, participantId?: string): number {
-    const op = this.operations.get(operationId);
+  interrupt(objectiveId: string, participantId?: string): number {
+    const op = this.objectiveRecords.get(objectiveId);
     if (!op) return 0;
     if (participantId !== undefined) {
       const calls = [...op.agentCalls].filter((call) => op.callParticipants.get(call) === participantId);
       op.participantSerials.set(participantId, (op.participantSerials.get(participantId) ?? 0) + 1);
       for (const call of calls) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
-      if (!this.endAgentSession(operationId, "interrupt", participantId)) this.emitState(op);
+      if (!this.endAgentSession(objectiveId, "interrupt", participantId)) this.emitState(op);
       return calls.length;
     }
     const count = op.agentCalls.size;
@@ -577,16 +577,16 @@ export class BrowserService {
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
     op.callParticipants.clear();
-    this.endAgentSession(operationId, "interrupt");
+    this.endAgentSession(objectiveId, "interrupt");
     this.emitState(op);
     return count;
   }
 
-  /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. 참가자를 주지 않으면 Operation 자신이다. */
-  async agentCall<T>(operationId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, participantId: string = operationId): Promise<T> {
+  /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. 참가자를 주지 않으면 Objective 자신이다. */
+  async agentCall<T>(objectiveId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, participantId: string = objectiveId): Promise<T> {
     const { available, reason } = this.availability();
     if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
-    const op = this.operation(operationId);
+    const op = this.objectiveRecord(objectiveId);
     const call = new AbortController();
     const onAbort = () => call.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -611,13 +611,13 @@ export class BrowserService {
   }
 
   /** 세션을 열거나 마지막 호출 시각을 갱신한다. 턴 종료 훅이 오지 않는 CLI 를 위해 유휴 안전망을 함께 건다. */
-  private touchAgentSession(op: OperationBrowser, participantId: string): void {
+  private touchAgentSession(op: ObjectiveBrowser, participantId: string): void {
     const now = Date.now();
-    if (!op.agentSession) { op.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set() }; this.deps.log(`agent session started for ${op.operationId}`); }
+    if (!op.agentSession) { op.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set() }; this.deps.log(`agent session started for ${op.objectiveId}`); }
     op.agentSession.participants.add(participantId);
     op.agentSession.lastCallAt = now;
     if (op.agentSession.idle) clearTimeout(op.agentSession.idle);
-    op.agentSession.idle = setTimeout(() => { if (op.agentSession && op.agentCalls.size === 0) this.endAgentSession(op.operationId, "idle"); }, AGENT_SESSION_IDLE_MS);
+    op.agentSession.idle = setTimeout(() => { if (op.agentSession && op.agentCalls.size === 0) this.endAgentSession(op.objectiveId, "idle"); }, AGENT_SESSION_IDLE_MS);
     this.emitState(op);
   }
 
@@ -625,8 +625,8 @@ export class BrowserService {
    * 턴이 끝났거나 사람이 멈췄다 — 사용 중 표시를 내린다. 진행 중 호출은 interrupt 가 따로 끊는다. 참가자를 주면 그 참가자만
    * 세션에서 빼고, 남은 참가자가 없을 때만 세션을 닫는다(닫았으면 true).
    */
-  endAgentSession(operationId: string, reason: "turn" | "interrupt" | "revoke" | "idle" = "turn", participantId?: string): boolean {
-    const op = this.operations.get(operationId);
+  endAgentSession(objectiveId: string, reason: "turn" | "interrupt" | "revoke" | "idle" = "turn", participantId?: string): boolean {
+    const op = this.objectiveRecords.get(objectiveId);
     if (!op?.agentSession) return false;
     if (participantId !== undefined) {
       op.agentSession.participants.delete(participantId);
@@ -634,17 +634,17 @@ export class BrowserService {
     }
     if (op.agentSession.idle) clearTimeout(op.agentSession.idle);
     op.agentSession = null;
-    this.deps.log(`agent session ended for ${operationId} (${reason})`);
+    this.deps.log(`agent session ended for ${objectiveId} (${reason})`);
     this.emitState(op);
     return true;
   }
 
   // ---------- 탭 ----------
 
-  private tab(op: OperationBrowser, tabId?: string | null): Tab {
+  private tab(op: ObjectiveBrowser, tabId?: string | null): Tab {
     const id = tabId ?? op.activeTabId;
     const tab = id ? op.tabs.get(id) : undefined;
-    if (!tab) throw new BrowserPolicyError("browser_tab_not_found", id ? `Tab ${id} is not open in this Operation.` : "No tab is open. Create one with tabs_create or navigate.", { tabId: id ?? null });
+    if (!tab) throw new BrowserPolicyError("browser_tab_not_found", id ? `Tab ${id} is not open in this Objective.` : "No tab is open. Create one with tabs_create or navigate.", { tabId: id ?? null });
     return tab;
   }
 
@@ -652,8 +652,8 @@ export class BrowserService {
     return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 };
   }
 
-  async createTab(operationId: string, url: string | null, actor: "user" | "agent"): Promise<BrowserTabState> {
-    const op = this.operation(operationId);
+  async createTab(objectiveId: string, url: string | null, actor: "user" | "agent"): Promise<BrowserTabState> {
+    const op = this.objectiveRecord(objectiveId);
     if (op.tabs.size + op.pendingTabs >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
     const target = url ? this.admit(op, url, actor) : null;
     // 상한 검사·동기 주소 검증·예약을 첫 await 전에 마친다. 부착 중 생성도 한 자리를 차지하고,
@@ -690,15 +690,15 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    this.deps.desktop.bindView(tab.targetId, op.operationId);
+    this.deps.desktop.bindView(tab.targetId, op.objectiveId);
     await this.applyViewport(client, tab, op);
-    await this.selectTab(operationId, tab.id);
+    await this.selectTab(objectiveId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
     return this.tabState(this.tab(op, tab.id));
   }
 
-  async closeTab(operationId: string, tabId: string): Promise<void> {
-    const op = this.operation(operationId);
+  async closeTab(objectiveId: string, tabId: string): Promise<void> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     op.tabs.delete(tab.id);
     this.cancelViewportReapply(tab);
@@ -707,7 +707,7 @@ export class BrowserService {
     if (op.activeTabId === tab.id) {
       const next = [...op.tabs.keys()].pop() ?? null;
       op.activeTabId = null;
-      if (next) { await this.selectTab(operationId, next); this.scheduleIdle(); return; }
+      if (next) { await this.selectTab(objectiveId, next); this.scheduleIdle(); return; }
     }
     // 마지막 탭이 닫히면 브라우저 컨텍스트도 거둔다. 임시 세션의 약속이 이것이다 — 「탭을 닫으면 로그인이
     // 사라집니다」. 컨텍스트를 그대로 두면 유휴 종료까지의 5분 안에 새 탭을 여는 사람이 같은 파티션과 그
@@ -717,8 +717,8 @@ export class BrowserService {
     this.scheduleIdle();
   }
 
-  async selectTab(operationId: string, tabId: string): Promise<void> {
-    const op = this.operation(operationId);
+  async selectTab(objectiveId: string, tabId: string): Promise<void> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     op.activeTabId = tab.id;
     if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 뷰가 사라지는 중 */ } }
@@ -730,14 +730,14 @@ export class BrowserService {
   // ---------- 항해·정책 ----------
 
   /** 열 수 있는 주소인지. 사람과 에이전트 모두 http(s) 어디든 간다 — 호스트 제한은 두지 않는다. */
-  private admit(_op: OperationBrowser, input: string, _actor: "user" | "agent"): URL {
+  private admit(_op: ObjectiveBrowser, input: string, _actor: "user" | "agent"): URL {
     const url = parseUrl(input);
     if (!url || !["http:", "https:", "about:", "file:"].includes(url.protocol)) throw new BrowserPolicyError("browser_url_invalid", "That address couldn't be opened here.", { url: input });
     if (url.protocol === "file:") throw new BrowserPolicyError("browser_url_invalid", "file: URLs are not served by the Fleet Browser. Serve the folder over HTTP instead.", { url: input });
     return url;
   }
 
-  private async navigateTab(op: OperationBrowser, tab: Tab, href: string): Promise<{ ok: boolean; error: string | null }> {
+  private async navigateTab(op: ObjectiveBrowser, tab: Tab, href: string): Promise<{ ok: boolean; error: string | null }> {
     const client = await this.engineClient();
     tab.loading = true;
     this.emitState(op);
@@ -754,11 +754,11 @@ export class BrowserService {
     return { ok: true, error: null };
   }
 
-  async navigate(operationId: string, target: string, actor: "user" | "agent", tabId?: string | null): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
-    const op = this.operation(operationId);
+  async navigate(objectiveId: string, target: string, actor: "user" | "agent", tabId?: string | null): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
+    const op = this.objectiveRecord(objectiveId);
     if (op.tabs.size === 0 && (target === "back" || target === "forward" || target === "reload")) throw new BrowserPolicyError("browser_tab_not_found", "No tab is open.");
     const tab = op.tabs.size === 0 ? null : this.tab(op, tabId);
-    if (!tab) { const created = await this.createTab(operationId, target, actor); return { tab: created, ok: true, error: null }; }
+    if (!tab) { const created = await this.createTab(objectiveId, target, actor); return { tab: created, ok: true, error: null }; }
     const client = await this.engineClient();
     let outcome: { ok: boolean; error: string | null } = { ok: true, error: null };
     if (target === "back" || target === "forward") {
@@ -808,16 +808,16 @@ export class BrowserService {
   }
 
   /**
-   * Chrome 프로필의 쿠키를 이 Operation 이 지금 쓰는 세션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다.
+   * Chrome 프로필의 쿠키를 이 Objective 이 지금 쓰는 세션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다.
    * 영속 프로필을 쓰고 있으면 그 프로필로 들어가 다음에 열 때도 남고, 임시 세션이면 그 세션과 함께 사라진다.
    */
-  async importFromChrome(operationId: string, profileId: string): Promise<{ cookies: number }> {
+  async importFromChrome(objectiveId: string, profileId: string): Promise<{ cookies: number }> {
     if (!/^[A-Za-z0-9 ._-]+$/.test(profileId)) throw new BrowserPolicyError("chrome_profile_not_found", CHROME_IMPORT_FAILURES.chrome_profile_not_found!);
-    const op = this.operation(operationId);
+    const op = this.objectiveRecord(objectiveId);
     const { client, contextId } = await this.context(op);
     try {
       const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId, browserProfile: op.profile });
-      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${op.profile ? `browser profile ${op.profile}` : operationId}`);
+      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${op.profile ? `browser profile ${op.profile}` : objectiveId}`);
       return result;
     } catch (error) {
       // 셸의 까닭은 CdpError 메시지(`Fleet.importChromeCookies: chrome_…`)에 실려 온다.
@@ -830,52 +830,52 @@ export class BrowserService {
   // ---------- 프로필 ----------
 
   /**
-   * 이 Operation 이 쓸 세션을 고른다 — 임시(`null`)이거나 영속 프로필이거나.
+   * 이 Objective 이 쓸 세션을 고른다 — 임시(`null`)이거나 영속 프로필이거나.
    *
    * 세션은 살아 있는 뷰에 바꿔 끼울 수 없으므로 열린 탭을 닫고 컨텍스트를 새로 만든다. 사람에게는 화면이
    * 비워지는 일이라 패널이 먼저 확인을 받는다. 프로필의 디스크 저장소는 그대로 남는다.
    */
-  async setProfile(operationId: string, profile: string | null): Promise<BrowserOperationState> {
+  async setProfile(objectiveId: string, profile: string | null): Promise<BrowserObjectiveState> {
     if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
-    const op = this.operation(operationId);
-    if (op.profile === profile) return this.state(operationId);
+    const op = this.objectiveRecord(objectiveId);
+    if (op.profile === profile) return this.state(objectiveId);
     await this.resetContext(op);
     op.profile = profile;
-    this.deps.log(`${operationId} browser session is now ${profile ?? "ephemeral"}`);
+    this.deps.log(`${objectiveId} browser session is now ${profile ?? "ephemeral"}`);
     this.emitState(op);
     // 전환이 마지막 탭을 닫았을 수 있다 — 그 길은 closeTab 을 거치지 않으므로 유휴 종료를 여기서 건다.
     this.scheduleIdle();
-    return this.state(operationId);
+    return this.state(objectiveId);
   }
 
-  /** 새 Operation 의 기본 세션. 모르는 이름이 저장돼 있으면 임시로 읽는다 — 화면이 있지도 않은 프로필을 기본이라 말하지 않게. */
+  /** 새 Objective 의 기본 세션. 모르는 이름이 저장돼 있으면 임시로 읽는다 — 화면이 있지도 않은 프로필을 기본이라 말하지 않게. */
   defaultProfile(): string | null {
     const value = this.deps.defaultProfile.read();
     return value === DESKTOP_BROWSER_DEFAULT_PROFILE ? value : null;
   }
 
   /**
-   * 새 Operation 의 기본 세션을 정한다. 이미 열린 Operation 은 그대로다 — 기본은 시작점이지 지금 쓰는 세션이 아니다.
-   * 값은 모든 Operation 의 상태에 실리므로 어느 패널이 바꾸든 나머지 패널의 표식이 함께 옮겨 간다.
+   * 새 Objective 의 기본 세션을 정한다. 이미 열린 Objective 은 그대로다 — 기본은 시작점이지 지금 쓰는 세션이 아니다.
+   * 값은 모든 Objective 의 상태에 실리므로 어느 패널이 바꾸든 나머지 패널의 표식이 함께 옮겨 간다.
    */
   setDefaultProfile(profile: string | null): string | null {
     if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
     if (this.defaultProfile() === profile) return profile;
     this.deps.defaultProfile.write(profile);
-    this.deps.log(`new Operations start with ${profile ?? "an ephemeral session"}`);
-    for (const op of this.operations.values()) this.emitState(op);
+    this.deps.log(`new Objectives start with ${profile ?? "an ephemeral session"}`);
+    for (const op of this.objectiveRecords.values()) this.emitState(op);
     return profile;
   }
 
   /**
-   * 영속 프로필의 저장소를 비운다 — 모든 Operation 의 로그인이 함께 풀린다.
+   * 영속 프로필의 저장소를 비운다 — 모든 Objective 의 로그인이 함께 풀린다.
    *
-   * 그 프로필을 쓰는 Operation 의 탭을 먼저 모두 닫는다: Windows 는 열려 있는 파일을 지우지 못하고,
+   * 그 프로필을 쓰는 Objective 의 탭을 먼저 모두 닫는다: Windows 는 열려 있는 파일을 지우지 못하고,
    * 살아 있는 페이지가 방금 지운 쿠키를 다시 써 넣을 수도 있다.
    */
   async clearProfile(profile: string): Promise<void> {
     if (profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
-    for (const op of this.operations.values()) {
+    for (const op of this.objectiveRecords.values()) {
       if (op.profile !== profile) continue;
       await this.resetContext(op);
       this.emitState(op);
@@ -891,8 +891,8 @@ export class BrowserService {
   private readonly favicons = new Map<string, { at: number; body: Buffer; type: string }>();
 
   /** 탭의 파비콘 바이트. 페이지가 선언한 URL 을 서버가 받아 준다 — 클라이언트 CSP 가 외부 이미지를 막기 때문. */
-  async favicon(operationId: string, tabId: string): Promise<{ body: Buffer; type: string } | null> {
-    const op = this.operation(operationId);
+  async favicon(objectiveId: string, tabId: string): Promise<{ body: Buffer; type: string } | null> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = op.tabs.get(tabId);
     if (!tab?.favicon) return null;
     const cached = this.favicons.get(tab.favicon);
@@ -913,9 +913,9 @@ export class BrowserService {
 
   // ---------- 이벤트 ----------
 
-  private findTab(sessionId: string | undefined): { op: OperationBrowser; tab: Tab } | null {
+  private findTab(sessionId: string | undefined): { op: ObjectiveBrowser; tab: Tab } | null {
     if (!sessionId) return null;
-    for (const op of this.operations.values()) for (const tab of op.tabs.values()) if (tab.sessionId === sessionId) return { op, tab };
+    for (const op of this.objectiveRecords.values()) for (const tab of op.tabs.values()) if (tab.sessionId === sessionId) return { op, tab };
     return null;
   }
 
@@ -943,7 +943,7 @@ export class BrowserService {
         if (op.activeTabId === tab.id) {
           const next = [...op.tabs.keys()].pop() ?? null;
           op.activeTabId = null;
-          if (next) { void this.selectTab(op.operationId, next).catch(() => undefined); return; }
+          if (next) { void this.selectTab(op.objectiveId, next).catch(() => undefined); return; }
         }
         this.emitState(op);
         return;
@@ -1001,7 +1001,7 @@ export class BrowserService {
     }
   }
 
-  private pushConsole(op: OperationBrowser, tab: Tab, entry: ConsoleEntry): void {
+  private pushConsole(op: ObjectiveBrowser, tab: Tab, entry: ConsoleEntry): void {
     tab.console.push(entry);
     if (tab.console.length > CONSOLE_RING) tab.console.splice(0, tab.console.length - CONSOLE_RING);
     if (entry.level === "error") { tab.consoleErrors += 1; this.emitState(op); }
@@ -1017,7 +1017,7 @@ export class BrowserService {
   }
 
   /** 활성 탭의 네이티브 실측 — 논리 뷰포트 복원(responsive)용. 캡처 clip 에는 쓰지 않는다. */
-  private paneOf(op: OperationBrowser): { width: number; height: number; scale: number } | null {
+  private paneOf(op: ObjectiveBrowser): { width: number; height: number; scale: number } | null {
     const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
     if (active) {
       const size = this.paneOfTab(active);
@@ -1027,7 +1027,7 @@ export class BrowserService {
   }
 
   /** 활성 탭의 실측만 논리 pane/뷰포트에 반영한다. */
-  private applyNativePane(op: OperationBrowser, size: { width: number; height: number; scale: number }): void {
+  private applyNativePane(op: ObjectiveBrowser, size: { width: number; height: number; scale: number }): void {
     const paneSame = op.pane !== null && size.width === op.pane.width && size.height === op.pane.height && size.scale === op.pane.scale;
     op.pane = size;
     if (!op.viewportFollowsPane) {
@@ -1045,7 +1045,7 @@ export class BrowserService {
    * 대기 중인 재적용은 여기서 풀린다. 색 구성은 바뀌었을 때만 보내고, 새 문서가 뜬 뒤처럼 반드시 다시 알려야 하는
    * 곳은 `media` 로 강제한다.
    */
-  private async applyViewport(client: CdpClient, tab: Tab, op: OperationBrowser, options: { media?: boolean } = {}): Promise<void> {
+  private async applyViewport(client: CdpClient, tab: Tab, op: ObjectiveBrowser, options: { media?: boolean } = {}): Promise<void> {
     this.cancelViewportReapply(tab);
     const viewport = op.viewport;
     if (op.viewportFollowsPane) {
@@ -1060,7 +1060,7 @@ export class BrowserService {
     tab.emulatedScheme = scheme;
   }
 
-  private scheduleViewportReapply(tab: Tab, op: OperationBrowser): void {
+  private scheduleViewportReapply(tab: Tab, op: ObjectiveBrowser): void {
     this.cancelViewportReapply(tab);
     tab.viewportReapply = setTimeout(() => {
       tab.viewportReapply = undefined;
@@ -1076,8 +1076,8 @@ export class BrowserService {
     tab.viewportReapply = undefined;
   }
 
-  async setViewport(operationId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
-    const op = this.operation(operationId);
+  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
+    const op = this.objectiveRecord(objectiveId);
     const preset = request.preset ?? (request.width || request.height ? "responsive" : op.viewport.preset);
     // 색 구성만 맞추는 요청(테마 따라가기)은 표시 동기화지 뷰포트 결정이 아니다 — 에이전트가 정한 프리셋의 소유권을 지우지 않는다.
     const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined;
@@ -1118,8 +1118,8 @@ export class BrowserService {
 
   // ---------- 입력 ----------
 
-  async mouse(operationId: string, input: { type: "move" | "down" | "up" | "click" | "wheel"; x: number; y: number; button?: "left" | "right" | "middle"; clickCount?: number; deltaX?: number; deltaY?: number; modifiers?: Modifiers }, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
+  async mouse(objectiveId: string, input: { type: "move" | "down" | "up" | "click" | "wheel"; x: number; y: number; button?: "left" | "right" | "middle"; clickCount?: number; deltaX?: number; deltaY?: number; modifiers?: Modifiers }, tabId?: string | null): Promise<void> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const button = input.button ?? "left";
@@ -1138,20 +1138,20 @@ export class BrowserService {
     if (input.type === "up" || input.type === "click") { op.pointer = null; await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", button, clickCount }, tab.sessionId); }
   }
 
-  async click(operationId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number } = {}, tabId?: string | null): Promise<void> {
-    await this.mouse(operationId, { type: "move", x, y }, tabId);
-    for (let i = 1; i <= (options.clickCount ?? 1); i += 1) await this.mouse(operationId, { type: "click", x, y, button: options.button, clickCount: i }, tabId);
+  async click(objectiveId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number } = {}, tabId?: string | null): Promise<void> {
+    await this.mouse(objectiveId, { type: "move", x, y }, tabId);
+    for (let i = 1; i <= (options.clickCount ?? 1); i += 1) await this.mouse(objectiveId, { type: "click", x, y, button: options.button, clickCount: i }, tabId);
   }
 
   /** 좌표 클릭 — 기존 `click` 과 동일하게 CDP 포인터를 보내고, 맞은 요소 진단만 덧붙인다(성공 추정 없음). */
-  async clickAt(operationId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
+  async clickAt(objectiveId: string, x: number, y: number, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
     const button = options.button ?? "left";
     const clickCount = options.clickCount ?? 1;
     this.throwIfAborted(options.signal);
     // 진단 중 노드가 교체돼도 기존 저수준 좌표 입력을 막지 않는다. 중단은 아래에서 별도로 확인한다.
-    const hit = await this.probePoint(operationId, x, y, tabId).catch(() => null);
+    const hit = await this.probePoint(objectiveId, x, y, tabId).catch(() => null);
     this.throwIfAborted(options.signal);
-    await this.click(operationId, x, y, { button, clickCount }, tabId);
+    await this.click(objectiveId, x, y, { button, clickCount }, tabId);
     const note = hit?.disabled ? "Hit target reports disabled=true; input was still dispatched." : null;
     return { dispatched: true, x, y, button, clickCount, ref: null, hit, note };
   }
@@ -1160,8 +1160,8 @@ export class BrowserService {
    * ref 클릭 — scrollIntoView → 기하 안정화 → 히트 테스트 → 실제 CDP 포인터.
    * stale / disabled / occluded 는 명확히 거절하고, 보낸 뒤에는 성공을 추정하지 않는다.
    */
-  async clickRef(operationId: string, ref: string, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
-    const op = this.operation(operationId);
+  async clickRef(objectiveId: string, ref: string, options: { button?: "left" | "right" | "middle"; clickCount?: number; signal?: AbortSignal } = {}, tabId?: string | null): Promise<BrowserClickDispatch> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const signal = options.signal;
@@ -1190,7 +1190,7 @@ export class BrowserService {
       const x = Number.isFinite(value.x) ? value.x : center.x;
       const y = Number.isFinite(value.y) ? value.y : center.y;
       this.throwIfAborted(signal);
-      await this.click(operationId, x, y, { button, clickCount }, tabId);
+      await this.click(objectiveId, x, y, { button, clickCount }, tabId);
       return { dispatched: true, x, y, button, clickCount, ref, hit: value.hit, note: null };
     } catch (error) {
       this.rethrowStaleRef(ref, error);
@@ -1226,30 +1226,30 @@ export class BrowserService {
     return previous;
   }
 
-  private async probePoint(operationId: string, x: number, y: number, tabId?: string | null): Promise<BrowserClickDispatch["hit"]> {
-    const info = await this.inspectAt(operationId, x, y, tabId);
+  private async probePoint(objectiveId: string, x: number, y: number, tabId?: string | null): Promise<BrowserClickDispatch["hit"]> {
+    const info = await this.inspectAt(objectiveId, x, y, tabId);
     if (!info) return null;
-    const disabled = await this.evaluate<boolean>(operationId, `(() => { const el = document.elementFromPoint(${Math.round(x)}, ${Math.round(y)}); if (!el) return false; const node = el; return !!(node.disabled || node.getAttribute?.('aria-disabled') === 'true' || node.closest?.('[disabled], [aria-disabled="true"]')); })()`, tabId);
+    const disabled = await this.evaluate<boolean>(objectiveId, `(() => { const el = document.elementFromPoint(${Math.round(x)}, ${Math.round(y)}); if (!el) return false; const node = el; return !!(node.disabled || node.getAttribute?.('aria-disabled') === 'true' || node.closest?.('[disabled], [aria-disabled="true"]')); })()`, tabId);
     return { tag: info.tag, id: info.id, text: info.text.slice(0, 120), disabled: disabled.value === true, selector: info.selector };
   }
 
-  async drag(operationId: string, from: { x: number; y: number }, to: { x: number; y: number }, tabId?: string | null): Promise<void> {
-    await this.mouse(operationId, { type: "move", x: from.x, y: from.y }, tabId);
-    await this.mouse(operationId, { type: "down", x: from.x, y: from.y }, tabId);
+  async drag(objectiveId: string, from: { x: number; y: number }, to: { x: number; y: number }, tabId?: string | null): Promise<void> {
+    await this.mouse(objectiveId, { type: "move", x: from.x, y: from.y }, tabId);
+    await this.mouse(objectiveId, { type: "down", x: from.x, y: from.y }, tabId);
     const steps = 8;
-    for (let i = 1; i <= steps; i += 1) await this.mouse(operationId, { type: "move", x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps }, tabId);
-    await this.mouse(operationId, { type: "up", x: to.x, y: to.y }, tabId);
+    for (let i = 1; i <= steps; i += 1) await this.mouse(objectiveId, { type: "move", x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps }, tabId);
+    await this.mouse(objectiveId, { type: "up", x: to.x, y: to.y }, tabId);
   }
 
-  async keyChord(operationId: string, chord: string, tabId?: string | null): Promise<void> {
+  async keyChord(objectiveId: string, chord: string, tabId?: string | null): Promise<void> {
     const parsed = parseKeyChord(chord);
     if (!parsed) throw new BrowserPolicyError("browser_key_invalid", `Unknown key "${chord}". Use xdotool names such as Return, Tab, Escape, BackSpace, Up, cmd+a.`);
-    await this.dispatchKey(operationId, parsed.descriptor, parsed.modifiers, tabId);
+    await this.dispatchKey(objectiveId, parsed.descriptor, parsed.modifiers, tabId);
   }
 
 
-  private async dispatchKey(operationId: string, descriptor: { key: string; code: string; keyCode: number; text?: string }, mods: Modifiers, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
+  private async dispatchKey(objectiveId: string, descriptor: { key: string; code: string; keyCode: number; text?: string }, mods: Modifiers, tabId?: string | null): Promise<void> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const modifiers = modifierBits(mods);
@@ -1261,29 +1261,29 @@ export class BrowserService {
   }
 
   /** 에이전트의 `type` — 줄바꿈은 Enter 로, 나머지는 텍스트 삽입으로. */
-  async typeText(operationId: string, text: string, tabId?: string | null): Promise<void> {
-    const op = this.operation(operationId);
+  async typeText(objectiveId: string, text: string, tabId?: string | null): Promise<void> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const parts = text.split("\n");
     for (let i = 0; i < parts.length; i += 1) {
       if (parts[i]) await client.send("Input.insertText", { text: parts[i] }, tab.sessionId);
-      if (i < parts.length - 1) await this.keyChord(operationId, "Return", tabId);
+      if (i < parts.length - 1) await this.keyChord(objectiveId, "Return", tabId);
     }
   }
 
 
   // ---------- 관찰 ----------
 
-  async geometryVersion(operationId: string, tabId?: string | null): Promise<string> {
-    const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
+  async geometryVersion(objectiveId: string, tabId?: string | null): Promise<string> {
+    const op = this.objectiveRecord(objectiveId), tab = this.tab(op, tabId), client = await this.engineClient();
     const layout = await this.layoutViewport(client, tab);
     if (!layout) throw new BrowserPolicyError("browser_capture_not_ready", "Page geometry unavailable.");
     return `${tab.id}:${layout.width}x${layout.height}:${this.paneOfTab(tab)?.scale ?? op.viewport.scale}`;
   }
 
-  async screenshot(operationId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; resolution?: "css" | "device"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
-    const op = this.operation(operationId);
+  async screenshot(objectiveId: string, options: { tabId?: string | null; clip?: { x: number; y: number; width: number; height: number }; format?: "png" | "jpeg"; resolution?: "css" | "device"; signal?: AbortSignal } = {}): Promise<{ pixels: { width: number; height: number }; geometryVersion: string; data: string; mimeType: string; width: number; height: number; viewport: { width: number; height: number; preset: ViewportPreset; followsPane: boolean }; layout: { width: number; height: number } | null; staleViewport: boolean }> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
@@ -1358,8 +1358,8 @@ export class BrowserService {
     }
   }
 
-  async evaluate<T = unknown>(operationId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {
-    const op = this.operation(operationId);
+  async evaluate<T = unknown>(objectiveId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const result = await client.send<{ result: { value?: T; description?: string; type: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } }>("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true }, tab.sessionId);
@@ -1367,8 +1367,8 @@ export class BrowserService {
     return { value: result.result.value ?? (result.result.type === "undefined" ? undefined : result.result.description as T | undefined), error: null };
   }
 
-  async pageText(operationId: string, tabId?: string | null): Promise<string> {
-    const { value } = await this.evaluate<string>(operationId, `(() => { const root = document.querySelector('article, main, [role="main"]') ?? document.body; return root ? root.innerText : ""; })()`, tabId);
+  async pageText(objectiveId: string, tabId?: string | null): Promise<string> {
+    const { value } = await this.evaluate<string>(objectiveId, `(() => { const root = document.querySelector('article, main, [role="main"]') ?? document.body; return root ? root.innerText : ""; })()`, tabId);
     const text = typeof value === "string" ? value : "";
     return text.length > TEXT_LIMIT ? `${text.slice(0, TEXT_LIMIT)}\n…(truncated)` : text;
   }
@@ -1377,11 +1377,11 @@ export class BrowserService {
    * 접근성 트리를 YAML 비슷한 들여쓰기 목록으로. DOM 노드가 있는 항목엔 `ref_N`이 붙고, 그 번호는
    * 다음 read_page 까지 유효하다(form_input·scroll_to·click 이 씀).
    */
-  async readPage(operationId: string, options: { tabId?: string | null; filter?: "interactive" | "all"; maxChars?: number; maxDepth?: number; within?: BrowserTarget } = {}): Promise<{ text: string; refs: number; truncated: boolean; total: number; observationId: string }> {
-    const op = this.operation(operationId);
+  async readPage(objectiveId: string, options: { tabId?: string | null; filter?: "interactive" | "all"; maxChars?: number; maxDepth?: number; within?: BrowserTarget } = {}): Promise<{ text: string; refs: number; truncated: boolean; total: number; observationId: string }> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
-    const scope = options.within ? await this.targetRef(operationId, options.within, options.tabId) : null;
+    const scope = options.within ? await this.targetRef(objectiveId, options.within, options.tabId) : null;
     const scopeBackend = scope ? tab.refs.get(scope) : null;
     const tree = await client.send<{ nodes: AxNode[] }>("Accessibility.getFullAXTree", {}, tab.sessionId);
     const observationId = `o${++this.observationSerial}`;
@@ -1415,19 +1415,19 @@ export class BrowserService {
     return { text, refs: refCount, truncated, total: full.length, observationId };
   }
 
-  async find(operationId: string, query: string, tabId?: string | null): Promise<string> {
-    const page = await this.readPage(operationId, { tabId, filter: "all", maxChars: 400_000 });
+  async find(objectiveId: string, query: string, tabId?: string | null): Promise<string> {
+    const page = await this.readPage(objectiveId, { tabId, filter: "all", maxChars: 400_000 });
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     const hits = page.text.split("\n").filter((line) => { if (/^\s*- (InlineTextBox|StaticText)\b/.test(line)) return false; const lower = line.toLowerCase(); return terms.every((term) => lower.includes(term)); }).slice(0, 40);
     return hits.length ? hits.map((line) => line.trim()).join("\n") : `No elements match "${query}". Use read_page to see the tree.`;
   }
 
   /** AX 이름을 사용하며 accessible name을 임의로 추측하지 않는다. 대상과 범위는 항상 유일해야 한다. */
-  async targetRef(operationId: string, target: BrowserTarget, tabId?: string | null): Promise<string> {
-    const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
+  async targetRef(objectiveId: string, target: BrowserTarget, tabId?: string | null): Promise<string> {
+    const op = this.objectiveRecord(objectiveId), tab = this.tab(op, tabId), client = await this.engineClient();
     // within 까지 여기서 한 번에 가린다 — 재귀 호출에서 거부하면 문구가 within 자리를 대상 자리로 잘못 부른다.
     if (!targetShapeValid(target, false)) throw new BrowserPolicyError("browser_target_invalid", invalidTargetMessage(target));
-    const scopeRef = target.within ? await this.targetRef(operationId, target.within, tabId) : null;
+    const scopeRef = target.within ? await this.targetRef(objectiveId, target.within, tabId) : null;
     const scope = scopeRef ? await this.resolveRef(client, tab, scopeRef) : null;
     let nodes: number[] = [];
     if (target.ref) {
@@ -1464,8 +1464,8 @@ export class BrowserService {
     return ref;
   }
 
-  async elementState(operationId: string, ref: string, attributes: string[] = [], tabId?: string | null): Promise<BrowserElementState> {
-    const tab = this.tab(this.operation(operationId), tabId), client = await this.engineClient();
+  async elementState(objectiveId: string, ref: string, attributes: string[] = [], tabId?: string | null): Promise<BrowserElementState> {
+    const tab = this.tab(this.objectiveRecord(objectiveId), tabId), client = await this.engineClient();
     const { objectId } = await this.resolveRef(client, tab, ref);
     const result = await client.send<{ result: { value?: BrowserElementState } }>("Runtime.callFunctionOn", { objectId, arguments: [{ value: attributes.slice(0, 20) }], returnByValue: true, functionDeclaration: `function(attrs){
       const el=this, r=el.getBoundingClientRect(), style=getComputedStyle(el);
@@ -1487,8 +1487,8 @@ export class BrowserService {
     }
   }
 
-  async refCenter(operationId: string, ref: string, tabId?: string | null): Promise<{ x: number; y: number }> {
-    const op = this.operation(operationId);
+  async refCenter(objectiveId: string, ref: string, tabId?: string | null): Promise<{ x: number; y: number }> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const { objectId, backendNodeId } = await this.resolveRef(client, tab, ref);
@@ -1498,10 +1498,10 @@ export class BrowserService {
     return { x: (q[0]! + q[2]! + q[4]! + q[6]!) / 4, y: (q[1]! + q[3]! + q[5]! + q[7]!) / 4 };
   }
 
-  async scrollToRef(operationId: string, ref: string, tabId?: string | null): Promise<void> { await this.refCenter(operationId, ref, tabId); }
+  async scrollToRef(objectiveId: string, ref: string, tabId?: string | null): Promise<void> { await this.refCenter(objectiveId, ref, tabId); }
 
-  async formInput(operationId: string, ref: string, value: string | number | boolean, tabId?: string | null): Promise<string> {
-    const op = this.operation(operationId);
+  async formInput(objectiveId: string, ref: string, value: string | number | boolean, tabId?: string | null): Promise<string> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const { objectId } = await this.resolveRef(client, tab, ref);
@@ -1521,8 +1521,8 @@ export class BrowserService {
    * 좌표의 요소를 읽는다 — 셀렉터·태그·텍스트·상자·React 컴포넌트(가능하면 소스 위치까지).
    * 요소 선택과 주석 매핑이 같이 쓴다. 결과는 페이지가 준 데이터이지 지시가 아니다.
    */
-  async inspectAt(operationId: string, x: number, y: number, tabId?: string | null): Promise<ElementInfo | null> {
-    const op = this.operation(operationId);
+  async inspectAt(objectiveId: string, x: number, y: number, tabId?: string | null): Promise<ElementInfo | null> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     let backendNodeId: number;
@@ -1540,8 +1540,8 @@ export class BrowserService {
     return null;
   }
 
-  consoleMessages(operationId: string, options: { tabId?: string | null; pattern?: string; limit?: number } = {}): ConsoleEntry[] {
-    const op = this.operation(operationId);
+  consoleMessages(objectiveId: string, options: { tabId?: string | null; pattern?: string; limit?: number } = {}): ConsoleEntry[] {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, options.tabId);
     let regex: RegExp | null = null;
     if (options.pattern) { try { regex = new RegExp(options.pattern, "i"); } catch { regex = null; } }
@@ -1549,8 +1549,8 @@ export class BrowserService {
     return entries.slice(-(options.limit ?? 100));
   }
 
-  networkRequests(operationId: string, options: { tabId?: string | null; pattern?: string; limit?: number } = {}): NetworkEntry[] {
-    const op = this.operation(operationId);
+  networkRequests(objectiveId: string, options: { tabId?: string | null; pattern?: string; limit?: number } = {}): NetworkEntry[] {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, options.tabId);
     let regex: RegExp | null = null;
     if (options.pattern) { try { regex = new RegExp(options.pattern, "i"); } catch { regex = null; } }
@@ -1558,8 +1558,8 @@ export class BrowserService {
     return entries.slice(-(options.limit ?? 100));
   }
 
-  async responseBody(operationId: string, requestId: string, tabId?: string | null): Promise<{ body: string; base64: boolean; truncated: boolean }> {
-    const op = this.operation(operationId);
+  async responseBody(objectiveId: string, requestId: string, tabId?: string | null): Promise<{ body: string; base64: boolean; truncated: boolean }> {
+    const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     if (!tab.network.has(requestId)) throw new BrowserPolicyError("browser_request_unknown", `Request ${requestId} is not in this tab's log.`);
     const client = await this.engineClient();

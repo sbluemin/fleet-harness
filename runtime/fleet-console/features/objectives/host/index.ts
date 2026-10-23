@@ -1,6 +1,6 @@
 export { createObjectiveStorage } from "./storage.js";
 
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "../../execution/shared/operations/types.js";
+import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL, OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, type ObjectiveGroupedEvent } from "../shared/records/types.js";
 import type { CommodoreBoardAdapter } from "../shared/commodore-board.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import { createCommodoreBoardWatch } from "./commodore-board.js";
@@ -18,15 +18,15 @@ export type { ObjectivesFeatureDeps } from "./deps.js";
 export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
 
 /**
- * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
+ * 목표 — Theater 의 에이전트 Objective 하나하나가 목표다.
  *
  * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
- * Operation은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
+ * Objective은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Objective 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
  * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로 보드를 쓴다.
  */
-const operationIdOf = (payload: unknown): string | null => {
-  const operationId = (payload as { operationId?: unknown } | null)?.operationId;
-  return typeof operationId === "string" ? operationId : null;
+const objectiveIdOf = (payload: unknown): string | null => {
+  const objectiveId = (payload as { objectiveId?: unknown } | null)?.objectiveId;
+  return typeof objectiveId === "string" ? objectiveId : null;
 };
 
 export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
@@ -47,7 +47,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
     let watchQuiet: () => void = () => {};
-    const store = createObjectiveStore({ dirOf, storage: deps.storage, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], operations: deps.operations, coordinates: (operationId) => deps.consoleControl?.coordinates?.(operationId) ?? null, advertisedTools: (operationId) => deps.consoleControl?.advertisedTools?.(operationId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (operationId) => deps.consoleControl?.observe(operationId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
+    const store = createObjectiveStore({ dirOf, storage: deps.storage, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
@@ -69,33 +69,33 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     const evidenceGc = setInterval(() => { collectEvidence(); migrateRemoved(); adoptChat(); }, RESULT_LIMITS.evidenceGcMs);
     evidenceGc.unref?.();
     registerCleanup(() => clearInterval(evidenceGc));
-    const on = (channel: string, run: (operationId: string, payload: unknown) => void) => {
+    const on = (channel: string, run: (objectiveId: string, payload: unknown) => void) => {
       const off = deps.events.subscribe(channel, (payload) => {
-        const operationId = operationIdOf(payload);
-        if (!operationId) return;
-        try { run(operationId, payload); } catch (error) { console.warn(`[objectives] ${channel} failed: ${error instanceof Error ? error.message : String(error)}`); }
+        const objectiveId = objectiveIdOf(payload);
+        if (!objectiveId) return;
+        try { run(objectiveId, payload); } catch (error) { console.warn(`[objectives] ${channel} failed: ${error instanceof Error ? error.message : String(error)}`); }
       });
       registerCleanup(off);
     };
     // 지휘관이 닫히면 담당도 함께 닫는다. 레코드는 복원 불가로 확정될 때(purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
-    // 후속으로 만든 Operation 이 지워지거나 돌아오면 그 원본의 배치 표시(생성됨·삭제됨)도 다시 방송한다.
-    on("operation:deleted", (operationId) => { launch.operationDeleted(operationId); launch.followupTargetChanged(operationId); });
-    on("operation:purged", (operationId) => { launch.operationPurged(operationId); launch.followupTargetChanged(operationId); });
+    // 후속으로 만든 Objective 이 지워지거나 돌아오면 그 원본의 배치 표시(생성됨·삭제됨)도 다시 방송한다.
+    on("objective:deleted", (objectiveId) => { launch.objectiveRecordDeleted(objectiveId); launch.followupTargetChanged(objectiveId); });
+    on("objective:purged", (objectiveId) => { launch.objectiveRecordPurged(objectiveId); launch.followupTargetChanged(objectiveId); });
     // 원본이 복원되면 멈춰 있던 후속 생성을 같은 키로 이어 간다(지운 동안에는 만들지 않는다). 사라진 동안 놓았던 구성원의 이번 턴 뒤
     // 예약도 다시 건다 — 삭제 유예에서 되돌렸든 보관에서 되살렸든(완료 해제 포함) 같은 사건이다.
-    on("operation:restored", (operationId) => { launch.operationChanged(operationId); launch.resumeFollowups(operationId); launch.followupTargetChanged(operationId); launch.resumeReservations(operationId); });
-    on("operation:archived", (operationId) => { launch.operationChanged(operationId); launch.followupTargetChanged(operationId); });
-    on("operation:renamed", (operationId) => launch.operationChanged(operationId));
+    on("objective:restored", (objectiveId) => { launch.objectiveRecordChanged(objectiveId); launch.resumeFollowups(objectiveId); launch.followupTargetChanged(objectiveId); launch.resumeReservations(objectiveId); });
+    on("objective:archived", (objectiveId) => { launch.objectiveRecordChanged(objectiveId); launch.followupTargetChanged(objectiveId); });
+    on("objective:renamed", (objectiveId) => launch.objectiveRecordChanged(objectiveId));
     // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
-    on(OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, (operationId) => launch.operationChanged(operationId));
-    // 목표의 그룹은 지휘관 Operation 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
-    on(OPERATION_GROUPED_EVENT_CHANNEL, (_operationId, payload) => {
-      const event = payload as Partial<OperationGroupedEvent>;
+    on(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, (objectiveId) => launch.objectiveRecordChanged(objectiveId));
+    // 목표의 그룹은 지휘관 Objective 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
+    on(OBJECTIVE_GROUPED_EVENT_CHANNEL, (_objectiveId, payload) => {
+      const event = payload as Partial<ObjectiveGroupedEvent>;
       if (typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
-      launch.operationGrouped(event as OperationGroupedEvent);
+      launch.objectiveRecordGrouped(event as ObjectiveGroupedEvent);
     });
     // 개시 전 목표와 후속 배치의 그룹은 저장 레코드에만 있다 — 그룹이 지워지면 미분류로 비우고, 기동 때는 이미 지워진 그룹을 가리키는 옛 레코드를 고쳐 쓴다.
-    registerCleanup(deps.events.subscribe(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, (payload) => {
+    registerCleanup(deps.events.subscribe(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, (payload) => {
       const event = payload as { groupId?: unknown; theaterId?: unknown };
       if (typeof event.groupId !== "string" || typeof event.theaterId !== "string") return;
       try { store.releaseGroups({ theaterId: event.theaterId, groupId: event.groupId }); }
@@ -107,7 +107,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     migrateRemoved();
     adoptChat();
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
-    void launch.resumeOperationIntents().catch((error) => console.warn(`[objectives] Operation request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
+    void launch.resumeObjectiveIntents().catch((error) => console.warn(`[objectives] Objective request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
     // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 목표 ID로 이어 간다.
     try { launch.resumeFollowups(); }
     catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
@@ -129,7 +129,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       watch: (theaterId, sink) => createCommodoreBoardWatch({
         objectives: (id) => store.list(id),
         subscribeObjectives: (listener) => deps.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
-        ...(deps.consoleControl ? { observe: (operationId) => launch.observeBoard(operationId) } : {}),
+        ...(deps.consoleControl ? { observe: (objectiveId) => launch.observeBoard(objectiveId) } : {}),
         notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
       }, theaterId, sink),
       objective: (theaterId, id) => {
@@ -138,13 +138,13 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
       // 목표 라우트가 남긴 언어 중 가장 최근 것 — 사령관에 저장된 언어가 없을 때만 쓴다.
       language: (theaterId) => {
-        const latest = deps.operations.list().filter((node) => node.theaterId === theaterId && (node.payload.objectiveLanguage === "ko" || node.payload.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
-        return latest?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+        const latest = deps.objectiveRecords.list().filter((node) => node.theaterId === theaterId && (node.objectiveLanguage === "ko" || node.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
+        return latest?.objectiveLanguage === "ko" ? "ko" : "en";
       },
     };
 
     // Console 세션의 서브에이전트 호출 — 띄우지 않고, 그 자리를 이 목표의 구성원이 맡는다는 사실로 답한다.
-    const releaseAgentCalls = deps.consoleControl?.redirectAgentCalls?.((operationId) => agentCallRedirect(store.find(operationId), store.findMember(operationId) !== null));
+    const releaseAgentCalls = deps.consoleControl?.redirectAgentCalls?.((objectiveId) => agentCallRedirect(store.find(objectiveId), store.findMember(objectiveId) !== null));
     if (releaseAgentCalls) registerCleanup(releaseAgentCalls);
 
     // 두 표면 — Console Use 의 보드(`console_objectives`·`console_objectives_detail`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).

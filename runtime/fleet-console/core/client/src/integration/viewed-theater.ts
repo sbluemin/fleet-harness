@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { getState, subscribe } from "./store.js";
 import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
 import { getMobileDestination, getMobileListTheaterId, subscribeMobileState } from "../chrome/mobile/mobile-store.js";
-import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
+import { readMobileObjectiveId } from "../chrome/mobile/mobile-objective-url.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { readTheaterInboxState, subscribeTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
@@ -12,9 +12,9 @@ import { readTheaterInboxState, subscribeTheaterInbox } from "../../../../featur
 export function getViewedTheaterId(): string | null {
   const state = getState();
   if (getViewModeSnapshot().effective === "mobile") {
-    const operationId = readMobileOperationId();
-    const operation = state.operations.find((candidate) => candidate.id === operationId);
-    if (operation) return operation.theaterId;
+    const objectiveId = readMobileObjectiveId();
+    const objectiveRecord = state.objectiveRecords.find((candidate) => candidate.id === objectiveId);
+    if (objectiveRecord) return objectiveRecord.theaterId;
     const destination = getMobileDestination();
     const requested = (destination.kind === "plugin" ? destination.params?.theaterId : undefined) ?? getMobileListTheaterId();
     return state.theaters.find((theater) => theater.id === requested)?.id ?? state.theaters[0]?.id ?? null;
@@ -26,8 +26,8 @@ export function getViewedTheaterId(): string | null {
   }
   const inbox = readTheaterInboxState();
   if (inbox !== null) return state.theaters.some((theater) => theater.id === inbox.theaterId) ? inbox.theaterId : null;
-  const subjectId = getConversationSubject()?.id ?? state.activeOperationId;
-  return state.operations.find((operation) => operation.id === subjectId)?.theaterId ?? null;
+  const subjectId = getConversationSubject()?.id ?? state.activeObjectiveId;
+  return state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subjectId)?.theaterId ?? null;
 }
 
 export function subscribeViewedTheater(listener: () => void): () => void {

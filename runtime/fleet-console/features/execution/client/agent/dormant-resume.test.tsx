@@ -5,7 +5,7 @@ import { act, createElement, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientNotificationsCapability } from "../../shared/notification-ports.js";
-import type { OperationRenderContext } from "../../shared/client-contract.js";
+import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // 표면 인스턴스마다 마운트 여부와 마지막 onExit를 남긴다 — 옛 PTY의 늦은 종료를 그 표면의 onExit로 흉내 낸다.
@@ -23,10 +23,10 @@ vi.mock("../terminal/shared/index.js", () => ({
   },
 }));
 
-import { agentOperationKind, agentExecution } from "./index.js";
+import { agentObjectiveKind, agentExecution } from "./index.js";
 import { applySessionUpdate, getAgentState, removeSession } from "./store.js";
 
-const OPERATION_ID = "dormant-resume-operation";
+const OBJECTIVE_ID = "dormant-resume-objectiveRecord";
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
@@ -34,7 +34,7 @@ let root: Root | null = null;
 
 afterEach(() => {
   act(() => root?.unmount());
-  removeSession(OPERATION_ID);
+  removeSession(OBJECTIVE_ID);
   container?.remove();
   root = null;
   container = null;
@@ -44,9 +44,9 @@ afterEach(() => {
 
 describe("dormant resume feedback", () => {
 
-  it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
+  it("offers Start fresh for a supported Objective without captured resume metadata", async () => {
     const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
-    await renderOperation(fetch, { session: { harness: "claude-code" } });
+    await renderObjective(fetch, { session: { harness: "claude-code" } });
 
     const button = dormantButton();
     expect(button.textContent).toContain("Start fresh");
@@ -65,7 +65,7 @@ describe("dormant resume feedback", () => {
     act(() => dormantButton().click());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    const card = container?.querySelector(".operation-dormant--error");
+    const card = container?.querySelector(".objective-dormant--error");
     expect(card).not.toBeNull();
     expect(card?.getAttribute("role")).toBe("alert");
     expect(card?.textContent).toContain("Couldn’t resume this session");
@@ -74,10 +74,10 @@ describe("dormant resume feedback", () => {
     expect(notifications.emit).toHaveBeenCalledTimes(1);
     expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
       kind: "agent.resume-failed",
-      operationId: OPERATION_ID,
+      objectiveId: OBJECTIVE_ID,
     }));
     // 실패 후에도 세션은 dormant를 유지한다.
-    expect(getAgentState().sessions[OPERATION_ID]?.status).toBe("dormant");
+    expect(getAgentState().sessions[OBJECTIVE_ID]?.status).toBe("dormant");
   });
 
   it("Start fresh retries the resume route with { fresh: true }", async () => {
@@ -102,7 +102,7 @@ describe("dormant resume feedback", () => {
   it("keeps a resumed session and attaches a new surface when the old PTY's close arrives after the resume", async () => {
     vi.stubGlobal("fetch", vi.fn());
     applySessionUpdate(liveSession("generation-a"));
-    await renderOperation(vi.fn(), {});
+    await renderObjective(vi.fn(), {});
     expect(surfaces.mounts).toHaveLength(1);
     const old = surfaces.mounts[0]!;
 
@@ -114,19 +114,19 @@ describe("dormant resume feedback", () => {
     // 옛 PTY의 종료(4001)는 그 뒤에 도착한다.
     act(() => old.onExit?.());
 
-    expect(getAgentState().sessions[OPERATION_ID]).toMatchObject({ status: "registered", generation: "generation-b" });
+    expect(getAgentState().sessions[OBJECTIVE_ID]).toMatchObject({ status: "registered", generation: "generation-b" });
     expect(old.mounted).toBe(false);
     expect(surfaces.mounts).toHaveLength(2);
     expect(surfaces.mounts[1]?.mounted).toBe(true);
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
-    expect(container?.querySelector("button.operation-dormant")).toBeNull();
+    expect(container?.querySelector("button.objective-dormant")).toBeNull();
   });
 });
 
 function liveSession(generation: string | undefined) {
   return {
-    sessionId: OPERATION_ID,
-    terminalSessionId: OPERATION_ID,
+    sessionId: OBJECTIVE_ID,
+    terminalSessionId: OBJECTIVE_ID,
     cwdLabel: "Workspace",
     label: "Resume test",
     status: "registered" as const,
@@ -138,7 +138,7 @@ function liveSession(generation: string | undefined) {
   };
 }
 
-async function renderOperation(
+async function renderObjective(
   fetch: ReturnType<typeof vi.fn>,
   payload: Record<string, unknown>,
 ): Promise<{ readonly notifications: ClientNotificationsCapability & { emit: ReturnType<typeof vi.fn> } }> {
@@ -149,8 +149,8 @@ async function renderOperation(
     document.body.append(container);
   }
   root ??= createRoot(container);
-  const render = agentOperationKind.render;
-  if (!render) throw new Error("Agent operation renderer must exist.");
+  const render = agentObjectiveKind.render;
+  if (!render) throw new Error("Agent objectiveRecord renderer must exist.");
   await act(async () => {
     root?.render(render(createContext(notifications, payload)) as React.ReactNode);
     await Promise.resolve();
@@ -167,12 +167,12 @@ async function renderDormant(fetch: ReturnType<typeof vi.fn>): Promise<{ readonl
     document.body.append(container);
   }
   root ??= createRoot(container);
-  const render = agentOperationKind.render;
-  if (!render) throw new Error("Agent operation renderer must exist.");
+  const render = agentObjectiveKind.render;
+  if (!render) throw new Error("Agent objectiveRecord renderer must exist.");
   await act(async () => {
     applySessionUpdate({
-      sessionId: OPERATION_ID,
-      terminalSessionId: OPERATION_ID,
+      sessionId: OBJECTIVE_ID,
+      terminalSessionId: OBJECTIVE_ID,
       cwdLabel: "Workspace",
       label: "Dormant test",
       status: "dormant",
@@ -191,14 +191,14 @@ async function renderDormant(fetch: ReturnType<typeof vi.fn>): Promise<{ readonl
 function createContext(
   notifications: ClientNotificationsCapability,
   payload: Record<string, unknown> = {},
-): OperationRenderContext {
+): ObjectiveRenderContext {
   return {
-    operationId: OPERATION_ID,
+    objectiveId: OBJECTIVE_ID,
     theaterId: "theater",
     pluginId: "terminal",
     type: "agent",
-    operation: {
-      id: OPERATION_ID,
+    objectiveRecord: {
+      id: OBJECTIVE_ID,
       pluginId: "terminal",
       type: "agent",
       theaterId: "theater",
@@ -212,19 +212,19 @@ function createContext(
     zoom: 1,
     theme: "dark",
     onRequestCompanions: vi.fn(),
-  } as unknown as OperationRenderContext;
+  } as unknown as ObjectiveRenderContext;
 }
 
 function dormantButton(): HTMLButtonElement {
-  const button = container?.querySelector<HTMLButtonElement>("button.operation-dormant");
+  const button = container?.querySelector<HTMLButtonElement>("button.objective-dormant");
   if (!button) throw new Error("Dormant resume button must render.");
   return button;
 }
 
 function sessionResponse(status: string): Response {
   return new Response(JSON.stringify({
-    sessionId: OPERATION_ID,
-    terminalSessionId: OPERATION_ID,
+    sessionId: OBJECTIVE_ID,
+    terminalSessionId: OBJECTIVE_ID,
     cwdLabel: "Workspace",
     label: "Dormant test",
     status,

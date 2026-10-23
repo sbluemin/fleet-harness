@@ -3,9 +3,9 @@ import { useMemo, useRef } from "react";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
-import { useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
+import { useClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useT } from "../../i18n/index.js";
-import { focusOperation, openMobileNewSession } from "../../integration/store.js";
+import { focusObjective, openMobileNewSession } from "../../integration/store.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
@@ -29,7 +29,7 @@ const MAX_ATTENTION_ROWS = 3;
 /**
  * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 바로가기 칩 줄, 지금 Theater의 정체(대표 자리), 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행,
  * 맨 끝에 「시작 전 N」(펼침)·「완료 N」(접힘) 접기(`MobileHomeSections`). 완료 목표의 대화(묶음 줄이 「완료」)는 「대화」 대신 「완료 N」에 든다.
- * 행 하나는 지휘관 묶음 하나다. 행을 누르면 그 Operation 화면이 홈 자리에 서고, 뒤로가 이 목록으로 돌아온다.
+ * 행 하나는 지휘관 묶음 하나다. 행을 누르면 그 Objective 화면이 홈 자리에 서고, 뒤로가 이 목록으로 돌아온다.
  * 목록은 고른 Theater 범위이고(전환은 머리의 Theater 알약), 모든 Theater를 가로지르는 것은 검색뿐이다.
  */
 export function MobileConversationList({ state }: { readonly state: ConsoleState }) {
@@ -48,15 +48,15 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   const theater = state.theaters.find((item) => item.id === getViewedTheaterId()) ?? null;
   const consoleName = appearance.console?.label ?? window.location.hostname;
   const inTheater = useMemo(() => conversations
-    .filter((conversation) => conversation.operation.theaterId === getViewedTheaterId())
-    .sort((left, right) => right.operation.ts.updatedAt - left.operation.ts.updatedAt || right.operation.ts.createdAt - left.operation.ts.createdAt), [conversations, getViewedTheaterId()]);
-  const byId = useMemo(() => new Map(inTheater.map((conversation) => [conversation.operation.id, conversation])), [inTheater]);
-  const attentionOperationIds = new Set(attention.flatMap((row) => row.kind === "operation" ? [row.operation.id] : []));
-  const rest = inTheater.filter((conversation) => !attentionOperationIds.has(conversation.operation.id));
-  const finished = rest.filter((conversation) => isFinishedConversation(clusterIndex, conversation.operation.id));
-  const live = rest.filter((conversation) => !isFinishedConversation(clusterIndex, conversation.operation.id));
+    .filter((conversation) => conversation.objectiveRecord.theaterId === getViewedTheaterId())
+    .sort((left, right) => right.objectiveRecord.ts.updatedAt - left.objectiveRecord.ts.updatedAt || right.objectiveRecord.ts.createdAt - left.objectiveRecord.ts.createdAt), [conversations, getViewedTheaterId()]);
+  const byId = useMemo(() => new Map(inTheater.map((conversation) => [conversation.objectiveRecord.id, conversation])), [inTheater]);
+  const attentionObjectiveIds = new Set(attention.flatMap((row) => row.kind === "objectiveRecord" ? [row.objectiveRecord.id] : []));
+  const rest = inTheater.filter((conversation) => !attentionObjectiveIds.has(conversation.objectiveRecord.id));
+  const finished = rest.filter((conversation) => isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
+  const live = rest.filter((conversation) => !isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
 
-  const open = (conversation: MobileConversation) => { setMobileDestination({ kind: "home" }); focusOperation(conversation.operation.id); };
+  const open = (conversation: MobileConversation) => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); };
   // 머리는 목록 위에 떠 있다 — 목록이 그 높이(`--m-screen-head`)만큼 위를 비운다.
   const listRef = useRef<HTMLElement>(null);
   const headRef = useRef<HTMLElement>(null);
@@ -93,8 +93,8 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
             </div>
             <div className="mobile-conv-attention">
               {attention.slice(0, MAX_ATTENTION_ROWS).map((row) => {
-                if (row.kind === "operation") {
-                  const conversation = byId.get(row.operation.id);
+                if (row.kind === "objectiveRecord") {
+                  const conversation = byId.get(row.objectiveRecord.id);
                   return conversation ? (
                     <ConversationRow key={row.key} conversation={conversation} sub={<span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span>} onOpen={() => open(conversation)} />
                   ) : null;
@@ -122,7 +122,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
           </div>
         ) : live.length === 0 && attention.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noActive")}</p>
           : live.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : live.map((conversation) => (
-          <ConversationRow key={conversation.operation.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />
+          <ConversationRow key={conversation.objectiveRecord.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />
         ))}
         <MobileHomeSections theaterId={getViewedTheaterId()} finishedConversations={finished} onOpenConversation={open} />
       </div>

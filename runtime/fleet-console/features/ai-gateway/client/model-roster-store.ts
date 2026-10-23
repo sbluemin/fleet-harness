@@ -1,10 +1,10 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { MODEL_ROSTER_CHANGED_CHANNEL, MODEL_ROSTER_PATH, parseModelRoster, type ModelRoster, type ModelRosterTarget } from "../shared/models.js";
-import { OPERATION_CATALOG_CHANGED_EVENT } from "../../execution/client/operations.js";
+import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objective-records.js";
 import { launchProviderFromGroupId } from "./components/launch-provider-glyphs.js";
 import type { ExperimentModelOption } from "../../settings/shared/experiments.js";
 
-import { subscribeConsoleChannel, subscribeConsoleReconnect } from "../../../core/client/src/integration/operations-sse.js";
+import { subscribeConsoleChannel, subscribeConsoleReconnect } from "../../../core/client/src/integration/objective-records-sse.js";
 
 /**
  * 모델 로스터의 브라우저 캐시 — 호스트 번들 안에 하나다. 플러그인은 `ctx.models`로, 코어 화면은 이 모듈로 읽는다.
@@ -65,8 +65,8 @@ function wire(): void {
   wired = true;
   // 다른 탭·기기에서 저장한 변경. 운영 카탈로그(새 세션·캔버스)도 같은 이벤트로 다시 읽게 창 이벤트로 넘긴다 —
   // 이 탭의 저장 경로가 이미 쓰는 신호라 받는 쪽은 출처를 가리지 않는다.
-  subscribeConsoleChannel(MODEL_ROSTER_CHANGED_CHANNEL, () => window.dispatchEvent(new Event(OPERATION_CATALOG_CHANGED_EVENT)));
-  window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshModelRoster);
+  subscribeConsoleChannel(MODEL_ROSTER_CHANGED_CHANNEL, () => window.dispatchEvent(new Event(OBJECTIVE_CATALOG_CHANGED_EVENT)));
+  window.addEventListener(OBJECTIVE_CATALOG_CHANGED_EVENT, refreshModelRoster);
   subscribeConsoleReconnect(refreshModelRoster);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshModelRoster();

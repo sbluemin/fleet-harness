@@ -1104,7 +1104,7 @@ export async function main(): Promise<void> {
       return;
     }
     if (hookCommand.command === "background-spawn" || hookCommand.command === "background-stop") {
-      // 퇴역한 이름은 퇴역 당시의 본문 형식을 그대로 보낸다. 업그레이드는 활성 Operation이 있으면 구 데몬을
+      // 퇴역한 이름은 퇴역 당시의 본문 형식을 그대로 보낸다. 업그레이드는 활성 Objective이 있으면 구 데몬을
       // 그대로 두는데(ensureDaemon의 workspaceCount 보호), 그 서버는 {event}만 이해하므로 새 형식을 보내면
       // 400으로 떨어져 살아 있는 세션의 백그라운드 축이 통째로 죽는다. 새 서버는 이 본문을 무의견으로 받고,
       // 그 세션의 실제 보고는 같은 새 바이너리가 보내는 turn-end payload가 담당한다.
@@ -1220,7 +1220,7 @@ const AGENT_CALL_TIMEOUT_MS = 5_000;
 /**
  * 서브에이전트 호출 하나를 Console에 묻고 거절 사유를 돌려준다. null은 허용이다.
  *
- * 이 세션의 식별자가 없으면 Console이 띄운 Operation이 아니므로 관여하지 않는다. 식별자가 있는데 Console이
+ * 이 세션의 식별자가 없으면 Console이 띄운 Objective이 아니므로 관여하지 않는다. 식별자가 있는데 Console이
  * 답하지 못하면(잠금 없음·시한 초과·오류 응답) 막는다 — 이 hook의 침묵은 곧 서브에이전트 실행이기 때문이다.
  */
 export async function decideAgentCall(sessionId: string | undefined, input: string, env: NodeJS.ProcessEnv, fetchImpl: typeof fetch = fetch): Promise<string | null> {

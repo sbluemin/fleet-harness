@@ -1,17 +1,16 @@
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
-import { normalizeOperationOwner } from "../../../../features/execution/shared/operations/types.js";
-import { liftNestedActivity } from "../../../../features/execution/shared/operations/activity.js";
+import { liftNestedActivity } from "../../../../features/objectives/shared/records/activity.js";
 import type { ClientNotification } from "../../../../features/execution/shared/notifications.js";
-import type { OperationRuntimeHydration, OperationRuntimeState } from "../../../../features/execution/shared/client-contract.js";
+import type { ObjectiveRuntimeHydration, ObjectiveRuntimeState } from "../../../../features/execution/shared/client-contract.js";
 
-import { buildOperationSearchEntries } from "./operation-search.js";
-import { fetchOperations, putOperationOrder } from "./api.js";
-import { clearLegacyOperationOrder, readLegacyOperationOrder } from "./legacy-operation-order.js";
+import { buildObjectiveSearchEntries } from "./objective-search.js";
+import { fetchObjectiveRecords, putObjectiveOrder } from "./api.js";
+import { clearLegacyObjectiveOrder, readLegacyObjectiveOrder } from "./legacy-objective-order.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
-import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
-import { noteOperationFocused } from "./palette-recent.js";
+import { acknowledgeIdleArrival } from "../../../../features/execution/client/objective-marks.js";
+import { noteObjectiveFocused } from "./palette-recent.js";
 import { stowExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { observeConsoleVersion } from "./console-version.js";
 import type {
@@ -21,9 +20,9 @@ import type {
   ControlHolder,
   NotificationKind,
   NotificationPreferences,
-  OperationGroup,
-  OperationNotification,
-  OperationNode,
+  ObjectiveGroup,
+  ObjectiveNotification,
+  ObjectiveRecord,
   ObserverStatus,
   NewSessionTarget,
   LaunchRequest,
@@ -57,7 +56,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 
 const listeners = new Set<Listener>();
 // 플러그인의 관측값은 원천으로 보존한다. 공개 축만 부모가 대표하는 구성원의 살아 있는 활동을 반영한다.
-let rawOperationRuntime: Readonly<Record<string, OperationRuntimeState>> = {};
+let rawObjectiveRuntime: Readonly<Record<string, ObjectiveRuntimeState>> = {};
 let nestedMembersByParent: ReadonlyMap<string, readonly string[]> = new Map();
 // 호스트가 붙잡은 Console/Computer 허용 요청도 사람의 답을 기다리는 활동이다.
 let pendingUseRequestIds: ReadonlySet<string> = new Set();
@@ -86,27 +85,27 @@ let state: ConsoleState = {
   effectivePort: 0,
   portHonored: true,
   theaters: [],
-  operations: [],
-  nestedOperations: [],
+  objectiveRecords: [],
+  nestedObjectiveRecords: [],
   nestedBodySelection: {},
-  operationsHydrated: false,
+  objectiveRecordsHydrated: false,
   groups: [],
-  activeOperationId: null,
-  activeOperationAcknowledged: true,
-  selectedOperationId: null,
-  operationRuntime: {},
+  activeObjectiveId: null,
+  activeObjectiveAcknowledged: true,
+  selectedObjectiveId: null,
+  objectiveRecordRuntime: {},
   // 기본은 ready 다. 런타임 축을 보고하는 플러그인이 스스로 pending 을 선언하고 시작하며,
   // 그런 플러그인이 하나도 없는 Console 은 기다릴 권위가 없으므로 처음부터 신뢰 가능한 상태다 —
   // 기본을 pending 으로 두면 아무도 보고하지 않는 설치에서 재개가 영구히 막힌다.
-  operationRuntimeHydration: "ready",
-  operationRuntimeError: null,
+  objectiveRecordRuntimeHydration: "ready",
+  objectiveRecordRuntimeError: null,
   addingTheater: false,
   theaterError: null,
-  operationsViewActive: false,
-  operationSearchOpen: false,
-  operationSearchSeed: null,
-  operationSearchSeedNonce: 0,
-  operationSearchMode: null,
+  objectiveRecordsViewActive: false,
+  objectiveRecordSearchOpen: false,
+  objectiveRecordSearchSeed: null,
+  objectiveRecordSearchSeedNonce: 0,
+  objectiveRecordSearchMode: null,
   mobileNewSessionOpen: false,
   newSessionSeed: null,
   pendingLaunch: null,
@@ -121,14 +120,14 @@ let state: ConsoleState = {
   selectedReleaseNoteKey: null,
   onboardingOpen: false,
   bootstrapped: false,
-  pendingOperationFocus: null,
+  pendingObjectiveFocus: null,
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   newSession: null,
   newSessionFocusRequest: 0,
   newSessionRejection: null,
   keyboardShortcutsOpen: false,
-  operationNotifications: {},
+  objectiveRecordNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
   codexReader: null,
   codexReaderExpanded: false,
@@ -146,51 +145,52 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export function setState(patch: Partial<ConsoleState>): void {
-  state = withLiveSelection({ ...state, ...partitionOperationsPatch(patch) });
+  state = withLiveSelection({ ...state, ...partitionObjectiveRecordsPatch(patch) });
   emit();
 }
 
 /**
- * 선택은 살아 있는 Operation 을 가리킬 때만 남는다 — 제거·보관이 어느 경로로 오든 여기 한 곳에서 거둔다. 사라진
- * Operation 을 가리킨 채 남으면 목표가 없는 문맥을 따라간다. Theater 사이 이동은 선택의 수명과 무관하다.
+ * 선택은 살아 있는 Objective 을 가리킬 때만 남는다 — 제거·보관이 어느 경로로 오든 여기 한 곳에서 거둔다. 사라진
+ * Objective 을 가리킨 채 남으면 목표가 없는 문맥을 따라간다. Theater 사이 이동은 선택의 수명과 무관하다.
  */
 function withLiveSelection(next: ConsoleState): ConsoleState {
-  const selectedId = next.selectedOperationId;
+  const selectedId = next.selectedObjectiveId;
   if (selectedId === null) return next;
-  const selected = next.operations.find((operation) => operation.id === selectedId);
-  if (selected && selectedId !== next.activeOperationId) return next;
-  return { ...next, selectedOperationId: null };
+  const selected = next.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === selectedId);
+  if (selected && selectedId !== next.activeObjectiveId) return next;
+  return { ...next, selectedObjectiveId: null };
 }
 
 /**
- * `operations`는 최상위 부모 목록이다. 각 부모의 `childSessions`에서 구성원 표시 뷰(`nestedOperations`)를
+ * `objectiveRecords`는 최상위 부모 목록이다. 각 부모의 `sessions`에서 구성원 표시 뷰(`nestedObjectiveRecords`)를
  * 매번 파생하며, 자식을 별도 평면 목록으로 저장하거나 방송하지 않는다.
  * 구성원 구성이 바뀌면 부모의 공개 활동(구성원의 대기·실행 끌어올리기)도 여기서 다시 센다.
  */
-function partitionOperationsPatch(patch: Partial<ConsoleState>): Partial<ConsoleState> {
-  if (!patch.operations) {
-    if (!("nestedOperations" in patch)) return patch;
-    const { nestedOperations: _derived, ...rest } = patch;
+function partitionObjectiveRecordsPatch(patch: Partial<ConsoleState>): Partial<ConsoleState> {
+  if (!patch.objectiveRecords) {
+    if (!("nestedObjectiveRecords" in patch)) return patch;
+    const { nestedObjectiveRecords: _derived, ...rest } = patch;
     return rest;
   }
-  const nested = patch.operations.flatMap((parent) => (parent.childSessions ?? []).map((child): OperationNode => ({
-    id: child.id, theaterId: parent.theaterId, type: "agent", pluginId: null,
-    title: child.id.slice(0, 8), payload: child.payload, geometry: null, ts: child.ts,
-    parentOperationId: parent.id,
-  })));
+  const nested = patch.objectiveRecords.flatMap((parent) => (parent.sessions ?? []).map((child): ObjectiveRecord => ({...(child),
+id: child.id,
+theaterId: parent.theaterId,
+title: child.id.slice(0, 8),
+ts: child.ts,
+parentObjectiveId: parent.id})));
   const members = membersByParent(nested);
   const membersChanged = !sameMembersByParent(members, nestedMembersByParent);
   nestedMembersByParent = members;
-  const derived = membersChanged && !("operationRuntime" in patch) ? deriveNestedRuntime(rawOperationRuntime, members, state.operationRuntime) : null;
-  return { ...patch, nestedOperations: nested, ...(derived && derived !== state.operationRuntime ? { operationRuntime: derived } : {}) };
+  const derived = membersChanged && !("objectiveRecordRuntime" in patch) ? deriveNestedRuntime(rawObjectiveRuntime, members, state.objectiveRecordRuntime) : null;
+  return { ...patch, nestedObjectiveRecords: nested, ...(derived && derived !== state.objectiveRecordRuntime ? { objectiveRecordRuntime: derived } : {}) };
 }
 
-function membersByParent(nested: readonly OperationNode[]): ReadonlyMap<string, readonly string[]> {
+function membersByParent(nested: readonly ObjectiveRecord[]): ReadonlyMap<string, readonly string[]> {
   const next = new Map<string, string[]>();
-  for (const operation of nested) {
-    const parentId = operation.parentOperationId!;
+  for (const objectiveRecord of nested) {
+    const parentId = objectiveRecord.parentObjectiveId!;
     const list = next.get(parentId);
-    if (list) list.push(operation.id); else next.set(parentId, [operation.id]);
+    if (list) list.push(objectiveRecord.id); else next.set(parentId, [objectiveRecord.id]);
   }
   return next;
 }
@@ -203,43 +203,43 @@ function sameMembersByParent(left: ReadonlyMap<string, readonly string[]>, right
 }
 
 /**
- * 전체 목록 — 구성원까지. 스토어 안의 쓰기는 구성원을 떨어뜨리지 않도록 이것을 고쳐 `operations` 로 다시 싣고,
- * 밖에서는 id 로 한 Operation 을 찾는 소비자(호출자 이름·제스처 대상)만 명시적으로 쓴다. 목록 표면은 `operations` 다.
+ * 전체 목록 — 구성원까지. 스토어 안의 쓰기는 구성원을 떨어뜨리지 않도록 이것을 고쳐 `objectiveRecords` 로 다시 싣고,
+ * 밖에서는 id 로 한 Objective 을 찾는 소비자(호출자 이름·제스처 대상)만 명시적으로 쓴다. 목록 표면은 `objectiveRecords` 다.
  */
-export function operationsIncludingNested(current: ConsoleState = state): readonly OperationNode[] {
-  return current.nestedOperations.length === 0 ? current.operations : [...current.operations, ...current.nestedOperations];
+export function objectiveRecordsIncludingNested(current: ConsoleState = state): readonly ObjectiveRecord[] {
+  return current.nestedObjectiveRecords.length === 0 ? current.objectiveRecords : [...current.objectiveRecords, ...current.nestedObjectiveRecords];
 }
-const allOperations = operationsIncludingNested;
+const allObjectiveRecords = objectiveRecordsIncludingNested;
 
-/** id 로 찾는다 — 기본 목록에 없는 구성원도 찾는다. 목록이 아니라 한 Operation 을 가리키는 소비자의 길이다. */
-export function findOperation(operationId: string, current: ConsoleState = state): OperationNode | null {
-  return current.operations.find((operation) => operation.id === operationId)
-    ?? current.nestedOperations.find((operation) => operation.id === operationId)
+/** id 로 찾는다 — 기본 목록에 없는 구성원도 찾는다. 목록이 아니라 한 Objective 을 가리키는 소비자의 길이다. */
+export function findObjective(objectiveId: string, current: ConsoleState = state): ObjectiveRecord | null {
+  return current.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === objectiveId)
+    ?? current.nestedObjectiveRecords.find((objectiveRecord) => objectiveRecord.id === objectiveId)
     ?? null;
 }
 
 /** 부모가 대표하는 구성원 — 부모 패널의 본문 교체·노드 줄처럼 구성원을 명시적으로 보는 자리가 읽는다. */
-export function nestedOperationsOf(parentOperationId: string, current: ConsoleState = state): readonly OperationNode[] {
-  return current.nestedOperations.filter((operation) => operation.parentOperationId === parentOperationId);
+export function nestedObjectiveRecordsOf(parentObjectiveId: string, current: ConsoleState = state): readonly ObjectiveRecord[] {
+  return current.nestedObjectiveRecords.filter((objectiveRecord) => objectiveRecord.parentObjectiveId === parentObjectiveId);
 }
 
-/** 부모 패널의 본문을 구성원으로 바꾸거나(`operationId`) 부모 자신으로 돌린다(`null`·부모 id). 세션은 그대로다. */
-export function selectNestedBody(parentOperationId: string, operationId: string | null): void {
-  const body = withNestedBody(parentOperationId, operationId);
+/** 부모 패널의 본문을 구성원으로 바꾸거나(`objectiveId`) 부모 자신으로 돌린다(`null`·부모 id). 세션은 그대로다. */
+export function selectNestedBody(parentObjectiveId: string, objectiveId: string | null): void {
+  const body = withNestedBody(parentObjectiveId, objectiveId);
   if ("nestedBodySelection" in body) setState(body);
 }
 
 /** 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다. */
-function nestedTarget(operationId: string): OperationNode | null {
-  return state.nestedOperations.find((operation) => operation.id === operationId) ?? null;
+function nestedTarget(objectiveId: string): ObjectiveRecord | null {
+  return state.nestedObjectiveRecords.find((objectiveRecord) => objectiveRecord.id === objectiveId) ?? null;
 }
 
-function withNestedBody(parentOperationId: string, bodyOperationId: string | null): Pick<ConsoleState, "nestedBodySelection"> | Record<string, never> {
-  const current = state.nestedBodySelection[parentOperationId];
-  const next = bodyOperationId && bodyOperationId !== parentOperationId ? bodyOperationId : undefined;
+function withNestedBody(parentObjectiveId: string, bodyObjectiveId: string | null): Pick<ConsoleState, "nestedBodySelection"> | Record<string, never> {
+  const current = state.nestedBodySelection[parentObjectiveId];
+  const next = bodyObjectiveId && bodyObjectiveId !== parentObjectiveId ? bodyObjectiveId : undefined;
   if (current === next) return {};
   const nestedBodySelection = { ...state.nestedBodySelection };
-  if (next) nestedBodySelection[parentOperationId] = next; else delete nestedBodySelection[parentOperationId];
+  if (next) nestedBodySelection[parentObjectiveId] = next; else delete nestedBodySelection[parentObjectiveId];
   return { nestedBodySelection };
 }
 
@@ -275,9 +275,9 @@ export function dismissControlCurtain(): void {
   setState({ controlCurtainDismissed: true });
 }
 
-export function setOperationsViewActive(active: boolean): void {
-  if (state.operationsViewActive === active) return;
-  setState({ operationsViewActive: active });
+export function setObjectiveRecordsViewActive(active: boolean): void {
+  if (state.objectiveRecordsViewActive === active) return;
+  setState({ objectiveRecordsViewActive: active });
 }
 
 export function setActiveTheme(theme: ThemeId): void {
@@ -470,81 +470,81 @@ export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
   hydrateTheaters(bootstrap.theaters);
 }
 
-export function hydrateOperations(operations: readonly OperationNode[]): void {
-  setState({ operations: operations.map(normalizeOperationOwner), operationsHydrated: true });
-  migrateLegacyOperationOrders(operations);
+export function hydrateObjectiveRecords(objectiveRecords: readonly ObjectiveRecord[]): void {
+  setState({ objectiveRecords: objectiveRecords, objectiveRecordsHydrated: true });
+  migrateLegacyObjectiveOrders(objectiveRecords);
 }
 
 // 초기 요청 응답이 늦는 동안 launch 수화가 먼저 도착할 수 있다. 그 패널을 초기 응답이 덮어쓰지 않게 합친다.
-export function hydrateInitialOperations(operations: readonly OperationNode[]): void {
-  const initialIds = new Set(operations.map((operation) => operation.id));
-  const launchedBeforeInitialHydration = state.operations.filter((operation) => !initialIds.has(operation.id));
-  setState({ operations: [...operations.map(normalizeOperationOwner), ...launchedBeforeInitialHydration], operationsHydrated: true });
-  migrateLegacyOperationOrders(operations);
+export function hydrateInitialObjectiveRecords(objectiveRecords: readonly ObjectiveRecord[]): void {
+  const initialIds = new Set(objectiveRecords.map((objectiveRecord) => objectiveRecord.id));
+  const launchedBeforeInitialHydration = state.objectiveRecords.filter((objectiveRecord) => !initialIds.has(objectiveRecord.id));
+  setState({ objectiveRecords: [...objectiveRecords, ...launchedBeforeInitialHydration], objectiveRecordsHydrated: true });
+  migrateLegacyObjectiveOrders(objectiveRecords);
 }
 
 const migratingOrderTheaters = new Set<string>();
 
-function migrateLegacyOperationOrders(operations: readonly OperationNode[]): void {
-  for (const theaterId of new Set(operations.map((operation) => operation.theaterId))) {
+function migrateLegacyObjectiveOrders(objectiveRecords: readonly ObjectiveRecord[]): void {
+  for (const theaterId of new Set(objectiveRecords.map((objectiveRecord) => objectiveRecord.theaterId))) {
     if (migratingOrderTheaters.has(theaterId)) continue;
-    const legacyOrder = readLegacyOperationOrder(theaterId);
+    const legacyOrder = readLegacyObjectiveOrder(theaterId);
     if (legacyOrder.length === 0) continue;
-    const theaterOperations = operations.filter((operation) => operation.theaterId === theaterId);
-    if (theaterOperations.some((operation) => operation.order !== undefined)) {
-      clearLegacyOperationOrder(theaterId);
+    const theaterObjectiveRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId);
+    if (theaterObjectiveRecords.some((objectiveRecord) => objectiveRecord.order !== undefined)) {
+      clearLegacyObjectiveOrder(theaterId);
       continue;
     }
-    const ids = new Set(theaterOperations.map((operation) => operation.id));
+    const ids = new Set(theaterObjectiveRecords.map((objectiveRecord) => objectiveRecord.id));
     const retained = legacyOrder.filter((id) => ids.has(id));
     if (retained.length === 0) {
-      clearLegacyOperationOrder(theaterId);
+      clearLegacyObjectiveOrder(theaterId);
       continue;
     }
     migratingOrderTheaters.add(theaterId);
-    void putOperationOrder(theaterId, retained).then((changed) => {
-      for (const operation of changed) applyOperationUpdate(operation);
-      clearLegacyOperationOrder(theaterId);
+    void putObjectiveOrder(theaterId, retained).then((changed) => {
+      for (const objectiveRecord of changed) applyObjectiveUpdate(objectiveRecord);
+      clearLegacyObjectiveOrder(theaterId);
     }).catch(() => {
       // 이관 실패 시 로컬 원본을 보존하고 다음 수화에서 다시 시도한다.
     }).finally(() => migratingOrderTheaters.delete(theaterId));
   }
 }
 
-export function operationOrderFromNodes(operations: readonly OperationNode[]): readonly string[] {
-  return [...operations].sort((left, right) => {
-    if (left.order !== undefined && right.order !== undefined) return left.order - right.order || compareOperationCreatedAt(left, right);
+export function objectiveRecordOrderFromNodes(objectiveRecords: readonly ObjectiveRecord[]): readonly string[] {
+  return [...objectiveRecords].sort((left, right) => {
+    if (left.order !== undefined && right.order !== undefined) return left.order - right.order || compareObjectiveCreatedAt(left, right);
     if (left.order !== undefined) return -1;
     if (right.order !== undefined) return 1;
-    return compareOperationCreatedAt(left, right);
-  }).map((operation) => operation.id);
+    return compareObjectiveCreatedAt(left, right);
+  }).map((objectiveRecord) => objectiveRecord.id);
 }
 
 const pendingOrders = new Map<string, Promise<void>>();
 const orderRevisions = new Map<string, number>();
 
-export function setOperationOrder(theaterId: string, ids: readonly string[]): void {
-  const theaterOperations = state.operations.filter((operation) => operation.theaterId === theaterId);
-  const valid = new Set(theaterOperations.map((operation) => operation.id));
+export function setObjectiveOrder(theaterId: string, ids: readonly string[]): void {
+  const theaterObjectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId);
+  const valid = new Set(theaterObjectiveRecords.map((objectiveRecord) => objectiveRecord.id));
   const orderedIds = [...new Set(ids.filter((id) => valid.has(id)))];
   const positions = new Map(orderedIds.map((id, index) => [id, index]));
   const revision = (orderRevisions.get(theaterId) ?? 0) + 1;
   orderRevisions.set(theaterId, revision);
-  setState({ operations: state.operations.map((operation) => operation.theaterId !== theaterId ? operation : {
-    ...operation,
-    order: positions.get(operation.id),
+  setState({ objectiveRecords: state.objectiveRecords.map((objectiveRecord) => objectiveRecord.theaterId !== theaterId ? objectiveRecord : {
+    ...objectiveRecord,
+    order: positions.get(objectiveRecord.id),
   }) });
   const previous = pendingOrders.get(theaterId) ?? Promise.resolve();
   // 같은 Theater의 두 드래그는 직렬 전송하되 화면은 즉시 최신 순서를 그린다.
   const commit = previous.then(async () => {
     try {
-      const changed = await putOperationOrder(theaterId, orderedIds);
-      if (orderRevisions.get(theaterId) === revision) for (const operation of changed) applyOperationUpdate(operation, true);
+      const changed = await putObjectiveOrder(theaterId, orderedIds);
+      if (orderRevisions.get(theaterId) === revision) for (const objectiveRecord of changed) applyObjectiveUpdate(objectiveRecord, true);
     } catch {
       if (orderRevisions.get(theaterId) !== revision) return;
       try {
-        const serverOperations = await fetchOperations();
-        if (orderRevisions.get(theaterId) === revision) hydrateOperations(serverOperations);
+        const serverObjectiveRecords = await fetchObjectiveRecords();
+        if (orderRevisions.get(theaterId) === revision) hydrateObjectiveRecords(serverObjectiveRecords);
       } catch { /* 연결 복구 후 SSE/다음 조회가 다시 동기화한다. */ }
     }
   });
@@ -554,49 +554,49 @@ export function setOperationOrder(theaterId: string, ids: readonly string[]): vo
     pendingOrders.delete(theaterId);
     // 요청 중에 눌러 둔 순서 사건은 다른 창·에이전트의 더 새 순서였을 수 있다 — 마지막 요청이 끝나면 서버 목록으로 한 번 맞춘다.
     if (!suppressedOrders.delete(theaterId)) return;
-    void fetchOperations().then((serverOperations) => {
-      if (!pendingOrders.has(theaterId)) hydrateOperations(serverOperations);
+    void fetchObjectiveRecords().then((serverObjectiveRecords) => {
+      if (!pendingOrders.has(theaterId)) hydrateObjectiveRecords(serverObjectiveRecords);
     }).catch(() => { /* 연결 복구 후 SSE/다음 조회가 다시 동기화한다. */ });
   });
 }
 
 const suppressedOrders = new Set<string>();
 
-export function applyOperationUpdate(operation: OperationNode, confirmedOrder = false): void {
+export function applyObjectiveUpdate(objectiveRecord: ObjectiveRecord, confirmedOrder = false): void {
   // 내 요청이 진행 중일 때 서버가 이전 순서의 개별 SSE를 보내도 낙관적 배치를 되돌리지 않는다.
-  if (!confirmedOrder && pendingOrders.has(operation.theaterId) && operation.order !== findOperation(operation.id)?.order) {
-    suppressedOrders.add(operation.theaterId);
-    operation = { ...operation, order: findOperation(operation.id)?.order };
+  if (!confirmedOrder && pendingOrders.has(objectiveRecord.theaterId) && objectiveRecord.order !== findObjective(objectiveRecord.id)?.order) {
+    suppressedOrders.add(objectiveRecord.theaterId);
+    objectiveRecord = { ...objectiveRecord, order: findObjective(objectiveRecord.id)?.order };
   }
-  const index = state.operations.findIndex((op) => op.id === operation.id);
-  const operations = [...state.operations];
-  // MCP·다른 창에서 생성한 Operation은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
-  if (index === -1) operations.push(normalizeOperationOwner(operation));
-  else operations[index] = normalizeOperationOwner(operation);
-  setState({ operations });
+  const index = state.objectiveRecords.findIndex((op) => op.id === objectiveRecord.id);
+  const objectiveRecords = [...state.objectiveRecords];
+  // MCP·다른 창에서 생성한 Objective은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
+  if (index === -1) objectiveRecords.push(objectiveRecord);
+  else objectiveRecords[index] = objectiveRecord;
+  setState({ objectiveRecords });
 }
 
 /**
- * 제거 사건 — 다른 창이나 에이전트가 닫은(삭제 유예에 들어간) Operation 을 재조회 없이 내린다.
+ * 제거 사건 — 다른 창이나 에이전트가 닫은(삭제 유예에 들어간) Objective 을 재조회 없이 내린다.
  * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 대화 화면이 사라진 본문를 기다린다.
  */
-export function applyOperationRemoved(operationId: string): void {
-  if (!findOperation(operationId)) return;
-  const operations = state.operations.filter((operation) => operation.id !== operationId);
-  const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
-  const activeOperationId = state.activeOperationId === operationId ? null : state.activeOperationId;
+export function applyObjectiveRemoved(objectiveId: string): void {
+  if (!findObjective(objectiveId)) return;
+  const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.id !== objectiveId);
+  const objectiveRecordNotifications = removeNotificationForObjective(state.objectiveRecordNotifications, objectiveId);
+  const activeObjectiveId = state.activeObjectiveId === objectiveId ? null : state.activeObjectiveId;
   // 사라진 구성원을 보이던 부모 패널은 부모 자신으로 돌아온다. 부모가 사라지면 그 선택도 거둔다.
-  const selection = Object.entries(state.nestedBodySelection).filter(([parentId, bodyId]) => parentId !== operationId && bodyId !== operationId);
+  const selection = Object.entries(state.nestedBodySelection).filter(([parentId, bodyId]) => parentId !== objectiveId && bodyId !== objectiveId);
   const nestedBodySelection = selection.length === Object.keys(state.nestedBodySelection).length ? state.nestedBodySelection : Object.fromEntries(selection);
-  setState({ operations, operationNotifications, activeOperationId, nestedBodySelection, ...(activeOperationId === null ? { activeOperationAcknowledged: true } : {}) });
+  setState({ objectiveRecords, objectiveRecordNotifications, activeObjectiveId, nestedBodySelection, ...(activeObjectiveId === null ? { activeObjectiveAcknowledged: true } : {}) });
 }
 
-export function hydrateGroups(groups: readonly OperationGroup[]): void {
+export function hydrateGroups(groups: readonly ObjectiveGroup[]): void {
   setState({ groups });
 }
 
 /** 그룹 사건 — 다른 클라이언트·에이전트가 만들거나 고친 그룹이 새로고침 없이 선다. 같은 사건으로 추가·갱신한다. */
-export function applyGroupUpdate(group: OperationGroup): void {
+export function applyGroupUpdate(group: ObjectiveGroup): void {
   const index = state.groups.findIndex((item) => item.id === group.id);
   const groups = [...state.groups];
   if (index === -1) groups.push(group);
@@ -611,89 +611,89 @@ export function applyGroupRemoved(groupId: string): void {
 
 // 구성원은 패널로 서지 않는다 — 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다.
 // 판정은 스토어의 구성원 목록 하나라 다른 셸(모바일)에서도 같다.
-export function setActiveOperation(
-  requestedOperationId: string | null,
+export function setActiveObjective(
+  requestedObjectiveId: string | null,
   options?: { readonly acknowledged?: boolean },
 ): void {
-  const nested = requestedOperationId === null ? null : nestedTarget(requestedOperationId);
-  const operationId = nested ? nested.parentOperationId! : requestedOperationId;
-  const acknowledged = operationId === null
+  const nested = requestedObjectiveId === null ? null : nestedTarget(requestedObjectiveId);
+  const objectiveId = nested ? nested.parentObjectiveId! : requestedObjectiveId;
+  const acknowledged = objectiveId === null
     ? true
     : options?.acknowledged === false
       ? false
-      : acknowledgeIdleArrival(operationId);
+      : acknowledgeIdleArrival(objectiveId);
   // 대화 화면·사이드바·모바일 셸의 보통 포커스는 여기로 온다 — 팔레트의 「최근」 순서가 그 손길에도 반응하려면
-  // 교차 Theater 전용 경로(focusOperation)만이 아니라 이 공용 활성화에서도 기록해야 한다.
-  if (operationId !== null) noteOperationFocused(operationId);
-  const body = nested ? withNestedBody(nested.parentOperationId!, nested.id) : {};
-  // 여는 것은 고르는 것을 덮는다 — 어느 경로로든 Operation 이 활성이 되면 사이드바의 선택은 끝난다.
-  const selection = operationId !== null && state.selectedOperationId !== null ? { selectedOperationId: null } : {};
-  // Operation 을 여는 것은 아직 보내지 않은 새 세션 화면을 걷는다 — 입력 전에는 만든 것이 없으니 남는 것도 없다.
-  const leaveNewSession = operationId !== null && state.newSession !== null ? { newSession: null } : {};
-  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedOperationId" in selection) && !("newSession" in leaveNewSession)) return;
-  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body, ...selection, ...leaveNewSession });
+  // 교차 Theater 전용 경로(focusObjective)만이 아니라 이 공용 활성화에서도 기록해야 한다.
+  if (objectiveId !== null) noteObjectiveFocused(objectiveId);
+  const body = nested ? withNestedBody(nested.parentObjectiveId!, nested.id) : {};
+  // 여는 것은 고르는 것을 덮는다 — 어느 경로로든 Objective 이 활성이 되면 사이드바의 선택은 끝난다.
+  const selection = objectiveId !== null && state.selectedObjectiveId !== null ? { selectedObjectiveId: null } : {};
+  // Objective 을 여는 것은 아직 보내지 않은 새 세션 화면을 걷는다 — 입력 전에는 만든 것이 없으니 남는 것도 없다.
+  const leaveNewSession = objectiveId !== null && state.newSession !== null ? { newSession: null } : {};
+  if (state.activeObjectiveId === objectiveId && state.activeObjectiveAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedObjectiveId" in selection) && !("newSession" in leaveNewSession)) return;
+  setState({ activeObjectiveId: objectiveId, activeObjectiveAcknowledged: acknowledged, ...body, ...selection, ...leaveNewSession });
 }
 
 /**
  * 열지 않고 고른다 — 「더블클릭으로 열기」를 켠 사이드바의 한 번 클릭. 활성·카메라·미확인 도착 표식은 건드리지 않는다
- * (setActiveOperation 은 도착을 확인 처리한다). 이미 활성인 것을 고르면 선택은 비어 있다.
+ * (setActiveObjective 은 도착을 확인 처리한다). 이미 활성인 것을 고르면 선택은 비어 있다.
  */
-export function selectOperation(operationId: string | null): void {
-  const next = operationId !== null && operationId === state.activeOperationId ? null : operationId;
-  if (state.selectedOperationId === next) return;
-  setState({ selectedOperationId: next });
+export function selectObjective(objectiveId: string | null): void {
+  const next = objectiveId !== null && objectiveId === state.activeObjectiveId ? null : objectiveId;
+  if (state.selectedObjectiveId === next) return;
+  setState({ selectedObjectiveId: next });
 }
 
 /**
- * 끌어올리기 전의 런타임 — 플러그인이 보고한 원 관측이다. 공개 축(`state.operationRuntime`)은 부모가 구성원의 대기·실행을
+ * 끌어올리기 전의 런타임 — 플러그인이 보고한 원 관측이다. 공개 축(`state.objectiveRecordRuntime`)은 부모가 구성원의 대기·실행을
  * 대표하므로, 부모 자신의 활동을 가려야 하는 소비자(목표 표면의 결정 대기)만 이것을 명시적으로 읽는다.
  */
-export function ownOperationRuntime(): Readonly<Record<string, OperationRuntimeState>> {
-  return rawOperationRuntime;
+export function ownObjectiveRuntime(): Readonly<Record<string, ObjectiveRuntimeState>> {
+  return rawObjectiveRuntime;
 }
 
-export function setOperationRuntime(operationId: string, next: OperationRuntimeState): void {
+export function setObjectiveRuntime(objectiveId: string, next: ObjectiveRuntimeState): void {
   // live/idle도 명시 항목으로 저장한다. 항목 삭제로 유휴를 표현하면 resumeAvailable 마커를 가진
-  // live 세션이 resolveOperationActivity 폭백에서 dormant로 재분류된다(Codex P1) —
+  // live 세션이 resolveObjectiveActivity 폭백에서 dormant로 재분류된다(Codex P1) —
   // "플러그인이 관측한 live idle"과 "미관측"은 구분되어야 한다.
-  if (sameRuntimeState(rawOperationRuntime[operationId], next)) return;
-  rawOperationRuntime = { ...rawOperationRuntime, [operationId]: next };
-  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
+  if (sameRuntimeState(rawObjectiveRuntime[objectiveId], next)) return;
+  rawObjectiveRuntime = { ...rawObjectiveRuntime, [objectiveId]: next };
+  setState({ objectiveRecordRuntime: deriveNestedRuntime(rawObjectiveRuntime, nestedMembersByParent, state.objectiveRecordRuntime) });
 }
 
-function sameRuntimeState(current: OperationRuntimeState | undefined, next: OperationRuntimeState): boolean {
+function sameRuntimeState(current: ObjectiveRuntimeState | undefined, next: ObjectiveRuntimeState): boolean {
   if (!current || current.lifecycle !== next.lifecycle) return false;
   if (current.lifecycle === "dormant" || next.lifecycle === "dormant") return true;
   return current.activity === next.activity;
 }
 
-export function clearOperationRuntime(operationId: string): void {
-  if (!(operationId in rawOperationRuntime)) return;
-  const next = { ...rawOperationRuntime };
-  delete next[operationId];
-  rawOperationRuntime = next;
-  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
+export function clearObjectiveRuntime(objectiveId: string): void {
+  if (!(objectiveId in rawObjectiveRuntime)) return;
+  const next = { ...rawObjectiveRuntime };
+  delete next[objectiveId];
+  rawObjectiveRuntime = next;
+  setState({ objectiveRecordRuntime: deriveNestedRuntime(rawObjectiveRuntime, nestedMembersByParent, state.objectiveRecordRuntime) });
 }
 
-export function setOperationUseRequestIds(ids: readonly string[]): void {
+export function setObjectiveUseRequestIds(ids: readonly string[]): void {
   const next = new Set(ids);
   if (next.size === pendingUseRequestIds.size && [...next].every((id) => pendingUseRequestIds.has(id))) return;
   pendingUseRequestIds = next;
-  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
+  setState({ objectiveRecordRuntime: deriveNestedRuntime(rawObjectiveRuntime, nestedMembersByParent, state.objectiveRecordRuntime) });
 }
 
 /** 부모의 공개 활동 — 살아 있는 구성원이 기다리면 부모도 대기, 일하면 부모는 백그라운드다. 부모 자신의 실행이 먼저다. */
 function deriveNestedRuntime(
-  raw: Readonly<Record<string, OperationRuntimeState>>,
+  raw: Readonly<Record<string, ObjectiveRuntimeState>>,
   membersByRoot: ReadonlyMap<string, readonly string[]>,
-  previous: Readonly<Record<string, OperationRuntimeState>>,
-): Readonly<Record<string, OperationRuntimeState>> {
-  const result: Record<string, OperationRuntimeState> = { ...raw };
+  previous: Readonly<Record<string, ObjectiveRuntimeState>>,
+): Readonly<Record<string, ObjectiveRuntimeState>> {
+  const result: Record<string, ObjectiveRuntimeState> = { ...raw };
   for (const id of pendingUseRequestIds) if (raw[id]?.lifecycle === "live") result[id] = { lifecycle: "live", activity: "awaiting" };
   for (const [rootId, memberIds] of membersByRoot) {
     const root = result[rootId];
     if (!root || root.lifecycle !== "live") continue;
-    const members = memberIds.map((id) => result[id]).filter((value): value is Extract<OperationRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
+    const members = memberIds.map((id) => result[id]).filter((value): value is Extract<ObjectiveRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
     const activity = liftNestedActivity(root.activity, members.map((member) => member.activity));
     if (activity !== root.activity) result[rootId] = { lifecycle: "live", activity };
   }
@@ -706,32 +706,32 @@ function deriveNestedRuntime(
 // 런타임 축의 신뢰도는 전역 하나로 둔다 — 지금 이 축을 보고하는 소유자는 터미널 플러그인 하나뿐이고,
 // degraded의 소비처도 전역 배너 하나다. 소유자가 늘어 서로 다른 신뢰도를 동시에 말해야 하는 날이
 // 오면 그때 pluginId 별 맵으로 쪼갠다. 어느 경우든 모르는 상태를 유휴로 접지 않는 계약은 같다.
-export function setOperationRuntimeHydration(next: OperationRuntimeHydration, error?: string): void {
+export function setObjectiveRuntimeHydration(next: ObjectiveRuntimeHydration, error?: string): void {
   const nextError = next === "degraded" ? error ?? null : null;
-  if (state.operationRuntimeHydration === next && state.operationRuntimeError === nextError) return;
-  setState({ operationRuntimeHydration: next, operationRuntimeError: nextError });
+  if (state.objectiveRecordRuntimeHydration === next && state.objectiveRecordRuntimeError === nextError) return;
+  setState({ objectiveRecordRuntimeHydration: next, objectiveRecordRuntimeError: nextError });
 }
 
-export function raiseOperationNotification(input: ClientNotification): void {
-  if (!input.operationId) return;
-  // 기본 목록의 Operation 만 알림을 쌓는다 — 구성원의 대기는 부모의 공개 활동(대기)이 이미 대표한다.
-  const operation = state.operations.find((item) => item.id === input.operationId);
-  if (!operation) return;
-  const theaterId = operation.theaterId ?? null;
+export function raiseObjectiveNotification(input: ClientNotification): void {
+  if (!input.objectiveId) return;
+  // 기본 목록의 Objective 만 알림을 쌓는다 — 구성원의 대기는 부모의 공개 활동(대기)이 이미 대표한다.
+  const objectiveRecord = state.objectiveRecords.find((item) => item.id === input.objectiveId);
+  if (!objectiveRecord) return;
+  const theaterId = objectiveRecord.theaterId ?? null;
   const theaterLabel = state.theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId ?? "Unknown";
-  const operationLabel = operation.title;
+  const objectiveRecordLabel = objectiveRecord.title;
   const kind = mapNotificationKind(input.kind);
   notificationSeq += 1;
   // 같은 패널의 알림은 누적하지 않고 최신 것으로 교체한다(last-writer-wins).
   setState({
-    operationNotifications: {
-      ...state.operationNotifications,
-      [input.operationId]: {
+    objectiveRecordNotifications: {
+      ...state.objectiveRecordNotifications,
+      [input.objectiveId]: {
         kind,
-        operationId: input.operationId,
+        objectiveId: input.objectiveId,
         theaterId,
         theaterLabel,
-        operationLabel,
+        objectiveRecordLabel,
         lastRaisedSeq: notificationSeq,
       },
     },
@@ -764,43 +764,43 @@ export function failAddTheater(error: string): void {
  * 레일과 사이드바는 건드리지 않는다.
  * 플러그인은 이동 전에 자기 표면을 따로 닫지 않는다 — 접힌 페인은 같은 인스턴스로 남는다.
  */
-export function revealOperationStage(): void {
+export function revealObjectiveStage(): void {
   stowExpandedSurfaces();
 }
 
 /**
- * 이동 — 팔레트·알림·목표 표면·플러그인의 「이 Operation 으로」. 본문이 이동을 따른다: 구성원을 가리키면 부모 패널이 그 구성원의
+ * 이동 — 팔레트·알림·목표 표면·플러그인의 「이 Objective 으로」. 본문이 이동을 따른다: 구성원을 가리키면 부모 패널이 그 구성원의
  * 본문을, 부모를 가리키면 부모 자신의 본문을 보인다(보던 구성원 본문에 가려 부모의 질문이 안 보이던 자리). Alt 순환처럼
  * 패널 사이를 걷는 이동은 `keepBody` 로 보던 본문을 그대로 둔다.
  */
-export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean }): void {
-  const nested = nestedTarget(requestedOperationId);
-  const operationId = nested ? nested.parentOperationId! : requestedOperationId;
-  const operation = state.operations.find((item) => item.id === operationId);
-  if (!operation) return;
-  revealOperationStage();
-  noteOperationFocused(operationId);
-  const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
-  const body = options?.keepBody === true && !nested ? {} : withNestedBody(operationId, nested ? nested.id : null);
+export function focusObjective(requestedObjectiveId: string, options?: { readonly keepBody?: boolean }): void {
+  const nested = nestedTarget(requestedObjectiveId);
+  const objectiveId = nested ? nested.parentObjectiveId! : requestedObjectiveId;
+  const objectiveRecord = state.objectiveRecords.find((item) => item.id === objectiveId);
+  if (!objectiveRecord) return;
+  revealObjectiveStage();
+  noteObjectiveFocused(objectiveId);
+  const activeObjectiveAcknowledged = acknowledgeIdleArrival(objectiveId);
+  const body = options?.keepBody === true && !nested ? {} : withNestedBody(objectiveId, nested ? nested.id : null);
   setState({
-    activeOperationId: operationId,
-    activeOperationAcknowledged,
-    pendingOperationFocus: operationId,
-    operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
-    selectedOperationId: null,
-    // 새 세션 화면에서 보낸 첫 메시지가 Operation 을 세우면 그 포커스가 화면을 걷는다(다른 길로 연 Operation 도 같다).
+    activeObjectiveId: objectiveId,
+    activeObjectiveAcknowledged,
+    pendingObjectiveFocus: objectiveId,
+    objectiveRecordNotifications: removeNotificationForObjective(state.objectiveRecordNotifications, objectiveId),
+    selectedObjectiveId: null,
+    // 새 세션 화면에서 보낸 첫 메시지가 Objective 을 세우면 그 포커스가 화면을 걷는다(다른 길로 연 Objective 도 같다).
     newSession: null,
     ...body,
   });
 }
 
-export function consumeOperationFocus(): void {
-  if (state.pendingOperationFocus === null) return;
-  setState({ pendingOperationFocus: null });
+export function consumeObjectiveFocus(): void {
+  if (state.pendingObjectiveFocus === null) return;
+  setState({ pendingObjectiveFocus: null });
 }
 
 // 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.
-// pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약.
+// pendingObjectiveFocus/consumeObjectiveFocus와 같은 request/consume 계약.
 export function requestSideBarAddTheater(): void {
   setState({ pendingSideBarAddTheater: true });
 }
@@ -810,17 +810,17 @@ export function consumeSideBarAddTheater(): void {
   setState({ pendingSideBarAddTheater: false });
 }
 
-export function requestOperationKeyboardFocus(operationId: string): void {
+export function requestObjectiveKeyboardFocus(objectiveId: string): void {
   setState({
     keyboardFocusRequest: {
-      operationId,
+      objectiveId,
       requestId: (state.keyboardFocusRequest?.requestId ?? 0) + 1,
     },
   });
 }
 
 /**
- * 본문에 「새 세션 화면」을 연다 — 사이드바 맨 위 「+」, 팔레트 「New Operation」, 새 세션 단축키. 여는 것만으로는 아무것도
+ * 본문에 「새 세션 화면」을 연다 — 사이드바 맨 위 「+」, 팔레트 「New Objective」, 새 세션 단축키. 여는 것만으로는 아무것도
  * 만들지 않고, 첫 메시지가 실행 의도(requestLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
  */
 export function openNewSession(target: NewSessionTarget): void {
@@ -839,7 +839,7 @@ export function closeNewSession(): void {
   setState({ newSession: null });
 }
 
-// 소비자(OperationsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
+// 소비자(ObjectiveRecordsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
 // consume은 UI 반응(다이얼로그 열림 등)을 동반하므로 경계 정리에는 쓸 수 없다.
 export function clearPendingSideBarSignals(): void {
   setState({ pendingSideBarAddTheater: false });
@@ -855,7 +855,7 @@ export function closeKeyboardShortcuts(): void {
   setState({ keyboardShortcutsOpen: false });
 }
 
-export function nextOperationId(order: readonly string[], currentId: string | null, delta: number): string | null {
+export function nextObjectiveId(order: readonly string[], currentId: string | null, delta: number): string | null {
   if (order.length === 0) return null;
   const current = currentId ? order.indexOf(currentId) : -1;
   const nextIndex = current === -1
@@ -864,52 +864,52 @@ export function nextOperationId(order: readonly string[], currentId: string | nu
   return order[nextIndex] ?? null;
 }
 
-// 그룹은 Operation과 같은 Theater일 때만 그 Operation에 적용된다.
-// 활성 Theater가 아니라 Operation 자신의 Theater를 기준 삼는다.
-// 서버 PATCH는 groupId가 문자열인지만 보고 Theater 소속을 검사하지 않으므로(operations-domain.ts),
-// API로 타 Theater 그룹이 붙은 Operation이 존재할 수 있다. 사이드바는 그 조합을 미분류로 읽으므로,
+// 그룹은 Objective과 같은 Theater일 때만 그 Objective에 적용된다.
+// 활성 Theater가 아니라 Objective 자신의 Theater를 기준 삼는다.
+// 서버 PATCH는 groupId가 문자열인지만 보고 Theater 소속을 검사하지 않으므로(objective-records-domain.ts),
+// API로 타 Theater 그룹이 붙은 Objective이 존재할 수 있다. 사이드바는 그 조합을 미분류로 읽으므로,
 // 이 검사가 없으면 캡션만 홀로 그룹 이름을 주장해 두 면이 서로를 부정한다.
-export function resolveOperationGroup(
-  operation: OperationNode,
-  groupById: ReadonlyMap<string, OperationGroup>,
-): OperationGroup | null {
-  if (!operation.groupId) return null;
-  const group = groupById.get(operation.groupId);
-  if (!group || group.theaterId !== operation.theaterId) return null;
+export function resolveObjectiveGroup(
+  objectiveRecord: ObjectiveRecord,
+  groupById: ReadonlyMap<string, ObjectiveGroup>,
+): ObjectiveGroup | null {
+  if (!objectiveRecord.groupId) return null;
+  const group = groupById.get(objectiveRecord.groupId);
+  if (!group || group.theaterId !== objectiveRecord.theaterId) return null;
   return group;
 }
 
-// GROUP 축 SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
+// GROUP 축 SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Objective 정렬을 이 한 함수로 단일화한다.
 // order가 있는 노드는 서버 순서, 나머지는 생성 순서로 뒤에 붙는다.
-export function sortOperationsByOrder(
-  operations: readonly OperationNode[],
-  operationOrder: readonly string[],
-): readonly OperationNode[] {
-  if (operationOrder.length === 0) return [...operations].sort(compareOperationCreatedAt);
-  const explicitOrder = new Map(operationOrder.map((id, index) => [id, index]));
-  return [...operations].sort((left, right) => {
+export function sortObjectiveRecordsByOrder(
+  objectiveRecords: readonly ObjectiveRecord[],
+  objectiveRecordOrder: readonly string[],
+): readonly ObjectiveRecord[] {
+  if (objectiveRecordOrder.length === 0) return [...objectiveRecords].sort(compareObjectiveCreatedAt);
+  const explicitOrder = new Map(objectiveRecordOrder.map((id, index) => [id, index]));
+  return [...objectiveRecords].sort((left, right) => {
     const leftIndex = explicitOrder.get(left.id);
     const rightIndex = explicitOrder.get(right.id);
     if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex;
     if (leftIndex !== undefined) return -1;
     if (rightIndex !== undefined) return 1;
-    return compareOperationCreatedAt(left, right);
+    return compareObjectiveCreatedAt(left, right);
   });
 }
 
-// 그룹 적용 visible 순서(비-collapsed 그룹 order → 그룹 내 operationOrder → ungrouped)로 flatten한 배열을 반환.
+// 그룹 적용 visible 순서(비-collapsed 그룹 order → 그룹 내 objectiveRecordOrder → ungrouped)로 flatten한 배열을 반환.
 // GROUP 축 SideBar visible 순서와 Alt+←/→ cycling 순서의 공유 SSoT.
 // collapsedGroups: 접힌 그룹 id 목록 — 해당 그룹의 멤버는 결과에서 제외한다.
 export function flattenGroupedOrder(
-  operations: readonly OperationNode[],
-  groups: readonly OperationGroup[],
-  operationOrder: readonly string[],
+  objectiveRecords: readonly ObjectiveRecord[],
+  groups: readonly ObjectiveGroup[],
+  objectiveRecordOrder: readonly string[],
   collapsedGroups: readonly string[] = [],
-): readonly OperationNode[] {
-  const sorted = sortOperationsByOrder(operations, operationOrder);
+): readonly ObjectiveRecord[] {
+  const sorted = sortObjectiveRecordsByOrder(objectiveRecords, objectiveRecordOrder);
   const collapsedSet = new Set(collapsedGroups);
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
-  const buckets = new Map<string | null, OperationNode[]>();
+  const buckets = new Map<string | null, ObjectiveRecord[]>();
   for (const group of sortedGroups) buckets.set(group.id, []);
   buckets.set(null, []);
   for (const op of sorted) {
@@ -929,36 +929,36 @@ export function flattenGroupedOrder(
 }
 
 // Alt+←/→는 그룹 배치 순서를 따른다. 사이드바의 'Sort by status' 축은 이 순서에 관여하지 않는다.
-export function focusCycleOperationIds(
-  operations: readonly OperationNode[],
-  groups: readonly OperationGroup[],
-  operationOrder: readonly string[],
+export function focusCycleObjectiveIds(
+  objectiveRecords: readonly ObjectiveRecord[],
+  groups: readonly ObjectiveGroup[],
+  objectiveRecordOrder: readonly string[],
   collapsedGroups: readonly string[],
 ): readonly string[] {
-  return flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups)
-    .map((operation) => operation.id);
+  return flattenGroupedOrder(objectiveRecords, groups, objectiveRecordOrder, collapsedGroups)
+    .map((objectiveRecord) => objectiveRecord.id);
 }
 
-export function compareOperationCreatedAt(left: OperationNode, right: OperationNode): number {
+export function compareObjectiveCreatedAt(left: ObjectiveRecord, right: ObjectiveRecord): number {
   return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
 
-export function openOperationSearch(seed?: string): void {
-  setState({ operationSearchOpen: true, operationSearchSeed: seed ?? null, operationSearchSeedNonce: state.operationSearchSeedNonce + 1 });
+export function openObjectiveSearch(seed?: string): void {
+  setState({ objectiveRecordSearchOpen: true, objectiveRecordSearchSeed: seed ?? null, objectiveRecordSearchSeedNonce: state.objectiveRecordSearchSeedNonce + 1 });
 }
 
-export function closeOperationSearch(): void {
-  setState({ operationSearchOpen: false, operationSearchSeed: null, operationSearchMode: null });
+export function closeObjectiveSearch(): void {
+  setState({ objectiveRecordSearchOpen: false, objectiveRecordSearchSeed: null, objectiveRecordSearchMode: null });
 }
 
-export function toggleOperationSearch(): void {
-  if (state.operationSearchOpen) closeOperationSearch();
-  else openOperationSearch();
+export function toggleObjectiveSearch(): void {
+  if (state.objectiveRecordSearchOpen) closeObjectiveSearch();
+  else openObjectiveSearch();
 }
 
-export function setOperationSearchMode(mode: ConsoleState["operationSearchMode"]): void {
-  if (state.operationSearchMode === mode) return;
-  setState({ operationSearchMode: mode });
+export function setObjectiveSearchMode(mode: ConsoleState["objectiveRecordSearchMode"]): void {
+  if (state.objectiveRecordSearchMode === mode) return;
+  setState({ objectiveRecordSearchMode: mode });
 }
 
 /**
@@ -1009,8 +1009,8 @@ export function consumeNewSessionRejection(): void {
   setState({ newSessionRejection: null });
 }
 
-// pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
-// 실행 좌표·포커스 승계는 Operations 화면이 자기 규율로 처리한다.
+// pendingObjectiveFocus/consumeObjectiveFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
+// 실행 좌표·포커스 승계는 ObjectiveRecords 화면이 자기 규율로 처리한다.
 export function requestLaunch(request: LaunchRequest): void {
   setState({ pendingLaunch: request });
 }
@@ -1114,53 +1114,53 @@ export async function migrateStoredCommissioningSeen(): Promise<boolean> {
 
 export function removeTheater(theaterId: string): void {
   const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
-  const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
-  const removedOperationIds = new Set(allOperations().filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
-  const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
-  const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
+  const objectiveRecordNotifications = pruneNotificationsForTheater(state.objectiveRecordNotifications, theaterId);
+  const removedObjectiveIds = new Set(allObjectiveRecords().filter((objectiveRecord) => objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id));
+  const activeObjectiveId = state.activeObjectiveId && removedObjectiveIds.has(state.activeObjectiveId) ? null : state.activeObjectiveId;
+  const activeObjectiveAcknowledged = activeObjectiveId === null ? true : state.activeObjectiveAcknowledged;
   // 사라진 Theater를 겨눈 실행 요청도 함께 버린다.
   const pendingLaunch = state.pendingLaunch?.theaterId === theaterId ? null : state.pendingLaunch;
   // 잊은 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
   const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
-  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingLaunch, newSession });
+  setState({ theaters, activeObjectiveId, activeObjectiveAcknowledged, objectiveRecordNotifications, pendingLaunch, newSession });
 }
 
-export function dismissNotificationsForOperation(operationId: string): void {
-  const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
-  if (operationNotifications === state.operationNotifications) return;
-  setState({ operationNotifications });
+export function dismissNotificationsForObjective(objectiveId: string): void {
+  const objectiveRecordNotifications = removeNotificationForObjective(state.objectiveRecordNotifications, objectiveId);
+  if (objectiveRecordNotifications === state.objectiveRecordNotifications) return;
+  setState({ objectiveRecordNotifications });
 }
 
-export function operationSearchEntries(current: ConsoleState) {
-  return buildOperationSearchEntries(current);
+export function objectiveRecordSearchEntries(current: ConsoleState) {
+  return buildObjectiveSearchEntries(current);
 }
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function removeNotificationForOperation(
-  notifications: Readonly<Record<string, OperationNotification>>,
-  operationId: string,
-): Readonly<Record<string, OperationNotification>> {
-  if (!notifications[operationId]) return notifications;
+function removeNotificationForObjective(
+  notifications: Readonly<Record<string, ObjectiveNotification>>,
+  objectiveId: string,
+): Readonly<Record<string, ObjectiveNotification>> {
+  if (!notifications[objectiveId]) return notifications;
   const next = { ...notifications };
-  delete next[operationId];
+  delete next[objectiveId];
   return next;
 }
 
 function pruneNotificationsForTheater(
-  notifications: Readonly<Record<string, OperationNotification>>,
+  notifications: Readonly<Record<string, ObjectiveNotification>>,
   theaterId: string,
-): Readonly<Record<string, OperationNotification>> {
+): Readonly<Record<string, ObjectiveNotification>> {
   let changed = false;
-  const next: Record<string, OperationNotification> = {};
-  for (const [operationId, notification] of Object.entries(notifications)) {
+  const next: Record<string, ObjectiveNotification> = {};
+  for (const [objectiveId, notification] of Object.entries(notifications)) {
     if (notification.theaterId === theaterId) {
       changed = true;
       continue;
     }
-    next[operationId] = notification;
+    next[objectiveId] = notification;
   }
   return changed ? next : notifications;
 }

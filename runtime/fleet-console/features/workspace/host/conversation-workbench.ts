@@ -15,7 +15,7 @@ import {
 } from "../shared/conversation-workbench.js";
 
 /**
- * 대화별 도구 작업대 배치 — 대화 키(`operation:<id>` 등) → 열린 도구·순서·비율·펼침. Console 서버가 유일한 writer 다.
+ * 대화별 도구 작업대 배치 — 대화 키(`objectiveRecord:<id>` 등) → 열린 도구·순서·비율·펼침. Console 서버가 유일한 writer 다.
  *
  * 배치는 화면 배치라 잃어도 일이 멈추지 않는다 — 손상된 파일이나 항목은 정제기가 버리고 그 대화는 빈 작업대로 다시 선다.
  * 절대 경로처럼 보이는 params 는 정제기가 걷으므로 이 파일과 응답에 원시 경로가 남지 않는다.
@@ -24,11 +24,11 @@ import {
 export const CONVERSATION_WORKBENCH_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Read the saved tool split layout of each conversation.", category: "Workspace", gate: "loopback", transport: "http" },
   { method: "PUT", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Save or clear one conversation's tool split layout.", category: "Workspace", gate: "origin-write", transport: "http" },
-  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Operation conversation's work location as a Theater-relative coordinate.", category: "Workspace", gate: "loopback", transport: "http" },
+  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's work location as a Theater-relative coordinate.", category: "Workspace", gate: "loopback", transport: "http" },
 ];
 
 /**
- * 대화의 작업 위치 — 그 Operation 의 작업 폴더(payload cwd)를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
+ * 대화의 작업 위치 — 그 Objective 의 작업 폴더(payload cwd)를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
  * 작업 폴더가 없거나, 사라졌거나, Theater 밖이면 Theater 루트다(사람이 다시 고르지 않는다 — 가장 안전한 기본값).
  */
 export function resolveConversationWorkLocation(input: {
@@ -77,10 +77,10 @@ export function createConversationWorkbenchRouter(deps: {
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly now?: () => number;
   /**
-   * Operation(또는 구성원 세션) id → 그 대화의 작업 위치. 모르는 id 면 null. `folder`(Theater 상대)를 주면 세션이 옮겨 간 그
+   * Objective(또는 구성원 세션) id → 그 대화의 작업 위치. 모르는 id 면 null. `folder`(Theater 상대)를 주면 세션이 옮겨 간 그
    * 폴더를 분류한다 — 브라우저가 이미 받은 「지금 어디」 투영이다. 루트 밖으로 오르거나 실제로 밖을 가리키면 루트다.
    */
-  readonly locate?: (operationId: string, folder: string | null) => ConversationWorkLocation | null;
+  readonly locate?: (objectiveId: string, folder: string | null) => ConversationWorkLocation | null;
 }) {
   const now = deps.now ?? Date.now;
   return async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
@@ -90,10 +90,10 @@ export function createConversationWorkbenchRouter(deps: {
         return true;
       }
       const query = new URL(req.url ?? "", "http://localhost").searchParams;
-      const operationId = query.get("operationId");
+      const objectiveId = query.get("objectiveId");
       const folder = query.get("folder");
-      const location = operationId && deps.locate ? deps.locate(operationId, folder) : null;
-      if (location === null) deps.writeJson(res, 404, { error: "operation_not_found" });
+      const location = objectiveId && deps.locate ? deps.locate(objectiveId, folder) : null;
+      if (location === null) deps.writeJson(res, 404, { error: "objectiveRecord_not_found" });
       else deps.writeJson(res, 200, { location });
       return true;
     }

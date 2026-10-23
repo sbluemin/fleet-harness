@@ -11,50 +11,50 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../../../features/execution/c
 import { formatAbsoluteDateTime } from "../../i18n/format.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
-import type { OperationNode } from "../../integration/types.js";
+import type { ObjectiveRecord } from "../../integration/types.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { PaneBody, usePaneContext } from "../pane/pane-body.js";
 import { usePaneIndex, useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
-import { useRegisteredConversationOperationTabs } from "../rail/operation-tabs.js";
+import { useRegisteredConversationObjectiveTabs } from "../rail/objective-tabs.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { ConversationAvatar, useMobileConversationOf } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
-import { operationHarnessLabel } from "./mobile-operation-label.js";
-import { mobileOperationMenuItems } from "./mobile-operation-menu.js";
-import { conversationTabId, pushMobileSheet, setMobileDestination, useMobileDestination, useMobileOperationMenu } from "./mobile-store.js";
+import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
+import { mobileObjectiveMenuItems } from "./mobile-objective-menu.js";
+import { conversationTabId, pushMobileSheet, setMobileDestination, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
-  /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationOperationTab`) — 데스크톱과 같은 원천이다. */
+  /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationObjectiveTab`) — 데스크톱과 같은 원천이다. */
   | { readonly kind: "panel"; readonly id: string; readonly title: string; readonly render: (ctx: RailPanelContext) => React.ReactNode }
   /** 레일 엔트리가 `conversationTab`과 `mobile.conversationPane`으로 선언한 도구(목표) — 그 페인을 탭 본문에 그대로 세운다. */
   | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
 
 /**
- * 대화 정보 화면 — Operation 화면 머리 pill이 연다. 큰 아바타 · 제목 카드 · 탭. 탭은 「정보」(모델·강도·하네스·Theater·이름 변경·보관과,
+ * 대화 정보 화면 — Objective 화면 머리 pill이 연다. 큰 아바타 · 제목 카드 · 탭. 탭은 「정보」(모델·강도·하네스·Theater·이름 변경·보관과,
  * 본문이 ⋮에 끼운 항목 — 터미널로 보기 등)와, 데스크톱 오른쪽 패널과 같은 원천의 탭들이다: 대화 탭 등록부(구성원 등)의 탭은 그 본문을 그대로
- * 그리고, `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Operation으로 세운다(막대 창구 없이 — 동작은 본문이 그린다).
+ * 그리고, `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Objective으로 세운다(막대 창구 없이 — 동작은 본문이 그린다).
  * 구성원 탭에서 구성원을 고르면 그 대화로 돌아간다. 고른 탭은 목적지(`?dest=info:<탭>`)가 들어 새로고침·착지 요청이 그 탭을 세운다.
  */
-export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
-  readonly operation: OperationNode;
-  /** 지금 본문을 보이는 Operation — 지휘관이 구성원 본문을 고르고 있으면 그 구성원. */
-  readonly bodyOwner: OperationNode;
+export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }: {
+  readonly objectiveRecord: ObjectiveRecord;
+  /** 지금 본문을 보이는 Objective — 지휘관이 구성원 본문을 고르고 있으면 그 구성원. */
+  readonly bodyOwner: ObjectiveRecord;
   readonly onArchive: () => void;
 }) {
   const t = useT();
   const locale = useConsoleLocale();
   const state = useConsoleState();
   const capabilities = useHostCapabilities();
-  const conversation = useMobileConversationOf(state)(operation);
-  const theater = state.theaters.find((item) => item.id === operation.theaterId) ?? null;
-  const bodyItems = useMobileOperationMenu(bodyOwner.id);
-  const registered = useRegisteredConversationOperationTabs();
+  const conversation = useMobileConversationOf(state)(objectiveRecord);
+  const theater = state.theaters.find((item) => item.id === objectiveRecord.theaterId) ?? null;
+  const bodyItems = useMobileObjectiveMenu(bodyOwner.id);
+  const registered = useRegisteredConversationObjectiveTabs();
   const bindings = useRailEntries();
   const destination = useMobileDestination();
   const tabId = destination.kind === "info" ? destination.tab ?? "info" : "info";
   const setTabId = useCallback((id: string) => setMobileDestination(id === "info" ? { kind: "info" } : { kind: "info", tab: id }), []);
-  const paneShown = useConversationPaneShown(bindings, operation.id);
+  const paneShown = useConversationPaneShown(bindings, objectiveRecord.id);
   const paneTabsKey = useSyncExternalStore(
     (listener) => {
       const offs = bindings.flatMap((binding) => {
@@ -64,7 +64,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
       return () => { for (const off of offs) off(); };
     },
     () => JSON.stringify(bindings.map((binding) => {
-      const value = binding.entry.mobile?.conversationPane?.tabs?.read(operation.id);
+      const value = binding.entry.mobile?.conversationPane?.tabs?.read(objectiveRecord.id);
       return [binding.entry.id, value?.selected, value?.tabs.map((item) => [item.id, resolveLocalizedText(item.title, locale), item.replacesMembers, item.dot?.tone, item.dot && resolveLocalizedText(item.dot.label, locale)])];
     })),
   );
@@ -74,7 +74,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
   const tabs = useMemo<readonly InfoTab[]>(() => {
     const list: InfoTab[] = [{ kind: "info", id: "info", title: t("mobile.info.tabInfo") }];
     // 「구성원」 탭은 데스크톱에서는 1:1 대화에도 「참여자 1」로 서지만, 폰의 정보 화면은 구성원이 있는 묶음에서만 세운다.
-    const hasMembers = conversation.memberCount > 0 || state.nestedOperations.some((nested) => nested.parentOperationId === operation.id);
+    const hasMembers = conversation.memberCount > 0 || state.nestedObjectiveRecords.some((nested) => nested.parentObjectiveId === objectiveRecord.id);
     for (const tab of registered) {
       if (tab.section !== undefined || (tab.id === CONVERSATION_MEMBERS_TAB_ID && !hasMembers)) continue;
       list.push({ kind: "panel", id: tab.id, title: resolveLocalizedText(tab.title, locale), render: tab.render });
@@ -84,7 +84,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
       if (binding.entry.conversationTab !== true || pane === undefined || binding.entry.visible?.() === false || !paneShown.has(binding.entry.id)) continue;
       const routeId = conversationTabId(binding.entry.id);
       const source = pane.tabs;
-      const views = source?.read(operation.id);
+      const views = source?.read(objectiveRecord.id);
       if (source && views && views.tabs.length > 0) {
         if (views.tabs.some((view) => view.replacesMembers)) {
           const memberIndex = list.findIndex((item) => item.id === CONVERSATION_MEMBERS_TAB_ID);
@@ -94,13 +94,13 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
           kind: "pane", id: `${routeId}:${view.id}`, routeId, paneId: pane.paneId,
           title: resolveLocalizedText(view.title, locale), selected: view.id === views.selected,
           ...(view.replacesMembers ? { replacesMembers: true } : {}),
-          select: () => source.select(view.id, operation.id),
+          select: () => source.select(view.id, objectiveRecord.id),
           ...(view.dot ? { dot: { tone: view.dot.tone, label: resolveLocalizedText(view.dot.label, locale) } } : {}),
         });
       } else list.push({ kind: "pane", id: routeId, routeId, title: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale), paneId: pane.paneId, selected: true });
     }
     return list;
-  }, [bindings, conversation.memberCount, locale, operation.id, paneShown, paneTabsKey, registered, state.nestedOperations, t]);
+  }, [bindings, conversation.memberCount, locale, objectiveRecord.id, paneShown, paneTabsKey, registered, state.nestedObjectiveRecords, t]);
   const tab = tabs.find((item) => item.id === tabId)
     ?? (tabId === CONVERSATION_MEMBERS_TAB_ID ? tabs.find((item) => item.kind === "pane" && item.replacesMembers) : undefined)
     ?? tabs.find((item) => item.kind === "pane" && item.routeId === tabId && item.selected)
@@ -117,7 +117,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
     }
     const selected = tabs.find((item) => item.kind === "pane" && item.routeId === tab.routeId && item.selected);
     if (!selected) return;
-    const navigationKey = `${operation.id}:${tabId}`;
+    const navigationKey = `${objectiveRecord.id}:${tabId}`;
     if (paneNavigation.current?.route !== navigationKey) {
       paneNavigation.current = { route: navigationKey, selected: selected.id };
       if (tab.id === tabId && !tab.selected) tab.select?.();
@@ -127,7 +127,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
       paneNavigation.current.selected = selected.id;
       if (tabId !== selected.id) setTabId(selected.id);
     }
-  }, [operation.id, setTabId, tab, tabId, tabs]);
+  }, [objectiveRecord.id, setTabId, tab, tabId, tabs]);
   useEffect(() => {
     const strip = tabsRef.current;
     const selected = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
@@ -148,8 +148,8 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
   }, [tabs.length, paneTabsKey]);
 
   // 구성원 탭에서 구성원(또는 지휘관)을 고르면 그 본문이 대화 화면에 서므로 정보 화면을 닫고 돌아간다 — 선택이 바뀐 것을 본다.
-  const selection = state.nestedBodySelection[operation.id] ?? null;
-  const commanderLedger = useCommanderLedgerChosen(operation.id);
+  const selection = state.nestedBodySelection[objectiveRecord.id] ?? null;
+  const commanderLedger = useCommanderLedgerChosen(objectiveRecord.id);
   const initialRef = useRef({ selection, commanderLedger });
   useEffect(() => {
     if (initialRef.current.selection === selection && initialRef.current.commanderLedger === commanderLedger) return;
@@ -162,17 +162,17 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
     leading: "back",
     onBack: () => setMobileDestination({ kind: "home" }),
     menu: {
-      label: t("mobile.bar.operationMenu"),
-      caption: operation.title,
-      items: mobileOperationMenuItems({ operation, bodyItems, t, onArchive }),
+      label: t("mobile.bar.objectiveRecordMenu"),
+      caption: objectiveRecord.title,
+      items: mobileObjectiveMenuItems({ objectiveRecord, bodyItems, t, onArchive }),
     },
   });
 
-  const harnessLabel = operationHarnessLabel(operation, t);
-  const coordinates = readAgentChatSessionCoordinates(operation.payload);
+  const harnessLabel = objectiveRecordHarnessLabel(objectiveRecord, t);
+  const coordinates = readAgentChatSessionCoordinates(objectiveRecord);
   const hasCoordinates = harnessLabel !== undefined;
   const panelContext: RailPanelContext = {
-    theaterId: operation.theaterId,
+    theaterId: objectiveRecord.theaterId,
     pathContext: { kind: "root", relPath: null, label: theater?.label ?? "" },
     api: capabilities.api,
     rail: capabilities.rail,
@@ -185,8 +185,8 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
     <section className="mobile-info-screen">
       <div className="mobile-info-hero">
         <ConversationAvatar conversation={conversation} size={110} />
-        <button type="button" data-press="r1" className="mobile-info-title" onClick={() => pushMobileSheet({ kind: "rename", operationId: operation.id })}>
-          <strong>{operation.title}</strong>
+        <button type="button" data-press="r1" className="mobile-info-title" onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>
+          <strong>{objectiveRecord.title}</strong>
           <small>{[theater?.label, harnessLabel].filter(Boolean).join(" · ")}</small>
         </button>
       </div>
@@ -233,11 +233,11 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
               <div className="mobile-group-row">
                 <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="info" /></span>
                 <span className="mobile-group-row-copy">{t("mobile.info.started")}</span>
-                <span className="mobile-group-row-value">{formatAbsoluteDateTime(operation.ts.createdAt, locale)}</span>
+                <span className="mobile-group-row-value">{formatAbsoluteDateTime(objectiveRecord.ts.createdAt, locale)}</span>
               </div>
             </div>
             <div className="mobile-group">
-              <button type="button" className="mobile-group-row" onClick={() => pushMobileSheet({ kind: "rename", operationId: operation.id })}>
+              <button type="button" className="mobile-group-row" onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>
                 <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="pencil" /></span>
                 <span className="mobile-group-row-copy">{t("mobile.menu.rename")}</span>
               </button>
@@ -253,7 +253,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
           </div>
         ) : (
           <div className="mobile-info-panel" key={tab.id}>
-            <MobileConversationPane paneId={tab.paneId} operationId={operation.id} theaterId={operation.theaterId} panelContext={panelContext} />
+            <MobileConversationPane paneId={tab.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} />
           </div>
         )}
       </div>
@@ -262,48 +262,48 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
 }
 
 /** 대화 탭을 선언한 엔트리 가운데 이 대화에 탭을 세우는 것(`conversationPane.shown`) — 엔트리마다 구독해 판정이 바뀌면 다시 그린다. */
-function useConversationPaneShown(bindings: readonly RailEntryBinding[], operationId: string): ReadonlySet<string> {
+function useConversationPaneShown(bindings: readonly RailEntryBinding[], objectiveId: string): ReadonlySet<string> {
   const key = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.mobile?.conversationPane?.shown ? [binding.entry.mobile.conversationPane.shown.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => shownPaneKey(bindings, operationId),
-    () => shownPaneKey(bindings, operationId),
+    () => shownPaneKey(bindings, objectiveId),
+    () => shownPaneKey(bindings, objectiveId),
   );
   return useMemo(() => new Set(key === "" ? [] : key.split("|")), [key]);
 }
 
-function shownPaneKey(bindings: readonly RailEntryBinding[], operationId: string): string {
+function shownPaneKey(bindings: readonly RailEntryBinding[], objectiveId: string): string {
   return bindings.filter((binding) => {
     const pane = binding.entry.mobile?.conversationPane;
-    return pane !== undefined && pane.shown?.get(operationId) !== false;
+    return pane !== undefined && pane.shown?.get(objectiveId) !== false;
   }).map((binding) => binding.entry.id).join("|");
 }
 
 const NO_OP = () => undefined;
 
 /**
- * 대화 탭의 본문 — 엔트리가 `mobile.conversationPane`으로 말한 페인을 그 대화 주인 Operation(`params.operationId`)으로 세운다. 막대 창구(`mobileBar`)는
+ * 대화 탭의 본문 — 엔트리가 `mobile.conversationPane`으로 말한 페인을 그 대화 주인 Objective(`params.objectiveId`)으로 세운다. 막대 창구(`mobileBar`)는
  * 싣지 않는다 — 이 화면의 막대는 정보 화면의 것이다. 닫을 자리가 없으므로 닫기·주소 바꾸기는 아무 일도 하지 않는다.
  */
-function MobileConversationPane({ paneId, operationId, theaterId, panelContext }: { readonly paneId: string; readonly operationId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
+function MobileConversationPane({ paneId, objectiveId, theaterId, panelContext }: { readonly paneId: string; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
   const descriptor = usePaneIndex().get(paneId);
   if (!descriptor) return null;
   return (
     <FeatureErrorBoundary fallback={null}>
-      <MobileConversationPaneBody key={`${paneId}:${operationId}`} descriptor={descriptor} operationId={operationId} theaterId={theaterId} panelContext={panelContext} />
+      <MobileConversationPaneBody key={`${paneId}:${objectiveId}`} descriptor={descriptor} objectiveId={objectiveId} theaterId={theaterId} panelContext={panelContext} />
     </FeatureErrorBoundary>
   );
 }
 
-function MobileConversationPaneBody({ descriptor, operationId, theaterId, panelContext }: { readonly descriptor: PaneDescriptor; readonly operationId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
+function MobileConversationPaneBody({ descriptor, objectiveId, theaterId, panelContext }: { readonly descriptor: PaneDescriptor; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
   const capabilities = useHostCapabilities();
-  const params = useMemo(() => ({ operationId }), [operationId]);
+  const params = useMemo(() => ({ objectiveId }), [objectiveId]);
   const ctx = usePaneContext({
     descriptor,
     mount: "rail",
-    instanceId: `mobile-conversation:${descriptor.id}:${operationId}`,
+    instanceId: `mobile-conversation:${descriptor.id}:${objectiveId}`,
     params,
     visible: true,
     focused: true,

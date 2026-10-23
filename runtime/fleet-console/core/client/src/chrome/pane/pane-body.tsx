@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { OpenLinkHandler } from "@fleet-console/link/core";
-import type { OperationLaunchKind } from "../../../../../features/execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../../../../features/objectives/shared/records/types.js";
 import type { ConversationToolScope, PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "../../../../../features/workspace/shared/pane.js";
 import type { ClientApiCapability, ClientLifecycleCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
@@ -45,7 +45,7 @@ export interface PaneContextInput {
   readonly isOpen?: (paneId: string) => boolean;
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
-  readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly legacyLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
   /** 이 페인이 놓인 대화 — 데스크톱 대화의 도구 칸에서만 실린다. */
   readonly conversation?: ConversationToolScope;
@@ -72,7 +72,7 @@ export function usePaneContext({
   isOpen,
   requestExtraWidth,
   legacySurfaces,
-  legacyLaunchOperation,
+  legacyLaunchObjective,
   openLink,
   conversation,
 }: PaneContextInput): HostPaneContext {
@@ -148,10 +148,10 @@ export function usePaneContext({
     sideBarVisible,
     ...(mobileBar === null ? {} : { mobileBar }),
     legacySurfaces,
-    legacyLaunchOperation,
+    legacyLaunchObjective,
     ...(openLink === undefined ? {} : { openLink }),
     ...(conversation === undefined ? {} : { conversation }),
-  }), [opening, api, conversation, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+  }), [opening, api, conversation, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchObjective, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

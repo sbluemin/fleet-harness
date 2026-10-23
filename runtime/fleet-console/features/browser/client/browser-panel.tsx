@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { OperationRenderContext } from "../../execution/shared/client-contract.js";
+import type { ObjectiveRenderContext } from "../../execution/shared/client-contract.js";
 import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
 
@@ -10,14 +10,14 @@ import "./browser-panel.css";
 
 export interface BrowserClientServices {
   readonly isDesktopShell: () => boolean;
-  readonly themePolarity: (theme: OperationRenderContext["theme"]) => "light" | "dark";
-  readonly pushComposerInbox: (operationId: string, entry: { readonly files: readonly File[] }) => void;
+  readonly themePolarity: (theme: ObjectiveRenderContext["theme"]) => "light" | "dark";
+  readonly pushComposerInbox: (objectiveId: string, entry: { readonly files: readonly File[] }) => void;
   readonly subscribeConsoleChannel: (channel: string, listener: (payload: unknown) => void) => () => void;
 }
-interface BrowserProps { readonly context: OperationRenderContext; readonly services: BrowserClientServices }
+interface BrowserProps { readonly context: ObjectiveRenderContext; readonly services: BrowserClientServices }
 
 /**
- * Operation Browser companion — Console 서버가 소유한 탭을 창을 든 Fleet Desktop 이 이 패널 자리에 실제 브라우저 뷰로
+ * Objective Browser companion — Console 서버가 소유한 탭을 창을 든 Fleet Desktop 이 이 패널 자리에 실제 브라우저 뷰로
  * 그린다. 사람은 그 뷰를 직접 보고 만진다. 에이전트가 조작 중이면 배지 채널로 테두리를 칠하고 「중단」을 둔다.
  *
  * 이 패널은 픽셀을 받지 않는다. 자기 자리를 서버에 알리고(셸이 그 자리에 뷰를 놓는다), 가려지는 부분이 있으면 그만큼
@@ -25,10 +25,10 @@ interface BrowserProps { readonly context: OperationRenderContext; readonly serv
  * 보인다. 브라우저 탭·모바일로 연 Console 에는 뷰가 없으므로 문이 닫혀 있다.
  *
  * 주석 도구 하나가 요소 댓글·펜·화살표·사각형을 품는다. 주석 모드에 들어가면 한 장을 찍어 그 위에 그리고 그동안 뷰는 감춘다.
- * 첨부는 스크린샷 한 장이고 붙여넣기로 간다: 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
- * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다. 보내는 것은 언제나 사람이다.
+ * 첨부는 스크린샷 한 장이고 붙여넣기로 간다: 채팅 Objective 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
+ * Objective 이면 서버가 CLI 가 도는 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다. 보내는 것은 언제나 사람이다.
  *
- * 세션은 둘 중 하나다: 닫히면 사라지는 **임시 세션**(기본)이거나, 이 기계에 남아 모든 Operation 이 함께 쓰는
+ * 세션은 둘 중 하나다: 닫히면 사라지는 **임시 세션**(기본)이거나, 이 기계에 남아 모든 Objective 이 함께 쓰는
  * **내 프로필**이거나. 캡션의 표식이 지금 어느 쪽인지 말하고 거기서 바꾼다. 로그인 상태는 창을 든 기계의
  * Google Chrome 프로필에서 쿠키로 가져올 수 있다 — Desktop 셸이 읽어 지금 쓰는 세션에만 넣는다.
  */
@@ -37,14 +37,14 @@ interface TabState { readonly id: string; readonly url: string; readonly title: 
 interface Viewport { readonly width: number; readonly height: number; readonly scale: number; readonly preset: "responsive" | "mobile" | "tablet"; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 type UnavailableReason = "desktop_required" | "shared";
 interface BrowserState {
-  /** 한 스트림에 모든 Operation 의 상태가 흐르므로 프레임이 자기 주인을 싣는다. */
-  readonly operationId: string;
+  /** 한 스트림에 모든 Objective 의 상태가 흐르므로 프레임이 자기 주인을 싣는다. */
+  readonly objectiveId: string;
   readonly tabs: readonly TabState[]; readonly activeTabId: string | null; readonly viewport: Viewport; readonly driving: boolean;
   readonly consoleErrors: number; readonly engine: "idle" | "starting" | "ready" | "failed"; readonly engineError: string | null;
   readonly available: boolean; readonly reason: UnavailableReason | null;
-  /** 이 Operation 이 쓰는 영속 프로필. `null` 이면 임시 세션이다. */
+  /** 이 Objective 이 쓰는 영속 프로필. `null` 이면 임시 세션이다. */
   readonly profile: string | null;
-  /** 새 Operation 의 브라우저가 시작하는 세션 — Console 전체의 설정. */
+  /** 새 Objective 의 브라우저가 시작하는 세션 — Console 전체의 설정. */
   readonly defaultProfile: string | null;
 }
 interface Frame { readonly tabId: string; readonly data: string; readonly mime: "image/jpeg" | "image/png"; readonly width: number; readonly height: number }
@@ -58,7 +58,7 @@ interface Pin { readonly x: number; readonly y: number; readonly text: string; r
 /** 주석 하나 — 요소에 단 댓글(번호 핀)이거나 손으로 그린 표시. 순서가 곧 번호다. */
 type Mark = { readonly kind: "stroke"; readonly stroke: Stroke } | { readonly kind: "pin"; readonly pin: Pin };
 
-/** Operation 스트림에 실려 오는 브라우저 상태 프레임 (호스트의 같은 이름). */
+/** Objective 스트림에 실려 오는 브라우저 상태 프레임 (호스트의 같은 이름). */
 const BROWSER_STATE_EVENT = "browser:state";
 /**
  * 영속 프로필의 id. 지금은 하나뿐이라 화면에서는 「내 프로필」한 낱말로 읽힌다 — 이름을 붙인 여러 프로필은
@@ -66,10 +66,10 @@ const BROWSER_STATE_EVENT = "browser:state";
  */
 const BROWSER_PROFILE = "default";
 
-const base = (operationId: string) => `/api/v1/browser/operations/${encodeURIComponent(operationId)}`;
+const base = (objectiveId: string) => `/api/v1/browser/objectives/${encodeURIComponent(objectiveId)}`;
 
-async function post(operationId: string, action: string, body: Record<string, unknown>): Promise<Response> {
-  return fetch(`${base(operationId)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function post(objectiveId: string, action: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`${base(objectiveId)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
 /** Blob → base64 본문. 데이터 URL 의 머리(`data:…;base64,`)를 뗀다. */
@@ -83,14 +83,14 @@ function base64Of(blob: Blob): Promise<string> {
 }
 
 /**
- * 이 패널은 자기 스트림을 열지 않는다. 브라우저 상태는 이미 열려 있는 Operation 스트림의 `browser:state` 로 오고,
+ * 이 패널은 자기 스트림을 열지 않는다. 브라우저 상태는 이미 열려 있는 Objective 스트림의 `browser:state` 로 오고,
  * 여기서는 붙는 순간의 출발점만 한 번 읽는다.
  *
  * 스트림을 하나 더 여는 일이 공짜가 아니기 때문이다 — 브라우저는 origin 하나에 연결을 여섯 개까지만 열고, 그 예산이
  * 다 차면 이 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다(눌러도 아무 일이 없고, 스트림 하나가 닫혀야 그제야 밀린
  * 요청이 나간다). 원격 콘솔에서는 창을 든 셸의 배관도 같은 예산을 쓰므로 그 여섯이 훨씬 빨리 찬다.
  */
-function useBrowserStream(operationId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
+function useBrowserStream(objectiveId: string, enabled: boolean, subscribeConsoleChannel: BrowserClientServices["subscribeConsoleChannel"]) {
   const [state, setState] = React.useState<BrowserState | null>(null);
   const [connection, setConnection] = React.useState<Connection>(enabled ? "connecting" : "disabled");
   React.useEffect(() => {
@@ -102,14 +102,14 @@ function useBrowserStream(operationId: string, enabled: boolean, subscribeConsol
     setConnection("connecting");
     const receive = (payload: unknown) => {
       const next = payload as BrowserState | null;
-      // 한 스트림에 모든 Operation 의 상태가 흐른다 — 내 것만 받는다.
-      if (disposed || !next || next.operationId !== operationId) return;
+      // 한 스트림에 모든 Objective 의 상태가 흐른다 — 내 것만 받는다.
+      if (disposed || !next || next.objectiveId !== objectiveId) return;
       streamed = true;
       setState(next);
       setConnection("open");
     };
     const unsubscribe = subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
-    void fetch(`${base(operationId)}/state`)
+    void fetch(`${base(objectiveId)}/state`)
       .then(async (response) => {
         if (!response.ok) { if (!disposed) setConnection("closed"); return; }
         const body = await response.json() as BrowserState;
@@ -117,7 +117,7 @@ function useBrowserStream(operationId: string, enabled: boolean, subscribeConsol
       })
       .catch(() => { if (!disposed) setConnection("closed"); });
     return () => { disposed = true; unsubscribe(); };
-  }, [operationId, enabled, subscribeConsoleChannel]);
+  }, [objectiveId, enabled, subscribeConsoleChannel]);
   return { state, connection };
 }
 
@@ -224,14 +224,14 @@ const MonitorGlyph = () => glyph('<rect x="1.5" y="2.5" width="13" height="8.5" 
 const PhoneGlyph = () => glyph('<rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.2h2"/>');
 const TabletGlyph = () => glyph('<rect x="2.5" y="1.5" width="11" height="13" rx="1.5"/><path d="M7 12.4h2"/>');
 const ReloadGlyph = () => glyph('<path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 1v3M6.5 2.5 8 4l1.5-1.5"/>');
-/** 「새 Operation의 기본으로」 — 행 끝에 올렸을 때만 서는 핀. */
+/** 「새 Objective의 기본으로」 — 행 끝에 올렸을 때만 서는 핀. */
 const PinGlyph = () => glyph('<path d="M6.2 2.5h3.6l-.5 3.3 2 2v1.1H4.7V7.8l2-2z"/><path d="M8 8.9v4.5"/>');
 const EraseGlyph = () => glyph('<path d="M2.6 4.4h10.8"/><path d="M6.4 4.4V2.9h3.2v1.5"/><path d="M4 4.4l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/>');
 
 /** 탭 아이콘 — 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
-function TabIcon({ operationId, tab }: { readonly operationId: string; readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
+function TabIcon({ objectiveId, tab }: { readonly objectiveId: string; readonly tab: { readonly id: string; readonly favicon: string | null; readonly loading: boolean } }) {
   const [broken, setBroken] = React.useState<string | null>(null);
-  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(operationId)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
+  if (tab.favicon && broken !== tab.favicon) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
@@ -309,8 +309,8 @@ export async function resolveSessionBrowserTarget(target: SessionBrowserTarget):
 
 export interface SessionBrowserPanelProps {
   readonly ownerId: string;
-  readonly language: OperationRenderContext["language"];
-  readonly theme: OperationRenderContext["theme"];
+  readonly language: ObjectiveRenderContext["language"];
+  readonly theme: ObjectiveRenderContext["theme"];
   readonly bodyLive?: boolean;
   readonly services: Pick<BrowserClientServices, "isDesktopShell" | "themePolarity" | "subscribeConsoleChannel">;
   readonly onAttach?: (files: readonly File[]) => void;
@@ -318,20 +318,20 @@ export interface SessionBrowserPanelProps {
 }
 
 export function SessionBrowserCaption({ ownerId, language }: Pick<SessionBrowserPanelProps, "ownerId" | "language">) {
-  return <BrowserCaption context={{ operationId: ownerId, language }} />;
+  return <BrowserCaption context={{ objectiveId: ownerId, language }} />;
 }
 
-export function BrowserCaption({ context }: { readonly context: Pick<OperationRenderContext, "operationId" | "language">; readonly services?: BrowserClientServices }) {
+export function BrowserCaption({ context }: { readonly context: Pick<ObjectiveRenderContext, "objectiveId" | "language">; readonly services?: BrowserClientServices }) {
   const t = getT(context.language ?? "en");
-  const panel = useBrowserPanel(context.operationId);
+  const panel = useBrowserPanel(context.objectiveId);
   const importUnavailable = chromeImportUnavailable();
   const [viewportMenu, setViewportMenu] = React.useState(false);
   const [profileMenu, setProfileMenu] = React.useState(false);
   // 열린 메뉴는 본문 영역까지 내려온다 — 네이티브 뷰가 물러서지 않으면 그 아래가 가려지고 클릭도 받지 못한다.
   React.useEffect(() => {
-    publishBrowserCaptionOverlay(context.operationId, viewportMenu || profileMenu);
-    return () => publishBrowserCaptionOverlay(context.operationId, false);
-  }, [context.operationId, viewportMenu, profileMenu]);
+    publishBrowserCaptionOverlay(context.objectiveId, viewportMenu || profileMenu);
+    return () => publishBrowserCaptionOverlay(context.objectiveId, false);
+  }, [context.objectiveId, viewportMenu, profileMenu]);
   const stop = (event: React.SyntheticEvent) => { event.stopPropagation(); };
   const driving = panel?.driving === true;
   const ready = panel !== null && panel.available && !panel.busy;
@@ -345,7 +345,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<OperationRe
       <div className="op-browser-cap__tabs" role="tablist" aria-label={t("terminal.browser.tabs")}>
         {(panel?.tabs ?? []).map((tab) => (
           <div key={tab.id} role="tab" aria-selected={tab.id === panel?.activeTabId} className={`op-browser__tab${tab.id === panel?.activeTabId ? " is-active" : ""}`} onMouseDown={(event) => { if (event.button === 1) { event.preventDefault(); panel?.actions.closeTab(tab.id); } }} onClick={() => { if (tab.id !== panel?.activeTabId) panel?.actions.selectTab(tab.id); }} title={tab.url}>
-            <TabIcon operationId={context.operationId} tab={tab} />
+            <TabIcon objectiveId={context.objectiveId} tab={tab} />
             <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
             <button type="button" className="op-browser__tab-close" aria-label={t("terminal.browser.closeTab")} onClick={(event) => { event.stopPropagation(); panel?.actions.closeTab(tab.id); }}>×</button>
           </div>
@@ -371,7 +371,7 @@ export function BrowserCaption({ context }: { readonly context: Pick<OperationRe
           <div className="op-browser__menu" role="menu">
             {/* 세션 행은 button 이 아니다 — 행 끝의 핀이 자기 버튼을 가져야 하고, button 안의 button 은 HTML 이 허용하지 않는다.
                 기본인 행은 끝에 「기본」 한 낱말을 늘 보이고, 다른 행은 올렸을 때만 핀을 내민다. 핀은 기본만 옮기고
-                이 Operation 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
+                이 Objective 의 세션은 건드리지 않는다 — 그래서 메뉴도 닫지 않는다. 표식이 옮겨 가는 것이 곧 답이다. */}
             {([null, BROWSER_PROFILE] as const).map((value) => (
               <div
                 key={value ?? "ephemeral"}
@@ -444,24 +444,24 @@ export function BrowserCaption({ context }: { readonly context: Pick<OperationRe
 }
 
 export function BrowserPanel({ context, services }: BrowserProps) {
-  const chatMode = context.operation.payload.chatMode === true;
-  return <SessionBrowserPanel ownerId={context.operationId} language={context.language} theme={context.theme} bodyLive={context.bodyLive} services={services}
-    terminalPaste={!chatMode} onAttach={chatMode ? (files) => services.pushComposerInbox(context.operationId, { files }) : undefined} />;
+  const chatMode = context.objectiveRecord.chatMode === true;
+  return <SessionBrowserPanel ownerId={context.objectiveId} language={context.language} theme={context.theme} bodyLive={context.bodyLive} services={services}
+    terminalPaste={!chatMode} onAttach={chatMode ? (files) => services.pushComposerInbox(context.objectiveId, { files }) : undefined} />;
 }
 
-export function SessionBrowserPanel({ ownerId: operationId, language, theme, bodyLive, services, onAttach, terminalPaste = false }: SessionBrowserPanelProps) {
+export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bodyLive, services, onAttach, terminalPaste = false }: SessionBrowserPanelProps) {
   const { isDesktopShell, themePolarity } = services;
   const t = getT(language ?? "en");
   // 브라우저 탭·모바일에는 뷰를 그릴 셸이 없다 — 서버에 묻지 않고 닫힌 문만 보인다.
   const desktop = isDesktopShell();
-  const { state, connection } = useBrowserStream(operationId, desktop, services.subscribeConsoleChannel);
+  const { state, connection } = useBrowserStream(objectiveId, desktop, services.subscribeConsoleChannel);
   const available = desktop && state?.available === true;
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const captionOverlay = useBrowserCaptionOverlay(operationId);
+  const captionOverlay = useBrowserCaptionOverlay(objectiveId);
   const [notice, setNotice] = React.useState<string | null>(null);
-  /** 정보 안내 한 줄. 동사가 붙을 수 있다 — 세션을 바꾼 직후 「새 Operation도 이렇게 열기」처럼, 그 순간에만 뜻이 있는 손잡이. */
+  /** 정보 안내 한 줄. 동사가 붙을 수 있다 — 세션을 바꾼 직후 「새 Objective도 이렇게 열기」처럼, 그 순간에만 뜻이 있는 손잡이. */
   const [info, setInfoState] = React.useState<{ readonly text: string; readonly action?: { readonly label: string; readonly run: () => void } } | null>(null);
   const setInfo = React.useCallback((next: string | { readonly text: string; readonly action?: { readonly label: string; readonly run: () => void } } | null) => { setInfoState(typeof next === "string" ? { text: next } : next); }, []);
   const [mode, setMode] = React.useState<Mode>("none");
@@ -481,13 +481,13 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
   React.useEffect(() => {
     if (mode !== "annotate" || !activeTab) { setStillFrame(null); return; }
     let disposed = false;
-    void fetch(`${base(operationId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
       if (!response.ok || disposed) return;
       const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
       if (!disposed) setStillFrame({ tabId: activeTab.id, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height });
     }).catch(() => undefined);
     return () => { disposed = true; };
-  }, [mode, activeTab?.id, operationId]);
+  }, [mode, activeTab?.id, objectiveId]);
   const shownFrame = stillFrame && activeTab && stillFrame.tabId === activeTab.id ? stillFrame : null;
   React.useEffect(() => { if (mode === "annotate" && !activeTab) setMode("none"); }, [mode, activeTab]);
 
@@ -520,12 +520,12 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         const key = JSON.stringify(body);
         if (placeRef.current !== key) {
           placeRef.current = key;
-          void post(operationId, "place", body).catch(() => undefined);
+          void post(objectiveId, "place", body).catch(() => undefined);
         }
       }
     });
     return () => cancelAnimationFrame(frameId);
-  }, [backdropFrame, operationId]);
+  }, [backdropFrame, objectiveId]);
 
   // ---- 네이티브 뷰의 자리 ----
   // 셸은 렌더러와 말을 섞지 않는다. 이 패널이 자기 자리(가려지지 않은 부분)를 서버에 알리고, 셸은 서버의 스냅샷을 보고
@@ -559,7 +559,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
       const key = JSON.stringify(body);
       if (placeRef.current === key) return;
       placeRef.current = key;
-      void post(operationId, "place", body).catch(() => undefined);
+      void post(objectiveId, "place", body).catch(() => undefined);
     };
 
     const captureBackdrop = (tabId: string, url: string, parkBounds: Record<string, unknown>) => {
@@ -581,7 +581,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
 
       void (async () => {
         try {
-          const response = await fetch(`${base(operationId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
           if (!response.ok) throw new Error("capture_failed");
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
 
@@ -627,7 +627,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
       const { id: tabId, url } = tab;
       void (async () => {
         try {
-          const response = await fetch(`${base(operationId)}/screenshot`, { signal: controller.signal });
+          const response = await fetch(`${base(objectiveId)}/screenshot`, { signal: controller.signal });
           if (!response.ok) return;
           const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
           const img = new Image();
@@ -775,14 +775,14 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
-  }, [available, operationId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
       placeRef.current = "";
-      void post(operationId, "place", { visible: false }).catch(() => undefined);
+      void post(objectiveId, "place", { visible: false }).catch(() => undefined);
     }
-  }, [operationId]);
+  }, [objectiveId]);
 
   React.useEffect(() => { if (!editingUrl) setUrlDraft(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? ""); }, [activeTab?.url, editingUrl]);
   // 손잡이가 붙은 안내는 읽고 누를 시간을 더 준다.
@@ -797,8 +797,8 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     if (!available) return;
     if (schemeNow === polarity) return;
     if (schemeNow !== null && schemeSetBy === "agent") return;
-    void post(operationId, "viewport", { colorScheme: polarity });
-  }, [operationId, polarity, available, schemeNow, schemeSetBy]);
+    void post(objectiveId, "viewport", { colorScheme: polarity });
+  }, [objectiveId, polarity, available, schemeNow, schemeSetBy]);
 
   const fail = async (response: Response) => {
     let message = t("terminal.browser.requestFailed");
@@ -813,7 +813,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
   const run = async <T,>(action: string, body: Record<string, unknown>): Promise<T | null> => {
     setBusy(true);
     setNotice(null);
-    try { const response = await post(operationId, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
+    try { const response = await post(objectiveId, action, body); if (!response.ok) { await fail(response); return null; } return await response.json() as T; }
     catch { setNotice(t("terminal.browser.requestFailed")); return null; }
     finally { setBusy(false); }
   };
@@ -847,7 +847,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
   const [hover, setHover] = React.useState<ElementInfo | null>(null);
   const inspectPending = React.useRef(false);
   const inspect = async (x: number, y: number): Promise<ElementInfo | null> => {
-    const response = await post(operationId, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
+    const response = await post(objectiveId, "inspect", { x, y, tabId: activeTab?.id ?? null }).catch(() => null);
     if (!response || !response.ok) return null;
     const body = await response.json() as { element: ElementInfo | null };
     return body.element;
@@ -855,8 +855,8 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
 
   // ---- 첨부 → 이 세션의 입력창 ----
   /**
-   * 스크린샷을 이 Operation 의 입력에 붙여넣는다. 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
-   * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 이미지를 올린 뒤 Ctrl+V 를 눌러 준다 — 렌더러의 클립보드는
+   * 스크린샷을 이 Objective 의 입력에 붙여넣는다. 채팅 Objective 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
+   * Objective 이면 서버가 CLI 가 도는 기계의 클립보드에 이미지를 올린 뒤 Ctrl+V 를 눌러 준다 — 렌더러의 클립보드는
    * 창을 든 기계의 것이라 원격 콘솔이면 엉뚱하고, 같은 기계여도 키보다 늦게 실려 CLI 가 빈 클립보드를 읽었다. 보내지는 않는다.
    */
   const deliver = async (kind: "annotation" | "screenshot", blob: Blob): Promise<boolean> => {
@@ -868,7 +868,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         return true;
       }
       if (!terminalPaste) return false;
-      const response = await post(operationId, "paste", { data: await base64Of(blob) });
+      const response = await post(objectiveId, "paste", { data: await base64Of(blob) });
       if (!response.ok) {
         let code: string | null = null;
         try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
@@ -893,7 +893,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
   };
   const attachScreenshot = () => {
     // 뷰에는 이미지가 없다 — 서버가 한 장을 찍어 준다(CSS px 크기의 PNG).
-    void fetch(`${base(operationId)}/screenshot`).then(async (response) => {
+    void fetch(`${base(objectiveId)}/screenshot`).then(async (response) => {
       if (!response.ok) { setNotice(t("terminal.browser.requestFailed")); return; }
       const shot = await response.json() as { data: string };
       const bytes = Uint8Array.from(atob(shot.data), (char) => char.charCodeAt(0));
@@ -974,7 +974,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
   const commentStyle = (p: { x: number; y: number }) => { const at = stagePoint(p); const width = imageRef.current?.clientWidth ?? 0; return { left: Math.max(8, Math.min(at.left - 14, width - 328)), top: at.top + 18 }; };
 
   const setViewport = (preset: Viewport["preset"]) => { void run("viewport", { preset }); };
-  // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Operation 의 세션에 넣는다 ----
+  // ---- Chrome 에서 가져오기 — 창을 든 기계의 Chrome 프로필을 셸이 세고, 고른 프로필의 쿠키를 이 Objective 의 세션에 넣는다 ----
   const openImport = async () => {
     if (chromeImportUnavailable()) return;
     const loaded = await loadChromeImportSources(t);
@@ -997,7 +997,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
       if (ok) setInfo({ text: next ? t("terminal.browser.profile.switchedPersistent") : t("terminal.browser.profile.switchedEphemeral"), ...(ok.defaultProfile !== next ? { action: { label: t("terminal.browser.profile.alsoDefault"), run: () => { void setDefaultProfile(next); } } } : {}) });
     } finally { setProfileBusy(false); setProfileSwitch(undefined); }
   };
-  /** 새 Operation 의 기본 세션. Console 전체의 값이라 Operation 경로가 아니다; 답은 모든 패널의 스트림으로 온다. */
+  /** 새 Objective 의 기본 세션. Console 전체의 값이라 Objective 경로가 아니다; 답은 모든 패널의 스트림으로 온다. */
   const setDefaultProfile = async (next: string | null) => {
     setNotice(null);
     try {
@@ -1023,7 +1023,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
 
   // 캡션(탭 스트립)이 읽는 스냅샷 — 상태와 손잡이를 함께 올린다. 언마운트하면 거둔다.
   React.useEffect(() => {
-    publishBrowserPanel(operationId, {
+    publishBrowserPanel(objectiveId, {
       tabs: available ? state?.tabs ?? [] : [], activeTabId: available ? state?.activeTabId ?? null : null, driving: state?.driving === true,
       viewport: state ? { width: state.viewport.width, height: state.viewport.height, preset: state.viewport.preset, setBy: state.viewport.setBy } : null,
       busy,
@@ -1042,22 +1042,22 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 손잡이는 매 렌더 새로 만들어도 같은 뜻이다; 상태·busy 가 바뀔 때만 올린다.
-  }, [operationId, state, busy, available]);
-  React.useEffect(() => () => publishBrowserPanel(operationId, null), [operationId]);
+  }, [objectiveId, state, busy, available]);
+  React.useEffect(() => () => publishBrowserPanel(objectiveId, null), [objectiveId]);
 
   // CLI·채팅에서 고른 주소. 문을 누른 순간 이 패널이 마운트되므로 요청이 먼저 놓여 있고, 엔진이 아직
   // 뜨는 중이면 열 수 있게 될 때까지 기다린다. 링크는 새 탭에서 열고, 빈 탭만 그 자리에서 쓴다 —
   // 사람이 보던 페이지를 링크 하나가 밀어내지 않게.
-  const openRequest = useBrowserOpenRequest(operationId);
+  const openRequest = useBrowserOpenRequest(objectiveId);
   React.useEffect(() => {
     if (!openRequest || !available) return;
-    takeBrowserOpenRequest(operationId, openRequest.serial);
+    takeBrowserOpenRequest(objectiveId, openRequest.serial);
     const intoActiveTab = activeTab === null || activeTab.url === "about:blank";
     void run(intoActiveTab ? "navigate" : "tabs", intoActiveTab ? { url: openRequest.url } : { action: "create", url: openRequest.url });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 탭 상태는 요청이 도착한 그 순간의 것으로 읽는다; 탭이 바뀔 때마다 다시 열지 않는다.
-  }, [openRequest?.serial, available, operationId]);
+  }, [openRequest?.serial, available, objectiveId]);
   // 패널을 닫으면 아직 못 연 요청도 함께 거둔다 — 다음에 여는 브라우저가 옛 링크로 열리지 않게.
-  React.useEffect(() => () => dropBrowserOpenRequest(operationId), [operationId]);
+  React.useEffect(() => () => dropBrowserOpenRequest(objectiveId), [objectiveId]);
 
   const highlightBox = (element: ElementInfo | null) => {
     const factor = layoutScale();
@@ -1077,7 +1077,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`} onSubmit={(event) => { event.preventDefault(); submitUrl(); }}>
           {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
           <input
-            id={`op-browser-url-${operationId}`}
+            id={`op-browser-url-${objectiveId}`}
             className="op-browser__url-input"
             type="text"
             inputMode="url"

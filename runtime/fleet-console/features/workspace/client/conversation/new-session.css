@@ -160,7 +160,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 .fc-composer-deck.new-session-deck { z-index: 5; }
 .new-session-deck-star { color: var(--brass-ink); font-size: var(--t-xs); }
 
-/* 고른 보낼 곳 — 캡슐 앞의 알약. 지우면 문장은 남고 새 Operation 실행으로 돌아간다. */
+/* 고른 보낼 곳 — 캡슐 앞의 알약. 지우면 문장은 남고 새 Objective 실행으로 돌아간다. */
 .new-session-mention {
   flex: none;
   align-self: center;

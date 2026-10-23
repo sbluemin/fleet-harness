@@ -76,8 +76,8 @@ export const evidenceMetadataSchema = z.object({
   capturedAt: timestamp,
 }).strict().refine((value) => value.mediaType !== "text/plain" || value.bytes <= RESULT_LIMITS.textBytes);
 export type EvidenceMetadata = z.output<typeof evidenceMetadataSchema>;
-/** 미첨부 증거도 목표가 보존한다. 소유 Operation은 서버 manifest에만 남는다. */
-export const storedEvidenceSchema = evidenceMetadataSchema.safeExtend({ ownerOperationId: z.string().min(1).max(128) });
+/** 미첨부 증거도 목표가 보존한다. 소유 Objective은 서버 manifest에만 남는다. */
+export const storedEvidenceSchema = evidenceMetadataSchema.safeExtend({ ownerObjectiveId: z.string().min(1).max(128) });
 export type StoredEvidence = z.output<typeof storedEvidenceSchema>;
 
 export class ResultValidationError extends Error {

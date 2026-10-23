@@ -36,8 +36,8 @@ export type { ObjectiveResult, PrObservation } from "./results.js";
 /**
  * 목표 도메인 — 저장 모양과 화면 모양을 가른다.
  *
- * 목표는 Operation 없이 레코드로 태어난다. 첫 기동 전 제목·그룹·시각·프리셋은 `pending` 에 두고, 개시·구상에서
- * 같은 id 의 지휘관 Operation 을 세운 뒤 `pending` 을 없앤다. 기존 지휘관과 따로 만든 Agent Operation 은 Operation
+ * 목표는 Objective 없이 레코드로 태어난다. 첫 기동 전 제목·그룹·시각·프리셋은 `pending` 에 두고, 개시·구상에서
+ * 같은 id 의 지휘관 Objective 을 세운 뒤 `pending` 을 없앤다. 기존 지휘관과 따로 만든 Agent Objective 은 Objective
  * 값에서 화면을 만든다. 모든 임무와 기준이 끝나면 인계 대기이고, 그때 남긴 인계 기록이 있어야 검토 대기다 — 둘 다
  * 저장된 상태가 아니라 임무·기준·인계 기록에서 계산한다.
  */
@@ -88,7 +88,7 @@ export type ObjectiveOperator = "commodore" | "human";
 export type ObjectiveActor = "human" | "commander"
   /** `why` — 사령관이 그 보드 쓰기에 단 한 줄 근거(사람이 사령관 기록 곁에서 읽는다). 옛 기록과 사람의 행위에는 없다. */
   | { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string }
-  | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
+  | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
 export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened" | "plan" | "commence";
@@ -391,7 +391,7 @@ export interface StoredFollowup extends FollowupBody {
 
 /**
  * 배치 항목의 생성 상태. confirming 은 결과를 확정하지 못한 상태(호스트 조회 불가·저장 실패 등)로, 실패와 다르다 — 같은 키의
- * 재조회만 허용한다. failed 는 호스트가 이 키로 만든 Operation 이 없음을 확정한 실패라 같은 키로 다시 만들 수 있다.
+ * 재조회만 허용한다. failed 는 호스트가 이 키로 만든 Objective 이 없음을 확정한 실패라 같은 키로 다시 만들 수 있다.
  */
 export type FollowupItemState = "creating" | "confirming" | "created" | "failed" | "deleted" | "abandoned";
 
@@ -401,7 +401,7 @@ export interface StoredFollowupItem {
   readonly rev: number;
   readonly snapshot: FollowupBody;
   readonly state: FollowupItemState;
-  readonly operationId?: string;
+  readonly objectiveId?: string;
   readonly error?: string;
   readonly attempts: number;
   readonly settledAt?: number;
@@ -553,10 +553,16 @@ export interface PendingCommander {
 }
 
 export interface StoredObjective {
-  /** 아직 지휘관 Operation 이 없다 — 첫 기동 때 제거한다. */
-  readonly pending?: PendingCommander;
-  /** 목표 id — 지휘관이 태어나면 그 Operation id 이기도 하다. */
-  readonly operationId: string;
+  /** 아직 지휘관 Objective 이 없다 — 첫 기동 때 제거한다. */
+  readonly pending?: true;
+  readonly title?: string;
+  readonly theaterId?: string;
+  readonly groupId?: string | null;
+  readonly ts?: { readonly createdAt: number; readonly updatedAt: number };
+  readonly session?: Readonly<Record<string, unknown>>;
+  readonly chatMode?: boolean;
+  /** 목표 id — 지휘관이 태어나면 그 Objective id 이기도 하다. */
+  readonly id: string;
   /**
    * 보드 자리 — 유한 실수 하나. 보드는 이 값의 오름차순이고 동률은 만든 시각으로 가른다. 옮기면 이웃 사이의 중간값을
    * 받으므로 그 목표의 파일 한 건만 바뀐다(중간값이 더 나오지 않을 때만 전체를 정수로 다시 번호 붙인다).
@@ -577,7 +583,7 @@ export interface StoredObjective {
   readonly evidence?: readonly StoredEvidence[];
   readonly dueDate?: string;
   readonly today?: true;
-  /** 에이전트가 도구로 더한 목표 — 기존 Operation ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
+  /** 에이전트가 도구로 더한 목표 — 기존 Objective ID 또는 Theater의 사령관. 사람이 만든 목표에는 없다. */
   readonly addedBy?: string | Extract<ObjectiveActor, { kind: "commodore" }>;
   /** 마지막으로 개시한 손 — 행위 기록이 접혀도 남는다. 개시 출처를 기록하기 전의 옛 레코드에는 없다(누가 개시했는지 모른다). */
   readonly commencedBy?: ObjectiveActor;
@@ -606,7 +612,7 @@ export interface StoredObjective {
    * Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. 새로 쓰는 의도는 "ensure-active"뿐이다 —
    * "archive"는 완료가 보관하던 옛 버전의 잔여로, 디스크 호환을 위해 받되 적용하지 않고 승인만 한다.
    */
-  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string; readonly by?: ObjectiveActor };
+  readonly lifecycleIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string; readonly by?: ObjectiveActor };
   readonly extensions?: readonly ObjectiveExtension[];
   /** 확장 회차의 옛 기준 보존 정책 — 인계·완료로 끝나며, 일반 재구상은 다시 켜지 않는다. */
   readonly extensionActive?: true;
@@ -628,7 +634,7 @@ export interface StoredObjective {
   readonly personHolds?: readonly StoredPersonHold[];
   /**
    * 레코드 판 표지 — 새 레코드는 늘 true 로 쓴다. 이 필드가 없는 옛 레코드는 개시 여부를 기동 흔적으로 읽는다.
-   * 옛 판이 false 로 남긴 레코드도 목표로 읽고, 다음 편집 때 true 로 고쳐 쓴다. 에이전트 Operation 은 모두 목표다.
+   * 옛 판이 false 로 남긴 레코드도 목표로 읽고, 다음 편집 때 true 로 고쳐 쓴다. 에이전트 Objective 은 모두 목표다.
    */
   readonly enlisted?: boolean;
   /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
@@ -646,9 +652,9 @@ export interface StoredObjective {
 
 export interface StoredRemoval {
   readonly at: number;
-  /** 지운 에이전트 Operation — 없으면 사람이 보드에서 지웠다. */
+  /** 지운 에이전트 Objective — 없으면 사람이 보드에서 지웠다. */
   readonly by?: string;
-  /** 지운 때의 그 Operation 제목 — Operation 이 사라져도 보드가 누가 지웠는지 말한다. */
+  /** 지운 때의 그 Objective 제목 — Objective 이 사라져도 보드가 누가 지웠는지 말한다. */
   readonly byTitle?: string;
   /** 에이전트가 댄 이유 한 줄. */
   readonly reason?: string;
@@ -685,12 +691,12 @@ export interface StoredMerge {
  * workspaces/<프로젝트>/objectives/<objectiveId>/attachments/<attachmentId>.<확장자>
  * ```
  *
- * `objective.json` 은 `StoredObjective` 그대로이고, 디렉터리 이름은 그 안의 `operationId` 와 같아야 한다(어긋나거나 깨진
+ * `objective.json` 은 `StoredObjective` 그대로이고, 디렉터리 이름은 그 안의 `objectiveId` 와 같아야 한다(어긋나거나 깨진
  * 파일은 `objective.json.broken-<ts>` 로 비켜 두고 그 목표만 빈 목표로 본다). 목표 목록은 이 폴더를 한 번 읽어 올린다.
  */
 export const OBJECTIVE_FILE = "objective.json";
 
-// ═══ 화면 모양 (서버가 Operation 과 합쳐 만든다) ═══════════════════════════
+// ═══ 화면 모양 (서버가 Objective 과 합쳐 만든다) ═══════════════════════════
 
 export interface MissionRecord {
   readonly id: string;
@@ -714,9 +720,9 @@ export interface ObjectiveMission {
   readonly assignmentTs?: number;
   readonly unplaced?: true;
   readonly by?: ObjectiveActor;
-  /** 담당 Operation — 위임했을 때만. */
-  readonly operationId: string | null;
-  /** 담당 세션 이름·모델·강도 — 담당 Operation 에서 읽는다. */
+  /** 담당 Objective — 위임했을 때만. */
+  readonly objectiveId: string | null;
+  /** 담당 세션 이름·모델·강도 — 담당 Objective 에서 읽는다. */
   readonly sessionName: string | null;
   readonly model?: string;
   readonly effort?: string;
@@ -741,17 +747,17 @@ export interface ObjectiveCriterion {
 }
 
 export interface Objective {
-  /** Commander Operation의 보관 위치에서 파생한다. active 휴면과 구별한다. */
+  /** Commander Objective의 보관 위치에서 파생한다. active 휴면과 구별한다. */
   readonly archived?: boolean;
-  /** Operation 없는 목표는 보관 대신 영구 삭제된다. */
-  readonly hasOperation?: boolean;
-  /** 지휘관 Operation id. */
+  /** Objective 없는 목표는 보관 대신 영구 삭제된다. */
+  readonly hasSession?: boolean;
+  /** 지휘관 Objective id. */
   readonly id: string;
   readonly theaterId: string;
   readonly groupId: string | null;
   readonly title: string;
   readonly createdAt: number;
-  /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Operation 에서 읽는다. */
+  /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Objective 에서 읽는다. */
   readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed" };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
@@ -771,7 +777,7 @@ export interface Objective {
   readonly stoppedAt: number | null;
   readonly dueDate: string | null;
   readonly today: boolean;
-  readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
+  readonly addedBy: { readonly objectiveId: string; readonly title: string | null } | Extract<ObjectiveActor, { kind: "commodore" }> | null;
   readonly done: ObjectiveCompletion | null;
   /** 인계 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났고 인계 기록이 없다. 계산한 값이다. */
   readonly awaitingHandoff: boolean;
@@ -835,8 +841,8 @@ export interface ObjectivePersonHold {
   readonly settled: StoredPersonHold["settled"] | null;
 }
 
-/** 정리한 손 — 에이전트 Operation 또는 사령관(commodore: true). */
-export interface TidiedBy { readonly operationId: string; readonly title: string | null; readonly commodore?: true }
+/** 정리한 손 — 에이전트 Objective 또는 사령관(commodore: true). */
+export interface TidiedBy { readonly objectiveId: string; readonly title: string | null; readonly commodore?: true }
 
 /** 보드에서 만든 목표의 지휘관 기본 설정 — 목록은 이와 다를 때만 시작 전 목표의 예정 설정을 보인다. */
 export const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
@@ -881,7 +887,7 @@ export interface ObjectiveFollowupBatch {
     readonly rev: number;
     readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
     readonly state: FollowupItemState;
-    readonly operationId: string | null;
+    readonly objectiveId: string | null;
     readonly error: string | null;
     readonly attempts: number;
     readonly settledAt: number | null;
@@ -1045,7 +1051,7 @@ const ids = z.string().min(1).max(128);
 export const objectiveReviewerSchema = z.union([
   z.literal("human"),
   z.object({ kind: z.literal("commodore"), theaterId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
-  z.object({ kind: z.literal("operation"), operationId: ids, title: z.string().nullable() }).strict(),
+  z.object({ kind: z.literal("objectiveRecord"), objectiveId: ids, title: z.string().nullable() }).strict(),
 ]);
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
 /** 저장된 넘김 하나 — 어긋난 항목은 목표를 격리하지 않고 그 항목만 버린다(넘김이 없던 것과 같다). */
@@ -1091,7 +1097,7 @@ export const patchObjectiveSchema = z.object({
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
-  /** 지휘관 모델·강도 — 지휘관 Operation 에 쓴다. */
+  /** 지휘관 모델·강도 — 지휘관 Objective 에 쓴다. */
   launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
 }).strict();
 

@@ -1,0 +1,290 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  applyObserverStatus: vi.fn(),
+  applyObjectiveUpdate: vi.fn(),
+  fetchObserverStatus: vi.fn(),
+  fetchObjectiveRecords: vi.fn(),
+  getState: vi.fn(),
+  hydrateObjectiveRecords: vi.fn(),
+  resumeConsoleSession: vi.fn(),
+  setConnectionState: vi.fn(),
+}));
+
+vi.mock("../core/client/src/integration/api.js", async (importOriginal) => ({
+  ApiError: (await importOriginal<typeof import("../core/client/src/integration/api.js")>()).ApiError,
+  fetchGroups: vi.fn(async () => null),
+  fetchObserverStatus: mocks.fetchObserverStatus,
+  fetchObjectiveRecords: mocks.fetchObjectiveRecords,
+  fetchTheaters: vi.fn(async () => null),
+  resumeConsoleSession: mocks.resumeConsoleSession,
+}));
+
+vi.mock("../core/client/src/integration/store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/client/src/integration/store.js")>();
+  return {
+    ...actual,
+    applyObserverStatus: mocks.applyObserverStatus,
+    applyObjectiveUpdate: mocks.applyObjectiveUpdate,
+    getState: mocks.getState,
+    hydrateObjectiveRecords: mocks.hydrateObjectiveRecords,
+    setConnectionState: mocks.setConnectionState,
+  };
+});
+
+import { connectObjectiveRecordsSse, reconnectObjectiveRecordsSseNow, resetConsoleChannelsForTest, subscribeConsoleReconnect } from "../core/client/src/integration/objective-records-sse.js";
+import { ApiError } from "../core/client/src/integration/api.js";
+import { getState as readState, setState } from "../core/client/src/integration/store.js";
+
+class TestEventSource {
+  static instances: TestEventSource[] = [];
+
+  onerror: (() => void) | null = null;
+  onopen: (() => void) | null = null;
+  closed = false;
+  private readonly listeners = new Map<string, ((event: Event) => void)[]>();
+
+  constructor(_url: string) {
+    TestEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: Event) => void): void {
+    const registered = this.listeners.get(type) ?? [];
+    registered.push(listener);
+    this.listeners.set(type, registered);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emit(type: string, data?: string): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent<string>);
+  }
+
+  open(): void {
+    this.onopen?.();
+  }
+}
+
+describe("objectives SSE update availability", () => {
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
+    setState({ controlReclaimed: null });
+    mocks.getState.mockImplementation(actual.getState);
+    mocks.fetchObserverStatus.mockResolvedValue({ version: "test", updateAvailable: false });
+    vi.stubGlobal("window", new EventTarget());
+  });
+
+  afterEach(() => {
+    setState({ controlReclaimed: null });
+    TestEventSource.instances = [];
+    resetConsoleChannelsForTest();
+    mocks.applyObserverStatus.mockReset();
+    mocks.applyObjectiveUpdate.mockReset();
+    mocks.fetchObserverStatus.mockReset();
+    mocks.fetchObjectiveRecords.mockReset();
+    mocks.getState.mockReset();
+    mocks.hydrateObjectiveRecords.mockReset();
+    mocks.resumeConsoleSession.mockReset();
+    mocks.setConnectionState.mockReset();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds Objectives created by another caller and updates them without duplicates or focus changes", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    const actual = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
+    const previous = actual.getState();
+    actual.setState({ objectiveRecords: [], activeObjectiveId: null });
+    mocks.applyObjectiveUpdate.mockImplementation(actual.applyObjectiveUpdate);
+    try {
+      connectObjectiveRecordsSse();
+      const objectiveRecord = { id: "external-objectiveRecord", theaterId: "theater-1", type: "agent", pluginId: null, title: "External launch", ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } };
+      const source = TestEventSource.instances.at(-1)!;
+      source.emit("objective:changed", JSON.stringify({ objectiveRecord }));
+      expect(actual.getState().objectiveRecords).toMatchObject([{ id: objectiveRecord.id, title: "External launch" }]);
+      source.emit("objective:changed", JSON.stringify({ objectiveRecord: { ...objectiveRecord, title: "Renamed" } }));
+      expect(actual.getState().objectiveRecords).toMatchObject([{ id: objectiveRecord.id, title: "Renamed" }]);
+      expect(actual.getState().objectiveRecords).toHaveLength(1);
+      expect(actual.getState().activeObjectiveId).toBeNull();
+    } finally { actual.setState({ objectiveRecords: previous.objectiveRecords, activeObjectiveId: previous.activeObjectiveId }); }
+  });
+
+  it("re-reads observer status instead of trusting an update frame payload", async () => {
+    const status = { version: "1.0.0", updateAvailable: true };
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
+    mocks.fetchObserverStatus.mockResolvedValue(status);
+
+    connectObjectiveRecordsSse();
+    TestEventSource.instances[0]?.emit("update:available");
+
+    await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledWith(status));
+    expect(mocks.fetchObserverStatus).toHaveBeenCalledWith(null);
+  });
+
+  it("does not hydrate or connect a delayed manual snapshot from a superseded generation", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
+    let resolveStaleObjectiveRecords: (objectiveRecords: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("stale objectives fetch did not start");
+    };
+    let resolveCurrentObjectiveRecords: (objectiveRecords: readonly { readonly id: string }[]) => void = () => {
+      throw new Error("current objectives fetch did not start");
+    };
+    mocks.fetchObjectiveRecords
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleObjectiveRecords = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveCurrentObjectiveRecords = resolve;
+      }));
+
+    reconnectObjectiveRecordsSseNow();
+    reconnectObjectiveRecordsSseNow();
+    resolveCurrentObjectiveRecords([{ id: "current" }]);
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(1));
+    resolveStaleObjectiveRecords([{ id: "stale" }]);
+    await vi.waitFor(() => expect(mocks.hydrateObjectiveRecords).toHaveBeenCalledTimes(1));
+
+    expect(mocks.hydrateObjectiveRecords).toHaveBeenCalledWith([{ id: "current" }]);
+    expect(TestEventSource.instances).toHaveLength(1);
+  });
+
+  it("keeps a live session-ended frame disconnected without reloading or reconnecting", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+    connectObjectiveRecordsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.emit("control:reclaimed", JSON.stringify({ reason: "superseded" }));
+    expect(readState().controlReclaimed).toBe("superseded");
+    expect(source.closed).toBe(true);
+    source.onerror?.();
+    reconnectObjectiveRecordsSseNow();
+    connectObjectiveRecordsSse();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("recovers a lost session-ended frame from the retry 401 instead of joining again", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.fetchObjectiveRecords.mockRejectedValue(new ApiError(401, "unauthorized", "reclaimed"));
+    connectObjectiveRecordsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.open();
+    source.onerror?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readState().controlReclaimed).toBe("reclaimed");
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+  });
+
+  it("resumes vanished sessions but stops joining when the pairing has been forgotten", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    let resolveSnapshot!: (objectiveRecords: readonly { readonly id: string }[]) => void;
+    mocks.fetchObjectiveRecords
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized"))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSnapshot = resolve; }))
+      .mockRejectedValue(new ApiError(401, "unauthorized"));
+    mocks.resumeConsoleSession.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockRejectedValue(new ApiError(401, "unauthorized"));
+    connectObjectiveRecordsSse();
+    TestEventSource.instances.at(-1)!.open();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(1);
+    expect(readState().controlReclaimed).toBeNull();
+    // 합류만 끝났을 때는 아직 스트림을 열지 않는다. 놓친 상태를 먼저 채운다.
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.hydrateObjectiveRecords).not.toHaveBeenCalled();
+    resolveSnapshot([{ id: "changed-while-expired" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.hydrateObjectiveRecords).toHaveBeenCalledWith([{ id: "changed-while-expired" }]);
+    expect(TestEventSource.instances).toHaveLength(2);
+    TestEventSource.instances.at(-1)!.open();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    // 합류 후 재조회도 401이면 같은 시도에서 join을 반복하지 않고 백오프로 돌아간다.
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
+    expect(TestEventSource.instances).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(3);
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(3);
+    expect(readState().controlReclaimed).toBeNull();
+  });
+
+  it("keeps a heartbeating stream without extra requests and reconnects one that falls silent without an error", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.fetchObjectiveRecords.mockResolvedValue([]);
+    const onReconnect = vi.fn();
+    const stopReconnect = subscribeConsoleReconnect(onReconnect);
+
+    connectObjectiveRecordsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.open();
+    for (let beat = 0; beat < 20; beat += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      source.emit("heartbeat", "{}");
+    }
+    expect(source.closed).toBe(false);
+    expect(mocks.fetchObjectiveRecords).not.toHaveBeenCalled();
+    expect(TestEventSource.instances.at(-1)).toBe(source);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    // 침묵 뒤 첫 스냅숏 조회는 답이 없다(죽은 소켓을 다시 쓴 요청) — 그래도 시도는 끊기고 다음 시도가 이어져야 한다.
+    let hungSnapshotAborted = false;
+    mocks.fetchObjectiveRecords.mockImplementationOnce((_theaterId: unknown, signal?: AbortSignal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener("abort", () => {
+        hungSnapshotAborted = true;
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    }));
+    // 기한 값을 고정하지 않는다 — 침묵이 이어지는 동안 새 스트림이 설 때까지만 시간을 흘린다.
+    for (let elapsed = 0; elapsed < 10 * 60_000 && TestEventSource.instances.at(-1) === source; elapsed += 1_000) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    expect(source.closed).toBe(true);
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("offline");
+    expect(hungSnapshotAborted).toBe(true);
+    const reopened = TestEventSource.instances.at(-1)!;
+    expect(reopened).not.toBe(source);
+    reopened.open();
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    stopReconnect();
+  });
+
+  it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
+    const actualState = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
+    actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
+
+    connectObjectiveRecordsSse();
+    const holder = { handle: "remote-a", device: "Kitchen iPad", openedAt: 42 };
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder }));
+    expect(actualState.getState().controlHolder).toEqual(holder);
+
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder: { ...holder, extra: true } }));
+    TestEventSource.instances[0]?.emit("control:changed", "{not-json");
+    expect(actualState.getState().controlHolder).toEqual(holder);
+
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder: null }));
+    expect(actualState.getState().controlHolder).toBeNull();
+    TestEventSource.instances[0]?.emit("control:changed", JSON.stringify({ holder }));
+
+    TestEventSource.instances[0]?.onerror?.();
+    expect(actualState.getState().controlHolder).toEqual(holder);
+    actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
+  });
+});

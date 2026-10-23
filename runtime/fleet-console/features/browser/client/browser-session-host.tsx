@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
-import { subscribeConsoleChannel } from "../../../core/client/src/integration/operations-sse.js";
+import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { publishBrowserEngine, type BrowserUnavailableReason } from "./browser-panel-store.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
 import { dismissSharedFallback, useSharedFallbackNotice } from "./browser-shared-fallback.js";

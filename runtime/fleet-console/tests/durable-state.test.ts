@@ -24,8 +24,8 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 6, theaters: [], operations: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 6, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], objectiveRecords: [] })).toEqual({ version: 6, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], objectiveRecords: [{ id: "" }] })).toEqual({ version: 6, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] });
   });
 
   it("moves the immediate predecessor as one owner tree and retries failed commits without losing the source", () => {
@@ -51,31 +51,31 @@ describe("durable console state", () => {
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
     let connected = false;
     const open = () => createObjectiveStorage({ directory, stateStore, owners: () => connected ? [owner] : [] });
-    expect(open().load().operations).toEqual([]);
+    expect(open().load().objectiveRecords).toEqual([]);
     expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
     connected = true;
     const rename = fs.renameSync.bind(fs);
     const fault = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { if (String(to) === destination) throw new Error("commit_interrupted"); rename(from, to); });
-    try { expect(open().load().operations).toEqual([]); } finally { fault.mockRestore(); }
+    try { expect(open().load().objectiveRecords).toEqual([]); } finally { fault.mockRestore(); }
     expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
     expect(fs.existsSync(path.join(objectiveRoot, "active", "objective.json"))).toBe(true);
     expect(fs.existsSync(destination)).toBe(false);
     const moved = open(); const state = moved.load();
-    expect(state.operations[0]?.payload.session).toEqual({ harness: "claude-code", id: "resume-id" });
-    expect(state.operations[0]?.childSessions?.[0]?.payload.session).toEqual({ harness: "claude-code", id: "child-resume" });
+    expect(state.objectiveRecords[0]?.session).toEqual({ harness: "claude-code", id: "resume-id" });
+    expect(state.objectiveRecords[0]?.sessions?.[0]?.session).toEqual({ harness: "claude-code", id: "child-resume" });
     expect(state.groups).toHaveLength(1);
-    expect(moved.entries()[0]?.operation.id).toBe("archived");
+    expect(moved.entries()[0]?.objectiveRecord?.id).toBe("archived");
     expect(moved.board.list("t1").map((board) => board.note).sort()).toEqual(["Board active", "Board archived"]);
     const activeFile = path.join(destination, "active/objective.json");
     expect(JSON.parse(fs.readFileSync(activeFile, "utf8"))).toMatchObject({ id: "active", title: "Active", note: "Board active", session: { id: "resume-id" }, sessions: [{ id: "child" }] });
     expect(fs.readFileSync(path.join(destination, "archived/shared/proof.txt"), "utf8")).toBe("bytes archived");
     expect(fs.existsSync(objectiveRoot)).toBe(false);
     expect(fs.existsSync(path.join(directory, "operations-archive.json"))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).not.toHaveProperty("operations");
-    moved.board.save("t1", { ...moved.board.list("t1").find((board) => board.operationId === "active")!, note: "Edited" });
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).not.toHaveProperty("objectiveRecords");
+    moved.board.save("t1", { ...moved.board.list("t1").find((board) => board.id === "active")!, note: "Edited" });
     moved.save(state);
-    const restarted = open(); expect(restarted.load().operations).toHaveLength(1);
-    expect(restarted.board.list("t1").find((board) => board.operationId === "active")?.note).toBe("Edited");
+    const restarted = open(); expect(restarted.load().objectiveRecords).toHaveLength(1);
+    expect(restarted.board.list("t1").find((board) => board.id === "active")?.note).toBe("Edited");
     expect(restarted.entries()).toHaveLength(1);
   });
 
@@ -89,7 +89,7 @@ describe("durable console state", () => {
         { ...base, id: "bidi", alias: "abc\u202Egnp.exe" },
         { ...base, id: "oversized", alias: "x".repeat(41) },
       ],
-      operations: [],
+      objectiveRecords: [],
       groups: [],
       deletionTombstones: [],
     });
@@ -105,14 +105,14 @@ describe("durable console state", () => {
     tempDirs.push(dir);
     const stateFile = path.join(dir, "state.json");
     const backupFile = `${stateFile}.v3-backup`;
-    const original = '{"version":3,"operations":[]}\n';
+    const original = '{"version":3,"objectives":[]}\n';
     fs.writeFileSync(stateFile, original);
 
     expect(readDurableStateVersion(stateFile)).toBe(3);
     backupDurableStateV3(stateFile);
     expect(fs.readFileSync(backupFile, "utf8")).toBe(original);
 
-    fs.writeFileSync(stateFile, '{"version":4,"operations":[]}\n');
+    fs.writeFileSync(stateFile, '{"version":4,"objectives":[]}\n');
     backupDurableStateV3(stateFile);
     expect(fs.readFileSync(backupFile, "utf8")).toBe(original);
     expect(readDurableStateVersion(path.join(dir, "missing.json"))).toBeNull();
@@ -120,14 +120,14 @@ describe("durable console state", () => {
 
 });
 
-function makeOperationNode(input: { readonly id: string; readonly pluginId: string; readonly type: string }) {
+function makeObjectiveRecord(input: { readonly id: string; readonly pluginId: string; readonly type: string }) {
   return {
     id: input.id,
     theaterId: "theater",
     type: input.type,
     pluginId: input.pluginId,
     title: input.id,
-    payload: {},
+    ...({}),
     geometry: null,
     state: {},
     ts: { createdAt: 1, updatedAt: 1 },

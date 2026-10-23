@@ -8,17 +8,17 @@
  * 어긋남은 각 표면이 **자기 표식을 상시 세워** 갚는다(숨은 모드 금지 — 새 세션 화면은 칩 줄의 시작 보기 칩).
  *
  * 서버 durable state가 아니라 localStorage인 이유는 `new-session-preferences.ts`와 같다 —
- * 이것은 이 브라우저의 습관이지 Console이 소유한 작전 상태가 아니다.
+ * 이것은 이 브라우저의 습관이지 Console이 소유한 목표 상태가 아니다.
  */
 
-import type { OperationLaunchView } from "../shared/operations/types.js";
+import type { ObjectiveLaunchView } from "../../objectives/shared/records/types.js";
 
 const STORAGE_KEY = "fleet-console.launchMenu.startSurface";
 
 /** 기억이 없거나 읽을 수 없을 때의 표면. 기본은 채팅이며, 기억이 아니라 계약이 정한다. */
-export const DEFAULT_LAUNCH_START_SURFACE: OperationLaunchView = "chat";
+export const DEFAULT_LAUNCH_START_SURFACE: ObjectiveLaunchView = "chat";
 
-export function readLaunchStartSurface(): OperationLaunchView {
+export function readLaunchStartSurface(): ObjectiveLaunchView {
   try {
     return window.localStorage.getItem(STORAGE_KEY) === "terminal" ? "terminal" : DEFAULT_LAUNCH_START_SURFACE;
   } catch {
@@ -27,7 +27,7 @@ export function readLaunchStartSurface(): OperationLaunchView {
   }
 }
 
-export function writeLaunchStartSurface(surface: OperationLaunchView): void {
+export function writeLaunchStartSurface(surface: ObjectiveLaunchView): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, surface);
   } catch {
@@ -36,7 +36,7 @@ export function writeLaunchStartSurface(surface: OperationLaunchView): void {
 }
 
 /** 이 실행 종류가 채팅으로 태어날 수 있는가. 선언이 없으면 터미널뿐이라는 뜻이다. */
-export function supportsChatStart(kind: { readonly launchViews?: readonly OperationLaunchView[] }): boolean {
+export function supportsChatStart(kind: { readonly launchViews?: readonly ObjectiveLaunchView[] }): boolean {
   return kind.launchViews?.includes("chat") === true;
 }
 
@@ -49,8 +49,8 @@ export function supportsChatStart(kind: { readonly launchViews?: readonly Operat
  */
 export function withStartSurface(
   launch: Readonly<Record<string, string>> | undefined,
-  kind: { readonly launchViews?: readonly OperationLaunchView[] },
-  surface: OperationLaunchView,
+  kind: { readonly launchViews?: readonly ObjectiveLaunchView[] },
+  surface: ObjectiveLaunchView,
 ): Readonly<Record<string, string>> | undefined {
   if (surface !== "chat" || !supportsChatStart(kind)) return launch;
   return { ...(launch ?? {}), viewMode: "chat" };

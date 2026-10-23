@@ -159,7 +159,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("bakes the capture hook into the archive it packs at startup", async () => {
     // 세션 포착은 이제 런치가 아니라 기동의 렌더가 싣는다. 명령이 Console CLI 진입점을
-    // 가리키지 않으면 자식의 세션이 어느 Operation의 것인지 호스트가 영영 알지 못한다.
+    // 가리키지 않으면 자식의 세션이 어느 Objective의 것인지 호스트가 영영 알지 못한다.
     // 자식이 받는 그 주소에서 읽어야 묶기와 내주기까지 함께 확인된다.
     const plugin = renderConsoleAgentCliPlugin({
       entryPath: "/console/cli.ts",

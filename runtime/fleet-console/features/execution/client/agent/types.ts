@@ -21,10 +21,10 @@ export interface AgentCliMetadata {
 }
 
 /**
- * Operation이 지금 서 있는 자리. 서버가 Theater 루트 기준으로 접어 보낸 투영이라 절대 경로는
+ * Objective이 지금 서 있는 자리. 서버가 Theater 루트 기준으로 접어 보낸 투영이라 절대 경로는
  * 없다 — `folder`는 루트면 null, Theater 밖이면 basename 하나에 `outside`가 선다.
  */
-export interface OperationWorkspace {
+export interface ObjectiveWorkspace {
   readonly folder: string | null;
   readonly outside: boolean;
   readonly branch: string | null;
@@ -34,8 +34,8 @@ export interface SessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
-  /** 실험 기능(Operation 위치 표시)이 켜진 동안만 온다. */
-  readonly workspace?: OperationWorkspace;
+  /** 실험 기능(Objective 위치 표시)이 켜진 동안만 온다. */
+  readonly workspace?: ObjectiveWorkspace;
   readonly label?: string;
   readonly status: SessionStatus;
   readonly turnState: TurnState;

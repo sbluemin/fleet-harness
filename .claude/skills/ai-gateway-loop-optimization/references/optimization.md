@@ -52,7 +52,7 @@ Do not edit compiler-owned changelogs. Amend the applicable `.changelog.d/` frag
 
 ## Phase 4 — Measure with the frozen workload
 
-For a real Operation, rebuild/restart the isolated Console if needed. For the standalone runner, use the identical exact command, sequential trials, and a fresh package build; do not add Console lifecycle steps.
+For a real Objective, rebuild/restart the isolated Console if needed. For the standalone runner, use the identical exact command, sequential trials, and a fresh package build; do not add Console lifecycle steps.
 
 Produce a before/after table for every metric the candidate claimed it would change. Also include invariants that must remain stable:
 
@@ -78,7 +78,7 @@ Run at least:
 
 The fixed standalone runner is for repeating the exact baseline workload. If near-match, auxiliary, or failure request shapes are not supported by its options, use a direct built-adapter probe or focused test instead; do not imply that the runner provides unsupported scenarios.
 
-Inspect actual artifacts and logs, not just tests or the implementing narrative. Re-run package tests, typecheck, build, and `git diff --check`. A dependent Console build is required only when gateway serving/host wiring or real Operation behavior changed; package-only changes use the runner for the exact workload and direct adapter probes/tests for other supported scenarios.
+Inspect actual artifacts and logs, not just tests or the implementing narrative. Re-run package tests, typecheck, build, and `git diff --check`. A dependent Console build is required only when gateway serving/host wiring or real Objective behavior changed; package-only changes use the runner for the exact workload and direct adapter probes/tests for other supported scenarios.
 
 Stop when either:
 

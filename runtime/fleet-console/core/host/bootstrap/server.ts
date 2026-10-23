@@ -1,4 +1,4 @@
-import type { OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../../../features/execution/shared/operations/types.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../features/objectives/shared/records/types.js";
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
@@ -11,9 +11,9 @@ import { createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
-import { archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
-import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
-import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
+import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../../features/workspace/host/objective-archive-storage.js";
+import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
+import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore, resolveConversationWorkLocation } from "../../../features/workspace/host/conversation-workbench.js";
 import crypto from "node:crypto";
@@ -40,8 +40,8 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
-import { readLaunchVariantGroups } from "../../../features/execution/shared/operations/launch-variants.js";
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, type OperationLaunchChangedEvent } from "../../../features/execution/shared/operations/types.js";
+import { readLaunchVariantGroups } from "../../../features/objectives/shared/records/launch-variants.js";
+import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL, OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, readObjectiveLaunch, withSubagentSpawn, type ObjectiveLaunchChangedEvent } from "../../../features/objectives/shared/records/types.js";
 import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
@@ -63,8 +63,8 @@ import { createComputerUseMcpHost } from "../../../features/computer-use/host/mc
 import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
-import type { OperationNode } from "../../../features/execution/host/operations/operations-domain.js";
-import { createOperationStore, createOperationsRouter, createSanitizedOpDto } from "../../../features/execution/host/operations/operations-domain.js";
+import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
+import { createObjectiveRecordsStore, createObjectiveRecordsRouter, createSanitizedOpDto } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
@@ -81,8 +81,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
 import { DeferredDeletionError, createDeferredDeletionCoordinator, type DeferredDeletionReceipt } from "../../../features/workspace/host/deferred-deletion.js";
-import { deletionOperations, STATE_VERSION, createConsoleDurableStateStore, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
-import { migrateLegacyCaptures } from "../../../features/workspace/host/legacy-capture-migration.js";
+import { deletionObjectiveRecords, STATE_VERSION, createConsoleDurableStateStore, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
 import type { TheaterRegistration } from "../../../features/workspace/host/theaters/theater-domain.js";
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 
@@ -157,7 +156,7 @@ interface ConsolePortListenPlan {
   readonly fallback: "none" | "requested" | "resume";
 }
 
-/** Operation 스트림에 실리는 브라우저 상태 프레임의 이름. 화면은 이 채널로 탭·주소·조작 여부를 듣는다. */
+/** Objective 스트림에 실리는 브라우저 상태 프레임의 이름. 화면은 이 채널로 탭·주소·조작 여부를 듣는다. */
 const BROWSER_STATE_EVENT = "browser:state";
 
 /**
@@ -165,17 +164,17 @@ const BROWSER_STATE_EVENT = "browser:state";
  * 구독자마다 다르기 때문이다 — 보유자 정보는 루프백만, 회수 통지는 끊긴 세션 하나만 받는다.
  * 평면 Set으로 두면 원격 화면에 다른 기기의 이름이 실려 나간다.
  */
-interface OperationSseSubscriber {
+interface ObjectiveSseSubscriber {
   readonly res: http.ServerResponse;
   readonly audience: AccessAudience;
   /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
   readonly sessionHandle: string | null;
-  /** 네이티브 Operation 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
-  readonly client: "desktop" | "browser" | "operation-browser";
+  /** 네이티브 Objective 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
+  readonly client: "desktop" | "browser" | "objective-browser";
 }
 
 /** 화면을 든 클라이언트의 종류 — Desktop 창은 Electron 표기를 단 UA 로 온다(클라이언트의 셸 표식과 같은 판정). */
-function clientKindOf(req: http.IncomingMessage): OperationSseSubscriber["client"] {
+function clientKindOf(req: http.IncomingMessage): ObjectiveSseSubscriber["client"] {
   const agent = req.headers["user-agent"];
   return typeof agent === "string" && /\bElectron\//u.test(agent) ? "desktop" : "browser";
 }
@@ -201,11 +200,11 @@ const ENDED_REQUEST_LIFETIME: RequestLifetime = { isLive: () => false, touch: ()
 const MAX_BODY_BYTES = 1024 * 1024;
 /** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
 const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
-const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
-const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
-const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
-/** 브라우저 스트림의 제거 프레임 — 삭제 유예에 들어간 Operation 의 id 만 싣는다. */
-const OPERATION_REMOVED_SSE_EVENT = "operation:removed";
+const OBJECTIVE_RENAMED_EVENT_CHANNEL = "objective:renamed";
+const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
+const OBJECTIVE_RESTORED_EVENT_CHANNEL = "objective:restored";
+/** 브라우저 스트림의 제거 프레임 — 삭제 유예에 들어간 Objective 의 id 만 싣는다. */
+const OBJECTIVE_REMOVED_SSE_EVENT = "objective:removed";
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
 export const PAIRING_IDENTITY = { product: "fleet-console", schemaVersion: 1, pairingProtocolVersion: 1 } as const;
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
@@ -268,7 +267,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "DELETE",
     path: "/api/v1/theaters/:theaterId",
-    summary: "Theater와 소속 Operation을 제거합니다.",
+    summary: "Theater와 소속 목표를 제거합니다.",
     category: "Observer",
     gate: "origin-write",
     transport: "http",
@@ -276,7 +275,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "POST",
     path: "/api/v1/deletions/:deletionId/restore",
-    summary: "유예 중인 Operation 또는 Theater 삭제를 복구합니다.",
+    summary: "유예 중인 목표 또는 Theater 삭제를 복구합니다.",
     category: "Observer",
     gate: "origin-write",
     transport: "http",
@@ -445,26 +444,26 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the Fleet Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/sessions/resolve", summary: "Resolve a plugin session's browser owner for its panel.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/state", summary: "Read an Operation's browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/tabs", summary: "Create, close or select a tab in an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/navigate", summary: "Navigate an Operation's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/viewport", summary: "Set the viewport preset or size of an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/interrupt", summary: "Interrupt the agent's in-flight browser calls for an Operation.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/operations/:operationId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/place", summary: "Tell the Desktop shell where an Operation's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/state", summary: "Read an Objective's browser tab state; later changes arrive on the Objective event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/screenshot", summary: "Capture the active tab of an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/tabs", summary: "Create, close or select a tab in an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/navigate", summary: "Navigate an Objective's browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/viewport", summary: "Set the viewport preset or size of an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/interrupt", summary: "Interrupt the agent's in-flight browser calls for an Objective.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/place", summary: "Tell the Desktop shell where an Objective's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the hosting Desktop shell must apply; other shells read an empty set.", category: "Desktop", gate: "origin-strict", transport: "http" },
   { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the attached Desktop shells; only the hosting shell receives views.", category: "Desktop", gate: "origin-strict", transport: "sse" },
   { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the hosting Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Operation's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Operation's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/profile", summary: "Choose whether an Operation's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/operations/:operationId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Objective's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Objective's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/profile", summary: "Choose whether an Objective's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/shortcuts", summary: "Update active Console shortcut bindings for Desktop native view forwarding.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
@@ -507,12 +506,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const theaters = new TheaterRegistry();
   // 그룹 이동·삭제는 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮기거나 비운다.
-  const operations = createOperationStore({
-    onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
-    onGroupRemoved: (event) => publishPluginEvent(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, event),
-    // 예전 전역 브라우저 id "global" 은 Operation이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
-    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
-    assertRelationMutable: (id) => operationArchive.assertMutable(id),
+  const objectiveRecords = createObjectiveRecordsStore({
+    onGroupChanged: (event) => publishPluginEvent(OBJECTIVE_GROUPED_EVENT_CHANNEL, event),
+    onGroupRemoved: (event) => publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, event),
+    // 예전 전역 브라우저 id "global" 은 Objective이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
+    assertRelationMutable: (id) => objectiveRecordArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
@@ -542,9 +541,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     owners: () => ownership?.objectives() ?? [],
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
   });
-  let stopForArchive: ((operation: OperationNode) => Promise<void>) | null = null;
-  let purgeCoreOperation: ((operation: OperationNode) => void) | null = null;
-  let resumeArchivedOperation: ConsoleUseActions["resume"];
+  let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
+  let purgeCoreObjective: ((objectiveRecord: ObjectiveRecord) => void) | null = null;
+  let resumeArchivedObjective: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   const avatarStore = createAvatarStore(durablePaths.dir);
   const conversationWorkbenchStore = createConversationWorkbenchStore(durablePaths.dir);
@@ -583,7 +582,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const access = createAccessRegistry({
     /**
      * 원격 세션이 끝나는 모든 길(회수·대체·언페어링·만료·리스너 종료)이 이 한 자리를 지난다.
-     * 순서가 있다: 회수 안내를 실을 Operation 스트림을 먼저 우아하게 닫고, 그 세션이 남긴 셸 상태를
+     * 순서가 있다: 회수 안내를 실을 Objective 스트림을 먼저 우아하게 닫고, 그 세션이 남긴 셸 상태를
      * 잊고, 그 다음 그 세션으로 열린 나머지 연결(다른 SSE·채팅/터미널 WebSocket·진행 중 요청)을
      * transport에서 파기한다. 안내를 쓰고 끝낸 응답은 파기 대상에서 빠지므로 마지막 프레임이 잘리지 않는다.
      * 한 세션의 실패가 나머지 정리를 막지 않는다.
@@ -607,21 +606,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
   const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
-  const pluginOperationTypes = new Set<string>(["agent"]);
   const executionApiCatalog: ApiCatalogEntry[] = [];
-  let coreLaunchKinds: OperationLaunchCatalogProvider = () => [];
+  let coreLaunchKinds: ObjectiveLaunchCatalogProvider = () => [];
   // 실행 기능이 서야 생긴다. 그 전의 별칭 고정은 받은 값을 돌려준다.
   let ensureClaudeNativeModels: (() => Promise<void>) | undefined;
   let resolveClaudeExecutable: (() => Promise<string | undefined>) | undefined;
   let readGatewayCompactCeiling: Awaited<ReturnType<typeof startConsoleExecution>>["readGatewayCompactCeiling"] | undefined;
   let attachmentsForPlugin: Awaited<ReturnType<typeof startConsoleExecution>>["attachmentsForPlugin"] | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
-  const pluginPayloadSanitizers = new Map<string, readonly string[]>();
-  const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
+  const pluginLaunchCatalogProviders = new Map<string, ObjectiveLaunchCatalogProvider[]>();
   const featureCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const experimentListeners = new Set<(settings: ConsoleExperimentSettings) => void>();
-  const operationSseSubscribers = new Set<OperationSseSubscriber>();
+  const objectiveRecordSseSubscribers = new Set<ObjectiveSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
   /**
@@ -634,7 +631,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   /** 셸의 브라우저 스냅샷 구독 — 응답마다 그 셸의 주인(루프백은 "local", 원격은 세션 공개 이름). */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
   /**
-   * Operation 브라우저의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰. 어느 Desktop 이 이 콘솔을 보든(이 기계의
+   * Objective 브라우저의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰. 어느 Desktop 이 이 콘솔을 보든(이 기계의
    * 창이든, 원격에서 건너온 창이든) 붙을 수 있고, 뷰는 그중 호스트 하나의 창에만 산다. 호스트가 아닌 셸은 빈 스냅샷을
    * 받는다 — 그 창에는 뷰가 없어야 한다.
    */
@@ -680,38 +677,38 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) {
       if (!isolateListeners) listener(payload);
-      else try { listener(payload); } catch (error) { recordFailure("operation_lifecycle_listener_failed", error); }
+      else try { listener(payload); } catch (error) { recordFailure("objectiveRecord_lifecycle_listener_failed", error); }
     }
     // 브라우저로 나가는 것은 플러그인이 명시적으로 올린 채널뿐이다. 모든 in-process
     // 이벤트를 흘리면 서버 내부 채널이 그대로 브라우저 계약이 되고, 그중 하나는
     // 언젠가 민감한 필드를 싣는다.
-    if (!pluginSseChannels.has(channel) || operationSseSubscribers.size === 0) return;
+    if (!pluginSseChannels.has(channel) || objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(channel, payload);
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) writeObjectiveSse(subscriber, data);
   }
   const deletionCoordinator = createDeferredDeletionCoordinator({
-    operations,
+    objectiveRecords,
     theaters,
     save: saveDurableState,
     archives: () => archiveStorage.entries(),
-    assertMutable: (id) => operationArchive.assertMutable(id),
+    assertMutable: (id) => objectiveRecordArchive.assertMutable(id),
     beforePurge: (purged, tombstone) => {
-      if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
-      for (const operation of purged.flatMap(archiveSessionNodes)) purgeCoreOperation(operation);
+      if (!purgeCoreObjective) throw new ObjectiveArchiveError(503, "archive_recovery_required");
+      for (const objectiveRecord of purged.flatMap(archiveSessionNodes)) purgeCoreObjective(objectiveRecord);
       if (tombstone.kind === "theater") theaterSystemPrompts.purge(tombstone.targetId);
     },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
-    // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
+    // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Objective 은 다음 재수화까지 화면에 남는다.
     // in-process 채널은 전체 노드를 싣기에 그대로 내보내지 않고, 제거는 id 만·복원은 정화된 DTO 로 낸다.
     publish: (channel, payload) => {
-      if (channel === "operation:purged") { operationArchive.flushEvents(); return; }
+      if (channel === "objective:purged") { objectiveRecordArchive.flushEvents(); return; }
       publishPluginEvent(channel, payload);
-      const event = payload as { readonly operationId?: unknown; readonly operation?: unknown };
-      if (channel === OPERATION_DELETED_EVENT_CHANNEL && typeof event.operationId === "string") broadcastOperationRemoved(event.operationId);
-      else if (channel === OPERATION_RESTORED_EVENT_CHANNEL && event.operation && typeof event.operation === "object") {
-        const operation = event.operation as OperationNode;
-        // 복원된 자식은 내부 수명 이벤트만 낸다. 화면은 부모의 childSessions에서 파생한다.
-        if (!operation.parentOperationId) broadcastOperationChanged(operation);
+      const event = payload as { readonly objectiveId?: unknown; readonly objectiveRecord?: unknown };
+      if (channel === OBJECTIVE_DELETED_EVENT_CHANNEL && typeof event.objectiveId === "string") broadcastObjectiveRemoved(event.objectiveId);
+      else if (channel === OBJECTIVE_RESTORED_EVENT_CHANNEL && event.objectiveRecord && typeof event.objectiveRecord === "object") {
+        const objectiveRecord = event.objectiveRecord as ObjectiveRecord;
+        // 복원된 자식은 내부 수명 이벤트만 낸다. 화면은 부모의 sessions에서 파생한다.
+        if (!objectiveRecord.parentObjectiveId) broadcastObjectiveChanged(objectiveRecord);
       }
     },
     unregisterTheaterWorkspaces: (theaterId) => {
@@ -733,51 +730,51 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const pendingClusterRemoved = new Set<string>();
-  const operationArchive = createOperationArchiveCoordinator({
-    operations, storage: archiveStorage,
+  const objectiveRecordArchive = createObjectiveArchiveCoordinator({
+    objectiveRecords, storage: archiveStorage,
     snapshot: () => snapshotDurableState(deletionCoordinator.list()),
     theaterExists: (id) => !!theaters.get(id),
-    pendingDeletion: (id) => deletionCoordinator.hasPendingOperation(id),
-    stop: async (operation) => {
-      if (!stopForArchive) throw new OperationArchiveError(503, "archive_stop_failed");
-      await stopForArchive(operation);
+    pendingDeletion: (id) => deletionCoordinator.hasPendingObjective(id),
+    stop: async (objectiveRecord) => {
+      if (!stopForArchive) throw new ObjectiveArchiveError(503, "archive_stop_failed");
+      await stopForArchive(objectiveRecord);
     },
     use: async (id, intent) => {
       if (intent === "resume") {
-        const result = await resumeArchivedOperation?.(id);
-        if (!result?.ok) throw new OperationArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
-      } else if (intent === "open" || intent === "activate") publishPluginEvent("operation:reveal", { operationId: id, reason: "", at: Date.now() });
+        const result = await resumeArchivedObjective?.(id);
+        if (!result?.ok) throw new ObjectiveArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
+      } else if (intent === "open" || intent === "activate") publishPluginEvent("objective:reveal", { objectiveId: id, reason: "", at: Date.now() });
     },
     readRetentionDays: () => readArchiveRetentionDays(consoleSettingsStore.load().general?.archiveRetentionDays),
     publish: (event) => {
-      for (const node of archiveSessionNodes(event.operation)) {
-        if (event.channel === "operation:purged") {
-          if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
-          purgeCoreOperation(node);
+      for (const node of archiveSessionNodes(event.objectiveRecord)) {
+        if (event.channel === "objective:purged") {
+          if (!purgeCoreObjective) throw new ObjectiveArchiveError(503, "archive_recovery_required");
+          purgeCoreObjective(node);
         }
-        publishPluginEvent(event.channel, { eventId: `${event.eventId}:${node.id}`, operationId: node.id, theaterId: node.theaterId, pluginId: node.pluginId, type: node.type,
-          ...(event.channel === "operation:restored" ? { operation: node } : {}) }, true);
-        if (event.channel === "operation:archived") pendingClusterRemoved.add(node.id);
+        publishPluginEvent(event.channel, { eventId: `${event.eventId}:${node.id}`, objectiveId: node.id, theaterId: node.theaterId, pluginId: null, type: "agent",
+          ...(event.channel === "objective:restored" ? { objectiveRecord: node } : {}) }, true);
+        if (event.channel === "objective:archived") pendingClusterRemoved.add(node.id);
       }
     },
     publishChanged: publishArchiveChanged,
   });
-  for (const channel of ["operation:archive-changed", "operation:cluster-changed", "operation:purged"]) pluginSseChannels.add(channel);
+  for (const channel of ["objective:archive-changed", "objective:cluster-changed", "objective:purged"]) pluginSseChannels.add(channel);
   // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
-  function deleteOperationForPlugin(operationId: string): boolean {
-    if (operations.getChild(operationId)) return false;
-    return deletionCoordinator.deleteOperation(operationId) !== null;
+  function deleteObjectiveForPlugin(objectiveId: string): boolean {
+    if (objectiveRecords.getChild(objectiveId)) return false;
+    return deletionCoordinator.deleteObjective(objectiveId) !== null;
   }
   function deleteChildForPlugin(id: string, requesterPluginId?: string): boolean {
-    const found = operations.getChild(id);
+    const found = objectiveRecords.getChild(id);
     if (!found) return false;
     // 요청 플러그인이 없는 호출은 코어 실행 호스트의 롤백·정리뿐이다 — feature 표면은 조합이 늘 호출 소유자를 묶는다.
-    const before = operations.list();
-    operations.deleteChild(id, requesterPluginId);
-    try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }
-    publishPluginEvent(OPERATION_DELETED_EVENT_CHANNEL, { operationId: id, pluginId: null, type: "agent" });
-    publishPluginEvent("operation:purged", { operationId: id, pluginId: null, type: "agent" });
-    broadcastOperationChanged(operations.get(found.parent.id)!);
+    const before = objectiveRecords.list();
+    objectiveRecords.deleteChild(id, requesterPluginId);
+    try { persistDurableState(); } catch (error) { objectiveRecords.replace(before); throw error; }
+    publishPluginEvent(OBJECTIVE_DELETED_EVENT_CHANNEL, { objectiveId: id, pluginId: null, type: "agent" });
+    publishPluginEvent("objective:purged", { objectiveId: id, pluginId: null, type: "agent" });
+    broadcastObjectiveChanged(objectiveRecords.get(found.parent.id)!);
     return true;
   }
   /**
@@ -812,18 +809,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const mcpHttp = createMcpHttpTransport(() => consoleFeaturePorts.server.origin());
   const consoleAgentOwners = new Set<string>();
   // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
-  const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const agentCallRedirects = new Map<string, (objectiveId: string) => string | null>();
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), objectiveRecords: () => objectiveRecords.list(), resolveObjective: objectiveRecords.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   /**
    * 사용 컨텍스트 — 자식 세션은 루트의 브라우저·허용·기기·화면공유를 함께 쓴다. 세 사용 도구와 턴 종료 훅이 같은 객체를 포트로 받는다.
    * 열린 턴은 Console 제어의 관측(활동 축)으로 읽는다: PTY·Chat 두 어댑터가 같은 축에 쓰는 유일한 자리이고, 입력을 기다리는 턴(awaiting)도
    * 아직 끝나지 않은 턴이다. 관측을 모르면(unknown) 열린 턴으로 치지 않는다 — 허가는 더 일찍 걷히는 쪽으로 틀린다.
    */
   const useContext = createUseContext({
-    get: operations.get,
-    turnOpen: (operationId) => { const activity = consoleControl.observe(operationId)?.activity; return activity === "running" || activity === "awaiting"; },
+    get: objectiveRecords.get,
+    turnOpen: (objectiveId) => { const activity = consoleControl.observe(objectiveId)?.activity; return activity === "running" || activity === "awaiting"; },
   });
-  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string; actor: string } | null = null;
+  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; objectiveId: string; actor: string } | null = null;
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
@@ -840,17 +837,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   };
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
-      const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
-      // 공유 컨텍스트에서는 화면의 주인(operationId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다.
-      const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? operationId : null;
-      if (!target || !operationId || !actor || !operations.get(operationId)) {
-        if (target) logComputerCapture({ captureReason: "operation_unresolved", operationResolved: Boolean(operationId && operations.get(operationId)), actorResolved: Boolean(actor) });
+      const objectiveId = target ? computerUseMcp.objectiveIdForOwner(target.owner) : null;
+      // 공유 컨텍스트에서는 화면의 주인(objectiveId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다.
+      const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? objectiveId : null;
+      if (!target || !objectiveId || !actor || !objectiveRecords.get(objectiveId)) {
+        if (target) logComputerCapture({ captureReason: "objectiveRecord_unresolved", objectiveRecordResolved: Boolean(objectiveId && objectiveRecords.get(objectiveId)), actorResolved: Boolean(actor) });
         computerCaptureTarget = null;
       } else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
-        && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
+        && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.objectiveId === objectiveId) {
         computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
       } else {
-        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, actor, id: crypto.randomUUID() };
+        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, objectiveId, actor, id: crypto.randomUUID() };
       }
       broadcastComputerCapture();
       watchComputerCapture();
@@ -861,19 +858,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
-    onActiveOwnerChange: () => scheduleOperationUseBroadcast(),
+    onActiveOwnerChange: () => scheduleObjectiveUseBroadcast(),
   });
   // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
-  const useRequests = createUseRequestBroker({ onChange: () => scheduleOperationUseBroadcast() });
+  const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast() });
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
     onFailure: recordFailure,
     service: computerUse,
     requests: useRequests,
-    operations: () => operations.list(),
-    resolveOperation: operations.get,
+    objectiveRecords: () => objectiveRecords.list(),
+    resolveObjective: objectiveRecords.get,
     useContext: useContext.resolve,
-    onActorChange: () => scheduleOperationUseBroadcast(),
+    onActorChange: () => scheduleObjectiveUseBroadcast(),
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -889,22 +886,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   /**
-   * 브라우저 상태는 Operation 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
+   * 브라우저 상태는 Objective 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
    * (origin 당 여섯)을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다.
    * 뷰를 가진 Desktop 창에만 보낸다: 브라우저는 그 창에서만 열리고, 다른 화면에는 그릴 자리가 없다.
    */
   browserService.onState((state) => {
-    // driving 이 바뀌면 operation-use 의 browser 배열이 바뀐다 — 스냅샷을 다시 흘린다(변한 게 없으면 스킵).
-    scheduleOperationUseBroadcast();
-    if (operationSseSubscribers.size === 0) return;
+    // driving 이 바뀌면 objective-use 의 browser 배열이 바뀐다 — 스냅샷을 다시 흘린다(변한 게 없으면 스킵).
+    scheduleObjectiveUseBroadcast();
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
-    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "desktop") writeObjectiveSse(subscriber, data);
   });
   const BROWSER_AVAILABILITY_EVENT = "browser:availability";
   browserService.onAvailability((notice) => {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_AVAILABILITY_EVENT, { available: notice.available, reason: notice.reason });
-    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "desktop") writeObjectiveSse(subscriber, data);
   });
   // 스크린샷은 Console 호스트에 놓인다 — 뷰를 그리는 Desktop 은 원격일 수 있어도 도구를 부르는 에이전트는
   // 언제나 이 기계에서 돌기 때문이다.
@@ -917,75 +914,75 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onFailure: recordFailure,
     service: browserService,
     screenshots: browserScreenshots,
-    operations: () => operations.list(),
-    resolveOperation: operations.get,
+    objectiveRecords: () => objectiveRecords.list(),
+    resolveObjective: objectiveRecords.get,
     useContext: useContext.resolve,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const consoleUseActivity = new Map<string, number>();
-  const CONSOLE_REVEAL_EVENT_CHANNEL = "operation:reveal";
+  const CONSOLE_REVEAL_EVENT_CHANNEL = "objective:reveal";
   pluginSseChannels.add(CONSOLE_REVEAL_EVENT_CHANNEL);
   // 제스처 채널 — 호출자·도구·대상·시각만. 읽은 내용은 싣지 않는다.
   const CONSOLE_CALL_EVENT_CHANNEL = "console-use:call";
   pluginSseChannels.add(CONSOLE_CALL_EVENT_CHANNEL);
   // 에이전트가 닫으면 사람 화면에도 되돌리기 배너가 서야 한다 — 저자와 함께.
-  const OPERATION_CLOSING_EVENT_CHANNEL = "operation:closing";
-  pluginSseChannels.add(OPERATION_CLOSING_EVENT_CHANNEL);
-  const listOperationUse = () => {
+  const OBJECTIVE_CLOSING_EVENT_CHANNEL = "objective:closing";
+  pluginSseChannels.add(OBJECTIVE_CLOSING_EVENT_CHANNEL);
+  const listObjectiveUse = () => {
     const experiments = readExperimentSettings(consoleSettingsStore);
-    const consoleOperations: string[] = [];
+    const consoleObjectiveRecords: string[] = [];
     for (const [id] of consoleUseActivity) {
-      const operation = operations.get(id);
-      if (!operation) continue;
+      const objectiveRecord = objectiveRecords.get(id);
+      if (!objectiveRecord) continue;
       // 「이번 작업만」 허가로 쓰는 중이어도 사용 중이다.
-      if ((operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")) consoleOperations.push(id);
+      if ((objectiveRecord.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")) consoleObjectiveRecords.push(id);
     }
     const owner = computerUse.activeOwner();
-    const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
+    const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
     // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
-    const computerActor = owner && computerOperation ? computerUseMcp.actorForOwner(owner) : null;
-    const browserOperations = browserService.status().operations.filter((id) => !!operations.get(id) && browserService.state(id).driving);
-    return { console: consoleOperations, computer: computerOperation, computerActor, browser: browserOperations };
+    const computerActor = owner && computerObjective ? computerUseMcp.actorForOwner(owner) : null;
+    const browserObjectiveRecords = browserService.status().objectiveRecords.filter((id) => !!objectiveRecords.get(id) && browserService.state(id).driving);
+    return { console: consoleObjectiveRecords, computer: computerObjective, computerActor, browser: browserObjectiveRecords };
   };
   /**
-   * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
+   * Console Use 확장면 중 서버가 소유하는 묶음 — Objective 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
    * 화면 사건(보이기). 재개·뷰·대화는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
-  const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, archive: operationArchive.archive, listOperationUse, patchOperation: (id, input) => consoleFeaturePorts.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
+  const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
-  let sleepOperation: ConsoleUseActions["sleep"];
+  let sleepObjective: ConsoleUseActions["sleep"];
   const consoleUse = createConsoleUseMcpHost({
     surface: consoleActions,
     onCall: (event) => publishPluginEvent(CONSOLE_CALL_EVENT_CHANNEL, event),
-    onOperationUse: (operationId, active) => {
-      const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
-      if (count) consoleUseActivity.set(operationId, count);
-      else consoleUseActivity.delete(operationId);
-      scheduleOperationUseBroadcast();
+    onObjectiveUse: (objectiveId, active) => {
+      const count = Math.max(0, (consoleUseActivity.get(objectiveId) ?? 0) + (active ? 1 : -1));
+      if (count) consoleUseActivity.set(objectiveId, count);
+      else consoleUseActivity.delete(objectiveId);
+      scheduleObjectiveUseBroadcast();
     },
     control: consoleControl,
     requests: useRequests,
     transport: mcpHttp.transport,
     onFailure: recordFailure,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
-    operations: () => operations.list(),
-    resolveOperation: operations.get,
+    objectiveRecords: () => objectiveRecords.list(),
+    resolveObjective: objectiveRecords.get,
     useContext: useContext.resolve,
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
-  // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<operationId>` 또는 `chat:<operationId>`)을 Operation 으로 푼다.
+  // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
   const pluginMcp = createAdmiralMcpHost(mcpHttp.transport, {
     onFailure: recordFailure,
     resolveCaller: (label) => {
-      const operationId = label.startsWith("chat:") ? label.slice(5) : label;
-      return operations.get(operationId) ? { kind: "operation", operationId } : null;
+      const objectiveId = label.startsWith("chat:") ? label.slice(5) : label;
+      return objectiveRecords.get(objectiveId) ? { kind: "objectiveRecord", objectiveId } : null;
     },
     // 작업 세션의 지식은 그 세션이 속한 맥락의 사령관이다(없으면 발급). 경로·모델 인자로는 고르지 않는다.
     resolveCommodore: (caller) => {
-      if (caller.kind !== "operation") return null;
-      const operation = operations.get(caller.operationId);
-      const owner = operation && commodore ? commodore.knowledge.forContext(operation.theaterId) : null;
+      if (caller.kind !== "objectiveRecord") return null;
+      const objectiveRecord = objectiveRecords.get(caller.objectiveId);
+      const owner = objectiveRecord && commodore ? commodore.knowledge.forContext(objectiveRecord.theaterId) : null;
       return owner?.ok ? owner.commodoreId : null;
     },
   });
@@ -1000,85 +997,73 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return directory ? pluginMcp.bindCommodore(commodoreId, directory) : [];
       },
     },
-    operations: {
-      describe: operationArchive.describe,
-      listArchived: operationArchive.listArchived,
-      archive: operationArchive.archive,
-      access: operationArchive.access,
-      restore: operationArchive.restore,
-      undoArchive: operationArchive.undoArchive,
-      previewPurge: operationArchive.previewPurge,
-      purge: operationArchive.purge,
-      isTransitioning: operationArchive.isTransitioning,
-      list: () => operations.list(),
-      get: (id) => operations.get(id),
+    objectiveRecords: {
+      describe: objectiveRecordArchive.describe,
+      listArchived: objectiveRecordArchive.listArchived,
+      archive: objectiveRecordArchive.archive,
+      access: objectiveRecordArchive.access,
+      restore: objectiveRecordArchive.restore,
+      undoArchive: objectiveRecordArchive.undoArchive,
+      previewPurge: objectiveRecordArchive.previewPurge,
+      purge: objectiveRecordArchive.purge,
+      isTransitioning: objectiveRecordArchive.isTransitioning,
+      list: () => objectiveRecords.list(),
+      get: (id) => objectiveRecords.get(id),
       create: (input) => {
-        if (input.id && deletionCoordinator.hasPendingOperation(input.id)) throw new Error("pending_deletion");
-        const operation = operations.create(input);
+        if (input.id && deletionCoordinator.hasPendingObjective(input.id)) throw new Error("pending_deletion");
+        const objectiveRecord = objectiveRecords.create(input);
         persistDurableState();
-        broadcastOperationChanged(operation);
-        return operation;
+        broadcastObjectiveChanged(objectiveRecord);
+        return objectiveRecord;
       },
       createChild: (input) => {
-        const existing = operations.getChild(input.childSessionId);
-        const before = existing ? null : operations.list();
-        const child = operations.createChild(input);
+        const existing = objectiveRecords.getChild(input.childSessionId);
+        const before = existing ? null : objectiveRecords.list();
+        const child = objectiveRecords.createChild(input);
         if (before) {
-          try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }
-          broadcastOperationChanged(operations.get(input.parentOperationId)!);
+          try { persistDurableState(); } catch (error) { objectiveRecords.replace(before); throw error; }
+          broadcastObjectiveChanged(objectiveRecords.get(input.parentObjectiveId)!);
         }
         return child;
       },
       patch: (id, input) => {
         archiveStorage.assertReady();
-        const parentId = operations.getChild(id)?.parent.id;
-        const before = operations.get(parentId ?? id);
+        const parentId = objectiveRecords.getChild(id)?.parent?.id;
+        const before = objectiveRecords.get(parentId ?? id);
         const launchBefore = launchJson(id);
-        const operation = operations.patch(id, input);
-        if (operation && before) {
+        const objectiveRecord = objectiveRecords.patch(id, input);
+        if (objectiveRecord && before) {
           persistDurableState();
           // 브라우저가 볼 수 있는 투영이 실제로 달라졌을 때만 밀어낸다 — 민감 필드
           // (providerSession 등)만 바뀐 patch는 sanitized DTO가 같아 계속 침묵하고,
           // payload 모드 마커(예: chatMode)처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
-          const changed = operations.get(parentId ?? id)!;
-          if (sanitizedOperationJson(before) !== sanitizedOperationJson(changed)) {
-            broadcastOperationChanged(changed);
+          const changed = objectiveRecords.get(parentId ?? id)!;
+          if (sanitizedObjectiveJson(before) !== sanitizedObjectiveJson(changed)) {
+            broadcastObjectiveChanged(changed);
           }
           // 플러그인 서버는 브라우저 SSE 를 듣지 못한다 — 세션 좌표·표면이 바뀐 때만 id 힌트를 낸다. 저장은 이미 끝났으니
           // 구독자의 예외가 이 patch 를 부른 실행 경로로 새지 않게 격리한다.
           if (launchBefore !== launchJson(id)) {
-            publishPluginEvent(OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, { operationId: id, parentOperationId: parentId ?? null } satisfies OperationLaunchChangedEvent, true);
+            publishPluginEvent(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, { objectiveId: id, parentObjectiveId: parentId ?? null } satisfies ObjectiveLaunchChangedEvent, true);
           }
-        } else if (operation) {
+        } else if (objectiveRecord) {
           persistDurableState();
         }
-        return operation;
+        return objectiveRecord;
       },
-      delete: deleteOperationForPlugin,
+      delete: deleteObjectiveForPlugin,
       deleteChild: deleteChildForPlugin,
       reorder: (input) => consoleActions.reorder!(input),
-      registerOperationType: (type) => {
-        pluginOperationTypes.add(type);
-        return () => {
-          pluginOperationTypes.delete(type);
-        };
-      },
-      registerPayloadSanitizer: (pluginId, fields) => {
-        pluginPayloadSanitizers.set(pluginId, fields);
-        return () => {
-          if (pluginPayloadSanitizers.get(pluginId) === fields) pluginPayloadSanitizers.delete(pluginId);
-        };
-      },
-      // 그룹 — 사이드바가 Operation 을 묶는 그 그룹을 플러그인 목록으로 연다. 사람의 PATCH 와 같은 길(영속 + 방송).
+      // 그룹 — 사이드바가 Objective 을 묶는 그 그룹을 플러그인 목록으로 연다. 사람의 PATCH 와 같은 길(영속 + 방송).
       groups: {
-        list: (theaterId) => (theaterId ? operations.listGroups(theaterId) : operations.listAllGroups()),
-        get: (id) => operations.listAllGroups().find((group) => group.id === id) ?? null,
-        create: (input) => { const group = operations.createGroup(input); persistDurableState(); broadcastGroupChanged(group); return group; },
-        patch: (id, input) => { const group = operations.updateGroup(id, input); if (group) { persistDurableState(); broadcastGroupChanged(group); } return group; },
+        list: (theaterId) => (theaterId ? objectiveRecords.listGroups(theaterId) : objectiveRecords.listAllGroups()),
+        get: (id) => objectiveRecords.listAllGroups().find((group) => group.id === id) ?? null,
+        create: (input) => { const group = objectiveRecords.createGroup(input); persistDurableState(); broadcastGroupChanged(group); return group; },
+        patch: (id, input) => { const group = objectiveRecords.updateGroup(id, input); if (group) { persistDurableState(); broadcastGroupChanged(group); } return group; },
         delete: (id) => {
-          const existing = operations.listAllGroups().find((group) => group.id === id);
-          if (!existing || operations.list().some((node) => node.groupId === id)) return false;
-          const deleted = operations.deleteGroup(id);
+          const existing = objectiveRecords.listAllGroups().find((group) => group.id === id);
+          if (!existing || objectiveRecords.list().some((node) => node.groupId === id)) return false;
+          const deleted = objectiveRecords.deleteGroup(id);
           if (deleted) { persistDurableState(); broadcastGroupRemoved(id, existing.theaterId); }
           return deleted;
         },
@@ -1115,7 +1100,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       /**
        * 이 채널의 publish를 브라우저 SSE 스트림으로도 내보낸다.
        *
-       * 코어가 Operation 스트림을 소유하므로 플러그인은 두 번째 EventSource를 열지
+       * 코어가 Objective 스트림을 소유하므로 플러그인은 두 번째 EventSource를 열지
        * 않고 같은 연결에 올라탄다 — 연결이 하나면 재접속·순서·생명주기도 하나다.
        */
       registerSseChannel: (channel: string) => {
@@ -1142,7 +1127,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const workspace = ensureWorkspaceDirectory(durablePaths.dir, cwd);
         return { path: workspace.path, id: workspaceHash(workspace.cwd) };
       },
-      withDirectoryLock: <T,>(lockDir: string, operation: () => T): T => withDirectoryLock({ lockDir }, operation),
+      withDirectoryLock: <T,>(lockDir: string, objectiveRecord: () => T): T => withDirectoryLock({ lockDir }, objectiveRecord),
     },
     knowledge: {
       root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
@@ -1194,29 +1179,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try { return await Promise.race([consoleControl.request({ kind: "plugin", pluginId }, input), timeout]); }
       finally { clearTimeout(timer); }
     },
-    observe: (operationId) => consoleControl.observe(operationId),
+    observe: (objectiveId) => consoleControl.observe(objectiveId),
     subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
     subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
-    sleep: async (operationId, options) => {
-      if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
-      const observation = consoleControl.observe(operationId);
-      if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
+    sleep: async (objectiveId, options) => {
+      if (!objectiveRecords.get(objectiveId)) return { ok: false, error: "unknown_objectiveRecord" };
+      const observation = consoleControl.observe(objectiveId);
+      if (!observation || !sleepObjective) return { ok: false, error: "capability_unavailable" };
       if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
       if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
       // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
       const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
       if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
-      return sleepOperation(operationId);
+      return sleepObjective(objectiveId);
     },
     // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
-    // 플러그인 operations.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
-    setSubagentSpawn: (operationId, policy) => {
+    // 플러그인 objectiveRecords.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
+    setSubagentSpawn: (objectiveId, policy) => {
       if (policy !== "blocked" && policy !== "default") return;
-      const node = operations.get(operationId);
+      const node = objectiveRecords.get(objectiveId);
       if (!node) return;
-      const next = withSubagentSpawn(node.payload, policy);
-      if (next === node.payload) return;
-      consoleFeaturePorts.operations.patch(operationId, { payload: next });
+      const next = withSubagentSpawn(node, policy);
+      if (next === node) return;
+      consoleFeaturePorts.objectiveRecords.patch(objectiveId, { ...(next) });
     },
     // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
     // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
@@ -1224,16 +1209,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       agentCallRedirects.set(pluginId, reason);
       return () => { if (agentCallRedirects.get(pluginId) === reason) agentCallRedirects.delete(pluginId); };
     },
-    setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
-    coordinates: (operationId) => consoleControl.readCoordinates(operationId),
-    prepareChat: (operationId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, operationId),
-    setUnstartedPreset: (operationId, input) => consoleControl.unstartedPreset({ kind: "plugin", pluginId }, operationId, input),
-    advertisedTools: (operationId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, operationId),
-    // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Operation 이나 그 자식)을 Console 제어가 따진다.
-    transcript: (operationId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, operationId, input, signal),
+    setCoordinates: (objectiveId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, objectiveId, input),
+    coordinates: (objectiveId) => consoleControl.readCoordinates(objectiveId),
+    prepareChat: (objectiveId) => consoleControl.prepareChat({ kind: "plugin", pluginId }, objectiveId),
+    setUnstartedPreset: (objectiveId, input) => consoleControl.unstartedPreset({ kind: "plugin", pluginId }, objectiveId, input),
+    advertisedTools: (objectiveId) => consoleControl.advertisedTools({ kind: "plugin", pluginId }, objectiveId),
+    // 전사 — 좌표 바꾸기와 같은 소유 규칙(이 플러그인이 띄운 Objective 이나 그 자식)을 Console 제어가 따진다.
+    transcript: (objectiveId, input, signal) => consoleControl.transcript({ kind: "plugin", pluginId }, objectiveId, input, signal),
   });
-  async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
-    const result: OperationCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
+  async function resolveObjectiveCatalog(): Promise<{ readonly plugins: readonly ObjectiveCatalogPlugin[] }> {
+    const result: ObjectiveCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
 
     return { plugins: result };
   }
@@ -1269,9 +1254,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
-      // computerUse 실험 토글·백엔드는 listOperationUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
+      // computerUse 실험 토글·백엔드는 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
       // 브로커 순찰이 거둔다. 런치 주입은 다음 자식 런치부터 이 값을 따른다(computer-use/host/mcp.ts).
-      scheduleOperationUseBroadcast();
+      scheduleObjectiveUseBroadcast();
     },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
@@ -1421,24 +1406,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     systemFonts: deps.systemFonts ?? createSystemFontsService(),
     writeJson,
   });
-  const operationsRouter = createOperationsRouter({
-    store: operations,
+  const objectiveRecordsRouter = createObjectiveRecordsRouter({
+    store: objectiveRecords,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
     persist: persistDurableState,
-    deleteOperation: (operationId): DeferredDeletionReceipt | null => deletionCoordinator.deleteOperation(operationId),
-    isPendingDeletion: (operationId) => deletionCoordinator.hasPendingOperation(operationId),
-    getPluginSensitiveFields: (pluginId) => pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-
-      ...(pluginPayloadSanitizers.get(pluginId) ?? []),
-    ],
-    resolveLaunchCatalog: resolveOperationCatalog,
-    publishRenameEvent: (event) => consoleFeaturePorts.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
-    broadcastOperationChanged,
+    deleteObjective: (objectiveId): DeferredDeletionReceipt | null => deletionCoordinator.deleteObjective(objectiveId),
+    isPendingDeletion: (objectiveId) => deletionCoordinator.hasPendingObjective(objectiveId),
+    sensitiveFields: CORE_AGENT_SENSITIVE_FIELDS,
+    resolveLaunchCatalog: resolveObjectiveCatalog,
+    publishRenameEvent: (event) => consoleFeaturePorts.events.publish(OBJECTIVE_RENAMED_EVENT_CHANNEL, event),
+    broadcastObjectiveChanged,
     broadcastGroupChanged,
     broadcastGroupRemoved,
-    subscribeOperationSse: (req, res) => {
+    subscribeObjectiveSse: (req, res) => {
       const listener = listenerForRequest(req);
       const audience: AccessAudience = listener?.audience ?? "local";
       const sessionHandle = listener === null || listener.audience === "local"
@@ -1449,47 +1431,48 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
       // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
-      const operationView = typeof viewId === "string" && shellOwner !== null
+      const objectiveRecordView = typeof viewId === "string" && shellOwner !== null
         && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOwner(viewId));
-      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : clientKindOf(req) };
+      const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, client: objectiveRecordView ? "objective-browser" : clientKindOf(req) };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
       }));
-      operationSseSubscribers.add(subscriber);
+      objectiveRecordSseSubscribers.add(subscriber);
       startSseKeepaliveLifecycle(res, () => {
-        if (operationSseSubscribers.delete(subscriber)) browserService.reconcile();
-      }, (data) => writeOperationSse(subscriber, data));
-      writeOperationSse(subscriber, ":connected\n\n");
+        if (objectiveRecordSseSubscribers.delete(subscriber)) browserService.reconcile();
+      }, (data) => writeObjectiveSse(subscriber, data));
+      writeObjectiveSse(subscriber, ":connected\n\n");
       // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
       // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
-      writeOperationSse(subscriber, encodeSseData(OPERATION_USE_STATE_EVENT, operationUseSnapshot()));
+      writeObjectiveSse(subscriber, encodeSseData(OBJECTIVE_USE_STATE_EVENT, objectiveRecordUseSnapshot()));
       // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
       // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
       const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
-      if (publishedShell !== undefined) writeOperationSse(subscriber, encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
+      if (publishedShell !== undefined) writeObjectiveSse(subscriber, encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
       const publishedShellUpdate = shellOwner === null ? undefined : desktopShellUpdatesByOwner.get(shellOwner);
-      if (publishedShellUpdate !== undefined) writeOperationSse(subscriber, encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, publishedShellUpdate));
+      if (publishedShellUpdate !== undefined) writeObjectiveSse(subscriber, encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, publishedShellUpdate));
       // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
       // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
       if (audience === "local") {
-        writeOperationSse(subscriber, encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
+        writeObjectiveSse(subscriber, encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
-      // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
-      if (!operationSseSubscribers.has(subscriber)) return;
+      // 브라우저·모바일 화면이 붙는 순간 Objective 브라우저는 멈춘다 — 떠나면 다시 열린다.
+      if (!objectiveRecordSseSubscribers.has(subscriber)) return;
       browserService.reconcile();
       // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
       // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
       if (subscriber.client === "desktop" && subscriber.audience === "local") {
-        writeOperationSse(subscriber, encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, computerCaptureSnapshot()));
+        writeObjectiveSse(subscriber, encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, computerCaptureSnapshot()));
       }
       if (subscriber.client === "desktop") {
-        for (const browsing of browserService.status().operations) writeOperationSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
+        for (const browsing of browserService.status().objectiveRecords) writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
       }
     },
   });
-  const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveOperation(node, true) });
-  routeRegistry.register("/api/v1/operations", async (context) => await operationArchiveRouter(context) || operationsRouter(context));
+  const objectiveRecordArchiveRouter = createObjectiveArchiveRouter({ archive: objectiveRecordArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveObjective(node, true) });
+  routeRegistry.register("/api/v1/objectives/records", async (context) => await objectiveRecordArchiveRouter(context) || objectiveRecordsRouter(context));
+  routeRegistry.register("/api/v1/objectives/events", objectiveRecordsRouter);
   const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson });
   routeRegistry.register("/api/v1/avatars", avatarRouter);
   routeRegistry.register("/api/v1/conversation-workbench", createConversationWorkbenchRouter({
@@ -1497,13 +1480,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
-    locate: (operationId, folder) => {
-      const child = operations.getChild(operationId);
-      const node = child ? child.parent : operations.get(operationId);
+    locate: (objectiveId, folder) => {
+      const child = objectiveRecords.getChild(objectiveId);
+      const node = child ? child.parent : objectiveRecords.get(objectiveId);
       if (!node) return null;
       const theater = theaters.get(node.theaterId);
       if (!theater?.realpath) return null;
-      const payload = child ? child.child.payload : node.payload;
+      const payload = child ? child.child : node;
       // 세션이 옮겨 간 폴더(Theater 상대)가 오면 그것을, 아니면 세션의 실행 작업 폴더를 쓴다. 상대 폴더는 어휘로 루트 위로 오르지 못하고,
       // 분류 함수가 realpath 포함 검사를 한 번 더 한다.
       const relative = folder === null ? null : path.posix.normalize(folder.replaceAll("\\", "/"));
@@ -1537,16 +1520,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 405, { error: "method_not_allowed" });
     return true;
   });
-  routeRegistry.register("/api/v1/operation-use", async ({ req, res }) => {
+  routeRegistry.register("/api/v1/objective-use", async ({ req, res }) => {
     if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    writeJson(res, 200, operationUseSnapshot());
+    writeJson(res, 200, objectiveRecordUseSnapshot());
     return true;
   });
   /**
-   * Operation 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
+   * Objective 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
-  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
+  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
@@ -1801,7 +1784,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         startedAt: payload.startedAt,
         version: payload.version,
         ...(payload.owner ? { owner: payload.owner } : {}),
-        workspaceCount: operations.list().length,
+        workspaceCount: objectiveRecords.list().length,
         lifecycleWire: CONSOLE_LIFECYCLE_WIRE,
         stopRequest: CONSOLE_STOP_REQUEST_REVISION,
       };
@@ -1949,7 +1932,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const theaterId = readUrl(req).searchParams.get("theaterId");
     const payload: ConsoleObserverStatus = {
       name: consoleLabel(),
-      workspaces: operations.list().length,
+      workspaces: objectiveRecords.list().length,
       version,
       channel,
       ...updateCheck.getStatus(),
@@ -1968,7 +1951,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { version, routes: buildApiCatalog([...OPERATION_ARCHIVE_API_CATALOG, ...executionApiCatalog, ]) });
+    writeJson(res, 200, { version, routes: buildApiCatalog([...OBJECTIVE_ARCHIVE_API_CATALOG, ...executionApiCatalog, ]) });
   }
 
   // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
@@ -2014,7 +1997,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ...(theater.alias !== undefined ? { alias: theater.alias } : {}),
       commodoreActive: commodore?.active(theater.id) ?? false,
       hasWiki,
-      activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === null && operation.type === "agent").length,
+      activeAdmiralCount: objectiveRecords.listByTheater(theater.id).length,
     };
   }
 
@@ -2038,7 +2021,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function cleanupAfterFailedStart(): Promise<void> {
-    operationArchive.dispose();
+    objectiveRecordArchive.dispose();
     deletionCoordinator.dispose();
     const current = server;
     const currentLoopback = loopbackServer;
@@ -2115,8 +2098,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 소유 색인 → 한 단계 이주 → 실행 복원. 저널 실패를 빈 Console로 숨기지 않는다.
     const state = archiveStorage.load();
     theaters.restore(state.theaters);
-    operations.replace(state.operations);
-    operations.replaceGroups(state.groups ?? []);
+    objectiveRecords.replace(state.objectiveRecords);
+    objectiveRecords.replaceGroups(state.groups ?? []);
     deletionCoordinator.load(state.deletionTombstones ?? []);
     // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
     // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
@@ -2125,7 +2108,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 들어온다. 아무도 읽지 않는 파일을 치우는 정돈은 그 위험을 살 만한 값이 아니다.
     // Legacy captures/ → state.json providerSession one-shot migration (best-effort).
     // Runs after durable load so save preserves tombstones already restored into the coordinator.
-    migrateLegacyCaptureState();
     try {
       deletionCoordinator.sweepExpired();
     } catch (error) {
@@ -2134,118 +2116,104 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // Codex WorkspaceRegistry는 인메모리이므로 durable Theater를 메타데이터만 복원한다.
   }
 
-  function migrateLegacyCaptureState(): void {
-    migrateLegacyCaptures({
-      consoleDataDir: durablePaths.dir,
-      operations,
-      // 삭제 유예 중인 Operation은 live store에 없으므로 tombstone에서 flatten해 넘긴다.
-      tombstonedOperations: deletionCoordinator.list().flatMap(deletionOperations),
-      save: () => saveDurableState(deletionCoordinator.list()),
-    });
-  }
 
 
-  // patch 브로드캐스트 게이트가 쓰는 "브라우저가 보는 모양" — broadcastOperationChanged와 같은
+
+  // patch 브로드캐스트 게이트가 쓰는 "브라우저가 보는 모양" — broadcastObjectiveChanged와 같은
   // 새니타이즈 규칙을 공유해야 민감 필드 전용 patch가 조용히 남는다. ts는 모든 patch가 건드리는
   // 축이라 비교에서 뺀다 — 남기면 게이트가 항상 열려 게이트가 아니게 된다.
-  function sanitizedOperationJson(node: OperationNode): string {
-    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-
-      ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
-    ];
+  function sanitizedObjectiveJson(node: ObjectiveRecord): string {
+    const sensitiveFields = CORE_AGENT_SENSITIVE_FIELDS;
     const { ts: _ts, ...rest } = createSanitizedOpDto(node, { sensitiveFields });
     return JSON.stringify(rest);
   }
-  /** `operation:launch-changed` 게이트가 비교하는 모양 — 자식 세션이면 부모의 childSessions 안 그 자식의 payload 를 읽는다. */
+  /** `objectiveRecord:launch-changed` 게이트가 비교하는 모양 — 자식 세션이면 부모의 sessions 안 그 자식의 payload 를 읽는다. */
   function launchJson(id: string): string | null {
-    const payload = operations.getChild(id)?.child.payload ?? operations.get(id)?.payload;
-    return payload ? JSON.stringify(readOperationLaunch(payload)) : null;
+    const payload = objectiveRecords.getChild(id)?.child ?? objectiveRecords.get(id);
+    return payload ? JSON.stringify(readObjectiveLaunch(payload)) : null;
   }
 
   /**
-   * Operation 사용 스냅샷 — /api/v1/operation-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용, 패널 안 허용
+   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용, 패널 안 허용
    * 요청, 「이번 작업만」 허가를 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
    * 원천(consoleUseActivity, ComputerUseService.owner, browserService, useRequests)이 바뀔 때마다
-   * scheduleOperationUseBroadcast 로 이 스냅샷을 operations SSE 로 밀어 내보낸다.
+   * scheduleObjectiveUseBroadcast 로 이 스냅샷을 objectiveRecords SSE 로 밀어 내보낸다.
    */
-  const OPERATION_USE_STATE_EVENT = "operation-use:state";
-  let operationUseBroadcastQueued = false;
-  let lastOperationUseSnapshot: string | null = null;
+  const OBJECTIVE_USE_STATE_EVENT = "objective-use:state";
+  let objectiveRecordUseBroadcastQueued = false;
+  let lastObjectiveUseSnapshot: string | null = null;
 
-  function operationUseSnapshot() {
-    const using = listOperationUse();
-    const live = new Set(operations.list().flatMap((operation) => [operation.id, ...(operation.childSessions ?? []).map((child) => child.id)]));
+  function objectiveRecordUseSnapshot() {
+    const using = listObjectiveUse();
+    const live = new Set(objectiveRecords.list().flatMap((objectiveRecord) => [objectiveRecord.id, ...(objectiveRecord.sessions ?? []).map((child) => child.id)]));
     const { requests, grants } = useRequests.list();
     return {
       console: using.console,
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
       browser: using.browser,
-      requests: requests.filter((request) => live.has(request.operationId)),
+      requests: requests.filter((request) => live.has(request.objectiveId)),
       grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
     };
   }
 
-  /** 한 틱에 몰린 원천 변화(턴 종료 → settle·revoke·operation:changed 등)를 스냅샷 한 번으로 합친다. */
-  function scheduleOperationUseBroadcast(): void {
-    if (operationUseBroadcastQueued) return;
-    operationUseBroadcastQueued = true;
+  /** 한 틱에 몰린 원천 변화(턴 종료 → settle·revoke·objectiveRecord:changed 등)를 스냅샷 한 번으로 합친다. */
+  function scheduleObjectiveUseBroadcast(): void {
+    if (objectiveRecordUseBroadcastQueued) return;
+    objectiveRecordUseBroadcastQueued = true;
     queueMicrotask(() => {
-      operationUseBroadcastQueued = false;
-      broadcastOperationUse();
+      objectiveRecordUseBroadcastQueued = false;
+      broadcastObjectiveUse();
     });
   }
 
-  function broadcastOperationUse(): void {
-    if (operationSseSubscribers.size === 0) { lastOperationUseSnapshot = null; return; }
-    const snapshot = operationUseSnapshot();
+  function broadcastObjectiveUse(): void {
+    if (objectiveRecordSseSubscribers.size === 0) { lastObjectiveUseSnapshot = null; return; }
+    const snapshot = objectiveRecordUseSnapshot();
     const encoded = JSON.stringify(snapshot);
-    // 바뀌지 않은 사실은 내보내지 않는다 — broadcastOperationChanged 처럼 광범위하게 걸린 원천에서도
-    // 실제로 operation-use 스냅샷이 달라진 경우에만 프레임이 나간다.
-    if (encoded === lastOperationUseSnapshot) return;
-    lastOperationUseSnapshot = encoded;
-    const data = encodeSseData(OPERATION_USE_STATE_EVENT, snapshot);
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
+    // 바뀌지 않은 사실은 내보내지 않는다 — broadcastObjectiveChanged 처럼 광범위하게 걸린 원천에서도
+    // 실제로 objective-use 스냅샷이 달라진 경우에만 프레임이 나간다.
+    if (encoded === lastObjectiveUseSnapshot) return;
+    lastObjectiveUseSnapshot = encoded;
+    const data = encodeSseData(OBJECTIVE_USE_STATE_EVENT, snapshot);
+    for (const subscriber of objectiveRecordSseSubscribers) writeObjectiveSse(subscriber, data);
   }
 
-  function writeOperationSse(subscriber: OperationSseSubscriber, data: string): void {
+  function writeObjectiveSse(subscriber: ObjectiveSseSubscriber, data: string): void {
     // sweep 사이에도 만료된 세션에 프레임을 보내지 않는다. 초기 상태·heartbeat도 같은 문을 탄다.
     // resolveSession은 idle 수명을 늘리므로 쓰지 않는다. prune이 이 구독을 제거했는지 다시 본다.
     if (subscriber.audience === "remote") access.prune();
-    if (!operationSseSubscribers.has(subscriber)) return;
+    if (!objectiveRecordSseSubscribers.has(subscriber)) return;
     subscriber.res.write(data);
   }
 
   /** 그룹 사건 — 이름·색·순서뿐이라 민감 필드가 없다. 원격 세션에도 그대로 흐른다. */
   function broadcastGroupChanged(group: { readonly id: string; readonly name: string; readonly color: string; readonly order: number; readonly theaterId: string; readonly createdAt: number }): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData("group:changed", { group });
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) writeObjectiveSse(subscriber, data);
   }
   function broadcastGroupRemoved(groupId: string, theaterId: string): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData("group:removed", { groupId, theaterId });
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) writeObjectiveSse(subscriber, data);
   }
-  function broadcastOperationRemoved(operationId: string): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(OPERATION_REMOVED_SSE_EVENT, { operationId });
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
-    scheduleOperationUseBroadcast();
+  function broadcastObjectiveRemoved(objectiveId: string): void {
+    if (objectiveRecordSseSubscribers.size === 0) return;
+    const data = encodeSseData(OBJECTIVE_REMOVED_SSE_EVENT, { objectiveId });
+    for (const subscriber of objectiveRecordSseSubscribers) writeObjectiveSse(subscriber, data);
+    scheduleObjectiveUseBroadcast();
   }
-  function broadcastOperationChanged(node: OperationNode): void {
-    if (operationSseSubscribers.size === 0) return;
-    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-
-      ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
-    ];
+  function broadcastObjectiveChanged(node: ObjectiveRecord): void {
+    if (objectiveRecordSseSubscribers.size === 0) return;
+    const sensitiveFields = CORE_AGENT_SENSITIVE_FIELDS;
     const sanitized = createSanitizedOpDto(node, { sensitiveFields });
-    const data = encodeSseData("operation:changed", { operation: sanitized });
-    for (const subscriber of operationSseSubscribers) {
-      writeOperationSse(subscriber, data);
+    const data = encodeSseData("objective:changed", { objectiveRecord: sanitized });
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      writeObjectiveSse(subscriber, data);
     }
-    // payload(consoleUse)·childSessions·live 목록이 바뀌면 operation-use 스냅샷도 바뀐다 — 제목만 바뀐 patch 는 스킵이 흡수한다.
-    scheduleOperationUseBroadcast();
+    // payload(consoleUse)·sessions·live 목록이 바뀌면 objective-use 스냅샷도 바뀐다 — 제목만 바뀐 patch 는 스킵이 흡수한다.
+    scheduleObjectiveUseBroadcast();
   }
 
   /**
@@ -2255,10 +2223,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
 
   function broadcastUpdateAvailable(): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData("update:available", {});
-    for (const subscriber of operationSseSubscribers) {
-      writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      writeObjectiveSse(subscriber, data);
     }
   }
 
@@ -2267,8 +2235,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const unavailableOwner = computerUse.captureUnavailableOwner();
     const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     return {
-      target: target ? { id: target.id, operationId: target.operationId, actor: target.actor, title: target.title } : null,
-      unavailableOperationId: unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null,
+      target: target ? { id: target.id, objectiveId: target.objectiveId, actor: target.actor, title: target.title } : null,
+      unavailableObjectiveId: unavailableOwner ? computerUseMcp.objectiveIdForOwner(unavailableOwner) : null,
       // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
       ...(unavailableReason ? { unavailableReason } : {}),
     };
@@ -2280,17 +2248,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (encoded === lastComputerCaptureSnapshot) return;
     lastComputerCaptureSnapshot = encoded;
     // 미리보기가 받는 상태 그대로. "unavailable"이 「관측한 창을 식별하지 못했습니다」 문구의 유일한 근거다.
-    logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableOperationId ? "unavailable" : "none", enabled: computerUse.status().enabled, ...(snapshot.unavailableReason ? { unavailableReason: snapshot.unavailableReason } : {}) });
+    logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableObjectiveId ? "unavailable" : "none", enabled: computerUse.status().enabled, ...(snapshot.unavailableReason ? { unavailableReason: snapshot.unavailableReason } : {}) });
     const data = encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, snapshot);
     // Computer Use는 로컬 기계만 조작한다. 원격 Desktop의 셸 소유자에게 로컬 창을 넘기지 않는다.
-    for (const subscriber of operationSseSubscribers) {
-      if (subscriber.client === "desktop" && subscriber.audience === "local") writeOperationSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      if (subscriber.client === "desktop" && subscriber.audience === "local") writeObjectiveSse(subscriber, data);
     }
   }
 
   let computerCaptureVerification: Promise<void> | null = null;
 
-  /** 화면공유 대상의 호스트 쪽 판정. 사유 코드와 불리언만 싣는다 — 창 제목·경로·Operation 식별자는 남기지 않는다. */
+  /** 화면공유 대상의 호스트 쪽 판정. 사유 코드와 불리언만 싣는다 — 창 제목·경로·Objective 식별자는 남기지 않는다. */
   function logComputerCapture(event: Record<string, string | boolean>): void {
     process.stdout.write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), scope: "capture_host", ...event })}\n`);
   }
@@ -2340,11 +2308,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   /** 집 주소는 게시한 창에만 돌아간다 — 다른 사람의 화면에서는 그 사람의 기계를 가리키기 때문이다. */
   function broadcastDesktopShellChanged(owner: string | "local", snapshot: DesktopShellSnapshot): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_SHELL_EVENT, snapshot.homeOrigin === null ? emptyDesktopShell() : snapshot);
-    for (const subscriber of operationSseSubscribers) {
+    for (const subscriber of objectiveRecordSseSubscribers) {
       const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
-      if (subscriberOwner === owner) writeOperationSse(subscriber, data);
+      if (subscriberOwner === owner) writeObjectiveSse(subscriber, data);
     }
   }
 
@@ -2394,17 +2362,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      * 구독자가 없어도 보낸다 — 이 신호의 수신자는 브라우저가 아니라 서버 안의 플러그인이다.
      */
     publishPluginEvent(CONTROL_HOLDER_EVENT_CHANNEL, { holder });
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(holder));
-    for (const subscriber of operationSseSubscribers) {
+    for (const subscriber of objectiveRecordSseSubscribers) {
       if (subscriber.audience !== "local") continue;
-      writeOperationSse(subscriber, data);
+      writeObjectiveSse(subscriber, data);
     }
   }
 
   /**
    * 이 세션으로 열려 있던 구독을 끝낸다. 세션이 죽어도 이미 열린 SSE는 스스로 끝나지 않으므로,
-   * 남겨 두면 자격을 잃은 기기가 다음 브로드캐스트부터 Operation 갱신을 계속 받는다 — 이
+   * 남겨 두면 자격을 잃은 기기가 다음 브로드캐스트부터 Objective 갱신을 계속 받는다 — 이
    * 스트림에는 요청마다 걸리는 세션 게이트가 없다. 끊는 시점을 상대의 새로고침에 맡길 수 없다.
    * 그쪽 화면이 스스로 물러나 주기를 기다리는 것은 규약을 지키는 클라이언트에만 성립하는
    * 가정이고, 이 리스너는 인터넷을 향해 있다.
@@ -2418,11 +2386,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 이 인자의 존재 이유다 — 둘을 하나로 두면 안내를 건너뛰는 자리가 정리까지 함께 건너뛴다.
    */
   function endSessionStreams(handle: string, reason: ControlReclaimedReason | null): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = reason === null ? null : encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
-    for (const subscriber of [...operationSseSubscribers]) {
+    for (const subscriber of [...objectiveRecordSseSubscribers]) {
       if (subscriber.sessionHandle !== handle) continue;
-      operationSseSubscribers.delete(subscriber);
+      objectiveRecordSseSubscribers.delete(subscriber);
       try {
         // 명시적 회수 안내만 이미 무효인 세션에 보낸다. 만료는 프레임 없이 끝난다.
         if (data !== null) subscriber.res.write(data);
@@ -2435,13 +2403,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * Operation 브라우저를 열 수 있는가. 브라우저 탭·모바일 화면이 하나라도 붙어 있으면 멈춘다 — 그 화면에는 뷰가 없어
+   * Objective 브라우저를 열 수 있는가. 브라우저 탭·모바일 화면이 하나라도 붙어 있으면 멈춘다 — 그 화면에는 뷰가 없어
    * 에이전트의 조작을 사람이 볼 수 없다. 뷰를 그릴 셸은 제어를 쥔 쪽이다: 원격 full 세션이 있으면 그 창, 아니면 이 기계의 창.
    */
   function browserAvailability(): BrowserAvailability {
     const holder = currentControlHolder();
     const host = holder ? holder.handle : "local";
-    for (const subscriber of operationSseSubscribers) if (subscriber.client === "browser") return { available: false, reason: "shared", host };
+    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "browser") return { available: false, reason: "shared", host };
     return { available: true, reason: null, host };
   }
 
@@ -2474,11 +2442,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function broadcastDesktopShellUpdate(owner: string | "local", snapshot: DesktopShellUpdateSnapshot): void {
-    if (operationSseSubscribers.size === 0) return;
+    if (objectiveRecordSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, snapshot);
-    for (const subscriber of operationSseSubscribers) {
+    for (const subscriber of objectiveRecordSseSubscribers) {
       const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
-      if (subscriberOwner === owner) writeOperationSse(subscriber, data);
+      if (subscriberOwner === owner) writeObjectiveSse(subscriber, data);
     }
   }
 
@@ -2547,34 +2515,32 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function snapshotDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>): DurableConsoleState {
-    return { version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones };
+    return { version: STATE_VERSION, theaters: theaters.list(), objectiveRecords: objectiveRecords.list(), groups: objectiveRecords.listAllGroups(), deletionTombstones };
   }
 
   function saveDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>, archives = archiveStorage.entries()): void {
     const nextIds = new Set(deletionTombstones.map((item) => item.deletionId));
-    const present = new Set([...operations.list().map((node) => node.id), ...archives.map((entry) => entry.operation.id)]);
+    const present = new Set([...objectiveRecords.list().map((node) => node.id), ...archives.map((entry) => entry.objectiveRecord.id)]);
     const purged = deletionCoordinator.list().filter((item) => !nextIds.has(item.deletionId))
-      .flatMap(deletionOperations).filter((node) => !present.has(node.id));
+      .flatMap(deletionObjectiveRecords).filter((node) => !present.has(node.id));
     const previousRevision = archiveStorage.revision();
-    archiveStorage.save(snapshotDurableState(deletionTombstones), archives, purged.map((node) => archiveEvent("operation:purged", node)));
+    archiveStorage.save(snapshotDurableState(deletionTombstones), archives, purged.map((node) => archiveEvent("objective:purged", node)));
     if (archiveStorage.revision() !== previousRevision) publishArchiveChanged();
   }
 
-  function sanitizeArchiveOperation(node: OperationNode, includeSessionNames = false): OperationNode {
-    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
-       ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
-    ];
+  function sanitizeArchiveObjective(node: ObjectiveRecord, includeSessionNames = false): ObjectiveRecord {
+    const sensitiveFields = CORE_AGENT_SENSITIVE_FIELDS;
     return createSanitizedOpDto(node, { sensitiveFields, includeSessionNames });
   }
 
   function publishArchiveChanged(): void {
     const totalsByTheater: Record<string, number> = {};
-    for (const entry of archiveStorage.entries()) totalsByTheater[entry.operation.theaterId] = (totalsByTheater[entry.operation.theaterId] ?? 0) + 1;
-    publishPluginEvent("operation:archive-changed", { revision: operationArchive.revision(), total: archiveStorage.entries().length, totalsByTheater });
-    publishPluginEvent("operation:cluster-changed", { removedIds: [...pendingClusterRemoved], operations: operations.list().map((node) => sanitizeArchiveOperation(node)) });
+    for (const entry of archiveStorage.entries()) totalsByTheater[entry.objectiveRecord.theaterId] = (totalsByTheater[entry.objectiveRecord.theaterId] ?? 0) + 1;
+    publishPluginEvent("objective:archive-changed", { revision: objectiveRecordArchive.revision(), total: archiveStorage.entries().length, totalsByTheater });
+    publishPluginEvent("objective:cluster-changed", { removedIds: [...pendingClusterRemoved], objectiveRecords: objectiveRecords.list().map((node) => sanitizeArchiveObjective(node)) });
     pendingClusterRemoved.clear();
-    // 보관·복원은 live 목록을 통째로 바꾼다 — 그 Operation 에 걸린 요청·허가의 필터가 여기서 다시 맞춰진다.
-    scheduleOperationUseBroadcast();
+    // 보관·복원은 live 목록을 통째로 바꾼다 — 그 Objective 에 걸린 요청·허가의 필터가 여기서 다시 맞춰진다.
+    scheduleObjectiveUseBroadcast();
   }
 
   async function stopServer(): Promise<void> {
@@ -2586,7 +2552,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     lockHandle = null;
     activeLockFile = null;
     activeEndpoint = null;
-    operationArchive.dispose();
+    objectiveRecordArchive.dispose();
     deletionCoordinator.dispose();
     computerCaptureTarget = null;
     watchComputerCapture();
@@ -2606,7 +2572,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
   lifecycle.setShutdown(stopServer);
 
-  const { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore } = createWorkspaceRoutes({ theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState, migrateLegacyCaptureState });
+  const { handleTheaterFoldersList, handleTheaterFolderGrants, handleObserverTheaters, handleObserverTheaterItem, handleDeferredDeletionRestore } = createWorkspaceRoutes({ theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState });
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
@@ -2655,9 +2621,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
       const execution = await startConsoleExecution(createConsoleRuntimeContext({
         consoleControl,
-        agentCallRedirect: (operationId) => {
+        agentCallRedirect: (objectiveId) => {
           for (const reason of agentCallRedirects.values()) {
-            const answer = reason(operationId);
+            const answer = reason(objectiveId);
             if (answer !== null) return answer;
           }
           return null;
@@ -2677,10 +2643,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
       resolveClaudeExecutable = execution.resolveClaudeExecutable;
       readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
-      sleepOperation = execution.actions.sleep;
-      resumeArchivedOperation = execution.actions.resume;
+      sleepObjective = execution.actions.sleep;
+      resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
-      purgeCoreOperation = execution.purgeOperation;
+      purgeCoreObjective = execution.purgeObjective;
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
         ownership,
@@ -2710,7 +2676,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       objectives = createObjectivesFeature({
         storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
-        operations: { ...consoleFeaturePorts.operations, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
+        objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         consoleUse: consoleUse.forPlugin("objectives"), registerMcp: (name, tools) => pluginMcp.register(name, tools),
@@ -2782,7 +2748,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
       announceRestoredTheaters();
       commodore.sync();
-      operationArchive.flushEvents();
+      objectiveRecordArchive.flushEvents();
       deletionCoordinator.sweepExpired();
       // 지난 프로세스의 잔재 회수는 lock 소유자만 한다 — lock을 쓰기 전에 지우면 lock에서 질 프로세스가
       // 서비스 중인 Console의 파일을 지운다.
@@ -2792,7 +2758,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await startRemoteAccessGuarded(result.actualPort);
       lifecycle.activated();
       // 실패 가능한 준비가 성공한 뒤에만 자동 정리를 시작한다. 그 전 실패의 cleanup은 이미 한 commit을 되돌리지 못한다.
-      operationArchive.startRetention();
+      objectiveRecordArchive.startRetention();
     } catch (error) {
       await cleanupAfterFailedStart();
       throw error;
@@ -3412,7 +3378,7 @@ function isValidConsoleStaticPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }
 
-function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
+function sanitizeLaunchKind(value: unknown): ObjectiveLaunchKind | null {
   if (!isPlainObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
   const variants = readLaunchVariantGroups(value.variants);
   const launchViews = readLaunchViews(value.launchViews);
@@ -3431,9 +3397,9 @@ function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
  * 이 실행 종류가 태어날 수 있는 표면. SDK의 브라우저 sanitizer와 같은 규칙이다 — 모르는 이름은
  * 버리고, `terminal` 하나만 남는 선언은 선택지가 아니므로 생략과 같게 접는다.
  */
-function readLaunchViews(value: unknown): readonly OperationLaunchView[] {
+function readLaunchViews(value: unknown): readonly ObjectiveLaunchView[] {
   if (!Array.isArray(value)) return [];
-  const seen = new Set<OperationLaunchView>();
+  const seen = new Set<ObjectiveLaunchView>();
   for (const entry of value) {
     if (entry === "terminal" || entry === "chat") seen.add(entry);
   }

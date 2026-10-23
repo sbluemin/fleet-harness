@@ -2,27 +2,27 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import type { OperationKindDescriptor } from "../../../../execution/shared/client-contract.js";
+import type { ObjectiveKindDescriptor } from "../../../../execution/shared/client-contract.js";
 
 import type { WorkbenchLayout, WorkbenchTile } from "../../../shared/conversation-workbench.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
-import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../../core/client/src/integration/types.js";
-import { setActiveOperation, themePolarity } from "../../../../../core/client/src/integration/store.js";
+import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../../core/client/src/integration/types.js";
+import { setActiveObjective, themePolarity } from "../../../../../core/client/src/integration/store.js";
 import { useHostCapabilities } from "../../../../../core/client/src/integration/use-host-capabilities.js";
 import { useExpandedSurfaceDescriptors } from "../../../../../core/client/src/integration/feature-registry.js";
 import { isDesktopShell } from "../../../../../core/client/src/integration/desktop-shell.js";
-import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/operations-sse.js";
+import { subscribeConsoleChannel } from "../../../../../core/client/src/integration/objective-records-sse.js";
 import { useMenuButtonKeyboard } from "../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { MissingSurface, SurfacePanePart, safeExpandedSurfaceTitle, useExpandedSurfaceContext } from "../../../../../core/client/src/chrome/expanded-surface/layer.js";
 import { RailSurface } from "../../../../../core/client/src/chrome/pane/rail-surface.js";
 import type { RailEntryBinding } from "../../../../../core/client/src/chrome/pane/pane-registry.js";
 import type { RailToolContext } from "../../../../../core/client/src/chrome/rail/right-rail.js";
-import { pluginRuntimeState } from "../../../../execution/client/operation-activity.js";
+import { pluginRuntimeState } from "../../../../execution/client/objective-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../../execution/client/agent/browser-companion.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize } from "../../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
-import { PluginOperationRenderer } from "../../operation-renderer.js";
+import { PluginObjectiveRenderer } from "../../objective-renderer.js";
 import { resolveDropPreview, type DropPreview, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
 import {
   bindWorkbenchCloseGuard,
@@ -65,7 +65,7 @@ export interface WorkbenchSessionBrowser {
 
 /** 칸이 그 대화에서 파생하는 것 — 지금은 브라우저 주인만. 작업 위치(파일 루트·Shell cwd 등)는 2단계에서 여기로 더해진다. */
 export type WorkbenchConversation =
-  | { readonly kind: "operation"; readonly operation: OperationNode }
+  | { readonly kind: "objectiveRecord"; readonly objectiveRecord: ObjectiveRecord }
   | { readonly kind: "surface"; readonly sessionBrowser: WorkbenchSessionBrowser | null }
   | { readonly kind: "none" };
 
@@ -80,7 +80,7 @@ export interface ConversationWorkbenchProps {
   readonly conversation: WorkbenchConversation;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
   /** 대화의 작업 위치를 아직 모른다 — 칸을 세우지 않는다(자리는 비켜 둔 채). 도구가 엉뚱한 자리에서 서지 않게. */
   readonly suspended?: boolean;
 }
@@ -93,7 +93,7 @@ function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, operationKinds, suspended = false }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds, suspended = false }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -239,7 +239,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
             conversation={conversation}
             state={state}
             language={language}
-            operationKinds={operationKinds}
+            objectiveRecordKinds={objectiveRecordKinds}
             onBeginDrag={beginTileDrag}
           />
         );
@@ -417,7 +417,7 @@ interface WorkbenchTileViewProps {
   readonly conversation: WorkbenchConversation;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
   readonly onBeginDrag: (tileId: string, title: string, event: ReactPointerEvent<HTMLElement>) => void;
 }
 
@@ -503,7 +503,7 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
       style={rectStyle(rect)}
       data-tile-kind={tile.kind}
       data-tile-area={entry.area}
-      data-keep-operation-active
+      data-keep-objective-active
       aria-label={parts.title}
       aria-hidden={hidden ? true : undefined}
       inert={hidden || undefined}
@@ -629,7 +629,7 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
             language={language}
             {...(toolContext.theme === undefined ? {} : { theme: toolContext.theme })}
             {...(toolContext.surfaces === undefined ? {} : { surfaces: toolContext.surfaces })}
-            {...(toolContext.launchOperation === undefined ? {} : { onLaunchOperation: toolContext.launchOperation })}
+            {...(toolContext.launchObjective === undefined ? {} : { onLaunchObjective: toolContext.launchObjective })}
             {...(toolContext.openLink === undefined ? {} : { openLink: toolContext.openLink })}
             {...(toolContext.conversation === undefined ? {} : { conversation: toolContext.conversation })}
           />
@@ -683,7 +683,7 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
   return <TileFrame {...props} parts={{ title, icon: entryIcon(binding), tools, body }} />;
 }
 
-/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. */
+/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Objective companion 과 같은 값이다. */
 const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
 const NO_HIDDEN_COMPANIONS: readonly string[] = [];
 const BROWSER_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
@@ -700,18 +700,18 @@ function BrowserTile(props: WorkbenchTileViewProps) {
     return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{t("conversation.workbench.desktopOnly")}</div> }} />;
   }
   const { conversation } = props;
-  if (conversation.kind === "operation") return <OperationBrowserTile {...props} operation={conversation.operation} title={title} />;
+  if (conversation.kind === "objectiveRecord") return <ObjectiveBrowserTile {...props} objectiveRecord={conversation.objectiveRecord} title={title} />;
   if (conversation.kind === "surface" && conversation.sessionBrowser !== null) return <SessionBrowserTile {...props} session={conversation.sessionBrowser} title={title} />;
-  return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{browserT("terminal.chooser.noOperation")}</div> }} />;
+  return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{browserT("terminal.chooser.noObjective")}</div> }} />;
 }
 
-function OperationBrowserTile(props: WorkbenchTileViewProps & { readonly operation: OperationNode; readonly title: string }) {
-  const { operation, state, language, operationKinds, hidden, title } = props;
+function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objectiveRecord: ObjectiveRecord; readonly title: string }) {
+  const { objectiveRecord, state, language, objectiveRecordKinds, hidden, title } = props;
   const capabilities = useHostCapabilities();
-  const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  const descriptor = objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
   const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
-  const runtimeState = pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id);
-  const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 480, height: 640, zIndex: 0 });
+  const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, objectiveRecord.id);
+  const [geometry, setGeometry] = useState<ObjectiveGeometry>({ x: 0, y: 0, width: 480, height: 640, zIndex: 0 });
   const observerRef = useRef<ResizeObserver | null>(null);
   const bodyRef = useCallback((element: HTMLDivElement | null) => {
     observerRef.current?.disconnect();
@@ -728,19 +728,19 @@ function OperationBrowserTile(props: WorkbenchTileViewProps & { readonly operati
     observerRef.current.observe(element);
   }, []);
   useEffect(() => () => observerRef.current?.disconnect(), []);
-  const activate = useCallback(() => setActiveOperation(operation.id), [operation.id]);
+  const activate = useCallback(() => setActiveObjective(objectiveRecord.id), [objectiveRecord.id]);
   const tileId = props.entry.tile.id;
   const onCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId === BROWSER_COMPANION_ID && !visible) closeWorkbenchTile(tileId);
   }, [tileId]);
   if (companion === null) {
-    return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{getBrowserT(language)("terminal.chooser.noOperation")}</div> }} />;
+    return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{getBrowserT(language)("terminal.chooser.noObjective")}</div> }} />;
   }
   const shared = {
-    active: state.activeOperationId === operation.id,
+    active: state.activeObjectiveId === objectiveRecord.id,
     capabilities,
     geometry,
-    operation,
+    objectiveRecord,
     theme: state.activeTheme,
     language,
     viewportZoom: 1,
@@ -758,12 +758,12 @@ function OperationBrowserTile(props: WorkbenchTileViewProps & { readonly operati
   } as const;
   const titleNode = companion.caption === undefined ? <span className="workbench-tile-name">{resolveLocalizedText(companion.title, language)}</span> : (
     <FeatureErrorBoundary fallback={<></>}>
-      <PluginOperationRenderer {...shared} render={companion.caption} />
+      <PluginObjectiveRenderer {...shared} render={companion.caption} />
     </FeatureErrorBoundary>
   );
   const body = (
     <FeatureErrorBoundary fallback={null}>
-      <PluginOperationRenderer {...shared} render={companion.render} />
+      <PluginObjectiveRenderer {...shared} render={companion.render} />
     </FeatureErrorBoundary>
   );
   return <TileFrame {...props} parts={{ title, titleNode, body, bodyRef }} />;
@@ -783,7 +783,7 @@ function SessionBrowserTile(props: WorkbenchTileViewProps & { readonly session: 
   }, [session.pluginId, session.scopeId, session.subjectKey]);
   const resolved = owner?.key === session.subjectKey ? owner : null;
   if (resolved === null || resolved.ownerId === null) {
-    const notice = resolved === null ? "" : browserT(resolved.failed ? "terminal.chooser.noOperation" : "terminal.chooser.sessionNotStarted");
+    const notice = resolved === null ? "" : browserT(resolved.failed ? "terminal.chooser.noObjective" : "terminal.chooser.sessionNotStarted");
     return <TileFrame {...props} parts={{ title, body: <div className="workbench-tile-notice">{notice}</div> }} />;
   }
   const ownerId = resolved.ownerId;

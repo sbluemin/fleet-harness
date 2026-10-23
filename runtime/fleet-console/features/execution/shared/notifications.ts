@@ -7,6 +7,6 @@ export interface NotificationKindDescriptor {
 
 export interface ClientNotification {
   readonly kind: string;
-  readonly operationId?: string;
+  readonly objectiveId?: string;
   readonly message?: string;
 }

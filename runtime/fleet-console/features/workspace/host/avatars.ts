@@ -6,7 +6,7 @@ import { applyAvatarWrite, AVATARS_API_PATH, sanitizeAvatarBook, sanitizeAvatarW
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 
 /**
- * 몽글 아바타 책 — 키(`theater:<id>`·`operation:<id>`) → 모습. Console 서버가 유일한 writer 다.
+ * 몽글 아바타 책 — 키(`theater:<id>`·`objective:<id>`) → 모습. Console 서버가 유일한 writer 다.
  *
  * 처음 배정(`claim`)은 비어 있는 키만 받아 먼저 닿은 쪽을 남기고, 편집(`set`)은 덮어쓰되 처음 뽑힌 베이스(origin)를 지킨다.
  * 손상된 파일이나 항목은 정제기가 버리고, 버려진 키는 다음 표시 때 새로 뽑힌다 — 아바타는 장식이라 잃어도 일이 멈추지 않는다.
@@ -18,13 +18,16 @@ interface AvatarStoreData {
 }
 
 export const AVATARS_API_CATALOG: readonly ApiCatalogEntry[] = [
-  { method: "GET", path: AVATARS_API_PATH, summary: "Read the stored mongle avatar of each Theater and Operation.", category: "Workspace", gate: "loopback", transport: "http" },
+  { method: "GET", path: AVATARS_API_PATH, summary: "Read the stored mongle avatar of each Theater and Objective.", category: "Workspace", gate: "loopback", transport: "http" },
   { method: "PUT", path: AVATARS_API_PATH, summary: "Claim avatars for keys that have none, or set one avatar's base and tone.", category: "Workspace", gate: "origin-write", transport: "http" },
 ];
 
 function sanitizeAvatarStoreData(value: unknown): AvatarStoreData {
   const record = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  return { version: 1, avatars: record.version === 1 ? sanitizeAvatarBook(record.avatars) : {} };
+  const book = typeof record.avatars === "object" && record.avatars !== null && !Array.isArray(record.avatars) ? record.avatars as Record<string, unknown> : {};
+  // 이전 제품 키만 현재 목표 키로 옮긴다. 이미 새 키가 있으면 그 값이 이긴다.
+  const previous = Object.fromEntries(Object.entries(book).filter(([key]) => key.startsWith("operation:")).map(([key, value]) => [key.replace(/^operation:/, "objective:"), value]));
+  return { version: 1, avatars: record.version === 1 ? sanitizeAvatarBook({ ...previous, ...book }) : {} };
 }
 
 export function createAvatarStore(dataDir: string): DurableJsonStore<AvatarStoreData> {

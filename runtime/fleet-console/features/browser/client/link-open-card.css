@@ -1,4 +1,4 @@
-/* 링크를 누르면 서는 카드 — 「어디서 열까」 한 물음. CLI·채팅·Shell·Operation 밖 Console이 같은 카드를 쓴다.
+/* 링크를 누르면 서는 카드 — 「어디서 열까」 한 물음. CLI·채팅·Shell·Objective 밖 Console이 같은 카드를 쓴다.
    포털이라 본문 밖에 그려지므로 자기 층을 갖는다: 패널 안 국소 스태킹 위, 전면 오버레이 사다리 아래. */
 .link-open-overlay {
   position: fixed;

@@ -37,9 +37,9 @@
 
 /* OS 공유 표시처럼 조작 허용만 알리는 공통 배지. 캡션 면·정체성·활동 색상은 바꾸지 않는다. */
 .agent-control-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 20px; margin-inline-end: 0; border-radius: var(--radius-pill); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
-.agent-operation-marks { display: inline-flex; align-items: center; gap: 2px; }
-.agent-operation-marks:empty { display: none; }
-.agent-operation-marks .agent-control-badge { margin-inline-end: 0; }
+.agent-objective-marks { display: inline-flex; align-items: center; gap: 2px; }
+.agent-objective-marks:empty { display: none; }
+.agent-objective-marks .agent-control-badge { margin-inline-end: 0; }
 .agent-control-badge svg { width: 16px; height: 16px; }
 .agent-control-badge { overflow: hidden; animation: agent-use-enter var(--duration-fast) ease-out both; }
 .agent-control-badge.is-console { background: var(--console-use-badge); color: var(--console-use-badge-ink); }

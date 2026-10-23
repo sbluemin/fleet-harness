@@ -1,4 +1,4 @@
-import { OPERATION_CATALOG_CHANGED_EVENT } from "../../execution/client/operations.js";
+import { OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../execution/client/objective-records.js";
 
 export interface AiGatewayModelSelection {
   readonly id: string;
@@ -102,7 +102,7 @@ export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpd
   await assertOk(response);
   const state = assertSystemPromptSettingsState(await response.json(), response.status);
   if ("aiGateway" in settings) {
-    window.dispatchEvent(new Event(OPERATION_CATALOG_CHANGED_EVENT));
+    window.dispatchEvent(new Event(OBJECTIVE_CATALOG_CHANGED_EVENT));
   }
   return state;
 }

@@ -1,27 +1,27 @@
-import type { OperationNode } from "../../shared/operations/types.js";
-import { sessionRuntime } from "../../shared/operations/activity.js";
-export { sessionRuntime, sessionActivity } from "../../shared/operations/activity.js";
+import type { ObjectiveRecord } from "../../../objectives/shared/records/types.js";
+import { sessionRuntime } from "../../../objectives/shared/records/activity.js";
+export { sessionRuntime, sessionActivity } from "../../../objectives/shared/records/activity.js";
 import type { ClientNotificationsCapability } from "../../shared/notification-ports.js";
-import type { ClientOperationRuntimeCapability, ClientOperationsCapability, OperationActivity, OperationRuntimeState } from "../../shared/client-contract.js";
+import type { ClientObjectiveRuntimeCapability, ClientObjectiveRecordsCapability, ObjectiveActivity, ObjectiveRuntimeState } from "../../shared/client-contract.js";
 
 import { currentTerminalLocale, getT } from "./i18n/index.js";
-import { fetchAgentState, fetchOperationsSnapshot, fetchSessions } from "./api.js";
+import { fetchAgentState, fetchObjectiveRecordsSnapshot, fetchSessions } from "./api.js";
 import { createSseFrameParser, interpretAgentSessionFrame } from "./sse.js";
 import { applySessionUpdate, hydrateAgentClis, hydrateSessions, setAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
 
 export interface AgentConnectionOptions {
-  readonly operations: ClientOperationsCapability;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
   readonly notifications: ClientNotificationsCapability;
-  readonly runtime: ClientOperationRuntimeCapability;
-  readonly refreshOperations: () => void;
+  readonly runtime: ClientObjectiveRuntimeCapability;
+  readonly refreshObjectiveRecords: () => void;
 }
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 // 세션별 직전 보고 activity. idle/awaiting 전이를 감지해 중복 없이 notification을 보내기 위함.
-const lastActivity = new Map<string, OperationActivity | "dormant">();
-// 채팅이 인수한 Operation의 축도 이제 서버 세션 스냅샷이 진다(chatActive/chatWorking). 그래서
+const lastActivity = new Map<string, ObjectiveActivity | "dormant">();
+// 채팅이 인수한 Objective의 축도 이제 서버 세션 스냅샷이 진다(chatActive/chatWorking). 그래서
 // "채팅 뷰가 열려 있는 동안만 터미널 스냅샷을 막는" 클라이언트 인수 표시는 더 필요하지 않다 —
 // 축의 주인이 열려 있다 닫히는 패널이면 패널을 닫는 순간 축이 폴백으로 되돌아 다시 휴면이 된다.
 
@@ -103,39 +103,29 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
 // status를 반영하고, idle/awaiting로 전이될 때만 notification을 보낸다.
 // 같은 상태 반복은 알리지 않는다. idle 종료 알림은 실제 턴 완료(running/awaiting/background -> idle)에서만 보내며,
 // dormant -> idle(세션 재개)이나 초기 관측(undefined -> idle)은 턴 완료가 아니므로 제외한다.
-export function applyRuntime(options: AgentConnectionOptions, sessionId: string, state: OperationRuntimeState): void {
-  const activity: OperationActivity | "dormant" = state.lifecycle === "dormant" ? "dormant" : state.activity;
+export function applyRuntime(options: AgentConnectionOptions, sessionId: string, state: ObjectiveRuntimeState): void {
+  const activity: ObjectiveActivity | "dormant" = state.lifecycle === "dormant" ? "dormant" : state.activity;
   const previous = lastActivity.get(sessionId);
   options.runtime.set(sessionId, state);
   lastActivity.set(sessionId, activity);
   if (previous === activity) return;
   const t = getT(currentTerminalLocale());
   if (activity === "awaiting") {
-    options.notifications.emit({ kind: "agent.attention", operationId: sessionId, message: t("terminal.notifications.agentInputWaitingBody") });
+    options.notifications.emit({ kind: "agent.attention", objectiveId: sessionId, message: t("terminal.notifications.agentInputWaitingBody") });
   } else if (activity === "idle" && (previous === "running" || previous === "awaiting" || previous === "background")) {
-    options.notifications.emit({ kind: "agent.ended", operationId: sessionId, message: t("terminal.notifications.agentTurnEndedBody") });
+    options.notifications.emit({ kind: "agent.ended", objectiveId: sessionId, message: t("terminal.notifications.agentTurnEndedBody") });
   }
 }
 
 async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOptions): Promise<void> {
-  const [agentClis, sessions, operationsSnapshot] = await Promise.all([
+  const [agentClis, sessions] = await Promise.all([
     fetchAgentState(signal),
     fetchSessions(signal),
-    fetchOperationsSnapshot(signal),
   ]);
   hydrateAgentClis(agentClis);
   hydrateSessions(sessions);
   for (const session of sessions) applyRuntime(options, session.sessionId, sessionRuntime(session));
-  // resync 시 이전 agent.streaming orphan 패널을 조용히 제거한다(최선 노력, 실패 무시).
-  pruneOrphanStreamingOperations(operationsSnapshot.operations, options);
-}
 
-function pruneOrphanStreamingOperations(operations: readonly OperationNode[], options: AgentConnectionOptions): void {
-  for (const op of operations) {
-    if (op.pluginId === "terminal" && op.type === "agent.streaming") {
-      void options.operations.remove(op.id).catch(() => undefined);
-    }
-  }
 }
 
 async function delay(ms: number, signal: AbortSignal): Promise<void> {

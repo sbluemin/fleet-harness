@@ -24,7 +24,7 @@ import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchedWords, localized, routingReason, useLaunchRows } from "./launch-control.js";
 import { memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
-import { findAnyObjective, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, post, readTheater, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { findAnyObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, post, readTheater, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -44,7 +44,7 @@ type T = Translate<ObjectiveMessageKey>;
 type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "handOff" | "decide" | "decideMember" | "stop" | "message" | "extend";
 
 interface MemberAwaiting {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly role: string;
   /** 그 구성원이 맡은 끝나지 않은 첫 임무의 번호(1부터). 없으면 null. */
   readonly mission: number | null;
@@ -84,7 +84,7 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
 const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   session_awaiting_input: "objectives.band.reason.recipientAwaiting",
   unknown_member: "objectives.band.reason.recipientGone",
-  unknown_operation: "objectives.band.reason.recipientGone",
+  unknown_objectiveRecord: "objectives.band.reason.recipientGone",
   session_not_found: "objectives.band.reason.recipientGone",
   // 세션 좌표가 남지 않은 휴면 세션 — 이어 붙일 세션이 없어 깨울 수 없다.
   capability_unavailable: "objectives.band.reason.recipientUnreachable",
@@ -150,23 +150,23 @@ export function bandChoices(props: ChooseInput & { readonly commanderExists: boo
 
 /**
  * 보드가 읽는 활동 — 화면처럼 턴 뒤 백그라운드는 작업 중으로 접는다. 지휘관은 구성원을 끌어올리기 전 자기 활동이다.
- * 보관된 Operation 의 describe 요약은 세지 않는다 — 완료로 보관된 지휘관은 없는 것(closed)이다.
+ * 보관된 Objective 의 describe 요약은 세지 않는다 — 완료로 보관된 지휘관은 없는 것(closed)이다.
  */
 interface BoardLive {
   readonly commander: string;
-  readonly member: (operationId: string) => string;
+  readonly member: (objectiveId: string) => string;
   readonly launchAvailable: boolean;
 }
 
 const shown = (activity: string | undefined): string => (activity === undefined ? "closed" : activity === "background" ? "running" : activity);
 
 function liveOf(objective: Objective): BoardLive {
-  const summaries = listedOperationSummaries();
+  const summaries = listedObjectiveSummaries();
   const byId = new Map(summaries.map((summary) => [summary.id, summary]));
   const commander = byId.get(objective.id);
   return {
     commander: shown(commander ? commander.ownActivity ?? commander.activity : undefined),
-    member: (operationId) => shown(byId.get(operationId)?.activity),
+    member: (objectiveId) => shown(byId.get(objectiveId)?.activity),
     // 보관된 완료 목표는 살아 있는 목록에 없다 — 목록이 아니라 그 Theater 의 기동 가능 여부를 읽는다.
     launchAvailable: readTheater(objective.theaterId).launchAvailable,
   };
@@ -183,7 +183,7 @@ function choicesOf(objective: Objective, live: BoardLive) {
   const commanderAwaiting = !done && live.commander === "awaiting";
   const awaitingMember = done ? undefined : objective.members.find((member) => member.sessionName !== null && live.member(member.id) === "awaiting");
   const mission = awaitingMember ? objective.missions.findIndex((candidate) => !candidate.done && candidate.member === awaitingMember.id) : -1;
-  const memberAwaiting: MemberAwaiting | null = awaitingMember ? { operationId: awaitingMember.id, role: awaitingMember.role, mission: mission >= 0 ? mission + 1 : null } : null;
+  const memberAwaiting: MemberAwaiting | null = awaitingMember ? { objectiveId: awaitingMember.id, role: awaitingMember.role, mission: mission >= 0 ? mission + 1 : null } : null;
   const recipientCount = [live.commander, ...objective.members.filter((member) => member.sessionName !== null).map((member) => live.member(member.id))].filter((state) => state !== "closed").length;
   return { ...bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: live.commander !== "closed", recipientCount }), memberAwaiting, working };
 }
@@ -375,7 +375,7 @@ function BoardPanel({ objectiveId, ctx }: { readonly objectiveId: string; readon
   const objective = useObjective(objectiveId);
   const sheet = useSheet(objectiveId);
   const followupOpen = useFollowupOpen(objectiveId);
-  useSyncExternalStore(subscribeObjective, listedOperationSummaries, listedOperationSummaries);
+  useSyncExternalStore(subscribeObjective, listedObjectiveSummaries, listedObjectiveSummaries);
   const t = getT(ctx.language, ctx.layout === "mobile");
   if (!objective) return null;
   if (sheet) return <RoutingPanel key={objectiveId} objective={objective} t={t} intent={sheet.intent} context={sheet.context} settle={ctx.settle} />;
@@ -548,7 +548,7 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
   const minutes = state.preview ? Math.floor((Date.now() - state.preview.at) / 60_000) : 0;
   const status = judging ? t("objectives.routing.judging") : !state.preview ? "" : state.preview.judged ? t("objectives.routing.judgedNow") : minutes <= 0 ? t("objectives.routing.cachedNow") : t("objectives.routing.cached", { minutes });
   const words = (model: string | undefined, effort: string | undefined) => { const shownWords = launchedWords(rows, model, effort, labels); return <span className="objectives-routing-words" title={shownWords.title}><LaunchedText model={shownWords.model} words={shownWords.words} /></span>; };
-  const mark = (member: ObjectiveMember) => <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? live.member(member.id) : "closed")} />;
+  const mark = (member: ObjectiveMember) => <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? live.member(member.id) : "closed")} />;
   const memberRow = (member: ObjectiveMember) => {
     const result = state.known.get(member.id);
     const target = targets.some((candidate) => candidate.id === member.id);

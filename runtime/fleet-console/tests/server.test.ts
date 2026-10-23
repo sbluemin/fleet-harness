@@ -13,7 +13,7 @@ import { CONSOLE_STOP_REQUEST_REVISION } from "@fleet-console/protocol/lifecycle
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
-import { deriveOperationLabel } from "../features/execution/host/agent/auto-name.js";
+import { deriveObjectiveLabel } from "../features/execution/host/agent/auto-name.js";
 import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
 import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecycle.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
@@ -144,20 +144,20 @@ afterEach(async () => {
 
 describe("console terminal observability", () => {
 
-  it("reports the Operation browser as unavailable without an attached Desktop", async () => {
+  it("reports the Objective browser as unavailable without an attached Desktop", async () => {
     const fixture = await startFixture({ release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } });
 
-    // Operation 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
+    // Objective 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
     expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required" });
   });
 
-  it("injects dormant durable operations without exposing server-only provider data", () => {
+  it("injects dormant durable objectives without exposing server-only provider data", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-store-"));
     tempDirs.push(dir);
     const store = createConsoleObservabilityStore();
 
-    const session = store.injectDormantOperation({
+    const session = store.injectDormantObjective({
       sessionId: "session-a",
       theaterId: workspaceHash(fs.realpathSync.native(dir)),
       cwd: dir,
@@ -225,7 +225,7 @@ describe("console terminal observability", () => {
       const settingsFile = path.join(consoleDir, "settings.json");
       const stateFile = path.join(consoleDir, "state.json");
       const settings = JSON.stringify({ version: 1, general: {}, plugins: { terminal: {} } });
-      const state = JSON.stringify({ version: 5, theaters: [], operations: [] });
+      const state = JSON.stringify({ version: 5, theaters: [], objectiveRecords: [] });
       fs.writeFileSync(settingsFile, settings);
       fs.writeFileSync(stateFile, state);
       fs.mkdirSync(path.join(fleetDataDir, "workspaces", "probe"), { recursive: true });
@@ -585,11 +585,11 @@ describe("console static and terminal ticket boundary", () => {
       TERM: "xterm-256color",
     });
     const stateFile = path.join(fixture.fleetDataDir, "console", "state.json");
-    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; objectiveRecords: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
     expect(state.version).toBe(4);
-    expect(state.operations).toHaveLength(1);
-    expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
-    expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
+    expect(state.objectiveRecords).toHaveLength(1);
+    expect(state.objectiveRecords[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
+    expect(state.objectiveRecords[0]?.payload?.providerSession).toBeUndefined();
     if (process.platform !== "win32") expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
   });
@@ -598,7 +598,7 @@ describe("console static and terminal ticket boundary", () => {
     const original = JSON.stringify({
       version: 0,
       theaters: [{ id: "future-theater" }],
-      operations: [{ id: "future-operation" }],
+      objectiveRecords: [{ id: "future-objectiveRecord" }],
     });
     let stateFile = "";
     await expect(startFixture({
@@ -743,7 +743,7 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
-    expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("operations");
+    expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("objectiveRecords");
   });
 
   it("applies Claude trust only on consent while preserving global settings and rejecting invalid JSON", async () => {
@@ -823,18 +823,18 @@ describe("console static and terminal ticket boundary", () => {
     } finally { vi.unstubAllEnvs(); }
   });
 
-  it("never lets an Operation take a Fleet or plugin Session Browser owner id", async () => {
-    // 사람과 플러그인 세션의 소유자 좌표를 Operation이 차지하면 다른 세션의 탭에 닿는다.
+  it("never lets an Objective take a Fleet or plugin Session Browser owner id", async () => {
+    // 사람과 플러그인 세션의 소유자 좌표를 Objective이 차지하면 다른 세션의 탭에 닿는다.
     const fixture = await startFixture();
     const origin = new URL(fixture.endpoint).origin;
     for (const id of ["global", "plugin-browser:reserved-session"]) {
-      const response = await fetch(`${origin}/api/v1/operations`, {
+      const response = await fetch(`${origin}/api/v1/objectives/records`, {
         method: "POST",
         headers: { "Content-Type": "application/json", origin },
         body: JSON.stringify({ id, theaterId: "theater", type: "terminal", pluginId: null, title: "spoof" }),
       });
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ error: "operation_exists" });
+      expect(await response.json()).toEqual({ error: "objectiveRecord_exists" });
     }
   });
 
@@ -1004,8 +1004,8 @@ async function createAgentTerminalSession(fixture: ServerFixture, theaterId: str
   return created.json() as Promise<{ readonly sessionId: string }>;
 }
 
-async function createOperation(fixture: ServerFixture, theaterId: string, input: { readonly type: string; readonly pluginId: string }): Promise<{ readonly id: string }> {
-  const response = await fetch(`${fixture.endpoint}api/v1/operations`, {
+async function createObjective(fixture: ServerFixture, theaterId: string, input: { readonly type: string; readonly pluginId: string }): Promise<{ readonly id: string }> {
+  const response = await fetch(`${fixture.endpoint}api/v1/objectives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1017,10 +1017,10 @@ async function createOperation(fixture: ServerFixture, theaterId: string, input:
     }),
   });
   expect(response.status).toBe(201);
-  const payload = await response.json() as { readonly operation?: { readonly id?: unknown } };
-  const operationId = payload.operation?.id;
-  expect(typeof operationId).toBe("string");
-  return { id: operationId as string };
+  const payload = await response.json() as { readonly objectiveRecord?: { readonly id?: unknown } };
+  const objectiveId = payload.objectiveRecord?.id;
+  expect(typeof objectiveId).toBe("string");
+  return { id: objectiveId as string };
 }
 
 async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {

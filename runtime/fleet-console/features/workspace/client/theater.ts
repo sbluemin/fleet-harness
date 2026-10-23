@@ -4,7 +4,7 @@ import {
   addTheater,
   createGroup,
   fetchGroups,
-  fetchOperations,
+  fetchObjectiveRecords,
   fetchTheaters,
   forgetTheater,
   issueTheaterFolderGrant,
@@ -17,21 +17,21 @@ import {
   failAddTheater,
   getState,
   hydrateGroups,
-  hydrateOperations,
+  hydrateObjectiveRecords,
   hydrateTheaters,
   removeTheater,
 } from "../../../core/client/src/integration/store.js";
-import type { OperationNode } from "../../../core/client/src/integration/types.js";
+import type { ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { describeTheaterRegistrationError } from "../../../core/client/src/integration/failure-notices.js";
 import { getT } from "../../../core/client/src/i18n/index.js";
 import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import type { OperationLaunchKind } from "../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../objectives/shared/records/types.js";
 
 // ─── register and forget ───────────────────────────────────────────────────────
 
 // Theater 등록의 단일 경로: 폴더 grant 발급 → host POST → 서버 순서로 재수화.
-// Operations 사이드바·새 세션 화면·모바일 Theater 페이지가 공유한다. 등록한 Theater 의 id 를 돌려준다(실패면 null —
+// ObjectiveRecords 사이드바·새 세션 화면·모바일 Theater 페이지가 공유한다. 등록한 Theater 의 id 를 돌려준다(실패면 null —
 // 사유는 failAddTheater 가 이미 사이드바에 실었다).
 export async function registerTheaterFromPath(path: string, mobile = false): Promise<string | null> {
   beginAddTheater();
@@ -52,7 +52,7 @@ export async function registerTheaterFromPath(path: string, mobile = false): Pro
 }
 
 // Theater 잊기의 단일 경로: host DELETE → 로컬 Theater 정리 → 소속 컬렉션 재수화.
-// Operations 사이드바와 팔레트 명령이 공유하며, receipt는 App의 8초 undo 큐로 전달한다.
+// ObjectiveRecords 사이드바와 팔레트 명령이 공유하며, receipt는 App의 8초 undo 큐로 전달한다.
 export async function forgetTheaterCompletely(
   theaterId: string,
 ): Promise<DeferredDeletionReceipt | null> {
@@ -61,7 +61,7 @@ export async function forgetTheaterCompletely(
     dropForgottenTheater(theaterId);
     // 재수화 실패는 삼킨다 — 서버 forget이 이미 성공했으므로 receipt(undo 경로)는 보존해야 한다.
     await Promise.all([
-      fetchOperations(null).then(hydrateOperations),
+      fetchObjectiveRecords(null).then(hydrateObjectiveRecords),
       fetchGroups(null).then(hydrateGroups),
     ]).catch(() => {});
     return response.deletion;
@@ -109,11 +109,11 @@ let theaterResyncGeneration = 0;
 export function applyTheaterLifecycle(event: "registered" | "forgotten" | "restored" | "updated", theaterId: string): void {
   if (event === "forgotten") dropForgottenTheater(theaterId);
   const generation = ++theaterResyncGeneration;
-  void Promise.all([fetchTheaters(null), fetchOperations(null), fetchGroups(null)])
-    .then(([theaters, operations, groups]) => {
+  void Promise.all([fetchTheaters(null), fetchObjectiveRecords(null), fetchGroups(null)])
+    .then(([theaters, objectiveRecords, groups]) => {
       if (generation !== theaterResyncGeneration) return;
       hydrateTheaters(theaters);
-      hydrateOperations(operations);
+      hydrateObjectiveRecords(objectiveRecords);
       hydrateGroups(groups);
     })
     .catch(() => {});

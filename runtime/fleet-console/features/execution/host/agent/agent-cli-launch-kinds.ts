@@ -1,4 +1,4 @@
-import type { OperationLaunchKind, OperationLaunchVariantGroup } from "../../shared/operations/types.js";
+import type { ObjectiveLaunchKind, ObjectiveLaunchVariantGroup } from "../../../objectives/shared/records/types.js";
 import type { AiGatewaySelection } from "@fleet-console/ai-gateway";
 
 import { buildModelRoster, buildRosterFallbackGroup } from "../../../ai-gateway/host/model-roster.js";
@@ -8,15 +8,15 @@ export { EFFORT_LABELS } from "../../../ai-gateway/host/model-roster.js";
 
 export function buildAgentCliLaunchKinds(
   metadata: readonly AgentCliLaunchMetadata[],
-  operationType: string,
+  objectiveRecordType: string,
   gatewaySelection?: AiGatewaySelection,
-): OperationLaunchKind[] {
+): ObjectiveLaunchKind[] {
   return metadata
     .map((cli) => {
       const disabledReason = resolveDisabledReason(cli);
       return {
         id: cli.id,
-        type: operationType,
+        type: objectiveRecordType,
         title: cli.label,
         ...(disabledReason
           ? { disabled: true, disabledReason }
@@ -38,7 +38,7 @@ export function buildAgentCliLaunchKinds(
  * 새 세션·채팅 좌표·캔버스·Objectives 보드의 유일한 선택지다. 로스터가 비면 최후 폴백(sonnet) 한 행의 폴백 띠만
  * 서고, 표면은 그 띠를 폴백 표식으로 그린다.
  */
-function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
+function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly ObjectiveLaunchVariantGroup[] {
   const roster = selection ? buildModelRoster(selection, "launch") : [];
   return roster.length > 0 ? roster : [buildRosterFallbackGroup()];
 }

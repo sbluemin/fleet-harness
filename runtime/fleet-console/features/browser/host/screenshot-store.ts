@@ -13,14 +13,14 @@ import { chmodSync, lstatSync, mkdirSync, readdirSync, rmdirSync, rmSync, writeF
 
 const SCREENSHOT_NAMESPACE_PREFIX = "fleet-browser-shots-";
 const SCREENSHOT_FILE_MODE = 0o600;
-/** Operation 마다 남기는 장수 — 에이전트가 직전 화면들을 되짚을 만큼만 두고 그 앞은 버린다. */
-const KEEP_PER_OPERATION = 12;
+/** Objective 마다 남기는 장수 — 에이전트가 직전 화면들을 되짚을 만큼만 두고 그 앞은 버린다. */
+const KEEP_PER_OBJECTIVE = 12;
 
 export interface BrowserScreenshotStore {
   /** 바이트를 파일로 놓고 절대 경로를 돌려준다. */
-  save(operationId: string, bytes: Buffer, ext: "jpg" | "png"): string;
-  /** 이 Operation 의 스크린샷을 모두 거둔다. */
-  release(operationId: string): void;
+  save(objectiveId: string, bytes: Buffer, ext: "jpg" | "png"): string;
+  /** 이 Objective 의 스크린샷을 모두 거둔다. */
+  release(objectiveId: string): void;
   /** 서버 종료 — 이 프로세스가 남긴 스크린샷을 거둔다. */
   cleanup(): void;
 }
@@ -34,7 +34,7 @@ export function resolveBrowserScreenshotNamespaceRoot(dataDir: string): string {
 export function createBrowserScreenshotStore(options: { readonly dataDir: string; readonly log?: (message: string) => void }): BrowserScreenshotStore {
   const namespaceRoot = resolveBrowserScreenshotNamespaceRoot(options.dataDir);
   const counters = new Map<string, number>();
-  /** 이 프로세스가 만든 Operation 디렉터리. 회수는 여기 있는 것만 건드린다. */
+  /** 이 프로세스가 만든 Objective 디렉터리. 회수는 여기 있는 것만 건드린다. */
   const owned = new Set<string>();
   let reclaimed = false;
 
@@ -57,9 +57,9 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
     }
   };
 
-  // Operation id 는 경로 조각으로 쓰기에 안전하지 않다 — 해시로 고정 길이 이름을 만든다.
-  const operationDir = (operationId: string) =>
-    path.join(namespaceRoot, `op-${crypto.createHash("sha256").update(operationId).digest("hex").slice(0, 12)}`);
+  // Objective id 는 경로 조각으로 쓰기에 안전하지 않다 — 해시로 고정 길이 이름을 만든다.
+  const objectiveRecordDir = (objectiveId: string) =>
+    path.join(namespaceRoot, `op-${crypto.createHash("sha256").update(objectiveId).digest("hex").slice(0, 12)}`);
 
   const prune = (dir: string): void => {
     try {
@@ -68,7 +68,7 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
       const files = readdirSync(dir)
         .filter((name) => /^shot-\d+\./.test(name))
         .sort((a, b) => Number.parseInt(a.slice(5), 10) - Number.parseInt(b.slice(5), 10));
-      for (const name of files.slice(0, Math.max(0, files.length - KEEP_PER_OPERATION))) {
+      for (const name of files.slice(0, Math.max(0, files.length - KEEP_PER_OBJECTIVE))) {
         try { rmSync(path.join(dir, name), { force: true }); } catch { /* best-effort */ }
       }
     } catch {
@@ -77,22 +77,22 @@ export function createBrowserScreenshotStore(options: { readonly dataDir: string
   };
 
   return {
-    save(operationId, bytes, ext) {
+    save(objectiveId, bytes, ext) {
       reclaimLeftovers();
-      const dir = operationDir(operationId);
+      const dir = objectiveRecordDir(objectiveId);
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       owned.add(dir);
-      const serial = (counters.get(operationId) ?? 0) + 1;
-      counters.set(operationId, serial);
+      const serial = (counters.get(objectiveId) ?? 0) + 1;
+      counters.set(objectiveId, serial);
       const filePath = path.join(dir, `shot-${String(serial).padStart(4, "0")}.${ext}`);
       writeFileSync(filePath, bytes, { mode: SCREENSHOT_FILE_MODE });
       try { chmodSync(filePath, SCREENSHOT_FILE_MODE); } catch { /* POSIX 권한이 없는 파일시스템 */ }
       prune(dir);
       return filePath;
     },
-    release(operationId) {
-      counters.delete(operationId);
-      const dir = operationDir(operationId);
+    release(objectiveId) {
+      counters.delete(objectiveId);
+      const dir = objectiveRecordDir(objectiveId);
       owned.delete(dir);
       try { rmSync(dir, { force: true, recursive: true }); } catch { /* best-effort */ }
     },

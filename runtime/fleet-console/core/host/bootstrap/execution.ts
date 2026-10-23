@@ -19,7 +19,7 @@ import { registerTerminalSettingsRoutes } from "../../../features/settings/host/
 import type { TheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
-const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
 export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/settings/host/storage-port.js").SettingsStorageHost, theaterSystemPrompts: TheaterSystemPromptService) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
@@ -45,19 +45,19 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     onAiGatewayChanged: modelRoster.notify,
   });
   const runtime = createTerminalRuntime(ctx);
-  // Operation Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
+  // Objective Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
   // PTY 에 넣는다. 줄 종결자는 없다(보내는 순간은 사람이 정한다).
-  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((operationId) => runtime.write(operationId, process.platform === "win32" ? "\x1bv" : "\u0016"));
+  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((objectiveId) => runtime.write(objectiveId, process.platform === "win32" ? "\x1bv" : "\u0016"));
   if (unbindBrowserPaste) ctx.host.lifecycle.registerCleanup(unbindBrowserPaste);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
   ctx.host.lifecycle.registerCleanup(() => runtime.stop());
-  const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
-    if (!isOperationDeletedEvent(payload) || payload.pluginId !== null) return;
-    runtime.terminate(payload.operationId);
-    // 브라우저 컨텍스트(탭·쿠키)도 Operation 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
-    ctx.host.browserMcp?.revokeOperation(payload.operationId);
-    // 닫힌 Operation 이 띄운 허용 요청은 답할 자리가 없다 — 붙잡힌 호출을 풀고 허가도 걷는다.
-    ctx.host.useRequests?.settle(payload.operationId);
+  const unsubscribeDelete = ctx.host.events.subscribe(OBJECTIVE_DELETED_EVENT_CHANNEL, (payload) => {
+    if (!isObjectiveDeletedEvent(payload) || payload.pluginId !== null) return;
+    runtime.terminate(payload.objectiveId);
+    // 브라우저 컨텍스트(탭·쿠키)도 Objective 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
+    ctx.host.browserMcp?.revokeObjective(payload.objectiveId);
+    // 닫힌 Objective 이 띄운 허용 요청은 답할 자리가 없다 — 붙잡힌 호출을 풀고 허가도 걷는다.
+    ctx.host.useRequests?.settle(payload.objectiveId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
   /**
@@ -87,13 +87,13 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     // 「이번 작업만」 허가도 턴과 함께 풀린다.
     // 자식 세션은 루트의 사용 컨텍스트를 함께 쓴다 — 한 참가자의 턴 종료는 그 참가자의 호출·세션만 닫고, 브라우저 표식·기기는
     // 마지막 참가자가 빠질 때 내려간다(각 호스트가 참가자 수를 센다). 「이번 작업만」 허가를 걷을 때인지는 `turnGrantEnds` 한 곳이 정한다.
-    onTurnSettled: (operationId) => {
-      const scope = ctx.host.useContext?.resolve(operationId) ?? { contextId: operationId, participantId: operationId };
+    onTurnSettled: (objectiveId) => {
+      const scope = ctx.host.useContext?.resolve(objectiveId) ?? { contextId: objectiveId, participantId: objectiveId };
       ctx.host.useRequests?.leave(scope.contextId, scope.participantId);
       if (!ctx.host.useContext || ctx.host.useContext.turnGrantEnds(scope.contextId, scope.participantId)) ctx.host.useRequests?.settle(scope.contextId);
-      ctx.host.browserMcp?.endAgentSession(operationId);
-      ctx.host.computerUseMcp?.endParticipant(operationId);
-      ctx.host.consoleUse.endOperationUse?.(operationId);
+      ctx.host.browserMcp?.endAgentSession(objectiveId);
+      ctx.host.computerUseMcp?.endParticipant(objectiveId);
+      ctx.host.consoleUse.endObjectiveUse?.(objectiveId);
     },
   });
   return {
@@ -108,25 +108,25 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,
-    stopForArchive: async (operation: import("../../../features/execution/shared/operations/types.js").OperationNode) => {
-      runtime.invalidateTicketsForSession(operation.id);
-      if (operation.pluginId === null && operation.type === "agent") {
-        await agent.stopForArchive(operation.id);
-      } else if (!await runtime.terminateAndWait(operation.id, 10_000)) throw new Error("archive_stop_failed");
-      await ctx.host.browserMcp?.revokeOperation(operation.id);
-      ctx.host.computerUseMcp?.revokeOperation(operation.id);
-      ctx.host.useRequests?.settle(operation.id);
-      ctx.host.consoleUse.endOperationUse?.(operation.id);
+    stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord) => {
+      runtime.invalidateTicketsForSession(objectiveRecord.id);
+      {
+        await agent.stopForArchive(objectiveRecord.id);
+      }
+      await ctx.host.browserMcp?.revokeObjective(objectiveRecord.id);
+      ctx.host.computerUseMcp?.revokeObjective(objectiveRecord.id);
+      ctx.host.useRequests?.settle(objectiveRecord.id);
+      ctx.host.consoleUse.endObjectiveUse?.(objectiveRecord.id);
     },
-    purgeOperation: (operation: import("../../../features/execution/shared/operations/types.js").OperationNode) => {
-      if (operation.pluginId !== null || operation.type !== "agent") return;
-      agent.purgeOperation(operation.id);
+    purgeObjective: (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord) => {
+
+      agent.purgeObjective(objectiveRecord.id);
     },
   };
 }
 
-function isOperationDeletedEvent(value: unknown): value is { readonly operationId: string; readonly pluginId: string | null } {
+function isObjectiveDeletedEvent(value: unknown): value is { readonly objectiveId: string; readonly pluginId: string | null } {
   if (!value || typeof value !== "object") return false;
-  const event = value as { readonly operationId?: unknown; readonly pluginId?: unknown };
-  return typeof event.operationId === "string" && event.pluginId === null;
+  const event = value as { readonly objectiveId?: unknown; readonly pluginId?: unknown };
+  return typeof event.objectiveId === "string" && event.pluginId === null;
 }

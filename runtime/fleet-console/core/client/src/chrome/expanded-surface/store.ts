@@ -187,7 +187,7 @@ function setState(next: ExpandedSurfaceState): void {
 }
 
 /**
- * 대화를 드러낸다 — 이동(「이 Operation 으로」)이 부른다. 데스크톱 도구 작업대는 펼친 칸을 접고(칸은 닫지 않는다), 호스트가 없는
+ * 대화를 드러낸다 — 이동(「이 Objective 으로」)이 부른다. 데스크톱 도구 작업대는 펼친 칸을 접고(칸은 닫지 않는다), 호스트가 없는
  * 폰 배치는 할 일이 없다(도구 시트·목적지 화면은 이동이 스스로 걷는다).
  */
 export function stowExpandedSurfaces(): void {

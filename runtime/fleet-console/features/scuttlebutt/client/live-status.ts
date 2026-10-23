@@ -10,7 +10,7 @@ import { getT } from "./scuttlebutt-catalog.js";
  */
 export type ToolFamily = "search" | "read" | "console" | "direct" | "computer" | "wiki" | "tool";
 
-// 제목에는 action 이 없다 — 이름만으로 실행이 확실한 도구는 console_launcher(새 세션) 뿐이다(Operation 패널의 send·stop 은 같은 도구의 읽기와 이름을 나눈다).
+// 제목에는 action 이 없다 — 이름만으로 실행이 확실한 도구는 console_launcher(새 세션) 뿐이다(Objective 패널의 send·stop 은 같은 도구의 읽기와 이름을 나눈다).
 const CONSOLE_DIRECT = new Set(["console_launcher"]);
 
 export function toolFamily(title: string): ToolFamily {

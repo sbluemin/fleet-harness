@@ -1,10 +1,10 @@
-import { readLaunchVariantGroups } from "../../execution/shared/operations/launch-variants.js";
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../execution/shared/operations/types.js";
+import { readLaunchVariantGroups } from "../../objectives/shared/records/launch-variants.js";
+import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
 
 /**
  * 모델 로스터 계약 — Console의 모든 모델 선택지가 읽는 유일한 원천의 모양과 해석 규칙.
  *
- * 원천은 Settings › AI Gateway에서 켠 로스터 하나다. 호스트가 그것을 `OperationLaunchVariantGroup[]`
+ * 원천은 Settings › AI Gateway에서 켠 로스터 하나다. 호스트가 그것을 `ObjectiveLaunchVariantGroup[]`
  * 모양으로 투영해 내놓고, 선택기·서버 해석·플러그인은 이 모듈의 순수 함수로만 읽는다. 서버와 브라우저가
  * 같은 규칙을 나눠 쓰므로 Node·DOM 의존이 없다.
  */
@@ -12,7 +12,7 @@ import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../
 /**
  * 로스터를 소비하는 실행 대상.
  *
- * - `launch`: Agent CLI Operation(지휘관·구성원·새 세션). 사다리 끝에 하네스 능력 `ultra`가 선다.
+ * - `launch`: Agent CLI Objective(지휘관·구성원·새 세션). 사다리 끝에 하네스 능력 `ultra`가 선다.
  * - `agent`: Agent SDK 세션(Scuttlebutt·Commodore). Agent SDK는 `ultra`를 받지 않으므로
  *   사다리는 모델이 내놓는 low…max까지이고, 게이트 없이 전부 열린다.
  */
@@ -25,10 +25,10 @@ export function isModelRosterTarget(value: unknown): value is ModelRosterTarget 
 }
 
 /** 공급자 밴드별 행. 행의 `launch.model`이 정준 모델 id(실행 id)다. */
-export type ModelRoster = readonly OperationLaunchVariantGroup[];
+export type ModelRoster = readonly ObjectiveLaunchVariantGroup[];
 
 /**
- * 로스터 행이 선택기 모양(`OperationLaunchVariantRow`) 위에 얹어 싣는 모델 정보. Claude도 다른 모델과 같은 정보를 싣는다.
+ * 로스터 행이 선택기 모양(`ObjectiveLaunchVariantRow`) 위에 얹어 싣는 모델 정보. Claude도 다른 모델과 같은 정보를 싣는다.
  *
  * - `hostOnly`: Settings › AI Gateway에서 호스트 전용으로 둔 모델. 선택기와 실행에는 그대로 서고, 위임 배정 후보에서만 빠진다.
  */
@@ -36,11 +36,11 @@ export interface ModelRosterRowInfo {
   readonly hostOnly?: true;
 }
 
-export type ModelRosterRow = OperationLaunchVariantRow & ModelRosterRowInfo;
+export type ModelRosterRow = ObjectiveLaunchVariantRow & ModelRosterRowInfo;
 
 /** 행의 모델 정보. 모르는 값은 버린다. */
-export function rosterRowInfo(row: OperationLaunchVariantRow): ModelRosterRowInfo {
-  const value = row as OperationLaunchVariantRow & { readonly hostOnly?: unknown };
+export function rosterRowInfo(row: ObjectiveLaunchVariantRow): ModelRosterRowInfo {
+  const value = row as ObjectiveLaunchVariantRow & { readonly hostOnly?: unknown };
   return {
     ...(value.hostOnly === true ? { hostOnly: true as const } : {}),
   };
@@ -64,7 +64,7 @@ export function parseModelRoster(value: unknown): ModelRoster {
     ...group,
     rows: group.rows.map((row) => {
       const source = raw.get(row.id);
-      return source ? { ...row, ...rosterRowInfo(source as OperationLaunchVariantRow) } : row;
+      return source ? { ...row, ...rosterRowInfo(source as ObjectiveLaunchVariantRow) } : row;
     }),
   }));
 }
@@ -132,19 +132,19 @@ export function canonicalModelId(id: string): string {
   return CLAUDE_NATIVE_FAMILIES.has(value) ? `${value}${ONE_MILLION_MARKER}` : value;
 }
 
-export function rosterRows(roster: ModelRoster | null | undefined): readonly OperationLaunchVariantRow[] {
+export function rosterRows(roster: ModelRoster | null | undefined): readonly ObjectiveLaunchVariantRow[] {
   return roster ? roster.flatMap((group) => group.rows) : [];
 }
 
 /** 저장 id(정준·레거시 어느 쪽이든)에 해당하는 행. 로스터 밖이면 null. */
-export function findRosterRow(roster: ModelRoster | null | undefined, id: string | null | undefined): OperationLaunchVariantRow | null {
+export function findRosterRow(roster: ModelRoster | null | undefined, id: string | null | undefined): ObjectiveLaunchVariantRow | null {
   if (!id) return null;
   const wanted = canonicalModelId(id);
   return rosterRows(roster).find((row) => canonicalModelId(row.launch.model ?? row.id) === wanted) ?? null;
 }
 
 /** 행이 실제로 내놓는 강도 단(사다리 순). launch 행이면 끝에 `ultra`가 있다. */
-export function rosterRowEfforts(row: OperationLaunchVariantRow | null | undefined): readonly string[] {
+export function rosterRowEfforts(row: ObjectiveLaunchVariantRow | null | undefined): readonly string[] {
   return row?.chips?.map((chip) => chip.id) ?? [];
 }
 
@@ -184,7 +184,7 @@ export interface ResolvedModelCoordinate {
   readonly model: string;
   readonly effort?: string;
   /** 해석된 행. 로스터가 비어 최후 폴백으로 섰으면 null. */
-  readonly row: OperationLaunchVariantRow | null;
+  readonly row: ObjectiveLaunchVariantRow | null;
   readonly fallback: boolean;
   /** `model_off`: 저장된 모델이 로스터 밖. `roster_empty`: 로스터에 아무것도 없다. */
   readonly reason?: "model_off" | "roster_empty";
@@ -222,7 +222,7 @@ export function resolveRosterCoordinate(
   };
 }
 
-function seat(row: OperationLaunchVariantRow, wantedEffort: string | null | undefined, fallback: boolean): ResolvedModelCoordinate {
+function seat(row: ObjectiveLaunchVariantRow, wantedEffort: string | null | undefined, fallback: boolean): ResolvedModelCoordinate {
   const effort = clampRosterEffort(rosterRowEfforts(row), wantedEffort);
   return {
     model: canonicalModelId(row.launch.model ?? row.id),

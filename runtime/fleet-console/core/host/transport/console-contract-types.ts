@@ -253,7 +253,7 @@ export interface ConsoleUpdateProgressResponse {
   readonly oldConsoleOutcome?: ConsoleUpdateOldConsoleEnding;
 }
 
-export interface ConsoleOperationGeometry {
+export interface ConsoleObjectiveGeometry {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -261,7 +261,7 @@ export interface ConsoleOperationGeometry {
   readonly zIndex: number;
 }
 
-export interface ConsoleOperationNode {
+export interface ConsoleObjectiveRecord {
   readonly id: string;
   readonly theaterId: string;
   readonly order?: number;
@@ -269,19 +269,19 @@ export interface ConsoleOperationNode {
   readonly pluginId: string;
   readonly title: string;
   readonly payload: Record<string, unknown>;
-  readonly geometry: ConsoleOperationGeometry | null;
+  readonly geometry: ConsoleObjectiveGeometry | null;
   readonly ts: {
     readonly createdAt: number;
     readonly updatedAt: number;
   };
 }
 
-export interface ConsoleOperationsResponse {
-  readonly operations: readonly ConsoleOperationNode[];
+export interface ConsoleObjectiveRecordsResponse {
+  readonly objectiveRecords: readonly ConsoleObjectiveRecord[];
 }
 
-export interface ConsoleOperationResponse {
-  readonly operation: ConsoleOperationNode;
+export interface ConsoleObjectiveResponse {
+  readonly objectiveRecord: ConsoleObjectiveRecord;
 }
 
 // 브라우저로 나가는 General 설정 DTO. console-settings.ts의 ConsoleSettingsData에서
@@ -316,7 +316,7 @@ export interface GlobalSettingsState {
   readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ConsoleThemeId;
-  /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
+  /** 사이드바에서 Objective 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
   readonly sideBarDoubleClickOpen: boolean;
   readonly reduceMotion: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 기본은 꺼짐(몽글). */
@@ -329,7 +329,7 @@ export interface GlobalSettingsState {
   readonly experiments: ConsoleExperimentSettings;
   /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 항상 실리며 빈 객체는 전부 기본값이다. */
   readonly shortcuts: ShortcutBindings;
-  /** 보관 Operation 자동 정리 일수. null 은 꺼짐이고, 구응답의 누락도 꺼짐으로 읽는다. */
+  /** 보관 Objective 자동 정리 일수. null 은 꺼짐이고, 구응답의 누락도 꺼짐으로 읽는다. */
   readonly archiveRetentionDays: 7 | 30 | 90 | null;
 }
 

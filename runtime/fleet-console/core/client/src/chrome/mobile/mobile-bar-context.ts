@@ -109,7 +109,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
 }
 
 /**
- * 플러그인이 선언한 pill을 Operation 대화 머리와 같은 모양(`.mobile-conv-pill-*`)으로 옮긴다. 누름은 막대가 늘 가장 최근 렌더의
+ * 플러그인이 선언한 pill을 Objective 대화 머리와 같은 모양(`.mobile-conv-pill-*`)으로 옮긴다. 누름은 막대가 늘 가장 최근 렌더의
  * 클로저(`getLiveMobileBar().pill.onPress`)로 부르므로 여기서 감싸지 않는다.
  */
 function pluginPill(spec: MobileBarSpec, pill: NonNullable<MobileBarSpec["pill"]>): NonNullable<MobileBarState["pill"]> {

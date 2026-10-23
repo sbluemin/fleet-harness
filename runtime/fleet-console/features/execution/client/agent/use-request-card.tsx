@@ -2,7 +2,7 @@ import type { ExecutionClientDeps } from "../deps.js";
 import { CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import * as React from "react";
-import { useOperationUseRequests, type OperationUseRequest } from "../../../computer-use/client/computer-screen-share.js";
+import { useObjectiveUseRequests, type ObjectiveUseRequest } from "../../../computer-use/client/computer-screen-share.js";
 import { answerUseRequest } from "./experiments-api.js";
 import { getT } from "./i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "./mobile-surface.js";
@@ -10,7 +10,7 @@ import { showMobileToast } from "../../../../core/client/src/chrome/mobile/mobil
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
 
 /**
- * 허용 요청 — 이 Operation 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면 서버가 그 호출을
+ * 허용 요청 — 이 Objective 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면 서버가 그 호출을
  * 붙잡아 두고, 사람이 답할 때까지 기다린다. 채팅·터미널 패널의 요청 카드에서 허용 범위를 고른다 —
  * 요청이 답할 곳 없이 4분을 흘려보내면 안 된다.
  *
@@ -34,14 +34,14 @@ function announceMobileAnswer(decision: UseRequestDecision, capability: "console
 }
 
 /** 한 요청의 답 보내기 — 보내는 동안의 두 번째 누름과 누르고 있는 Enter·Space 의 반복을 버린다. 채팅·터미널이 같은 계약을 쓴다. */
-export function useUseRequestAnswer(request: OperationUseRequest, language: ConsoleLocale | undefined) {
+export function useUseRequestAnswer(request: ObjectiveUseRequest, language: ConsoleLocale | undefined) {
   const [pending, setPending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const answer = (decision: UseRequestDecision) => () => {
     if (pending || !cardApi) return;
     setPending(true);
     setFailed(false);
-    void answerUseRequest(cardApi, { operationId: request.operationId, requestId: request.id, capability: request.capability, decision, language: language === "ko" ? "ko" : "en" })
+    void answerUseRequest(cardApi, { objectiveId: request.objectiveId, requestId: request.id, capability: request.capability, decision, language: language === "ko" ? "ko" : "en" })
       .then(() => { announceMobileAnswer(decision, request.capability); })
       .catch(() => setFailed(true))
       .finally(() => setPending(false));
@@ -65,7 +65,7 @@ export function useUseRequestClock(active: boolean): number {
   return now;
 }
 
-export function requestSecondsLeft(request: OperationUseRequest, now: number): number {
+export function requestSecondsLeft(request: ObjectiveUseRequest, now: number): number {
   return Math.max(0, Math.ceil((request.expiresAt - now) / 1000));
 }
 
@@ -73,23 +73,23 @@ export function formatUseRequestTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export function UseRequestGlyph({ capability }: { readonly capability: OperationUseRequest["capability"] }) {
+export function UseRequestGlyph({ capability }: { readonly capability: ObjectiveUseRequest["capability"] }) {
   return capability === "console" ? <CaptionConsoleUseGlyph /> : <CaptionComputerUseGlyph />;
 }
 
-export function UseRequestCards({ operationId, childSessionIds, language, placement }: { readonly operationId: string; readonly childSessionIds?: readonly string[]; readonly language: ConsoleLocale | undefined; readonly placement: "chat" | "terminal" }) {
-  const requests = useOperationUseRequests(operationId, childSessionIds);
+export function UseRequestCards({ objectiveId, childSessionIds, language, placement }: { readonly objectiveId: string; readonly childSessionIds?: readonly string[]; readonly language: ConsoleLocale | undefined; readonly placement: "chat" | "terminal" }) {
+  const requests = useObjectiveUseRequests(objectiveId, childSessionIds);
   const now = useUseRequestClock(requests.length > 0);
   if (requests.length === 0) return null;
   return (
-    <div className={`use-request-stack is-${placement}`} data-keep-operation-active>
-      {requests.map((request) => <UseRequestCard key={request.id} request={request} member={request.operationId !== operationId} language={language} now={now} />)}
+    <div className={`use-request-stack is-${placement}`} data-keep-objective-active>
+      {requests.map((request) => <UseRequestCard key={request.id} request={request} member={request.objectiveId !== objectiveId} language={language} now={now} />)}
     </div>
   );
 }
 
 /** 패널에서 허용 범위를 고르는 요청 카드. */
-function UseRequestCard({ request, member, language, now }: { readonly request: OperationUseRequest; readonly member: boolean; readonly language: ConsoleLocale | undefined; readonly now: number }) {
+function UseRequestCard({ request, member, language, now }: { readonly request: ObjectiveUseRequest; readonly member: boolean; readonly language: ConsoleLocale | undefined; readonly now: number }) {
   const t = getT(language ?? "en");
   const { pending, failed, answer, onKeyDown } = useUseRequestAnswer(request, language);
   const left = requestSecondsLeft(request, now);

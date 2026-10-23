@@ -10,10 +10,10 @@ import { createTheaterSystemPromptService } from "../features/settings/host/agen
 import type { AgentOptionsData } from "@fleet-console/infra";
 import { STATE_VERSION, type DurableConsoleState, type DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
-import { type ArchivedOperation } from "../features/workspace/host/operation-archive-storage.js";
-import { createOperationArchiveCoordinator } from "../features/workspace/host/operation-archive.js";
-import { createOperationArchiveRouter } from "../features/workspace/host/operation-archive-routes.js";
-import { createSanitizedOpDto, createOperationStore, type OperationNode } from "../features/execution/host/operations/operations-domain.js";
+import { type ArchivedObjective } from "../features/workspace/host/objective-archive-storage.js";
+import { createObjectiveArchiveCoordinator } from "../features/workspace/host/objective-archive.js";
+import { createObjectiveArchiveRouter } from "../features/workspace/host/objective-archive-routes.js";
+import { createSanitizedOpDto, createObjectiveRecordsStore, type ObjectiveRecord } from "../features/objectives/host/records/objective-records-domain.js";
 import { TheaterRegistry, type TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 
 const THEATER: TheaterRegistration = {
@@ -28,21 +28,21 @@ const THEATER: TheaterRegistration = {
 describe("deferred deletion coordinator", () => {
   it("returns the same receipt for repeated deletion and blocks recreation during grace", () => {
     const harness = createHarness();
-    harness.operations.create(makeOperation("op"));
+    harness.objectiveRecords.create(makeObjective("op"));
 
-    const first = harness.coordinator.deleteOperation("op");
-    const repeated = harness.coordinator.deleteOperation("op");
+    const first = harness.coordinator.deleteObjective("op");
+    const repeated = harness.coordinator.deleteObjective("op");
 
     expect(repeated).toEqual(first);
-    expect(harness.coordinator.hasPendingOperation("op")).toBe(true);
-    expect(harness.events.filter((event) => event.channel === "operation:deleted")).toHaveLength(1);
+    expect(harness.coordinator.hasPendingObjective("op")).toBe(true);
+    expect(harness.events.filter((event) => event.channel === "objective:deleted")).toHaveLength(1);
   });
 
-  it("restores a Theater together with its Operations and groups", async () => {
+  it("restores a Theater together with its Objectives and groups", async () => {
     const harness = createHarness();
-    harness.operations.create(makeOperation("op-a"));
-    harness.operations.create(makeOperation("op-b"));
-    harness.operations.createGroup({ id: "group-a", theaterId: THEATER.id, name: "Alpha", color: "blue" });
+    harness.objectiveRecords.create(makeObjective("op-a"));
+    harness.objectiveRecords.create(makeObjective("op-b"));
+    harness.objectiveRecords.createGroup({ id: "group-a", theaterId: THEATER.id, name: "Alpha", color: "blue" });
     const deletion = harness.coordinator.deleteTheater(THEATER.id);
     if (!deletion) throw new Error("expected deletion");
 
@@ -50,9 +50,9 @@ describe("deferred deletion coordinator", () => {
 
     expect(restored).toEqual({ ok: true, kind: "theater", targetId: THEATER.id });
     expect(harness.theaters.get(THEATER.id)).toEqual(THEATER);
-    expect(harness.operations.listByTheater(THEATER.id).map((operation) => operation.id)).toEqual(["op-a", "op-b"]);
-    expect(harness.operations.listGroups(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
-    expect(harness.events.filter((event) => event.channel === "operation:restored")).toHaveLength(2);
+    expect(harness.objectiveRecords.listByTheater(THEATER.id).map((objectiveRecord) => objectiveRecord.id)).toEqual(["op-a", "op-b"]);
+    expect(harness.objectiveRecords.listGroups(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
+    expect(harness.events.filter((event) => event.channel === "objective:restored")).toHaveLength(2);
   });
 
   it("hides a forgotten Theater prompt, restores it during grace, and purges it after expiry", async () => {
@@ -75,86 +75,86 @@ describe("deferred deletion coordinator", () => {
 
   it("rolls memory back when the durable save fails", () => {
     const harness = createHarness();
-    harness.operations.create(makeOperation("op"));
+    harness.objectiveRecords.create(makeObjective("op"));
     harness.failSave.value = true;
 
-    expect(() => harness.coordinator.deleteOperation("op")).toThrow("save_failed");
-    expect(harness.operations.get("op")).not.toBeNull();
+    expect(() => harness.coordinator.deleteObjective("op")).toThrow("save_failed");
+    expect(harness.objectiveRecords.get("op")).not.toBeNull();
     expect(harness.coordinator.list()).toEqual([]);
     expect(harness.events).toEqual([]);
   });
 
   it("rejects restore after expiry and purges on a startup sweep", async () => {
     const harness = createHarness();
-    harness.operations.create(makeOperation("op"));
-    const deletion = harness.coordinator.deleteOperation("op");
+    harness.objectiveRecords.create(makeObjective("op"));
+    const deletion = harness.coordinator.deleteObjective("op");
     if (!deletion) throw new Error("expected deletion");
     harness.clock.value = deletion.expiresAt;
 
     await expect(harness.coordinator.restore(deletion.deletionId)).rejects.toMatchObject({ status: 404 } satisfies Partial<DeferredDeletionError>);
     expect(harness.coordinator.list()).toEqual([]);
-    expect(harness.events.some((event) => event.channel === "operation:purged")).toBe(true);
+    expect(harness.events.some((event) => event.channel === "objective:purged")).toBe(true);
 
     const startup = createHarness();
     startup.clock.value = 10_000;
     startup.coordinator.load([makeExpiredTombstone()]);
     startup.coordinator.sweepExpired();
     expect(startup.coordinator.list()).toEqual([]);
-    expect(startup.events).toEqual([expect.objectContaining({ channel: "operation:purged" })]);
+    expect(startup.events).toEqual([expect.objectContaining({ channel: "objective:purged" })]);
   });
 });
 
-describe("Operation archive persistence and deletion", () => {
+describe("Objective archive persistence and deletion", () => {
   // 기존 유예 삭제 시험은 두 파일 이동·자식 세션 보존·복원 경계를 거치지 않는다.
-  it("parks an Operation with its child sessions and restores the complete dormant record", async () => {
+  it("parks an Objective with its child sessions and restores the complete dormant record", async () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
-      h.operations.create({ ...makeOperation("parent"), pluginId: null, payload: { session: { harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" } } });
-      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111", payload: { session: { harness: "claude-code", sessionName: "표시용 구성원", id: "private-child-session", transcriptPath: "/private/child-transcript" } } });
+      h.objectiveRecords.create({ ...makeObjective("parent"), ...({ session: { harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" } }) });
+      h.objectiveRecords.createChild({ parentObjectiveId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111", ...({ session: { harness: "claude-code", sessionName: "표시용 구성원", id: "private-child-session", transcriptPath: "/private/child-transcript" } }) });
       h.save();
       await expect(h.archive.archive("11111111-1111-4111-8111-111111111111")).rejects.toThrow("child_session_not_closable");
       const receipt = await h.archive.archive("parent");
       expect(h.stopped).toEqual(["parent", "11111111-1111-4111-8111-111111111111"]);
-      expect(h.operations.list()).toEqual([]);
+      expect(h.objectiveRecords.list()).toEqual([]);
       expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
-      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
-      expect(h.events.map((event) => event.channel)).toEqual(["operation:archived"]);
-      expect(() => h.operations.create(makeOperation("11111111-1111-4111-8111-111111111111"))).toThrow("operation_exists");
-      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations).toBeUndefined();
+      expect(h.objectiveRecords.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.events.map((event) => event.channel)).toEqual(["objective:archived"]);
+      expect(() => h.objectiveRecords.create(makeObjective("11111111-1111-4111-8111-111111111111"))).toThrow("objectiveRecord_exists");
+      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).objectiveRecords).toBeUndefined();
       const saved = JSON.parse(fs.readFileSync(path.join(directory, "commodore/owner/objectives/archive.json"), "utf8"));
       expect(saved.entries[0].objective.sessions[0].session.id).toBe("private-child-session");
       expect(JSON.stringify(saved)).not.toMatch(/"(?:payload|geometry|theaterId|pluginId|userQuestions|resumeAvailable|launchKey)"\s*:/);
-      const router = createOperationArchiveRouter({ archive: h.archive, isAuthorized: () => false,
+      const router = createObjectiveArchiveRouter({ archive: h.archive, isAuthorized: () => false,
         readJsonBody: async <T,>() => ({}) as T, sanitize: (node) => createSanitizedOpDto(node, { includeSessionNames: true }),
         writeJson: (res, status, body) => Object.assign(res, { status, body }),
       });
       const readback: { status?: number; body?: unknown } = {};
-      await router({ req: { method: "GET" } as never, res: readback as never, pathname: "/api/v1/operations/parent/describe" });
+      await router({ req: { method: "GET" } as never, res: readback as never, pathname: "/api/v1/objectives/records/parent/describe" });
       expect(readback.status).toBe(200);
       expect(JSON.stringify(readback.body)).not.toMatch(/provider-session|private-child-session|\/private\//);
       expect(JSON.stringify(readback.body)).toContain("표시용 구성원");
       const denied: { status?: number } = {};
-      await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/operations/child/restore" });
+      await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/objectives/records/child/restore" });
       expect(denied.status).toBe(401);
-      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.objectiveRecords.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       const restarted = createArchiveHarness(directory);
       expect(restarted.archive.listArchived().total).toBe(1);
       const restored = await restarted.archive.undoArchive(receipt);
-      expect(restored.rootOperationId).toBe("parent");
-      expect(restored.operations.map((node) => node.id).sort()).toEqual(["parent"]);
-      expect(restored.operations.every((node) => node.payload.restoredDormant === true)).toBe(true);
-      expect(restarted.operations.get("parent")?.payload.session).toEqual({ harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" });
-      expect(restarted.operations.get("11111111-1111-4111-8111-111111111111")?.payload.restoredDormant).toBe(true);
-      expect(restarted.operations.list()).toHaveLength(1);
+      expect(restored.rootObjectiveId).toBe("parent");
+      expect(restored.objectiveRecords.map((node) => node.id).sort()).toEqual(["parent"]);
+      expect(restored.objectiveRecords.every((node) => node.restoredDormant === true)).toBe(true);
+      expect(restarted.objectiveRecords.get("parent")?.session).toEqual({ harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" });
+      expect(restarted.objectiveRecords.get("11111111-1111-4111-8111-111111111111")?.restoredDormant).toBe(true);
+      expect(restarted.objectiveRecords.list()).toHaveLength(1);
       expect(restarted.archive.listArchived().entries).toEqual([]);
       await restarted.archive.archive("parent");
       const confirm = restarted.archive.previewPurge("parent");
       await expect(restarted.archive.purge({ ...confirm, revision: confirm.revision - 1 })).rejects.toThrow("archive_revision_conflict");
       const pending = await restarted.archive.purge(confirm);
-      expect(restarted.events.filter((event) => event.channel === "operation:purged")).toEqual([]);
+      expect(restarted.events.filter((event) => event.channel === "objective:purged")).toEqual([]);
       restarted.clock.value = pending.purgeAt;
       await restarted.archive.sweepExpired();
-      expect(restarted.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["parent"]);
+      expect(restarted.events.filter((event) => event.channel === "objective:purged").map((event) => event.objectiveRecord.id).sort()).toEqual(["parent"]);
       expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
     });
   });
@@ -163,20 +163,20 @@ describe("Operation archive persistence and deletion", () => {
   it("keeps pending batches intact on disk, cancels on undo or restart, and commits the exact batch atomically", async () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
-      h.operations.create(makeOperation("a"));
-      h.operations.create(makeOperation("b"));
-      h.operations.createChild({ parentOperationId: "a", childSessionId: "11111111-1111-4111-8111-111111111111", payload: { session: { harness: "claude-code", id: "secret", sessionName: "구성원 이름" } } });
+      h.objectiveRecords.create(makeObjective("a"));
+      h.objectiveRecords.create(makeObjective("b"));
+      h.objectiveRecords.createChild({ parentObjectiveId: "a", childSessionId: "11111111-1111-4111-8111-111111111111", ...({ session: { harness: "claude-code", id: "secret", sessionName: "구성원 이름" } }) });
       h.save();
       await h.archive.archive("a"); await h.archive.archive("b");
       const files = ["state.json", "commodore/owner/objectives/archive.json"].map((name) => path.join(directory, name));
       const before = files.map((file) => fs.readFileSync(file, "utf8"));
       const stale = h.archive.previewBatch(["a", "b"]);
-      await expect(h.archive.purge({ ...stale, operationIds: ["a", "a"] })).rejects.toThrow("invalid_archive_request");
+      await expect(h.archive.purge({ ...stale, objectiveIds: ["a", "a"] })).rejects.toThrow("invalid_archive_request");
       const pending = await h.archive.purge(stale);
       expect(files.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
-      expect(h.archive.listArchived().pendingPurges).toEqual([expect.objectContaining({ operationIds: ["a", "b"], purgeId: pending.purgeId })]);
+      expect(h.archive.listArchived().pendingPurges).toEqual([expect.objectContaining({ objectiveIds: ["a", "b"], purgeId: pending.purgeId })]);
       await expect(h.archive.restore("a")).rejects.toThrow("pending_deletion");
-      expect(() => h.deletion.deleteTheater(THEATER.id)).toThrow("operation_busy");
+      expect(() => h.deletion.deleteTheater(THEATER.id)).toThrow("objectiveRecord_busy");
       await expect(h.archive.purge(stale)).rejects.toThrow("archive_revision_conflict");
       await h.archive.undoPurge(pending.purgeId);
       h.clock.value = pending.purgeAt;
@@ -187,16 +187,16 @@ describe("Operation archive persistence and deletion", () => {
       const restarted = createArchiveHarness(directory);
       restarted.clock.value = abandoned.purgeAt + 60_000;
       await restarted.archive.sweepExpired();
-      expect(restarted.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["a", "b"]);
+      expect(restarted.archive.listArchived().entries.map((entry) => entry.objectiveRecord.id).sort()).toEqual(["a", "b"]);
       expect(restarted.archive.listArchived().pendingPurges).toEqual([]);
-      expect(restarted.archive.describe("11111111-1111-4111-8111-111111111111")?.operation.childSessions?.[0]?.payload.session).toEqual({ harness: "claude-code", id: "secret", sessionName: "구성원 이름" });
-      await expect(restarted.archive.restoreBatch({ ...restarted.archive.previewBatch(["a", "b"]), operationIds: ["a", "missing"] })).rejects.toThrow("unknown_operation");
-      expect(restarted.operations.list()).toEqual([]);
+      expect(restarted.archive.describe("11111111-1111-4111-8111-111111111111")?.objectiveRecord?.sessions?.[0]?.session).toEqual({ harness: "claude-code", id: "secret", sessionName: "구성원 이름" });
+      await expect(restarted.archive.restoreBatch({ ...restarted.archive.previewBatch(["a", "b"]), objectiveIds: ["a", "missing"] })).rejects.toThrow("unknown_objectiveRecord");
+      expect(restarted.objectiveRecords.list()).toEqual([]);
       await expect(restarted.archive.purge(stale)).rejects.toThrow("archive_revision_conflict");
       const restored = await restarted.archive.restoreBatch(restarted.archive.previewBatch(["a", "b"]));
-      expect(restored.operations.map((node) => node.id).sort()).toEqual(["a", "b"]);
-      expect(restored.operations.every((node) => node.payload.restoredDormant === true)).toBe(true);
-      expect(restored.operations[0]?.childSessions?.[0]?.payload.restoredDormant).toBe(true);
+      expect(restored.objectiveRecords.map((node) => node.id).sort()).toEqual(["a", "b"]);
+      expect(restored.objectiveRecords.every((node) => node.restoredDormant === true)).toBe(true);
+      expect(restored.objectiveRecords[0]?.sessions?.[0]?.restoredDormant).toBe(true);
       await restarted.archive.archive("a"); await restarted.archive.archive("b");
       const final = await restarted.archive.purge(restarted.archive.previewBatch(["a", "b"]));
       restarted.clock.value = final.purgeAt - 1;
@@ -206,11 +206,11 @@ describe("Operation archive persistence and deletion", () => {
       await expect(restarted.archive.undoPurge(final.purgeId)).rejects.toThrow("archive_undo_conflict");
       restarted.fault.finalize = true;
       await expect(restarted.archive.sweepExpired()).rejects.toThrow("archive_finalize_failed");
-      expect(restarted.events.filter((event) => event.channel === "operation:purged")).toEqual([]);
+      expect(restarted.events.filter((event) => event.channel === "objective:purged")).toEqual([]);
       const recovered = createArchiveHarness(directory);
       recovered.archive.flushEvents();
       expect(recovered.archive.listArchived().entries).toEqual([]);
-      expect(recovered.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["a", "b"]);
+      expect(recovered.events.filter((event) => event.channel === "objective:purged").map((event) => event.objectiveRecord.id).sort()).toEqual(["a", "b"]);
       expect(recovered.archive.describe("11111111-1111-4111-8111-111111111111")).toBeNull();
       recovered.archive.dispose(); restarted.archive.dispose();
     });
@@ -219,39 +219,39 @@ describe("Operation archive persistence and deletion", () => {
   it("recovers a durable move before publishing either storage location after a crash", async () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
-      h.operations.create(makeOperation("op")); h.save();
+      h.objectiveRecords.create(makeObjective("op")); h.save();
       h.fault.state = true;
       await expect(h.archive.archive("op")).rejects.toThrow("state_write_failed");
       expect(() => h.save()).toThrow("archive_recovery_required");
       expect(h.events).toEqual([]);
       const recovered = createArchiveHarness(directory);
-      expect(recovered.operations.get("op")).toBeNull();
+      expect(recovered.objectiveRecords.get("op")).toBeNull();
       expect(recovered.archive.describe("op")?.location).toBe("archived");
       recovered.fault.finalize = true;
       await expect(recovered.archive.restore("op")).rejects.toThrow("archive_finalize_failed");
       const restored = createArchiveHarness(directory);
-      expect(restored.operations.get("op")).not.toBeNull();
+      expect(restored.objectiveRecords.get("op")).not.toBeNull();
       expect(restored.archive.listArchived().total).toBe(0);
-      expect(restored.operations.list()).toHaveLength(1);
+      expect(restored.objectiveRecords.list()).toHaveLength(1);
     });
   });
 
   it("deletes archived clusters through grace and purge, preserving original locations on Theater undo", async () => {
     await withArchiveDirectory(async (directory) => {
       let h = createArchiveHarness(directory);
-      h.operations.create(makeOperation("parent"));
-      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
+      h.objectiveRecords.create(makeObjective("parent"));
+      h.objectiveRecords.createChild({ parentObjectiveId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
       await h.archive.archive("parent");
       const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
-      expect(theaterDeletion.archivedOperationCount).toBe(1);
+      expect(theaterDeletion.archivedObjectiveCount).toBe(1);
       h = createArchiveHarness(directory);
       expect(h.theaters.list()).toEqual([]);
       await h.deletion.restore(theaterDeletion.deletionId);
-      expect(h.operations.get("parent")).toBeNull();
-      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.objectiveRecords.get("parent")).toBeNull();
+      expect(h.objectiveRecords.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
       await h.archive.archive("parent");
-      const deletion = h.deletion.deleteOperation("parent")!;
+      const deletion = h.deletion.deleteObjective("parent")!;
       expect(h.archive.listArchived().total).toBe(0);
       await expect(h.archive.access("11111111-1111-4111-8111-111111111111")).rejects.toThrow("pending_deletion");
       h.clock.value = deletion.expiresAt;
@@ -260,14 +260,14 @@ describe("Operation archive persistence and deletion", () => {
       const boot = createArchiveHarness(directory);
       expect(boot.archive.listArchived().total).toBe(0);
       expect(boot.deletion.list()).toEqual([]);
-      expect(boot.operations.list()).toEqual([]);
+      expect(boot.objectiveRecords.list()).toEqual([]);
       expect(fs.readFileSync(path.join(directory, "commodore", "owner", "objectives", "archive.json"), "utf8")).not.toContain('"id": "parent"');
     });
   });
 
   it("refuses corrupt or conflicting stores instead of replacing them with empty state", async () => {
     await withArchiveDirectory(async (directory) => {
-      const h = createArchiveHarness(directory); h.operations.create(makeOperation("op")); h.save();
+      const h = createArchiveHarness(directory); h.objectiveRecords.create(makeObjective("op")); h.save();
       await h.archive.archive("op");
       const archiveFile = path.join(directory, "commodore", "owner", "objectives", "archive.json");
       const intact = fs.readFileSync(archiveFile, "utf8");
@@ -287,13 +287,13 @@ describe("Operation archive persistence and deletion", () => {
       const day = 86_400_000;
       const start = 5_000_000_000;
       h.clock.value = start;
-      h.operations.create(makeOperation("live"));
-      h.operations.create(makeOperation("old"));
-      h.operations.createChild({ parentOperationId: "old", childSessionId: "11111111-1111-4111-8111-111111111111" });
-      h.operations.create(makeOperation("young"));
-      h.operations.create(makeOperation("held"));
-      h.operations.create(makeOperation("reborn"));
-      h.operations.create(makeOperation("future"));
+      h.objectiveRecords.create(makeObjective("live"));
+      h.objectiveRecords.create(makeObjective("old"));
+      h.objectiveRecords.createChild({ parentObjectiveId: "old", childSessionId: "11111111-1111-4111-8111-111111111111" });
+      h.objectiveRecords.create(makeObjective("young"));
+      h.objectiveRecords.create(makeObjective("held"));
+      h.objectiveRecords.create(makeObjective("reborn"));
+      h.objectiveRecords.create(makeObjective("future"));
       h.save();
       await h.archive.archive("old");
       await h.archive.archive("held");
@@ -307,15 +307,15 @@ describe("Operation archive persistence and deletion", () => {
       await h.archive.archive("reborn");
       const pending = await h.archive.purge(h.archive.previewPurge("held"));
       await h.archive.sweepRetention();
-      expect(h.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["future", "held", "old", "reborn", "young"]);
+      expect(h.archive.listArchived().entries.map((entry) => entry.objectiveRecord.id).sort()).toEqual(["future", "held", "old", "reborn", "young"]);
 
       h.retention.days = 30;
       await h.archive.sweepRetention();
       expect(h.archive.describe("old")).toBeNull();
       expect(h.archive.describe("11111111-1111-4111-8111-111111111111")).toBeNull();
-      expect(h.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id)).toEqual(["old"]);
-      expect(h.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["future", "held", "reborn", "young"]);
-      expect(h.operations.get("live")?.id).toBe("live");
+      expect(h.events.filter((event) => event.channel === "objective:purged").map((event) => event.objectiveRecord.id)).toEqual(["old"]);
+      expect(h.archive.listArchived().entries.map((entry) => entry.objectiveRecord.id).sort()).toEqual(["future", "held", "reborn", "young"]);
+      expect(h.objectiveRecords.get("live")?.id).toBe("live");
       await h.archive.undoPurge(pending.purgeId);
       expect(h.archive.describe("held")?.location).toBe("archived");
 
@@ -332,7 +332,7 @@ describe("Operation archive persistence and deletion", () => {
       armed?.run();
       await h.archive.sweepRetention();
       expect(h.archive.describe("young")).toBeNull();
-      h.operations.create(makeOperation("fresh"));
+      h.objectiveRecords.create(makeObjective("fresh"));
       await h.archive.archive("fresh");
       const next = h.scheduled.filter((item) => item.delay === 60_000).at(-1);
       const armedCount = h.scheduled.filter((item) => item.delay === 60_000).length;
@@ -350,8 +350,8 @@ describe("Operation archive persistence and deletion", () => {
       const h = createArchiveHarness(directory);
       const day = 86_400_000;
       h.clock.value = 5_000_000_000;
-      h.operations.create(makeOperation("blocker"));
-      h.operations.create(makeOperation("old"));
+      h.objectiveRecords.create(makeObjective("blocker"));
+      h.objectiveRecords.create(makeObjective("old"));
       h.save();
       await h.archive.archive("old");
       h.clock.value += 30 * day;
@@ -381,7 +381,7 @@ describe("Operation archive persistence and deletion", () => {
       const h = createArchiveHarness(directory);
       const day = 86_400_000;
       h.clock.value = 5_000_000_000;
-      h.operations.create(makeOperation("old"));
+      h.objectiveRecords.create(makeObjective("old"));
       h.save();
       await h.archive.archive("old");
       h.clock.value += 30 * day;
@@ -417,27 +417,27 @@ function createArchiveHarness(directory: string) {
   }) as typeof createDurableJsonStore });
   const firstStart = !fs.existsSync(stateStore.path);
   const state = storage.load();
-  const operations = createOperationStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) });
+  const objectiveRecords = createObjectiveRecordsStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) });
   const theaters = new TheaterRegistry(); theaters.restore(firstStart ? [THEATER] : state.theaters);
-  operations.replace(state.operations); operations.replaceGroups(state.groups ?? []);
-  const events: Array<{ channel: string; operation: OperationNode }> = [];
+  objectiveRecords.replace(state.objectiveRecords); objectiveRecords.replaceGroups(state.groups ?? []);
+  const events: Array<{ channel: string; objectiveRecord: ObjectiveRecord }> = [];
   const purged: string[] = [];
   const stopped: string[] = [];
   const retention = { days: null as null | 7 | 30 | 90 };
   const scheduled: Array<{ delay: number; run: () => void; handle: ReturnType<typeof setTimeout> }> = [];
   const cleared = new Set<unknown>();
   const stopGate: { current: Promise<void> | null } = { current: null };
-  const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones: tombstones });
-  const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedOperation[]) => storage.save(snapshot(tombstones), entries);
-  const deletion = createDeferredDeletionCoordinator({ operations, theaters, archives: storage.entries, save,
+  const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), objectiveRecords: objectiveRecords.list(), groups: objectiveRecords.listAllGroups(), deletionTombstones: tombstones });
+  const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedObjective[]) => storage.save(snapshot(tombstones), entries);
+  const deletion = createDeferredDeletionCoordinator({ objectiveRecords, theaters, archives: storage.entries, save,
     assertMutable: (id) => archive.assertMutable(id),
     now: () => clock.value, beforePurge: (nodes) => purged.push(...nodes.map((node) => node.id).sort()),
     publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
     setTimer: () => ({ unref() {} }) as unknown as ReturnType<typeof setTimeout>, clearTimer: () => {},
   });
   deletion.load(state.deletionTombstones ?? []);
-  const archive = createOperationArchiveCoordinator({ operations, storage, snapshot,
-    theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingOperation,
+  const archive = createObjectiveArchiveCoordinator({ objectiveRecords, storage, snapshot,
+    theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingObjective,
     stop: async (node) => { stopped.push(node.id); if (stopGate.current) await stopGate.current; }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
     readRetentionDays: () => retention.days,
@@ -448,19 +448,19 @@ function createArchiveHarness(directory: string) {
     }) as typeof setTimeout,
     clearTimer: ((handle: ReturnType<typeof setTimeout>) => { cleared.add(handle); }) as typeof clearTimeout,
   });
-  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
+  return { objectiveRecords, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
 }
 
 function createHarness() {
   const clock = { value: 1_000 };
   const failSave = { value: false };
-  const beforePurge: { value: ((operations: readonly OperationNode[], tombstone: DurableDeletionTombstone) => void) | null } = { value: null };
-  const operations = createOperationStore({ now: () => clock.value });
+  const beforePurge: { value: ((objectiveRecords: readonly ObjectiveRecord[], tombstone: DurableDeletionTombstone) => void) | null } = { value: null };
+  const objectiveRecords = createObjectiveRecordsStore({ now: () => clock.value });
   const theaters = new TheaterRegistry();
   theaters.restore([THEATER]);
   const events: Array<{ readonly channel: string; readonly payload: unknown }> = [];
   const coordinator = createDeferredDeletionCoordinator({
-    operations,
+    objectiveRecords,
     theaters,
     now: () => clock.value,
     randomId: () => `deletion-${clock.value}`,
@@ -475,10 +475,10 @@ function createHarness() {
     setTimer: () => ({ unref: () => {} }) as unknown as ReturnType<typeof setTimeout>,
     clearTimer: () => {},
   });
-  return { beforePurge, clock, coordinator, events, failSave, operations, theaters };
+  return { beforePurge, clock, coordinator, events, failSave, objectiveRecords, theaters };
 }
 
-function makeOperation(id: string) {
+function makeObjective(id: string) {
   return {
     id,
     theaterId: THEATER.id,
@@ -496,9 +496,9 @@ function makeExpiredTombstone(): DurableDeletionTombstone {
     targetId: "expired-op",
     deletedAt: 1,
     expiresAt: 2,
-    kind: "operation",
-    operation: {
-      ...makeOperation("expired-op"),
+    kind: "objectiveRecord",
+    objectiveRecord: {
+      ...makeObjective("expired-op"),
       ts: { createdAt: 1, updatedAt: 1 },
     },
   };

@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes
  * components.css 가 그린다. 각 표면은 덱이 뜨는 자리(z-index·폭)와 행의 내용만 정한다. 상태(질의·활성 행·닫음)는 표면이 가진다 —
  * 호스트와 플러그인 번들이 이 모듈을 각자 적재하므로 모듈 스코프 상태를 두지 않는다.
  *
- * 문법: 묶음 머리는 글자 한 줄 + 오른쪽으로 이어지는 구분선이다(퀵 런치바의 「Operations ───」). 묶음 안의 띠(Theater·공급자)는
+ * 문법: 묶음 머리는 글자 한 줄 + 오른쪽으로 이어지는 구분선이다(퀵 런치바의 「ObjectiveRecords ───」). 묶음 안의 띠(Theater·공급자)는
  * 구분선 없는 글자 한 줄이다. 행은 [머리 칸][이름][값][메타] 네 칸이고, 목록 전체가 한 격자를 subgrid 로 나눠 써서 값·메타 열이
  * 모든 행에서 같은 x 에 선다. 활성 행은 고른 행 워시 위에 2px 금색 링(행 안쪽)이다 — 입력 포커스는 컴포저에 남고 활성 행은
  * aria-activedescendant 로만 옮겨진다.

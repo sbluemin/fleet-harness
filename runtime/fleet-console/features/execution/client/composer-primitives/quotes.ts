@@ -25,9 +25,9 @@ export interface ComposerQuote {
   readonly note?: string;
 }
 
-/** 붙일 곳 — 채팅 Operation 이거나, 인용을 받겠다고 나선 플러그인의 비-Operation 대상(사령관 등)이다. */
+/** 붙일 곳 — 채팅 Objective 이거나, 인용을 받겠다고 나선 플러그인의 비-Objective 대상(사령관 등)이다. */
 export type ComposerQuoteTarget =
-  | { readonly kind: "operation"; readonly operationId: string }
+  | { readonly kind: "objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "plugin"; readonly pluginId: string; readonly targetId: string };
 
 export type ComposerQuoteAttachResult = "attached" | "duplicate" | "limit" | "unavailable";

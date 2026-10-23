@@ -1,7 +1,7 @@
 import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
 import * as React from "react";
-import { assertOperationNode, ApiError } from "../../../../features/execution/client/operations.js";
-import type { OperationNode } from "../../../../features/execution/shared/operations/types.js";
+import { assertObjectiveRecord, ApiError } from "../../../../features/execution/client/objective-records.js";
+import type { ObjectiveRecord } from "../../../../features/objectives/shared/records/types.js";
 import type { ModelRoster, ModelRosterTarget } from "../../../../features/ai-gateway/shared/models.js";
 import type { ConsoleClientCapabilities } from "./client-capabilities.js";
 
@@ -48,11 +48,11 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     // 채팅 렌더러는 호스트 기능이다 — 사본은 아무것도 그리지 않고, Console이 실제 턴 렌더러로 덮는다.
     chat: { Transcript: () => null, Conversation: () => null, DecisionCard: () => null, Ledger: () => null },
     terminal: {
-      requestTicket: async (path, operationId, signal) => {
+      requestTicket: async (path, objectiveId, signal) => {
         const response = await fetch(resolveApiPath(path), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ operationId }),
+          body: JSON.stringify({ objectiveId }),
           signal,
         });
         if (!response.ok) throw new ApiError(response.status, `Terminal ticket request failed: ${response.status}`);
@@ -69,16 +69,16 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     // no-op으로 두고, Console이 실제 구현으로 덮는다.
     consoleState: {
       getTheaters: () => [],
-      getOperations: () => [],
+      getObjectiveRecords: () => [],
       getActiveTheaterId: () => null,
       getViewedTheaterId: () => null,
       viewTheater: () => undefined,
-      getActiveOperationId: () => null,
+      getActiveObjectiveId: () => null,
       // 스트림이 없는 사본은 끊긴 적도 없다 — offline 으로 두면 플러그인이 영원히 단절로 읽는다.
       getConnection: () => "live",
       // 런타임 축을 보고하는 권위자가 없는 사본은 기다릴 것도 없다 — 호스트 스토어의 기본값과 같다.
-      getOperationRuntimeHydration: () => "ready",
-      getSelectedOperationId: () => null,
+      getObjectiveRuntimeHydration: () => "ready",
+      getSelectedObjectiveId: () => null,
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,
     },
@@ -111,30 +111,30 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     composer: {
       open: () => undefined,
     },
-    operations: {
+    objectiveRecords: {
       create: async (input) => {
-        const response = await fetch("/api/v1/operations", {
+        const response = await fetch("/api/v1/objectives/records", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
         });
-        if (!response.ok) throw new ApiError(response.status, `Operation create failed: ${response.status}`);
-        const payload = await response.json() as { readonly operation?: unknown };
-        return assertOperationNode(payload.operation);
+        if (!response.ok) throw new ApiError(response.status, `Objective create failed: ${response.status}`);
+        const payload = await response.json() as { readonly objectiveRecord?: unknown };
+        return assertObjectiveRecord(payload.objectiveRecord);
       },
-      rename: async (operationId, title) => {
-        const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
+      rename: async (objectiveId, title) => {
+        const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title }),
         });
-        if (!response.ok) throw new ApiError(response.status, `Operation rename failed: ${response.status}`);
-        const payload = await response.json() as { readonly operation?: unknown };
-        return assertOperationNode(payload.operation);
+        if (!response.ok) throw new ApiError(response.status, `Objective rename failed: ${response.status}`);
+        const payload = await response.json() as { readonly objectiveRecord?: unknown };
+        return assertObjectiveRecord(payload.objectiveRecord);
       },
-      remove: async (operationId) => {
-        const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" });
-        if (!response.ok) throw new ApiError(response.status, `Operation remove failed: ${response.status}`);
+      remove: async (objectiveId) => {
+        const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`, { method: "DELETE" });
+        if (!response.ok) throw new ApiError(response.status, `Objective remove failed: ${response.status}`);
       },
       focus: () => undefined,
     },

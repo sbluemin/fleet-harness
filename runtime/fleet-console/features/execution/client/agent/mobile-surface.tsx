@@ -1,24 +1,24 @@
 import type { MobileBarMenuItem } from "../../../workspace/shared/pane.js";
-import type { ClientMobileOperationCapability } from "../../../workspace/shared/mobile.js";
-import type { OperationRenderContext } from "../../shared/client-contract.js";
+import type { ClientMobileObjectiveCapability } from "../../../workspace/shared/mobile.js";
+import type { ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
 
 /*
- * 모바일 Operation 화면 — 셸이 상단 막대와 ⋮을 그리고, 본문은 그 아래 전부를 쓴다.
+ * 모바일 Objective 화면 — 셸이 상단 막대와 ⋮을 그리고, 본문은 그 아래 전부를 쓴다.
  *
- * 판정은 셸이 실어 주는 `context.mobileOperation`의 존재 하나다(호스트 계약: 막대를 그려 주는 호스트만
+ * 판정은 셸이 실어 주는 `context.mobileObjective`의 존재 하나다(호스트 계약: 막대를 그려 주는 호스트만
  * 이 창구를 싣는다). DOM의 모드 속성을 읽지 않는다 — 데스크톱 대화 화면·확대 표면에는
  * 이 창구가 없다. 본문 루트에 `data-mobile-surface`를 달아 CSS도 같은 판정만 읽는다.
  *
- * 창구의 타입은 SDK의 `ClientMobileOperationCapability`·`MobileBarMenuItem`(checked = 스위치 행)이다.
+ * 창구의 타입은 SDK의 `ClientMobileObjectiveCapability`·`MobileBarMenuItem`(checked = 스위치 행)이다.
  */
 
 export type MobileMenuItemLike = MobileBarMenuItem;
-export type MobileOperationLike = ClientMobileOperationCapability;
+export type MobileObjectiveLike = ClientMobileObjectiveCapability;
 
-/** 셸이 이 본문을 모바일 Operation 화면으로 세웠으면 그 창구, 아니면 null. */
-export function mobileOperationOf(context: OperationRenderContext): MobileOperationLike | null {
-  return context.mobileOperation ?? null;
+/** 셸이 이 본문을 모바일 Objective 화면으로 세웠으면 그 창구, 아니면 null. */
+export function mobileObjectiveOf(context: ObjectiveRenderContext): MobileObjectiveLike | null {
+  return context.mobileObjective ?? null;
 }
 
 /** 본문 아래 깊은 자리(질문 카드·응답 동작 줄)가 같은 판정을 읽는 길. 데스크톱은 기본값 false. */
@@ -36,7 +36,7 @@ export function useMobileSurface(): boolean {
  * ⋮ 항목을 셸에 올린다. 항목이 바뀌면 다시 올리고, 본문이 내려가면 빈 목록으로 거둔다(계약상 본문의 몫).
  * `key`는 항목의 의미가 바뀌었는지 가르는 문자열 — 매 렌더 새로 만든 run 함수로 셸을 흔들지 않는다.
  */
-export function useMobileMenuItems(mobile: MobileOperationLike | null, items: readonly MobileMenuItemLike[], key: string): void {
+export function useMobileMenuItems(mobile: MobileObjectiveLike | null, items: readonly MobileMenuItemLike[], key: string): void {
   const itemsRef = React.useRef(items);
   itemsRef.current = items;
   React.useEffect(() => {

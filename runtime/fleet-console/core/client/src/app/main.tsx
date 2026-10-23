@@ -1,4 +1,4 @@
-import { subscribeConsoleChannel } from "../integration/operations-sse.js";
+import { subscribeConsoleChannel } from "../integration/objective-records-sse.js";
 import "@fontsource-variable/manrope";
 // Pretendard dynamic subset: 한글 폴백 서체 — 브라우저가 unicode-range로 필요한 subset woff2만 내려받는다.
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
@@ -26,8 +26,8 @@ import { HostPickerScreen } from "../../../../features/remote-access/client/host
 import "../../../../features/remote-access/client/console-section.css";
 import { fetchGlobalSettingsState } from "../../../../features/settings/client/global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
-import { connectOperationsSse, installOperationsSseWake, refreshObserverStatus } from "../integration/operations-sse.js";
-import { installOperationArchive } from "../integration/operation-archive.js";
+import { connectObjectiveRecordsSse, installObjectiveRecordsSseWake, refreshObserverStatus } from "../integration/objective-records-sse.js";
+import { installObjectiveArchive } from "../integration/objective-archive.js";
 import { installModelRosterSync } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { afterBootLane, armBootLane, bootLanePending, installBootFetchGate, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
@@ -36,7 +36,7 @@ import { installConsoleUseGestures } from "../../../../features/console-use/clie
 import { loadFeatureRegistry, FeatureRegistryProvider } from "../integration/feature-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, objectiveRecordsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 import { bindConversationSurfaceLayout } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getRailStoreSnapshot } from "../chrome/rail/rail-store.js";
@@ -108,17 +108,17 @@ if (app && hostPicker) {
   });
   await migration;
   // 대화 중심 화면의 본문 렌더러·「구성원」 탭 등록은 훅 밖에서 목표 묶음을 읽는다 — Provider 와 같은 원천을 묶는다.
-  bindGroupClusterSource(registry.operationClusters);
+  bindGroupClusterSource(registry.objectiveRecordClusters);
   // 제스처는 id 로 대상·호출자를 찾는다 — 구성원이 부른 Console Use 도 제 이름으로 선다.
-  installConsoleUseGestures({ operations: () => operationsIncludingNested(), subscribeConsoleChannel });
-  // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
+  installConsoleUseGestures({ objectiveRecords: () => objectiveRecordsIncludingNested(), subscribeConsoleChannel });
+  // 보관함의 수와 목록 — 보관된 Objective은 일반 목록에 없으므로 자기 사건으로 따라간다.
   // 첫 읽기는 데스크톱 차선이 열려 있을 때 목록·ready보다 뒤로 밀린다.
-  installOperationArchive(subscribeConsoleChannel);
+  installObjectiveArchive(subscribeConsoleChannel);
   // 모델 로스터 변경(다른 탭·기기의 AI Gateway 저장)이 운영 카탈로그와 모든 모델 선택지를 다시 읽게 한다.
   installModelRosterSync();
   const connectLive = (): void => {
-    connectOperationsSse();
-    installOperationsSseWake();
+    connectObjectiveRecordsSse();
+    installObjectiveRecordsSseWake();
   };
   // 이벤트 스트림은 연결 하나를 계속 쥐므로, 첫 목록을 칠하고 ready를 보낸 다음에 연다.
   if (bootLanePending()) void afterBootLane().then(connectLive);
@@ -131,7 +131,7 @@ if (app && hostPicker) {
       <BrowserRouter basename="/console">
         <FeatureRegistryProvider value={registry}>
           <ComposerTopEntriesProvider value={registry.composerTopEntries}>
-            <GroupClusterProvider value={registry.operationClusters}><App /></GroupClusterProvider>
+            <GroupClusterProvider value={registry.objectiveRecordClusters}><App /></GroupClusterProvider>
           </ComposerTopEntriesProvider>
         </FeatureRegistryProvider>
       </BrowserRouter>

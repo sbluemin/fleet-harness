@@ -33,22 +33,22 @@ export interface AgentChatQuestion {
 export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
-/** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
-export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
+/** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Objective. 제목만 온다. */
+export type AgentChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
-  if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId, title: typeof record.title === "string" ? record.title : record.operationId };
+  if (record.kind === "objectiveRecord" && typeof record.objectiveId === "string") return { kind: "objectiveRecord", objectiveId: record.objectiveId, title: typeof record.title === "string" ? record.title : record.objectiveId };
   if (record.kind === "plugin" && typeof record.pluginId === "string") {
     const input = record.humanInput as ConsoleActionInput["humanInput"];
     const valid = input && typeof input.id === "string" && /^[0-9a-f-]{36}$/i.test(input.id)
-      && (input.targetOperationId === undefined || (typeof input.targetOperationId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(input.targetOperationId)));
+      && (input.targetObjectiveId === undefined || (typeof input.targetObjectiveId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(input.targetObjectiveId)));
     const act = valid && (input.act === "start" || input.act === "plan" || input.act === "steer") ? input.act : undefined;
-    return { kind: "plugin", pluginId: record.pluginId, ...(valid ? { humanInput: { id: input.id, ...(input.targetOperationId ? { targetOperationId: input.targetOperationId } : {}), ...(input.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(input.author === "commodore" ? { author: "commodore" as const } : {}) } } : {}) };
+    return { kind: "plugin", pluginId: record.pluginId, ...(valid ? { humanInput: { id: input.id, ...(input.targetObjectiveId ? { targetObjectiveId: input.targetObjectiveId } : {}), ...(input.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(input.author === "commodore" ? { author: "commodore" as const } : {}) } } : {}) };
   }
   return undefined;
 }
-export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }
+export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "objectiveRecord" ? origin.title : origin.pluginId; }
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저가 쥐는 것은 미리보기 라우트의 좌표뿐이다 — 호스트
@@ -150,7 +150,7 @@ export type AgentChatStreamEvent =
    * 다른 세션이 이 세션에 보낸 메시지. 서버가 보낸 쪽의 성공한 도구 호출을 관측해 확정한다 —
    * `from`은 서버가 확정한 보낸 세션 이름, `text`는 서버가 가리고 자른 본문이다. `id`는 중복 없는 좌표다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderOperationId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly senderObjectiveId?: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -185,7 +185,7 @@ export type AgentChatStreamEvent =
       /** 플러그인 기록만 싣는다 — `detail` 속 참조(SDK `ConversationReference`). 줄은 그 이름을 글자 단추로 세운다. */
       readonly references?: readonly ConversationReference[];
     }
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientOperationId?: string }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientObjectiveId?: string }
   /** 모델이 멈춰 서서 사용자를 기다린다. 저널에 남으므로 재접속해도 같은 카드가 다시 선다. */
   | {
       readonly kind: "ask";
@@ -265,7 +265,7 @@ export interface AgentChatQueueEntry {
 }
 
 /**
- * 사람이 보낸 예약인가. 플러그인이 혼자 넣은 지시와 다른 Operation·사령관이 보낸 말은
+ * 사람이 보낸 예약인가. 플러그인이 혼자 넣은 지시와 다른 Objective·사령관이 보낸 말은
  * 대화에 사용자 말로 세우지 않는다 — 그 말은 처리가 시작될 때 출처 줄로 선다.
  */
 export function isPersonQueueEntry(entry: AgentChatQueueEntry): boolean {
@@ -340,7 +340,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       if (typeof event.from !== "string" || event.from.length === 0) return null;
       if (typeof event.text !== "string") return null;
-      return { ...journal, event: { kind: "received", id: event.id, from: event.from, ...(typeof event.senderOperationId === "string" && event.senderOperationId ? { senderOperationId: event.senderOperationId } : {}), text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
+      return { ...journal, event: { kind: "received", id: event.id, from: event.from, ...(typeof event.senderObjectiveId === "string" && event.senderObjectiveId ? { senderObjectiveId: event.senderObjectiveId } : {}), text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
@@ -447,7 +447,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           id: event.id,
           ok: event.ok === true,
           summary: typeof event.summary === "string" ? event.summary : "",
-          ...(typeof event.recipientOperationId === "string" && event.recipientOperationId ? { recipientOperationId: event.recipientOperationId } : {}),
+          ...(typeof event.recipientObjectiveId === "string" && event.recipientObjectiveId ? { recipientObjectiveId: event.recipientObjectiveId } : {}),
           ...(readToolDetail(event.toolDetail) ? { toolDetail: readToolDetail(event.toolDetail) as AgentChatToolDetail } : {}),
         },
       };

@@ -10,7 +10,7 @@ async function loadPage(storage: Storage) {
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
-// 기존 부팅 검사는 Operation 복원만 다룬다. 주소 없는 확대 표면도 새 문서가 된 뒤
+// 기존 부팅 검사는 Objective 복원만 다룬다. 주소 없는 확대 표면도 새 문서가 된 뒤
 // 같은 탭·origin의 사용자 배치로 돌아오고, 닫은 표면을 되살리지 않는 수명주기를 검증한다.
 it("restores each Console's expanded surfaces across document replacement without resurrecting closed panes", async () => {
   const first = document.createElement("iframe");

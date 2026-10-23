@@ -24,7 +24,7 @@ describe("agent observability DTO boundary", () => {
       workspaceHash: () => "theater-a",
     });
 
-    const session = store.injectDormantOperation({
+    const session = store.injectDormantObjective({
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
@@ -47,7 +47,7 @@ describe("agent observability DTO boundary", () => {
     expect(serialized).not.toContain("token");
   });
 
-  it("projects the Operation location as Theater-relative folder and branch, never an absolute path", () => {
+  it("projects the Objective location as Theater-relative folder and branch, never an absolute path", () => {
     const root = path.join(os.tmpdir(), "fleet-theater-root");
     expect(projectWorkspace({ cwd: root, theaterRoot: root, branch: "canary" })).toEqual({ folder: null, outside: false, branch: "canary" });
     expect(projectWorkspace({ cwd: path.join(root, "runtime", "fleet-console"), theaterRoot: root, branch: "canary" }))

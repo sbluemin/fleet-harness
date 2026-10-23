@@ -20,7 +20,7 @@ export interface WorkspacePaths {
    */
   readonly consoleDataDir: string;
   resolveTheaterPath(theaterId: string): string | null;
-  /** Operation 이 아직 없는 Theater 의 플러그인 레코드도 다시 찾는다. */
+  /** Objective 이 아직 없는 Theater 의 플러그인 레코드도 다시 찾는다. */
   listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
@@ -35,5 +35,5 @@ export interface WorkspacePaths {
    * 디렉터리 단위 배타 실행. 같은 저장소를 두 프로세스가 동시에 옮기는 것을 막는다
    * (마이그레이션·압축처럼 중간 상태가 읽히면 안 되는 작업).
    */
-  withDirectoryLock<T>(lockDir: string, operation: () => T): T;
+  withDirectoryLock<T>(lockDir: string, objectiveRecord: () => T): T;
 }

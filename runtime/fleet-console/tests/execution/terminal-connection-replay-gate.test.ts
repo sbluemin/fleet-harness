@@ -16,7 +16,7 @@ describe("terminal connection replay input gate", () => {
     const terminal = new FakeTerminal();
     let socket: FakeWebSocket | undefined;
     const connection = createTerminalConnection({
-      operationId: "session-a",
+      objectiveId: "session-a",
       terminal,
       ticketPath: "/ticket",
       wsPath: "/ws",
@@ -72,7 +72,7 @@ describe("terminal connection replay input gate", () => {
     const replayStates: boolean[] = [];
     const sockets: FakeWebSocket[] = [];
     const connection = createTerminalConnection({
-      operationId: "session-c",
+      objectiveId: "session-c",
       terminal,
       ticketPath: "/ticket",
       wsPath: "/ws",

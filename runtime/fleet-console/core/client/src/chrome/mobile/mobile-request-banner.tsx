@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
-import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
-import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
-import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
+import { useAllObjectiveUseRequests, type ObjectiveUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
+import { ObjectiveStatusIcon } from "../../../../../features/execution/client/components/objective-status-icon.js";
+import { resolveObjectiveActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
+import { getIdleArrivalIds } from "../../../../../features/execution/client/objective-marks.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { formatRemaining } from "./mobile-attention-reason.js";
@@ -11,19 +11,19 @@ import { formatRemaining } from "./mobile-attention-reason.js";
 const SHOW_MS = 6000;
 
 /**
- * 위에서 내려오는 알림(S-32) — 지금 보고 있지 않은 Operation에 허용 요청이 새로 오면 6초 동안 선다.
- * 접힌 뒤에도 홈 맨 위 「확인 필요」 묶음에 남는다. 그 Operation을 보고 있으면 띄우지 않는다.
+ * 위에서 내려오는 알림(S-32) — 지금 보고 있지 않은 Objective에 허용 요청이 새로 오면 6초 동안 선다.
+ * 접힌 뒤에도 홈 맨 위 「확인 필요」 묶음에 남는다. 그 Objective을 보고 있으면 띄우지 않는다.
  */
-export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
+export function MobileRequestBanner({ state, viewingObjectiveId, onOpen }: {
   readonly state: ConsoleState;
-  /** 지금 화면에 Operation이 서 있다면 그 id — 홈이 아니면 null. */
-  readonly viewingOperationId: string | null;
-  readonly onOpen: (operationId: string) => void;
+  /** 지금 화면에 Objective이 서 있다면 그 id — 홈이 아니면 null. */
+  readonly viewingObjectiveId: string | null;
+  readonly onOpen: (objectiveId: string) => void;
 }) {
   const t = useT();
-  const requests = useAllOperationUseRequests();
+  const requests = useAllObjectiveUseRequests();
   const seenRef = useRef<ReadonlySet<string> | null>(null);
-  const [shown, setShown] = useState<OperationUseRequest | null>(null);
+  const [shown, setShown] = useState<ObjectiveUseRequest | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -33,10 +33,10 @@ export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
     seenRef.current = ids;
     // 처음 읽은 스냅샷에 이미 있던 요청은 새로 온 것이 아니다.
     if (previous === null) return;
-    const fresh = requests.filter((request) => !previous.has(request.id) && request.operationId !== viewingOperationId);
+    const fresh = requests.filter((request) => !previous.has(request.id) && request.objectiveId !== viewingObjectiveId);
     const latest = fresh.at(-1);
     if (latest) { setShown(latest); setLeaving(false); }
-  }, [requests, viewingOperationId]);
+  }, [requests, viewingObjectiveId]);
 
   useEffect(() => {
     if (!shown) return;
@@ -47,21 +47,21 @@ export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
     return () => { window.clearInterval(tick); window.clearTimeout(fold); window.clearTimeout(gone); };
   }, [shown]);
 
-  // 그 Operation을 열면 알림은 할 일이 끝났다.
-  useEffect(() => { if (shown && shown.operationId === viewingOperationId) setShown(null); }, [shown, viewingOperationId]);
+  // 그 Objective을 열면 알림은 할 일이 끝났다.
+  useEffect(() => { if (shown && shown.objectiveId === viewingObjectiveId) setShown(null); }, [shown, viewingObjectiveId]);
 
   if (!shown) return null;
-  const operation = state.operations.find((item) => item.id === shown.operationId);
-  const title = operation?.title ?? "";
+  const objectiveRecord = state.objectiveRecords.find((item) => item.id === shown.objectiveId);
+  const title = objectiveRecord?.title ?? "";
   const kind = shown.capability === "computer" ? t("mobile.banner.computer", { time: formatRemaining(shown.expiresAt - now) }) : t("mobile.banner.console", { time: formatRemaining(shown.expiresAt - now) });
   return (
     <div className={`mobile-request-banner${leaving ? " is-leaving" : ""}`} role="status" aria-live="polite">
-      {operation ? <OperationStatusIcon operation={operation} status={resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, state.operationRuntime), operationId: operation.id, idleArrivalIds: getIdleArrivalIds() })} size={28} decorative /> : null}
+      {objectiveRecord ? <ObjectiveStatusIcon objectiveRecord={objectiveRecord} status={resolveObjectiveMarkVisual({ activity: resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime), objectiveId: objectiveRecord.id, idleArrivalIds: getIdleArrivalIds() })} size={28} decorative /> : null}
       <span className="mobile-request-banner-copy">
         <span>{t("mobile.banner.title", { title })}</span>
         <small>{kind}</small>
       </span>
-      <button type="button" onClick={() => { setShown(null); onOpen(shown.operationId); }}>{t("mobile.banner.open")}</button>
+      <button type="button" onClick={() => { setShown(null); onOpen(shown.objectiveId); }}>{t("mobile.banner.open")}</button>
     </div>
   );
 }

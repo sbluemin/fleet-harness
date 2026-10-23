@@ -100,7 +100,7 @@ export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Ob
   config: { disposition: "hidden" },
   /** 자식의 JS 힙을 ~/Desktop에 쓴다. 진단 도구이지 채팅 동작이 아니다. */
   heapdump: { disposition: "hidden" },
-  /** 실행은 되지만 채팅 Operation 제목으로 갈 길이 없다. Console에는 이름 바꾸기가 이미 세 곳 있다. */
+  /** 실행은 되지만 채팅 Objective 제목으로 갈 길이 없다. Console에는 이름 바꾸기가 이미 세 곳 있다. */
   rename: { disposition: "hidden" },
   /** 쿼터 보고. 우현 레일의 Quota 패널이 같은 것을 상시로 그린다. */
   usage: { disposition: "hidden" },

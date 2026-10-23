@@ -1,4 +1,4 @@
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../shared/operations/types.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 
 /**
@@ -19,7 +19,7 @@ export const LAUNCH_DEFAULT_MODEL = "opus[1m]";
 
 export interface VariantKindTarget {
   readonly pluginId: string | null;
-  readonly kind: OperationLaunchKind;
+  readonly kind: ObjectiveLaunchKind;
 }
 
 export interface ResolvedSelection {
@@ -36,7 +36,7 @@ export interface ResolvedSelection {
  * "모델·강도 변형을 선언한 실행 종류"라는 능력만으로 충분히 특정된다(캔버스 우클릭 메뉴가 플라이아웃을
  * 띄우는 기준과 같은 조건).
  */
-export function findVariantLaunchKind(catalog: readonly OperationCatalogPlugin[]): VariantKindTarget | null {
+export function findVariantLaunchKind(catalog: readonly ObjectiveCatalogPlugin[]): VariantKindTarget | null {
   for (const plugin of catalog) {
     for (const kind of plugin.kinds) {
       if (kind.disabled) continue;
@@ -54,7 +54,7 @@ export function findVariantLaunchKind(catalog: readonly OperationCatalogPlugin[]
  * 기억한 native 좌표는 가족당 `[1m]` 한 행으로 찾는다.
  */
 export function resolveSelection(
-  groups: readonly OperationLaunchVariantGroup[],
+  groups: readonly ObjectiveLaunchVariantGroup[],
   remembered: { readonly model: string | null; readonly effort: string | null },
 ): ResolvedSelection {
   const rows = groups.flatMap((group) => group.rows);
@@ -143,7 +143,7 @@ export interface EffortDeck {
  * "있는데 접혀 있다"가 처음으로 갈린다. 두 상태가 같은 5행으로 보이던 것이 이 덱의 결함이었다.
  */
 export function buildEffortDeck(
-  row: OperationLaunchVariantRow | null,
+  row: ObjectiveLaunchVariantRow | null,
   effort: string | null,
   autoLabel: string,
   query: string,

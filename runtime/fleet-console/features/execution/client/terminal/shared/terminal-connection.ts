@@ -13,7 +13,7 @@ export interface TerminalLike {
 }
 
 export interface TerminalConnectionOptions {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly terminal: TerminalLike;
   readonly ticketPath: string;
   /**
@@ -182,7 +182,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       if (consecutiveFailures === 0) options.onStatus?.("connecting");
       try {
         const requested = role;
-        const { ticket, role: granted, generation } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested, options.ticketFields);
+        const { ticket, role: granted, generation } = await requestTerminalTicket(options.ticketPath, options.objectiveId, abort.signal, options.colorScheme, requested, options.ticketFields);
         if (abort.signal.aborted) return;
         await options.onAttach?.({ attempt: attachAttempts, ...(generation === undefined ? {} : { generation }) });
         attachAttempts += 1;
@@ -349,12 +349,12 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, unknown>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole; readonly generation?: number }> {
+async function requestTerminalTicket(ticketPath: string, objectiveId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, unknown>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole; readonly generation?: number }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // control은 서버 기본값이라 싣지 않는다 — 옛 서버에 붙어도 같은 요청이 된다.
-    body: JSON.stringify({ operationId, ...(ticketFields ?? {}), ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
+    body: JSON.stringify({ objectiveId, ...(ticketFields ?? {}), ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
   if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);

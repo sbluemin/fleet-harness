@@ -1,5 +1,5 @@
 // Console 단축키 등록부 — 명령 하나에 조합 하나(또는 둘)를 잇는 단일 출처.
-// 발화(global-shortcuts.ts, pages/operations.tsx)와 표시(도움말·팔레트·접힘 힌트)가
+// 발화(global-shortcuts.ts, pages/objectives.tsx)와 표시(도움말·팔레트·접힘 힌트)가
 // 모두 여기서 읽는다. 예전에는 같은 조합이 여섯 곳에 리터럴로 적혀 있어 사용자가 바꿀 자리가 없었고,
 // 도움말은 「⌘/Ctrl」로, 팔레트는 「⌘」로 그려 표기마저 갈렸다.
 //
@@ -13,7 +13,7 @@ import type { CoreMessageKey } from "../i18n/index.js";
 
 export type ShortcutBindings = Readonly<Record<string, readonly string[]>>;
 
-export type ShortcutCommandGroup = "console" | "operations" | "companion";
+export type ShortcutCommandGroup = "console" | "objectiveRecords" | "companion";
 
 export interface ShortcutCommand {
   readonly id: string;
@@ -24,7 +24,7 @@ export interface ShortcutCommand {
 }
 
 export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
-  { id: "console.search-operations", group: "console", descriptionKey: "shortcuts.console.searchOps", defaults: ["Mod+KeyK"] },
+  { id: "console.search-objectiveRecords", group: "console", descriptionKey: "shortcuts.console.searchOps", defaults: ["Mod+KeyK"] },
   { id: "console.command-palette", group: "console", descriptionKey: "shortcuts.console.commandPalette", defaults: ["Mod+KeyP"] },
   // 새 세션 화면(사이드바 맨 위 「+」). ⌘N 이 아니다: 웹 브라우저는 ⌘N·Ctrl+N(새 창)을 예약해 페이지에 넘기지 않고, Windows 에서는
   // Ctrl+N 이 터미널의 다음 기록 키와 겹친다. ⌘J·Ctrl+Space 는 터미널을 보다가 떠오른 지시를 그 자리에서 쓰는 손버릇이고,
@@ -33,15 +33,15 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },
-  { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.operations.undoClose", defaults: ["Mod+KeyZ"] },
-  { id: "operations.sort-by-status", group: "operations", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
+  { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.objectiveRecords.undoClose", defaults: ["Mod+KeyZ"] },
+  { id: "objectives.sort-by-status", group: "objectiveRecords", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
 ];
 
 const CORE_COMMANDS_BY_ID = new Map(CORE_SHORTCUT_COMMANDS.map((command) => [command.id, command]));
 
 /**
  * companion 패널의 명령 id — 소유자와 패널 id가 함께 자리를 정한다. 소유자 null은 Console 코어가
- * 직접 소유한 작전 종류(Agent)라 `console`로 적는다.
+ * 직접 소유한 목표 종류(Agent)라 `console`로 적는다.
  */
 export function companionShortcutCommandId(pluginId: string | null, companionId: string): string {
   return `companion:${pluginId ?? "console"}:${companionId}`;

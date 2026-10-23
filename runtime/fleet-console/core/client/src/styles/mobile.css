@@ -1,5 +1,5 @@
 /* The frame holds the top bar, the route content and the bottom sheets together, above the routes,
-   so a destination that leaves /operations still has a bar to come back with.
+   so a destination that leaves /objectiveRecords still has a bar to come back with.
    The bar floats over the route content (see .mobile-frame-head): every screen fills the frame from its top
    edge, and its scroll area keeps --m-chrome-top (the measured head height) free at the top. The fades are
    the shared edge of every floating chrome row — the outer end is --m-bg, the colour the native shell paints
@@ -36,8 +36,8 @@
 .mobile-shell-content,
 .mobile-session-view,
 .mobile-session-body,
-.mobile-operation-body-slot,
-.operation-body-mount{
+.mobile-objective-body-slot,
+.objective-body-mount{
   min-width: 0;
   min-height: 0;
   width: 100%;
@@ -49,8 +49,8 @@
    whole session collapses to the height of its own padding and the terminal disappears. The canvas
    layout already declares this for its own mount; the phone needs the same statement. */
 .mobile-session-body,
-.mobile-operation-body-slot,
-.mobile-session-body .operation-body-mount {
+.mobile-objective-body-slot,
+.mobile-session-body .objective-body-mount {
   display: flex;
   flex-direction: column;
 }
@@ -75,20 +75,20 @@
 
 .mobile-header-icon-button:focus-visible,
 
-.mobile-new-operation:focus-visible,
+.mobile-new-objectiveRecord:focus-visible,
 
-.mobile-operation-empty {
+.mobile-objective-empty {
   margin: 0;
   padding: var(--space-8) var(--space-4);
   color: var(--text-secondary);
   text-align: center;
 }
 
-.mobile-operation-card:focus-visible,
+.mobile-objective-card:focus-visible,
 
-.mobile-operation-card-copy strong,
+.mobile-objective-card-copy strong,
 
-.mobile-operation-chevron {
+.mobile-objective-chevron {
   color: var(--text-tertiary);
   font-size: 24px;
 }
@@ -213,9 +213,9 @@
   background: var(--canvas-sea-core);
 }
 
-/* Operation 본문은 떠 있는 상단 막대 뒤까지 닿는다. 모바일 판정([data-mobile-surface])을 단 본문은 자기 부품이 막대 몫(--m-chrome-top)을
+/* Objective 본문은 떠 있는 상단 막대 뒤까지 닿는다. 모바일 판정([data-mobile-surface])을 단 본문은 자기 부품이 막대 몫(--m-chrome-top)을
    비우고(대화 로그는 막대 뒤로 흐르고, 터미널 격자는 막대 아래에서 시작한다), 그렇지 않은 본문은 슬롯이 막대 아래에서 시작한다. */
-.mobile-session-body:not(:has([data-mobile-surface])) > .mobile-operation-body-slot { padding-top: var(--m-chrome-top); }
+.mobile-session-body:not(:has([data-mobile-surface])) > .mobile-objective-body-slot { padding-top: var(--m-chrome-top); }
 
 .mobile-tool-sheet {
   display: flex;
@@ -472,7 +472,7 @@
   min-height: 44px;
 }
 
-.operation-body-parking {
+.objective-body-parking {
   position: fixed;
   left: -10000px;
   top: 0;
@@ -485,7 +485,7 @@
  * A short, wide viewport — a phone held sideways — keeps this layout but cannot afford its portrait
  * chrome: a bottom tab bar plus a header take a quarter of a ~380px viewport. So the tabs stand up
  * as a rail on the right, the side the desktop Activity Rail already occupies, and the headers
- * compact, leaving the height to the operation body.
+ * compact, leaving the height to the objectiveRecord body.
  *
  * The bound is width and height rather than `orientation`, which reads the viewport's aspect: a
  * keyboard over a portrait phone makes the visible area wider than it is tall, and an orientation
@@ -549,7 +549,7 @@
   }
 
   /* Width is the plentiful axis here, so two card columns halve the scroll distance. */
-  .mobile-operation-cards {
+  .mobile-objective-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

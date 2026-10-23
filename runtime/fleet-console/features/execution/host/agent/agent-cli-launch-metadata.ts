@@ -1,4 +1,4 @@
-// Operation 생성 메뉴용 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합하는 순수 로직.
+// Objective 생성 메뉴용 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합하는 순수 로직.
 //
 // 정책을 새로 만들지 않고 기존 SSoT만 합친다: 설치 여부는 cliCommand(바이너리) 기준 탐지 결과로 판정한다.
 // available/signedIn은 불린만 노출하며 경로·버전·providerId는 싣지 않는다(Token Boundary).

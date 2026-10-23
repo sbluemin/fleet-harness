@@ -9,7 +9,7 @@ import { createAdmiralMcpHost } from "../features/execution/host/admiral-mcp.js"
 const tempDirs: string[] = [];
 afterEach(() => { for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 describe("Admiral MCP registry", () => {
-  it("binds Admiral MCP names, isolates sessions, resolves the caller Operation and its commodore, and pins commodore-bound tools to that commodore through registration and teardown", async () => {
+  it("binds Admiral MCP names, isolates sessions, resolves the caller Objective and its commodore, and pins commodore-bound tools to that commodore through registration and teardown", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
     tempDirs.push(dir);
     let origin = "";
@@ -20,13 +20,13 @@ describe("Admiral MCP registry", () => {
     // 호출자는 세션 라벨로만 푼다 — 모르는 라벨은 호출자 없이(fail-closed).
     // 사령관은 그 호출자의 소속에서만 나온다 — 호출자가 없으면 사령관도 없다.
     const mcp = createAdmiralMcpHost(transport.transport, {
-      resolveCaller: (label) => (label === "op-1" ? { kind: "operation", operationId: "op-1" } : null),
-      resolveCommodore: (caller) => (caller.kind === "operation" && caller.operationId === "op-1" ? "cmd-a" : null),
+      resolveCaller: (label) => (label === "op-1" ? { kind: "objectiveRecord", objectiveId: "op-1" } : null),
+      resolveCommodore: (caller) => (caller.kind === "objectiveRecord" && caller.objectiveId === "op-1" ? "cmd-a" : null),
     });
     const first = mcp.connect();
     const second = mcp.connect();
     const unregister = mcp.register("fleet-demo", [{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: { text: { type: "string", maxLength: 50 } } },
-      execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}|${context.commodoreId ?? "-"}` }], isError: false }),
+      execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "objectiveRecord" ? context.caller.objectiveId : "-"}|${context.commodoreId ?? "-"}` }], isError: false }),
     }], { commodoreScoped: true });
     try {
       const endpoint = await first.getEndpoint();

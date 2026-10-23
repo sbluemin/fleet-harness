@@ -1,20 +1,20 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
-import type { OperationCluster } from "../../../../../objectives/shared/operation-clusters.js";
+import { mongleStateOf, objectiveRecordAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
+import type { ObjectiveCluster } from "../../../../../objectives/shared/objective-clusters.js";
 import * as React from "react";
 
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { ConsoleState } from "../../../../../../core/client/src/integration/types.js";
-import { KeyedAvatar, operationMongleState } from "../../../../../workspace/client/avatars.js";
+import { KeyedAvatar, objectiveRecordMongleState } from "../../../../../workspace/client/avatars.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { getGroupT } from "./group-chat-i18n.js";
 
 /**
  * 발화자 표식 — 그룹 대화의 말풍선·위임 줄·진행 줄·구성원 탭이 같은 표식을 쓴다.
  *
- * Operation 이 있는 발화자는 사이드바와 같은 몽글 아바타로 선다 — 같은 지휘관·구성원이 목록과 대화에서 다른 얼굴이면 사람이 둘을
- * 잇지 못한다. 사람과 Operation 이 없는 발화자만 첫 글자 칩이고, 구성원 톤(`{number, tone}`)은 이름 잉크가 그대로 쓴다.
+ * Objective 이 있는 발화자는 사이드바와 같은 몽글 아바타로 선다 — 같은 지휘관·구성원이 목록과 대화에서 다른 얼굴이면 사람이 둘을
+ * 잇지 못한다. 사람과 Objective 이 없는 발화자만 첫 글자 칩이고, 구성원 톤(`{number, tone}`)은 이름 잉크가 그대로 쓴다.
  */
 const TONES = new Set(["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"]);
 
@@ -23,43 +23,43 @@ export function speakerTone(speaker: ConversationSpeaker): string | null {
   return speaker.kind === "member" && tone && TONES.has(tone) ? tone : speaker.kind === "member" ? "teal" : null;
 }
 
-/** 같은 발화자를 가리키는 좌표 — 원장 보기·정지 대상의 키. 사람에게는 Operation 이 없다. */
+/** 같은 발화자를 가리키는 좌표 — 원장 보기·정지 대상의 키. 사람에게는 Objective 이 없다. */
 export function speakerKey(speaker: ConversationSpeaker): string {
-  return speaker.operationId ?? `${speaker.kind}:${speaker.name}`;
+  return speaker.objectiveId ?? `${speaker.kind}:${speaker.name}`;
 }
 
 /**
- * 발화자가 여는 원장 — 지휘관·구성원이고 그 Operation 이 이 대화의 명부에 있을 때만 그 id, 아니면 null.
+ * 발화자가 여는 원장 — 지휘관·구성원이고 그 Objective 이 이 대화의 명부에 있을 때만 그 id, 아니면 null.
  * 말풍선 머리와 「구성원」 탭 줄이 같은 규칙으로 누를 수 있는 대상을 고른다. 명부에 없는 id 로 열면 가운데 칸이 대화에
  * 그대로 남으므로(셸의 본문 주인이 루트로 떨어진다) 눌리는 척하지 않게 그런 발화자는 대상이 아니다.
  */
 export function ledgerTarget(speaker: ConversationSpeaker, participants: readonly ConversationParticipant[]): string | null {
-  const operationId = speaker.operationId;
-  if (!operationId || (speaker.kind !== "member" && speaker.kind !== "commander")) return null;
-  return participants.some((participant) => participant.speaker.operationId === operationId) ? operationId : null;
+  const objectiveId = speaker.objectiveId;
+  if (!objectiveId || (speaker.kind !== "member" && speaker.kind !== "commander")) return null;
+  return participants.some((participant) => participant.speaker.objectiveId === objectiveId) ? objectiveId : null;
 }
 
 /** 발화자가 여는 원장을 고르는 규칙 — 대화가 원장 문법을 갖고 있을 때 진행 줄·말풍선 머리·진행 칩이 같은 규칙으로 고른다. */
 export type LedgerTargetRule = (speaker: ConversationSpeaker, participants: readonly ConversationParticipant[]) => string | null;
 
 /**
- * 지금 대화의 원장 규칙. 기본은 Operation 대화의 `ledgerTarget` 이고, 자기 원장을 가진 플러그인 대화(`ctx.chat.Conversation` 의
+ * 지금 대화의 원장 규칙. 기본은 Objective 대화의 `ledgerTarget` 이고, 자기 원장을 가진 플러그인 대화(`ctx.chat.Conversation` 의
  * `openLedger`)는 제 발화자를 대상으로 삼는 규칙을 준다 — 그룹 대화의 사령관 줄(원장이 없는 발화자)은 기본 규칙 그대로다.
  */
 export const LedgerTargetContext = React.createContext<LedgerTargetRule>(ledgerTarget);
 
 /**
- * 사령관 표식이 쓸 Theater — 가운데 칸에 Operation 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
- * 없으면 지금 대화가 선 Operation 의 Theater 다.
+ * 사령관 표식이 쓸 Theater — 가운데 칸에 Objective 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
+ * 없으면 지금 대화가 선 Objective 의 Theater 다.
  */
 export const ConversationTheaterContext = React.createContext<string | null>(null);
 
 /**
- * 발화자의 몽글 아바타 — 지휘관·일반 Operation 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Operation 이 없는 발화자는
+ * 발화자의 몽글 아바타 — 지휘관·일반 Objective 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Objective 이 없는 발화자는
  * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
  *
- * `acting` 이면 작업 중인 Operation 표식이 사이드바와 같은 축(`useOperationMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
- * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Operation 이 없어 기본 리듬이다.
+ * `acting` 이면 작업 중인 Objective 표식이 사이드바와 같은 축(`useObjectiveMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
+ * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Objective 이 없어 기본 리듬이다.
  */
 const MARK_PX = { sm: 16, md: 22, lg: 32 } as const;
 
@@ -72,11 +72,11 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
   const subject = useConversationSubject();
   const theater = React.useContext(ConversationTheaterContext);
   const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
-  if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.operationId)) {
-    const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
+  if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.objectiveId)) {
+    const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : objectiveRecordAvatarKey(speaker.objectiveId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
-    const activityOperationId = acting && speaker.kind !== "commodore" ? speaker.operationId : null;
-    return <KeyedAvatar avatarKey={key} role={role} state={state} activityOperationId={activityOperationId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
+    const activityObjectiveId = acting && speaker.kind !== "commodore" ? speaker.objectiveId : null;
+    return <KeyedAvatar avatarKey={key} role={role} state={state} activityObjectiveId={activityObjectiveId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
   const letter = Array.from(speaker.name.trim())[0] ?? "?";
   const tone = speakerTone(speaker);
@@ -85,17 +85,17 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
 }
 
 /**
- * 참여자의 지금 얼굴 — 구성원 탭과 말풍선의 최신 표식이 같은 기준으로 고른다. Operation 이 있는 참여자는 다른 표면과 같은
- * Console 공개 활동 축(지휘관은 구성원 활동을 끌어올린 팀 값)과 묶음의 검토 대기·결정 요청·임무 완료로, 사령관과 Operation 이
+ * 참여자의 지금 얼굴 — 구성원 탭과 말풍선의 최신 표식이 같은 기준으로 고른다. Objective 이 있는 참여자는 다른 표면과 같은
+ * Console 공개 활동 축(지휘관은 구성원 활동을 끌어올린 팀 값)과 묶음의 검토 대기·결정 요청·임무 완료로, 사령관과 Objective 이
  * 없는 참여자는 그룹 스냅숏의 참여자 활동으로 고른다.
  */
 export function participantMongleState(
   speaker: ConversationSpeaker,
   activity: ConversationParticipant["activity"] | undefined,
-  state: Pick<ConsoleState, "operations" | "nestedOperations" | "operationRuntime">,
-  clusters: readonly OperationCluster[],
+  state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords" | "objectiveRecordRuntime">,
+  clusters: readonly ObjectiveCluster[],
 ): MongleState {
-  if (speaker.kind !== "commodore" && speaker.kind !== "human" && speaker.operationId) return operationMongleState(speaker.operationId, state, clusters);
+  if (speaker.kind !== "commodore" && speaker.kind !== "human" && speaker.objectiveId) return objectiveRecordMongleState(speaker.objectiveId, state, clusters);
   return mongleStateOf({ activity: activity === undefined || activity === "unknown" ? null : activity });
 }
 

@@ -29,9 +29,9 @@ describe("plugin SSE channel wiring", () => {
     expect(SERVER).toMatch(/if \(!pluginSseChannels\.has\(channel\)/);
   });
 
-  it("rides the existing operations stream rather than opening a second one", () => {
+  it("rides the existing objectives stream rather than opening a second one", () => {
     const publish = SERVER.slice(SERVER.indexOf("function publishPluginEvent"));
-    expect(publish.slice(0, 900)).toContain("operationSseSubscribers");
+    expect(publish.slice(0, 900)).toContain("objectiveRecordSseSubscribers");
     expect(publish.slice(0, 900)).toContain("encodeSseData(channel, payload)");
   });
 

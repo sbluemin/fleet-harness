@@ -42,7 +42,7 @@ export interface InjectAgentCliProfileOptions {
   readonly inputWaitingHookExec?: FleetHookExec;
   // 살아 있는 백그라운드 작업 보고(SubagentStop) hook. 턴 종료 시점의 같은 보고는 turnEndHookExec이 함께 실어 나른다.
   readonly backgroundReportHookExec?: FleetHookExec;
-  // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
+  // 목표명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   /**

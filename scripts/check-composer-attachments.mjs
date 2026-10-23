@@ -22,7 +22,7 @@ const composerSurfaces = new Set([
   "mobile-new-session.tsx",
   "mobile-new-session-sheet.tsx",
   "commodore-inbox-section.tsx",
-  "operation-view-state.ts",
+  "objective-view-state.ts",
   "chat-dispatch-attachments.tsx",
 ]);
 

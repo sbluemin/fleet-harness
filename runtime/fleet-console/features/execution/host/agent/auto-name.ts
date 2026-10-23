@@ -1,4 +1,4 @@
-// UserPromptSubmit 훅이 전달한 prompt에서 작전명 후보를 도출하는 순수 휴리스틱.
+// UserPromptSubmit 훅이 전달한 prompt에서 목표명 후보를 도출하는 순수 휴리스틱.
 // 서버측에서만 호출되며(훅 차단 시간을 늘리지 않도록 LLM이 아닌 경량 규칙), 결과는 자동 작명에만 쓰인다.
 // 자동 추출 라벨은 사용자의 의도적 공개가 아니므로, 먼저 제어문자·마크다운 wrapper·마커를 정규화한 뒤
 // URL·절대경로·비밀토큰형·슬래시명령·저신호 줄을 "문장 어디에 있든" 걸러낸다(정규화 우회·중간 노출 차단).
@@ -21,7 +21,7 @@ const LOW_SIGNAL_PATTERN = /^(continue|계속|진행|다음|next|ok|okay|go|run|
 const SECRET_PREFIX_PATTERN = /^(ghp_|gho_|ghs_|ghu_|ghr_|github_pat_|sk-|sk_live_|sk_test_|pk-|rk-|xox[baprs]-|AKIA|ASIA|AIza|ya29\.|glpat-|eyJ)/;
 const SECRET_CHARSET_PATTERN = /^[A-Za-z0-9_\-+/=.]+$/;
 
-export function deriveOperationLabel(prompt: unknown): string | null {
+export function deriveObjectiveLabel(prompt: unknown): string | null {
   if (typeof prompt !== "string" || prompt.length === 0) return null;
   const lines = prompt.split(/\r?\n/);
   let examined = 0;

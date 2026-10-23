@@ -64,16 +64,16 @@ const OWNED_SOURCES = [
   "app/app.tsx",
   "../../../features/workspace/client/conversation/new-session.tsx",
   "../../../features/workspace/client/conversation/new-session.css",
-  "../../../features/workspace/client/operations.tsx",
+  "../../../features/workspace/client/objective-records.tsx",
   "chrome/components/command-band-system-cluster.tsx",
-  "../../../features/workspace/client/sidebar/operations-side-bar.tsx",
+  "../../../features/workspace/client/sidebar/objective-records-side-bar.tsx",
   "styles/theme.css",
   "styles/components.css",
   "styles/layout.css",
   "styles/rail.css",
 ] as const;
 
-const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
+const FORBIDDEN_DECORATION = /radar-sweep|objective-records-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
 // 활자 사다리의 최대 단은 --t-xl(22px)이다. 그 위는 브랜드 워드마크·빈 상태 일러스트처럼
 // 소비처가 한 곳뿐이고 서로 다른 이유로 존재하는 디스플레이 크기라 사다리 밖에 둔다.
 const DISPLAY_SIZE_FLOOR_PX = 24;
@@ -140,7 +140,7 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
-  // Sidebar chip and cluster-row TSX inject each Operation's identity accent through inline styles.
+  // Sidebar chip and cluster-row TSX inject each Objective's identity accent through inline styles.
   "--user-accent",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
@@ -685,10 +685,10 @@ describe("Instrument core design contract", () => {
     // 닫힌 게이트의 기본값은 곧 현행 불투명 계약이다 — floor가 따로 놀면 게이트를 닫아도 색이 갈린다.
     expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-tint-terminal);");
     expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);");
-    // Operation 패널용 floor는 60% panel tint를 캔버스 대기광 위에 sRGB alpha 합성한 불투명 근사다.
+    // Objective 패널용 floor는 60% panel tint를 캔버스 대기광 위에 sRGB alpha 합성한 불투명 근사다.
     expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);");
 
-    // Operation은 floor, 독립 Shell은 terminal tint 계산값을 읽어 알파만 0으로 눕힌다.
+    // Objective은 floor, 독립 Shell은 terminal tint 계산값을 읽어 알파만 0으로 눕힌다.
     expect(surface).toContain('surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor"');
     expect(surface).toContain("return glassFieldClearColor(");
     // 검정 리터럴을 그대로 돌려주면 dim 셀 회귀가 재발한다 — 반환은 폴백 두 곳뿐이다.
@@ -932,7 +932,7 @@ describe("Instrument core design contract", () => {
   });
 
   it("keeps user identity on the chip title ink and off the chip spine and state border channel", () => {
-    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
+    const chip = source("../../../features/workspace/client/sidebar/objective-records-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const chipIdleBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\] \.side-bar-chip-name \{[^}]*\}/)?.[0] ?? "";
     const chipActiveBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]\.side-bar-chip--active \.side-bar-chip-name \{[^}]*\}/)?.[0] ?? "";
@@ -953,15 +953,15 @@ describe("Instrument core design contract", () => {
     expect([chip, components].join("\n")).not.toMatch(/--op-accent|--chip-accent/);
   });
 
-  it("keeps no Operation caption owned by a surface that is no longer an Operation", () => {
-    // Shell은 Operation 캡션을 갖지 않는다. 이름 마크가 Shell 전용 표식을 되살리면
+  it("keeps no Objective caption owned by a surface that is no longer an Objective", () => {
+    // Shell은 Objective 캡션을 갖지 않는다. 이름 마크가 Shell 전용 표식을 되살리면
     // 목록이 다시 종류를 활동 칸에 그린다.
-    const nameMark = source("../../../features/execution/client/components/operation-name-mark.tsx");
+    const nameMark = source("../../../features/execution/client/components/objective-name-mark.tsx");
     expect(nameMark).not.toContain("ShellKindMark");
   });
 
   it("pins the AI Gateway capability-class grammar — a word in the row's meta line, never a badge or a signal colour", () => {
-    // 등급은 Operation 상태가 아니라 프로바이더가 자기 라인업에 대해 주장하는 속성이다.
+    // 등급은 Objective 상태가 아니라 프로바이더가 자기 라인업에 대해 주장하는 속성이다.
     // 대문자 테두리 배지로 세우면 이름보다 먼저 읽히고, 신호색을 빌리면 같은 행에서 등급이 상태처럼 읽힌다 —
     // 그래서 등급은 모델 행과 팔레트 항목의 보조 줄 첫 낱말로만 선다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
@@ -976,28 +976,28 @@ describe("Instrument core design contract", () => {
     }
   });
 
-  it("pins the Operation list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
-    // 공급자 마크는 새 Operation의 실행 좌표를 고르는 표면에만 남는다 — 이미 존재하는 Operation을
+  it("pins the Objective list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
+    // 공급자 마크는 새 Objective의 실행 좌표를 고르는 표면에만 남는다 — 이미 존재하는 Objective을
     // 고르는 목록(사이드바 칩·커맨드 밴드·검색 팔레트·새 세션 '@' 멘션)의 이름 왼쪽 슬롯은
     // 활동 상태가 소유한다. 목록에서 먼저 읽혀야 하는 것은 무엇으로 띄웠는지가 아니라 지금 무엇을
-    // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .operation-provider-mark 대조표는
+    // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .objective-provider-mark 대조표는
     // 퇴역했다 — 실행 좌표의 톤은 --launch-provider-tone 축이 맡는다(아래 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
     const mentionSheet = source("../../../features/workspace/client/conversation/mobile-new-session-sheet.tsx");
     // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
-    expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
+    expect(css).not.toMatch(/(^|\n)\.objective-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
-    expect(source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
-    expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-provider-mark");
+    expect(source("../../../features/workspace/client/sidebar/objective-records-side-bar-chip.tsx")).not.toContain("objective-provider-mark");
+    expect(source("chrome/components/objective-search.tsx")).not.toContain("objective-provider-mark");
     expect(mentionSheet).not.toContain("launchProviderGlyph(entry.launchProvider)");
     // 팔레트와 새 세션 '@' 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
     // 뱃지를 되살리면 같은 사실이 한 행에서 두 번 발화된다.
-    expect(source("chrome/components/operation-search.tsx")).toContain("<OperationNameMark");
-    expect(source("chrome/components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
-    expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-search-status--");
-    expect(mentionSheet).toContain("<OperationNameMark");
-    expect(mentionSheet).toContain("resolveOperationMarkVisual");
-    expect(mentionSheet).not.toContain("operation-search-status--");
+    expect(source("chrome/components/objective-search.tsx")).toContain("<ObjectiveNameMark");
+    expect(source("chrome/components/objective-search.tsx")).toContain("resolveObjectiveMarkVisual");
+    expect(source("chrome/components/objective-search.tsx")).not.toContain("objective-search-status--");
+    expect(mentionSheet).toContain("<ObjectiveNameMark");
+    expect(mentionSheet).toContain("resolveObjectiveMarkVisual");
+    expect(mentionSheet).not.toContain("objective-search-status--");
   });
 
   it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {
@@ -1057,7 +1057,7 @@ describe("Instrument core design contract", () => {
     expect(shell).not.toContain("overflow: hidden;");
     expect(shell).not.toContain("border:");
 
-    // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 위치 채널(brass) 밑줄과 잉크 대비로만
+    // 켜진 단계는 사다리 위의 위치이지 Objective 상태가 아니다 — 위치 채널(brass) 밑줄과 잉크 대비로만
     // 말하고 신호색을 빌리지 않는다. 여럿을 켤 수 있으므로 자리(thumb)·테두리 링은 두지 않는다.
     const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
     expect(on).toContain("color: var(--text-primary);");
@@ -1150,7 +1150,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".reduce-panel-motion");
     // 캔버스 패널·companion·함대 지도·Watch Deck의 등장 안무는 화면과 함께 떠났다.
     expect(components).not.toContain("companion-frame-enter");
-    expect(components).not.toContain(".operations-canvas.is-fleet-map");
+    expect(components).not.toContain(".objective-records-canvas.is-fleet-map");
     expect(components).not.toContain("@keyframes panel-enter");
     expect(components).not.toContain(".panel-motion-ghost");
     expect(components).not.toContain(".side-bar-chip.is-arrival-pulse");
@@ -1160,22 +1160,22 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     // (a) pending pulse는 opacity 2단 맥동 하나뿐 — 새 안무는 keyframe과 사용처가 함께 고정된다.
     expect(components).toContain("@keyframes dormant-resume-pulse");
-    expect(components).toContain(".operation-dormant-action--pending {\n  animation: dormant-resume-pulse");
+    expect(components).toContain(".objective-dormant-action--pending {\n  animation: dormant-resume-pulse");
     // (b) 접근성 폭백: pulse는 전용 reduced-motion 블록에서 무효화된다.
-    const pendingReducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.operation-dormant-action--pending \{\s*animation: none;\s*\}\s*\}/)?.[0] ?? "";
+    const pendingReducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.objective-dormant-action--pending \{\s*animation: none;\s*\}\s*\}/)?.[0] ?? "";
     expect(pendingReducedMotion).toContain("animation: none;");
     // (c) 에러 카드 문법: 상태 채널은 signal/neutral 토큰만, 회복 액션의 강조는 brass(focus/hover) 채널만.
-    const errorBlock = components.match(/\.operation-dormant--error \{[^}]*\}/)?.[0] ?? "";
+    const errorBlock = components.match(/\.objective-dormant--error \{[^}]*\}/)?.[0] ?? "";
     expect(errorBlock).toContain("cursor: default;");
-    const errorText = components.match(/\.operation-dormant-error \{[^}]*\}/)?.[0] ?? "";
+    const errorText = components.match(/\.objective-dormant-error \{[^}]*\}/)?.[0] ?? "";
     expect(errorText).toContain("color: var(--text-secondary);");
-    const ghostAction = components.match(/\.operation-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
+    const ghostAction = components.match(/\.objective-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
     expect(ghostAction).toContain("color: var(--text-secondary);");
-    const ghostHover = components.match(/\.operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
+    const ghostHover = components.match(/\.objective-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
     expect(ghostHover).toContain("color: var(--brass-bright);");
     // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다 — 쉬는 헤일로(배수 × 10%)에 머문다.
     // 헤일로 세기는 lights-out 배수(--quiet-halo-gain)를 따른다: 다크 0(광 없음), Whites 1.
-    const disabledHover = components.match(/\.operation-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
+    const disabledHover = components.match(/\.objective-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
     expect(disabledHover).toContain("var(--brass) calc(var(--quiet-halo-gain) * 10%)");
   });
 
@@ -1217,22 +1217,22 @@ describe("Instrument core design contract", () => {
 
   it("pins the Theater-scoped STATUS preference and identity channel grammar", () => {
     const app = source("app/app.tsx");
-    const operations = source("../../../features/workspace/client/operations.tsx");
-    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
-    const sideBarStore = source("../../../features/workspace/client/sidebar/operations-side-bar-store.ts");
-    const idleArrival = source("../../../features/execution/client/operation-marks.ts");
-    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
+    const objectiveRecords = source("../../../features/workspace/client/objective-records.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/objective-records-side-bar.tsx");
+    const sideBarStore = source("../../../features/workspace/client/sidebar/objective-records-side-bar-store.ts");
+    const idleArrival = source("../../../features/execution/client/objective-marks.ts");
+    const chip = source("../../../features/workspace/client/sidebar/objective-records-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const theme = source("styles/theme.css");
-    const activity = source("../../../features/execution/client/operation-activity.ts");
+    const activity = source("../../../features/execution/client/objective-activity.ts");
 
     // 조합은 등록부가 정한다(기본 Alt+S, Settings에서 재배정 가능) — 리터럴 키 판정이 되돌아오면 안 된다.
-    expect(operations).toContain('matchesShortcutCommand(event, "operations.sort-by-status")');
-    expect(operations).not.toContain('event.code === "KeyS"');
-    expect(operations).toContain("toggleTheaterStatusAxis(getViewedTheaterId());");
+    expect(objectiveRecords).toContain('matchesShortcutCommand(event, "objectives.sort-by-status")');
+    expect(objectiveRecords).not.toContain('event.code === "KeyS"');
+    expect(objectiveRecords).toContain("toggleTheaterStatusAxis(getViewedTheaterId());");
     // 상태별 보기는 Theater 하나의 표시 선호다. 머리의 chevron 옆 스위치와 단축키가 같은 Theater 를 바꾼다.
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
-    expect(sidebar).not.toContain("operations-side-bar-axis");
+    expect(sidebar).not.toContain("objective-records-side-bar-axis");
     expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />");
     expect(sidebar).toContain("groupTheaterStatusEntries(");
     expect(sidebar).toContain("<StatusRecoveryShelves");
@@ -1240,10 +1240,10 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("statusSections.filter((section) => section.entries.length > 0)");
     expect(sidebar).toContain("if (dormantSection.entries.length === 0) return null;");
     expect(components).toMatch(/\.side-bar-theater-row-btn\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: color-mix\(in oklch, var\(--brass-quiet\) 14%, transparent\);/);
-    expect(sidebar).toContain("trackOperationActivityTransitions({");
+    expect(sidebar).toContain("trackObjectiveActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings().filter(");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
-    expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
+    expect(app).toContain("useEffect(() => subscribeObjectiveActivityTracking(), []);");
     expect(sidebar).toContain("if (statusTheaterIds.size === 0) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
     // 미확인 도착은 상태 마크와 같은 사실이다(idle + idleArrival = 표시 활동 AWAITING). 칩은 그 사실을
@@ -1252,7 +1252,7 @@ describe("Instrument core design contract", () => {
     expect(chip).not.toContain("idleUnseen");
     expect(sidebar).not.toContain("idleUnseen");
     expect(sidebar).not.toContain("side-bar-status-header__unseen");
-    // 그룹축·복구 선반이 raw idle을 그리면 도착한 Operation이 축마다 다른 상태를 말한다 — 그래서
+    // 그룹축·복구 선반이 raw idle을 그리면 도착한 Objective이 축마다 다른 상태를 말한다 — 그래서
     // 모든 사이드바 표면이 마크 축을 읽는다(아래 마크/섹션 계약이 그 배선을 고정한다).
     expect(sideBarStore).not.toContain("let statusAxis =");
     expect(source("../../../features/workspace/client/sidebar/group-collapse-store.ts")).toContain("statusAxis: parsed.statusAxis === true,");
@@ -1264,12 +1264,12 @@ describe("Instrument core design contract", () => {
     expect(idleArrival).toContain("export function subscribeIdleArrival(");
     expect(sideBarStore).not.toContain("idleUnseenIds");
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
-    expect(sideBarStore).not.toContain("fleet-console.operations.status");
+    expect(sideBarStore).not.toContain("fleet-console.objectiveRecords.status");
 
     // Doctrine: status-section border/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
     // The group header does not repeat the circular status glyph; chips and panels already do.
-    expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
+    expect(sidebar).toContain("groupMarkByGroupId.get(entry.objectiveRecord.groupId)");
     expect(components).toMatch(/\.side-bar-status-section--awaiting\s*\{[^}]*--activity-color:\s*var\(--aurora\)/);
     // 미확인 완료는 유휴와 같은 --positive를 받는다 — 색은 "끝난 일"을 말하고, 미확인은 모션이 말한다.
     expect(components).toMatch(/\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
@@ -1314,13 +1314,13 @@ describe("Instrument core design contract", () => {
     // 미확인 완료를 알리는 살아 있는 마크의 공유 점등 모션은 유지한다.
     expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
     // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
-    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
-    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
-    // 생성 지점은 raw 활동과 마크만 싣는다 — 섹션 승격을 여기서도 해 두면 groupOperationsByStatus가
+    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(objectiveId) ? "unseen" : activity;');
+    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(objectiveId) ? "awaiting" : activity;');
+    // 생성 지점은 raw 활동과 마크만 싣는다 — 섹션 승격을 여기서도 해 두면 groupObjectiveRecordsByStatus가
     // 같은 계산을 다시 해 값이 겹치고, 겹친 값은 어느 표면에도 드러나지 않아 틀려도 아무 테스트가 죽지 않는다.
-    expect(sidebar).toContain("mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),");
+    expect(sidebar).toContain("mark: resolveObjectiveMarkVisual({ activity, objectiveId: objectiveRecord.id, idleArrivalIds }),");
     expect(sidebar).toContain("      status: activity,");
-    expect(sidebar).not.toContain("status: resolveOperationDisplayActivity({");
+    expect(sidebar).not.toContain("status: resolveObjectiveDisplayActivity({");
     expect(chip).toContain("const markVisual = mark ?? status;");
     expect(components).toContain(".side-bar-status-axis-live-tick {");
     // 대기 틱의 호스트는 Theater 정체성 표식이다 — 전역 스위치 위에서는 어느 Theater인지가 지워진다.
@@ -1412,7 +1412,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).not.toContain("toggleRailSectionCollapsed");
     expect(rail).not.toContain(".right-rail-section-toggle");
     expect(rail).not.toContain(".right-rail-section-caret");
-    // Doctrine: Operation panels keep a 32px attached caption. The tool panel card has no
+    // Doctrine: Objective panels keep a 32px attached caption. The tool panel card has no
     // panel head at all — its settings live behind the gear in the toolbar,
     // so the body owns the whole slot and no chrome can summon itself over it. The retired
     // hover-reveal head is pinned negatively: it fired from the most common pointer path
@@ -1478,7 +1478,7 @@ describe("Instrument core design contract", () => {
       ".command-band-system-menu",
       ".group-context-menu-card",
       ".theater-menu",
-      ".operation-search-card",
+      ".objective-search-card",
       ".app-toast",
     ]) paintsPopoverFace(components, selector);
     for (const selector of [
@@ -1524,8 +1524,8 @@ describe("Instrument core design contract", () => {
     // 좌·우 사이드바 모두 접기가 없다 — 접기 컨트롤·엣지 독·픽·⌘B 단축키가 함께 퇴역했다.
     const railPanelSource = source("chrome/rail/right-rail.tsx");
     expect(railPanelSource).not.toContain("right-rail-collapse");
-    expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />");
-    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
+    expect(source("../../../features/workspace/client/sidebar/objective-records-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />");
+    const sidebar = source("../../../features/workspace/client/sidebar/objective-records-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
     expect(sidebar).toContain('className="side-bar-ghost-theater-row"');
@@ -1546,8 +1546,8 @@ describe("Instrument core design contract", () => {
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
     // 투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
-    const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
-    const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
+    const sideBarBlock = components.match(/^\.objective-records-side-bar \{[^}]*\}/m)?.[0] ?? "";
+    const sideBarBeforeBlock = components.match(/\.objective-records-side-bar::before \{[^}]*\}/)?.[0] ?? "";
     expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
     expect(sideBarBeforeBlock).toContain("var(--glass-underlay);");
     expect(sideBarBlock).not.toContain("opacity:");
@@ -1563,14 +1563,14 @@ describe("Instrument core design contract", () => {
     expect(expandedTerminalBlock).toContain("background: transparent;");
     expect(expandedTerminalBlock).toContain("box-shadow: none;");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
-    const dormantBlock = components.match(/^\.operation-dormant \{[^}]*\}/m)?.[0] ?? "";
+    const dormantBlock = components.match(/^\.objective-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
     expect(dormantBlock).not.toContain("var(--ink-deep)");
     // 캡 접합 규칙은 캡과 함께 원자적으로 퇴역했다 — 남으면 부유 카드의 상단 마감(테두리·
     // 라운드)이 창 모드·도킹 풀스크린에서 잘린 채 남는다(사전 감사 blocker). 카드는 네 변
     // 모두 자기 마감을 가진다.
-    expect(components).not.toContain(".operations-side-bar.is-expanded,");
-    expect(components).not.toMatch(/^\.operations-side-bar\.is-expanded \{/m);
+    expect(components).not.toContain(".objective-records-side-bar.is-expanded,");
+    expect(components).not.toMatch(/^\.objective-records-side-bar\.is-expanded \{/m);
     expect(sideBarBlock).toContain("position: absolute;");
     expect(sideBarBlock).toContain("border-radius: var(--radius-md);");
     expect(sideBarBlock).toContain("border: 1px solid var(--surface-rim);");
@@ -1740,7 +1740,7 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
     expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
-    // Operation 패널 면 티어 — 두 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
+    // Objective 패널 면 티어 — 두 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
     // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
     // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
     // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
@@ -1763,7 +1763,7 @@ describe("Instrument core design contract", () => {
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 
-  it("keeps every Operation panel body on the one panel surface", () => {
+  it("keeps every Objective panel body on the one panel surface", () => {
     const theme = source("styles/theme.css");
     const surface = fs.readFileSync(fileURLToPath(TERMINAL_SURFACE_PATH), "utf8");
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
@@ -2397,10 +2397,10 @@ describe("Instrument core design contract", () => {
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
     const systemCluster = source("chrome/components/command-band-system-cluster.tsx");
-    const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
-    const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
-    const statusIcon = source("../../../features/execution/client/components/operation-status-icon.tsx");
-    const nameMark = source("../../../features/execution/client/components/operation-name-mark.tsx");
+    const sidebar = source("../../../features/workspace/client/sidebar/objective-records-side-bar.tsx");
+    const chip = source("../../../features/workspace/client/sidebar/objective-records-side-bar-chip.tsx");
+    const statusIcon = source("../../../features/execution/client/components/objective-status-icon.tsx");
+    const nameMark = source("../../../features/execution/client/components/objective-name-mark.tsx");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
@@ -2418,23 +2418,23 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 분기를 다시 적으면 같은 사실이 표면 수만큼의
     // 조형으로 갈라진다. 사이드바 칩과 목록 래퍼는 같은 몽글 아바타 모듈(역할·배정·상태 해석)을 지난다.
-    expect(chip).toContain('import { OperationAvatar, mongleStateOfMark } from "../avatars.js"');
-    expect(nameMark).toContain('return <OperationStatusIcon operation={operation} status={status}');
+    expect(chip).toContain('import { ObjectiveAvatar, mongleStateOfMark } from "../avatars.js"');
+    expect(nameMark).toContain('return <ObjectiveStatusIcon objectiveRecord={objectiveRecord} status={status}');
     // 목록 래퍼의 얼굴은 사이드바 칩과 같은 경로(표식 → 묶음 사실)로 고른다 — 종류 분기는 그 위층의 다른 질문이다.
-    expect(statusIcon).toContain('import { OperationAvatar, clusterFaceFacts, mongleStateOfMark } from "../../../workspace/client/avatars.js";');
-    expect(statusIcon).toContain("mongleStateOfMark(status, clusterFaceFacts(clusters, operation.id))");
-    // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
+    expect(statusIcon).toContain('import { ObjectiveAvatar, clusterFaceFacts, mongleStateOfMark } from "../../../workspace/client/avatars.js";');
+    expect(statusIcon).toContain("mongleStateOfMark(status, clusterFaceFacts(clusters, objectiveRecord.id))");
+    // Shell이 Objective을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
 
-    expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
+    expect(source("../../../features/workspace/client/objective-records.tsx")).toContain("onRename={handleRename}");
     expect(components).not.toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
     expect(components).not.toContain("--uw-tint");
     expect(components).not.toContain("--uw-glow");
     expect(source("styles/theme.css")).not.toContain("--uw-angle");
-    expect(source("styles/layout.css")).not.toContain(".command-band-operation-status");
-    expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
+    expect(source("styles/layout.css")).not.toContain(".command-band-objective-status");
+    expect(source("styles/layout.css")).not.toContain(".command-band-objective-attribute");
     expect(rail).not.toContain(".right-rail-icons");
     expect(components).toContain("@keyframes caption-rail-travel");
     expect(components).not.toContain("@keyframes caption-rail-call");
@@ -2895,7 +2895,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the effort tone ramp between the reading floor and brass, with no signal channel borrowed", () => {
     const components = source("styles/components.css");
-    // 끝 앵커는 줄머리로 잡는다 — `.effort-track-shell {`는 앞선 `.operation-launch-effort-menu
+    // 끝 앵커는 줄머리로 잡는다 — `.effort-track-shell {`는 앞선 `.objective-launch-effort-menu
     // .effort-track-shell {`에도 부분 문자열로 걸려, 그대로 쓰면 램프 앞을 가리켜 빈 슬라이스가 된다.
     const ramp = components.slice(
       components.indexOf('[data-effort-level] { --effort-tone:'),

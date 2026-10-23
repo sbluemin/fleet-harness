@@ -1,12 +1,12 @@
 import { useState } from "react";
 
-import type { OperationLaunchVariantRow } from "../../shared/operations/types.js";
+import type { ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { buildEffortDeck } from "../launch-selection.js";
 import "./mobile-launch-sheet.css";
 
-// 새 대화 시트와 Operation 입력창 모델 시트가 함께 쓰는 강도 게이트. 새 대화 시트 모듈은 아바타(플러그인 레지스트리)를
+// 새 대화 시트와 Objective 입력창 모델 시트가 함께 쓰는 강도 게이트. 새 대화 시트 모듈은 아바타(플러그인 레지스트리)를
 // 끌어오므로, 실행 본문이 쓰는 이 조각은 따로 산다. 모양(.mls-efft·.mls-gr·.mls-toggle)은 두 시트가 함께 쓰는 mobile-launch-sheet.css 에 있다.
 
 export function Toggle({ on }: { readonly on: boolean }) {
@@ -16,12 +16,12 @@ export function Toggle({ on }: { readonly on: boolean }) {
 type EffortDeck = ReturnType<typeof buildEffortDeck>;
 
 /**
- * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Operation 입력창 모델 시트가 같은 규칙을 쓴다.
+ * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Objective 입력창 모델 시트가 같은 규칙을 쓴다.
  * 기본은 일상 단계만 보이고, 「{tiers} 펼치기」를 켜면 게이트 뒤 단계가 탭 끝에 선다. 지금 값이 이미 게이트 단계면
  * 펼친 채로 시작한다(deck이 값으로 문을 붙든다). 펼치기를 끄면 게이트 단은 숨고, 그 단을 고른 상태였으면 바로 아래 일상 단으로 되돌린다.
  */
 export function useMobileEffortGate(
-  row: OperationLaunchVariantRow | null,
+  row: ObjectiveLaunchVariantRow | null,
   effort: string | null,
   autoLabel: string,
   onEffort: (effort: string | null) => void,

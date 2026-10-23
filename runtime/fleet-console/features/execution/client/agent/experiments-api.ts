@@ -21,38 +21,38 @@ export function subscribeInstalledExperiments(listener: () => void): () => void 
 }
 
 /** 서버 `server.ts`의 채널 이름과 같은 값 — Console Use 의 console_reveal 이 사용자 화면에 보내는 사건. */
-export const OPERATION_REVEAL_EVENT_CHANNEL = "operation:reveal";
+export const OBJECTIVE_REVEAL_EVENT_CHANNEL = "objective:reveal";
 
-export interface OperationReveal {
-  readonly operationId: string;
+export interface ObjectiveReveal {
+  readonly objectiveId: string;
   readonly reason: string;
   readonly at: number;
 }
 
-const reveals = new Map<string, OperationReveal>();
+const reveals = new Map<string, ObjectiveReveal>();
 const revealListeners = new Set<() => void>();
 
-export function isOperationRevealEvent(value: unknown): value is OperationReveal {
+export function isObjectiveRevealEvent(value: unknown): value is ObjectiveReveal {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return typeof record.operationId === "string" && typeof record.reason === "string" && typeof record.at === "number";
+  return typeof record.objectiveId === "string" && typeof record.reason === "string" && typeof record.at === "number";
 }
 
-export function recordOperationReveal(event: OperationReveal): void {
-  reveals.set(event.operationId, { operationId: event.operationId, reason: event.reason.slice(0, 200), at: event.at });
+export function recordObjectiveReveal(event: ObjectiveReveal): void {
+  reveals.set(event.objectiveId, { objectiveId: event.objectiveId, reason: event.reason.slice(0, 200), at: event.at });
   for (const listener of revealListeners) listener();
 }
 
-export function getOperationReveal(operationId: string): OperationReveal | null {
-  return reveals.get(operationId) ?? null;
+export function getObjectiveReveal(objectiveId: string): ObjectiveReveal | null {
+  return reveals.get(objectiveId) ?? null;
 }
 
-export function subscribeOperationReveals(listener: () => void): () => void {
+export function subscribeObjectiveReveals(listener: () => void): () => void {
   revealListeners.add(listener);
   return () => { revealListeners.delete(listener); };
 }
 
-/** Operation의 콘솔 사용 허용 표식 — 서버가 쓰고 브라우저는 읽기만 한다. */
+/** Objective의 콘솔 사용 허용 표식 — 서버가 쓰고 브라우저는 읽기만 한다. */
 export function readConsoleUseEnabled(payload: Record<string, unknown> | undefined): boolean {
   const value = payload?.consoleUse;
   return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
@@ -63,8 +63,8 @@ export function readComputerUseEnabled(payload: Record<string, unknown> | undefi
   return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
 }
 
-export async function setComputerUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(`experiments/sessions/${encodeURIComponent(operationId)}/computer-use`, {
+export async function setComputerUse(api: ClientApiCapability, objectiveId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
+  await api.fetch(`experiments/sessions/${encodeURIComponent(objectiveId)}/computer-use`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled, language }),
@@ -72,8 +72,8 @@ export async function setComputerUse(api: ClientApiCapability, operationId: stri
 }
 
 /** 패널 안 허용 요청에 답한다. 실패(이미 풀린 요청·실험 꺼짐)는 던진다 — 카드가 다시 누르게 한다. */
-export async function answerUseRequest(api: ClientApiCapability, input: { readonly operationId: string; readonly requestId: string; readonly capability: "console" | "computer"; readonly decision: "deny" | "turn" | "always"; readonly language: "en" | "ko" }): Promise<void> {
-  const response = await api.fetch(`experiments/sessions/${encodeURIComponent(input.operationId)}/use-requests/${encodeURIComponent(input.requestId)}`, {
+export async function answerUseRequest(api: ClientApiCapability, input: { readonly objectiveId: string; readonly requestId: string; readonly capability: "console" | "computer"; readonly decision: "deny" | "turn" | "always"; readonly language: "en" | "ko" }): Promise<void> {
+  const response = await api.fetch(`experiments/sessions/${encodeURIComponent(input.objectiveId)}/use-requests/${encodeURIComponent(input.requestId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision: input.decision, capability: input.capability, language: input.language }),
@@ -81,8 +81,8 @@ export async function answerUseRequest(api: ClientApiCapability, input: { readon
   if (!response.ok) throw new Error(`use_request_${response.status}`);
 }
 
-export async function setConsoleUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(`experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
+export async function setConsoleUse(api: ClientApiCapability, objectiveId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
+  await api.fetch(`experiments/sessions/${encodeURIComponent(objectiveId)}/console-use`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled, language }),

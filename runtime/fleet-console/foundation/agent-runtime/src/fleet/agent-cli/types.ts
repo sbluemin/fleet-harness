@@ -26,7 +26,7 @@ export interface AgentCliProfile {
   readonly env: Readonly<Record<string, string>>;
   readonly launchWarnings?: readonly string[];
   readonly messagePolicy?: CliMessagePolicy;
-  // 작전 이름 변경을 이 CLI 세션에 동기화하기 위해 PTY로 주입할 슬래시 명령(예: "/rename").
+  // 목표 이름 변경을 이 CLI 세션에 동기화하기 위해 PTY로 주입할 슬래시 명령(예: "/rename").
   // 슬래시 명령을 지원하지 않는 CLI(또는 FLEET_TERMINAL_CMD 등 임의 override)는 생략하며,
   // 그 경우 호스트는 rename 주입을 건너뛴다. messagePolicy와 동일하게 resolved profile에 실린다.
   readonly renameCommand?: string;
@@ -158,7 +158,7 @@ export interface CreateAgentCliPluginOptions {
   // 입력 대기(AskUserQuestion의 PreToolUse · permission/idle/elicitation Notification) 신호를 호스트로
   // 알리는 hook. AskUserQuestion은 Notification 훅을 발화하지 않으므로 두 이벤트 경로로 건다. Claude 전용.
   readonly inputWaitingHookExec?: FleetHookExec;
-  // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
+  // 목표명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
   readonly autoNameHookExec?: FleetHookExec;
   // 서브에이전트 호출(Agent·Task의 PreToolUse)을 호스트에 묻는 hook. 호스트가 거절과 그 사유를 정하며,
   // 이 패키지는 문구를 싣지 않는다. Workflow 도구의 agent()는 이 도구를 거치지 않으므로 걸리지 않는다.

@@ -1,7 +1,7 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 
 import { ComposerAttachmentTray } from "../../../execution/client/composer-primitives/attachment-surface.js";
@@ -10,7 +10,7 @@ import { type ComposerAttachments } from "../../../execution/client/composer-pri
 import { type ComposerMessageKey } from "../../../execution/client/composer-primitives/messages.js";
 import type { Translate } from "@fleet-console/i18n";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
+import type { ObjectiveSearchEntry } from "../../../../core/client/src/integration/objective-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
@@ -18,9 +18,9 @@ import { reportSheetChrome, reportShellChrome } from "../../../../core/client/sr
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { isMentionSelectable, mentionTargetName, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
 import { TheaterAvatar } from "../theater-avatar.js";
-import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
-import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
+import { ObjectiveNameMark } from "../../../execution/client/components/objective-name-mark.js";
 import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "../../../execution/client/components/mobile-effort-gate.js";
 import "../../../execution/client/components/mobile-launch-sheet.css";
 
@@ -42,10 +42,10 @@ export interface MobileNewSessionSheetProps {
   readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly theaterId: string | null;
   readonly onTheater: (id: string) => void;
-  readonly groups: readonly OperationLaunchVariantGroup[];
-  readonly selectedRow: OperationLaunchVariantRow | null;
+  readonly groups: readonly ObjectiveLaunchVariantGroup[];
+  readonly selectedRow: ObjectiveLaunchVariantRow | null;
   readonly effort: string | null;
-  readonly onModelRow: (row: OperationLaunchVariantRow) => void;
+  readonly onModelRow: (row: ObjectiveLaunchVariantRow) => void;
   readonly onEffort: (effort: string | null) => void;
   readonly ultracodeArmed: boolean;
   readonly hasUltracodeWord: boolean;
@@ -56,9 +56,9 @@ export interface MobileNewSessionSheetProps {
   readonly onAddFiles: (files: readonly File[]) => void;
   readonly onRemoveAttachment: (key: string) => void;
   readonly mentionDeckOpen: boolean;
-  readonly mentionEntries: readonly OperationSearchEntry[];
-  /** 「시작 전」 Operation — 데스크톱 새 세션 '@'와 같은 원천(`useMentionSources().pendingGroups`)이다. */
-  readonly pendingMentionEntries: readonly OperationSearchEntry[];
+  readonly mentionEntries: readonly ObjectiveSearchEntry[];
+  /** 「시작 전」 Objective — 데스크톱 새 세션 '@'와 같은 원천(`useMentionSources().pendingGroups`)이다. */
+  readonly pendingMentionEntries: readonly ObjectiveSearchEntry[];
   readonly pluginMentionRows: readonly PluginMentionRow[];
   readonly mentionTarget: MentionTarget | null;
   readonly onPickMention: (target: MentionTarget) => void;
@@ -143,7 +143,7 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     runAfterOverlayRelease(subId, () => runAfterOverlayRelease(sheetId, () => { onClose(); go(); }));
   };
 
-  // 실행은 Operations 화면으로 옮겨 간다 — 시트의 history 항목을 먼저 걷은 뒤에 보내야 이동한 화면이 걷히는 쪽에 끼지 않는다.
+  // 실행은 ObjectiveRecords 화면으로 옮겨 간다 — 시트의 history 항목을 먼저 걷은 뒤에 보내야 이동한 화면이 걷히는 쪽에 끼지 않는다.
   // 멘션 전달은 화면을 옮기지 않고 실패하면 시트가 남으므로 그대로 보낸다.
   const start = () => {
     if (!props.canSubmit) return;
@@ -237,23 +237,23 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     );
   }
 
-  const operationRow = (entry: OperationSearchEntry) => {
+  const objectiveRecordRow = (entry: ObjectiveSearchEntry) => {
     const selectable = isMentionSelectable(entry.activity);
     return (
-      <button key={`op-${entry.operationId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
-        {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
+      <button key={`op-${entry.objectiveId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "objectiveRecord", entry })}>
+        {/* 행의 주체는 Objective 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
             여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
-        <OperationNameMark
-          operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
-          status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+        <ObjectiveNameMark
+          objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }}
+          status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })}
           size={24}
         />
-        <span className="mls-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
+        <span className="mls-mention-name">{entry.objectiveRecordName}<small>{entry.theaterLabel}</small></span>
       </button>
     );
   };
   // 묶음 머리는 데스크톱 덱과 같은 문법(글자 + 오른쪽 구분선, SDK `ComposerDeckCategory`)이고 행이 있는 묶음에만 선다 —
-  // Operations → 시작 전 → 플러그인 행선지(분류마다) 순서다.
+  // ObjectiveRecords → 시작 전 → 플러그인 행선지(분류마다) 순서다.
   const pluginSections = props.pluginMentionRows.reduce<{ label: string; rows: PluginMentionRow[] }[]>((sections, row) => {
     const last = sections[sections.length - 1];
     if (last && last.label === row.categoryLabel) last.rows.push(row);
@@ -261,8 +261,8 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     return sections;
   }, []);
   const mentionRows: ReactNode[] = props.mentionDeckOpen ? [
-    ...(props.mentionEntries.length > 0 ? [<ComposerDeckCategory key="h-operations" label={t("conversation.newSession.deckOperations")} />, ...props.mentionEntries.map(operationRow)] : []),
-    ...(props.pendingMentionEntries.length > 0 ? [<ComposerDeckCategory key="h-pending" label={t("conversation.newSession.deckPending")} />, ...props.pendingMentionEntries.map(operationRow)] : []),
+    ...(props.mentionEntries.length > 0 ? [<ComposerDeckCategory key="h-objectiveRecords" label={t("conversation.newSession.deckObjectiveRecords")} />, ...props.mentionEntries.map(objectiveRecordRow)] : []),
+    ...(props.pendingMentionEntries.length > 0 ? [<ComposerDeckCategory key="h-pending" label={t("conversation.newSession.deckPending")} />, ...props.pendingMentionEntries.map(objectiveRecordRow)] : []),
     ...pluginSections.flatMap((section, at) => [
       <ComposerDeckCategory key={`h-plugin-${at}`} label={section.label} />,
       ...section.rows.map((row) => (

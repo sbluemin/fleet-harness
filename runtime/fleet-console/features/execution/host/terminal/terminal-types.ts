@@ -16,8 +16,8 @@ export interface TerminalLaunchSpec {
 
 export interface TerminalLaunchContext {
   readonly sessionId?: string;
-  readonly operationId?: string;
-  readonly operationType?: string;
+  readonly objectiveId?: string;
+  readonly objectiveRecordType?: string;
   readonly pluginId?: string | null;
   /** Opaque server-owned Theater identity; never a browser path. */
   readonly theaterId?: string;
@@ -51,8 +51,8 @@ export interface TerminalTicket {
 export interface TerminalTicketContext {
   readonly cwd: string;
   readonly sessionId: string;
-  readonly operationId?: string;
-  readonly operationType?: string;
+  readonly objectiveId?: string;
+  readonly objectiveRecordType?: string;
   readonly pluginId?: string | null;
   readonly theaterId?: string;
   readonly kind?: "fleet" | "shell";

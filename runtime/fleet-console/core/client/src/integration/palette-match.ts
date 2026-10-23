@@ -1,6 +1,6 @@
 /**
  * 팔레트 공용 매칭. 명령 모드와 검색 모드가 같은 규칙을 쓴다 — 모듈을 따로 둔 이유는
- * operation-search.ts와 palette-commands.ts가 서로를 끌어오지 않게 하기 위해서다.
+ * objective-search.ts와 palette-commands.ts가 서로를 끌어오지 않게 하기 위해서다.
  */
 
 export interface PaletteCommandMatch {

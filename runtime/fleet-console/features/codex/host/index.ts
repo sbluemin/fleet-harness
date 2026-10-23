@@ -45,7 +45,7 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
   });
   cleanups.push(() => watcher.disposeAll());
 
-  // Wiki 도구가 닿는 곳은 호스트가 실어 준 사령관(`context.commodoreId`)의 지식뿐이다 — Operation 세션에는 그 세션 소속의
+  // Wiki 도구가 닿는 곳은 호스트가 실어 준 사령관(`context.commodoreId`)의 지식뿐이다 — Objective 세션에는 그 세션 소속의
   // 사령관이, 사령관 세션에는 그 사령관이 묶인다(`bindCommodore`).
   cleanups.push(deps.registerMcp(CODEX_MCP_SERVER_NAME, createCodexMcpTools(wikiWorkspaceResolver), { commodoreScoped: true }));
 

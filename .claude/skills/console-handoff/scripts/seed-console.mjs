@@ -175,7 +175,7 @@ console.log(JSON.stringify({
   port: lock.port,
   theaterId,
   sessionId,
-  url: `${base}/console/operations`,
+  url: `${base}/console/`,
   asked: asked
     ? {
       form: asked.form,

@@ -3,30 +3,29 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { OperationNode } from "../../shared/operations/types.js";
+import type { ObjectiveRecord } from "../../../objectives/shared/records/types.js";
 import { readAgentSession } from "./provider-session.js";
 
 const execFileAsync = promisify(execFile);
 const RECORD_BYTES = 64 * 1024;
 const RECORD_COUNT = 2048;
 
-/** 이름과 주소는 서버에서만 해석한다. 반환값은 Console Operation 좌표이며 CLI 신원은 밖으로 나가지 않는다. */
+/** 이름과 주소는 서버에서만 해석한다. 반환값은 Console Objective 좌표이며 CLI 신원은 밖으로 나가지 않는다. */
 export function createMessageRecipientResolver(options: {
-  readonly operations: () => readonly OperationNode[];
+  readonly objectiveRecords: () => readonly ObjectiveRecord[];
   readonly claudeConfigDir: string;
 }): (to: string) => Promise<string | undefined> {
   return async (to) => {
-    const agents = options.operations().filter((operation) => operation.type === "agent" && operation.pluginId === null);
+    const agents = options.objectiveRecords();
     if (!to.startsWith("uds:")) {
-      const matches = agents.filter((operation) => readAgentSession(operation.payload)?.sessionName === to);
+      const matches = agents.filter((objectiveRecord) => readAgentSession(objectiveRecord)?.sessionName === to);
       return matches.length === 1 ? matches[0]!.id : undefined;
     }
-    // 주소의 번호/PID나 Operation 태생 id로 추측하지 않는다. 재개 세션은 태생 id와 다를 수 있다.
-    if (!agents.some((operation) => readAgentSession(operation.payload)?.id)) return undefined;
+    // 주소의 번호/PID나 Objective 태생 id로 추측하지 않는다. 재개 세션은 태생 id와 다를 수 있다.
+    if (!agents.some((objectiveRecord) => readAgentSession(objectiveRecord)?.id)) return undefined;
     const registered = await registeredSocketSessions(to.slice(4), options.claudeConfigDir);
     if (registered.length !== 1) return undefined;
-    const matches = options.operations().filter((operation) => operation.type === "agent" && operation.pluginId === null
-      && readAgentSession(operation.payload)?.id === registered[0]);
+    const matches = options.objectiveRecords().filter((objectiveRecord) => readAgentSession(objectiveRecord)?.id === registered[0]);
     return matches.length === 1 ? matches[0]!.id : undefined;
   };
 }

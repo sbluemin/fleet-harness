@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { getViewModeSnapshot, subscribeViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 
 /**
- * 가운데 칸에 선 플러그인 대화(예: 사령관). 없으면 칸은 Operation 대화를 보인다. 호스트 번들 안의 상태이고, 플러그인은
+ * 가운데 칸에 선 플러그인 대화(예: 사령관). 없으면 칸은 Objective 대화를 보인다. 호스트 번들 안의 상태이고, 플러그인은
  * SDK 능력(`ctx.conversation`)으로만 여닫는다. 모바일로 바뀌면 걷힌다 — 데스크톱으로 돌아왔을 때 묵은 대화가 서지 않게.
  */
 export interface ConversationSurfaceSelection {

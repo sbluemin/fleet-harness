@@ -154,7 +154,7 @@ export function createDesktopScreenPermissionRouter(deps: DesktopScreenPermissio
 
 export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /**
- * 게시가 도착할 때마다 그 창의 Operation 스트림에 실리는 이벤트. 화면은 뜨자마자 한 번 묻지만,
+ * 게시가 도착할 때마다 그 창의 Objective 스트림에 실리는 이벤트. 화면은 뜨자마자 한 번 묻지만,
  * 콘솔이 재기동한 뒤 셸이 다시 게시하는 순간은 그 물음보다 늦을 수 있다 — 그 뒤늦은 답을
  * 화면까지 나르는 길이 이것이다.
  */
@@ -475,7 +475,7 @@ export function createDesktopUpdateRouter(deps: DesktopUpdateRouteDeps): (contex
  * 셸이 자기 자신을 갱신하는 일의 상태와 명령.
  *
  * 방향이 둘이라 길도 둘이다. 상태는 수행자인 셸만 알므로 셸이 게시하고 창이 읽는다(`shell-update`) —
- * 변화는 화면이 이미 열어 둔 Operation 스트림에 `desktop:shell-update`로 실린다(집 주소와 같은 문법).
+ * 변화는 화면이 이미 열어 둔 Objective 스트림에 `desktop:shell-update`로 실린다(집 주소와 같은 문법).
  * 명령은 창에서만 나오므로 창이 보내고 셸이 구독한다(`shell-update/command`) — 렌더러는 샌드박스이고
  * preload도 IPC도 없으니, 셸에게 말을 거는 길은 이 콘솔을 거치는 것뿐이다.
  *

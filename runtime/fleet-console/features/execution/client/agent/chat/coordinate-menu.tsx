@@ -1,8 +1,8 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../../ai-gateway/client/roster-fallback.js";
 import * as React from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantRow } from "../../../shared/operations/types.js";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "../../operations.js";
+import type { ObjectiveLaunchVariantRow } from "../../../../objectives/shared/records/types.js";
+import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../objective-records.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../../../ai-gateway/client/components/launch-provider-glyphs.js";
 
 import { EffortTrack, resolveRowEffort } from "../../composer-primitives/effort-track.js";
@@ -26,7 +26,7 @@ interface LaunchGroup {
   readonly id: string;
   readonly provider: LaunchProviderGlyphId | null;
   readonly caption: string;
-  readonly rows: readonly OperationLaunchVariantRow[];
+  readonly rows: readonly ObjectiveLaunchVariantRow[];
 }
 
 const MENU_WIDTH = 216;
@@ -52,7 +52,7 @@ const Chevron = ({ back }: { readonly back?: boolean }) => (
  * 있기 때문이다. 후보는 런치 메뉴와 같은 카탈로그의 행과 칩이다.
  */
 export function SessionCoordinateMenu({
-  operationId,
+  objectiveId,
   payload,
   pending,
   occupied,
@@ -62,7 +62,7 @@ export function SessionCoordinateMenu({
   formatTokens,
   onCompact,
 }: {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly payload: Record<string, unknown> | undefined;
   /** 턴이 닫히면 적용될 예약. 서버가 권위다. */
   readonly pending: AgentChatCoordinatePair | null;
@@ -109,8 +109,8 @@ export function SessionCoordinateMenu({
   React.useEffect(() => {
     if (!open) return;
     const onChanged = () => setCatalogEpoch((epoch) => epoch + 1);
-    window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, onChanged);
+    window.addEventListener(OBJECTIVE_CATALOG_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(OBJECTIVE_CATALOG_CHANGED_EVENT, onChanged);
   }, [open]);
 
   // 열 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후에도 목록이 실제와 어긋나지 않는다.
@@ -118,7 +118,7 @@ export function SessionCoordinateMenu({
     if (!open) return;
     setFailed(false);
     const abort = new AbortController();
-    void fetchOperationCatalog(abort.signal)
+    void fetchObjectiveCatalog(abort.signal)
       .then((catalog) => {
         if (abort.signal.aborted) return;
         const next: LaunchGroup[] = [];
@@ -210,7 +210,7 @@ export function SessionCoordinateMenu({
     setBusy(true);
     setFailed(false);
     try {
-      await changeAgentChatCoordinates(operationId, next);
+      await changeAgentChatCoordinates(objectiveId, next);
     } catch {
       // 거절이든 적용 실패든 세션은 지금 설정 그대로다. 창 초과는 행이 먼저 막으므로, 여기에는
       // 그 사이 문맥이 자란 경우만 온다.
@@ -218,15 +218,15 @@ export function SessionCoordinateMenu({
     } finally {
       setBusy(false);
     }
-  }, [busy, operationId]);
+  }, [busy, objectiveId]);
 
   const cancelPending = React.useCallback(() => {
-    void cancelAgentChatCoordinates(operationId).catch(() => undefined);
-  }, [operationId]);
+    void cancelAgentChatCoordinates(objectiveId).catch(() => undefined);
+  }, [objectiveId]);
 
   const rows = (groups ?? []).flatMap((group) => group.rows);
   const targetRow = target ? rows.find((row) => row.launch.model === target.model) ?? null : null;
-  const providerOf = (row: OperationLaunchVariantRow) => groups?.find((group) => group.rows.includes(row))?.provider ?? null;
+  const providerOf = (row: ObjectiveLaunchVariantRow) => groups?.find((group) => group.rows.includes(row))?.provider ?? null;
   const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
   const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
   const pendingCoordinates = pending ? readAgentChatSessionCoordinates({ session: pending }) : null;
@@ -308,7 +308,7 @@ export function SessionCoordinateMenu({
               >
                 <span className="agent-chat-coord-pop-chev" aria-hidden="true"><Chevron back /></span>
                 {providerOf(targetRow) ? (
-                  <span className={`operation-launch-provider-glyph agent-chat-coord-pop-provider is-${providerOf(targetRow)}`} aria-hidden="true">
+                  <span className={`objective-launch-provider-glyph agent-chat-coord-pop-provider is-${providerOf(targetRow)}`} aria-hidden="true">
                     {launchProviderGlyph(providerOf(targetRow)!)}
                   </span>
                 ) : null}
@@ -344,8 +344,8 @@ export function SessionCoordinateMenu({
                 <div key={group.id} className="agent-chat-coord-pop-group" role="group" aria-label={group.caption}>
                   {index > 0 ? <div className="agent-chat-coord-pop-divider" role="separator" /> : null}
                   {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={() => setOpen(false)} /> : (
-                    <p className={`operation-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
-                      {group.provider ? <span className="operation-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
+                    <p className={`objective-launch-variant-caption agent-chat-coord-pop-caption${group.provider ? ` is-${group.provider}` : ""}`} aria-hidden="true">
+                      {group.provider ? <span className="objective-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(group.provider)}</span> : null}
                       <span>{group.caption}</span>
                     </p>
                   )}

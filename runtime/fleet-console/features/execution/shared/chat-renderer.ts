@@ -7,10 +7,10 @@ import type { ConversationReference } from "./conversation/references.js";
 import type { ConversationDecision, ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "./conversation/types.js";
 
 /**
- * Agent chat transcript — the Operation chat view's turn renderer, offered to plugins that keep their own agent transcript.
+ * Agent chat transcript — the Objective chat view's turn renderer, offered to plugins that keep their own agent transcript.
  *
  * The host owns the renderer (ledger, work fold, answer markdown, live line) and its styles; a plugin hands over an ordered
- * event list and gets the same grammar Operation chat uses. The vocabulary is the public subset of the Operation chat stream
+ * event list and gets the same grammar Objective chat uses. The vocabulary is the public subset of the Objective chat stream
  * a plugin-owned session can produce, plus `note` for transcript dividers. Nothing here reaches a provider session.
  */
 
@@ -21,7 +21,7 @@ export interface AgentChatTranscriptOrigin {
   readonly label?: string;
 }
 
-/** Reference-only attachments never open the Operation preview route. */
+/** Reference-only attachments never open the Objective preview route. */
 /** `quote` — 다른 표면이 입력창에 붙여 보낸 인용(`Execution composer quotes`). */
 /** `preview` — image bytes at the Objectives attachment route (`/api/v1/objectives/attachment/file?…`) or the Commodore feature's attachment route (`/api/v1/commodore/attachment?…`); never a host filesystem path. */
 export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
@@ -98,7 +98,7 @@ export interface AgentChatTranscriptProps {
 }
 
 /**
- * Agent conversation — the conversation-layout grammar Operations use (the person's bubbles on the right, speakers' bubbles on
+ * Agent conversation — the conversation-layout grammar ObjectiveRecords use (the person's bubbles on the right, speakers' bubbles on
  * the left with their mongle mark and name, quiet centre lines for everything that is not speech, a working line above the
  * composer), offered to plugins that keep their own conversation. Entries are the public group timeline vocabulary plus `note`.
  */
@@ -126,7 +126,7 @@ export interface AgentConversationProps {
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
   /**
    * A participant's ledger — the plugin's full turn record for that speaker. When given, the participant's name on its bubbles and
-   * its mark and words on the working line open it, with the hit rules an Operation conversation uses (the name is the tab stop,
+   * its mark and words on the working line open it, with the hit rules an Objective conversation uses (the name is the tab stop,
    * the mark a pointer copy). Omit it while there is no ledger to open; nothing then pretends to be pressable.
    */
   readonly openLedger?: ((speaker: ConversationSpeaker) => void) | null;
@@ -168,8 +168,8 @@ export interface AgentDecisionCardProps {
 }
 
 /**
- * A participant's ledger — the read-only frame an Operation conversation opens for its commander: a band with the speaker's mark,
- * "<name>'s ledger · read only" and a way back to the conversation, the turn record as the scrolling log with the Operation log's
+ * A participant's ledger — the read-only frame an Objective conversation opens for its commander: a band with the speaker's mark,
+ * "<name>'s ledger · read only" and a way back to the conversation, the turn record as the scrolling log with the Objective log's
  * gutters and column (the reading-width preference applies), and the session's read-only model line at the foot. Entries use the
  * transcript vocabulary. The plugin decides when the ledger stands in for its conversation.
  */

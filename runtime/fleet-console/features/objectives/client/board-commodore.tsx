@@ -6,7 +6,7 @@ import { followupsJudgeable, livePersonHold, reasonAwaits } from "../shared/boar
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { goToObjective } from "./fresh-conversation.js";
-import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readTheater, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useOperationSummaries } from "./objectives-state.js";
+import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readTheater, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
 /** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
 export function isRunningObjective(objective: Objective): boolean {
@@ -113,11 +113,11 @@ function ObjectiveMark({ theaterId, objectiveId, size }: { readonly theaterId: s
   const source = useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId));
   const readFinished = () => finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_FINISHED;
   useSyncExternalStore(subscribeFinishedObjectivesStore, readFinished, readFinished);
-  const operations = useOperationSummaries();
+  const objectiveRecords = useObjectiveSummaries();
   const objective = source.objectives.find((candidate) => candidate.id === objectiveId) ?? finishedObjectives(theaterId).find((candidate) => candidate.id === objectiveId);
   if (!objective) return null;
-  const activity = operations.find((operation) => operation.id === objectiveId)?.activity ?? "closed";
-  return <ObjectiveAvatar operationId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
+  const activity = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === objectiveId)?.activity ?? "closed";
+  return <ObjectiveAvatar objectiveId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
 }
 export const commodoreBoard: CommodoreBoardClient = {
   railEntryIds: ["objectives"],

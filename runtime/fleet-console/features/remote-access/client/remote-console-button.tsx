@@ -46,7 +46,7 @@ export function RemoteConsoleButton({ state, command, compact }: {
       const button = trigger.current;
       if (!button) return;
       const rect = button.getBoundingClientRect();
-      const sidebar = button.closest(".operations-side-bar")?.getBoundingClientRect();
+      const sidebar = button.closest(".objective-records-side-bar")?.getBoundingClientRect();
       const width = Math.min(compact ? 300 : Math.max(248, (sidebar?.width ?? 280) - 16), window.innerWidth - 16);
       const left = Math.max(8, Math.min(compact ? (sidebar?.right ?? rect.right) + 6 : (sidebar?.left ?? rect.left) + 8, window.innerWidth - width - 8));
       // 계정 위의 문은 화면 아래에 있으므로 옆 패널을 위로 당겨 뷰포트 안에 담는다.
@@ -56,7 +56,7 @@ export function RemoteConsoleButton({ state, command, compact }: {
     place();
     const resize = new ResizeObserver(place);
     if (panel.current) resize.observe(panel.current);
-    if (trigger.current?.closest(".operations-side-bar")) resize.observe(trigger.current.closest(".operations-side-bar")!);
+    if (trigger.current?.closest(".objective-records-side-bar")) resize.observe(trigger.current.closest(".objective-records-side-bar")!);
     // 문서 끝에서 Tab이 순환하면 focusout.relatedTarget은 null일 수 있다. 실제 도착한 포커스로 경계를 판정한다.
     const outside = (event: PointerEvent | FocusEvent) => { if (!panel.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close(); };
     const escape = (event: KeyboardEvent) => {

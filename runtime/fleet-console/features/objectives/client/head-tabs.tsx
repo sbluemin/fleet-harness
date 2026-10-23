@@ -6,9 +6,9 @@ import { unseenRecords, type Objective } from "../shared/types.js";
 import { DatePicker } from "./date-picker.js";
 import { freshConversationObjectiveId, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { objectiveOfOperation } from "./mobile.js";
+import { objectiveOfObjective } from "./mobile.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { findAnyObjective, followedOperationId, isObjectiveSurfaceOpen, objectiveDisplayTheaterId, objectivesApi, operationSummaries, patchObjectiveView, post, readObjectiveView, readTheater, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayTheaterId, objectivesApi, objectiveRecordSummaries, patchObjectiveView, post, readObjectiveView, readTheater, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다 — 첫 줄은 오늘·기한(사령관 패널의 섹션 줄 자리),
@@ -39,8 +39,8 @@ function headObjective(contextTheaterId: string | null): { readonly theaterId: s
   if (standing) return { theaterId, objective: findAnyObjective(standing) };
   const shownDone = shownFinishedObjective();
   if (shownDone) return { theaterId, objective: shownDone };
-  const operationId = followedOperationId();
-  return { theaterId, objective: operationId ? objectiveOfOperation(operationId) : null };
+  const objectiveId = followedObjectiveId();
+  return { theaterId, objective: objectiveId ? objectiveOfObjective(objectiveId) : null };
 }
 
 function subscribeHead(listener: () => void): () => void {
@@ -79,12 +79,12 @@ function readTabs(slot: string | undefined, objective: Objective | null, selecte
 /** 폰에서는 현재 대화의 세 보기를 정보 옆에 올린다 — 선택과 본문은 같은 보기 상태를 읽는다. */
 export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationPane["tabs"]> = {
   subscribe: subscribeHead,
-  read: (operationId) => {
-    const objective = objectiveOfOperation(operationId);
+  read: (objectiveId) => {
+    const objective = objectiveOfObjective(objectiveId);
     return readTabs(undefined, objective, detailTabOf(readObjectiveView(objective?.theaterId ?? null).detailTab));
   },
-  select: (tabId, operationId) => {
-    const objective = objectiveOfOperation(operationId);
+  select: (tabId, objectiveId) => {
+    const objective = objectiveOfObjective(objectiveId);
     if (objective) patchObjectiveView(objective.theaterId, () => ({ detailTab: detailTabOf(tabId) }));
   },
 };
@@ -96,7 +96,7 @@ export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationP
 function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonly theaterId: string | null; readonly language: ConsoleLocale }) {
   const read = () => headObjective(contextTheaterId).objective;
   const objective = useSyncExternalStore(subscribeHead, read, read);
-  const readActivity = () => (objective ? operationSummaries().find((operation) => operation.id === objective.id)?.activity ?? null : null);
+  const readActivity = () => (objective ? objectiveRecordSummaries().find((objectiveRecord) => objectiveRecord.id === objective.id)?.activity ?? null : null);
   const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const dueButton = useRef<HTMLButtonElement | null>(null);

@@ -7,7 +7,7 @@ import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { forgetReportedMobileChrome } from "../../integration/mobile-appearance-store.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
-import { focusOperation } from "../../integration/store.js";
+import { focusObjective } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { MobileAttentionProvider } from "./mobile-attention-context.js";
@@ -24,10 +24,10 @@ import { MobileSettingsHostContext } from "../../../../../features/settings/clie
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
-import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
+import { closeMobileObjective, readMobileObjectiveId } from "./mobile-objective-url.js";
 import { installMobileHistory } from "./mobile-history.js";
 import { getMobileDestination, useMobileBar, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
-import { ledgerOperationId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
+import { ledgerObjectiveId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import "../../styles/mobile.css";
 
 /**
@@ -57,7 +57,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     if (declared !== undefined && !destinationIds.has(entryId)) setMobileDestination({ kind: "home" });
   }, [bindings, destination, destinationIds]);
 
-  // 다른 화면에서 /operations로 돌아오는 길이 도구·목적지 상태를 붙들고 있지 않게: 라우트가 홈이 아니면 홈으로 되돌려 둔다.
+  // 다른 화면에서 /objectives로 돌아오는 길이 도구·목적지 상태를 붙들고 있지 않게: 라우트가 홈이 아니면 홈으로 되돌려 둔다.
   const path = location.pathname.replace(/\/+$/, "");
   useEffect(() => { if (path === "/settings") setMobileDestination({ kind: "home" }); }, [path]);
   // 프로필 시트의 행으로 연 설정 상세(`/settings`)를 어떤 뒤로(브라우저·제스처·‹·브리지)로 떠나든 그 시트로 돌아온다 — 행이 시트의 history 항목을
@@ -67,24 +67,24 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   useEffect(() => {
     const previous = routeRef.current;
     routeRef.current = { path, profileDetail };
-    if (previous.profileDetail && path === "/operations" && getMobileSheetStack().length === 0) pushMobileSheet({ kind: "profile" });
+    if (previous.profileDetail && path === "/objectives" && getMobileSheetStack().length === 0) pushMobileSheet({ kind: "profile" });
   }, [path, profileDetail]);
   // 라우트 이동(replace)이 주소의 `?dest=`를 지울 수 있다 — 라우트가 정착한 뒤 목적지를 주소에 다시 적는다(새로고침 복원용).
   useEffect(() => { syncMobileDestinationUrl(); }, [path, destination]);
 
-  // 뒤로가 마지막 가드에 닿으면 — 열린 Operation이나 홈이 아닌 목적지 루트이면 대화 목록(홈)으로 돌아간다(S-51 3).
+  // 뒤로가 마지막 가드에 닿으면 — 열린 Objective이나 홈이 아닌 목적지 루트이면 대화 목록(홈)으로 돌아간다(S-51 3).
   // 대화 목록이 루트다(4): 앱이면 false를 돌려 앱 기본(Console 목록)에 맡기고, 브라우저는 가드 두 칸을 넘어 이전 페이지로 간다.
   const backRef = useRef<() => boolean>(() => false);
   backRef.current = () => {
-    if (path !== "/operations" || getMobileDestination().kind !== "home") {
+    if (path !== "/objectives" || getMobileDestination().kind !== "home") {
       setMobileDestination({ kind: "home" });
-      if (path !== "/operations") navigate("/operations", { replace: true });
+      if (path !== "/objectives") navigate("/objectives", { replace: true });
       return true;
     }
-    const operationId = readMobileOperationId();
-    if (operationId !== null) {
-      if (ledgerOperationId(operationId) !== null) { openLedger(operationId, null); return true; }
-      closeMobileOperation();
+    const objectiveId = readMobileObjectiveId();
+    if (objectiveId !== null) {
+      if (ledgerObjectiveId(objectiveId) !== null) { openLedger(objectiveId, null); return true; }
+      closeMobileObjective();
       return true;
     }
     return false;
@@ -124,10 +124,10 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   const headRef = useRef<HTMLDivElement>(null);
   useChromeHeightProperty(headRef, frameRef, "--m-chrome-top");
 
-  const openOperation = (operationId: string) => {
+  const openObjective = (objectiveId: string) => {
     setMobileDestination({ kind: "home" });
-    if (path !== "/operations") navigate("/operations");
-    focusOperation(operationId);
+    if (path !== "/objectives") navigate("/objectives");
+    focusObjective(objectiveId);
   };
 
   return (
@@ -142,8 +142,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
         {children}
         <MobileRequestBanner
           state={state}
-          viewingOperationId={path === "/operations" && (destination.kind === "home" || destination.kind === "info") ? state.activeOperationId : null}
-          onOpen={openOperation}
+          viewingObjectiveId={path === "/objectives" && (destination.kind === "home" || destination.kind === "info") ? state.activeObjectiveId : null}
+          onOpen={openObjective}
         />
         <MobileSheetHost state={state} onDeferredDeletion={onDeferredDeletion} />
         <MobileChoicePopup />

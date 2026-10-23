@@ -577,7 +577,7 @@
   height: 10px;
 }
 
-/* 구역 머리는 공통 팝업의 머리 문법이다 — 공유 머리글(.operation-launch-variant-caption)과 같은 12px 보통 굵기 보조색. */
+/* 구역 머리는 공통 팝업의 머리 문법이다 — 공유 머리글(.objective-launch-variant-caption)과 같은 12px 보통 굵기 보조색. */
 .ai-gateway-palette-group-name {
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -1625,7 +1625,7 @@
 
 /* ── 모바일 휴면 화면(D23) — 현행 재개 카드를 모바일 문법으로: 화면 가운데, 광륜 없이, 재개는 주 알약(반전).
    카드 전체가 누르는 자리라는 계약은 그대로 둔다(같은 버튼). */
-[data-mobile-surface] .operation-dormant {
+[data-mobile-surface] .objective-dormant {
   position: absolute;
   inset: 0;
   height: auto;
@@ -1636,7 +1636,7 @@
   color: var(--m-text);
 }
 
-[data-mobile-surface] .operation-dormant-status {
+[data-mobile-surface] .objective-dormant-status {
   color: var(--m-text-faint);
   font-family: var(--m-sans);
   font-size: var(--m-fs-caption);
@@ -1645,14 +1645,14 @@
   text-transform: none;
 }
 
-[data-mobile-surface] .operation-dormant-body,
-[data-mobile-surface] .operation-dormant-error {
+[data-mobile-surface] .objective-dormant-body,
+[data-mobile-surface] .objective-dormant-error {
   color: var(--m-text-muted);
   font-family: var(--m-sans);
   font-size: var(--m-fs-secondary);
 }
 
-[data-mobile-surface] .operation-dormant-action {
+[data-mobile-surface] .objective-dormant-action {
   justify-self: center;
   display: inline-flex;
   align-items: center;
@@ -1670,7 +1670,7 @@
   box-shadow: none;
 }
 
-[data-mobile-surface] .operation-dormant-action--ghost {
+[data-mobile-surface] .objective-dormant-action--ghost {
   background: var(--m-chip);
   color: var(--m-text);
 }

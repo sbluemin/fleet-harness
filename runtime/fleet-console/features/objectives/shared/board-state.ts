@@ -1,14 +1,14 @@
-import type { ConsoleOperationObservation } from "../../console-use/shared/control.js";
+import type { ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
 import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 
 export const STALL_MS = 30 * 60_000;
 /** 구성원이 일하는 동안 지휘관이 이만큼 쉬면 정체다. */
 export const COMMANDER_REST_MS = 15 * 60_000;
-export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle"> & {
+export type BoardObservation = Pick<ConsoleObjectiveObservation, "activity" | "lifecycle"> & {
   /** 쉬기 시작한 시각(ms) — `restClock` 이 얹는다. 없으면 오래 쉬었다고 추측하지 않는다. */
   readonly restingSince?: number;
 };
-export type BoardObserver = (operationId: string) => BoardObservation | null | undefined;
+export type BoardObserver = (objectiveId: string) => BoardObservation | null | undefined;
 const resting = (observation: BoardObservation): boolean => observation.lifecycle === "dormant" || observation.activity === "idle";
 const working = (observation: BoardObservation): boolean => observation.lifecycle === "live" && (observation.activity === "running" || observation.activity === "background");
 
@@ -16,17 +16,17 @@ const working = (observation: BoardObservation): boolean => observation.lifecycl
  * 호스트 관측 위에 쉬기 시작한 시각을 얹는다. 처음 본 휴식은 본 시각부터 세고, 쉬는 동안 턴이 하나라도 닫혔으면(live 의 세대·revision 이
  * 바뀜) 그때부터 다시 센다 — 관측 사이에 지나간 턴을 휴식으로 잇지 않는다. 휴면으로 들어가도 그 휴식은 이어지고, 휴면에서 깨어나면 새로 센다.
  */
-export function restClock<T extends Pick<ConsoleOperationObservation, "activity" | "lifecycle" | "generation"> & { readonly output?: { readonly revision?: number } }>(
-  observe: (operationId: string) => T | null | undefined, now: () => number = () => Date.now(),
-): (operationId: string) => (T & { readonly restingSince?: number }) | null {
+export function restClock<T extends Pick<ConsoleObjectiveObservation, "activity" | "lifecycle" | "generation"> & { readonly output?: { readonly revision?: number } }>(
+  observe: (objectiveId: string) => T | null | undefined, now: () => number = () => Date.now(),
+): (objectiveId: string) => (T & { readonly restingSince?: number }) | null {
   const seen = new Map<string, { readonly turn: string | null; readonly since: number }>();
-  return (operationId) => {
-    const observation = observe(operationId) ?? null;
-    if (!observation || !resting(observation)) { seen.delete(operationId); return observation; }
+  return (objectiveId) => {
+    const observation = observe(objectiveId) ?? null;
+    if (!observation || !resting(observation)) { seen.delete(objectiveId); return observation; }
     const turn = observation.lifecycle === "live" ? `${observation.generation ?? ""}:${observation.output?.revision ?? ""}` : null;
-    const previous = seen.get(operationId);
+    const previous = seen.get(objectiveId);
     const since = previous && (turn === null || previous.turn === turn) ? previous.since : now();
-    seen.set(operationId, { turn: turn ?? previous?.turn ?? null, since });
+    seen.set(objectiveId, { turn: turn ?? previous?.turn ?? null, since });
     return { ...observation, restingSince: since };
   };
 }

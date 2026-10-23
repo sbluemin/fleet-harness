@@ -406,7 +406,7 @@
   transform: scaleY(0.5);
 }
 
-/* ── Operation 소식 말풍선 ──────────────────────────────────────────────────
+/* ── Objective 소식 말풍선 ──────────────────────────────────────────────────
    완료·시작·입력 대기·첫 소개가 한 봉투를 입는다. 색은 신호 채널을 따른다: 완료는 positive,
    시작·대기는 warn(amber), 소개는 brass(새가 말하고 있다). */
 .scuttlebutt-notice-bubble {
@@ -1613,7 +1613,7 @@
   height: 11px;
 }
 
-/* 헤더 이름 옆 12px 글리프 pill — Operation 사이드바 칩의 표식과 같은 문법. */
+/* 헤더 이름 옆 12px 글리프 pill — Objective 사이드바 칩의 표식과 같은 문법. */
 .scuttlebutt-grant-marks {
   display: inline-flex;
   flex: none;

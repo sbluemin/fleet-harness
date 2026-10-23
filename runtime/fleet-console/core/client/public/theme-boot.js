@@ -80,8 +80,8 @@ function retireGlassOpacityKeys() {
       "fleet-console.glass.rail-opacity",
       "fleet-console.glass.legacy-migrated",
       "fleet-console.glass-hint",
-      "fleet-console.operations.side-glass-alpha",
-      "fleet-console.operations.side-glass-blur",
+      "fleet-console.objectiveRecords.side-glass-alpha",
+      "fleet-console.objectiveRecords.side-glass-blur",
       "fleet-console.rail.overlayAlpha",
     ]) {
       localStorage.removeItem(key);

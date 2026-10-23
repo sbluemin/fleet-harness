@@ -4,12 +4,12 @@ import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "../../../../../features/workspace/shared/rail.js";
 
-import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
+import { useAllObjectiveUseRequests, type ObjectiveUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";
-import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
+import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import { useConsoleLocale } from "../../i18n/index.js";
-import { operationClusterId } from "../../integration/feature-registry.js";
-import type { OperationNode, ConsoleState } from "../../integration/types.js";
+import { objectiveRecordClusterId } from "../../integration/feature-registry.js";
+import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
@@ -108,17 +108,17 @@ function visible(binding: RailEntryBinding): boolean {
 // ── 확인 필요 ────────────────────────────────────────────────────────────
 
 export type MobileAttentionRow =
-  | { readonly kind: "operation"; readonly key: string; readonly operation: OperationNode; readonly request?: OperationUseRequest }
+  | { readonly kind: "objectiveRecord"; readonly key: string; readonly objectiveRecord: ObjectiveRecord; readonly request?: ObjectiveUseRequest }
   | { readonly kind: "plugin"; readonly key: string; readonly entryId: string; readonly item: RailEntryAttentionItem; readonly clusterId?: string };
 
 /**
- * 「확인 필요」의 행: 지금 Theater에서 사람을 기다리는 Operation(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
+ * 「확인 필요」의 행: 지금 Theater에서 사람을 기다리는 Objective(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
  * 플러그인이 `attention.items`로 올린 일. 플러그인 항목의 갱신은 각 엔트리의 `attention.subscribe`를 따른다.
  */
 export function useMobileAttention(state: ConsoleState): { readonly rows: readonly MobileAttentionRow[]; readonly pluginCounts: ReadonlyMap<string, number> } {
   const bindings = useRailEntries();
   const locale = useConsoleLocale();
-  const useRequests = useAllOperationUseRequests();
+  const useRequests = useAllObjectiveUseRequests();
   const theaterId = getViewedTheaterId();
   // 엔트리마다 구독을 모아 하나의 틱으로 묶는다 — 갱신 신호가 오면 아래 스냅샷을 다시 읽는다.
   const tick = useSyncExternalStore(
@@ -130,17 +130,17 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
     () => attentionVersion(bindings, theaterId, locale),
   );
   return useMemo(() => {
-    // 허용 요청이 걸린 Operation이 먼저(남은 시간이 짧은 순), 그다음 그 밖의 입력 대기.
-    const inTheater = state.operations.filter((operation) => operation.theaterId === theaterId);
+    // 허용 요청이 걸린 Objective이 먼저(남은 시간이 짧은 순), 그다음 그 밖의 입력 대기.
+    const inTheater = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId);
     const requested = inTheater
-      .map((operation) => ({ operation, request: useRequests.filter((item) => item.operationId === operation.id).sort((a, b) => a.expiresAt - b.expiresAt)[0] }))
-      .filter((item): item is { operation: OperationNode; request: OperationUseRequest } => item.request !== undefined)
+      .map((objectiveRecord) => ({ objectiveRecord, request: useRequests.filter((item) => item.objectiveId === objectiveRecord.id).sort((a, b) => a.expiresAt - b.expiresAt)[0] }))
+      .filter((item): item is { objectiveRecord: ObjectiveRecord; request: ObjectiveUseRequest } => item.request !== undefined)
       .sort((a, b) => a.request.expiresAt - b.request.expiresAt);
-    const requestedIds = new Set(requested.map((item) => item.operation.id));
-    const waiting = inTheater.filter((operation) => !requestedIds.has(operation.id) && resolveOperationActivity(operation, state.operationRuntime) === "awaiting");
+    const requestedIds = new Set(requested.map((item) => item.objectiveRecord.id));
+    const waiting = inTheater.filter((objectiveRecord) => !requestedIds.has(objectiveRecord.id) && resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) === "awaiting");
     const rows: MobileAttentionRow[] = [
-      ...requested.map(({ operation, request }): MobileAttentionRow => ({ kind: "operation", key: `op:${operation.id}`, operation, request })),
-      ...waiting.map((operation): MobileAttentionRow => ({ kind: "operation", key: `op:${operation.id}`, operation })),
+      ...requested.map(({ objectiveRecord, request }): MobileAttentionRow => ({ kind: "objectiveRecord", key: `op:${objectiveRecord.id}`, objectiveRecord, request })),
+      ...waiting.map((objectiveRecord): MobileAttentionRow => ({ kind: "objectiveRecord", key: `op:${objectiveRecord.id}`, objectiveRecord })),
     ];
     const pluginCounts = new Map<string, number>();
     for (const binding of bindings) {
@@ -150,13 +150,13 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
       const count = Math.max(0, Math.floor(attention.count(scopeTheater)));
       if (count > 0) pluginCounts.set(binding.entry.id, count);
       for (const item of attention.items?.(scopeTheater, locale) ?? []) {
-        const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? operationClusterId(binding.pluginId, item.clusterId) : undefined;
+        const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? objectiveRecordClusterId(binding.pluginId, item.clusterId) : undefined;
         rows.push({ kind: "plugin", key: `plugin:${binding.entry.id}:${item.id}`, entryId: binding.entry.id, item, clusterId });
       }
     }
     return { rows, pluginCounts };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick는 플러그인 상태 변화를 알리는 신호다.
-  }, [bindings, locale, state.operationRuntime, state.operations, theaterId, tick, useRequests]);
+  }, [bindings, locale, state.objectiveRecordRuntime, state.objectiveRecords, theaterId, tick, useRequests]);
 }
 
 /** 플러그인이 올린 수와 행(제목·사유까지)을 한 문자열로 접는다 — 스냅샷이 값이라 같은 상태면 다시 그리지 않는다. */
@@ -175,7 +175,7 @@ export function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode 
   return typeof icon === "function" ? icon() : icon;
 }
 
-/** 플러그인 「확인 필요」 항목의 머리 — 항목은 원천 Operation을 싣지 않으므로 그 항목이 온 목적지의 아이콘으로 출처를 말한다. */
+/** 플러그인 「확인 필요」 항목의 머리 — 항목은 원천 Objective을 싣지 않으므로 그 항목이 온 목적지의 아이콘으로 출처를 말한다. */
 export function entryIconOf(bindings: readonly RailEntryBinding[], entryId: string): ReactNode {
   const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
   return entry ? renderEntryIcon(entry.mobile?.icon ?? entry.icon) : null;

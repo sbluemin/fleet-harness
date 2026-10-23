@@ -20,11 +20,10 @@ interface WorkspaceRouteDeps {
   readonly toTheaterInfo: (theater: TheaterRegistration, hasWiki: boolean) => ConsoleTheaterInfo;
   readonly publishTheaterLifecycle: (event: "registered" | "updated", theaterId: string) => void;
   readonly persistDurableState: () => void;
-  readonly migrateLegacyCaptureState: () => void;
 }
 
 export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
-  const { theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState, migrateLegacyCaptureState } = deps;
+  const { theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState } = deps;
   async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -175,7 +174,6 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
     }
     try {
       const restored = await deletionCoordinator.restore(deletionId);
-      migrateLegacyCaptureState();
       writeJson(res, 200, restored);
     } catch (error) {
       if (error instanceof DeferredDeletionError) {

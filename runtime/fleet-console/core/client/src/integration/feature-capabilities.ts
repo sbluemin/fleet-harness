@@ -8,7 +8,7 @@ import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js"
 import type { PaneTarget } from "../../../../features/workspace/shared/pane.js";
 import type { ExpandedSurfaceOpenRequest } from "../../../../features/workspace/shared/expanded-surface.js";
 import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
-import { closeMobileOperation, readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
+import { closeMobileObjective, readMobileObjectiveId } from "../chrome/mobile/mobile-objective-url.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
@@ -21,11 +21,11 @@ import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOption
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, isExpandedSurfaceShown, openExpandedSurface } from "../chrome/expanded-surface/store.js";
-import { resolveOperationRuntimeActivity } from "../../../../features/execution/client/operation-activity.js";
+import { resolveObjectiveRuntimeActivity } from "../../../../features/execution/client/objective-activity.js";
 import { AgentChatTranscript, AgentConversation, AgentDecisionCard, AgentLedger, ComposerTopEntries } from "../../../../features/execution/client/agent/index.js";
-import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
-import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
-import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
+import { ledgerObjectiveId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
+import { clearObjectiveStatusDetail, setObjectiveStatusDetail } from "../../../../features/execution/client/objective-marks.js";
+import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./objective-records-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, isRailPanelOpen, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getArenaInsets, subscribeArenaInsets } from "../../../../features/workspace/client/conversation/arena-insets.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
@@ -33,21 +33,21 @@ import { closeConversationSurface, getConversationSurface, openConversationSurfa
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { attachComposerQuoteTo, composerQuoteTargets, receiveComposerQuotes, subscribeComposerQuoteTargets } from "./composer-quotes.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, ownOperationRuntime,
-  raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+import { clearObjectiveRuntime, dismissNotificationsForObjective, focusObjective, getState, ownObjectiveRuntime,
+  raiseObjectiveNotification, setObjectiveRuntime, setObjectiveRuntimeHydration, subscribe } from "./store.js";
 
 function viewTheaterInbox(theaterId: string): void {
   if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
   if (getViewModeSnapshot().effective === "mobile") {
     setMobileListTheaterId(theaterId);
-    closeMobileOperation();
+    closeMobileObjective();
     setMobileDestination({ kind: "home" });
   }
   else {
     closeConversationSurface();
     openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "system-prompt" });
   }
-  navigateConsoleRoute("/operations");
+  navigateConsoleRoute("/objectives");
 }
 
 export interface HostCapabilityDependencies {
@@ -63,34 +63,34 @@ function revealRailPanel(entryId: string): void {
   openRailPanel(entryId);
   if (getViewModeSnapshot().effective === "mobile") {
     setMobileTool({ kind: "rail", id: entryId }, getViewedTheaterId());
-    navigateConsoleRoute("/operations");
+    navigateConsoleRoute("/objectives");
   }
 }
 
 /**
- * 폰에서 엔트리의 대화 탭(`mobile.conversationPane`)으로 착지한다 — 그 대화를 열고 정보 화면의 그 탭을 세운다. `operationId`가 null이면
+ * 폰에서 엔트리의 대화 탭(`mobile.conversationPane`)으로 착지한다 — 그 대화를 열고 정보 화면의 그 탭을 세운다. `objectiveId`가 null이면
  * 지금 열린 대화(대화 화면·정보 화면이 서 있을 때)다. 대화가 없거나, 그 대화에 탭이 서지 않거나, 폰이 아니면 false — 부른 쪽이 기존 경로로 간다.
  */
-function revealMobileConversationTab(binding: PaneTargetBinding | undefined, operationId: string | null): boolean {
+function revealMobileConversationTab(binding: PaneTargetBinding | undefined, objectiveId: string | null): boolean {
   const pane = binding?.entry.mobile?.conversationPane;
   if (!binding || !pane || binding.entry.conversationTab !== true || getViewModeSnapshot().effective !== "mobile") return false;
   const destination = getMobileDestination().kind;
-  const requested = operationId ?? (destination === "home" || destination === "info" ? readMobileOperationId() : null);
+  const requested = objectiveId ?? (destination === "home" || destination === "info" ? readMobileObjectiveId() : null);
   if (requested === null) return false;
   // 구성원을 가리키면 대화 주인은 그 묶음의 부모다 — 정보 화면은 주인의 것이고, 포커스도 부모로 옮겨 간다.
   const state = getState();
-  const owner = state.nestedOperations.find((node) => node.id === requested)?.parentOperationId ?? requested;
-  if (!state.operations.some((operation) => operation.id === owner)) return false;
+  const owner = state.nestedObjectiveRecords.find((node) => node.id === requested)?.parentObjectiveId ?? requested;
+  if (!state.objectiveRecords.some((objectiveRecord) => objectiveRecord.id === owner)) return false;
   if (pane.shown?.get(owner) === false) return false;
   const tab = conversationTabId(binding.entry.id);
-  navigateConsoleRoute("/operations");
+  navigateConsoleRoute("/objectives");
   // 이미 열린 대화면 보던 본문(구성원)을 그대로 두고 정보 화면만 세운다.
-  if (readMobileOperationId() === owner) {
+  if (readMobileObjectiveId() === owner) {
     setMobileDestination({ kind: "info", tab });
     return true;
   }
   requestMobileConversationTab(owner, tab);
-  focusOperation(owner);
+  focusObjective(owner);
   return true;
 }
 
@@ -98,7 +98,7 @@ function revealExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
   const instanceId = openExpandedSurface(request);
   if (getViewModeSnapshot().effective === "mobile") {
     setMobileTool({ kind: "surface", instanceId });
-    navigateConsoleRoute("/operations");
+    navigateConsoleRoute("/objectives");
   }
   return instanceId;
 }
@@ -125,7 +125,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     showTarget: (target) => {
       // 설정은 레일 페인이 아니라 설정의 문이다(데스크톱 모달, 폰 /settings) — 팔레트 검색 결과·플러그인의 설정 목표도 같은 문으로 든다.
       if (target.paneId === SETTINGS_PANE_ID) {
-        if (getViewModeSnapshot().effective !== "mobile") navigateConsoleRoute("/operations");
+        if (getViewModeSnapshot().effective !== "mobile") navigateConsoleRoute("/objectives");
         openSettingsSurface(target.params?.section);
         return true;
       }
@@ -137,13 +137,13 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
             setMobileTool(null);
             openRailPanel(owner.entry.id);
             setMobileDestination({ kind: "plugin", entryId: owner.entry.id, ...(target.params ? { params: target.params } : {}) });
-            navigateConsoleRoute("/operations");
+            navigateConsoleRoute("/objectives");
           } else revealRailPanel(owner.entry.id);
           openPane({ paneId: target.paneId, params: target.params, mount: "rail" });
           return true;
         }
       }
-      navigateConsoleRoute("/operations");
+      navigateConsoleRoute("/objectives");
       return false;
     },
   };
@@ -152,7 +152,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
 // Shell 배치 요청이 성공했을 때만 작업 화면으로 돌아가 Shell 표면을 연다.
 function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
   if (result.ok) {
-    navigateConsoleRoute("/operations");
+    navigateConsoleRoute("/objectives");
     revealExpandedSurface({ surfaceId: "shell" });
   }
   return result;
@@ -180,15 +180,15 @@ export function createHostCapabilities(
   const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(readBindings()));
   const capabilities: ConsoleClientCapabilities = {
     ...base,
-    operations: {
-      ...base.operations,
-      // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
-      // 확대 도구는 focusOperation이 접어 대화를 드러낸다 — 도구 자체는 같은 자리에 남는다.
-      focus: (operationId) => focusOperation(operationId),
+    objectiveRecords: {
+      ...base.objectiveRecords,
+      // 플러그인의 「이 Objective 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Objective 을 가운데에 세운다.
+      // 확대 도구는 focusObjective이 접어 대화를 드러낸다 — 도구 자체는 같은 자리에 남는다.
+      focus: (objectiveId) => focusObjective(objectiveId),
     },
     notifications: {
-      emit: (notification) => raiseOperationNotification(notification),
-      dismiss: (operationId) => dismissNotificationsForOperation(operationId),
+      emit: (notification) => raiseObjectiveNotification(notification),
+      dismiss: (objectiveId) => dismissNotificationsForObjective(objectiveId),
     },
     // 실험 설정은 코어 general 설정의 한 항목이다 — 플러그인은 스토어 스냅샷에서 읽고 같은 구독으로 깨어난다.
     experiments: {
@@ -206,43 +206,43 @@ export function createHostCapabilities(
       refresh: () => refreshModelRoster(),
     },
     runtime: {
-      set: (operationId, runtimeState) => setOperationRuntime(operationId, runtimeState),
-      clear: (operationId) => clearOperationRuntime(operationId),
-      setHydration: (hydration, error) => setOperationRuntimeHydration(hydration, error),
+      set: (objectiveId, runtimeState) => setObjectiveRuntime(objectiveId, runtimeState),
+      clear: (objectiveId) => clearObjectiveRuntime(objectiveId),
+      setHydration: (hydration, error) => setObjectiveRuntimeHydration(hydration, error),
     },
     statusDetail: {
-      set: (operationId, detail) => setOperationStatusDetail(operationId, detail),
-      clear: (operationId) => clearOperationStatusDetail(operationId),
+      set: (objectiveId, detail) => setObjectiveStatusDetail(objectiveId, detail),
+      clear: (objectiveId) => clearObjectiveStatusDetail(objectiveId),
     },
     consoleState: {
       getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label, ...(theater.alias ? { alias: theater.alias } : {}) })),
       // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
       // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
-      // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveOperationRuntimeActivity)을 원 런타임에 쓴다.
+      // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveObjectiveRuntimeActivity)을 원 런타임에 쓴다.
       // 활동은 표시 어휘가 아니라 원시 값이다(background 를 접지 않는다) — 플러그인 계약이고, 접는 것은 각 표면의 표시 몫이다.
-      getOperations: (options) => {
+      getObjectiveRecords: (options) => {
         const snapshot = getState();
         const nested = options?.nested === true;
-        const operations = nested ? [...snapshot.operations, ...snapshot.nestedOperations] : snapshot.operations;
-        const parents = nested ? new Set(snapshot.nestedOperations.map((operation) => operation.parentOperationId)) : null;
-        const own = parents && parents.size > 0 ? ownOperationRuntime() : null;
-        return operations.map((operation) => ({
-          id: operation.id,
-          theaterId: operation.theaterId,
-          type: operation.type,
-          title: operation.title,
-          activity: resolveOperationRuntimeActivity(operation, snapshot.operationRuntime),
-          ...(nested && operation.parentOperationId ? { parentOperationId: operation.parentOperationId } : {}),
-          ...(own && parents!.has(operation.id) ? { ownActivity: resolveOperationRuntimeActivity(operation, own) } : {}),
+        const objectiveRecords = nested ? [...snapshot.objectiveRecords, ...snapshot.nestedObjectiveRecords] : snapshot.objectiveRecords;
+        const parents = nested ? new Set(snapshot.nestedObjectiveRecords.map((objectiveRecord) => objectiveRecord.parentObjectiveId)) : null;
+        const own = parents && parents.size > 0 ? ownObjectiveRuntime() : null;
+        return objectiveRecords.map((objectiveRecord) => ({
+          id: objectiveRecord.id,
+          theaterId: objectiveRecord.theaterId,
+          type: "agent",
+          title: objectiveRecord.title,
+          activity: resolveObjectiveRuntimeActivity(objectiveRecord, snapshot.objectiveRecordRuntime),
+          ...(nested && objectiveRecord.parentObjectiveId ? { parentObjectiveId: objectiveRecord.parentObjectiveId } : {}),
+          ...(own && parents!.has(objectiveRecord.id) ? { ownActivity: resolveObjectiveRuntimeActivity(objectiveRecord, own) } : {}),
         }));
       },
       getActiveTheaterId: getViewedTheaterId,
       getViewedTheaterId,
       viewTheater: viewTheaterInbox,
-      getActiveOperationId: () => getState().activeOperationId,
+      getActiveObjectiveId: () => getState().activeObjectiveId,
       getConnection: () => getState().connection,
-      getOperationRuntimeHydration: () => getState().operationRuntimeHydration,
-      getSelectedOperationId: () => getState().selectedOperationId,
+      getObjectiveRuntimeHydration: () => getState().objectiveRecordRuntimeHydration,
+      getSelectedObjectiveId: () => getState().selectedObjectiveId,
       setActiveTheater: viewTheaterInbox,
       subscribe: subscribeViewedTheater,
       // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
@@ -284,7 +284,7 @@ export function createHostCapabilities(
         if (result && !result.ok) return result;
         viewTheaterInbox(request.theaterId);
         capabilities.rail.open(binding!.entry.id);
-        navigateConsoleRoute("/operations");
+        navigateConsoleRoute("/objectives");
         return { ok: true };
       },
     },
@@ -310,7 +310,7 @@ export function createHostCapabilities(
       open: (panelId, params) => {
         const binding = readBindings().find((item) => item.entry.id === panelId);
         // 폰에서 대화를 가리킨 열기는 그 대화 정보 화면의 탭으로 선다(`RailEntryMobile.conversationPane`).
-        if (params?.operationId && revealMobileConversationTab(binding, params.operationId)) return;
+        if (params?.objectiveId && revealMobileConversationTab(binding, params.objectiveId)) return;
         const primary = binding?.panes.find((pane) => pane.role === "primary");
         if (params && primary) land({ paneId: primary.id, params });
         else revealRailPanel(panelId);
@@ -340,15 +340,15 @@ export function createHostCapabilities(
       },
       open: (surfaceId, params) => {
         const opened = openConversationSurface(surfaceId, params);
-        if (opened) navigateConsoleRoute("/operations");
+        if (opened) navigateConsoleRoute("/objectives");
         return opened;
       },
       close: (surfaceId) => closeConversationSurface(surfaceId),
       current: () => publicSurface(getConversationSurface()),
       // 대화 중심 화면의 셸과 모바일 셸이 같은 자리(conversation-slots)에 지금 선 대화의 주인을 싣는다.
-      subjectOperationId: () => getConversationSubject()?.id ?? null,
-      ledgerOperationId: (rootOperationId) => ledgerOperationId(rootOperationId),
-      openLedger: (rootOperationId, operationId) => openLedger(rootOperationId, operationId),
+      subjectObjectiveId: () => getConversationSubject()?.id ?? null,
+      ledgerObjectiveId: (rootObjectiveId) => ledgerObjectiveId(rootObjectiveId),
+      openLedger: (rootObjectiveId, objectiveId) => openLedger(rootObjectiveId, objectiveId),
       subscribeLedger: (listener) => subscribeLedger(listener),
     },
     composer: {

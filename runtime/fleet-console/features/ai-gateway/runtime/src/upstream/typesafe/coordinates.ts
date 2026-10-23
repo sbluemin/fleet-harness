@@ -17,7 +17,7 @@ export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
 
 /**
  * TypeSafe가 내놓는 System One 모델들. `models.json`에 넣지 않는 것이 요점이다 — 그
- * 카탈로그에 앉는 순간 `/model` 픽커와 Operation 실행 메뉴가 이 이름들을 고를 수 있는
+ * 카탈로그에 앉는 순간 `/model` 픽커와 Objective 실행 메뉴가 이 이름들을 고를 수 있는
  * 대화 모델로 내놓고, 고르면 Anthropic Messages 요청이 이 wire로 나가 반드시 실패한다.
  * 설정 화면은 이 목록을 "쓸 수 있는 것"으로 보여 줄 뿐, 선택지로 내놓지 않는다.
  */

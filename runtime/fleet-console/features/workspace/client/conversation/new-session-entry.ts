@@ -21,7 +21,7 @@ export function resolveNewSessionTheaterId(): string | null {
 }
 
 /**
- * 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다.
+ * 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다.
  * 이미 열려 있으면 고른 Theater 를 그대로 두고 컴포저로 돌아간다 — 쓰던 문장과 고른 자리를 단축키가 갈아치우지 않는다.
  */
 export function openDefaultNewSession(): void {
@@ -34,21 +34,21 @@ export function openDefaultNewSession(): void {
 
 /**
  * 플러그인·부유 위젯의 `composer.open` — 새 세션 컴포저를 열고 caret 을 넣는다. 폰에서는 새 대화 시트, 데스크톱에서는
- * 새 세션 화면이다(Operations 밖이면 그리로 옮긴다). `draft` 는 문면을 갈아치우고 보내지 않는다. 행선지는 '@'로 고른 것과 같다.
+ * 새 세션 화면이다(ObjectiveRecords 밖이면 그리로 옮긴다). `draft` 는 문면을 갈아치우고 보내지 않는다. 행선지는 '@'로 고른 것과 같다.
  */
 export function openNewSessionComposer(options?: {
   readonly draft?: string;
-  readonly mentionOperationId?: string;
+  readonly mentionObjectiveId?: string;
   readonly mentionTarget?: MentionTargetAddress;
 }): void {
   const draft = typeof options?.draft === "string" ? options.draft : null;
-  const mentionOperationId = options?.mentionOperationId ?? null;
+  const mentionObjectiveId = options?.mentionObjectiveId ?? null;
   const mentionTarget = options?.mentionTarget ?? null;
-  if (draft !== null || mentionOperationId !== null || mentionTarget !== null) seedNewSession({ draft, mentionOperationId, mentionTarget });
+  if (draft !== null || mentionObjectiveId !== null || mentionTarget !== null) seedNewSession({ draft, mentionObjectiveId, mentionTarget });
   if (getViewModeSnapshot().effective === "mobile") {
     openMobileNewSession();
     return;
   }
-  if (!getState().operationsViewActive) navigateConsoleRoute("/operations");
+  if (!getState().objectiveRecordsViewActive) navigateConsoleRoute("/objectives");
   openDefaultNewSession();
 }

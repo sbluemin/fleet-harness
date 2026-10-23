@@ -13,7 +13,7 @@ import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/hos
 import { createBrowserRouter } from "../features/browser/host/routes.js";
 
 describe("session browser host contract", () => {
-  it("includes shortcuts (including empty list) and generalizes viewOwner without fake operations", async () => {
+  it("includes shortcuts (including empty list) and generalizes viewOwner without fake objectives", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });
     engine.subscriberOpened("local");
@@ -39,7 +39,7 @@ describe("session browser host contract", () => {
 
     engine.bindView(targetId, GLOBAL_BROWSER_OWNER_ID);
     expect(engine.viewOwner(targetId)).toBe("global");
-    expect(engine.viewOperation(targetId)).toBe("global");
+    expect(engine.viewObjective(targetId)).toBe("global");
   });
 
   it("rejects the removed global browser route and keeps shortcut origin gates", async () => {
@@ -57,14 +57,14 @@ describe("session browser host contract", () => {
       },
     });
 
-    const operations = new Map<string, { id: string; payload: Record<string, unknown> }>();
+    const objectiveRecords = new Map<string, { id: string; payload: Record<string, unknown> }>();
     let exactOrigin = true;
     let writeAdmitted = true;
 
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { interruptOperation: () => 0, pasteIntoTerminal: () => false },
-      operations: { get: (id: string) => operations.get(id) ?? null },
+      browserMcp: { interruptObjective: () => 0, pasteIntoTerminal: () => false },
+      objectiveRecords: { get: (id: string) => objectiveRecords.get(id) ?? null },
       isWriteAdmitted: () => writeAdmitted,
       isExactConsoleOrigin: () => exactOrigin,
       writeJson: (res: ServerResponse, status: number, body: unknown) => {
@@ -76,7 +76,7 @@ describe("session browser host contract", () => {
       withSecurityHeaders: (h) => h,
     });
 
-    // 삭제된 전역 경로는 Operation 으로 열리지 않는다.
+    // 삭제된 전역 경로는 Objective 으로 열리지 않는다.
     const stateRes = {} as ServerResponse;
     const handledState = await router({
       req: { method: "GET" } as IncomingMessage,
@@ -86,12 +86,12 @@ describe("session browser host contract", () => {
     expect(handledState).toBe(true);
     expect((stateRes as unknown as { status: number }).status).toBe(404);
 
-    // 옛 상태·복원으로 id "global"인 Operation이 들어와 있어도 Session 경로에 붙지 않는다.
-    operations.set("global", { id: "global", payload: {} });
+    // 옛 상태·복원으로 id "global"인 Objective이 들어와 있어도 Session 경로에 붙지 않는다.
+    objectiveRecords.set("global", { id: "global", payload: {} });
     const spoofRes = {} as ServerResponse;
-    await router({ req: { method: "GET" } as IncomingMessage, res: spoofRes, pathname: "/api/v1/browser/operations/global/state" });
+    await router({ req: { method: "GET" } as IncomingMessage, res: spoofRes, pathname: "/api/v1/browser/objectives/global/state" });
     expect((spoofRes as unknown as { status: number }).status).toBe(404);
-    operations.delete("global");
+    objectiveRecords.delete("global");
 
     // 2. POST /api/v1/browser/shortcuts — 단축키 설정
     const shortcutsRes = {} as ServerResponse;
@@ -155,13 +155,13 @@ describe("session browser host contract", () => {
     });
 
     const released: string[] = [];
-    const browser = createBrowserMcpHost({ service, operations: () => [], screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
+    const browser = createBrowserMcpHost({ service, objectiveRecords: () => [], screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
     try {
       await expect(service.createTab(GLOBAL_BROWSER_OWNER_ID, "https://example.com/reserved", "user")).rejects.toMatchObject({ code: "browser_owner_reserved" });
-      expect(service.status().operations).not.toContain(GLOBAL_BROWSER_OWNER_ID);
+      expect(service.status().objectiveRecords).not.toContain(GLOBAL_BROWSER_OWNER_ID);
       const foreign = await service.createTab("op-foreign", "https://example.com/foreign", "user");
 
-      // 에이전트의 동시 생성도 완성 탭과 생성 예약을 합쳐 Operation별 8개까지만 받는다.
+      // 에이전트의 동시 생성도 완성 탭과 생성 예약을 합쳐 Objective별 8개까지만 받는다.
       for (let index = 0; index < 7; index += 1) await service.createTab("op-target", null, "agent");
       const concurrent = await Promise.allSettled(Array.from({ length: 4 }, () => service.createTab("op-target", null, "agent")));
       expect(concurrent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -170,15 +170,15 @@ describe("session browser host contract", () => {
       ]);
       expect(service.state("op-target").tabs).toHaveLength(8);
 
-      await service.closeOperation("op-target");
+      await service.closeObjective("op-target");
       expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
-      // 허용 회수가 첫 탭 생성과 겹쳐도 제거된 Operation에 옛 탭·네이티브 타깃이 되살아나지 않는다.
+      // 허용 회수가 첫 탭 생성과 겹쳐도 제거된 Objective에 옛 탭·네이티브 타깃이 되살아나지 않는다.
       const viewsBeforeReset = engine.snapshot().views.map((view) => view.id);
       const interrupted = service.createTab("op-reset", null, "agent");
       const interruptedResult = interrupted.catch((error: unknown) => error);
-      const resettingOp = (service as unknown as { operations: Map<string, { contextId: string; pendingTabs: number; tabs: Map<string, unknown> }> }).operations.get("op-reset")!;
-      await service.closeOperation("op-reset");
+      const resettingOp = (service as unknown as { objectiveRecords: Map<string, { contextId: string; pendingTabs: number; tabs: Map<string, unknown> }> }).objectiveRecords.get("op-reset")!;
+      await service.closeObjective("op-reset");
       expect(await interruptedResult).toMatchObject({ code: "browser_call_interrupted" });
       expect(resettingOp.tabs.size).toBe(0);
       expect(resettingOp.contextId).toBe("");
@@ -246,7 +246,7 @@ describe("session browser host contract", () => {
       const router = createBrowserRouter({
         browserService: service,
         browserMcp: browser,
-        operations: { get: (id: string) => id === GLOBAL_BROWSER_OWNER_ID ? { id, payload: {} } : null },
+        objectiveRecords: { get: (id: string) => id === GLOBAL_BROWSER_OWNER_ID ? { id, payload: {} } : null },
         isWriteAdmitted: () => true,
         isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
@@ -257,17 +257,17 @@ describe("session browser host contract", () => {
       const resolved = {} as ServerResponse & { status: number; body: { ownerId: string } };
       await router({ req: { method: "GET" } as IncomingMessage, res: resolved, pathname: "/api/v1/browser/sessions/resolve" });
       expect(resolved.body.ownerId).toBe(browser.resolveSessionOwner("commodore", "commodore:00000000-0000-0000-0000-000000000001"));
-      const sessionState = {} as ServerResponse & { status: number; body: { operationId: string } };
-      await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/operations/${encodeURIComponent(resolved.body.ownerId)}/state` });
+      const sessionState = {} as ServerResponse & { status: number; body: { objectiveId: string } };
+      await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/objectives/${encodeURIComponent(resolved.body.ownerId)}/state` });
       expect(sessionState.status).toBe(200);
-      expect(sessionState.body.operationId).toBe(resolved.body.ownerId);
+      expect(sessionState.body.objectiveId).toBe(resolved.body.ownerId);
       const removed = {} as ServerResponse & { status: number; body: { error: string } };
       await router({ req: { method: "GET" } as IncomingMessage, res: removed, pathname: "/api/v1/browser/global/state" });
       expect(removed.status).toBe(404);
       const spoof = {} as ServerResponse & { status: number };
-      await router({ req: { method: "GET" } as IncomingMessage, res: spoof, pathname: "/api/v1/browser/operations/global/state" });
+      await router({ req: { method: "GET" } as IncomingMessage, res: spoof, pathname: "/api/v1/browser/objectives/global/state" });
       expect(spoof.status).toBe(404);
-      expect(service.status().operations).not.toContain(GLOBAL_BROWSER_OWNER_ID);
+      expect(service.status().objectiveRecords).not.toContain(GLOBAL_BROWSER_OWNER_ID);
 
       const notices: { available: boolean }[] = [];
       service.onAvailability((notice) => notices.push(notice));

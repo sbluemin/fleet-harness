@@ -30,7 +30,7 @@ import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme, type MobileScheme } from ".
 import { getT } from "../../agent/i18n/index.js";
 import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
-import { readTerminalViewPosition, saveTerminalViewPosition, type TerminalViewPosition } from "../../operation-view-state.js";
+import { readTerminalViewPosition, saveTerminalViewPosition, type TerminalViewPosition } from "../../objective-view-state.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
@@ -43,16 +43,16 @@ type TerminalThemeId = "dark" | "light";
 type TerminalPaletteId = TerminalThemeId | "mobile-dark" | "mobile-light";
 
 export interface TerminalSurfaceProps {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly ticketPath: string;
   /** 티켓 요청 본문에 얹을 추가 필드(전역 Shell의 첫 기동 Theater 등). */
   readonly ticketFields?: Readonly<Record<string, unknown>>;
   readonly wsPath: string;
-  /** 독립 Shell은 terminal tint를, Operation 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
+  /** 독립 Shell은 terminal tint를, Objective 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
   readonly surface?: "panel" | "shell";
   readonly theme?: TerminalThemeId;
   /**
-   * 모바일 Operation 화면의 본문인가(호스트가 막대를 그리는 화면). 그러면 키 줄이 포인터 종류와 무관하게
+   * 모바일 Objective 화면의 본문인가(호스트가 막대를 그리는 화면). 그러면 키 줄이 포인터 종류와 무관하게
    * 서고 모바일 문법(한 줄 가로 밀기 + 키보드 원, impl-spec S-30)으로 그려진다.
    */
   readonly mobile?: boolean;
@@ -274,7 +274,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -303,7 +303,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
-  const restoredPositionRef = useRef<TerminalViewPosition | undefined>(surface === "panel" ? readTerminalViewPosition(operationId) : undefined);
+  const restoredPositionRef = useRef<TerminalViewPosition | undefined>(surface === "panel" ? readTerminalViewPosition(objectiveId) : undefined);
   const previousFocusRef = useRef({ active, keyboardFocusRequestId });
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -526,7 +526,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       // 정수 cols×rows 뒤에 남는 한 셀 미만의 오른쪽·아래 공간은 xterm canvas 밖이다. 전체 화면 TUI는
       // 자기 화면을 마지막 셀까지 칠하므로, 그 셀의 배경색을 잉여까지 잇지 않으면 terminal field 색이
       // 테두리처럼 보인다. 입력·cell geometry는 그대로 두고 별도 비상호작용 strip에 마지막 열·행의
-      // 배경색만 연장한다. Operation과 rail Shell이 공유하는 이 mount에서 처리해야 두 표면이 같은 계약을 가진다.
+      // 배경색만 연장한다. Objective과 rail Shell이 공유하는 이 mount에서 처리해야 두 표면이 같은 계약을 가진다.
       const alternateScreenEdgeFill = xtermScreen ? createTerminalAlternateScreenEdgeFill(terminal, container, xtermScreen) : null;
       // xterm's own touch inertia emits gesture changes without a client point. Under mouse tracking
       // it serializes those missing coordinates as `NaN` and sends them to the PTY. Guard the private
@@ -626,7 +626,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       let attachedGeneration: number | undefined;
       let restoreReplayPosition = true;
       const connection = createTerminalConnection({
-        operationId,
+        objectiveId,
         ticketPath,
         ...(ticketFieldsRef.current ? { ticketFields: ticketFieldsRef.current } : {}),
         wsPath,
@@ -785,7 +785,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         if (surface === "panel") {
           const buffer = terminal.buffer.active;
           const pending = replayingScrollback ? restoredPositionRef.current : undefined;
-          saveTerminalViewPosition(operationId, pending ?? {
+          saveTerminalViewPosition(objectiveId, pending ?? {
             generation: attachedGeneration,
             following: scrollFollow.isFollowing(),
             bottomDistance: Math.max(0, buffer.baseY - buffer.viewportY),
@@ -838,10 +838,10 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       resizeObserver?.disconnect();
       cleanupMountedTerminal?.();
     };
-  }, [operationId, surface, ticketPath, wsPath]);
+  }, [objectiveId, surface, ticketPath, wsPath]);
 
   // 활성 전환 시 이미 마운트된 xterm에 포커스를 다시 주고 기존 contract대로 bottom following을 재개한다.
-  // keyboard request는 동일 Operation 재선택 시 active 불변을, input-ready epoch는 비동기 마운트 갭을 대응한다.
+  // keyboard request는 동일 Objective 재선택 시 active 불변을, input-ready epoch는 비동기 마운트 갭을 대응한다.
   // 비활성 전환에서는 scheduler 속도만 낮추며 focus 요청도 소비하지 않는다.
   useEffect(() => {
     outputSchedulerRef.current?.setActive(active !== false);
@@ -952,7 +952,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [webgl.granted, operationId, mountedTerminalEpoch]);
+  }, [webgl.granted, objectiveId, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1133,7 +1133,7 @@ function baseTerminalThemeFor(theme: TerminalPaletteId): ITheme {
 /* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
    필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
    - 다크 + 게이트 열림: xterm 배경은 알파 0으로 비우고(RGB는 아래 glassFieldClearColor 참조),
-     Agent Operation은 그 Operation을 담은 패널의 panel tint를, 독립 Shell은 .terminal-shell/expanded
+     Agent Objective은 그 Objective을 담은 패널의 panel tint를, 독립 Shell은 .terminal-shell/expanded
      slot의 terminal tint를 필드·거터 한 겹으로 공유한다. 다크는 minimumContrastRatio=1이라
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
@@ -1169,7 +1169,7 @@ export function resolvePanelSurface(
    화면 전체를 지우는 뷰포트 사각형만 알파를 보존하므로, 필드는 투명한데 dim 셀만 불투명해진다.
    `rgba(0,0,0,0)`을 넘기면 그 셀이 순수 검정으로 칠해진다 — Claude Code가 diff 거터를 dim으로
    찍는 것이 실측으로 확인됐고(PTY 원시 바이트), 유리 위에 검정 블록으로 드러났다.
-   그래서 Operation은 유리 유효색의 불투명 근사(--glass-tint-terminal-floor)를, 독립 Shell은
+   그래서 Objective은 유리 유효색의 불투명 근사(--glass-tint-terminal-floor)를, 독립 Shell은
    실제 terminal tint를 RGB에 싣는다: 알파 0이라 필드 자체는 뒤의 면과 blur를 통과시키고,
    알파가 1로 강제되는 dim 사각형만 각 면과 가까운 색이 된다. 유리는 뒤에 오는 것에 따라
    유효색이 흔들리므로 이 값은 일치가 아니라 근사다. */

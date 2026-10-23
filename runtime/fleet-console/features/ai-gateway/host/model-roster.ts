@@ -4,7 +4,7 @@ import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { ModelRosterHost } from "./model-ports.js";
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { MODEL_ROSTER_CHANGED_CHANNEL, ROSTER_FALLBACK_GROUP_ID, ROSTER_FALLBACK_MODEL, isModelRosterTarget, resolveRosterCoordinate, type ModelCoordinate, type ModelRoster, type ModelRosterRow, type ModelRosterTarget, type ResolvedWireCoordinate } from "../shared/models.js";
 import {
@@ -30,7 +30,7 @@ import {
  * 모델 로스터 — Console의 모든 모델 선택지(새 세션·Objectives·Settings·플러그인)가 읽는 유일한 원천.
  *
  * Settings › AI Gateway에서 켠 선별(`AiGatewaySelection.models`, Claude 공급자 항목 포함)을 런치 카탈로그와
- * 같은 `OperationLaunchVariantGroup[]` 모양으로 투영한다. 행의 `launch.model`은 정준 id(실행 id)다 — Claude는
+ * 같은 `ObjectiveLaunchVariantGroup[]` 모양으로 투영한다. 행의 `launch.model`은 정준 id(실행 id)다 — Claude는
  * Claude Code 별칭(`opus[1m]`), 나머지는 scoped id(`codex--gpt-6-luna`). 강도 사다리는 Gateway의 노출 설정을
  * 따른다. Claude CLI 설치 여부와 무관하므로 Agent SDK 세션도 같은 목록을 본다.
  */
@@ -69,7 +69,7 @@ const ROSTER_PROVIDER_ORDER: readonly GatewayProvider[] = [
  * 빈 로스터의 launch 카탈로그 — 최후 폴백 좌표(Sonnet 1M) 한 행만 둔 띠. 실행 표면이 모델 행 없이 멈추지 않게 하고,
  * 그 띠 id로 「폴백」임을 드러낸다. 강도 축은 launch 대상의 전체 축이다(서버가 실행 시 그대로 싣는다).
  */
-export function buildRosterFallbackGroup(): OperationLaunchVariantGroup {
+export function buildRosterFallbackGroup(): ObjectiveLaunchVariantGroup {
   const model = ROSTER_FALLBACK_MODEL;
   const ordinary = ["low", "medium", "high", "xhigh", "max"] as const;
   return {
@@ -93,7 +93,7 @@ export function canonicalGatewayModelId(model: GatewayModel): string {
 }
 
 export function buildModelRoster(selection: AiGatewaySelection, target: ModelRosterTarget): ModelRoster {
-  const groups: OperationLaunchVariantGroup[] = [];
+  const groups: ObjectiveLaunchVariantGroup[] = [];
   for (const provider of ROSTER_PROVIDER_ORDER) {
     const models = selection.models.filter((model) => model.provider === provider);
     if (models.length === 0) continue;
@@ -110,7 +110,7 @@ function toRosterRow(
   model: GatewayModel,
   selection: AiGatewaySelection,
   target: ModelRosterTarget,
-): OperationLaunchVariantRow {
+): ObjectiveLaunchVariantRow {
   const id = canonicalGatewayModelId(model);
   // 일상 단은 노출/카탈로그 사다리만 따른다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지 않는다.
   const ordinary: readonly GatewayReasoningEffort[] = selection.effortExposure[model.id] ?? exposableEffortLadder(model);

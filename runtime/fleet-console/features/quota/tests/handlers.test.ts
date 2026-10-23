@@ -9,8 +9,8 @@ import type { LoginGateway, SettingsSerializer } from "../host/handlers.js";
 
 function createSerializer(): SettingsSerializer {
   let chain = Promise.resolve();
-  return <T>(operation: () => Promise<T>) => {
-    const result = chain.then(operation, operation);
+  return <T>(objectiveRecord: () => Promise<T>) => {
+    const result = chain.then(objectiveRecord, objectiveRecord);
     chain = result.then(() => undefined, () => undefined);
     return result;
   };

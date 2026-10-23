@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView } from "../../../execution/shared/operations/types.js";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "../../../execution/client/operations.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../objectives/shared/records/types.js";
+import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../../execution/client/objective-records.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
@@ -17,9 +17,9 @@ import { launchProviderFromGroupId, launchProviderGlyph } from "../../../ai-gate
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
-import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
-import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
+import { ObjectiveNameMark } from "../../../execution/client/components/objective-name-mark.js";
+import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { notifyKeepOutSurfaceChanged } from "../../../../core/client/src/integration/floating-widget-layer.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
@@ -37,16 +37,16 @@ import { resolveNewSessionTheaterId } from "./new-session-entry.js";
 import "./new-session.css";
 
 /**
- * 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다(승인안 ① A, v4).
+ * 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 연다(승인안 ① A, v4).
  *
  * 여는 것만으로는 아무것도 만들지 않는다. 첫 메시지를 보내야 실행 의도(requestLaunch)로
- * 나가고, 실행은 Operations 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
- * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Operation 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
+ * 나가고, 실행은 ObjectiveRecords 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
+ * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Objective 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
  *
- * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Operation·사령관·부관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
+ * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Objective·사령관·부관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
  * 같이 쓰는 SDK 덱(퀵 런치바 문법 — 묶음 머리 옆 구분선)이고 캡슐 위에 뜬다(new-session-deck). S3 「캡슐 안 목록」은 이 덱으로
  * 대체됐다. 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
- * 새 Operation 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
+ * 새 Objective 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
  *
  * Theater 가 없거나 새로 더할 때는 이 화면에서 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길). 더한 Theater 가
  * 곧 이번 세션의 Theater 다. 시작 보기의 기억은 '+' 입구의 것(launch-start-surface)을 그대로 잇는다.
@@ -62,9 +62,9 @@ export function NewSessionColumn({ state, target, tools }: {
   const theater = state.theaters.find((candidate) => candidate.id === target.theaterId)
     ?? state.theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId())
     ?? null;
-  const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[] | null>(null);
+  const [catalog, setCatalog] = useState<readonly ObjectiveCatalogPlugin[] | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [startView, setStartView] = useState<OperationLaunchView>(readLaunchStartSurface);
+  const [startView, setStartView] = useState<ObjectiveLaunchView>(readLaunchStartSurface);
   const [starting, setStarting] = useState(false);
   const [launchError, setLaunchError] = useState<{ readonly key: string; readonly shortenBy: number | null } | null>(null);
   const [theaterMenuOpen, setTheaterMenuOpen] = useState<"chip" | "card" | null>(null);
@@ -118,14 +118,14 @@ export function NewSessionColumn({ state, target, tools }: {
       abort.abort();
       abort = new AbortController();
       const signal = abort.signal;
-      void fetchOperationCatalog(signal)
+      void fetchObjectiveCatalog(signal)
         .then((next) => { if (!signal.aborted) setCatalog(next); })
         .catch(() => { if (!signal.aborted) setCatalog((current) => current ?? []); });
     };
     load();
-    window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, load);
+    window.addEventListener(OBJECTIVE_CATALOG_CHANGED_EVENT, load);
     return () => {
-      window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, load);
+      window.removeEventListener(OBJECTIVE_CATALOG_CHANGED_EVENT, load);
       abort.abort();
     };
   }, []);
@@ -194,7 +194,7 @@ export function NewSessionColumn({ state, target, tools }: {
   const rows = groups.flatMap((group) => group.rows);
   const selectedRow = rows.find((row) => (row.launch.model ?? null) === launchChoice.model) ?? null;
   const autoLabel = t("launchVariants.effort.auto");
-  const viewLabelOf = (view: OperationLaunchView) => t(view === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
+  const viewLabelOf = (view: ObjectiveLaunchView) => t(view === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
 
   const placeCaret = (next: string) => {
     setPrompt(next);
@@ -279,7 +279,7 @@ export function NewSessionColumn({ state, target, tools }: {
                 key: `band-${group.id}`,
                 label: group.label,
                 sticky: true,
-                ...(provider ? { lead: <span className="operation-launch-provider-glyph">{launchProviderGlyph(provider)}</span>, className: `is-${provider}` } : {}),
+                ...(provider ? { lead: <span className="objective-launch-provider-glyph">{launchProviderGlyph(provider)}</span>, className: `is-${provider}` } : {}),
               },
               ...matched.map((row): NewSessionDeckItem => ({
                 kind: "row",
@@ -353,18 +353,18 @@ export function NewSessionColumn({ state, target, tools }: {
         setTargetGone(false);
         placeCaret(stripped);
       };
-      // 퀵 런치바 순서 — Operations(Theater 띠) → 시작 전(Theater 띠) → 플러그인 행선지(사령관·부관). 묶음 머리는 행이 있을 때만 선다.
-      const operationRows = (groups: typeof sources.operationGroups, prefix: string) => groups.flatMap((group): NewSessionDeckItem[] => [
+      // 퀵 런치바 순서 — ObjectiveRecords(Theater 띠) → 시작 전(Theater 띠) → 플러그인 행선지(사령관·부관). 묶음 머리는 행이 있을 때만 선다.
+      const objectiveRecordRows = (groups: typeof sources.objectiveRecordGroups, prefix: string) => groups.flatMap((group): NewSessionDeckItem[] => [
         { kind: "band", key: `${prefix}band-${group.theaterId ?? "none"}`, label: group.theaterLabel },
         ...group.entries.map((entry): NewSessionDeckItem => ({
           kind: "row",
-          key: `op-${entry.operationId}`,
-          icon: <OperationNameMark operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })} size={16} />,
-          name: markMatch(entry.operationName, query),
+          key: `op-${entry.objectiveId}`,
+          icon: <ObjectiveNameMark objectiveRecord={{ id: entry.objectiveId, parentObjectiveId: entry.parentObjectiveId }} status={resolveObjectiveMarkVisual({ activity: entry.activity, objectiveId: entry.objectiveId, idleArrivalIds })} size={16} />,
+          name: markMatch(entry.objectiveRecordName, query),
           value: entry.activity === "running" ? t("conversation.newSession.mentionWorking") : null,
-          // 입력을 기다리는 Operation 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다(흐리게 서고 방향키가 건너뛴다).
+          // 입력을 기다리는 Objective 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다(흐리게 서고 방향키가 건너뛴다).
           disabled: !isMentionSelectable(entry.activity),
-          pick: () => pickMention({ kind: "operation", entry }),
+          pick: () => pickMention({ kind: "objectiveRecord", entry }),
         })),
       ]);
       const pluginItems = sources.pluginCategories.flatMap((category): NewSessionDeckItem[] => [
@@ -379,10 +379,10 @@ export function NewSessionColumn({ state, target, tools }: {
         })),
       ]);
       return [
-        { kind: "section", key: "operations", label: t("conversation.newSession.deckOperations") },
-        ...operationRows(sources.operationGroups, ""),
+        { kind: "section", key: "objectiveRecords", label: t("conversation.newSession.deckObjectiveRecords") },
+        ...objectiveRecordRows(sources.objectiveRecordGroups, ""),
         { kind: "section", key: "pending", label: t("conversation.newSession.deckPending") },
-        ...operationRows(sources.pendingGroups, "pending-"),
+        ...objectiveRecordRows(sources.pendingGroups, "pending-"),
         ...pluginItems,
       ];
     }
@@ -408,14 +408,14 @@ export function NewSessionColumn({ state, target, tools }: {
     if (seed.draft !== null) placeCaret(seed.draft);
     setMentionError(null);
     setTargetGone(false);
-    if (seed.mentionOperationId !== null) {
-      const entry = resolveMentionEntry(getState(), sources.messageableTypesByPlugin, seed.mentionOperationId);
-      setMentionPick(entry ? { kind: "operation", entry } : null);
+    if (seed.mentionObjectiveId !== null) {
+      const entry = resolveMentionEntry(getState(), sources.messageableTypesByPlugin, seed.mentionObjectiveId);
+      setMentionPick(entry ? { kind: "objectiveRecord", entry } : null);
     } else if (seed.mentionTarget !== null) {
       const address = seed.mentionTarget;
       const row = sources.allPluginRows.find((candidate) => candidate.pluginId === address.pluginId && candidate.targetId === address.targetId);
       setMentionPick(row ? { kind: "plugin", row } : null);
-      // 사라진 행선지를 새 Operation 실행으로 조용히 바꾸지 않는다. 사람이 보낼 곳을 다시 고른다.
+      // 사라진 행선지를 새 Objective 실행으로 조용히 바꾸지 않는다. 사람이 보낼 곳을 다시 고른다.
       if (!row) {
         setTargetGone(true);
         setMentionError("chrome.launch.mentionErrorTargetGone");
@@ -438,7 +438,7 @@ export function NewSessionColumn({ state, target, tools }: {
     if (target.kind === "plugin") {
       const plugin = registry.providers.find((candidate) => candidate.id === target.row.pluginId);
       if (!plugin?.messageMentionTarget) return;
-      // 비-Operation 행선지는 첨부를 받지 않는다 — 조용히 빼면 그 이미지를 본다고 믿은 채 답을 읽는다.
+      // 비-Objective 행선지는 첨부를 받지 않는다 — 조용히 빼면 그 이미지를 본다고 믿은 채 답을 읽는다.
       if (attachmentSnap.items.length > 0) {
         setMentionError("chrome.launch.errorMentionAttachments");
         return;
@@ -460,7 +460,7 @@ export function NewSessionColumn({ state, target, tools }: {
     }
     const entry = target.entry;
     const plugin = registry.providers.find((candidate) => candidate.id === entry.pluginId);
-    if (!plugin?.messageOperation) return;
+    if (!plugin?.messageObjective) return;
     // 칩은 실행 대상 플러그인의 스토어에 올라갔다 — 다른 플러그인의 세션에는 실을 수 없다.
     if (attachmentSnap.items.length > 0 && entry.pluginId !== variantTarget?.pluginId) {
       setMentionError("chrome.launch.errorAttachmentUploadFailed");
@@ -469,7 +469,7 @@ export function NewSessionColumn({ state, target, tools }: {
     const delivered = attachmentSnap.items.flatMap((item) => item.id !== null ? [{ id: item.id, key: item.key }] : []);
     setSending(true);
     setMentionError(null);
-    void plugin.messageOperation(entry.operationId, text, delivered.map((item) => item.id))
+    void plugin.messageObjective(entry.objectiveId, text, delivered.map((item) => item.id))
       .then(() => {
         attachmentStore.releaseSent(delivered.map((item) => item.key));
         setSending(false);
@@ -537,10 +537,10 @@ export function NewSessionColumn({ state, target, tools }: {
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
       ...(launched.length > 0 ? { attachments: launched } : {}),
     });
-    // 새 Operation 이 서면 그 포커스가 이 화면을 걷는다(store 의 focusOperation). 그동안은 시작하는 중으로 선다.
+    // 새 Objective 이 서면 그 포커스가 이 화면을 걷는다(store 의 focusObjective). 그동안은 시작하는 중으로 선다.
   };
 
-  const launchDirect = (pluginId: string | null, kind: OperationLaunchKind) => {
+  const launchDirect = (pluginId: string | null, kind: ObjectiveLaunchKind) => {
     if (!theater || kind.disabled) return;
     setLaunchError(null);
     attachmentStore.clearNotice();
@@ -556,7 +556,7 @@ export function NewSessionColumn({ state, target, tools }: {
   }, [starting]);
 
   const toggleView = () => {
-    const next: OperationLaunchView = startView === "chat" ? "terminal" : "chat";
+    const next: ObjectiveLaunchView = startView === "chat" ? "terminal" : "chat";
     setStartView(next);
     writeLaunchStartSurface(next);
   };
@@ -612,7 +612,7 @@ export function NewSessionColumn({ state, target, tools }: {
               <h2 className="new-session-heading" id="new-session-other">{t("conversation.newSession.otherKinds")}</h2>
               <div className="new-session-card">
                 {directKinds.map(({ pluginId, kind }) => (
-                  <button key={`${pluginId}:${kind.id}`} type="button" className="new-session-row" disabled={kind.disabled === true || starting || theater === null} onClick={() => launchDirect(pluginId, kind)} data-operation-launch-kind={kind.id}>
+                  <button key={`${pluginId}:${kind.id}`} type="button" className="new-session-row" disabled={kind.disabled === true || starting || theater === null} onClick={() => launchDirect(pluginId, kind)} data-objective-launch-kind={kind.id}>
                     <span className="new-session-row-label">{kind.title}</span>
                     {kind.disabledReason ? <span className="new-session-row-meta">{kind.disabledReason}</span> : null}
                   </button>
@@ -648,7 +648,7 @@ export function NewSessionColumn({ state, target, tools }: {
             <span className="new-session-mention">
               <span className="new-session-mention-mark" aria-hidden="true">{mentionTarget.kind === "plugin"
                 ? mentionTarget.row.renderMark?.() ?? "@"
-                : <OperationNameMark operation={{ id: mentionTarget.entry.operationId, parentOperationId: mentionTarget.entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: mentionTarget.entry.activity, operationId: mentionTarget.entry.operationId, idleArrivalIds })} size={16} />}</span>
+                : <ObjectiveNameMark objectiveRecord={{ id: mentionTarget.entry.objectiveId, parentObjectiveId: mentionTarget.entry.parentObjectiveId }} status={resolveObjectiveMarkVisual({ activity: mentionTarget.entry.activity, objectiveId: mentionTarget.entry.objectiveId, idleArrivalIds })} size={16} />}</span>
               <span className="new-session-mention-name">{mentionTargetName(mentionTarget)}</span>
               <button type="button" className="new-session-mention-clear" onClick={clearMention} disabled={sending} aria-label={t("conversation.newSession.mentionClear")} title={t("conversation.newSession.mentionClear")}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5l6 6M11 5l-6 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
@@ -714,8 +714,8 @@ export function NewSessionColumn({ state, target, tools }: {
               {mentionError ? <span className="new-session-status is-alert" role="alert">{t(mentionError as Parameters<typeof t>[0])}</span> : null}
               {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
               {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
-              {/* 모델·강도 칸 — data-operation-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
-              <span className="new-session-launch-slot" {...(variantTarget ? { "data-operation-launch-kind": variantTarget.kind.id } : {})}>
+              {/* 모델·강도 칸 — data-objective-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
+              <span className="new-session-launch-slot" {...(variantTarget ? { "data-objective-launch-kind": variantTarget.kind.id } : {})}>
                 <NewSessionLaunchSlot groups={groups} value={launchChoice} onChange={setChoice} disabled={starting} apexOpen={apexOpen} onApexOpenChange={setApexOpen} />
               </span>
             </span>

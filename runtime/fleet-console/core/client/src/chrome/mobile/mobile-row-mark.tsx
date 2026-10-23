@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
-import type { OperationClusterRowMark } from "../../../../../features/objectives/shared/operation-clusters.js";
+import type { ObjectiveClusterRowMark } from "../../../../../features/objectives/shared/objective-clusters.js";
 
 import { useConsoleLocale } from "../../i18n/index.js";
 
 /** 줄 열기와 맡김 표식은 나란한 누름 자리다 — 버튼 안에 버튼을 넣지 않고, 꺼진 표식도 터치에서 늘 보인다. */
-export function MobileMarkedRow({ mark, children }: { readonly mark?: OperationClusterRowMark; readonly children: ReactNode }) {
+export function MobileMarkedRow({ mark, children }: { readonly mark?: ObjectiveClusterRowMark; readonly children: ReactNode }) {
   return mark ? <div className="mobile-marked-row">{children}<MobileRowMark mark={mark} /></div> : children;
 }
 
-function MobileRowMark({ mark }: { readonly mark: OperationClusterRowMark }) {
+function MobileRowMark({ mark }: { readonly mark: ObjectiveClusterRowMark }) {
   const locale = useConsoleLocale();
   const toggle = mark.toggle;
   const glyph = mark.renderGlyph?.();

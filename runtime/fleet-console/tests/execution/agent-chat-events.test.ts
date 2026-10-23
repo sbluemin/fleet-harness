@@ -29,7 +29,7 @@ describe("conversation stream lifecycle", () => {
     vi.stubGlobal("cancelAnimationFrame", () => undefined);
     let log = reduceAgentChatLog(initialAgentChatLogState, { kind: "turn-start", at: 1 });
     const stream = createConversationStream<AgentChatEvent>({
-      delta: (event) => event.kind === "text-delta" ? { key: "operation", text: event.text } : null,
+      delta: (event) => event.kind === "text-delta" ? { key: "objectiveRecord", text: event.text } : null,
       withText: (_event, text) => ({ kind: "text-delta", text }),
       apply: (events) => { log = events.reduce(reduceAgentChatLog, log); },
     });
@@ -86,7 +86,7 @@ describe("chat transcript mapping", () => {
     expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "attachment", attachment: { type: "queued_command", prompt: tagged, commandMode: "prompt" } })))
       .toEqual([{ kind: "turn-inject", by: { kind: "plugin", pluginId: "objectives" }, text: "> Keep the light theme readable.", format: "markdown" }]);
     // 덧붙인 말의 행위·작성자도 다시 연 뒤 같은 발화자로 서도록 표식과 함께 돌아온다.
-    const by = { kind: "plugin" as const, pluginId: "objectives", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29", targetOperationId: "member", copy: true, act: "start" as const, author: "commodore" as const } };
+    const by = { kind: "plugin" as const, pluginId: "objectives", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29", targetObjectiveId: "member", copy: true, act: "start" as const, author: "commodore" as const } };
     const authored = tagChatOrigin(prompt, by, prompt, "markdown");
     const restored = chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: authored } }));
     expect(restored).toEqual([{ kind: "dispatch", by, text: prompt, format: "markdown" }]);

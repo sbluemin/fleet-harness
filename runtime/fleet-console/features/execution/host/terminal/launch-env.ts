@@ -47,7 +47,7 @@ export function chatChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   // Artifact를 기본으로 끈다(2.1.251 실측: `CLAUDE_CODE_ARTIFACT`가 참이 아니면서 진입점이 `sdk-*`
   // 이면 비활성). 그 판정은 도구 하나로 끝나지 않는다 — `artifact-design`·`artifact-diagramming`·
   // `artifact-capabilities` 세 스킬이 같은 게이트에 묶여 자식의 스킬 목록에서 통째로 빠지므로,
-  // 채팅 컴포저의 덱은 그 이름들을 그릴 근거조차 받지 못한다. 같은 Operation을 터미널로 열면
+  // 채팅 컴포저의 덱은 그 이름들을 그릴 근거조차 받지 못한다. 같은 Objective을 터미널로 열면
   // 진입점이 `cli`라 넷 다 있으므로, 켜지 않으면 두 표면의 능력이 화면 어디에도 드러나지 않은 채
   // 갈린다.
   //

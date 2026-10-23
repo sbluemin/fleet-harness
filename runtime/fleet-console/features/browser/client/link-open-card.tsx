@@ -26,7 +26,7 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
   readonly url: string;
   readonly at: LinkOpenAt;
   readonly onClose: () => void;
-  /** Operation 브라우저 행 — 넘기지 않으면 2행 카드다. */
+  /** Objective 브라우저 행 — 넘기지 않으면 2행 카드다. */
   readonly companion?: { readonly open: () => void };
 }) {
   const t = getLinkOpenT(language);
@@ -123,9 +123,9 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
     : null;
 
   return createPortal(
-    // 포털은 Operation 본문 밖에 그려지므로 활성 Operation 표식을 스스로 진다 — 없으면 고르는 그 클릭이
-    // 방금까지 보던 Operation의 활성을 풀어 버린다(패널 포털 메뉴들과 같은 계약).
-    <div className="link-open-overlay" data-keep-operation-active role="presentation" onPointerDown={onClose}>
+    // 포털은 Objective 본문 밖에 그려지므로 활성 Objective 표식을 스스로 진다 — 없으면 고르는 그 클릭이
+    // 방금까지 보던 Objective의 활성을 풀어 버린다(패널 포털 메뉴들과 같은 계약).
+    <div className="link-open-overlay" data-keep-objective-active role="presentation" onPointerDown={onClose}>
       <div
         className="link-open-card"
         {...(keyboard ? {} : { "data-quiet-focus": "true" })}
@@ -142,8 +142,8 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
           <button type="button" role="menuitem" className="link-open-choice" ref={companionRef} disabled={engineMissing} onClick={openInCompanionBrowser}>
             <GlobeGlyph />
             <span className="link-open-choice-text">
-              <strong>{t("terminal.link.operationBrowser")}</strong>
-              <span>{unavailableHelp ?? t("terminal.link.operationBrowserHelp")}</span>
+              <strong>{t("terminal.link.objectiveRecordBrowser")}</strong>
+              <span>{unavailableHelp ?? t("terminal.link.objectiveRecordBrowserHelp")}</span>
             </span>
           </button>
         ) : null}

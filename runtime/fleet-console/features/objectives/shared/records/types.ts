@@ -1,0 +1,272 @@
+export * from "./archive.js";
+
+export interface ObjectiveGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly zIndex: number;
+}
+
+export interface ObjectiveTimestamps {
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+export interface ChildSession {
+  [key: string]: unknown;
+  readonly id: string;
+  readonly ts: ObjectiveTimestamps;
+}
+
+/** 자식은 부모 레코드에만 저장된다. 이 필드는 Objective 자신의 메타데이터가 아니다. */
+export interface ObjectiveRecord {
+  [key: string]: unknown;
+  readonly sessions?: readonly ChildSession[];
+  readonly id: string;
+  readonly theaterId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly title: string;
+  /** 사이드바 그룹 — 없거나 null 이면 그룹 밖. */
+  readonly groupId?: string | null;
+  /** 자식 조회·화면용 파생 뷰에만 있다. state.json의 최상위 Objective에는 저장하지 않는다. */
+  readonly parentObjectiveId?: string;
+  readonly ts: ObjectiveTimestamps;
+}
+
+export interface ObjectiveLaunchInfo {
+  readonly sessionName: string | null;
+  readonly viewMode?: "terminal" | "chat";
+  readonly model?: string;
+  readonly effort?: string;
+  /** launch 때 예약한 좌표가 아니라 첫 턴의 provider 세션이 실제로 잡혔는가. */
+  readonly started: boolean;
+}
+
+/** 휴면 launch로 태어난 Objective인지 나타내는 영속 마커. */
+export function wasObjectiveBornDormant(payload: Record<string, unknown>): boolean {
+  return payload.dormantBorn === true;
+}
+
+export function readObjectiveLaunch(payload: Record<string, unknown>): ObjectiveLaunchInfo {
+  const value = payload.session;
+  const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return {
+    sessionName: typeof session.sessionName === "string" && session.sessionName.length > 0 ? session.sessionName : null,
+    viewMode: payload.chatMode === true ? "chat" : "terminal",
+    ...(typeof session.model === "string" && session.model.length > 0 ? { model: session.model } : {}),
+    ...(typeof session.effort === "string" && session.effort.length > 0 ? { effort: session.effort } : {}),
+    started: typeof session.id === "string" && session.id.length > 0
+      && typeof session.capturedAt === "string" && session.capturedAt.length > 0
+      && session.source !== "launch",
+  };
+}
+
+/**
+ * 다음 프로세스 기동에 쓸 서브에이전트 정책. 세션 스냅샷(`session.disableSubagents`)과 분리한다.
+ * `blocked`는 Agent/Task 강제 차단, `default`는 그 차단을 걷고 전역 정책만 적용한다.
+ */
+export type SubagentSpawn = "blocked" | "default";
+
+export function readSubagentSpawn(payload: Record<string, unknown> | null | undefined): SubagentSpawn | null {
+  const value = payload?.subagentSpawn;
+  return value === "blocked" || value === "default" ? value : null;
+}
+
+/**
+ * 다음 기동에서 서브에이전트를 강제 차단할지.
+ * 명시 정책이 있으면 그것이 이기고, 없을 때만 옛 세션 스냅샷의 `disableSubagents`를 차단으로 읽는다.
+ */
+export function subagentSpawnBlocked(payload: Record<string, unknown> | null | undefined): boolean {
+  const policy = readSubagentSpawn(payload);
+  if (policy === "blocked") return true;
+  if (policy === "default") return false;
+  const session = payload?.session;
+  return !!session && typeof session === "object" && !Array.isArray(session) && (session as Record<string, unknown>).disableSubagents === true;
+}
+
+/** 다른 payload 키와 세션 스냅샷은 그대로 두고 다음 기동 정책만 바꾼다. 값이 같으면 같은 객체를 돌려준다. */
+export function withSubagentSpawn(payload: Record<string, unknown>, policy: SubagentSpawn): Record<string, unknown> {
+  if (payload.subagentSpawn === policy) return payload;
+  return { ...payload, subagentSpawn: policy };
+}
+
+/**
+ * 기동 성공·실패가 진입 때 잡아 둔 payload로 세션을 다시 써도, 그 사이 바뀐 다음 기동 정책은 지금 payload의 값만 남긴다.
+ * 지금 payload에 정책이 없으면 스냅샷이 가지고 있던 정책도 되살리지 않는다.
+ */
+export function retainSubagentSpawn(written: Record<string, unknown>, live: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const policy = readSubagentSpawn(live);
+  if (policy) return written.subagentSpawn === policy ? written : { ...written, subagentSpawn: policy };
+  if (!("subagentSpawn" in written)) return written;
+  const next = { ...written };
+  delete next.subagentSpawn;
+  return next;
+}
+
+/**
+ * @deprecated 사람 질문 정책은 더 이상 없다 — Console이 띄우는 Claude 세션은 `AskUserQuestion`을 늘 뺀다. API v1
+ * 플러그인의 import가 깨지지 않도록 남긴 payload 도우미이며, 호스트는 이 값을 읽지 않는다.
+ */
+export type UserQuestions = "blocked" | "default";
+
+/** @deprecated `UserQuestions` 참고. 호스트는 이 값을 읽지 않는다. */
+export function userQuestionsBlocked(payload: Record<string, unknown> | null | undefined): boolean {
+  return payload?.userQuestions === "blocked";
+}
+
+/** @deprecated `UserQuestions` 참고. 다른 payload 키는 그대로 두고 그 값만 바꾼다. 값이 같으면 같은 객체를 돌려준다. */
+export function withUserQuestions(payload: Record<string, unknown>, policy: UserQuestions): Record<string, unknown> {
+  if (payload.userQuestions === policy) return payload;
+  return { ...payload, userQuestions: policy };
+}
+
+/** @deprecated `UserQuestions` 참고. `retainSubagentSpawn`과 같은 규칙으로 그 값을 옮긴다. */
+export function retainUserQuestions(written: Record<string, unknown>, live: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const policy = live?.userQuestions;
+  if (policy === "blocked" || policy === "default") return written.userQuestions === policy ? written : { ...written, userQuestions: policy };
+  if (!("userQuestions" in written)) return written;
+  const next = { ...written };
+  delete next.userQuestions;
+  return next;
+}
+
+/** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
+export function withObjectiveLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
+  const value = payload.session;
+  const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const next: Record<string, unknown> = { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
+  if (preset.viewMode !== undefined) {
+    if (preset.viewMode === "chat") { next.chatMode = true; next.chatBorn = true; }
+    else { delete next.chatMode; delete next.chatBorn; }
+  }
+  return next;
+}
+
+/**
+ * 이미 실행한 적 있는 휴면 Agent Objective 의 다음 재개 표면을 채팅으로 옮긴다 — 표면 마커(`chatMode`)만 심고 `chatBorn` 은 두지 않는다
+ * (첫 턴 뒤의 세션이라 transcript 가 있다). Console 은 휴면 Objective 의 이 마커로 재개 표면을 고르고, 이전 대화는 같은 세션의
+ * transcript 재생이 되살린다. 살아 있는 세션에는 쓰지 않는다 — 실행 중 전환은 Console 의 보기 전환이 진다.
+ */
+export function withObjectiveChatSurface(payload: Record<string, unknown>): Record<string, unknown> {
+  return payload.chatMode === true ? payload : { ...payload, chatMode: true };
+}
+
+export interface ObjectiveRecordCreateInput {
+  [key: string]: unknown;
+  readonly id?: string;
+  readonly theaterId: string;
+  /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
+  readonly title: string;
+  readonly createdAt?: number;
+}
+
+export interface ObjectiveRecordPatchInput {
+  [key: string]: unknown;
+  readonly title?: string;
+  readonly accent?: string | null;
+  /** 사이드바 그룹 — null 은 그룹 밖. 사람이 옮기는 것과 같은 저장 경로라 `objectiveRecord:grouped` 가 난다. */
+  readonly groupId?: string | null;
+}
+
+/**
+ * 서버 안 이벤트 채널 — Objective 의 그룹이 실제로 바뀌면 한 번 난다. 사이드바 끌기·메뉴, Console Use, 플러그인의
+ * patch, 그룹 삭제(멤버가 그룹 밖으로)가 모두 같은 저장 쓰기를 지나므로 이 채널 하나로 전부 들린다. 브라우저로는 나가지 않는다.
+ */
+export const OBJECTIVE_GROUPED_EVENT_CHANNEL = "objective:grouped";
+
+export interface ObjectiveGroupedEvent {
+  readonly objectiveId: string;
+  readonly theaterId: string;
+  readonly groupId: string | null;
+  readonly previousGroupId: string | null;
+}
+
+/**
+ * 서버 안 이벤트 채널 — 사이드바 그룹 하나가 지워진 뒤 한 번 난다(사이드바 DELETE·Console Use·플러그인 groups.delete 가 모두
+ * 같은 저장 쓰기를 지난다). 멤버 Objective 의 이동은 `objectiveRecord:grouped` 가 따로 알린다. 그룹 id 를 따로 쥔 플러그인이 비울 때 쓴다.
+ */
+export const OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL = "objective:group-removed";
+
+export interface ObjectiveGroupRemovedEvent {
+  readonly groupId: string;
+  readonly theaterId: string;
+}
+
+/**
+ * 서버 안 이벤트 채널 — Objective(자식 세션 포함)의 `readObjectiveLaunch` 투영(세션 이름·표면·모델·effort·개시)이 실제로
+ * 바뀌면 한 번 난다. 채팅의 모델 적용, 채팅↔터미널 전환, 재개·세션 캡처가 모두 같은 호스트 patch 를 지나므로 이 채널 하나로
+ * 전부 들린다. 힌트일 뿐 값은 싣지 않는다 — 구독자는 `objectiveRecords.get` 으로 지금 값을 다시 읽는다. 브라우저로는 나가지 않는다.
+ */
+export const OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL = "objective:launch-changed";
+
+export interface ObjectiveLaunchChangedEvent {
+  readonly objectiveId: string;
+  /** 자식 세션이면 그 부모 Objective, 최상위 Objective 이면 null. */
+  readonly parentObjectiveId: string | null;
+}
+
+export interface ObjectiveLaunchVariantChip {
+  readonly id: string;
+  readonly label: string;
+  readonly launch: Readonly<Record<string, string>>;
+}
+
+export interface ObjectiveLaunchVariantRow {
+  readonly id: string;
+  readonly label: string;
+  readonly starred?: boolean;
+  readonly launch: Readonly<Record<string, string>>;
+  readonly chips?: readonly ObjectiveLaunchVariantChip[];
+  /**
+   * The canonical ladder `chips` sit on, in order, when a surface renders them as
+   * one axis rather than a list. A row may offer only part of it — a model that
+   * supports low/high/max leaves the second and fourth positions empty, and that
+   * gap is the point: spacing the offered rungs evenly would put `high` in the
+   * middle of an axis where it belongs three fifths along. Absent means the
+   * surface has nothing but `chips` to go on and should treat them as the axis.
+   */
+  readonly effortAxis?: readonly string[];
+  /** 게이트 뒤로 숨는 apex 티어의 강도 id들(사다리 순). 비어 있거나 생략되면 트랙은 게이트 없이 전체 축을 보인다. */
+  readonly gatedEfforts?: readonly string[];
+  /** 이 모델이 담을 수 있는 문맥 토큰 수. 모르면 생략한다. */
+  readonly contextWindow?: number;
+  /** Gateway가 판정한 한도 풀과 그 범위. Gateway 모델이 아니거나 모르면 생략한다. */
+  readonly quotaPool?: string;
+  readonly quotaScope?: string;
+}
+
+export interface ObjectiveLaunchVariantGroup {
+  readonly id: string;
+  readonly label: string;
+  readonly rows: readonly ObjectiveLaunchVariantRow[];
+}
+
+/**
+ * Objective이 태어날 수 있는 표면. `terminal`은 PTY가 뜨는 지금까지의 유일한 길이고,
+ * `chat`은 PTY 없이 채팅 세션으로 곧장 태어나는 길이다.
+ */
+export type ObjectiveLaunchView = "terminal" | "chat";
+
+export interface ObjectiveLaunchKind {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly disabled?: boolean;
+  readonly disabledReason?: string;
+  readonly variants?: readonly ObjectiveLaunchVariantGroup[];
+  /**
+   * 이 실행 종류가 지원하는 시작 표면. 생략은 "터미널뿐"이라는 뜻이며, 그것이 기존 모든
+   * 실행 종류의 사실이다 — 코어가 어느 플러그인이 채팅을 아는지 알 필요가 없도록,
+   * 시작 뷰 선택은 이 선언이 있는 종류에서만 선다.
+   */
+  readonly launchViews?: readonly ObjectiveLaunchView[];
+}
+
+export interface ObjectiveCatalogPlugin {
+  readonly id: string | null;
+  readonly title: string;
+  readonly kinds: readonly ObjectiveLaunchKind[];
+}
+
+export type ObjectiveLaunchCatalogProvider = () => readonly ObjectiveLaunchKind[] | Promise<readonly ObjectiveLaunchKind[]>;

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../../shared/operations/types.js";
+import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
 
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -30,7 +30,7 @@ export function LaunchModelEffort({
   onOpenChange,
   fallbackIcon = null,
 }: {
-  readonly groups: readonly OperationLaunchVariantGroup[];
+  readonly groups: readonly ObjectiveLaunchVariantGroup[];
   readonly model: string | null;
   readonly effort: string | null;
   readonly onChange: (model: string | null, effort: string | null) => void;
@@ -165,7 +165,7 @@ export function LaunchModelEffort({
     }
   };
 
-  const pick = (row: OperationLaunchVariantRow) => {
+  const pick = (row: ObjectiveLaunchVariantRow) => {
     const nextModel = row.launch.model ?? null;
     onChange(nextModel, resolveRowEffort(row, effort));
     closeToChip();
@@ -186,7 +186,7 @@ export function LaunchModelEffort({
             return (
               <p className={`launch-pop-band${provider ? ` is-${provider}` : ""}`}>
                 {provider ? (
-                  <span className="operation-launch-provider-glyph" aria-hidden="true">
+                  <span className="objective-launch-provider-glyph" aria-hidden="true">
                     {launchProviderGlyph(provider)}
                   </span>
                 ) : null}
@@ -245,7 +245,7 @@ export function LaunchModelEffort({
 }
 
 function ModelRow({ row, selectedModel, onPick }: {
-  readonly row: OperationLaunchVariantRow;
+  readonly row: ObjectiveLaunchVariantRow;
   readonly selectedModel: string | null;
   readonly onPick: () => void;
 }) {

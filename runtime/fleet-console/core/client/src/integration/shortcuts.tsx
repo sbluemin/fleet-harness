@@ -35,7 +35,7 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
     {
       title: t("shortcuts.group.console"),
       entries: [
-        { combos: bound("console.search-operations"), description: t("shortcuts.console.searchOps") },
+        { combos: bound("console.search-objectiveRecords"), description: t("shortcuts.console.searchOps") },
         { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
         { combos: bound("console.new-session"), description: t("shortcuts.console.newSession") },
         { combos: bound("console.toggle-global-shell"), description: t("shortcuts.console.toggleGlobalShell") },
@@ -44,19 +44,19 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
       ],
     },
     {
-      title: t("shortcuts.group.operations"),
+      title: t("shortcuts.group.objectiveRecords"),
       entries: [
-        { combos: bound("console.undo-close"), description: t("shortcuts.operations.undoClose") },
-        { combos: [[shift, "Enter"]], description: t("shortcuts.operations.insertNewline") },
-        { combos: [["Enter"], ["Esc"]], description: t("shortcuts.operations.renameConfirm") },
-        { combos: [["↑"], ["↓"]], description: t("shortcuts.operations.menuNav") },
+        { combos: bound("console.undo-close"), description: t("shortcuts.objectiveRecords.undoClose") },
+        { combos: [[shift, "Enter"]], description: t("shortcuts.objectiveRecords.insertNewline") },
+        { combos: [["Enter"], ["Esc"]], description: t("shortcuts.objectiveRecords.renameConfirm") },
+        { combos: [["↑"], ["↓"]], description: t("shortcuts.objectiveRecords.menuNav") },
       ],
     },
     {
       title: t("shortcuts.group.map"),
       entries: [
         { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
-        { combos: bound("operations.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
+        { combos: bound("objectives.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
       ],
     },
@@ -124,7 +124,7 @@ export function takeCommissioningReturnFocus(): HTMLElement | null {
 // ⌘K / Ctrl+K — 검색 팔레트 단축키 표기. 첫 실행 시작 블록처럼 팔레트 밖에서 그 단축키를 말하는 자리가 쓴다.
 export function useSearchShortcutLabel(): string {
   useShortcutOverrides();
-  return shortcutCommandLabel("console.search-operations");
+  return shortcutCommandLabel("console.search-objectiveRecords");
 }
 
 export function useNewSessionShortcutLabel(): string {
@@ -132,10 +132,10 @@ export function useNewSessionShortcutLabel(): string {
   return shortcutCommandLabel("console.new-session");
 }
 
-// ─── editing guard — when typing swallows an Operations shortcut ───────────────
+// ─── editing guard — when typing swallows an ObjectiveRecords shortcut ───────────────
 
 /**
- * 편집 중인 요소에 포커스가 있을 때 Operations 단축키를 삼킬지 정하는 정책.
+ * 편집 중인 요소에 포커스가 있을 때 ObjectiveRecords 단축키를 삼킬지 정하는 정책.
  *
  * 기본은 삼키는 것이다 — 타자가 단축키에 먹히면 글을 쓸 수 없다. 예외는 Alt를 쥔 조합 전체,
  * 즉 Console 뷰 축(Alt+문자)과 패널 축(Alt+화살표)이다: 같은 키가 터미널 포커스에서는 이미
@@ -148,18 +148,18 @@ export function useNewSessionShortcutLabel(): string {
  * macOS의 단어 단위 이동은 같은 사정을 이미 터미널에서 Console에 내주고 있고, 선택(Alt+Shift+
  * 화살표)은 shiftKey 분기가 preventDefault 없이 통과시키므로 편집자에게 그대로 남는다.
  */
-export function blocksOperationsShortcutWhileEditing(
+export function blocksObjectiveRecordsShortcutWhileEditing(
   editing: boolean,
   event: { readonly altKey: boolean },
 ): boolean {
   return editing && !event.altKey;
 }
 
-// ─── arrow keys — Operations focus ─────────────────────────────────────────────
+// ─── arrow keys — ObjectiveRecords focus ─────────────────────────────────────────────
 
-export type OperationsArrowShortcutAction = "focus-previous" | "focus-next";
+export type ObjectiveRecordsArrowShortcutAction = "focus-previous" | "focus-next";
 
-export function resolveOperationsArrowShortcutAction(key: string): OperationsArrowShortcutAction | null {
+export function resolveObjectiveRecordsArrowShortcutAction(key: string): ObjectiveRecordsArrowShortcutAction | null {
   if (key === "ArrowRight") return "focus-next";
   if (key === "ArrowLeft") return "focus-previous";
   return null;

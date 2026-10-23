@@ -8,7 +8,7 @@ import type { OpenLinkHandler } from "@fleet-console/link/core";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientExpandedSurfacesCapability, ClientRailCapability } from "./navigation-ports.js";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
-import type { OperationLaunchKind } from "../../execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../objectives/shared/records/types.js";
 import type { PaneSearchProvider } from "./pane.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
@@ -26,10 +26,10 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
-  readonly launchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  readonly launchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void;
   /** 이 도구가 놓인 대화와 그 작업 위치 — 데스크톱 대화의 도구 캡슐·칸에서만 실린다(`ConversationToolScope`). */
   readonly conversation?: ConversationToolScope;
-  /** rail 동작이 Operation 대신 확대 표면을 열 때 쓴다. */
+  /** rail 동작이 Objective 대신 확대 표면을 열 때 쓴다. */
   readonly surfaces?: ClientExpandedSurfacesCapability;
   /** 도킹할 수 있는 동작 엔트리가 자기 패널을 열고 닫을 때 쓰는 창구. */
   readonly rail?: ClientRailCapability;
@@ -147,18 +147,18 @@ export interface RailEntryDescriptor {
    */
   readonly surfaceId?: string;
   /**
-   * 아이콘을 눌러도 캔버스의 활성 Operation 을 풀지 않는다. 레일 도구를 누르면 기본으로 활성이 풀리지만(Map 밖의 누름),
-   * 지금 보는 Operation 을 그대로 이어 여는 도구 — 활성 Operation 의 목표를 여는 목표 표면처럼 — 만 켠다.
+   * 아이콘을 눌러도 캔버스의 활성 Objective 을 풀지 않는다. 레일 도구를 누르면 기본으로 활성이 풀리지만(Map 밖의 누름),
+   * 지금 보는 Objective 을 그대로 이어 여는 도구 — 활성 Objective 의 목표를 여는 목표 표면처럼 — 만 켠다.
    */
-  readonly keepsOperationActive?: boolean;
+  readonly keepsObjectiveActive?: boolean;
   /**
-   * 대화 중심 화면에서 Operation 대화의 오른쪽 패널은 도구 줄을 세우지 않는다. 이 값을 켠 도구만 거기서도 남아 대상의 글자 탭
+   * 대화 중심 화면에서 Objective 대화의 오른쪽 패널은 도구 줄을 세우지 않는다. 이 값을 켠 도구만 거기서도 남아 대상의 글자 탭
    * (구성원 등) 오른쪽에 같은 문법의 글자 단추로 선다 — 지금 보는 대화에서 곧장 이어 가는 도구(목표)만 켠다.
    * Theater 를 연 패널과 기존 배치의 레일은 이 값을 읽지 않는다.
    */
   readonly conversationTab?: boolean;
   /**
-   * 대화 중심 화면에서 Operation 대화의 오른쪽 패널 머리에 이 엔트리(`conversationTab`)가 한 낱말 단추 대신 펼칠 하위 탭과 그 앞의 도구.
+   * 대화 중심 화면에서 Objective 대화의 오른쪽 패널 머리에 이 엔트리(`conversationTab`)가 한 낱말 단추 대신 펼칠 하위 탭과 그 앞의 도구.
    * 폰과 기존 배치의 레일은 이 값을 읽지 않는다.
    */
   readonly conversationTabs?: RailEntryConversationTabs;
@@ -188,7 +188,7 @@ export interface RailEntryDescriptor {
   readonly active?: RailEntryActive;
   /**
    * 이 entry를 목록에 둘지 정하는 문서 단위 판정. 생략하면 둔다.
-   * 문서당 정적인 사실(Desktop 셸 여부 등)만 가린다 — Theater·Operation 상태로
+   * 문서당 정적인 사실(Desktop 셸 여부 등)만 가린다 — Theater·Objective 상태로
    * 가리면 도구모음 칸이 나타났다 사라져 근육 기억을 깨므로 쓰지 않는다.
    */
   readonly visible?: () => boolean;
@@ -219,18 +219,18 @@ export interface RailEntryMobile {
   readonly desktop?: false;
   /**
    * 폰의 대화 정보 화면에서 이 엔트리(`conversationTab: true`)의 탭 본문으로 세울 페인. 생략하면 폰 대화 정보 화면에 이 엔트리의 탭이 없다.
-   * 호스트는 그 페인을 탭 본문에 params `{ operationId }`(정보 화면의 대화 주인 Operation)로 세우고 `mobileBar`는 싣지 않는다 —
+   * 호스트는 그 페인을 탭 본문에 params `{ objectiveId }`(정보 화면의 대화 주인 Objective)로 세우고 `mobileBar`는 싣지 않는다 —
    * 막대가 없다는 것이 「대화 정보 화면 안에 심겼다」는 신호이고, 동작은 페인이 본문 안에 스스로 그린다. 닫을 자리가 없으므로 `panes.close()`는 아무 일도 하지 않는다.
    *
    * 폰에서 이 엔트리로 가는 착지(데스크톱은 읽지 않는다):
-   * - `rail.open(id, { operationId })` — 그 Operation 대화를 열고 정보 화면의 이 탭을 세운다. 그 대화에 탭이 서지 않거나(`shown`) Operation이 없으면 기존 `rail.open` 경로다.
+   * - `rail.open(id, { objectiveId })` — 그 Objective 대화를 열고 정보 화면의 이 탭을 세운다. 그 대화에 탭이 서지 않거나(`shown`) Objective이 없으면 기존 `rail.open` 경로다.
    * - 이 엔트리의 확대 표면(`surfaceId`) 열기 — 지금 열린 대화의 이 탭으로 연다. 열린 대화가 없거나 탭이 서지 않는 대화면 기존 경로(도구 시트)다.
    * - `attention.items`의 행 — 호스트는 엔트리의 자리로 먼저 이동하지 않고 `open`을 부른다. 착지는 `open`이 위 둘로 정한다.
    */
   readonly conversationPane?: RailEntryConversationPane;
   /**
    * 폰 홈 「대화」 아래 기본 접힌 「완료 N」 섹션에 올릴 이 엔트리의 끝난 일(예: 끝난 목표). 생략하면 올리지 않는다.
-   * 끝난 일은 대화 행·사이드바 줄로 서지 않으므로 묶음 줄(`OperationCluster.row`)이 아니라 여기서 말한다 — 데스크톱은 읽지 않는다.
+   * 끝난 일은 대화 행·사이드바 줄로 서지 않으므로 묶음 줄(`ObjectiveCluster.row`)이 아니라 여기서 말한다 — 데스크톱은 읽지 않는다.
    * 호스트는 묶음 줄이 「완료」(`row.glyph === "done"`)인 대화와 뿌리 없는 완료 줄도 같은 섹션에 모으므로, 이 선언은 줄로 서지 않는 끝난 일만 올린다.
    */
   readonly finished?: RailEntryMobileFinished;
@@ -283,8 +283,8 @@ export interface RailEntryFinishedItem {
   readonly title: string;
   /** 둘째 줄의 상태 낱말 뒤에 붙는 사실(예: 「구성원 2 · 기준 3/3」). */
   readonly detail?: string;
-  /** 행 아바타의 키가 될 Operation id — `OperationCluster.avatarOperationId`와 같은 뜻으로, 같은 사람을 그리는 다른 표면과 같은 얼굴이 선다. 생략하면 엔트리 아이콘이다. */
-  readonly avatarOperationId?: string;
+  /** 행 아바타의 키가 될 Objective id — `ObjectiveCluster.avatarObjectiveId`와 같은 뜻으로, 같은 사람을 그리는 다른 표면과 같은 얼굴이 선다. 생략하면 엔트리 아이콘이다. */
+  readonly avatarObjectiveId?: string;
   /** 행을 눌렀을 때 — 착지는 이 함수가 정한다(호스트는 먼저 이동하지 않는다). */
   readonly open: () => void;
 }
@@ -296,20 +296,20 @@ export interface RailEntryConversationPane {
   /**
    * 같은 페인의 여러 보기를 정보 옆 같은 탭 줄에 올린다. 생략하면 엔트리 이름의 탭 하나다.
    * 고른 보기와 본문은 플러그인이 함께 소유하고, 호스트는 select 뒤 같은 페인을 그린다.
-   * operationId는 정보 화면의 대화 주인이다. 도구는 페인 본문에 둔다.
+   * objectiveId는 정보 화면의 대화 주인이다. 도구는 페인 본문에 둔다.
    */
   readonly tabs?: {
     readonly subscribe: (listener: () => void) => () => void;
-    readonly read: (operationId: string) => RailEntryConversationTabsState;
-    readonly select: (tabId: string, operationId: string) => void;
+    readonly read: (objectiveId: string) => RailEntryConversationTabsState;
+    readonly select: (tabId: string, objectiveId: string) => void;
   };
   /**
    * 이 대화에 탭을 세울지. 생략하면 모든 대화에 선다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이 같은 상태에 같은 값을
-   * 돌려준다. `operationId`는 정보 화면의 대화 주인 Operation이다.
+   * 돌려준다. `objectiveId`는 정보 화면의 대화 주인 Objective이다.
    */
   readonly shown?: {
     readonly subscribe: (listener: () => void) => () => void;
-    readonly get: (operationId: string) => boolean;
+    readonly get: (objectiveId: string) => boolean;
   };
 }
 
@@ -388,7 +388,7 @@ export interface RailEntryAttention {
   /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
   readonly label: (count: number, locale: ConsoleLocale) => string;
   /**
-   * 기다리는 일 하나하나. 모바일 홈 맨 위 「확인 필요」 묶음이 대기 Operation과 함께 행으로 세운다.
+   * 기다리는 일 하나하나. 모바일 홈 맨 위 「확인 필요」 묶음이 대기 Objective과 함께 행으로 세운다.
    * `count`는 배지, 이 목록은 행이다 — 같은 일을 가리키는 것이 정상이다. 생략하면 배지만 서고 행은 오르지 않는다.
    * 갱신은 위 `subscribe`로 한다. `count`처럼 부작용 없이 같은 상태에 같은 값을 돌려주고,
    * 상태가 바뀌지 않았으면 **같은 배열 참조**를 돌려준다(`useSyncExternalStore` 스냅샷이다).
@@ -400,7 +400,7 @@ export interface RailEntryAttention {
 export interface RailEntryAttentionItem {
   /** 같은 엔트리 안에서 안정적인 키 — 목록이 갱신돼도 행의 정체성이 된다. */
   readonly id: string;
-  /** 이 엔트리를 등록한 플러그인이 선언한 `OperationCluster.id`(접두사 없음) — 모바일 목록은 그 묶음의 `row.mark`를 같은 맡김 스위치로 세운다. */
+  /** 이 엔트리를 등록한 플러그인이 선언한 `ObjectiveCluster.id`(접두사 없음) — 모바일 목록은 그 묶음의 `row.mark`를 같은 맡김 스위치로 세운다. */
   readonly clusterId?: string;
   /** 행의 제목(예: 목표 이름). */
   readonly title: string;

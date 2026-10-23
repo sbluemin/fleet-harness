@@ -7,8 +7,8 @@ import type { ConversationPillTakeover } from "../../../../../features/workspace
 
 
 /**
- * 모바일 셸의 클라이언트 상태. 라우트(/operations·/settings)가 큰 자리를 정하고, 이 스토어는
- * 그 안쪽 — 하단 시트, 상단 막대, /operations 안의 목적지 — 을 든다. 본문·PTY의 수명은
+ * 모바일 셸의 클라이언트 상태. 라우트(/objectives·/settings)가 큰 자리를 정하고, 이 스토어는
+ * 그 안쪽 — 하단 시트, 상단 막대, /objectives 안의 목적지 — 을 든다. 본문·PTY의 수명은
  * 기존 페인/표면 소유자가 지킨다.
  */
 
@@ -20,7 +20,7 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-/** 모바일 대화 목록의 Theater 필터만 기억한다. 데스크톱 동작·Operation 수명과 무관하며 영속화하지 않는다. */
+/** 모바일 대화 목록의 Theater 필터만 기억한다. 데스크톱 동작·Objective 수명과 무관하며 영속화하지 않는다. */
 let mobileListTheaterId: string | null = null;
 export function getMobileListTheaterId(): string | null { return mobileListTheaterId; }
 export function setMobileListTheaterId(theaterId: string | null): void {
@@ -30,16 +30,16 @@ export function setMobileListTheaterId(theaterId: string | null): void {
 }
 export function subscribeMobileState(listener: () => void): () => void { return subscribe(listener); }
 
-// ── /operations 안의 목적지 ──────────────────────────────────────────────
+// ── /objectives 안의 목적지 ──────────────────────────────────────────────
 
 /**
- * `home`은 대화 목록(열린 Operation이 있으면 그 Operation 화면)이다. 나머지는 홈의 바로가기 칩·검색·확인 필요가 여는 전체 화면이다.
+ * `home`은 대화 목록(열린 Objective이 있으면 그 Objective 화면)이다. 나머지는 홈의 바로가기 칩·검색·확인 필요가 여는 전체 화면이다.
  * Theater·설정은 라우트라 여기 없다.
  */
 export type MobileDestination =
   | { readonly kind: "home" }
   /**
-   * 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다.
+   * 열린 Objective(대화)의 정보 화면 — Objective 화면 머리 pill이 연다. 열린 Objective이 없으면 홈(대화 목록)으로 읽힌다.
    * `tab`은 처음 세울 탭(엔트리의 `mobile.conversationPane`으로 오는 착지) — 생략하면 「정보」 탭이다.
    */
   | { readonly kind: "info"; readonly tab?: string }
@@ -126,20 +126,20 @@ export function conversationTabId(entryId: string): string {
 }
 
 /**
- * 대화를 열면서 그 정보 화면의 탭으로 착지하라는 한 번짜리 요청. 대화 열기는 포커스 요청(`focusOperation`)을 거쳐 Operations 화면이
+ * 대화를 열면서 그 정보 화면의 탭으로 착지하라는 한 번짜리 요청. 대화 열기는 포커스 요청(`focusObjective`)을 거쳐 ObjectiveRecords 화면이
  * 소비하며 목적지를 홈으로 되돌리므로, 그 소비가 같은 대화에 대해 이 요청을 집어 정보 화면으로 세운다. 다른 대화의 소비는 요청을 버린다.
  */
-let pendingConversationTab: { readonly operationId: string; readonly tab: string } | null = null;
+let pendingConversationTab: { readonly objectiveId: string; readonly tab: string } | null = null;
 
-export function requestMobileConversationTab(operationId: string, tab: string): void {
-  pendingConversationTab = { operationId, tab };
+export function requestMobileConversationTab(objectiveId: string, tab: string): void {
+  pendingConversationTab = { objectiveId, tab };
 }
 
 /** 대화 열기 요청을 소비할 때의 목적지 — 그 대화에 걸린 탭 요청이 있으면 정보 화면, 아니면 홈. */
-export function takeMobileConversationDestination(operationId: string): MobileDestination {
+export function takeMobileConversationDestination(objectiveId: string): MobileDestination {
   const pending = pendingConversationTab;
   pendingConversationTab = null;
-  return pending?.operationId === operationId ? { kind: "info", tab: pending.tab } : { kind: "home" };
+  return pending?.objectiveId === objectiveId ? { kind: "info", tab: pending.tab } : { kind: "home" };
 }
 
 // ── 도구 시트(목적지가 아닌 레일 엔트리·확대 표면) ────────────────────────
@@ -197,7 +197,7 @@ export type MobileSheetKind =
   | { readonly kind: "theater-actions"; readonly theaterId: string }
   | { readonly kind: "theater-alias"; readonly theaterId: string }
   | { readonly kind: "theater-group"; readonly theaterId: string }
-  | { readonly kind: "rename"; readonly operationId: string };
+  | { readonly kind: "rename"; readonly objectiveId: string };
 
 let sheetStack: readonly MobileSheetKind[] = [];
 
@@ -281,14 +281,14 @@ export function releaseMobileBar(owner: symbol): void {
   emit();
 }
 
-// Operation 본문이 ⋮에 끼운 항목 — 세션 화면이 다시 마운트돼도 본문은 살아 있으므로 Operation별로 스토어에 둔다.
-const operationMenus = new Map<string, readonly MobileBarMenuItem[]>();
+// Objective 본문이 ⋮에 끼운 항목 — 세션 화면이 다시 마운트돼도 본문은 살아 있으므로 Objective별로 스토어에 둔다.
+const objectiveRecordMenus = new Map<string, readonly MobileBarMenuItem[]>();
 const EMPTY_ITEMS: readonly MobileBarMenuItem[] = [];
-export function useMobileOperationMenu(operationId: string): readonly MobileBarMenuItem[] {
-  return useSyncExternalStore(subscribe, () => operationMenus.get(operationId) ?? EMPTY_ITEMS);
+export function useMobileObjectiveMenu(objectiveId: string): readonly MobileBarMenuItem[] {
+  return useSyncExternalStore(subscribe, () => objectiveRecordMenus.get(objectiveId) ?? EMPTY_ITEMS);
 }
-export function setMobileOperationMenu(operationId: string, items: readonly MobileBarMenuItem[]): void {
-  if (items.length === 0) operationMenus.delete(operationId);
-  else operationMenus.set(operationId, items);
+export function setMobileObjectiveMenu(objectiveId: string, items: readonly MobileBarMenuItem[]): void {
+  if (items.length === 0) objectiveRecordMenus.delete(objectiveId);
+  else objectiveRecordMenus.set(objectiveId, items);
   emit();
 }

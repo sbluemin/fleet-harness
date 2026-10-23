@@ -17,7 +17,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 같은 트리를 같은 규칙으로 그린다: 「내 결정」(사람의 차례, 시각순)·「오늘」(오늘 + 기한 지남) 구역이 먼저 서고,
  * 올라간 목표는 그룹에서 빠진다. 빈 구역은 세우지 않는다. 시작 전 목표는 그룹 맨 아래 「시작 전 N ›」 한 줄로 접힌다 — 펼침은 그룹별로 이 탭의 메모리에만
  * 둔다(사이드바의 접기와 같은 규칙, 번들이 달라 상태는 따로). 고른 목표가 접기 안에 있으면 열 때 그 접기를 펼쳐 둔다.
- * 사람이 세션 없는 목표를 만드는 입구는 없다 — 목표는 「새 Operation」에서 시작한다. Esc 나 바깥 누름으로 닫힌다.
+ * 사람이 세션 없는 목표를 만드는 입구는 없다 — 목표는 「새 Objective」에서 시작한다. Esc 나 바깥 누름으로 닫힌다.
  * 열림은 표면이 쥔다 — 빈 상태의 「목표 목록 열기」도 같은 목록을 연다. 그 입구(`data-objectives-switch-opener`)로 열면 초점이
  * 목록 안으로 들어가고, Esc 는 초점을 연 입구로 돌려보낸다.
  */
@@ -44,16 +44,16 @@ export interface SwitcherProps {
   readonly groups: readonly ObjectiveGroup[];
   readonly selected: string | null;
   readonly glyphOf: (objective: Objective) => { readonly state: StatusGlyphState; readonly label: string };
-  /** 지휘관 Operation 이 서 있는가 — 개시한 목표는 첫 턴 전이라도 접기에서 빠진다(사이드바의 뿌리 있는 줄과 같은 규칙). */
-  readonly hasOperation: (objectiveId: string) => boolean;
+  /** 지휘관 Objective 이 서 있는가 — 개시한 목표는 첫 턴 전이라도 접기에서 빠진다(사이드바의 뿌리 있는 줄과 같은 규칙). */
+  readonly hasSession: (objectiveId: string) => boolean;
   readonly onPick: (objectiveId: string) => void;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  /** 목표가 하나도 없을 때 목록 대신 서는 「새 Operation」 — 목표는 거기서 시작한다. */
-  readonly onNewOperation: () => void;
+  /** 목표가 하나도 없을 때 목록 대신 서는 「새 Objective」 — 목표는 거기서 시작한다. */
+  readonly onNewObjective: () => void;
 }
 
-export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick, open, onOpenChange: setOpen, onNewOperation }: SwitcherProps) {
+export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasSession, onPick, open, onOpenChange: setOpen, onNewObjective }: SwitcherProps) {
   const [, setFoldTick] = useState(0);
   const commodore = useCommodoreBoard(theaterId);
   const popRef = useRef<HTMLDivElement | null>(null);
@@ -107,7 +107,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   const known = new Set(groups.map((group) => group.id));
   const sectionOf = (objective: Objective): string | null => (objective.groupId && known.has(objective.groupId) ? objective.groupId : null);
   // 사령관이 답하는 중인 줄은 접힌 「시작 전」에 묻으면 그 문구가 보이지 않으므로 그룹 자리에 선다.
-  const freshOf = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !hasOperation(objective.id) && !handling(objective);
+  const freshOf = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !hasSession(objective.id) && !handling(objective);
   const toggleFold = (key: string) => { foldOpen.set(key, !foldOpen.get(key)); setFoldTick((tick) => tick + 1); };
 
   // 열 때: 고른 목표가 접기 안에 있으면 그 접기를 펼치고, 고른 줄이 보이게 스크롤한다.
@@ -144,7 +144,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
         <button type="button" className={`objectives-pop-row${meta.length ? " has-meta" : ""}`} aria-current={selected === objective.id ? "true" : undefined}
           aria-label={[objective.title, glyph.label, ...meta.map((part) => part.text), group?.name ?? ""].filter(Boolean).join(", ")}
           onClick={() => pick(objective.id)}>
-          <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, activityOfGlyph(glyph.state))} />
+          <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, activityOfGlyph(glyph.state))} />
           <span className="objectives-pop-body" aria-hidden="true">
             <span className="objectives-pop-title">{objective.title}</span>
             {meta.length ? <span className="objectives-pop-meta">{meta.map((part) => <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>)}</span> : null}
@@ -216,7 +216,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
           {none ? (
             <div className="objectives-pop-none">
               <p>{t("objectives.none.title")} {t("objectives.none.body")}</p>
-              <button type="button" className="objectives-new-operation" onClick={() => { setOpen(false); buttonRef.current?.focus(); onNewOperation(); }}>{t("objectives.none.newOperation")}</button>
+              <button type="button" className="objectives-new-objectiveRecord" onClick={() => { setOpen(false); buttonRef.current?.focus(); onNewObjective(); }}>{t("objectives.none.newObjective")}</button>
             </div>
           ) : live.length === 0 ? <p className="objectives-pop-empty">{t("objectives.switch.empty")}</p> : null}
         </div>

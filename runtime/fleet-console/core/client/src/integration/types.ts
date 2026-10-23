@@ -4,10 +4,10 @@ import type { ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wai
 import type { ConsoleFontSettings } from "../../../../features/settings/shared/fonts.js";
 import type { ConsoleExperimentSettings } from "../../../../features/settings/shared/experiments.js";
 import type { ShortcutBindings } from "../../../../features/settings/shared/shortcuts.js";
-import type { OperationLaunchKind } from "../../../../features/execution/shared/operations/types.js";
+import type { ObjectiveLaunchKind } from "../../../../features/objectives/shared/records/types.js";
 import type { ApiCatalogEntry as SdkApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { ConsoleTheme } from "../../../../features/settings/shared/theme.js";
-import type { OperationRuntimeHydration, OperationRuntimeState } from "../../../../features/execution/shared/client-contract.js";
+import type { ObjectiveRuntimeHydration, ObjectiveRuntimeState } from "../../../../features/execution/shared/client-contract.js";
 
 export type ThemeId = "dark" | "light";
 
@@ -15,13 +15,13 @@ export type ThemeId = "dark" | "light";
  * 새 세션 컴포저(데스크톱 화면·모바일 시트)가 확정한 실행 의도.
  *
  * `variant`는 사이드바 실행 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
- * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Operation
+ * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Objective
  * payload로 되돌아오지 않는다.
  */
 export interface LaunchRequest {
   readonly theaterId: string;
   readonly pluginId: string | null;
-  readonly kind: OperationLaunchKind;
+  readonly kind: ObjectiveLaunchKind;
   readonly variant: Readonly<Record<string, string>>;
   /**
    * 첨부 이미지의 컴포저측 자취. id는 variant의 `attachments` CSV로도 실려 서버에 닿고,
@@ -54,7 +54,7 @@ export interface NewSessionRejection {
  */
 export interface NewSessionSeed {
   readonly draft: string | null;
-  readonly mentionOperationId: string | null;
+  readonly mentionObjectiveId: string | null;
   readonly mentionTarget: import("../../../../features/execution/shared/composer-ports.js").MentionTargetAddress | null;
 }
 
@@ -173,7 +173,7 @@ export interface ConsoleUpdateApplyAcceptedResponse {
   readonly status: "accepted" | "delegated";
 }
 
-export interface OperationGeometry {
+export interface ObjectiveGeometry {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -181,7 +181,7 @@ export interface OperationGeometry {
   readonly zIndex: number;
 }
 
-export interface OperationGroup {
+export interface ObjectiveGroup {
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -190,22 +190,19 @@ export interface OperationGroup {
   readonly createdAt: number;
 }
 
-export interface OperationNode {
-  readonly childSessions?: readonly { readonly id: string; readonly payload: Record<string, unknown>; readonly ts: { readonly createdAt: number; readonly updatedAt: number } }[];
+export interface ObjectiveRecord {
+  readonly [key: string]: unknown;
+  readonly sessions?: readonly { readonly id: string; readonly [key: string]: unknown; readonly ts: { readonly createdAt: number; readonly updatedAt: number } }[];
   readonly id: string;
   readonly theaterId: string;
   readonly order?: number;
-  readonly type: string;
-  readonly pluginId: string | null;
   readonly title: string;
-  readonly payload: Record<string, unknown>;
-  readonly geometry: OperationGeometry | null;
   // 사용자 지정 accent 키(서버 영속). 미설정 시 부재. Dock 칩 perimeter 링 색의 SSoT다.
   readonly accent?: string | null;
   // 사용자 지정 그룹 id(서버 영속). null이면 Ungrouped, 미설정 시 부재(Ungrouped와 동일 취급).
   readonly groupId?: string | null;
-  // 부모 childSessions에서 만든 자식 표시 뷰에만 있다. 최상위 Operation에는 영속하지 않는다.
-  readonly parentOperationId?: string;
+  // 부모 sessions에서 만든 자식 표시 뷰에만 있다. 최상위 Objective에는 영속하지 않는다.
+  readonly parentObjectiveId?: string;
   readonly ts: {
     readonly createdAt: number;
     readonly updatedAt: number;
@@ -224,7 +221,7 @@ export interface GlobalSettingsState {
   readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
-  /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
+  /** 사이드바에서 Objective 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
   readonly sideBarDoubleClickOpen: boolean;
   readonly reduceMotion: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 구서버 응답에는 없고, 그때는 꺼짐이다. */
@@ -239,7 +236,7 @@ export interface GlobalSettingsState {
   /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 구서버 응답에는 없을 수 있고, 그때는 빈 객체다. */
   readonly shortcuts: ShortcutBindings;
   /**
-   * 보관한 지 이만큼(24시간 단위) 지난 보관 Operation 묶음을 서버가 영구 삭제한다. null은 꺼짐이며,
+   * 보관한 지 이만큼(24시간 단위) 지난 보관 Objective 묶음을 서버가 영구 삭제한다. null은 꺼짐이며,
    * 구서버 응답에서 빠졌거나 알 수 없는 값이어도 꺼짐으로 정규화한다.
    */
   readonly archiveRetentionDays: ArchiveRetentionDays;
@@ -263,12 +260,12 @@ export interface ControlHolder {
 
 export type NotificationKind = "ended" | "input-waiting";
 
-export interface OperationNotification {
+export interface ObjectiveNotification {
   readonly kind: NotificationKind;
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
-  readonly operationLabel: string;
+  readonly objectiveRecordLabel: string;
   readonly lastRaisedSeq: number;
 }
 
@@ -305,44 +302,44 @@ export interface ConsoleState {
   readonly portHonored: boolean;
   readonly theaters: readonly TheaterInfo[];
   /**
-   * 목록 표면이 쓰는 최상위 Operation — 자식은 부모의 childSessions에서 파생되어 이 목록에 들지 않는다.
-   * id 로 찾을 때는 `findOperation`, 부모의 구성원은 `nestedOperationsOf` 로 명시적으로 연다.
+   * 목록 표면이 쓰는 최상위 Objective — 자식은 부모의 sessions에서 파생되어 이 목록에 들지 않는다.
+   * id 로 찾을 때는 `findObjective`, 부모의 구성원은 `nestedObjectiveRecordsOf` 로 명시적으로 연다.
    */
-  readonly operations: readonly OperationNode[];
-  /** 부모가 대표하는 구성원 Operation — 본문 풀·본문 교체·활동 끌어올리기처럼 구성원을 봐야 하는 소비자만 읽는다. */
-  readonly nestedOperations: readonly OperationNode[];
+  readonly objectiveRecords: readonly ObjectiveRecord[];
+  /** 부모가 대표하는 구성원 Objective — 본문 풀·본문 교체·활동 끌어올리기처럼 구성원을 봐야 하는 소비자만 읽는다. */
+  readonly nestedObjectiveRecords: readonly ObjectiveRecord[];
   /** 부모 패널이 지금 어느 구성원의 본문을 보이는가(부모 id → 구성원 id). 세션 안에서만 산다 — 새로 열면 부모 자신이다. */
   readonly nestedBodySelection: Readonly<Record<string, string>>;
-  readonly operationsHydrated: boolean;
-  readonly groups: readonly OperationGroup[];
-  readonly activeOperationId: string | null;
-  readonly activeOperationAcknowledged: boolean;
+  readonly objectiveRecordsHydrated: boolean;
+  readonly groups: readonly ObjectiveGroup[];
+  readonly activeObjectiveId: string | null;
+  readonly activeObjectiveAcknowledged: boolean;
   /**
-   * 사이드바에서 열지 않고 고르기만 한 Operation(「더블클릭으로 열기」를 켰을 때의 한 번 클릭). 무대·카메라·활성은 그대로이고
+   * 사이드바에서 열지 않고 고르기만 한 Objective(「더블클릭으로 열기」를 켰을 때의 한 번 클릭). 무대·카메라·활성은 그대로이고
    * 목표 같은 문맥만 이것을 따른다. 활성과 같은 값이 되면 비우며, 여는 순간(어느 경로든 활성을 세우는 순간) 사라진다.
    */
-  readonly selectedOperationId: string | null;
-  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
-  readonly operationRuntimeHydration: OperationRuntimeHydration;
-  readonly operationRuntimeError: string | null;
+  readonly selectedObjectiveId: string | null;
+  readonly objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>;
+  readonly objectiveRecordRuntimeHydration: ObjectiveRuntimeHydration;
+  readonly objectiveRecordRuntimeError: string | null;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
-  readonly operationsViewActive: boolean;
-  readonly operationSearchOpen: boolean;
-  readonly operationSearchSeed: string | null;
+  readonly objectiveRecordsViewActive: boolean;
+  readonly objectiveRecordSearchOpen: boolean;
+  readonly objectiveRecordSearchSeed: string | null;
   /**
    * seed가 같은 값으로 다시 와도(⌘P 두 번) 팔레트가 알아채도록 여는 요청마다 오르는 번호.
    * 팔레트는 이 번호가 바뀔 때만 seed를 입력에 반영한다.
    */
-  readonly operationSearchSeedNonce: number;
+  readonly objectiveRecordSearchSeedNonce: number;
   /** 팔레트가 지금 서 있는 모드. 전역 단축키가 ⌘K를 「닫기」로 볼지 「검색으로 복귀」로 볼지 가른다. */
-  readonly operationSearchMode: "operations" | "commands" | null;
+  readonly objectiveRecordSearchMode: "objectiveRecords" | "commands" | null;
   /** 모바일 「새 대화」 시트가 떠 있는가. 데스크톱 새 세션 화면(`newSession`)과 같은 실행 경로를 쓴다. */
   readonly mobileNewSessionOpen: boolean;
   /** `composer.open`이 남긴 초안·행선지. 새 세션 화면·시트가 열리며 한 번 소비한다. */
   readonly newSessionSeed: NewSessionSeed | null;
-  // 컴포저가 넘긴 실행 의도. Operations 화면이 자기 지오메트리·포커스 규율로 소비한다
-  // (pendingOperationFocus와 같은 request/consume 계약).
+  // 컴포저가 넘긴 실행 의도. ObjectiveRecords 화면이 자기 지오메트리·포커스 규율로 소비한다
+  // (pendingObjectiveFocus와 같은 request/consume 계약).
   readonly pendingLaunch: LaunchRequest | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
@@ -356,17 +353,17 @@ export interface ConsoleState {
   readonly selectedReleaseNoteKey: string | null;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
-  readonly pendingOperationFocus: string | null;
-  readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
+  readonly pendingObjectiveFocus: string | null;
+  readonly keyboardFocusRequest: { readonly objectiveId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
-  /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
+  /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
   readonly newSession: NewSessionTarget | null;
   /** 이미 열린 새 세션 화면에 「컴포저로 돌아오라」는 요청 번호. 단축키를 다시 누르면 오른다 — 화면이 이 값이 바뀔 때 포커스한다. */
   readonly newSessionFocusRequest: number;
   /** 새 세션 화면·모바일 시트가 소비하는 거절. */
   readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;
-  readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+  readonly objectiveRecordNotifications: Readonly<Record<string, ObjectiveNotification>>;
   readonly notificationPreferences: NotificationPreferences;
   readonly codexReader: CodexReaderRequest | null;
   readonly codexReaderExpanded: boolean;

@@ -1,4 +1,4 @@
-/* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
+/* Chat Mode — Objective 본문의 읽기 전용 지휘 로그.
    색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, brass는
    위치·포커스·hover만 진다. 보낸 말풍선은 중립 면으로 물러나 식별 워시를 쓰지 않는다 —
    단일 화자 표면이라 화자는 오른쪽 정렬이 말한다(행선지via의 캡션 잉크만 --id-cerulean을
@@ -22,7 +22,7 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  /* 채팅 로그는 Operation 본문이지 그 안의 다른 면이 아니다 — 터미널 뷰와 같은 --surface-panel을
+  /* 채팅 로그는 Objective 본문이지 그 안의 다른 면이 아니다 — 터미널 뷰와 같은 --surface-panel을
      칠해 캡션부터 로그까지 한 덩어리로 읽힌다. 이 위에 얹히는 카드·버블은
      --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다).
      포커스 워시는 캡션만 진다. 여기 따라가면 활성 채팅 전체가 다른 면으로 바뀐다. */
@@ -2618,7 +2618,7 @@
 
 .agent-chat-coord-pop-group { display: flex; flex-direction: column; }
 
-/* 크기·말투는 공유 머리글(components.css .operation-launch-variant-caption)이 정한다 — 여기서는 자리만 맞춘다. */
+/* 크기·말투는 공유 머리글(components.css .objective-launch-variant-caption)이 정한다 — 여기서는 자리만 맞춘다. */
 .agent-chat-coord-pop-caption {
   display: flex;
   align-items: center;
@@ -4244,9 +4244,9 @@
   font-size: var(--font-content-size);
 }
 
-/* ── 모바일 Operation 화면의 채팅(impl-spec S-26·S-27·S-29) ─────────────────────────────
+/* ── 모바일 Objective 화면의 채팅(impl-spec S-26·S-27·S-29) ─────────────────────────────
    셸이 상단 막대를 그리는 모바일 화면에서만 선다 — 본문 루트의 [data-mobile-surface]는 셸이 실어 준
-   창구(ctx.mobileOperation)의 존재로만 붙으므로, 데스크톱 대화 화면·확대 표면은 이 구역과 무관하다.
+   창구(ctx.mobileObjective)의 존재로만 붙으므로, 데스크톱 대화 화면·확대 표면은 이 구역과 무관하다.
    색은 모바일 팔레트 토큰(--m-*)만 쓴다. 원장의 데스크톱 문법(턴 노드·경과 시계·답 이름표)은 거두고,
    메신저 문법(사람 말풍선 오른쪽, AI 응답은 말풍선 없이 읽기 세리프)으로 그린다. */
 [data-mobile-surface] .agent-chat {
@@ -4813,14 +4813,14 @@
   background: transparent;
 }
 
-/* 플러그인 기록의 구분선(세션 바뀜·실패) — 턴 사이를 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다. Operation 채팅의
+/* 플러그인 기록의 구분선(세션 바뀜·실패) — 턴 사이를 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다. Objective 채팅의
    「이전 대화」 띠(.agent-chat .fc-history-band)와 같은 덮음이다. */
 .agent-chat-sys.agent-chat-transcript-note {
   font-family: var(--font-ui);
   font-size: var(--t-sm);
 }
 
-/* 참여자의 원장(SDK `ctx.chat.Ledger`) — 그룹 원장 틀 안에 Operation 채팅 면을 그대로 세운다. 면은 절대 배치(.agent-chat)라
+/* 참여자의 원장(SDK `ctx.chat.Ledger`) — 그룹 원장 틀 안에 Objective 채팅 면을 그대로 세운다. 면은 절대 배치(.agent-chat)라
    그 좌표계가 될 상자가 틀의 본문 자리를 채운다. */
 .agent-ledger-host {
   position: relative;
@@ -4893,7 +4893,7 @@
 }
 
 /* ── 모바일 대화 문법 ─────────────────────────────────────────────────────────────
-   모바일 Operation 화면의 채팅도 데스크톱 대화 화면(그룹 대화)과 같은 말풍선 문법에 선다: 사람 말은 오른쪽 회색 말풍선, 답과 흐르는
+   모바일 Objective 화면의 채팅도 데스크톱 대화 화면(그룹 대화)과 같은 말풍선 문법에 선다: 사람 말은 오른쪽 회색 말풍선, 답과 흐르는
    글은 왼쪽 면 말풍선, 그 옆 아래에 발화자 아바타, 목표 대화의 뿌리면 첫 말풍선 위에 이름. 스레드는 처음부터 다 펴진다(접힘 띠 없음).
    읽기 세리프는 말풍선 없이 읽던 문법(S-26)의 몫이라, 말풍선 안의 답은 사람 말풍선과 같은 고딕으로 맞춘다 — 데스크톱도 두 말풍선이
    한 가족이다. 코드는 그대로 모노. 상단 막대·⋮·입력 독·도구 접힘 알약·안전 영역은 위 [data-mobile-surface] 구역이 그대로 진다.

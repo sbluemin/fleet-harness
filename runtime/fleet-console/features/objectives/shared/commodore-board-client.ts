@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 export type CommodoreBoardActor = "human" | "commander"
   | { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string }
-  | { readonly kind: "operation"; readonly operationId: string; readonly title: string | null };
+  | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
 
 /** 사령관 표면이 읽는 보드 투영. 보드 구현·판정 함수는 플러그인 밖으로 나오지 않는다. */
 export interface CommodoreBoardObjective {
@@ -18,7 +18,7 @@ export interface CommodoreBoardObjective {
   readonly missions: readonly { readonly done: unknown }[];
   readonly running: boolean;
   readonly waiting: boolean;
-  readonly addedBy: { readonly operationId: string; readonly title: string | null } | Extract<CommodoreBoardActor, { kind: "commodore" }> | null;
+  readonly addedBy: { readonly objectiveId: string; readonly title: string | null } | Extract<CommodoreBoardActor, { kind: "commodore" }> | null;
   readonly actions?: readonly { readonly id: string; readonly at: number; readonly kind: string; readonly by: CommodoreBoardActor }[];
   readonly decisions: readonly {
     readonly id: string; readonly at: number; readonly by?: CommodoreBoardActor;

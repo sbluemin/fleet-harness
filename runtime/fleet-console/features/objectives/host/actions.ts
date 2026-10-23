@@ -54,7 +54,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
   };
   /**
    * 사람에게 넘긴 항목의 경계 — 사령관은 넘긴 항목을 처리하는 행위(답·승인·거절·완료·확장·스티어링·후속 폐기)를 하지 못한다.
-   * 사람 쪽(사람·Console Use Operation)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
+   * 사람 쪽(사람·Console Use Objective)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
    */
   const holding = <A extends Ref, R>(targets: (body: A) => readonly PersonHoldTarget[], run: (body: A) => Promise<R> | R, settles = true, ended?: (body: A) => readonly PersonHoldTarget[]) => async (body: A): Promise<R> => {
     const held = liveHolds(body.objectiveId, targets(body));
@@ -126,7 +126,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     followupAbandon: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(store.followupAbandon(objectiveId, batchId, candidateId)),
     memberAdd: steerable(() => true, ({ objectiveId, member }: Ref & { member: { role: string; brief?: string; launch?: MemberLaunch; subagents?: boolean } }) => edited(objectiveId, ["members"], () => store.memberAdd(objectiveId, member, actor))),
     memberPatch: steerable(() => true, ({ objectiveId, memberId, patch }: Ref & { memberId: string; patch: MemberPatchInput }) => {
-      const reservation = only(patch, ["launch"]) && !!(ctx.operations.describe ? ctx.operations.describe(memberId) : ctx.operations.get(memberId));
+      const reservation = only(patch, ["launch"]) && !!(ctx.objectiveRecords.describe ? ctx.objectiveRecords.describe(memberId) : ctx.objectiveRecords.get(memberId));
       return edited(objectiveId, reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
     }),
     memberBatchLaunch: steerable(() => true, async ({ objectiveId, mode }: Ref & { mode: "same" | "route" }) => {

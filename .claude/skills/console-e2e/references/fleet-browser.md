@@ -1,6 +1,6 @@
 # Browser fallback — Fleet Browser
 
-Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot run here. Record the agent-browser error and affected scope before switching. A failed product assertion is not a reason to switch drivers, and a permission denial is not permission to route around it. Fleet Browser is this Operation's Browser pane, not the Electron application under test.
+Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot run here. Record the agent-browser error and affected scope before switching. A failed product assertion is not a reason to switch drivers, and a permission denial is not permission to route around it. Fleet Browser is this Objective's Browser pane, not the Electron application under test.
 
 ## Connection and ownership
 
@@ -12,7 +12,7 @@ Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot r
 
 - Use `read_page`/`find` for fresh references, `computer` for real pointer/keyboard input and screenshots, and `form_input` for supported form controls. Read each tool's schema rather than assuming agent-browser syntax.
 - Use `javascript_tool` for read-only DOM/state/geometry inspection, not to replace the interaction under test with DOM mutation or synthetic `.click()`.
-- Use filtered `read_console_messages` and `read_network_requests`. Capture a baseline before acting and distinguish new entries on a repeat run; the tools do not promise a clear operation or complete socket/rejection capture.
+- Use filtered `read_console_messages` and `read_network_requests`. Capture a baseline before acting and distinguish new entries on a repeat run; the tools do not promise a clear objectiveRecord or complete socket/rejection capture.
 - An accepted input call does not prove the UI received it; confirm with a screenshot or visible postcondition.
 
 ## Cleanup

@@ -1,25 +1,25 @@
 import type { ClientNavigateCapability, ClientShellCapability } from "../../workspace/shared/navigation.js";
 import type { ReactNode } from "react";
 import type { LocalizedText } from "@fleet-console/i18n";
-import type { OperationLaunchKind, OperationNode, OperationGeometry } from "./operations/types.js";
+import type { ObjectiveLaunchKind, ObjectiveRecord, ObjectiveGeometry } from "../../objectives/shared/records/types.js";
 import type { ClientComposerCapability } from "./composer-ports.js";
 import type { ClientPreferencesCapability, ClientSettingsCapability } from "../../settings/shared/client-ports.js";
 import type { ClientRailCapability } from "../../workspace/shared/navigation-ports.js";
 import type { ClientApiCapability, ClientLifecycleCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientNotificationsCapability } from "./notification-ports.js";
 import type { ConsoleTheme } from "../../settings/shared/theme.js";
-import type { ClientMobileOperationCapability } from "../../workspace/shared/mobile.js";
+import type { ClientMobileObjectiveCapability } from "../../workspace/shared/mobile.js";
 export interface LaunchContext {
   readonly theaterId: string;
-  readonly kind: OperationLaunchKind;
-  readonly geometry: OperationGeometry;
-  readonly operations: ClientOperationsCapability;
+  readonly kind: ObjectiveLaunchKind;
+  readonly geometry: ObjectiveGeometry;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
   readonly variant?: Readonly<Record<string, string>>;
 }
 
 
 /**
- * Operation 런타임은 두 축이다 — 축을 섞으면 한쪽이 다른 쪽을 삼킨다.
+ * Objective 런타임은 두 축이다 — 축을 섞으면 한쪽이 다른 쪽을 삼킨다.
  *
  * `lifecycle`은 실행 표면이 접근 가능한지를 말한다. 채팅은 SDK 자식 없이도 항상 live이고,
  * `dormant`는 터미널 프로세스 없이 재개 근거만 남은 상태다. `activity`는 무엇을 하는지를 말한다. 예전에는
@@ -27,16 +27,16 @@ export interface LaunchContext {
  * 이어 도는 세션(Chat Mode)의 진행 신호가 전부 그 분기에 삼켜졌다. 판별 유니온으로 갈라두면
  * "dormant인데 running" 같은 상태를 타입이 만들 수 없다.
  */
-export type OperationLifecycle = "live" | "dormant";
+export type ObjectiveLifecycle = "live" | "dormant";
 
 
-export type OperationActivity = "idle" | "running" | "awaiting" | "background";
+export type ObjectiveActivity = "idle" | "running" | "awaiting" | "background";
 
 
-export type OperationRuntimeState =
+export type ObjectiveRuntimeState =
   | {
     readonly lifecycle: "live";
-    readonly activity: OperationActivity;
+    readonly activity: ObjectiveActivity;
   }
   | { readonly lifecycle: "dormant" };
 
@@ -48,7 +48,7 @@ export type OperationRuntimeState =
  * 없는 구간이다. 어느 쪽도 유휴나 휴면으로 추정하지 않는다 — 이 결함의 실패 양상이 바로 "모르는
  * 것을 조용히 유휴로 말하기"였다.
  */
-export type OperationRuntimeHydration = "pending" | "ready" | "degraded";
+export type ObjectiveRuntimeHydration = "pending" | "ready" | "degraded";
 
 
 export interface TerminalTicket {
@@ -58,66 +58,66 @@ export interface TerminalTicket {
 
 
 export interface ClientTerminalCapability {
-  requestTicket(path: string, operationId: string, signal?: AbortSignal): Promise<TerminalTicket>;
+  requestTicket(path: string, objectiveId: string, signal?: AbortSignal): Promise<TerminalTicket>;
 }
 
 
-export interface ClientOperationRuntimeCapability {
-  set(operationId: string, state: OperationRuntimeState): void;
-  clear(operationId: string): void;
+export interface ClientObjectiveRuntimeCapability {
+  set(objectiveId: string, state: ObjectiveRuntimeState): void;
+  clear(objectiveId: string): void;
   /**
-   * 이 플러그인이 소유한 Operation들의 런타임 축을 신뢰할 수 있는지 보고한다. `degraded`는
+   * 이 플러그인이 소유한 Objective들의 런타임 축을 신뢰할 수 있는지 보고한다. `degraded`는
    * 상태를 모른다는 뜻이지 유휴라는 뜻이 아니므로, 호스트는 이 구간에서 활동을 추정하지 않는다.
    */
-  setHydration(state: OperationRuntimeHydration, error?: string): void;
+  setHydration(state: ObjectiveRuntimeHydration, error?: string): void;
 }
 
 
-export interface ClientOperationStatusDetailCapability {
-  set(operationId: string, detail: string): void;
-  clear(operationId: string): void;
+export interface ClientObjectiveStatusDetailCapability {
+  set(objectiveId: string, detail: string): void;
+  clear(objectiveId: string): void;
 }
 
 
-export interface ClientOperationsCapability {
-  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
-  rename(operationId: string, title: string): Promise<OperationNode>;
-  remove(operationId: string): Promise<void>;
-  /** 그 Operation 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다.
+export interface ClientObjectiveRecordsCapability {
+  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: ObjectiveGeometry | null }): Promise<ObjectiveRecord>;
+  rename(objectiveId: string, title: string): Promise<ObjectiveRecord>;
+  remove(objectiveId: string): Promise<void>;
+  /** 그 Objective 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다.
    * 이동은 코어가 확장 표면을 정리한다 — 플러그인은 자기 표면을 따로 닫지 않는다.
    * `snap: "full"` 은 Cruise 화면에서 Snap 전체 칸으로 앉힌다 — 스냅할 수 없는 모드·화면에서는 같은 일반 이동으로 폴백한다. */
-  focus(operationId: string, options?: { readonly snap?: "full" }): void;
+  focus(objectiveId: string, options?: { readonly snap?: "full" }): void;
 }
 
 
-export interface ConsoleOperationSummary {
+export interface ConsoleObjectiveSummary {
   readonly id: string;
   readonly theaterId: string;
   readonly type: string;
   readonly title: string;
   readonly activity: "idle" | "running" | "awaiting" | "background" | "ended";
-  /** `{ nested: true }` 로 읽은 구성원만 — 이 Operation 을 대표하는 부모. */
-  readonly parentOperationId?: string;
+  /** `{ nested: true }` 로 읽은 구성원만 — 이 Objective 을 대표하는 부모. */
+  readonly parentObjectiveId?: string;
   /**
-   * `{ nested: true }` 로 읽은 부모(구성원을 거느린 Operation)만 — 구성원의 대기·실행을 끌어올리기 전 자기 활동이다.
+   * `{ nested: true }` 로 읽은 부모(구성원을 거느린 Objective)만 — 구성원의 대기·실행을 끌어올리기 전 자기 활동이다.
    * 부모 자신의 대기·실행을 구성원 것과 가를 때 쓴다(`ownActivity ?? activity`). `activity` 와 같은 규칙으로 센다.
    */
   readonly ownActivity?: "idle" | "running" | "awaiting" | "background" | "ended";
 }
 
 
-export interface UseOperationsResult {
-  readonly operations: readonly OperationNode[];
+export interface UseObjectiveRecordsResult {
+  readonly objectiveRecords: readonly ObjectiveRecord[];
   readonly refresh: () => Promise<void>;
 }
 
 
-export interface OperationKindDescriptor {
+export interface ObjectiveKindDescriptor {
   readonly pluginId: string | null;
   readonly type: string;
   readonly title: LocalizedText;
-  readonly subtitle?: (operation: OperationNode) => string | undefined;
-  readonly render?: (context: OperationRenderContext) => ReactNode;
+  readonly subtitle?: (objectiveRecord: ObjectiveRecord) => string | undefined;
+  readonly render?: (context: ObjectiveRenderContext) => ReactNode;
   /**
    * Fills the caption band's action shelf, left of the host's own menu and window controls.
    * The band stays host-owned exactly as it does for a companion panel's `caption`: the host
@@ -129,27 +129,27 @@ export interface OperationKindDescriptor {
    * `captionToolsLead` stands at the front of the tool capsule and is not collapsed into the
    * overflow menu. Omit both and the host keeps the whole shelf in `captionActions`.
    */
-  readonly captionActions?: (context: OperationRenderContext) => ReactNode;
+  readonly captionActions?: (context: ObjectiveRenderContext) => ReactNode;
   /** Conversation header only — the view-switch button, beside the conversation's own view control. */
-  readonly captionViewSwitch?: (context: OperationRenderContext) => ReactNode;
+  readonly captionViewSwitch?: (context: ObjectiveRenderContext) => ReactNode;
   /** Conversation header only — the leading tool-capsule button (the session browser). Never overflow-collapsed. */
-  readonly captionToolsLead?: (context: OperationRenderContext) => ReactNode;
+  readonly captionToolsLead?: (context: ObjectiveRenderContext) => ReactNode;
   /**
-   * Fills the top of the host's Operation menu — the same card the caption's ··· button and the
+   * Fills the top of the host's Objective menu — the same card the caption's ··· button and the
    * sidebar's right-click open. The host owns the card, its grouping and
    * accent sections and keyboard travel; this section stands first, above them, and is followed by
    * the host's divider. Rows are `button.group-context-menu-item` with a `menuitem*` role so the
-   * host's arrow-key travel and Escape reach them. Keep it to per-Operation switches and readouts
-   * that belong to this Operation; nothing here may open another surface without closing the menu.
+   * host's arrow-key travel and Escape reach them. Keep it to per-Objective switches and readouts
+   * that belong to this Objective; nothing here may open another surface without closing the menu.
    */
-  readonly operationMenu?: (context: OperationMenuContext) => ReactNode;
+  readonly objectiveRecordMenu?: (context: ObjectiveMenuContext) => ReactNode;
   /**
-   * Small marks the host shows on this Operation's sidebar chip, after its name — the standing
-   * facts about this Operation worth reading in a list (a capability it has been granted, say),
+   * Small marks the host shows on this Objective's sidebar chip, after its name — the standing
+   * facts about this Objective worth reading in a list (a capability it has been granted, say),
    * never activity, which the host's own beacon already owns. Return nothing when there is
    * nothing to mark. Each mark is a 12px glyph the host tints; give it a `title`.
    */
-  readonly operationMarks?: (context: OperationMenuContext) => ReactNode;
+  readonly objectiveRecordMarks?: (context: ObjectiveMenuContext) => ReactNode;
   /**
    * Current height in panel pixels of fixed bottom chrome this body always paints below its live
    * content (e.g. an agent CLI's input composer and status lines). A host preview that crops the
@@ -160,13 +160,13 @@ export interface OperationKindDescriptor {
    */
   readonly previewBottomChrome?: () => number;
   readonly companions?: readonly CompanionPanelDescriptor[];
-  readonly canOpenCompanions?: (context: OperationCompanionAvailabilityContext) => boolean | Promise<boolean>;
+  readonly canOpenCompanions?: (context: ObjectiveCompanionAvailabilityContext) => boolean | Promise<boolean>;
 }
 
 
-export interface OperationCompanionAvailabilityContext {
+export interface ObjectiveCompanionAvailabilityContext {
   readonly api: ClientApiCapability;
-  readonly operation: OperationNode;
+  readonly objectiveRecord: ObjectiveRecord;
 }
 
 
@@ -191,51 +191,51 @@ export interface CompanionPanelDescriptor {
    * and is absent from shortcut help, while the host still reports its id through `hiddenCompanionPanelIds`
    * so plugin-side visibility checks stay correct.
    */
-  readonly available?: (operation: OperationNode) => boolean;
+  readonly available?: (objectiveRecord: ObjectiveRecord) => boolean;
   /**
    * Fills the caption band. The band itself stays host-owned — its geometry, surface, rim, and the frame's
    * top corners — exactly as the body slot is host-owned and plugin-filled; omitted renders the host's
    * dot and localized title. Ignored when `hideCaption` is set, which leaves the frame headless.
    */
-  readonly caption?: (context: OperationRenderContext) => unknown;
-  readonly render: (context: OperationRenderContext) => unknown;
+  readonly caption?: (context: ObjectiveRenderContext) => unknown;
+  readonly render: (context: ObjectiveRenderContext) => unknown;
 }
 
 
-export interface OperationContext {
-  readonly operationId: string;
+export interface ObjectiveContext {
+  readonly objectiveId: string;
   readonly theaterId: string;
   readonly pluginId: string | null;
   readonly type: string;
 }
 
 
-/** What an Operation menu section knows: the Operation as the host sees it, the UI language, and how to close the card. */
-export interface OperationMenuContext {
-  readonly operation: OperationNode;
+/** What an Objective menu section knows: the Objective as the host sees it, the UI language, and how to close the card. */
+export interface ObjectiveMenuContext {
+  readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
   readonly onClose: () => void;
 }
 
 
-export interface OperationRenderContext extends OperationContext {
+export interface ObjectiveRenderContext extends ObjectiveContext {
   /**
-   * 모바일 Operation 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 대화 화면·확대 표면).
+   * 모바일 Objective 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 대화 화면·확대 표면).
    */
-  readonly mobileOperation?: ClientMobileOperationCapability;
+  readonly mobileObjective?: ClientMobileObjectiveCapability;
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly rail: ClientRailCapability;
   readonly active: boolean;
   /**
-   * Requests DOM keyboard focus for the current Operation's primary body.
+   * Requests DOM keyboard focus for the current Objective's primary body.
    * This is not a layout position, active state, or persistent state: a changed value means a new focus request.
    * `undefined` denotes an older host and `0` denotes no request; consumers must only detect change, not compare order.
    * Plugins cannot increment this host-owned value themselves.
    */
   readonly keyboardFocusRequestId?: number;
-  readonly geometry: OperationGeometry;
-  readonly operation: OperationNode;
+  readonly geometry: ObjectiveGeometry;
+  readonly objectiveRecord: ObjectiveRecord;
   readonly zoom: number;
   readonly theme: ConsoleTheme;
   readonly language?: "en" | "ko";
@@ -243,18 +243,18 @@ export interface OperationRenderContext extends OperationContext {
   readonly lifecycle: ClientLifecycleCapability;
   readonly terminal: ClientTerminalCapability;
   readonly notifications: ClientNotificationsCapability;
-  readonly operations: ClientOperationsCapability;
+  readonly objectiveRecords: ClientObjectiveRecordsCapability;
   readonly preferences: ClientPreferencesCapability;
   readonly settings: ClientSettingsCapability;
-  readonly runtime: ClientOperationRuntimeCapability;
-  readonly statusDetail: ClientOperationStatusDetailCapability;
+  readonly runtime: ClientObjectiveRuntimeCapability;
+  readonly statusDetail: ClientObjectiveStatusDetailCapability;
   readonly composer: ClientComposerCapability;
   /**
-   * 호스트가 이 Operation에 대해 해소한 런타임 축. `null`은 권위 스냅샷 도착 전이거나 축이
+   * 호스트가 이 Objective에 대해 해소한 런타임 축. `null`은 권위 스냅샷 도착 전이거나 축이
    * degraded라는 뜻이며, live/dormant 추정값이 아니다 — 패널 본문이 자기 진행 상태를 별도로
    * 판단하지 않고 이 값 하나를 읽어야 사이드바와 본문이 갈라지지 않는다.
    */
-  readonly runtimeState: OperationRuntimeState | null;
+  readonly runtimeState: ObjectiveRuntimeState | null;
   /**
    * Whether this body is on a surface the user can read. `undefined` is an older
    * host and must be treated as live. `false` is a parked or hidden
@@ -263,7 +263,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly bodyLive?: boolean;
   readonly onActivate: () => void;
   readonly onClose: () => void;
-  readonly onGeometryChange: (geometry: OperationGeometry) => void;
+  readonly onGeometryChange: (geometry: ObjectiveGeometry) => void;
   /** Requests host-owned companion panels without exposing the host layout to plugins. */
   readonly onRequestCompanions?: (open: boolean) => void;
   readonly companionsOpen?: boolean;
@@ -272,7 +272,7 @@ export interface OperationRenderContext extends OperationContext {
   /** Requests a volatile host-owned visibility override for one companion panel. */
   readonly onSetCompanionPanelVisible?: (companionPanelId: string, visible: boolean) => void;
   /**
-   * Companion panels this host offers for the Operation. `undefined` offers every panel the plugin declares; a host
+   * Companion panels this host offers for the Objective. `undefined` offers every panel the plugin declares; a host
    * that offers only some lists them, and the plugin does not raise an entry (such as a caption button) for the rest.
    */
   readonly companionPanelIds?: readonly string[];

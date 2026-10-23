@@ -3,17 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   failAddTheater: vi.fn(),
   fetchGroups: vi.fn(),
-  fetchOperations: vi.fn(),
+  fetchObjectiveRecords: vi.fn(),
   forgetTheater: vi.fn(),
   getState: vi.fn(),
   hydrateGroups: vi.fn(),
-  hydrateOperations: vi.fn(),
+  hydrateObjectiveRecords: vi.fn(),
   removeTheater: vi.fn(),
 }));
 
 vi.mock("../core/client/src/integration/api.js", () => ({
   fetchGroups: mocks.fetchGroups,
-  fetchOperations: mocks.fetchOperations,
+  fetchObjectiveRecords: mocks.fetchObjectiveRecords,
   forgetTheater: mocks.forgetTheater,
 }));
 
@@ -21,7 +21,7 @@ vi.mock("../core/client/src/integration/store.js", () => ({
   failAddTheater: mocks.failAddTheater,
   getState: mocks.getState,
   hydrateGroups: mocks.hydrateGroups,
-  hydrateOperations: mocks.hydrateOperations,
+  hydrateObjectiveRecords: mocks.hydrateObjectiveRecords,
   removeTheater: mocks.removeTheater,
 }));
 
@@ -36,7 +36,7 @@ const RECEIPT = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.fetchOperations.mockResolvedValue([]);
+  mocks.fetchObjectiveRecords.mockResolvedValue([]);
   mocks.fetchGroups.mockResolvedValue([]);
   mocks.forgetTheater.mockResolvedValue({ ok: true, deletion: RECEIPT });
   mocks.getState.mockReturnValue({ theaters: [{ id: "theater-a" }] });
@@ -48,9 +48,9 @@ describe("forgetTheaterCompletely", () => {
 
     expect(mocks.forgetTheater).toHaveBeenCalledWith("theater-a");
     expect(mocks.removeTheater).toHaveBeenCalledWith("theater-a");
-    expect(mocks.fetchOperations).toHaveBeenCalledWith(null);
+    expect(mocks.fetchObjectiveRecords).toHaveBeenCalledWith(null);
     expect(mocks.fetchGroups).toHaveBeenCalledWith(null);
-    expect(mocks.hydrateOperations).toHaveBeenCalledWith([]);
+    expect(mocks.hydrateObjectiveRecords).toHaveBeenCalledWith([]);
     expect(mocks.hydrateGroups).toHaveBeenCalledWith([]);
   });
 
@@ -64,7 +64,7 @@ describe("forgetTheaterCompletely", () => {
   });
 
   it("preserves the receipt when collection rehydration fails", async () => {
-    mocks.fetchOperations.mockRejectedValue(new Error("refresh failed"));
+    mocks.fetchObjectiveRecords.mockRejectedValue(new Error("refresh failed"));
 
     await expect(forgetTheaterCompletely("theater-a")).resolves.toEqual(RECEIPT);
 

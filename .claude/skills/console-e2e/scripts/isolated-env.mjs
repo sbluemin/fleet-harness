@@ -34,7 +34,7 @@
  * and Linux it also refuses a run dir whose <run-dir>/tmp is too long for a Unix socket path (tsx's IPC socket). It
  * refuses a run dir that <run-dir>/owner assigns to another caller. A run dir with no owner is claimed by exclusive
  * create unless its console/console.lock names a live or unreadable PID (judged from the lock's port and pid only,
- * with a signal-0 probe). The caller is the Fleet Operation id
+ * with a signal-0 probe). The caller is the Fleet Objective id
  * (kept when Console restarts the session), else the Claude Code session id, else none, and owner keeps only its hash.
  * The remedy is another run dir name, never stopping or deleting the other run. --check passes the same checks, then
  * prints the plan and runs nothing. Otherwise it records the caller in owner, forwards SIGINT/SIGTERM/SIGHUP, exits

@@ -14,13 +14,13 @@ const fixture = vi.hoisted(() => {
     providers: [] as ClientFeatureDescriptor[],
     theaterContributions: [] as never[],
     // '@' 묶음의 「시작 전」 판정이 사이드바와 같은 묶음 원천을 읽는다 — 이 경로에는 묶음이 없다.
-    operationClusters: { subscribe: () => () => {}, get: () => noClusters },
+    objectiveRecordClusters: { subscribe: () => () => {}, get: () => noClusters },
   };
 });
 vi.mock("../core/client/src/integration/feature-registry.js", () => ({ useFeatureRegistry: () => fixture }));
-vi.mock("../features/execution/client/operations.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../features/execution/client/operations.js")>()),
-  fetchOperationCatalog: async () => [],
+vi.mock("../features/execution/client/objective-records.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../features/execution/client/objective-records.js")>()),
+  fetchObjectiveCatalog: async () => [],
 }));
 vi.mock("../features/workspace/client/conversation/new-session-playground.js", () => ({ NewSessionPlayground: () => null }));
 

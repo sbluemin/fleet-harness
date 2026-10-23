@@ -9,7 +9,7 @@
 /* 대화 정보 화면 「목표」 탭에 심긴 상세 — 스크롤은 정보 화면이 맡고 좌우 여백은 그 화면의 탭 칸이 준다. */
 .objectives-m.is-embedded { height: auto; overflow: visible; background: transparent; }
 .objectives-m.is-embedded .objectives-m-pad { padding: 0 0 8px; }
-/* Operation 없는 단독 목표 화면의 탭. 대화 정보 화면에서는 호스트의 한 줄 탭이 같은 세 보기를 맡는다. */
+/* Objective 없는 단독 목표 화면의 탭. 대화 정보 화면에서는 호스트의 한 줄 탭이 같은 세 보기를 맡는다. */
 /*
  * 경계선 대신 면의 아래쪽이 투명으로 옅어진다 — 밑으로 흐르는 본문이 탭 글자 뒤에서는 가리고 줄 아래 끝에서 이어진다.
  * 화면이 호스트 상단 막대 뒤로 흐를 때(data-mobile-chrome="flow") 탭 줄은 맨 위부터 막대 몫(--m-chrome-top)을 품는 떠 있는 줄이고, 본문은

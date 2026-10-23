@@ -378,7 +378,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
     const base = commodoreConversationLiveEntries(t, entries, live, confirmed);
     if (!pending) return base;
     return [...base, {
-      kind: "message", id: `pending-${pending.key}`, at: pending.at, operationId: "", speaker: { kind: "human", name: "Human" }, text: pending.text, streaming: false, pending: true,
+      kind: "message", id: `pending-${pending.key}`, at: pending.at, objectiveId: "", speaker: { kind: "human", name: "Human" }, text: pending.text, streaming: false, pending: true,
       ...(pending.images.length > 0 ? { attachments: pending.images.map((image) => ({ preview: { id: image.key, url: image.url } })) } : {}),
     }];
   }, [t, entries, live, confirmed, pending]);

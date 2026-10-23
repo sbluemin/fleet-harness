@@ -3,41 +3,41 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
-import type { OperationNode } from "../../execution/shared/operations/types.js";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "../shared/control.js";
+import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "../shared/control.js";
 import { z } from "zod";
 
 const callerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("operation"), operationId: z.string().min(1).max(128) }).strict(),
+  z.object({ kind: z.literal("objectiveRecord"), objectiveId: z.string().min(1).max(128) }).strict(),
   z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1).max(128) }).strict(),
 ]);
-const sameCaller = (a: ConsoleCaller, b: ConsoleCaller) => a.kind === "operation" && b.kind === "operation"
-  ? a.operationId === b.operationId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId;
+const sameCaller = (a: ConsoleCaller, b: ConsoleCaller) => a.kind === "objectiveRecord" && b.kind === "objectiveRecord"
+  ? a.objectiveId === b.objectiveId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId;
 const activity = z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]);
 const actionObjectSchema = z.object({
   kind: z.enum(["launch", "send", "interrupt", "resume"]),
-  theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
+  theaterId: z.string().min(1).max(128).optional(), objectiveId: z.string().min(1).max(128).optional(),
   // send 는 첨부가 있으면 빈 문면도 받는다(자식은 첨부 지시 줄만 받는다). 그 밖의 빈 문면은 아래 `empty_prompt`가 거절한다.
   text: z.string().max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(), liveOnly: z.boolean().optional(),
-  humanInput: z.object({ id: z.uuid(), targetOperationId: z.string().min(1).max(128).optional(), copy: z.boolean().optional(), act: z.enum(["start", "plan", "steer"]).optional(), author: z.literal("commodore").optional() }).strict().optional(),
+  humanInput: z.object({ id: z.uuid(), targetObjectiveId: z.string().min(1).max(128).optional(), copy: z.boolean().optional(), act: z.enum(["start", "plan", "steer"]).optional(), author: z.literal("commodore").optional() }).strict().optional(),
   // send 전용 — 사람이 올린 첨부 id(실행 기능의 런치 첨부). 입력창 상한(4)보다 넉넉한 입력 경계만 둔다; 해석·소유 검사는 전달이 한다.
   attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(16).optional(),
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableAutoMemory: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
-  parentOperationId: z.string().min(1).max(128).optional(),
+  parentObjectiveId: z.string().min(1).max(128).optional(),
   childSessionId: z.uuid().optional(),
-  newOperationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
+  newObjectiveId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
-  if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind === "launch" ? !value.theaterId || value.objectiveId : !value.objectiveId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentObjectiveId !== undefined || value.childSessionId !== undefined || value.newObjectiveId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
-  if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.childSessionId && (value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if ((value.parentObjectiveId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.childSessionId && (value.newObjectiveId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display !== undefined || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
@@ -45,7 +45,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
 });
 export const automationSchema = z.object({
   name: z.string().trim().min(1).max(100), theaterId: z.string().min(1).max(128),
-  trigger: z.discriminatedUnion("kind", [z.object({ kind: z.literal("interval"), minutes: z.number().int().min(5).max(1440) }).strict(), z.object({ kind: z.literal("activity"), operationId: z.string().min(1).max(128), activity }).strict()]),
+  trigger: z.discriminatedUnion("kind", [z.object({ kind: z.literal("interval"), minutes: z.number().int().min(5).max(1440) }).strict(), z.object({ kind: z.literal("activity"), objectiveId: z.string().min(1).max(128), activity }).strict()]),
   action: z.union([actionSchema, z.object({ kind: z.literal("briefing") }).strict()]),
   expiresAt: z.iso.datetime(), maxRuns: z.number().int().min(1).max(100),
 }).strict();
@@ -55,8 +55,8 @@ export class ConsoleControlError extends Error {
 }
 
 /**
- * Operation 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. 전역 Console Use는 항상
- * 열려 있고, 이 Operation 토글이 실제 권한이다.
+ * Objective 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. 전역 Console Use는 항상
+ * 열려 있고, 이 Objective 토글이 실제 권한이다.
  */
 export function readConsoleUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
   const value = payload?.consoleUse;
@@ -71,29 +71,29 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 const INFLIGHT_LIMIT_MS = 24 * 60 * 60_000;
 
 export interface ConsoleExecutionAdapter {
-  observe(operationId: string): ConsoleOperationObservation | null;
-  execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, caller: ConsoleCaller): Promise<{ readonly operationId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
+  observe(objectiveId: string): ConsoleObjectiveObservation | null;
+  execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, caller: ConsoleCaller): Promise<{ readonly objectiveId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
   /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
-  coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
-  readCoordinates?(operationId: string): ConsoleCoordinates | null;
+  coordinates?(objectiveId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
+  readCoordinates?(objectiveId: string): ConsoleCoordinates | null;
   /** 명시적으로 채팅의 SDK 주소를 준비한다. 관측은 이 포트를 호출하지 않는다. */
-  prepareChat?(operationId: string): Promise<void>;
-  unstartedPreset?(operationId: string, input: { readonly model: string; readonly effort: string | null }, owned: boolean): Promise<ConsoleCoordinatesResult>;
+  prepareChat?(objectiveId: string): Promise<void>;
+  unstartedPreset?(objectiveId: string, input: { readonly model: string; readonly effort: string | null }, owned: boolean): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
-  advertisedTools?(operationId: string): readonly string[] | null;
+  advertisedTools?(objectiveId: string): readonly string[] | null;
   /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
-  transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
+  transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
 }
 export interface ConsoleControlDeps {
   readonly directory: string;
-  readonly operations: () => readonly OperationNode[];
-  readonly resolveOperation?: (id: string) => OperationNode | null;
+  readonly objectiveRecords: () => readonly ObjectiveRecord[];
+  readonly resolveObjective?: (id: string) => ObjectiveRecord | null;
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
   readonly pluginAvailable?: (pluginId: string) => boolean;
   readonly now?: () => number;
 }
 interface SavedState { version: 3; automations: ConsoleAutomation[] }
-interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly operationId?: string; readonly activity?: ConsoleActivity; readonly automationId?: string }
+interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly objectiveId?: string; readonly activity?: ConsoleActivity; readonly automationId?: string }
 /**
  * 진행 중인 동작 — 메모리에만 있다. 접수에서 턴의 종료(또는 전달 실패)까지만 살고 영속하지 않는다.
  * 같은 ID의 기동 합류와 자동 정책의 「진행 중이면 건너뜀」이 이 목록만 본다.
@@ -104,7 +104,7 @@ interface InFlight {
   readonly policyId?: string;
   readonly expiresAt: number;
   updatedAt: number;
-  operationId?: string;
+  objectiveId?: string;
   result?: Promise<ConsoleActionResult>;
 }
 
@@ -119,7 +119,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   try {
     const raw = JSON.parse(fs.readFileSync(file, "utf8"));
     // 동작 영수증(옛 파일의 actions)은 더 저장하지 않는다 — 읽지 않고 버린다. v1 은 소유자 필드 이름만 다르다.
-    const migrate = ({ callerOperationId, ...row }: Record<string, unknown>) => ({ ...row, caller: { kind: "operation", operationId: callerOperationId } });
+    const migrate = ({ callerObjectiveId, ...row }: Record<string, unknown>) => ({ ...row, caller: { kind: "objectiveRecord", objectiveId: callerObjectiveId } });
     if (![1, 2, 3].includes(raw?.version) || !Array.isArray(raw.automations)) throw new Error("invalid_state");
     const automations = (raw.version === 1 ? raw.automations.map(migrate) : raw.automations) as ConsoleAutomation[];
     if (automations.length > 100
@@ -158,33 +158,33 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (events.length > 1000) events.splice(0, events.length - 1000);
     for (const wake of waiters) wake();
   }
-  function node(id: string) { return deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id); }
-  function callerAvailable(caller: ConsoleCaller) { return caller.kind === "operation" ? !!node(caller.operationId) : deps.pluginAvailable?.(caller.pluginId) === true; }
+  function node(id: string) { return deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id); }
+  function callerAvailable(caller: ConsoleCaller) { return caller.kind === "objectiveRecord" ? !!node(caller.objectiveId) : deps.pluginAvailable?.(caller.pluginId) === true; }
   /**
    * 소유자가 아직 콘솔 사용을 허용받고 있는가. 존재(`callerAvailable`)와 다른 축이다 — 살아 있는
-   * Operation이 허용만 거둔 경우가 있고, 그때 사용자가 할 일도 다르다.
+   * Objective이 허용만 거둔 경우가 있고, 그때 사용자가 할 일도 다르다.
    *
    * 이 판정이 여기에도 서야 하는 이유는 자동 운영이다: 정책은 소유자를 대신해 **나중에** 실행되므로,
    * 도구 호출 경로에만 게이트를 두면 이미 예약된 정책이 그 게이트를 우회해 돌아 버린다.
-   * 플러그인 소유자는 Operation 토글이 없다. 살아 있는 도구 호출은 연결의 `enabled`(부관 grant)가
+   * 플러그인 소유자는 Objective 토글이 없다. 살아 있는 도구 호출은 연결의 `enabled`(부관 grant)가
    * 막고 존재는 `pluginAvailable`이 지킨다. `console_automation`은 화면 자리에서 빠져 새 정책이
    * 살아 있는 도구로 서지 않으므로, 여기서 플러그인 grant를 다시 묻지 않는다.
    */
   function callerAuthorized(caller: ConsoleCaller) {
-    if (caller.kind !== "operation") return true;
-    const operation = node(caller.operationId);
-    return !!operation && readConsoleUseFlag(operation.payload) !== null;
+    if (caller.kind !== "objectiveRecord") return true;
+    const objectiveRecord = node(caller.objectiveId);
+    return !!objectiveRecord && readConsoleUseFlag(objectiveRecord) !== null;
   }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
   function validTarget(input: ConsoleActionInput, theaterId?: string) {
     if (input.kind === "launch") {
       if (!deps.theaters().some((t) => t.id === input.theaterId) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
     } else {
-      const op = node(input.operationId!);
-      if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_operation");
+      const op = node(input.objectiveId!);
+      if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_objectiveRecord");
       const observation = observe(op.id);
       if (input.kind === "interrupt" && (observation?.activity === "idle" || observation?.activity === "ended")) fail("nothing_to_interrupt");
-      if (input.kind === "resume" && op.payload.chatMode === true) fail("chat_resume_unsupported");
+      if (input.kind === "resume" && op.chatMode === true) fail("chat_resume_unsupported");
       if (input.kind === "resume" && observation?.lifecycle !== "dormant") fail("not_dormant");
       if (!observation?.supportedActions.includes(input.kind)) fail("capability_unavailable");
     }
@@ -211,18 +211,18 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (input.humanInput && caller.kind !== "plugin") fail("invalid_human_origin");
     // 첨부는 사람이 이 브라우저에서 올린 파일이다 — 사람 입력을 대행하는 신뢰된 플러그인 send 만 싣는다.
     if (input.attachmentIds && !input.humanInput) fail("invalid_human_origin");
-    if ((input.newOperationId || input.childSessionId) && caller.kind !== "plugin") fail("invalid_launch_option");
+    if ((input.newObjectiveId || input.childSessionId) && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.childSessionId) {
       const pending = [...inflight.values()].find((entry) => entry.input.childSessionId === input.childSessionId);
       if (pending) {
-        if (pending.input.parentOperationId !== input.parentOperationId || !sameCaller(pending.caller, caller)) fail("operation_id_taken");
+        if (pending.input.parentObjectiveId !== input.parentObjectiveId || !sameCaller(pending.caller, caller)) fail("objectiveRecord_id_taken");
         return pending.result!;
       }
     }
-    if (input.newOperationId) {
-      const pending = [...inflight.values()].find((entry) => entry.input.newOperationId === input.newOperationId && !entry.operationId);
+    if (input.newObjectiveId) {
+      const pending = [...inflight.values()].find((entry) => entry.input.newObjectiveId === input.newObjectiveId && !entry.objectiveId);
       if (pending) {
-        if (!sameCaller(pending.caller, caller) || pending.input.theaterId !== input.theaterId) fail("operation_id_taken");
+        if (!sameCaller(pending.caller, caller) || pending.input.theaterId !== input.theaterId) fail("objectiveRecord_id_taken");
         return pending.result!;
       }
     }
@@ -261,9 +261,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       assertCurrent();
       validTarget(entry.input);
       const result = await adapter!.execute(entry.input, assertCurrent, settled, entry.caller);
-      entry.operationId = result.operationId;
+      entry.objectiveId = result.objectiveId;
       entry.updatedAt = now();
-      return { operationId: result.operationId, delivery: result.delivery };
+      return { objectiveId: result.objectiveId, delivery: result.delivery };
     } catch (error) {
       inflight.delete(id);
       const failure = code(error);
@@ -280,7 +280,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const expires = Date.parse(input.expiresAt);
     if (expires <= now() || expires > now() + 30 * 86_400_000) fail("invalid_expiry");
     if (!deps.theaters().some((t) => t.id === input.theaterId)) fail("unknown_theater");
-    if (input.trigger.kind === "activity" && node(input.trigger.operationId)?.theaterId !== input.theaterId) fail("unknown_operation");
+    if (input.trigger.kind === "activity" && node(input.trigger.objectiveId)?.theaterId !== input.theaterId) fail("unknown_objectiveRecord");
     if (input.action.kind !== "briefing") validTarget(input.action, input.theaterId);
     if (state.automations.length >= 100) {
       // 상한에서만 종료된 정책의 자리를 회수한다. 재개 가능한 paused 정책과 진행 중 동작의 정책은 보존한다.
@@ -294,7 +294,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     state.automations.push(row); persist(); publish({ kind: "automation", automationId: row.id }); return row;
   }
   function briefing(theaterId: string) {
-    const ops = deps.operations().filter((op) => op.theaterId === theaterId);
+    const ops = deps.objectiveRecords().filter((op) => op.theaterId === theaterId);
     const counts: Record<string, number> = {};
     for (const op of ops) { const key = observe(op.id)?.activity ?? "unknown"; counts[key] = (counts[key] ?? 0) + 1; }
     return { at: stamp(), total: ops.length, unknown: counts.unknown ?? 0, counts };
@@ -306,22 +306,22 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       const changes = new Map<string, ConsoleActivity>();
       const alive = new Set<string>();
       // 자식 세션도 지켜본다 — nested 스캔이 돌려준 행의 변화가 waitMs 를 깨워야 한다.
-      const watched = deps.operations().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => deps.resolveOperation?.(child.id) ?? [])]);
+      const watched = deps.objectiveRecords().flatMap((parent) => [parent, ...(parent.sessions ?? []).flatMap((child) => deps.resolveObjective?.(child.id) ?? [])]);
       for (const op of watched) {
         alive.add(op.id);
         const obs = observe(op.id);
         // 사이드바 순서·그룹 소속도 목록의 일부다 — 바뀌면 console_sidebar list 의 waitMs 를 깨운다.
-        const placement = op as OperationNode & { readonly groupId?: string | null; readonly order?: number };
+        const placement = op as ObjectiveRecord & { readonly groupId?: string | null; readonly order?: number };
         const fingerprint = hash([op.title, op.theaterId, placement.groupId ?? null, placement.order ?? null, obs?.activity, obs?.lifecycle, obs?.output.revision, obs?.output.outcome]);
-        if (observed.get(op.id) !== fingerprint) publish({ kind: "operation", operationId: op.id, activity: obs?.activity ?? "unknown" });
+        if (observed.get(op.id) !== fingerprint) publish({ kind: "objectiveRecord", objectiveId: op.id, activity: obs?.activity ?? "unknown" });
         if (previousActivity.has(op.id) && previousActivity.get(op.id) !== obs?.activity && obs) changes.set(op.id, obs.activity);
         observed.set(op.id, fingerprint);
         previousActivity.set(op.id, obs?.activity ?? "unknown");
       }
-      for (const id of observed.keys()) if (!alive.has(id)) { observed.delete(id); previousActivity.delete(id); publish({ kind: "removed", operationId: id }); }
+      for (const id of observed.keys()) if (!alive.has(id)) { observed.delete(id); previousActivity.delete(id); publish({ kind: "removed", objectiveId: id }); }
       // 대상이 사라졌거나 끝났다는 소식이 끝내 오지 않은 동작은 진행 중에서 내린다 — 정책이 영영 건너뛰지 않게.
       for (const [id, action] of inflight) {
-        if ((action.operationId && !node(action.operationId)) || now() - action.updatedAt > INFLIGHT_LIMIT_MS) inflight.delete(id);
+        if ((action.objectiveId && !node(action.objectiveId)) || now() - action.updatedAt > INFLIGHT_LIMIT_MS) inflight.delete(id);
       }
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
@@ -332,7 +332,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         if (Date.parse(item.input.expiresAt) <= now()) { updateAutomation(item.id, { status: "expired" }); continue; }
         if (item.runs >= item.input.maxRuns) { updateAutomation(item.id, { status: "exhausted" }); continue; }
         const trigger = item.input.trigger;
-        const due = trigger.kind === "interval" ? Date.parse(item.nextRunAt ?? item.createdAt) <= now() : changes.get(trigger.operationId) === trigger.activity;
+        const due = trigger.kind === "interval" ? Date.parse(item.nextRunAt ?? item.createdAt) <= now() : changes.get(trigger.objectiveId) === trigger.activity;
         if (!due) continue;
         // 예산은 부작용 전에 영속 차감한다. 실패도 시도 횟수를 소비한다.
         updateAutomation(item.id, { runs: item.runs + 1, lastRunAt: stamp(), ...(trigger.kind === "interval" ? { nextRunAt: new Date(now() + trigger.minutes * 60_000).toISOString() } : {}) });
@@ -364,34 +364,34 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     return { cursor: `${epoch}:${sequence}`, events: events.filter((e) => e.seq > after), complete: true, retention: "1000 events; host lifetime" };
   }
   /**
-   * 떠 있는 채팅의 모델·강도를 바꾼다. 돈이 드는 살아 있는 프로세스를 바꾸므로 그 플러그인이 띄운 Operation(또는 그 자식)만 받는다 —
+   * 떠 있는 채팅의 모델·강도를 바꾼다. 돈이 드는 살아 있는 프로세스를 바꾸므로 그 플러그인이 띄운 Objective(또는 그 자식)만 받는다 —
    * 자식 지우기와 같은 소유 규칙(`launchedBy`)이다. 검증과 적용은 실행 어댑터가 채팅 화면의 라우트와 같은 길로 한다.
    */
-  async function coordinates(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
-    const op = node(operationId);
-    if (!op) return { ok: false, error: "unknown_operation" };
+  async function coordinates(caller: ConsoleCaller, objectiveId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
+    const op = node(objectiveId);
+    if (!op) return { ok: false, error: "unknown_objectiveRecord" };
     if (!launchedByPlugin(caller, op)) return { ok: false, error: "forbidden" };
     if (!adapter?.coordinates) return { ok: false, error: "chat_not_active" };
-    return adapter.coordinates(operationId, input);
+    return adapter.coordinates(objectiveId, input);
   }
-  /** 그 플러그인이 띄운 Operation(또는 그 자식)인가 — 살아 있는 세션을 바꾸거나 전사를 읽는 문의 소유 규칙. */
-  function launchedByPlugin(caller: ConsoleCaller, op: OperationNode): boolean {
-    const owners = [op, ...(op.parentOperationId ? [node(op.parentOperationId)] : [])];
+  /** 그 플러그인이 띄운 Objective(또는 그 자식)인가 — 살아 있는 세션을 바꾸거나 전사를 읽는 문의 소유 규칙. */
+  function launchedByPlugin(caller: ConsoleCaller, op: ObjectiveRecord): boolean {
+    const owners = [op, ...(op.parentObjectiveId ? [node(op.parentObjectiveId)] : [])];
     return owners.some((candidate) => {
-      const by = candidate?.payload.launchedBy;
+      const by = candidate?.launchedBy;
       return caller.kind === "plugin" && !!by && typeof by === "object" && (by as { kind?: unknown }).kind === "plugin" && (by as { pluginId?: unknown }).pluginId === caller.pluginId;
     });
   }
   /**
    * 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 줄과 마스킹이다. 세션의 말은 민감한 상태라 좌표 바꾸기와 같은 소유 규칙을 지난다:
-   * 그 플러그인이 띄운 Operation(또는 그 자식)만.
+   * 그 플러그인이 띄운 Objective(또는 그 자식)만.
    */
-  async function transcript(caller: ConsoleCaller, operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }> {
-    const op = node(operationId);
-    if (!op) return { error: "unknown_operation" };
+  async function transcript(caller: ConsoleCaller, objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }> {
+    const op = node(objectiveId);
+    if (!op) return { error: "unknown_objectiveRecord" };
     if (!launchedByPlugin(caller, op)) return { error: "forbidden" };
     if (!adapter?.transcript) return { error: "capability_unavailable" };
-    return adapter.transcript(operationId, { ...input, limit: Math.max(1, Math.min(200, input.limit)) }, signal);
+    return adapter.transcript(objectiveId, { ...input, limit: Math.max(1, Math.min(200, input.limit)) }, signal);
   }
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
@@ -402,54 +402,54 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       turnEndListeners.add(entry);
       return () => { turnEndListeners.delete(entry); };
     },
-    reportTurnEnd(operationId: string, output: ConsoleOperationObservation["output"]) {
+    reportTurnEnd(objectiveId: string, output: ConsoleObjectiveObservation["output"]) {
       if (disposed) return;
-      const op = node(operationId);
+      const op = node(objectiveId);
       if (!op) return;
-      const generation = observe(operationId)?.generation;
-      const event: ConsoleTurnEnd = { operationId, ...(generation ? { generation } : {}), output };
+      const generation = observe(objectiveId)?.generation;
+      const event: ConsoleTurnEnd = { objectiveId, ...(generation ? { generation } : {}), output };
       for (const entry of turnEndListeners) {
         if (!launchedByPlugin(entry.caller, op)) continue;
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 턴 정산을 막지 않는다. */ }
       }
     },
-    /** 세션 간 메시지 도착 — 보낸 쪽과 받는 쪽이 모두 그 플러그인이 띄운 Operation(또는 그 자식)일 때만 건넨다. 본문은 없다. */
+    /** 세션 간 메시지 도착 — 보낸 쪽과 받는 쪽이 모두 그 플러그인이 띄운 Objective(또는 그 자식)일 때만 건넨다. 본문은 없다. */
     subscribeSessionMessages(caller: ConsoleCaller, listener: (event: ConsoleSessionMessage) => void) {
       const entry = { caller, listener };
       sessionMessageListeners.add(entry);
       return () => { sessionMessageListeners.delete(entry); };
     },
-    reportSessionMessage(fromOperationId: string, toOperationId: string, at: number) {
+    reportSessionMessage(fromObjectiveId: string, toObjectiveId: string, at: number) {
       if (disposed) return;
-      const from = node(fromOperationId), to = node(toOperationId);
+      const from = node(fromObjectiveId), to = node(toObjectiveId);
       if (!from || !to) return;
-      const event: ConsoleSessionMessage = { fromOperationId, toOperationId, at };
+      const event: ConsoleSessionMessage = { fromObjectiveId, toObjectiveId, at };
       for (const entry of sessionMessageListeners) {
         if (!launchedByPlugin(entry.caller, from) || !launchedByPlugin(entry.caller, to)) continue;
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 전달을 막지 않는다. */ }
       }
     },
     coordinates, transcript,
-    async unstartedPreset(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
-      const op = node(operationId);
-      if (!op) return { ok: false, error: "unknown_operation" };
+    async unstartedPreset(caller: ConsoleCaller, objectiveId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
+      const op = node(objectiveId);
+      if (!op) return { ok: false, error: "unknown_objectiveRecord" };
       if (caller.kind !== "plugin") return { ok: false, error: "forbidden" };
       if (!adapter?.unstartedPreset) return { ok: false, error: "chat_not_active" };
-      return adapter.unstartedPreset(operationId, input, launchedByPlugin(caller, op));
+      return adapter.unstartedPreset(objectiveId, input, launchedByPlugin(caller, op));
     },
-    async prepareChat(caller: ConsoleCaller, operationId: string): Promise<void> {
-      const op = node(operationId);
-      if (!op) return fail("unknown_operation");
+    async prepareChat(caller: ConsoleCaller, objectiveId: string): Promise<void> {
+      const op = node(objectiveId);
+      if (!op) return fail("unknown_objectiveRecord");
       if (!launchedByPlugin(caller, op)) return fail("forbidden");
       if (!adapter?.prepareChat) return fail("capability_unavailable");
-      await adapter.prepareChat(operationId);
+      await adapter.prepareChat(objectiveId);
     },
-    readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
-    /** 광고한 도구 목록 — 그 플러그인이 띄운 Operation(또는 그 자식)만. 남의 세션이거나 모르면 null. */
-    advertisedTools(caller: ConsoleCaller, operationId: string): readonly string[] | null {
-      const op = node(operationId);
+    readCoordinates(objectiveId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(objectiveId) ?? null; },
+    /** 광고한 도구 목록 — 그 플러그인이 띄운 Objective(또는 그 자식)만. 남의 세션이거나 모르면 null. */
+    advertisedTools(caller: ConsoleCaller, objectiveId: string): readonly string[] | null {
+      const op = node(objectiveId);
       if (!op || !launchedByPlugin(caller, op)) return null;
-      return adapter?.advertisedTools?.(operationId) ?? null;
+      return adapter?.advertisedTools?.(objectiveId) ?? null;
     },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },

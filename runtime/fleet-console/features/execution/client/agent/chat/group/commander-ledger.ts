@@ -31,17 +31,17 @@ function subscribe(listener: () => void): () => void {
 const getRevision = () => revision;
 
 /** 지휘관 원장을 열거나(true) 닫는다(false). 같은 값이면 아무 일도 하지 않는다. */
-export function setCommanderLedger(rootOperationId: string, open: boolean): void {
-  if (chosen.has(rootOperationId) === open) return;
+export function setCommanderLedger(rootObjectiveId: string, open: boolean): void {
+  if (chosen.has(rootObjectiveId) === open) return;
   const next = new Set(chosen);
-  if (open) next.add(rootOperationId); else next.delete(rootOperationId);
+  if (open) next.add(rootObjectiveId); else next.delete(rootObjectiveId);
   chosen = next;
   notify();
 }
 
-/** 지휘관 원장을 골랐는가 — 플러그인 능력(`conversation.ledgerOperationId`)이 읽는다. */
-export function isCommanderLedgerChosen(rootOperationId: string): boolean {
-  return chosen.has(rootOperationId);
+/** 지휘관 원장을 골랐는가 — 플러그인 능력(`conversation.ledgerObjectiveId`)이 읽는다. */
+export function isCommanderLedgerChosen(rootObjectiveId: string): boolean {
+  return chosen.has(rootObjectiveId);
 }
 
 /** 고름이 바뀌면 깨운다. */
@@ -49,24 +49,24 @@ export function subscribeCommanderLedger(listener: () => void): () => void {
   return subscribe(listener);
 }
 
-export function useCommanderLedgerChosen(rootOperationId: string | null): boolean {
+export function useCommanderLedgerChosen(rootObjectiveId: string | null): boolean {
   useSyncExternalStore(subscribe, getRevision, getRevision);
-  return rootOperationId !== null && chosen.has(rootOperationId);
+  return rootObjectiveId !== null && chosen.has(rootObjectiveId);
 }
 
 /** 읽기 전용 틀이 지휘관 본문을 감싸는 동안 표식을 단다. 돌려준 함수로 뗀다(틀의 layout effect 수명). */
-export function frameCommanderLedger(rootOperationId: string): () => void {
-  framed.set(rootOperationId, (framed.get(rootOperationId) ?? 0) + 1);
+export function frameCommanderLedger(rootObjectiveId: string): () => void {
+  framed.set(rootObjectiveId, (framed.get(rootObjectiveId) ?? 0) + 1);
   notify();
   return () => {
-    const count = (framed.get(rootOperationId) ?? 1) - 1;
-    if (count > 0) framed.set(rootOperationId, count); else framed.delete(rootOperationId);
+    const count = (framed.get(rootObjectiveId) ?? 1) - 1;
+    if (count > 0) framed.set(rootObjectiveId, count); else framed.delete(rootObjectiveId);
     notify();
   };
 }
 
-/** 이 Operation 의 본문이 지금 지휘관 원장 틀 안에 서 있는가 — 채팅 본문이 입력 틀을 뺄지 읽는다. */
-export function useCommanderLedgerFramed(operationId: string): boolean {
+/** 이 Objective 의 본문이 지금 지휘관 원장 틀 안에 서 있는가 — 채팅 본문이 입력 틀을 뺄지 읽는다. */
+export function useCommanderLedgerFramed(objectiveId: string): boolean {
   useSyncExternalStore(subscribe, getRevision, getRevision);
-  return framed.has(operationId);
+  return framed.has(objectiveId);
 }

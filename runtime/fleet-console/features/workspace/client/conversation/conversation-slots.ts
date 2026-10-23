@@ -1,48 +1,48 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ClientNavigateCapability } from "../../shared/navigation.js";
-import type { OperationCluster } from "../../../objectives/shared/operation-clusters.js";
+import type { ObjectiveCluster } from "../../../objectives/shared/objective-clusters.js";
 
-import type { OperationNode } from "../../../../core/client/src/integration/types.js";
+import type { ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
 
 export {
-  registerConversationOperationTab,
-  type ConversationOperationTab,
-} from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+  registerConversationObjectiveTab,
+  type ConversationObjectiveTab,
+} from "../../../../core/client/src/chrome/rail/objective-tabs.js";
 
 /**
  * 대화 중심 화면에 다른 기능이 끼워 넣는 자리 세 가지.
  *
- * 1. 가운데 칸 본문 — `setConversationBodyRenderer`. 기본은 그 Operation 의 기존 본문(채팅·터미널)이다. 렌더러가
- *    `null` 을 돌려주면 기본 본문이 선다. 그룹 대화는 구성원을 가진 Operation 에서만 자기 화면을 돌려주면 된다.
- * 2. 오른쪽 패널 앞 묶음 — `registerConversationOperationTab`(core 레일). 탭은 레일 패널로 서서 독점 슬롯·폭 기억을 받는다.
- *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Operation 을, `useConversationStandIn()` 으로 플러그인 대화가
- *    대신하는 아직 서지 않은 Operation 을 읽는다.
+ * 1. 가운데 칸 본문 — `setConversationBodyRenderer`. 기본은 그 Objective 의 기존 본문(채팅·터미널)이다. 렌더러가
+ *    `null` 을 돌려주면 기본 본문이 선다. 그룹 대화는 구성원을 가진 Objective 에서만 자기 화면을 돌려주면 된다.
+ * 2. 오른쪽 패널 앞 묶음 — `registerConversationObjectiveTab`(core 레일). 탭은 레일 패널로 서서 독점 슬롯·폭 기억을 받는다.
+ *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Objective 을, `useConversationStandIn()` 으로 플러그인 대화가
+ *    대신하는 아직 서지 않은 Objective 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
  * 4. 대화 머리 보기 스위치 — `setConversationCaptionRenderer`. 본문 렌더러가 세운 화면의 보기 스위치(그룹 대화의 「턴 접기」)가
  *    pill 바로 옆 보기 캡슐(전환과 한 묶음)에 선다. `null` 이면 그 칸은 서지 않는다.
- * 5. 대신하는 Operation 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Operation 을 대신하면
+ * 5. 대신하는 Objective 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Objective 을 대신하면
  *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
  * 6. 머리 pill 의 잠깐 바뀐 내용 — `publishConversationPillTakeover`. 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 그 대화의 주인
- *    Operation 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)을 제 내용으로 바꾼다. pill 을 그리는 쪽은 `useConversationPillTakeover` 로
- *    읽으며 자기가 그 Operation 의 pill 을 세웠다고 알리고, 본문은 `useConversationPillHosted` 로 그 pill 이 있는지 보고 없으면 제 안에 대체 칩을 둔다.
+ *    Objective 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)을 제 내용으로 바꾼다. pill 을 그리는 쪽은 `useConversationPillTakeover` 로
+ *    읽으며 자기가 그 Objective 의 pill 을 세웠다고 알리고, 본문은 `useConversationPillHosted` 로 그 pill 이 있는지 보고 없으면 제 안에 대체 칩을 둔다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
  */
 
 // ── 가운데 칸의 주인 ───────────────────────────────────────────────────────
 
-/** 가운데 칸에 지금 선 Operation. 비어 있으면 null. 셸이 정하고 탭·렌더러가 읽는다. */
-let subject: OperationNode | null = null;
+/** 가운데 칸에 지금 선 Objective. 비어 있으면 null. 셸이 정하고 탭·렌더러가 읽는다. */
+let subject: ObjectiveRecord | null = null;
 const subjectListeners = new Set<() => void>();
 
-export function publishConversationSubject(next: OperationNode | null): void {
+export function publishConversationSubject(next: ObjectiveRecord | null): void {
   if (subject === next) return;
   subject = next;
   for (const listener of subjectListeners) listener();
 }
 
-export function getConversationSubject(): OperationNode | null {
+export function getConversationSubject(): ObjectiveRecord | null {
   return subject;
 }
 
@@ -52,7 +52,7 @@ export function subscribeConversationSubject(listener: () => void): () => void {
   return () => { subjectListeners.delete(listener); };
 }
 
-export function useConversationSubject(): OperationNode | null {
+export function useConversationSubject(): ObjectiveRecord | null {
   return useSyncExternalStore(
     (listener) => { subjectListeners.add(listener); return () => { subjectListeners.delete(listener); }; },
     () => subject,
@@ -60,11 +60,11 @@ export function useConversationSubject(): OperationNode | null {
   );
 }
 
-// ── 가운데 칸이 대신하는 Operation ─────────────────────────────────────────
+// ── 가운데 칸이 대신하는 Objective ─────────────────────────────────────────
 
 /**
- * 가운데 칸의 플러그인 대화가 대신하는, 아직 서지 않은 Operation 의 id(`ConversationSurfaceDescriptor.standInOperationId`).
- * 있으면 오른쪽 패널은 Operation 대화처럼 선다(글자 탭·「구성원」). Operation 대화나 다른 플러그인 대화가 서면 null 이다.
+ * 가운데 칸의 플러그인 대화가 대신하는, 아직 서지 않은 Objective 의 id(`ConversationSurfaceDescriptor.standInObjectiveId`).
+ * 있으면 오른쪽 패널은 Objective 대화처럼 선다(글자 탭·「구성원」). Objective 대화나 다른 플러그인 대화가 서면 null 이다.
  */
 let standIn: string | null = null;
 const standInListeners = new Set<() => void>();
@@ -94,16 +94,16 @@ export function useConversationStandIn(): string | null {
  * 셸이 읽은 목표 묶음 — 탭 본문이 아바타 얼굴의 검토 대기·결정 요청·임무 완료를 다른 표면과 같은 사실로 고르게 한다.
  * 탭은 묶음 훅(플러그인 레지스트리)을 직접 가져오지 않고 이 자리에서 읽는다.
  */
-let clusters: readonly OperationCluster[] = [];
+let clusters: readonly ObjectiveCluster[] = [];
 const clusterListeners = new Set<() => void>();
 
-export function publishConversationClusters(next: readonly OperationCluster[]): void {
+export function publishConversationClusters(next: readonly ObjectiveCluster[]): void {
   if (clusters === next) return;
   clusters = next;
   for (const listener of clusterListeners) listener();
 }
 
-export function useConversationClusters(): readonly OperationCluster[] {
+export function useConversationClusters(): readonly ObjectiveCluster[] {
   return useSyncExternalStore(
     (listener) => { clusterListeners.add(listener); return () => { clusterListeners.delete(listener); }; },
     () => clusters,
@@ -115,18 +115,18 @@ export function useConversationClusters(): readonly OperationCluster[] {
 
 export interface ConversationBodyContext {
   /** 가운데 칸의 주인 — 구성원을 가진 목표면 지휘관이다. */
-  readonly operation: OperationNode;
-  /** 지금 본문을 보이는 Operation — 오른쪽 「구성원」 탭에서 구성원을 고르면 그 구성원, 아니면 주인. */
-  readonly bodyOperation: OperationNode;
+  readonly objectiveRecord: ObjectiveRecord;
+  /** 지금 본문을 보이는 Objective — 오른쪽 「구성원」 탭에서 구성원을 고르면 그 구성원, 아니면 주인. */
+  readonly bodyObjective: ObjectiveRecord;
   /** 주인의 구성원(코어의 부모 관계). 없으면 빈 배열. */
-  readonly nestedOperations: readonly OperationNode[];
+  readonly nestedObjectiveRecords: readonly ObjectiveRecord[];
   readonly language: "en" | "ko";
   /** 셸이 그릴 기본 본문 — 렌더러가 감싸 쓰거나 무시한다. 같은 렌더에서 두 번 그리지 않는다. */
   readonly defaultBody: ReactNode;
-  /** 기본 본문 대신 세운 글의 파일 링크 열기 — 기본 본문(Operation 본문)이 받는 것과 같은 창구. */
+  /** 기본 본문 대신 세운 글의 파일 링크 열기 — 기본 본문(Objective 본문)이 받는 것과 같은 창구. */
   readonly navigate: ClientNavigateCapability;
-  /** 이 대화의 Operation 브라우저 칸을 연다(여는 일만) — 기본 본문의 링크 카드 「Operation 브라우저」 행과 같은 자리. 본문 Operation 이 브라우저를 내주지 않으면 없다. */
-  readonly openOperationBrowser?: () => void;
+  /** 이 대화의 Objective 브라우저 칸을 연다(여는 일만) — 기본 본문의 링크 카드 「Objective 브라우저」 행과 같은 자리. 본문 Objective 이 브라우저를 내주지 않으면 없다. */
+  readonly openObjectiveBrowser?: () => void;
 }
 
 export type ConversationBodyRenderer = (context: ConversationBodyContext) => ReactNode | null;
@@ -156,7 +156,7 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
 // ── 대화 머리 보기 스위치 ──────────────────────────────────────────────────
 
 /** 머리 보기 스위치 렌더러의 맥락 — 본문 렌더러와 같은 사실이다(기본 본문은 없다). */
-export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody" | "navigate" | "openOperationBrowser">;
+export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody" | "navigate" | "openObjectiveBrowser">;
 export type ConversationCaptionRenderer = (context: ConversationCaptionContext) => ReactNode | null;
 
 let captionRenderer: ConversationCaptionRenderer | null = null;
@@ -181,15 +181,15 @@ export function useConversationCaptionRenderer(): ConversationCaptionRenderer | 
   );
 }
 
-// ── 대신하는 Operation 의 입력창 ──────────────────────────────────────────
+// ── 대신하는 Objective 의 입력창 ──────────────────────────────────────────
 
-/** 플러그인 대화가 대신하는 Operation(시작 전·완료한 목표)의 입력창 렌더러 — 그 id 의 묶음 대화 계약으로 그린다. */
-export type ConversationStandInComposerRenderer = (operationId: string, language: "en" | "ko") => ReactNode;
+/** 플러그인 대화가 대신하는 Objective(시작 전·완료한 목표)의 입력창 렌더러 — 그 id 의 묶음 대화 계약으로 그린다. */
+export type ConversationStandInComposerRenderer = (objectiveId: string, language: "en" | "ko") => ReactNode;
 
 let standInComposer: ConversationStandInComposerRenderer | null = null;
 const standInComposerListeners = new Set<() => void>();
 
-/** 대신하는 Operation 의 입력창 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
+/** 대신하는 Objective 의 입력창 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
 export function setConversationStandInComposer(renderer: ConversationStandInComposerRenderer): () => void {
   standInComposer = renderer;
   for (const listener of standInComposerListeners) listener();
@@ -208,28 +208,28 @@ export function useConversationStandInComposer(): ConversationStandInComposerRen
   );
 }
 
-// ── Operation 이름 변경 ────────────────────────────────────────────────────
+// ── Objective 이름 변경 ────────────────────────────────────────────────────
 
-type ConversationOperationRename = (operationId: string, title: string) => void;
+type ConversationObjectiveRename = (objectiveId: string, title: string) => void;
 
-let operationRename: ConversationOperationRename | null = null;
-const operationRenameListeners = new Set<() => void>();
+let objectiveRecordRename: ConversationObjectiveRename | null = null;
+const objectiveRecordRenameListeners = new Set<() => void>();
 
-/** 오른쪽 패널 머리의 이름 편집이 확정할 길 — Operation 목록을 가진 쪽이 사이드바 칩과 같은 이름 변경 핸들러를 둔다. 돌려준 함수로 걷는다. */
-export function setConversationOperationRename(rename: ConversationOperationRename): () => void {
-  operationRename = rename;
-  for (const listener of operationRenameListeners) listener();
+/** 오른쪽 패널 머리의 이름 편집이 확정할 길 — Objective 목록을 가진 쪽이 사이드바 칩과 같은 이름 변경 핸들러를 둔다. 돌려준 함수로 걷는다. */
+export function setConversationObjectiveRename(rename: ConversationObjectiveRename): () => void {
+  objectiveRecordRename = rename;
+  for (const listener of objectiveRecordRenameListeners) listener();
   return () => {
-    if (operationRename !== rename) return;
-    operationRename = null;
-    for (const listener of operationRenameListeners) listener();
+    if (objectiveRecordRename !== rename) return;
+    objectiveRecordRename = null;
+    for (const listener of objectiveRecordRenameListeners) listener();
   };
 }
 
-export function useConversationOperationRename(): ConversationOperationRename | null {
+export function useConversationObjectiveRename(): ConversationObjectiveRename | null {
   return useSyncExternalStore(
-    (listener) => { operationRenameListeners.add(listener); return () => { operationRenameListeners.delete(listener); }; },
-    () => operationRename,
+    (listener) => { objectiveRecordRenameListeners.add(listener); return () => { objectiveRecordRenameListeners.delete(listener); }; },
+    () => objectiveRecordRename,
     () => null,
   );
 }
@@ -243,7 +243,7 @@ export interface ConversationRowPreview {
 export interface ConversationPreviewSource {
   readonly subscribe: (listener: () => void) => () => void;
   /** 행 id 로 미리보기를 찾는다. 같은 값이면 같은 참조를 돌려줘야 한다(useSyncExternalStore). */
-  readonly get: (operationId: string) => ConversationRowPreview | null;
+  readonly get: (objectiveId: string) => ConversationRowPreview | null;
 }
 
 let previewSource: ConversationPreviewSource | null = null;
@@ -262,13 +262,13 @@ export function setConversationPreviewSource(source: ConversationPreviewSource):
 }
 
 /** 행 하나의 미리보기 — 원천이 없으면 늘 null 이다. 행은 그때 상태 문구를 보인다. */
-export function useConversationRowPreview(operationId: string): ConversationRowPreview | null {
+export function useConversationRowPreview(objectiveId: string): ConversationRowPreview | null {
   const source = useSyncExternalStore(
     (listener) => { previewSourceListeners.add(listener); return () => { previewSourceListeners.delete(listener); }; },
     () => previewSource ?? NO_PREVIEW_SOURCE,
     () => NO_PREVIEW_SOURCE,
   );
-  return useSyncExternalStore(source.subscribe, () => source.get(operationId), () => null);
+  return useSyncExternalStore(source.subscribe, () => source.get(objectiveId), () => null);
 }
 
 // ── 머리 pill 의 잠깐 바뀐 내용 ────────────────────────────────────────────
@@ -290,29 +290,29 @@ const pillListeners = new Set<() => void>();
 const subscribePill = (listener: () => void) => { pillListeners.add(listener); return () => { pillListeners.delete(listener); }; };
 const emitPill = () => { for (const listener of pillListeners) listener(); };
 
-/** 그 Operation 의 머리 pill 을 바꾸거나(`takeover`) 되돌린다(`null`). 바꾼 쪽이 걷힐 때 null 로 되돌린다. */
-export function publishConversationPillTakeover(operationId: string, takeover: ConversationPillTakeover | null): void {
-  if ((pillTakeovers.get(operationId) ?? null) === takeover) return;
-  if (takeover) pillTakeovers.set(operationId, takeover); else pillTakeovers.delete(operationId);
+/** 그 Objective 의 머리 pill 을 바꾸거나(`takeover`) 되돌린다(`null`). 바꾼 쪽이 걷힐 때 null 로 되돌린다. */
+export function publishConversationPillTakeover(objectiveId: string, takeover: ConversationPillTakeover | null): void {
+  if ((pillTakeovers.get(objectiveId) ?? null) === takeover) return;
+  if (takeover) pillTakeovers.set(objectiveId, takeover); else pillTakeovers.delete(objectiveId);
   emitPill();
 }
 
-/** 머리 pill 을 그리는 쪽 — 그 Operation 의 바뀐 내용을 읽고, 서 있는 동안 자기가 그 pill 을 세웠다고 알린다. */
-export function useConversationPillTakeover(operationId: string | null): ConversationPillTakeover | null {
+/** 머리 pill 을 그리는 쪽 — 그 Objective 의 바뀐 내용을 읽고, 서 있는 동안 자기가 그 pill 을 세웠다고 알린다. */
+export function useConversationPillTakeover(objectiveId: string | null): ConversationPillTakeover | null {
   useEffect(() => {
-    if (operationId === null) return;
-    pillHosts.set(operationId, (pillHosts.get(operationId) ?? 0) + 1);
+    if (objectiveId === null) return;
+    pillHosts.set(objectiveId, (pillHosts.get(objectiveId) ?? 0) + 1);
     emitPill();
     return () => {
-      const count = (pillHosts.get(operationId) ?? 1) - 1;
-      if (count > 0) pillHosts.set(operationId, count); else pillHosts.delete(operationId);
+      const count = (pillHosts.get(objectiveId) ?? 1) - 1;
+      if (count > 0) pillHosts.set(objectiveId, count); else pillHosts.delete(objectiveId);
       emitPill();
     };
-  }, [operationId]);
-  return useSyncExternalStore(subscribePill, () => (operationId === null ? null : pillTakeovers.get(operationId) ?? null), () => null);
+  }, [objectiveId]);
+  return useSyncExternalStore(subscribePill, () => (objectiveId === null ? null : pillTakeovers.get(objectiveId) ?? null), () => null);
 }
 
-/** 그 Operation 의 머리 pill 이 지금 서 있는가 — 없으면 바꿀 pill 이 없으므로 본문이 제 안에 대체 칩을 둔다. */
-export function useConversationPillHosted(operationId: string | null): boolean {
-  return useSyncExternalStore(subscribePill, () => operationId !== null && (pillHosts.get(operationId) ?? 0) > 0, () => false);
+/** 그 Objective 의 머리 pill 이 지금 서 있는가 — 없으면 바꿀 pill 이 없으므로 본문이 제 안에 대체 칩을 둔다. */
+export function useConversationPillHosted(objectiveId: string | null): boolean {
+  return useSyncExternalStore(subscribePill, () => objectiveId !== null && (pillHosts.get(objectiveId) ?? 0) > 0, () => false);
 }

@@ -5,19 +5,19 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import { takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
-import { fetchGroups, fetchOperations, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
+import { fetchGroups, fetchObjectiveRecords, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
-import { OperationSearch } from "../chrome/components/operation-search.js";
+import { ObjectiveSearch } from "../chrome/components/objective-search.js";
 import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
-import { openArchiveSheet } from "../integration/operation-archive.js";
-import type { ArchiveOutcome } from "../integration/operation-actions.js";
-import { ApiError, undoOperationArchive } from "../../../../features/execution/client/operations.js";
+import { openArchiveSheet } from "../integration/objective-archive.js";
+import type { ArchiveOutcome } from "../integration/objective-actions.js";
+import { ApiError, undoObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
@@ -32,22 +32,22 @@ import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../i
 import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/feature-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
-import type { PaletteSearchPanel } from "../integration/operation-search.js";
+import type { PaletteSearchPanel } from "../integration/objective-search.js";
 import { useDesktopRailEntries, useRailEntries } from "../chrome/pane/pane-registry.js";
 import { useFeatureRegistry, useExpandedSurfaceDescriptors } from "../integration/feature-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
-import { Operations } from "../../../../features/workspace/client/operations.js";
+import { ObjectiveRecords } from "../../../../features/workspace/client/objective-records.js";
 import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
-import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity } from "../integration/store.js";
+import { refreshObserverStatus } from "../integration/objective-records-sse.js";
+import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, hydrateTheaterBootstrap, hydrateTheaters, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive, setState, themePolarity } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
-import { subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { subscribeObjectiveActivityTracking } from "../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
@@ -98,7 +98,7 @@ function ConnectedApp() {
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
-  // 에이전트가 치운 Operation 의 저자 — 되돌리기 배너가 "누가 보관했는지" 를 말한다. 배너가 내려가면 함께 잊는다.
+  // 에이전트가 치운 Objective 의 저자 — 되돌리기 배너가 "누가 보관했는지" 를 말한다. 배너가 내려가면 함께 잊는다.
   const [undoAuthors, setUndoAuthors] = useState<ReadonlyMap<string, { readonly caller: string; readonly title: string }>>(new Map());
   const [undoClock, setUndoClock] = useState(Date.now());
   // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
@@ -166,9 +166,9 @@ function ConnectedApp() {
   }, [themeNotice]);
 
   const pathname = location.pathname;
-  const operationsViewVisible = pathname.startsWith("/operations");
+  const objectiveRecordsViewVisible = pathname.startsWith("/objectives");
   const mobileLayout = useViewMode().effective === "mobile";
-  const desktopOperationsVisible = !mobileLayout && operationsViewVisible;
+  const desktopObjectiveRecordsVisible = !mobileLayout && objectiveRecordsViewVisible;
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -183,10 +183,10 @@ function ConnectedApp() {
   // history를 직접 밀면 popstate가 안 나서 라우터가 이동을 놓친다.
   useEffect(() => bindConsoleNavigate((to, options) => navigate(to, { replace: options?.replace === true })), [navigate]);
   useEffect(() => { notifyConsoleLocationChanged(); }, [location]);
-  // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /operations에만 마운트되므로
+  // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /objectives에만 마운트되므로
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
-  const operationsViewVisibleRef = useRef(operationsViewVisible);
-  operationsViewVisibleRef.current = operationsViewVisible;
+  const objectiveRecordsViewVisibleRef = useRef(objectiveRecordsViewVisible);
+  objectiveRecordsViewVisibleRef.current = objectiveRecordsViewVisible;
   // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 같은 레지스트리를 읽어 같은 순서로 선다.
   // 이름은 엔트리가, 검색은 그 엔트리가 세우는 페인들이 말한다. 한 엔트리에 검색을 가진 페인이
   // 여럿이면 결과를 한 그룹으로 합친다 — 팔레트가 보는 단위는 여전히 "무엇을 여는가"다.
@@ -221,7 +221,7 @@ function ConnectedApp() {
     [railBindings],
   );
 
-  // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /operations 라우트에만
+  // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /objectives 라우트에만
   // 서지만 스토어와 surfaces 능력은 어느 화면에서든 살아 있다 — 레이어에 묶어 두면
   // 설정 화면에서 닫힌 페인의 onClose가 조용히 건너뛰어지고, 플러그인은 자기가 아직
   // 열려 있다고 믿은 채로 남는다.
@@ -245,7 +245,7 @@ function ConnectedApp() {
     const install = (): void => {
       if (cancelled) return;
       const capabilities = createHostCapabilities(() => {
-        void fetchOperations().then(hydrateOperations).catch(() => {});
+        void fetchObjectiveRecords().then(hydrateObjectiveRecords).catch(() => {});
       }, { railBindings: () => railBindingsRef.current, commodore: registry.commodore });
       cleanups.push(registry.install(capabilities));
     };
@@ -258,10 +258,10 @@ function ConnectedApp() {
   }, [registry.providers]);
 
   useEffect(() => {
-    setOperationsViewActive(operationsViewVisible);
-  }, [operationsViewVisible]);
+    setObjectiveRecordsViewActive(objectiveRecordsViewVisible);
+  }, [objectiveRecordsViewVisible]);
 
-  useEffect(() => subscribeOperationActivityTracking(), []);
+  useEffect(() => subscribeObjectiveActivityTracking(), []);
 
 
   useEffect(() => {
@@ -278,9 +278,9 @@ function ConnectedApp() {
       setState({ theaterError: error instanceof Error ? error.message : String(error) });
       resolveOnboardingOnBootstrap();
     });
-    void snapshots.operations.then((operations) => {
+    void snapshots.objectiveRecords.then((objectiveRecords) => {
       if (cancelled) return;
-      hydrateInitialOperations(operations);
+      hydrateInitialObjectiveRecords(objectiveRecords);
     }).catch(() => {
       if (!cancelled) openBootLane();
     });
@@ -378,10 +378,10 @@ function ConnectedApp() {
 
   // Console Use 의 보관 — 사람이 누른 것과 같은 되돌리기 창을 이 화면에도 세운다.
   useEffect(() => subscribeClosingByAgent((closing: ClosingByAgent) => {
-    const caller = closing.by.kind === "operation" ? closing.by.title ?? closing.by.operationId : closing.by.pluginId;
+    const caller = closing.by.kind === "objectiveRecord" ? closing.by.title ?? closing.by.objectiveId : closing.by.pluginId;
     const entry = closing.kind === "archive"
       ? archiveUndo(closing.receipt, Date.now() + UNDO_WINDOW_MS)
-      : closing.receipt.kind === "operation" ? deletionUndo(closing.receipt) : null;
+      : closing.receipt.kind === "objectiveRecord" ? deletionUndo(closing.receipt) : null;
     if (!entry) return;
     setUndoAuthors((current) => new Map(current).set(entry.key, { caller, title: closing.targetTitle }));
     enqueueUndo(entry);
@@ -393,12 +393,12 @@ function ConnectedApp() {
     if (!entry) return;
     undoInFlightRef.current = true;
     const request = entry.kind === "archive"
-      ? undoOperationArchive({ targetId: entry.receipt.targetId, archiveId: entry.receipt.archiveId })
-        .then(() => Promise.allSettled([fetchOperations(null).then(hydrateOperations)]))
+      ? undoObjectiveArchive({ targetId: entry.receipt.targetId, archiveId: entry.receipt.archiveId })
+        .then(() => Promise.allSettled([fetchObjectiveRecords(null).then(hydrateObjectiveRecords)]))
       : restoreDeletion(entry.deletion.deletionId)
         .then(() => Promise.allSettled([
           fetchTheaters(null).then(hydrateTheaters),
-          fetchOperations(null).then(hydrateOperations),
+          fetchObjectiveRecords(null).then(hydrateObjectiveRecords),
           fetchGroups(null).then(hydrateGroups),
         ]));
     void request
@@ -408,7 +408,7 @@ function ConnectedApp() {
           // 다른 창에서 이미 복원·재보관·삭제됐다면 이 되돌리기는 더 이상 가리킬 것이 없다 — 사실대로 알리고 내린다.
           dropUndo(entry.key);
           const code = error instanceof ApiError ? error.message : "";
-          setUndoNotice({ key: code === "archive_undo_conflict" || code === "unknown_operation" ? "chrome.toast.archiveUndoStale" : "chrome.toast.archiveUndoFailed", nonce: Date.now() });
+          setUndoNotice({ key: code === "archive_undo_conflict" || code === "unknown_objectiveRecord" ? "chrome.toast.archiveUndoStale" : "chrome.toast.archiveUndoFailed", nonce: Date.now() });
           return;
         }
         if (entry.expiresAt <= Date.now()) dropUndo(entry.key);
@@ -431,18 +431,18 @@ function ConnectedApp() {
   // 뷰 모드는 구독하지 않고 발화 시점에 읽는다 — 뷰포트가 바뀔 때마다 리스너를 재설치할 이유가 없다.
   const resolvePanelShortcut = useCallback(() => resolvePanelShortcutOutcome({
     panelSurfacesReachable: getViewModeSnapshot().effective !== "mobile",
-    operationsViewVisible: operationsViewVisibleRef.current,
+    objectiveRecordsViewVisible: objectiveRecordsViewVisibleRef.current,
   }), []);
 
   useEffect(() => {
     return installConsoleGlobalShortcuts({
-      openOperationSearch,
-      closeOperationSearch,
-      getOperationSearchMode: () => getState().operationSearchMode,
+      openObjectiveSearch,
+      closeObjectiveSearch,
+      getObjectiveSearchMode: () => getState().objectiveRecordSearchMode,
       // 새 세션 화면은 데스크톱 대화 배치의 본문이다 — 모바일 셸에는 그릴 자리가 없으므로 키를 두고 간다.
       openNewSession: () => {
         if (getViewModeSnapshot().effective === "mobile") return false;
-        if (!operationsViewVisibleRef.current) navigate("/operations");
+        if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
         openDefaultNewSession();
         return true;
       },
@@ -454,7 +454,7 @@ function ConnectedApp() {
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }
-        if (outcome === "reveal") navigate("/operations");
+        if (outcome === "reveal") navigate("/objectives");
         if (entry.activate) {
           const capabilities = createHostCapabilities(undefined, { railBindings });
           entry.activate({
@@ -484,17 +484,17 @@ function ConnectedApp() {
     ? ""
     : activeUndo.kind === "deletion"
       ? activeUndo.deletion.kind === "theater"
-        ? (activeUndo.deletion.archivedOperationCount ?? 0) > 0
-          ? t("chrome.toast.theaterForgottenWithArchived", { count: activeUndo.deletion.archivedOperationCount ?? 0 })
+        ? (activeUndo.deletion.archivedObjectiveCount ?? 0) > 0
+          ? t("chrome.toast.theaterForgottenWithArchived", { count: activeUndo.deletion.archivedObjectiveCount ?? 0 })
           : t("chrome.toast.theaterForgotten")
-        : undoAuthor ? t("chrome.toast.operationClosedBy", undoAuthor) : t("chrome.toast.operationClosed")
+        : undoAuthor ? t("chrome.toast.objectiveRecordClosedBy", undoAuthor) : t("chrome.toast.objectiveRecordClosed")
       : undoAuthor
-        ? t("chrome.toast.operationArchivedBy", undoAuthor)
-        : activeUndo.receipt.operationIds.length > 1
-          ? t("chrome.toast.operationsArchived", { count: activeUndo.receipt.operationIds.length })
-          : t("chrome.toast.operationArchived");
+        ? t("chrome.toast.objectiveRecordArchivedBy", undoAuthor)
+        : activeUndo.receipt.objectiveIds.length > 1
+          ? t("chrome.toast.objectiveRecordsArchived", { count: activeUndo.receipt.objectiveIds.length })
+          : t("chrome.toast.objectiveRecordArchived");
   // 모바일 배치(S-33): 「「{제목}」을(를) 보관했습니다」 + 오른쪽 글자 버튼(되돌리기 · 보관함) — 데스크톱의 세 줄 토스트를 쓰지 않는다.
-  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && !undoAuthor && activeUndo.receipt.operationIds.length <= 1
+  const mobileUndoText = activeUndo === null ? "" : activeUndo.kind === "archive" && !undoAuthor && activeUndo.receipt.objectiveIds.length <= 1
     ? (() => { const title = recallArchivedTitle(activeUndo.receipt.targetId); return title ? t("mobile.toast.archived", { title }) : undoTitle; })()
     : undoTitle;
   const deletionToast = (
@@ -505,7 +505,7 @@ function ConnectedApp() {
           text={mobileUndoText}
           actions={[
             { label: activeUndo?.kind === "archive" ? t("chrome.toast.archiveUndo") : t("chrome.toast.undo"), run: undoLastClose },
-            ...(activeUndo?.kind === "archive" ? [{ label: t("chrome.toast.openArchive"), run: () => { setMobileDestination({ kind: "archive" }); navigate("/operations", { replace: true }); } }] : []),
+            ...(activeUndo?.kind === "archive" ? [{ label: t("chrome.toast.openArchive"), run: () => { setMobileDestination({ kind: "archive" }); navigate("/objectives", { replace: true }); } }] : []),
           ]}
         />
       ) : (
@@ -543,7 +543,7 @@ function ConnectedApp() {
       {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
           칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
           유휴나 휴면으로 추정하지는 않는다. */}
-      {state.connection === "live" && state.operationRuntimeHydration === "degraded" && !updateProgress.watching ? (
+      {state.connection === "live" && state.objectiveRecordRuntimeHydration === "degraded" && !updateProgress.watching ? (
         <div className="console-link-banner" role="status" aria-live="polite">
           <span>{t("chrome.runtime.degraded")}</span>
         </div>
@@ -554,12 +554,12 @@ function ConnectedApp() {
 
   return (
     <ComputerScreenShareProvider>
-      <div className={`console-shell${desktopOperationsVisible ? " is-operations-view" : ""}`}>
+      <div className={`console-shell${desktopObjectiveRecordsVisible ? " is-objective-records-view" : ""}`}>
         {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다. */}
         <PersistentPluginComponents />
-        {/* 상단 크롬은 없다 — 데스크톱은 대화 중심 화면이 찾기·새 Operation·호스트·사용량·도움말·설정을 사이드바 위·아래 줄로,
+        {/* 상단 크롬은 없다 — 데스크톱은 대화 중심 화면이 찾기·새 Objective·호스트·사용량·도움말·설정을 사이드바 위·아래 줄로,
             도구를 오른쪽 패널 머리의 글자 탭으로 든다(features/workspace/client/conversation). 모바일 셸은 자기 머리와 탭 막대를 쓴다.
-            `/`·`/settings`처럼 /operations로 갈아 끼우는 주소도 그 한 프레임 동안 빈 셸만 보인다. */}
+            `/`·`/settings`처럼 /objectives로 갈아 끼우는 주소도 그 한 프레임 동안 빈 셸만 보인다. */}
         <FloatingWidgetLayer />
         {/* 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)는 전부 이 한 자리에 모은다. 모바일 배치는 같은 자리를
             상단 막대 아래에 놓는다. 상자는 만들지 않는다(display: contents). */}
@@ -568,18 +568,18 @@ function ConnectedApp() {
           const routeContent = (
             <main className="console-route-content">
               <Routes>
-                <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/" element={<Navigate to="/objectives" replace />} />
+                <Route path="/objectives" element={<ObjectiveRecords state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
-                <Route path="*" element={<Navigate to="/operations" replace />} />
+                <Route path="*" element={<Navigate to="/objectives" replace />} />
               </Routes>
             </main>
           );
           // The mobile frame sits outside the routes: the home list's shortcut chips reach every destination,
-          // so a frame that unmounted with the operations route would strand the way back.
+          // so a frame that unmounted with the objectiveRecords route would strand the way back.
           return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
         })()}
-        <OperationSearch
+        <ObjectiveSearch
           state={state}
           railPanels={paletteRailPanels}
           plugins={registry.providers}
@@ -594,7 +594,7 @@ function ConnectedApp() {
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
         {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
-        <SettingsModalHost visible={desktopOperationsVisible} mobile={mobileLayout} />
+        <SettingsModalHost visible={desktopObjectiveRecordsVisible} mobile={mobileLayout} />
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}

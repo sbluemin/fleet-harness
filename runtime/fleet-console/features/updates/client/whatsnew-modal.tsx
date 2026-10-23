@@ -77,7 +77,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const whatsNewSuppressed =
     !state.bootstrapped ||
     state.onboardingOpen ||
-    state.operationSearchOpen ||
+    state.objectiveRecordSearchOpen ||
     (state.controlHolder !== null && !state.controlCurtainDismissed) ||
     state.mobileNewSessionOpen ||
     state.keyboardShortcutsOpen;

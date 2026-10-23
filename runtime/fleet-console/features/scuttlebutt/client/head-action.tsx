@@ -122,7 +122,7 @@ export function ClearIcon() {
   );
 }
 
-/** 점 셋 — 더 보기(AI 확장 메뉴). Operation 캡션의 ··· 과 같은 문법. */
+/** 점 셋 — 더 보기(AI 확장 메뉴). Objective 캡션의 ··· 과 같은 문법. */
 export function MoreIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor">

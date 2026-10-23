@@ -50,15 +50,15 @@ export interface ShellSessionState {
 export const SHELL_SESSION_EVENT_CHANNEL = "terminal:shell-session";
 
 /**
- * Shell은 Operation이 아니다 — 대화(사령관·지휘관·일반 Operation)마다 하나씩 붙는 Console 표면이다.
+ * Shell은 Objective이 아니다 — 대화(사령관·지휘관·일반 Objective)마다 하나씩 붙는 Console 표면이다.
  *
- * 세션 키는 Operation id가 아니라 대화 키에서 지은 이름이다. 기본 키(`console`)는 옛 전역 Shell 과 같은 상수 세션을
+ * 세션 키는 Objective id가 아니라 대화 키에서 지은 이름이다. 기본 키(`console`)는 옛 전역 Shell 과 같은 상수 세션을
  * 쓰므로 폰 배치와 키 없는 옛 호출은 그대로 한 Shell 을 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도
  * 죽고, 복원할 휴면 상태라는 것 자체가 없다 — 다시 열면 그 대화의 작업 위치에서 새로 선다.
  */
 const GLOBAL_SHELL_SESSION_ID = "console-shell";
 const DEFAULT_SHELL_KEY = "console";
-const GLOBAL_SHELL_OPERATION_TYPE = "shell";
+const GLOBAL_SHELL_OBJECTIVE_TYPE = "shell";
 const SHELL_INTEGRATION_DIR = "shell-integration";
 /** 재시작이 옛 PTY 자식의 실제 종료를 기다리는 상한. 넘겨도 새 PTY는 세션 매니저의 옛-필자 관문이 막는다. */
 const SHELL_RESTART_EXIT_WAIT_MS = 5_000;
@@ -152,8 +152,8 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
 
   const integrationDir = readIntegrationDir(ctx);
   const baseLaunch = createShellTerminalLaunchResolver();
-  // Console Shell 의 PTY만 cwd 보고를 주입받는다. 같은 operationType을 쓰는 다른 셸은 기본 launch 그대로다.
-  ctx.host.lifecycle.registerCleanup(runtime.registerLaunchResolver(GLOBAL_SHELL_OPERATION_TYPE, async (cwd, context) => {
+  // Console Shell 의 PTY만 cwd 보고를 주입받는다. 같은 objectiveRecordType을 쓰는 다른 셸은 기본 launch 그대로다.
+  ctx.host.lifecycle.registerCleanup(runtime.registerLaunchResolver(GLOBAL_SHELL_OBJECTIVE_TYPE, async (cwd, context) => {
     const launch = await baseLaunch(cwd, { ...context, kind: "shell" });
     // 티켓이 먼저 Shell 을 세운다. 기본 Shell 의 세션은 티켓 없이 붙는 옛 길도 있으므로 그 자리에서 세운다.
     const instance = context?.sessionId === undefined ? undefined
@@ -262,8 +262,8 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     const ticket = runtime.issueTicket({
       cwd: instance.pinnedCwd,
       sessionId: instance.sessionId,
-      operationId: instance.sessionId,
-      operationType: GLOBAL_SHELL_OPERATION_TYPE,
+      objectiveId: instance.sessionId,
+      objectiveRecordType: GLOBAL_SHELL_OBJECTIVE_TYPE,
       pluginId: null,
       kind: "shell",
       ...(colorScheme ? { colorScheme } : {}),

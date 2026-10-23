@@ -1,6 +1,6 @@
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import { parseConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
-import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, ObjectiveGroup, ObjectiveRecord, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -23,19 +23,19 @@ export interface ReleaseNotesFetchOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface OperationPatchClientInput {
+export interface ObjectivePatchClientInput {
   readonly title?: string;
   readonly accent?: string | null;
   readonly groupId?: string | null;
 }
 
-export interface OperationGroupCreateInput {
+export interface ObjectiveGroupCreateInput {
   readonly theaterId: string;
   readonly name: string;
   readonly color: string;
 }
 
-export interface OperationGroupPatchInput {
+export interface ObjectiveGroupPatchInput {
   readonly name?: string;
   readonly color?: string;
   readonly order?: number;
@@ -43,11 +43,11 @@ export interface OperationGroupPatchInput {
 
 export interface DeferredDeletionReceipt {
   readonly deletionId: string;
-  readonly kind: "operation" | "theater";
+  readonly kind: "objectiveRecord" | "theater";
   readonly targetId: string;
   readonly expiresAt: number;
-  /** Theater 잊기가 함께 지우는 보관 Operation 수 — 되돌리기 토스트가 밝힌다. */
-  readonly archivedOperationCount?: number;
+  /** Theater 잊기가 함께 지우는 보관 Objective 수 — 되돌리기 토스트가 밝힌다. */
+  readonly archivedObjectiveCount?: number;
 }
 
 export interface DeferredDeletionResponse {
@@ -57,7 +57,7 @@ export interface DeferredDeletionResponse {
 
 export interface DeferredRestoreResponse {
   readonly ok: true;
-  readonly kind: "operation" | "theater";
+  readonly kind: "objectiveRecord" | "theater";
   readonly targetId: string;
 }
 
@@ -252,8 +252,8 @@ export async function forgetTheater(theaterId: string, signal?: AbortSignal): Pr
   return assertDeferredDeletionResponse(await response.json(), response.status);
 }
 
-export async function deleteOperation(operationId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
-  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE", signal });
+export async function deleteObjective(objectiveId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
+  const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`, { method: "DELETE", signal });
   await assertOk(response);
   return assertDeferredDeletionResponse(await response.json(), response.status);
 }
@@ -262,44 +262,44 @@ export async function restoreDeletion(deletionId: string, signal?: AbortSignal):
   const response = await fetch(`/api/v1/deletions/${encodeURIComponent(deletionId)}/restore`, { method: "POST", signal });
   await assertOk(response);
   const payload = await response.json() as Partial<DeferredRestoreResponse>;
-  if (!payload || payload.ok !== true || (payload.kind !== "operation" && payload.kind !== "theater") || typeof payload.targetId !== "string" || hasForbiddenBrowserPayloadKey(payload)) {
+  if (!payload || payload.ok !== true || (payload.kind !== "objectiveRecord" && payload.kind !== "theater") || typeof payload.targetId !== "string" || hasForbiddenBrowserPayloadKey(payload)) {
     throw new ApiError(response.status, "Invalid deletion restore response");
   }
   return { ok: true, kind: payload.kind, targetId: payload.targetId };
 }
 
-export async function fetchOperations(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationNode[]> {
+export async function fetchObjectiveRecords(theaterId?: string | null, signal?: AbortSignal): Promise<readonly ObjectiveRecord[]> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
-  const response = await fetch(`/api/v1/operations${suffix}`, { signal });
+  const response = await fetch(`/api/v1/objectives/records${suffix}`, { signal });
   await assertOk(response);
-  const payload = await response.json() as { readonly operations?: unknown };
-  if (!Array.isArray(payload.operations)) throw new ApiError(response.status, "Invalid operations response");
-  return payload.operations.map((operation) => assertOperationNode(operation, response.status));
+  const payload = await response.json() as { readonly objectiveRecords?: unknown };
+  if (!Array.isArray(payload.objectiveRecords)) throw new ApiError(response.status, "Invalid objectives response");
+  return payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status));
 }
 
-export async function putOperationOrder(theaterId: string, operationIds: readonly string[]): Promise<readonly OperationNode[]> {
-  const response = await fetch("/api/v1/operations/order", {
+export async function putObjectiveOrder(theaterId: string, objectiveIds: readonly string[]): Promise<readonly ObjectiveRecord[]> {
+  const response = await fetch("/api/v1/objectives/records/order", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, operationIds }),
+    body: JSON.stringify({ theaterId, objectiveIds }),
   });
   await assertOk(response);
-  const payload = await response.json() as { readonly operations?: unknown };
-  if (!Array.isArray(payload.operations)) throw new ApiError(response.status, "Invalid operations response");
-  return payload.operations.map((operation) => assertOperationNode(operation, response.status));
+  const payload = await response.json() as { readonly objectiveRecords?: unknown };
+  if (!Array.isArray(payload.objectiveRecords)) throw new ApiError(response.status, "Invalid objectives response");
+  return payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status));
 }
 
-export async function fetchGroups(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationGroup[]> {
+export async function fetchGroups(theaterId?: string | null, signal?: AbortSignal): Promise<readonly ObjectiveGroup[]> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
-  const response = await fetch(`/api/v1/operations/groups${suffix}`, { signal });
+  const response = await fetch(`/api/v1/objectives/records/groups${suffix}`, { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly groups?: unknown };
   if (!Array.isArray(payload.groups)) throw new ApiError(response.status, "Invalid groups response");
-  return payload.groups.map((group) => assertOperationGroup(group, response.status));
+  return payload.groups.map((group) => assertObjectiveGroup(group, response.status));
 }
 
-export async function createGroup(input: OperationGroupCreateInput, signal?: AbortSignal): Promise<OperationGroup> {
-  const response = await fetch("/api/v1/operations/groups", {
+export async function createGroup(input: ObjectiveGroupCreateInput, signal?: AbortSignal): Promise<ObjectiveGroup> {
+  const response = await fetch("/api/v1/objectives/records/groups", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -307,11 +307,11 @@ export async function createGroup(input: OperationGroupCreateInput, signal?: Abo
   });
   await assertOk(response);
   const payload = await response.json() as { readonly group?: unknown };
-  return assertOperationGroup(payload.group, response.status);
+  return assertObjectiveGroup(payload.group, response.status);
 }
 
-export async function updateGroup(groupId: string, patch: OperationGroupPatchInput, signal?: AbortSignal): Promise<OperationGroup> {
-  const response = await fetch(`/api/v1/operations/groups/${encodeURIComponent(groupId)}`, {
+export async function updateGroup(groupId: string, patch: ObjectiveGroupPatchInput, signal?: AbortSignal): Promise<ObjectiveGroup> {
+  const response = await fetch(`/api/v1/objectives/records/groups/${encodeURIComponent(groupId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
@@ -319,48 +319,48 @@ export async function updateGroup(groupId: string, patch: OperationGroupPatchInp
   });
   await assertOk(response);
   const payload = await response.json() as { readonly group?: unknown };
-  return assertOperationGroup(payload.group, response.status);
+  return assertObjectiveGroup(payload.group, response.status);
 }
 
 export async function deleteGroup(groupId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/operations/groups/${encodeURIComponent(groupId)}`, { method: "DELETE", signal });
+  const response = await fetch(`/api/v1/objectives/records/groups/${encodeURIComponent(groupId)}`, { method: "DELETE", signal });
   await assertOk(response);
 }
 
-export async function renameOperation(operationId: string, title: string, signal?: AbortSignal): Promise<OperationNode> {
-  return patchOperation(operationId, { title }, signal);
+export async function renameObjective(objectiveId: string, title: string, signal?: AbortSignal): Promise<ObjectiveRecord> {
+  return patchObjective(objectiveId, { title }, signal);
 }
 
-export async function patchOperation(operationId: string, input: OperationPatchClientInput, signal?: AbortSignal): Promise<OperationNode> {
-  const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
+export async function patchObjective(objectiveId: string, input: ObjectivePatchClientInput, signal?: AbortSignal): Promise<ObjectiveRecord> {
+  const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
     signal,
   });
   await assertOk(response);
-  const payload = await response.json() as { readonly operation?: unknown };
-  return assertOperationNode(payload.operation, response.status);
+  const payload = await response.json() as { readonly objectiveRecord?: unknown };
+  return assertObjectiveRecord(payload.objectiveRecord, response.status);
 }
 
-export async function createOperation(input: {
+export async function createObjective(input: {
   readonly id?: string;
   readonly theaterId: string;
   readonly type: string;
   readonly pluginId: string | null;
   readonly title: string;
   readonly payload?: Record<string, unknown>;
-  readonly geometry?: OperationNode["geometry"];
-}, signal?: AbortSignal): Promise<OperationNode> {
-  const response = await fetch("/api/v1/operations", {
+  readonly geometry?: ObjectiveRecord["geometry"];
+}, signal?: AbortSignal): Promise<ObjectiveRecord> {
+  const response = await fetch("/api/v1/objectives/records", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
     signal,
   });
   await assertOk(response);
-  const payload = await response.json() as { readonly operation?: unknown };
-  return assertOperationNode(payload.operation, response.status);
+  const payload = await response.json() as { readonly objectiveRecord?: unknown };
+  return assertObjectiveRecord(payload.objectiveRecord, response.status);
 }
 
 export async function requestTerminalTicket(sessionId: string, signal?: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
@@ -378,46 +378,40 @@ export async function requestTerminalTicket(sessionId: string, signal?: AbortSig
   return { ticket: payload.ticket, ttlMs: payload.ttlMs };
 }
 
-function assertOperationNode(value: unknown, status: number): OperationNode {
-  const payload = value as Partial<OperationNode>;
+function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord {
+  const payload = value as Partial<ObjectiveRecord>;
   if (
     !payload
     || typeof payload.id !== "string"
     || typeof payload.theaterId !== "string"
-    || typeof payload.type !== "string"
-    || (payload.pluginId !== null && typeof payload.pluginId !== "string")
     || typeof payload.title !== "string"
-    || !payload.payload
-    || typeof payload.payload !== "object"
-    || Array.isArray(payload.payload)
+    || !payload
+    || typeof payload !== "object"
+    || Array.isArray(payload)
     || !payload.ts
     || typeof payload.ts.createdAt !== "number"
     || typeof payload.ts.updatedAt !== "number"
     || hasForbiddenBrowserPayloadKey(payload)
-    || hasForbiddenBrowserPayloadKey(payload.payload)
   ) {
-    throw new ApiError(status, "Invalid operation response");
+    throw new ApiError(status, "Invalid objectiveRecord response");
   }
   return {
     id: payload.id,
     theaterId: payload.theaterId,
-    type: payload.type,
-    pluginId: payload.pluginId === "terminal" && payload.type === "agent" ? null : payload.pluginId,
     title: payload.title,
-    payload: payload.payload,
-    geometry: payload.geometry ?? null,
+    ...(payload),
     // 서버가 영속한 accent를 노드에 보존한다. 누락 시 server→store 동기화가 사용자 accent를 null로 덮어쓴다.
     accent: typeof payload.accent === "string" ? payload.accent : null,
     // 서버가 영속한 groupId를 보존한다. null = Ungrouped 명시, undefined = 미설정(Ungrouped와 동일 취급).
     groupId: payload.groupId === null ? null : typeof payload.groupId === "string" ? payload.groupId : undefined,
     order: typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? payload.order : undefined,
-    ...(Array.isArray(payload.childSessions) ? { childSessions: payload.childSessions.filter((child) => child && typeof child.id === "string" && child.id !== payload.id && child.payload && typeof child.payload === "object" && !Array.isArray(child.payload) && child.ts && typeof child.ts.createdAt === "number" && typeof child.ts.updatedAt === "number" && !hasForbiddenBrowserPayloadKey(child.payload)).map((child) => ({ id: child.id, payload: child.payload, ts: child.ts })) } : {}),
+    ...(Array.isArray(payload.sessions) ? { sessions: payload.sessions.filter((child) => child && typeof child.id === "string" && child.id !== payload.id && child.ts && typeof child.ts.createdAt === "number" && typeof child.ts.updatedAt === "number" && !hasForbiddenBrowserPayloadKey(child)).map((child) => child) } : {}),
     ts: payload.ts,
   };
 }
 
-function assertOperationGroup(value: unknown, status: number): OperationGroup {
-  const payload = value as Partial<OperationGroup>;
+function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
+  const payload = value as Partial<ObjectiveGroup>;
   if (
     !payload
     || typeof payload.id !== "string"
@@ -671,7 +665,7 @@ function assertDeferredDeletionResponse(value: unknown, status: number): Deferre
   const deletion = payload.deletion as Partial<DeferredDeletionReceipt>;
   if (!deletion
     || typeof deletion.deletionId !== "string"
-    || (deletion.kind !== "operation" && deletion.kind !== "theater")
+    || (deletion.kind !== "objectiveRecord" && deletion.kind !== "theater")
     || typeof deletion.targetId !== "string"
     || typeof deletion.expiresAt !== "number"
     || !Number.isFinite(deletion.expiresAt)
@@ -685,8 +679,8 @@ function assertDeferredDeletionResponse(value: unknown, status: number): Deferre
       kind: deletion.kind,
       targetId: deletion.targetId,
       expiresAt: deletion.expiresAt,
-      ...(typeof deletion.archivedOperationCount === "number" && Number.isFinite(deletion.archivedOperationCount) && deletion.archivedOperationCount > 0
-        ? { archivedOperationCount: Math.floor(deletion.archivedOperationCount) }
+      ...(typeof deletion.archivedObjectiveCount === "number" && Number.isFinite(deletion.archivedObjectiveCount) && deletion.archivedObjectiveCount > 0
+        ? { archivedObjectiveCount: Math.floor(deletion.archivedObjectiveCount) }
         : {}),
     },
   };

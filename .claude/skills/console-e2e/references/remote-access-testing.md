@@ -147,7 +147,7 @@ Away is which origin this window is standing on. It is not the public endpoint (
 - With no Desktop shell, home is a loopback `http` origin (`127.0.0.1`, `localhost`, or `[::1]`). The remote listener's `https://<LAN>:<remotePort>` is away. Another isolated Console at `http://127.0.0.1:<other port>` is still home.
 - With a Desktop shell, home is `location.origin` equal to the shell's published `homeOrigin` (`GET /api/v1/desktop/shell`). Until that answer arrives the shell is pending and the window is not treated as home. A neighbor Console is away once the window origin differs, even when that neighbor is also loopback.
 
-On `/operations`, while the connection is live:
+On `/objectiveRecords`, while the connection is live:
 
 | Where | `.conversation-dock-status` | `.host-switcher-chip` |
 |---|---|---|
@@ -171,7 +171,7 @@ Join from one Node process, as in [Speak to the remote listener](#speak-to-the-r
 ```bash
 agent-browser --session <id> --headed false --ignore-https-errors open
 agent-browser --session <id> cookies set --curl "$E2E_DIR/away-cookies.json" --url "<listener origin>"
-agent-browser --session <id> open "<listener origin>/console/operations"
+agent-browser --session <id> open "<listener origin>/console/objectiveRecords"
 ```
 
 `--ignore-https-errors` is required: the listener certificate is self-signed, and a normal navigation stops on it. `--headed false` keeps the window from taking OS focus. Wait until the page has connected, then read:
@@ -184,7 +184,7 @@ agent-browser --session <id> open "<listener origin>/console/operations"
 })
 ```
 
-Away is reproduced when `origin` is the listener origin, `dot` is `"live"`, and `chip` is `null`. Then `DELETE /api/v1/access-sessions/:handle` from the owner side (the lock token stays inside the Node process). The handle is `devices[].sessionHandle` on `GET /api/v1/access-links` for the owner origin, the same body as [Turn the listener on](#turn-the-listener-on); it is null when that device is not connected. After the delete, read the same Console's loopback `/console/operations` in another browser session: `dot` is `null`, and the chip's class has neither `is-away` nor `is-shared`, with `data-tip` `Local`. While the full guest still holds control, the owner's chip is `is-shared` and is not a home reading.
+Away is reproduced when `origin` is the listener origin, `dot` is `"live"`, and `chip` is `null`. Then `DELETE /api/v1/access-sessions/:handle` from the owner side (the lock token stays inside the Node process). The handle is `devices[].sessionHandle` on `GET /api/v1/access-links` for the owner origin, the same body as [Turn the listener on](#turn-the-listener-on); it is null when that device is not connected. After the delete, read the same Console's loopback `/console/objectiveRecords` in another browser session: `dot` is `null`, and the chip's class has neither `is-away` nor `is-shared`, with `data-tip` `Local`. While the full guest still holds control, the owner's chip is `is-shared` and is not a home reading.
 
 Delete the cookie file with the run directory. It holds the session secret.
 

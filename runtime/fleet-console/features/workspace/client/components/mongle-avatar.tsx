@@ -4,7 +4,7 @@ import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, ty
 import type { IdentityTone } from "../../shared/identity-tones.js";
 
 /**
- * 몽글 아바타 — 사령관·지휘관·구성원·Operation 을 한 조형으로 그린다.
+ * 몽글 아바타 — 사령관·지휘관·구성원·Objective 을 한 조형으로 그린다.
  *
  * 베이스(몸 모양·톤·얼굴 디테일) 위에 역할 특징(사령관 별 배지·지휘관 안테나)을 얹고, 상태는 눈·몸짓·발밑 빛·작은 배지가 말한다.
  * 사람을 부르는 상태(대기·결정·검토)는 몸짓과 발밑 빛으로 갈리고, 끝난 구성원은 배지 없이 기지개 뒤 내려앉은 자세다.

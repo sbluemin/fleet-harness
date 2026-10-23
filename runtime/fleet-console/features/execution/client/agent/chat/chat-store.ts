@@ -29,14 +29,14 @@ const OPEN_READY_STATE = 1;
 const COMMAND_WAIT_MS = 8_000;
 
 /**
- * Operation 하나의 채팅 소켓.
+ * Objective 하나의 채팅 소켓.
  *
  * PTY와 같은 수명이다: 티켓 POST → `/api/v1/terminal/ws` upgrade → 저널 리플레이.
  * `live`가 false면 소켓을 열지 않는다. 본문 풀이 주차·숨김 본문을 살려 두므로,
  * 그때도 구독하면 화면 밖 패널마다 소켓을 하나씩 점유한다. 덱 타일은 본문이
  * 그려지므로 live로 남긴다.
  */
-export function useAgentChatStream(operationId: string, live = true): AgentChatViewState {
+export function useAgentChatStream(objectiveId: string, live = true): AgentChatViewState {
   const [connection, setConnection] = React.useState<AgentChatConnection>(live ? "connecting" : "idle");
   const [log, setLog] = React.useState<AgentChatLogState>(initialAgentChatLogState);
   const sessionRef = React.useRef<ChatSocketSession | null>(null);
@@ -50,7 +50,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
     setConnection("connecting");
     setLog(initialAgentChatLogState);
     const stream = createConversationStream<{ entry: NonNullable<ReturnType<typeof readChatJournalEvent>>; receivedAt: number }>({
-      delta: ({ entry }) => entry.event.kind === "text-delta" ? { key: operationId, text: entry.event.text } : null,
+      delta: ({ entry }) => entry.event.kind === "text-delta" ? { key: objectiveId, text: entry.event.text } : null,
       withText: (row, text) => ({ ...row, entry: { ...row.entry, event: { kind: "text-delta", text } } }),
       // 적용 프레임이 아닌 수신 시각이다. 옛 재생의 미확정 시각만 기존처럼 비워 둔다.
       apply: (events) => setLog((current) => events.reduce((state, { entry, receivedAt }) => reduceAgentChatLog(state, {
@@ -59,7 +59,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
       }), current)),
     });
     const session = createChatSocketSession({
-      operationId,
+      objectiveId,
       onConnection: (next) => {
         // 서버는 접속마다 보유 저널을 처음부터 되쓴다. 채팅 출생은 replay-start를 남기지
         // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
@@ -87,7 +87,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
       session.dispose();
       if (sessionRef.current === session) sessionRef.current = null;
     };
-  }, [operationId, live]);
+  }, [objectiveId, live]);
 
   const stopTurn = React.useCallback(async () => {
     await sessionRef.current?.send({ type: "stop" });
@@ -117,7 +117,7 @@ type ChatOutboundCommand =
   | { readonly type: "answer"; readonly askId: string; readonly answers?: readonly string[]; readonly approve?: boolean; readonly message?: string };
 
 interface ChatSocketSessionOptions {
-  readonly operationId: string;
+  readonly objectiveId: string;
   readonly onConnection: (connection: AgentChatConnection) => void;
   readonly onEvent: (raw: string) => void;
   readonly location?: Pick<Location, "host" | "protocol">;
@@ -198,7 +198,7 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
     while (!abort.signal.aborted) {
       options.onConnection("connecting");
       try {
-        const ticket = await requestChatTicket(options.operationId, abort.signal, fetchImpl);
+        const ticket = await requestChatTicket(options.objectiveId, abort.signal, fetchImpl);
         if (abort.signal.aborted) return;
         await attach(buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH));
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
@@ -238,11 +238,11 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
   };
 }
 
-async function requestChatTicket(operationId: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<string> {
+async function requestChatTicket(objectiveId: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<string> {
   const response = await fetchImpl(CHAT_TICKET_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ operationId, channel: "chat" }),
+    body: JSON.stringify({ objectiveId, channel: "chat" }),
     signal,
   });
   if (!response.ok) {

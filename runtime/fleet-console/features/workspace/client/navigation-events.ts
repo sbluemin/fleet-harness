@@ -1,5 +1,5 @@
 import type { ShellOpenAtRequest, ShellOpenAtResult } from "../shared/navigation.js";
-import { ApiError } from "../../execution/client/operations.js";
+import { ApiError } from "../../execution/client/objective-records.js";
 
 /**
  * 어느 Shell 을 옮길지 — 호스트가 채운다(지금 대화의 Shell). 플러그인은 `ctx.shell` 능력을 쓰고 이 값을 직접 넘기지 않는다.

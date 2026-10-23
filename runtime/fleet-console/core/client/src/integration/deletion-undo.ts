@@ -1,21 +1,21 @@
-import type { OperationArchiveReceipt } from "../../../../features/execution/shared/operations/archive.js";
+import type { ObjectiveArchiveReceipt } from "../../../../features/objectives/shared/records/archive.js";
 
 import type { DeferredDeletionReceipt } from "./api.js";
 
 /**
- * 토스트와 ⌘Z가 되돌릴 수 있는 일 하나. 사람이 Operation을 치우면 보관(archive), Theater 잊기는 유예
+ * 토스트와 ⌘Z가 되돌릴 수 있는 일 하나. 사람이 Objective을 치우면 보관(archive), Theater 잊기는 유예
  * 삭제(deletion)다. 삭제의 창은 서버 유예가 정하고, 보관의 창은 보여 주는 동안만이다 — 보관은 그 뒤에도
  * 보관함에서 복원할 수 있다.
  */
 export type PendingUndo =
   | { readonly kind: "deletion"; readonly key: string; readonly expiresAt: number; readonly deletion: DeferredDeletionReceipt }
-  | { readonly kind: "archive"; readonly key: string; readonly expiresAt: number; readonly receipt: OperationArchiveReceipt };
+  | { readonly kind: "archive"; readonly key: string; readonly expiresAt: number; readonly receipt: ObjectiveArchiveReceipt };
 
 export function deletionUndo(deletion: DeferredDeletionReceipt): PendingUndo {
   return { kind: "deletion", key: `deletion:${deletion.deletionId}`, expiresAt: deletion.expiresAt, deletion };
 }
 
-export function archiveUndo(receipt: OperationArchiveReceipt, expiresAt: number): PendingUndo {
+export function archiveUndo(receipt: ObjectiveArchiveReceipt, expiresAt: number): PendingUndo {
   return { kind: "archive", key: `archive:${receipt.archiveId}`, expiresAt, receipt };
 }
 

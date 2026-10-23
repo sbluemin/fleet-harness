@@ -202,7 +202,7 @@ function failureWord(t: T, error: unknown): string {
 const REVEAL_PAGE_LIMIT = 10;
 
 /**
- * 가운데 칸의 사령관 대화 — Operation 대화와 같은 화면(호스트 `ctx.chat.Conversation`)이다. 사람의 말·사령관의 글은 말풍선,
+ * 가운데 칸의 사령관 대화 — Objective 대화와 같은 화면(호스트 `ctx.chat.Conversation`)이다. 사람의 말·사령관의 글은 말풍선,
  * 보드에 쓴 행위는 가운데 행위 줄(펼치면 이유, 누르면 그 목표), 세션 교대·실패는 노트 줄이다. 입력·지우기·읽기 전용 돌아가기는
  * 이 플러그인의 것을 그 화면의 입력 자리에 세운다. 접힌 턴 줄과 곁 칸 이음매는 Inbox 시트의 기록(`CommodoreLog`)에만 남는다.
  */
@@ -277,7 +277,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
   const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, theaterId, entries, live, view?.state.asks, index) : []), [ledgerOpen, t, theaterId, entries, live, view?.state.asks, index]);
-  // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Operation 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
+  // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Objective 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
   // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
   const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);
   const ledgerCoordinates = useMemo(() => {

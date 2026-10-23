@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AgentSessionWorkspace } from "./types.js";
 
 /**
- * Operation의 "지금 어디" 축 — 작업 폴더와 git 브랜치를 브라우저가 읽을 수 있는 투영으로 만든다.
+ * Objective의 "지금 어디" 축 — 작업 폴더와 git 브랜치를 브라우저가 읽을 수 있는 투영으로 만든다.
  *
  * 절대 경로는 이 모듈 안에서 끝난다. 밖으로 나가는 것은 Theater 루트 기준 상대 폴더(루트면 null),
  * Theater 밖이면 basename 하나와 `outside` 표식, 그리고 브랜치 이름뿐이다. git은 셸 없이

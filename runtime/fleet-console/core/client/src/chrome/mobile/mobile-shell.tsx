@@ -1,16 +1,16 @@
-import { pluginRuntimeState } from "../../../../../features/execution/client/operation-activity.js";
+import { pluginRuntimeState } from "../../../../../features/execution/client/objective-activity.js";
 import { publishConversationClusters, publishConversationSubject } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
-import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
+import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useEffect, useState } from "react";
 
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
-import type { OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
+import type { ObjectiveKindDescriptor, ObjectiveRuntimeHydration, ObjectiveRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
 
 import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 
 import { useT } from "../../i18n/index.js";
 import { selectNestedBody } from "../../integration/store.js";
-import type { OperationNode, OperationNotification } from "../../integration/types.js";
+import type { ObjectiveRecord, ObjectiveNotification } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
@@ -24,80 +24,80 @@ import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileConversationList } from "./mobile-conversation-list.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
-import { readMobileOperationId, replaceMobileOperationId } from "./mobile-operation-url.js";
+import { readMobileObjectiveId, replaceMobileObjectiveId } from "./mobile-objective-url.js";
 import "../../styles/mobile.css";
 
 /**
- * `/operations` 안의 화면. 홈은 대화 목록이고 — 열린 Operation이 `?op=` 한 곳에 있으면 그 Operation 화면이 홈 자리에 선다.
+ * `/objectives` 안의 화면. 홈은 대화 목록이고 — 열린 Objective이 `?op=` 한 곳에 있으면 그 Objective 화면이 홈 자리에 선다.
  * 그 밖의 화면(확인 필요, 검색, 플러그인 목록, 플러그인이 올린 목적지)은 고른 목적지가 정한다. 다른 목적지로 갔다 돌아와도
- * 열린 Operation은 그 자리에 그대로 있다.
+ * 열린 Objective은 그 자리에 그대로 있다.
  */
-export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications: _operationNotifications, theme, language, operationKinds, capabilities, onSelectOperation, onCloseOperation }: {
-  readonly operations: readonly OperationNode[];
-  readonly activeOperationId: string | null;
-  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
-  readonly operationRuntimeHydration: OperationRuntimeHydration;
-  readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveRecordRuntime, objectiveRecordRuntimeHydration, objectiveRecordNotifications: _objectiveRecordNotifications, theme, language, objectiveRecordKinds, capabilities, onSelectObjective, onCloseObjective }: {
+  readonly objectiveRecords: readonly ObjectiveRecord[];
+  readonly activeObjectiveId: string | null;
+  readonly objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>;
+  readonly objectiveRecordRuntimeHydration: ObjectiveRuntimeHydration;
+  readonly objectiveRecordNotifications: Readonly<Record<string, ObjectiveNotification>>;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
-  readonly onSelectOperation: (operationId: string | null) => void;
-  readonly onCloseOperation: (operationId: string) => void;
+  readonly onSelectObjective: (objectiveId: string | null) => void;
+  readonly onCloseObjective: (objectiveId: string) => void;
 }) {
   const destination = useMobileDestination();
   const consoleState = useConsoleState();
-  const [selectedOperationId, setSelectedOperationId] = useState(() => readMobileOperationId());
-  const selectedOperation = operations.find((operation) => operation.id === selectedOperationId) ?? null;
+  const [selectedObjectiveId, setSelectedObjectiveId] = useState(() => readMobileObjectiveId());
+  const selectedObjective = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === selectedObjectiveId) ?? null;
   // 지휘관 화면은 고른 구성원의 본문을 보인다 — 데스크톱 지휘관 패널과 같은 원천(코어의 부모 관계 + 본문 선택)이다.
-  const chosenBody = selectedOperation ? consoleState.nestedBodySelection[selectedOperation.id] : undefined;
-  const bodyNode = chosenBody && selectedOperation
-    ? consoleState.nestedOperations.find((candidate) => candidate.id === chosenBody && candidate.parentOperationId === selectedOperation.id) ?? null
+  const chosenBody = selectedObjective ? consoleState.nestedBodySelection[selectedObjective.id] : undefined;
+  const bodyNode = chosenBody && selectedObjective
+    ? consoleState.nestedObjectiveRecords.find((candidate) => candidate.id === chosenBody && candidate.parentObjectiveId === selectedObjective.id) ?? null
     : null;
 
   useEffect(() => {
     const onPopState = () => {
-      const operationId = readMobileOperationId();
-      setSelectedOperationId(operationId);
-      onSelectOperation(operationId);
+      const objectiveId = readMobileObjectiveId();
+      setSelectedObjectiveId(objectiveId);
+      onSelectObjective(objectiveId);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [onSelectOperation]);
+  }, [onSelectObjective]);
 
-  // 주소의 `?op=`가 없는 Operation을 가리키면 목록으로 돌린다 — 단 Operation 목록이 아직 오기 전이면 새로고침이 보던 대화를 잃지 않게 기다린다.
-  const operationsHydrated = consoleState.operationsHydrated;
+  // 주소의 `?op=`가 없는 Objective을 가리키면 목록으로 돌린다 — 단 Objective 목록이 아직 오기 전이면 새로고침이 보던 대화를 잃지 않게 기다린다.
+  const objectiveRecordsHydrated = consoleState.objectiveRecordsHydrated;
   useEffect(() => {
-    if (selectedOperationId === null || selectedOperation || !operationsHydrated) return;
+    if (selectedObjectiveId === null || selectedObjective || !objectiveRecordsHydrated) return;
     // 그 대화의 정보 화면이 서 있었으면(완료로 지휘관이 보관됨 등) 함께 접는다 — 주소에 `?dest=info`가 남으면 다음 뒤로가 아무 일 없이 소모된다.
     if (getMobileDestination().kind === "info") setMobileDestination({ kind: "home" });
-    replaceMobileOperationId(null);
-    setSelectedOperationId(null);
-    onSelectOperation(null);
-  }, [onSelectOperation, operationsHydrated, selectedOperation, selectedOperationId]);
+    replaceMobileObjectiveId(null);
+    setSelectedObjectiveId(null);
+    onSelectObjective(null);
+  }, [onSelectObjective, objectiveRecordsHydrated, selectedObjective, selectedObjectiveId]);
 
   useEffect(() => {
-    if (!selectedOperation) return;
-    onSelectOperation(selectedOperation.id);
-  }, [onSelectOperation, selectedOperation]);
+    if (!selectedObjective) return;
+    onSelectObjective(selectedObjective.id);
+  }, [onSelectObjective, selectedObjective]);
 
-  // 열린 Operation은 데스크톱 대화 칸의 주인과 같은 자리(`conversation-slots`)에 선다 — 구성원 탭 같은 대화 탭(대화 정보 화면이 읽는다)이
+  // 열린 Objective은 데스크톱 대화 칸의 주인과 같은 자리(`conversation-slots`)에 선다 — 구성원 탭 같은 대화 탭(대화 정보 화면이 읽는다)이
   // 이 주인과 묶음을 읽는다.
-  const clusters = useOperationClusters();
+  const clusters = useObjectiveClusters();
   useEffect(() => { publishConversationClusters(clusters); }, [clusters]);
-  useEffect(() => { publishConversationSubject(selectedOperation); }, [selectedOperation]);
+  useEffect(() => { publishConversationSubject(selectedObjective); }, [selectedObjective]);
   useEffect(() => () => publishConversationSubject(null), []);
 
-  const closeOperation = (operationId: string) => {
+  const closeObjective = (objectiveId: string) => {
     // Leave the session immediately so Close is not stuck on a disposing terminal, then
     // dispose through the same host path the canvas and palette already use.
-    // 보관 뒤에는 대화 목록으로 돌아간다 — 홈이 목록이라 다음 Operation을 대신 열지 않는다.
+    // 보관 뒤에는 대화 목록으로 돌아간다 — 홈이 목록이라 다음 Objective을 대신 열지 않는다.
     // 정보 화면에서 보관해도 대화 목록(홈)으로 돌아간다.
     if (destination.kind === "info") setMobileDestination({ kind: "home" });
-    replaceMobileOperationId(null);
-    setSelectedOperationId(null);
-    onSelectOperation(null);
-    onCloseOperation(operationId);
+    replaceMobileObjectiveId(null);
+    setSelectedObjectiveId(null);
+    onSelectObjective(null);
+    onCloseObjective(objectiveId);
   };
 
   let content;
@@ -111,26 +111,26 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
     content = <MobileTools theme={theme} language={language} />;
   } else if (destination.kind === "plugin") {
     content = <MobilePluginScreen entryId={destination.entryId} theme={theme} language={language} />;
-  } else if (selectedOperation) {
+  } else if (selectedObjective) {
     const infoOpen = destination.kind === "info";
     content = (
       <>
         <MobileSessionView
-          operation={selectedOperation}
+          objectiveRecord={selectedObjective}
           theme={theme}
           language={language}
-          operationKinds={operationKinds}
+          objectiveRecordKinds={objectiveRecordKinds}
           capabilities={capabilities}
-          active={activeOperationId === selectedOperation.id}
-          runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
-          operationRuntime={operationRuntime}
-          onActivate={() => onSelectOperation(selectedOperation.id)}
-          onClose={() => closeOperation(selectedOperation.id)}
-          bodyOperation={bodyNode ? { operation: bodyNode, runtimeState: pluginRuntimeState(operationRuntime, operationRuntimeHydration, bodyNode.id), onClose: () => selectNestedBody(selectedOperation.id, null) } : null}
+          active={activeObjectiveId === selectedObjective.id}
+          runtimeState={pluginRuntimeState(objectiveRecordRuntime, objectiveRecordRuntimeHydration, selectedObjective.id)}
+          objectiveRecordRuntime={objectiveRecordRuntime}
+          onActivate={() => onSelectObjective(selectedObjective.id)}
+          onClose={() => closeObjective(selectedObjective.id)}
+          bodyObjective={bodyNode ? { objectiveRecord: bodyNode, runtimeState: pluginRuntimeState(objectiveRecordRuntime, objectiveRecordRuntimeHydration, bodyNode.id), onClose: () => selectNestedBody(selectedObjective.id, null) } : null}
           covered={infoOpen}
         />
         {/* 대화 정보는 대화 화면 위에 선다 — 아래 본문은 내려가지 않아 PTY 크기와 ⋮ 항목이 그대로다. */}
-        {infoOpen ? <MobileConversationInfo operation={selectedOperation} bodyOwner={bodyNode ?? selectedOperation} onArchive={() => { rememberArchivedTitle(selectedOperation.id, selectedOperation.title); closeOperation(selectedOperation.id); }} /> : null}
+        {infoOpen ? <MobileConversationInfo objectiveRecord={selectedObjective} bodyOwner={bodyNode ?? selectedObjective} onArchive={() => { rememberArchivedTitle(selectedObjective.id, selectedObjective.title); closeObjective(selectedObjective.id); }} /> : null}
       </>
     );
   } else {

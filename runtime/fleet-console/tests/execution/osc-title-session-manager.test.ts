@@ -20,7 +20,7 @@ describe("OSC title session wiring", () => {
         ptys.set(String(launch.env.SESSION_ID), pty);
         return pty;
       },
-      resolveTitleListener: (context) => context.operationType === "agent"
+      resolveTitleListener: (context) => context.objectiveRecordType === "agent"
         ? (sessionId, title) => {
             titles.push({ sessionId, title });
             throw new Error("observer failure");
@@ -29,8 +29,8 @@ describe("OSC title session wiring", () => {
     });
     const agentSocket = createMockSocket();
     const shellSocket = createMockSocket();
-    await manager.attach(agentSocket, { sessionId: "agent-a", cwd: "/work", operationType: "agent" });
-    await manager.attach(shellSocket, { sessionId: "shell-a", cwd: "/work", operationType: "shell" });
+    await manager.attach(agentSocket, { sessionId: "agent-a", cwd: "/work", objectiveRecordType: "agent" });
+    await manager.attach(shellSocket, { sessionId: "shell-a", cwd: "/work", objectiveRecordType: "shell" });
     const rawAgentOutput = Buffer.from("\x1b]0;⠐ project\x07visible", "utf8");
 
     ptys.get("agent-a")?.emitData(rawAgentOutput.toString("utf8"));
@@ -70,7 +70,7 @@ describe("OSC title session wiring", () => {
       resolveTitleListener: () => (_sessionId, title) => tracker.observeTitle(title),
     });
     const socket = createMockSocket();
-    await manager.attach(socket, { sessionId: "agent-private", cwd: "/work", operationType: "agent" });
+    await manager.attach(socket, { sessionId: "agent-private", cwd: "/work", objectiveRecordType: "agent" });
     const privateBody = "private-conversation-project";
     const rawTitle = `⠏ ${privateBody}`;
 
@@ -95,7 +95,7 @@ describe("OSC title session wiring", () => {
     const browserAndDurableState = JSON.stringify({
       session: store.getTerminalSessionInfo("agent-private"),
       frames,
-      durable: store.listDurableOperations(),
+      durable: store.listDurableObjectiveRecords(),
     });
     expect(browserAndDurableState).not.toContain(rawTitle);
     expect(browserAndDurableState).not.toContain(privateBody);
@@ -116,7 +116,7 @@ describe("OSC title session wiring", () => {
       resolveCwdListener: () => () => undefined,
     });
     const socket = createMockSocket();
-    await manager.attach(socket, { sessionId: "console-shell", cwd: "/work", operationType: "shell" });
+    await manager.attach(socket, { sessionId: "console-shell", cwd: "/work", objectiveRecordType: "shell" });
     const cwd = (dir: string) => pty!.emitData(`\x1b]7;file://${dir}\x07`);
     const prompt = () => pty!.emitData("\x1b]7;file:///work\x07\x1b]133;A\x07% ");
     const line = () => manager.getShellLineState("console-shell");

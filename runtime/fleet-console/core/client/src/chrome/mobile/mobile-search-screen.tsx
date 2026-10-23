@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 
 import { useT } from "../../i18n/index.js";
-import { focusOperation } from "../../integration/store.js";
+import { focusObjective } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { refreshOperationArchive, useOperationArchive } from "../../integration/operation-archive.js";
+import { refreshObjectiveArchive, useObjectiveArchive } from "../../integration/objective-archive.js";
 import { ArchiveRows, useArchiveRestore } from "./mobile-archive-screen.js";
 import { ConversationRow, conversationStateWord, useMobileConversations } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
@@ -28,18 +28,18 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<SearchKind>("all");
   const conversations = useMobileConversations(state);
-  const archive = useOperationArchive();
+  const archive = useObjectiveArchive();
   const { busy, restored, restore } = useArchiveRestore();
-  useEffect(() => { void refreshOperationArchive(); }, []);
+  useEffect(() => { void refreshObjectiveArchive(); }, []);
   // 이 화면이 자기 머리(✕ · 입력칸)를 그린다 — 호스트 상단 막대는 숨긴다.
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", onBack, hidden: true });
 
   const needle = query.trim().toLowerCase();
   const found = useMemo(() => kind === "archived" ? [] : conversations
-    .filter((conversation) => needle === "" || conversation.operation.title.toLowerCase().includes(needle))
-    .sort((left, right) => right.operation.ts.updatedAt - left.operation.ts.updatedAt), [conversations, kind, needle]);
+    .filter((conversation) => needle === "" || conversation.objectiveRecord.title.toLowerCase().includes(needle))
+    .sort((left, right) => right.objectiveRecord.ts.updatedAt - left.objectiveRecord.ts.updatedAt), [conversations, kind, needle]);
   const archived = useMemo(() => kind === "conversation" ? [] : (archive.snapshot?.entries ?? [])
-    .filter((entry) => !restored.has(entry.operation.id) && (needle === "" || entry.operation.title.toLowerCase().includes(needle))), [archive.snapshot, kind, needle, restored]);
+    .filter((entry) => !restored.has(entry.objectiveRecord.id) && (needle === "" || entry.objectiveRecord.title.toLowerCase().includes(needle))), [archive.snapshot, kind, needle, restored]);
 
   // 입력칸과 종류 칩은 결과 위에 떠 있는 머리 하나다 — 결과가 그 높이(`--m-screen-head`)만큼 위를 비운다.
   const screenRef = useRef<HTMLElement>(null);
@@ -64,14 +64,14 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
       </div>
       <div className="mobile-conv-scroll">
         {found.map((conversation) => {
-          const theater = state.theaters.find((item) => item.id === conversation.operation.theaterId);
+          const theater = state.theaters.find((item) => item.id === conversation.objectiveRecord.theaterId);
           return (
             <ConversationRow
-              key={conversation.operation.id}
+              key={conversation.objectiveRecord.id}
               conversation={conversation}
               trailing={<span className="mobile-conv-kind">{t(conversation.isCluster ? "mobile.search.label.cluster" : "mobile.search.label.conversation")}</span>}
               sub={[theater?.label, conversationStateWord(conversation.face, t)].filter(Boolean).join(" · ")}
-              onOpen={() => { setMobileDestination({ kind: "home" }); focusOperation(conversation.operation.id); }}
+              onOpen={() => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); }}
             />
           );
         })}
@@ -91,12 +91,12 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
 function ArchiveSearch({ state, onBack }: { readonly state: ConsoleState; readonly onBack: () => void }) {
   const t = useT();
   const [query, setQuery] = useState("");
-  const archive = useOperationArchive();
+  const archive = useObjectiveArchive();
   const { busy, restored, restore } = useArchiveRestore();
-  useEffect(() => { void refreshOperationArchive(); }, []);
+  useEffect(() => { void refreshObjectiveArchive(); }, []);
   const archived = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return (archive.snapshot?.entries ?? []).filter((entry) => !restored.has(entry.operation.id) && (needle === "" || entry.operation.title.toLowerCase().includes(needle)));
+    return (archive.snapshot?.entries ?? []).filter((entry) => !restored.has(entry.objectiveRecord.id) && (needle === "" || entry.objectiveRecord.title.toLowerCase().includes(needle)));
   }, [archive.snapshot, query, restored]);
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", onBack });
   return (

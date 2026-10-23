@@ -19,7 +19,7 @@ import type { ChatStreamUsage } from "./sse-client.js";
 import { useStreamedHtml } from "./streamed-html.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 
-/** 어느 실험이 켜져 있는가 — 켜진 확장만 메뉴에 행으로 선다(Operation 메뉴와 같다). */
+/** 어느 실험이 켜져 있는가 — 켜진 확장만 메뉴에 행으로 선다(Objective 메뉴와 같다). */
 export interface AideExtensionAvailability {
   readonly consoleUse: boolean;
   readonly computerUse: boolean;
@@ -72,7 +72,7 @@ export function ChatCard({
   readonly onRetry: () => void;
   readonly onStop: () => void;
   readonly onClear: () => void;
-  /** 답을 새 세션 초안으로 넘긴다 — 빠른 답을 Operation 지시로 잇는 손잡이. */
+  /** 답을 새 세션 초안으로 넘긴다 — 빠른 답을 Objective 지시로 잇는 손잡이. */
   readonly onHandoff: (text: string) => void;
   readonly onDraftChange: (text: string) => void;
   readonly onToggleMoored: () => void;
@@ -324,7 +324,7 @@ export function ChatCard({
             }}
           />
         ) : null}
-        {/* AI 확장은 이 부관 자신의 ··· 메뉴에서 켠다 — Operation 메뉴의 「AI 확장」 섹션과 같은 행,
+        {/* AI 확장은 이 부관 자신의 ··· 메뉴에서 켠다 — Objective 메뉴의 「AI 확장」 섹션과 같은 행,
             같은 글리프, 같은 문구. 켜진 실험의 확장만 행으로 서고, 아무것도 안 켜져 있으면 설정으로
             가는 길만 한 줄 선다. */}
         <span ref={moreRef} className="scuttlebutt-head-slot">

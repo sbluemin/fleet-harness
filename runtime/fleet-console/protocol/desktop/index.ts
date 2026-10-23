@@ -121,9 +121,9 @@ export function isDesktopResourceRootMarkerValid(content: string): boolean {
   return content.trim() === String(DESKTOP_PROTOCOL_VERSION);
 }
 
-// ---------- Operation Browser 네이티브 뷰 ----------
+// ---------- Objective Browser 네이티브 뷰 ----------
 //
-// 창을 든 셸이 Operation 브라우저의 탭을 자기 창 안의 실제 Chromium 뷰로 그린다. 사람은 그 뷰를 직접 보고
+// 창을 든 셸이 Objective 브라우저의 탭을 자기 창 안의 실제 Chromium 뷰로 그린다. 사람은 그 뷰를 직접 보고
 // 만지며, 픽셀을 찍어 보내는 일이 없다. 방향은 셸의 다른 동기화와 같다 — 셸이 콘솔의 스냅샷을 구독하고,
 // 그 결과(CDP 응답·이벤트·뷰 크기)를 relay 로 되돌려 보낸다. 브라우저 정책·탭 상태·도구는 콘솔이 소유한다.
 
@@ -131,7 +131,7 @@ export const DESKTOP_BROWSER_PATH = "/api/v1/desktop/browser";
 export const DESKTOP_BROWSER_EVENTS_PATH = "/api/v1/desktop/browser/events";
 export const DESKTOP_BROWSER_RELAY_PATH = "/api/v1/desktop/browser/relay";
 export const DESKTOP_BROWSER_EVENT = "desktop:browser";
-/** 네이티브 뷰가 현재 Console의 Operation 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
+/** 네이티브 뷰가 현재 Console의 Objective 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
 export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
 
 export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
@@ -146,8 +146,8 @@ export interface DesktopBrowserBounds { readonly x: number; readonly y: number; 
  */
 export interface DesktopBrowserView {
   readonly id: string;
-  readonly operationId: string;
-  /** Electron 세션 파티션 — Operation 마다 다르며 앱 수명 동안만 산다. */
+  readonly objectiveId: string;
+  /** Electron 세션 파티션 — Objective 마다 다르며 앱 수명 동안만 산다. */
   readonly partition: string;
   /**
    * 영속 브라우저 프로필의 id. `null` 이면 이 뷰는 위 `partition` 의 메모리 세션에 산다.
@@ -228,7 +228,7 @@ export function isDesktopBrowserBounds(value: unknown): value is DesktopBrowserB
 }
 
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
-  return isRecord(value) && isSafeId(value.id) && typeof value.operationId === "string" && isSafeId(value.partition)
+  return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
     && typeof value.visible === "boolean" && (value.bounds === null || isDesktopBrowserBounds(value.bounds)) && typeof value.url === "string";
 }

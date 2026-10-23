@@ -1,4 +1,4 @@
-import type { FloatingWidgetOperationsCapability } from "../../workspace/shared/floating.js";
+import type { FloatingWidgetObjectiveRecordsCapability } from "../../workspace/shared/floating.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import * as React from "react";
 
@@ -39,14 +39,14 @@ const MANY_KEY: Record<NoticeKind, ScuttlebuttMessageKey> = {
 };
 
 /**
- * Operation 소식 말풍선 하나로 세 채널을 그린다. 봉투·좌표 추적·Escape·자동 소멸은 같고,
+ * Objective 소식 말풍선 하나로 세 채널을 그린다. 봉투·좌표 추적·Escape·자동 소멸은 같고,
  * 색(신호 채널)과 원장 정리 규칙만 종류를 따른다. 완료는 확인 전까지 원장에 남아 있으므로
  * 큐를 걷지 않고, 시작·대기는 원장에서 빠지는 즉시 큐에서도 걷는다.
  */
 export function NoticeBubble({
   kind,
   source,
-  operations,
+  objectiveRecords,
   locale,
   mascot,
   quiet,
@@ -55,7 +55,7 @@ export function NoticeBubble({
 }: {
   readonly kind: NoticeKind;
   readonly source: NoticeSource;
-  readonly operations: FloatingWidgetOperationsCapability;
+  readonly objectiveRecords: FloatingWidgetObjectiveRecordsCapability;
   readonly locale?: ConsoleLocale;
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly quiet: boolean;
@@ -139,9 +139,9 @@ export function NoticeBubble({
   const dismissActive = () => {
     setSelection((state) => dismissNotice(state));
   };
-  // 연 Operation으로 시선이 옮겨갔으니 알림은 그 자리에서 닫는다 — 남겨 두면 이미 본 소식이 계속 떠 있다.
-  const openOperation = (operationId: string) => {
-    operations.focus(operationId);
+  // 연 Objective으로 시선이 옮겨갔으니 알림은 그 자리에서 닫는다 — 남겨 두면 이미 본 소식이 계속 떠 있다.
+  const openObjective = (objectiveId: string) => {
+    objectiveRecords.focus(objectiveId);
     dismissActive();
   };
   // 한 번에 몰린 소식은 행으로 전개하되 카드가 길어지지 않게 큐 상한과 같은 수에서 자른다.
@@ -159,11 +159,11 @@ export function NoticeBubble({
         <span className="scuttlebutt-notice-label">{t(LABEL_KEY[kind])}</span>
         {visible.map((item) => (
           <button
-            key={item.operationId}
+            key={item.objectiveId}
             type="button"
             className="scuttlebutt-notice-open"
             title={t(OPEN_KEY[kind])}
-            onClick={() => openOperation(item.operationId)}
+            onClick={() => openObjective(item.objectiveId)}
           >
             <span className="scuttlebutt-notice-detail">{item.title}</span>
           </button>
