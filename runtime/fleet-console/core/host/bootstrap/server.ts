@@ -46,7 +46,6 @@ import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../..
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
-import { createLaunchKeyLedger } from "../../../features/console-use/host/launch-keys.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
@@ -686,12 +685,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(channel, payload);
     for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
   }
-  // 멱등 기동 키 원장 — 살아 있는 키는 Operation, 유예 중인 키는 tombstone 에서 읽고, purge 는 흔적을 지우기 전에 선기록한다.
-  const launchKeys = createLaunchKeyLedger({
-    directory: path.join(durablePaths.dir, "console-use"),
-    operations: () => [...operations.list(), ...archiveStorage.entries().map((entry) => entry.operation)],
-    tombstoned: () => deletionCoordinator.list().flatMap(deletionOperations),
-  });
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
     theaters,
@@ -700,7 +693,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     assertMutable: (id) => operationArchive.assertMutable(id),
     beforePurge: (purged, tombstone) => {
       if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
-      launchKeys.recordPurged(purged);
       for (const operation of purged.flatMap(archiveSessionNodes)) purgeCoreOperation(operation);
       if (tombstone.kind === "theater") theaterSystemPrompts.purge(tombstone.targetId);
     },
@@ -757,7 +749,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       for (const node of archiveSessionNodes(event.operation)) {
         if (event.channel === "operation:purged") {
           if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
-          launchKeys.recordPurged([node]);
           purgeCoreOperation(node);
         }
         publishPluginEvent(event.channel, { eventId: `${event.eventId}:${node.id}`, operationId: node.id, theaterId: node.theaterId, pluginId: node.pluginId, type: node.type,
@@ -818,7 +809,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const consoleAgentOwners = new Set<string>();
   // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
   const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   /**
    * 사용 컨텍스트 — 자식 세션은 루트의 브라우저·허용·기기·화면공유를 함께 쓴다. 세 사용 도구와 턴 종료 훅이 같은 객체를 포트로 받는다.
    * 열린 턴은 Console 제어의 관측(활동 축)으로 읽는다: PTY·Chat 두 어댑터가 같은 축에 쓰는 유일한 자리이고, 입력을 기다리는 턴(awaiting)도
@@ -1202,9 +1193,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     observe: (operationId) => consoleControl.observe(operationId),
     subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
     subscribeSessionMessages: (listener) => consoleControl.subscribeSessionMessages({ kind: "plugin", pluginId }, listener),
-    launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
-    reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
-    launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),
     sleep: async (operationId, options) => {
       if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
       const observation = consoleControl.observe(operationId);

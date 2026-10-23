@@ -18,7 +18,7 @@ import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/c
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { TheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
-export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist", "launchKey"] as const;
+export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/settings/host/storage-port.js").SettingsStorageHost, theaterSystemPrompts: TheaterSystemPromptService) {

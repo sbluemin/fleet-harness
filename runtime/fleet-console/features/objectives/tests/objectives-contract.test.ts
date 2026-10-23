@@ -115,10 +115,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 떠 있는 채팅의 호스트 좌표 — 호스트처럼 턴이 돌면 예약만, 유휴면 곧바로 적용하고 세션 좌표를 고친다. 강도는 모델의 칩만 받는다.
   const hostChat = new Map<string, { model: string; effort: string | null; pending: { model: string; effort: string | null } | null }>();
   const hostEfforts: Record<string, readonly string[]> = { "fable[1m]": ["high"] };
-  // 호스트의 멱등 기동 키 — 키 하나에 Operation 하나, 지운 키는 다시 만들지 않는다. hostFault 는 생성 뒤 응답을 잃는 장애다.
-  const keyed = new Map<string, string>();
-  const deletedKeys = new Set<string>();
-  const reservedKeys = new Set<string>();
+  // afterCreate — 생성 뒤 응답을 잃는 장애다.
   // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
   // coordinates — 떠 있는 채팅의 자식이 다음 좌표 변경 하나를 거절한다(호스트가 돌려주는 결과 그대로).
   const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("../../console-use/shared/control.js").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
@@ -168,8 +165,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
       if (input.groupId !== undefined && (node.groupId ?? null) !== input.groupId) { const previousGroupId = node.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ operationId: id, theaterId: node.theaterId, groupId: input.groupId, previousGroupId }); }
       return node;
     },
-    // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
-    delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id) || archivedOperations.delete(id); },
+    delete: (id: string) => { deleted.push(id); return operations.delete(id) || archivedOperations.delete(id); },
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
@@ -202,33 +198,29 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     server: { origin: routingOrigin },
     operations: operationsHost,
     consoleControl: {
-      launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
-      reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
       request: async (input: ConsoleActionInput) => {
         if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
         // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
         if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
         // resume 은 휴면만 세션째 되살린다.
         if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); if (hostFault.rejectModel && (operations.get(input.operationId!)?.payload.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
-        if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
         if (hostFault.rejectModel && input.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled");
-        if (input.launchKey && keyed.has(input.launchKey)) return { operationId: keyed.get(input.launchKey) };
         await new Promise((resolve) => setTimeout(resolve, 5));
         const id = input.childSessionId ?? input.newOperationId ?? `launched-${launches.length + 1}`;
         if (input.childSessionId && operations.has(id)) {
           if (operations.get(id)?.parentOperationId !== input.parentOperationId) throw new Error("operation_id_taken");
           return { operationId: id };
         }
-        if (input.launchKey) keyed.set(input.launchKey, id);
+        if (input.newOperationId && (operations.has(id) || archivedOperations.has(id))) throw new Error("operation_id_taken");
         launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
         // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
         activity.set(id, input.dormant ? "dormant" : "idle");
-        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
         if (input.childSessionId && input.parentOperationId) {
           const parent = operations.get(input.parentOperationId)!;
           parent.childSessions = [...(parent.childSessions ?? []), { id, payload, ts: { createdAt: clock++, updatedAt: clock } }];
         } else add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload });
-        if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
+        if (input.newOperationId && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
         return { operationId: id };
       },
       // 전사 — 호스트가 소유를 따진 뒤 돌려주는 한 쪽. 어느 세션을 읽었는지만 남긴다.
@@ -321,7 +313,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
+  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
     // 호스트처럼 본문 없이 보낸·받은 Operation 과 시각만 건넨다.
     emitSessionMessage: (fromOperationId: string, toOperationId: string, at = clock) => { for (const listener of sessionMessageListeners) listener({ fromOperationId, toOperationId, at }); } };
 }
@@ -401,7 +393,7 @@ describe("Objectives contract", () => {
       const file = h.objectiveFile(id);
       fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), removed }));
     }
-    const unrelated = h.add(collision.id, { title: "Unrelated Operation" });
+    const unrelated = h.add(collision.id, { title: "Unrelated Operation", payload: { session: { harness: "claude-code", sessionName: "unrelated-session" } } });
     h.advanceClock(30 * 24 * 60 * 60 * 1000);
     h.hostFault.afterCreate = 1;
     let restarted = h.restart();
