@@ -135,8 +135,8 @@ Theater마다 **사령관**(Commodore)이 있습니다. Theater의 목표를 스
 
 ## 더 알아보기
 
-- [Fleet Development Reference](docs/fleet-development-reference.md): 호스트 확장, 플러그인 제작, 격리된 개발용 콘솔 실행
-- [Console Agent SDK](docs/console-agent-sdk.md): 플러그인이 기대는 계약
+- [Fleet Development Reference](docs/fleet-development-reference.md): 호스트 확장, Console 기능 추가, 격리된 개발용 콘솔 실행
+- [Console Agent SDK](docs/console-agent-sdk.md): Console 기능이 에이전트 세션과 도구를 쓰는 방법
 - [Admiral Workflow Reference](docs/admiral-workflow-reference.md): 오케스트레이션 아키텍처와 교리
 - [Desktop 가이드](runtime/fleet-desktop/README.md): 배포물, 업데이트, 현재 한계
 - [변경 이력](CHANGELOG.ko.md): 릴리스 기록

@@ -14,7 +14,6 @@ const violations = [];
 const clientRoots = [
   "runtime/fleet-console/features",
   "runtime/fleet-console/core/client",
-  "runtime/fleet-console/sdk",
 ];
 const composerSurfaces = new Set([
   "composer.tsx",

@@ -1,6 +1,6 @@
-# Codex Plugin
+# Codex
 
-Codex owns Wiki storage, retrieval, schemas, entry history, UI, and Admiral Wiki MCP registration. Wiki implementation lives in `server/wiki/`; its `CLAUDE.md` owns storage and tool trust boundaries. The standalone Fleet CLI does not register Codex Wiki tools.
+Codex owns Wiki storage, retrieval, schemas, entry history, UI, and Admiral Wiki MCP registration. Wiki implementation lives in `host/wiki/`; its `CLAUDE.md` owns storage and tool trust boundaries. The standalone Fleet CLI does not register Codex Wiki tools.
 
 ## Boundaries
 

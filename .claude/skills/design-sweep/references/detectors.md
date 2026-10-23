@@ -29,7 +29,7 @@ Living sources — read these for the target scope. The figures below are detect
 
 Run the detectors over `<scope>` — for `full` depth, sweep each surface family (in parallel when useful); for `quick`, run directly:
 
-- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Always include plugins (`runtime/fleet-plugins/*`); most raw literals live there.
+- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Always include features (`runtime/fleet-console/features/*`); most raw literals live there.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
 - **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
 - **Identity leaks**: `--user-accent` placements outside the ones the contract test allows; any `border-color`, glow, caption fill, or spine usage is a violation.

@@ -26,7 +26,7 @@ Classify against publicly released behavior, not the sequence of internal PRs. C
 Group by where users experience the change, not where its source lives:
 
 - `fleet-cli`: the `fleet` terminal launcher.
-- `fleet-console`: Console and its built-in plugins.
+- `fleet-console`: Console and its features.
 - `fleet-desktop`: the native Desktop shell.
 - `fleet-mobile`: the mobile shell.
 

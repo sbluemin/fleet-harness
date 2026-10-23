@@ -23,7 +23,6 @@
 - [ ] `runtime/fleet-console/foundation/`
 - [ ] `runtime/fleet-console/features/`
 - [ ] `runtime/fleet-console/` host (launcher, server, web product)
-- [ ] `runtime/fleet-plugins/`
 - [ ] `runtime/fleet-desktop/`
 - [ ] `runtime/fleet-mobile/`
 - [ ] `scripts/` or root tooling

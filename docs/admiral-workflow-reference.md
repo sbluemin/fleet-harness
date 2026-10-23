@@ -4,7 +4,7 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 1. Ownership
 
-Package ownership and dependency boundaries live in the root `CLAUDE.md` and in the child `CLAUDE.md` along each path (`runtime/fleet-console/`, its `foundation/` packages, `runtime/fleet-plugins/`, `runtime/fleet-desktop/`). This reference does not restate them; read the owner file for the path you change.
+Package ownership and dependency boundaries live in the root `CLAUDE.md` and in the child `CLAUDE.md` along each path (`runtime/fleet-console/`, its `features/` and `foundation/` packages, `runtime/fleet-desktop/`). This reference does not restate them; read the owner file for the path you change.
 
 One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet-console/cli` keeps argv dispatch, process lifecycle, and host adapters, and must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
 
@@ -15,8 +15,9 @@ One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet
   (package-local: cli/ launcher + core/ composition + features/)
   -> @fleet-console/ai-gateway, @fleet-console/updates, @fleet-console/computer-use
   -> @fleet-console/agent-runtime, @fleet-console/infra, @fleet-console/process,
-     @fleet-console/markdown, @fleet-console/font-picker
-  -> @fleet-console/sdk, @fleet-console/protocol
+     @fleet-console/markdown, @fleet-console/font-picker,
+     @fleet-console/i18n, @fleet-console/ui
+  -> @fleet-console/protocol
 
 @fleet-console/ai-gateway
   -> @fleet-console/agent-runtime
@@ -28,7 +29,7 @@ One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet
 ```
 
 Forbidden patterns:
-- Foundation importing a feature, `core/`, `cli/`, or a plugin — implementations and contracts alike.
+- Foundation importing a feature, `core/`, or `cli/` — implementations and contracts alike.
 - The agent substrate (`/tools`, `/mcp`, `/claude`) importing its own Fleet policy layer (`/fleet`).
 - Recreating deleted compatibility packages or namespace facades.
 - Deep-importing package `src/**` or `internal/**` across package boundaries.

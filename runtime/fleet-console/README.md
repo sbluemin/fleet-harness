@@ -4,7 +4,7 @@ Standalone loopback web console for observing live output streams and Console-ow
 
 ## What It Does
 
-Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTYs, tickets, WebSocket transport, and AI Gateway composition. Plugins consume explicit Console capabilities; they do not depend on a Terminal plugin.
+Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTYs, tickets, WebSocket transport, and AI Gateway composition. Product surfaces such as Objectives, Codex, File Explorer, and Repository are Console features composed with explicit dependencies; Console loads no plugins.
 
 - Console-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
@@ -14,7 +14,7 @@ Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTY
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 
-Agent is a durable Console-owned Operation (`pluginId: null`, `type: "agent"`). Shell is one global non-durable surface with a Console-owned lifetime. Terminal and Chat are Agent execution adapters, not plugins.
+Agent is a durable Console-owned Operation (`pluginId: null`, `type: "agent"`). Shell is one global non-durable surface with a Console-owned lifetime. Terminal and Chat are Agent execution adapters, not separate features.
 
 ## Runtime Channels
 
@@ -209,7 +209,7 @@ Then run `fc-cache -f` (slow the first time, because it reads the Windows drive)
 
 ## Development
 
-Source is split under `core/host/` for the Node CLI/backend and `core/client/` for the Vite React SPA. Agent, Terminal, and AI Gateway runtime implementations live under `core/host/`; their UI lives under `core/client/src/`. The private `@fleet-console/sdk` package under `sdk/` is the shared plugin contract surface for core and built-in plugins.
+Source is split under `core/host/` for the Node CLI/backend and `core/client/` for the Vite React SPA. Agent, Terminal, and AI Gateway runtime implementations live under `core/host/`; their UI lives under `core/client/src/`. Product features live under `features/`, and domain-free shared code under `foundation/`.
 
 ```bash
 pnpm --filter @dotobokuri/fleet-console dev
@@ -218,6 +218,6 @@ pnpm --filter @dotobokuri/fleet-console typecheck
 pnpm --filter @dotobokuri/fleet-console build
 ```
 
-`build` emits `dist/fleet.mjs`, `dist/cli.mjs`, `dist/client/`, and the remaining built-in plugin bundles. There is no external embed step.
+`build` emits `dist/fleet.mjs`, `dist/cli.mjs`, `dist/client/`, and the other `tsup.config.ts` entries. There is no external embed step.
 
 See `CLAUDE.md` for ownership, token-boundary, and streaming invariants.

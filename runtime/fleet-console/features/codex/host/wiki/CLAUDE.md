@@ -4,7 +4,7 @@ Owns Fleet Wiki storage, retrieval, provenance, schemas, entry history. It does 
 
 ## Ownership and references
 
-- Wiki implementation is internal to Codex. The plugin owns global MCP registration.
+- Wiki implementation is internal to Codex. The Codex feature owns global MCP registration.
 - Keep storage and tool logic independent of host, provider, and agent runtime implementations.
 - When changing tool behavior, storage formats, or schemas, read the relevant section of [implementation-reference.md](implementation-reference.md). Tool schemas and implementations define current argument contracts.
 
