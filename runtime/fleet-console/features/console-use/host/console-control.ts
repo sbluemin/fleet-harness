@@ -7,8 +7,6 @@ import type { OperationNode } from "../../execution/shared/operations/types.js";
 import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnEnd } from "../shared/control.js";
 import { z } from "zod";
 
-import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
-
 const callerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("operation"), operationId: z.string().min(1).max(128) }).strict(),
   z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1).max(128) }).strict(),
@@ -31,17 +29,15 @@ const actionObjectSchema = z.object({
   disableSubagents: z.boolean().optional(), disableAutoMemory: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
   childSessionId: z.uuid().optional(),
-  launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
   newOperationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
-  if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.childSessionId && (value.launchKey || value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.childSessionId && (value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display !== undefined || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
@@ -94,15 +90,13 @@ export interface ConsoleControlDeps {
   readonly resolveOperation?: (id: string) => OperationNode | null;
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
   readonly pluginAvailable?: (pluginId: string) => boolean;
-  /** 멱등 기동 키 원장 — 없으면 키 붙은 기동은 capability_unavailable. */
-  readonly launchKeys?: LaunchKeyLedger;
   readonly now?: () => number;
 }
 interface SavedState { version: 3; automations: ConsoleAutomation[] }
 interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly operationId?: string; readonly activity?: ConsoleActivity; readonly automationId?: string }
 /**
  * 진행 중인 동작 — 메모리에만 있다. 접수에서 턴의 종료(또는 전달 실패)까지만 살고 영속하지 않는다.
- * 같은 키의 기동 합류와 자동 정책의 「진행 중이면 건너뜀」이 이 목록만 본다.
+ * 같은 ID의 기동 합류와 자동 정책의 「진행 중이면 건너뜀」이 이 목록만 본다.
  */
 interface InFlight {
   readonly caller: ConsoleCaller;
@@ -195,40 +189,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!observation?.supportedActions.includes(input.kind)) fail("capability_unavailable");
     }
   }
-  /**
-   * 키 붙은 기동 — 같은 키로는 Operation 이 많아야 하나 생긴다. 살아 있으면 새로 띄우지 않고 그 Operation 을 돌려주고, 사람이
-   * 지웠으면(유예 중이든 purge 됐든) 다시 만들지 않는다. 같은 키의 기동이 진행 중이면 그 결과에 합류한다.
-   * 아니면 키를 예약(용량 검사)하고 새 기동으로 진행한다 — 키는 Operation payload 에 실려 생성과 함께 영속된다.
-   */
-  function keyedLaunch(caller: ConsoleCaller, input: ConsoleActionInput): Promise<ConsoleActionResult> | null {
-    if (caller.kind !== "plugin") fail("invalid_launch_option");
-    const ledger = deps.launchKeys;
-    if (!ledger) return fail("capability_unavailable");
-    const owner = (caller as { pluginId: string }).pluginId;
-    const found = launchKeyState(caller, input.theaterId!, input.launchKey!);
-    if (found.state === "live") return Promise.resolve({ operationId: found.operationId! });
-    if (found.state === "deleting" || found.state === "purged") fail("launch_key_deleted");
-    if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!.result!;
-    if (input.newOperationId && node(input.newOperationId)) fail("operation_id_taken");
-    try { ledger.reserve(owner, input.theaterId!, [input.launchKey!]); }
-    catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
-    return null;
-  }
-  function pendingKeyed(caller: ConsoleCaller, key: string) {
-    return [...inflight.values()].find((a) => sameCaller(a.caller, caller) && a.input.launchKey === key && !a.operationId) ?? null;
-  }
-  /** 키의 지금 상태 — 살아 있음·유예·purge 가 진행 중 기동보다 먼저다(생성 직후 진행 중 목록에 id 가 붙기 전에도 live 로 읽힌다). */
-  function launchKeyState(caller: ConsoleCaller, theaterId: string, key: string): { readonly state: LaunchKeyState | "pending"; readonly operationId?: string } {
-    if (caller.kind !== "plugin") fail("invalid_launch_option");
-    const ledger = deps.launchKeys;
-    if (!ledger) return fail("capability_unavailable");
-    if (!deps.theaters().some((t) => t.id === theaterId)) fail("unknown_theater");
-    let found: ReturnType<LaunchKeyLedger["state"]>;
-    try { found = ledger.state((caller as { pluginId: string }).pluginId, theaterId, key); }
-    catch (error) { if (error instanceof LaunchKeyError) return fail(error.code); throw error; }
-    if (found.state === "live" || found.state === "deleting" || found.state === "purged") return found;
-    return pendingKeyed(caller, key) ? { state: "pending" } : found;
-  }
   function updateAutomation(id: string, patch: Partial<ConsoleAutomation>) {
     const index = state.automations.findIndex((a) => a.id === id);
     if (index < 0) return fail("automation_not_found");
@@ -240,7 +200,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   }
   /**
    * 동작을 접수하고 전달을 시작한다. 검증 실패는 즉시 던지고, 전달의 성패는 돌려준 Promise 가 말한다.
-   * 결과는 어디에도 남지 않는다 — 같은 입력을 다시 보내면 다시 실행된다. 키 붙은 기동만 launch-keys 원장이 중복을 막는다.
+   * 결과는 어디에도 남지 않는다 — 같은 입력을 다시 보내면 다시 실행된다. 지정 ID의 기동은 진행 중인 요청에만 합류한다.
    */
   function accept(caller: ConsoleCaller, raw: ConsoleActionInput, policyId?: string): Promise<ConsoleActionResult> {
     if (disposed) fail("console_unavailable");
@@ -259,9 +219,12 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         return pending.result!;
       }
     }
-    if (input.launchKey !== undefined) {
-      const joined = keyedLaunch(caller, input);
-      if (joined) return joined;
+    if (input.newOperationId) {
+      const pending = [...inflight.values()].find((entry) => entry.input.newOperationId === input.newOperationId && !entry.operationId);
+      if (pending) {
+        if (!sameCaller(pending.caller, caller) || pending.input.theaterId !== input.theaterId) fail("operation_id_taken");
+        return pending.result!;
+      }
     }
     const id = randomUUID();
     const entry: InFlight = { caller, input, ...(policyId ? { policyId } : {}), expiresAt: now() + 15 * 60_000, updatedAt: now() };
@@ -298,11 +261,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       assertCurrent();
       validTarget(entry.input);
       const result = await adapter!.execute(entry.input, assertCurrent, settled, entry.caller);
-      // 키 붙은 기동이 섰다 — 호스트 상태가 나중에 비워져도 그 키를 「만든 적 없음」으로 답하지 않게 원장에 남긴다.
-      if (entry.input.launchKey && entry.caller.kind === "plugin") {
-        try { deps.launchKeys?.recordCreated(entry.caller.pluginId, entry.input.launchKey, result.operationId); }
-        catch { /* 예약으로 남는다 — Operation payload 의 키가 여전히 live 를 말한다. */ }
-      }
       entry.operationId = result.operationId;
       entry.updatedAt = now();
       return { operationId: result.operationId, delivery: result.delivery };
@@ -471,7 +429,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         try { entry.listener(event); } catch { /* 한 소비자의 실패가 다른 소비자나 전달을 막지 않는다. */ }
       }
     },
-    launchKeyState, coordinates, transcript,
+    coordinates, transcript,
     async unstartedPreset(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
       const op = node(operationId);
       if (!op) return { ok: false, error: "unknown_operation" };
@@ -492,17 +450,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       const op = node(operationId);
       if (!op || !launchedByPlugin(caller, op)) return null;
       return adapter?.advertisedTools?.(operationId) ?? null;
-    },
-    reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
-      if (caller.kind !== "plugin") return fail("invalid_launch_option");
-      if (!deps.launchKeys) return fail("capability_unavailable");
-      if (!deps.theaters().some((t) => t.id === theaterId)) fail("unknown_theater");
-      try { deps.launchKeys.reserve(caller.pluginId, theaterId, keys); }
-      catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
-    },
-    launchKeyUsage(caller: ConsoleCaller) {
-      if (caller.kind !== "plugin" || !deps.launchKeys) return fail("capability_unavailable");
-      return deps.launchKeys.usage(caller.pluginId);
     },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },

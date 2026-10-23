@@ -63,13 +63,7 @@ export interface ConsoleActionInput {
   readonly parentOperationId?: string;
   /** 플러그인 전용 자식 UUID. 같은 부모와 같은 id는 기존 세션을 돌려준다. */
   readonly childSessionId?: string;
-  /**
-   * launch 전용·플러그인 호출자 전용 — 멱등 기동 키(`[A-Za-z0-9._:-]{1,128}`, 호출 플러그인 범위). 같은 키로는 Operation 이 많아야
-   * 하나 생긴다: 살아 있으면 그 Operation 을 돌려주고, 삭제됐으면(유예 중·purge) `launch_key_deleted` 로 거절한다. 키는 생성과
-   * 함께 영속되며 만료하지 않는다. 새 키는 소유자별 용량 안에서만 받는다(`launch_key_capacity`).
-   */
-  readonly launchKey?: string;
-  /** 플러그인의 키 붙은 새 기동에서만 지정할 수 있는 Operation UUID. */
+  /** 플러그인의 새 기동에서만 지정할 수 있는 Operation UUID. */
   readonly newOperationId?: string;
 }
 

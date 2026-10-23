@@ -60,8 +60,8 @@ interface DeferredDeletionCoordinatorDeps {
   readonly validateTheaterRestore: (theater: TheaterRegistration) => Promise<void>;
   readonly registerTheaterWorkspace: (theater: TheaterRegistration) => Promise<void>;
   /**
-   * 유예가 끝난 Operation 의 흔적을 지우기 **전에** 부른다 — 멱등 기동 키 원장이 purge 를 선기록한다. 던지면 이번 정리를
-   * 미루고 다시 시도한다(tombstone 은 그대로 남아 키가 계속 「삭제 중」으로 읽힌다).
+   * 유예가 끝난 Operation 의 흔적을 지우기 **전에** 관련 자원을 정리한다. 던지면 tombstone 을 그대로 남겨
+   * 이번 정리를 미루고 다시 시도한다.
    */
   readonly beforePurge?: (operations: readonly OperationNode[], tombstone: DurableDeletionTombstone) => void;
   readonly now?: () => number;
@@ -82,7 +82,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
   const clearTimer = deps.clearTimer ?? clearTimeout;
   let tombstones: readonly DurableDeletionTombstone[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
-  // purge 선기록(beforePurge)에 실패한 tombstone 의 다음 시도 시각 — 그 tombstone 만 남겨 미루고, 다른 정리와 생성·삭제는 막지 않는다.
+  // purge 전 자원 정리(beforePurge)에 실패한 tombstone 의 다음 시도 시각 — 그 tombstone 만 남겨 미루고, 다른 정리와 생성·삭제는 막지 않는다.
   const purgeRetryAt = new Map<string, number>();
 
   function list(): readonly DurableDeletionTombstone[] {
@@ -245,7 +245,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
   function sweepExpired(): void {
     const cutoff = now();
     const due = tombstones.filter((item) => item.expiresAt <= cutoff && (purgeRetryAt.get(item.deletionId) ?? 0) <= cutoff);
-    // 선기록은 tombstone 마다 따로 — 실패한 것은 남아(키가 계속 「삭제 중」으로 읽힌다) 나중에 다시 시도하고, 나머지는 정리한다.
+    // purge 전 자원 정리는 tombstone 마다 따로 — 실패한 것은 남겨 나중에 다시 시도하고, 나머지는 정리한다.
     const expired = due.filter((item) => {
       if (!deps.beforePurge) return true;
       try {

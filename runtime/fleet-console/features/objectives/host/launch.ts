@@ -303,7 +303,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!groupId || !groups) return groupId ?? null;
     return groups.get(groupId)?.theaterId === theaterId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentOperationId?: string; childSessionId?: string }): Promise<string> => {
     const groupId = liveGroupId(input.theaterId, input.groupId);
     const result = await control().request({
       kind: "launch",
@@ -321,7 +321,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       ...(groupId ? { groupId } : {}),
       // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
       ...(input.parentOperationId && input.childSessionId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}),
-      ...(input.launchKey ? { launchKey: input.launchKey } : {}),
       ...(input.newOperationId ? { newOperationId: input.newOperationId } : {}),
     });
     touchLive(result.operationId);
@@ -347,25 +346,23 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     try { return await task; } finally { pending.delete(key); commanderClaims.delete(key); }
   };
 
-  // 최초 기동은 호스트의 영속 launchKey 와 같은 UUID 에 묶는다. 실패 후 재시도는 기존 Operation 을 되찾는다.
+  // 최초 기동은 목표의 UUID 에 묶는다. 실패 후 재시도는 기존 Operation 을 되찾는다.
   const ensureCommander = async (objectiveId: string): Promise<void> => {
     // 에이전트가 지운 목표는 사람이 되돌리기 전에는 기동하지 않는다.
     if (store.find(objectiveId)?.removed) throw new ObjectiveStoreError("objective_removed");
     const pendingCommander = store.pending(objectiveId);
     const existing = referenceNode(objectiveId);
-    const key = `objectives.commander:${objectiveId}`;
     if (existing) {
       await accessOperation(objectiveId);
       if (pendingCommander) {
-        const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
-        if (marker?.owner !== "objectives" || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
+        if (existing.theaterId !== pendingCommander.theaterId || readOperationLaunch(existing.payload).sessionName !== pendingCommander.sessionName) throw new ObjectiveStoreError("operation_id_taken");
         store.launched(objectiveId);
       }
       return;
     }
     if (!pendingCommander) throw new ObjectiveStoreError("unknown_operation");
     // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
-    const launchedId = await launch({ ...pendingCommander, viewMode: "chat", objectiveId, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
+    const launchedId = await launch({ ...pendingCommander, viewMode: "chat", objectiveId, dormant: true, newOperationId: objectiveId }).catch(asStoreError);
     if (launchedId !== objectiveId) throw new ObjectiveStoreError("operation_id_taken");
     store.launched(objectiveId);
   };
@@ -530,18 +527,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     store.refresh(id);
   };
   /**
-   * 목표의 지휘관 Operation 을 보관한다 — 아직 없으면(기동 전) 같은 ID·소유 표식의 휴면 메타데이터로 먼저 세운다. 모델·자격증명·Agent 기동에
+   * 목표의 지휘관 Operation 을 보관한다 — 아직 없으면(기동 전) 같은 ID·세션 이름의 휴면 메타데이터로 먼저 세운다. 모델·자격증명·Agent 기동에
    * 의존하지 않는다. 레코드 쪽(pending·removed) 정리는 부르는 쪽이 보관이 확정된 뒤에 한다.
    */
   const archiveCommanderRecord = async (id: string): Promise<void> => {
     const current = objective(id);
     if (!ctx.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
     const config = store.pending(id);
-    const key = `objectives.commander:${id}`;
     let existing = referenceNode(id);
     if (existing && config) {
-      const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
-      if (existing.theaterId !== current.theaterId || marker?.owner !== "objectives" || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
+      if (existing.theaterId !== current.theaterId || readOperationLaunch(existing.payload).sessionName !== config.sessionName) throw new ObjectiveStoreError("operation_id_taken");
     }
     if (!existing) {
       if (!config) throw new ObjectiveStoreError("unknown_operation");
@@ -549,7 +544,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       try {
         const created = ctx.operations.create({ id, theaterId: config.theaterId, type: "agent", pluginId: null,
           title: config.title, createdAt: config.createdAt,
-          payload: { dormantBorn: true, restoredDormant: true, launchKey: { owner: "objectives", key },
+          payload: { dormantBorn: true, restoredDormant: true,
             chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } } });
@@ -562,7 +557,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const groupId = liveGroupId(config.theaterId, config.groupId);
       if ((existing.groupId ?? null) !== groupId) patchOperation(id, { groupId });
     }
-    // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·소유 표식으로 재시도한다.
+    // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·Theater·세션 이름으로 재시도한다.
     await ctx.operations.archive(id).catch(asStoreError);
   };
   /** 기동·소집 중인 목표의 완료 상태 변경을 거절한다. */
@@ -1329,8 +1324,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const config = store.pending(objectiveId);
       const existing = referenceNode(objectiveId);
       if (config && existing) {
-        const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
-        if (existing.theaterId !== current.theaterId || marker?.owner !== "objectives" || marker.key !== `objectives.commander:${objectiveId}`) throw new ObjectiveStoreError("operation_id_taken");
+        if (existing.theaterId !== current.theaterId || readOperationLaunch(existing.payload).sessionName !== config.sessionName) throw new ObjectiveStoreError("operation_id_taken");
       }
       // 옛 정리 데이터는 새 pending 삭제 정책보다 먼저 무손실 이관한다.
       if (current.removed) await migrateRemoval(objectiveId);

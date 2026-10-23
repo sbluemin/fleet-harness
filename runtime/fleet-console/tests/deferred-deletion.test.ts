@@ -4,9 +4,6 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createConsoleControl } from "../features/console-use/host/console-control.js";
-import { createLaunchKeyLedger } from "../features/console-use/host/launch-keys.js";
-
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../features/workspace/host/deferred-deletion.js";
 import { createTheaterSystemPromptService } from "../features/settings/host/agent-options.js";
 import type { AgentOptionsData } from "@fleet-console/infra";
@@ -446,93 +443,6 @@ function createArchiveHarness(directory: string) {
   });
   return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
 }
-
-describe("idempotent launch keys", () => {
-  // 저장 무결성 경계 — 키 하나에 Operation 은 많아야 하나, 사람이 지운 키는 purge·재시작 뒤에도 다시 생기지 않는다.
-  it("creates at most one Operation per key and keeps a deleted key deleted across purge and restart", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-launch-keys-"));
-    try {
-      const harness = createHarness();
-      let executions = 0;
-      const boot = () => {
-        const launchKeys = createLaunchKeyLedger({
-          directory, limit: 2,
-          operations: () => harness.operations.list(),
-          tombstoned: () => harness.coordinator.list().flatMap((item) => item.kind === "operation" ? [item.operation] : item.operations),
-        });
-        const control = createConsoleControl({ directory, launchKeys, pluginAvailable: () => true, operations: () => harness.operations.list(), theaters: () => [{ id: THEATER.id, name: "theater" }] });
-        control.attach({
-          observe: () => null,
-          execute: async (input, _assertCurrent, _settled, caller) => {
-            executions += 1;
-            await new Promise((resolve) => setTimeout(resolve, 5));
-            const id = input.newOperationId ?? `launched-${executions}`;
-            harness.operations.create({ ...makeOperation(id), pluginId: null, payload: { launchKey: { owner: (caller as { pluginId: string }).pluginId, key: input.launchKey } } });
-            return { operationId: id, delivery: "requested" };
-          },
-        });
-        harness.beforePurge.value = (purged) => launchKeys.recordPurged(purged);
-        return { launchKeys, control };
-      };
-      const caller = { kind: "plugin" as const, pluginId: "objectives" };
-      const objectiveId = "11111111-2222-4333-8444-555555555555";
-      const launch = { kind: "launch" as const, theaterId: THEATER.id, dormant: true, launchKey: "objectives.followup:a", newOperationId: objectiveId };
-
-      const first = boot();
-      await expect(first.control.request(caller, { ...launch, launchKey: undefined })).rejects.toThrow();
-      await expect(first.control.request({ kind: "operation", operationId: "unrelated" }, launch)).rejects.toThrow();
-      // 같은 키가 동시에 두 번 와도, 이미 선 뒤에 다시 와도 기동은 한 번이다.
-      const [a, b] = await Promise.all([first.control.request(caller, launch), first.control.request(caller, launch)]);
-      expect([a.operationId, b.operationId]).toEqual([objectiveId, objectiveId]);
-      expect((await first.control.request(caller, launch)).operationId).toBe(objectiveId);
-      expect(executions).toBe(1);
-      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "live", operationId: objectiveId });
-      // 다른 Theater 로 묻는 키는 그 Operation 을 드러내지 않는다.
-      expect(() => first.control.launchKeyState(caller, "other", "objectives.followup:a")).toThrow();
-
-      harness.operations.create(makeOperation("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"));
-      await expect(first.control.request(caller, { ...launch, launchKey: "objectives.followup:collision", newOperationId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" })).rejects.toThrow("operation_id_taken");
-      // 용량이 차면 새 키는 받지 않지만, 이미 수락한 키의 삭제 기록은 막지 않는다.
-      first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:b"]);
-      expect(() => first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:c"])).toThrow("launch_key_capacity");
-      harness.operations.create(makeOperation("unrelated"));
-      harness.coordinator.deleteOperation("unrelated");
-      harness.clock.value += 1; // 테스트 삭제 id 는 시각에서 나온다.
-      harness.coordinator.deleteOperation(objectiveId);
-      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a").state).toBe("deleting");
-      harness.clock.value += 60_000;
-      // 원장 선기록이 실패하면 그 tombstone 만 남아 미뤄진다 — 다른 정리와 무관한 생성·삭제는 막히지 않는다.
-      const record = harness.beforePurge.value!;
-      harness.beforePurge.value = (purged, tombstone) => { if (purged.some((node) => node.id === objectiveId)) throw new Error("storage_unavailable"); record(purged, tombstone); };
-      expect(harness.coordinator.hasPendingOperation("brand-new")).toBe(false);
-      expect(harness.coordinator.hasPendingOperation("unrelated")).toBe(false);
-      harness.operations.create(makeOperation("brand-new"));
-      harness.clock.value += 1;
-      expect(harness.coordinator.deleteOperation("brand-new")).not.toBeNull();
-      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a").state).toBe("deleting");
-      harness.beforePurge.value = record;
-      harness.clock.value += 60_000;
-      harness.coordinator.sweepExpired();
-      expect(harness.coordinator.hasPendingOperation(objectiveId)).toBe(false);
-      first.control.dispose();
-
-      // 재시작 — 흔적이 사라진 뒤에도 원장이 purge 를 말하고, 같은 키의 기동은 거절된다.
-      const restarted = boot();
-      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "purged", operationId: objectiveId });
-      await expect(restarted.control.request(caller, launch)).rejects.toThrow("launch_key_deleted");
-      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("reserved");
-      expect(executions).toBe(1);
-      // 호스트 상태가 비워져 Operation 이 흔적 없이 사라져도, 선 적이 있는 키는 다시 만들지 않는다.
-      const keyedB = { ...launch, launchKey: "objectives.followup:b", newOperationId: "66666666-7777-4888-9999-aaaaaaaaaaaa" };
-      expect((await restarted.control.request(caller, keyedB)).operationId).toBe(keyedB.newOperationId);
-      harness.operations.replace([]);
-      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("purged");
-      await expect(restarted.control.request(caller, keyedB)).rejects.toThrow("launch_key_deleted");
-      expect(executions).toBe(2);
-      restarted.control.dispose();
-    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
-  });
-});
 
 function createHarness() {
   const clock = { value: 1_000 };

@@ -62,17 +62,4 @@ export interface ConsoleControlHost {
    * 커서 없이 `tail` 이면 마지막 `limit` 줄(그 앞이 남았으면 truncated)이고, 아니면 커서부터 앞으로 읽는다.
    */
   transcript?(operationId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
-  /**
-   * 이 플러그인의 멱등 기동 키(`ConsoleActionInput.launchKey`) 상태 — absent(영속된 적 없음) · reserved(예약만) · pending(이 호스트에서
-   * 기동 중) · live · deleting(삭제 유예) · purged. 다른 Theater 에 선 키는 `launch_key_conflict` 로 거절하고 그 Operation 을
-   * 드러내지 않는다. 원장을 읽을 수 없으면 `storage_unavailable` 을 던진다(absent 로 추측하지 않는다).
-   */
-  launchState?(input: { readonly theaterId: string; readonly key: string }): { readonly state: "absent" | "reserved" | "pending" | "live" | "deleting" | "purged"; readonly operationId?: string };
-  /**
-   * 키들을 한꺼번에 예약한다(전부 또는 전무) — 새 키만 용량을 쓰고, 넘치면 `launch_key_capacity`. 수락한 키는 만료하지 않으며
-   * 그 키의 삭제 기록·조회·같은 키 재기동은 용량과 무관하다.
-   */
-  reserveLaunchKeys?(input: { readonly theaterId: string; readonly keys: readonly string[] }): void;
-  /** 이 플러그인이 쓴 키 수와 상한. */
-  launchKeyUsage?(): { readonly used: number; readonly limit: number };
 }

@@ -129,7 +129,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     adoptChat();
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
     void launch.resumeOperationIntents().catch((error) => console.warn(`[objectives] Operation request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
-    // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 키로 이어 간다(키 원장이 중복과 삭제 번복을 막는다).
+    // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 목표 ID로 이어 간다.
     try { launch.resumeFollowups(); }
     catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
     // 구성원의 모델 예약 — 「다음 재개」 시절의 옛 기록은 적용으로 거두고, 이번 턴 뒤를 기다리던 예약은 감시를 다시 건다.

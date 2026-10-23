@@ -119,7 +119,7 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
 // resume 라우트가 현재 지원하는 provider/sessionId 최소형과 동일하게 판정한다.
 // 제거된 provider의 durable payload는 보존하되, 실행 불가능한 Resume 표면은 노출하지 않는다.
 function sanitizeChildPayload(input: Record<string, unknown>, sensitiveFields: ReadonlySet<string>, options: OperationSanitizeOptions): Record<string, unknown> {
-  const payload = sanitizeRecord(input, new Set([...sensitiveFields, "providerTitle", "launchKey"]));
+  const payload = sanitizeRecord(input, new Set([...sensitiveFields, "providerTitle"]));
   if (isRecord(payload.session)) {
     const session = payload.session;
     payload.session = {
