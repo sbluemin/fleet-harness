@@ -17,7 +17,7 @@ Owns Fleet Wiki storage, retrieval, provenance, schemas, entry history. It does 
 
 ## Storage and compatibility
 
-- Workspace schema lives in `.fleet/knowledge/schema/wiki-schema.md`; its sibling `AGENTS.md` owns maintenance policy. Bootstrap creates missing schema, maintenance instructions, and default templates; it replaces an existing one only when its bytes match a recorded previous default, so user-edited files are never overwritten.
+- Each Wiki belongs to one commodore: its knowledge root is `<consoleDataDir>/commodore/{uuid}/knowledge`, resolved only from a host-injected commodore id, never from a cwd or Theater path. Its schema lives in `schema/wiki-schema.md` under that root; its sibling `AGENTS.md` owns maintenance policy. Bootstrap creates missing schema, maintenance instructions, and default templates; it replaces an existing one only when its bytes match a recorded previous default, so user-edited files are never overwritten.
 - Canonical Wiki links use `[[wiki:id]]`. `store.ts` owns shared link parsing and retrieval boundaries; do not invent consumer-specific grammars. The operational `log.md` remains append-only.
 - Preserve the names of all 12 global MCP tools. Their catalog and behavior remain in the reference's Tools section.
 - Preserve default `wiki_briefing` behavior with `enhanced=false`, and `wiki_ingest` with `mode="auto"`, including create fallback when the target is absent. Do not change signatures or behavior beyond the authorized task.

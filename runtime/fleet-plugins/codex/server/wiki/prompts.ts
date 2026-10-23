@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./store.js";
 
 const WIKI_SCHEMA_PROMPT_NOTE =
-  "Workspace common rules live in `.fleet/knowledge/schema/wiki-schema.md`; body sections live in `.fleet/knowledge/schema/template-*.md`.";
+  "Common rules live in `schema/wiki-schema.md` under the Wiki knowledge root; body sections live in `schema/template-*.md` there.";
 const CANONICAL_WIKI_LINK_GUIDELINE =
   "When linking to other wiki entries, use canonical `[[wiki:entry-id]]` syntax.";
 

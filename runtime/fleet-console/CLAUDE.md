@@ -19,7 +19,7 @@
 
 ## Domain boundaries
 
-- A **Theater** is any registered project root. An **Operation** is a Console-managed unit inside a Theater. A Codex workspace is the subset of a Theater or selected path that contains Fleet Wiki knowledge.
+- A **Theater** is any registered project root. An **Operation** is a Console-managed unit inside a Theater. A Codex workspace is one commodore's Fleet Wiki knowledge, identified by the commodore id.
 - Console features own execution, Chat/PTY session state, Gateway, Console Use, Browser, Computer Use, remote pairing, Workspace, Settings, and Updates. Core composes those capabilities and owns global chrome, transport admission, shell adapters, and plugin registries. Plugins own their extension panels and scoped runtime behavior; they consume Console capabilities without depending on another plugin’s mount path.
 - Desktop may supervise and display Console only through the public desktop protocol; it must not duplicate server, PTY, provider, plugin, state, or React behavior.
 - Host code may consume public APIs from features and foundation, but must not import any package's implementation paths. Browser code remains Node-free. SDK dependencies point from host, client, and plugins into SDK, never back into core or plugin implementations.
