@@ -51,6 +51,10 @@ describe("durable console state", () => {
       fs.writeFileSync(path.join(objectiveRoot, id, "objective.json"), JSON.stringify({ operationId: id, rank: 10, note: `Board ${id}`, missions: [], ...(id === "active" ? { members: [{ id: "child", role: "Member", by: "human" }] } : {}), addedBy: { kind: "commodore", theaterId: "t1" } }));
       fs.writeFileSync(path.join(objectiveRoot, id, "shared", "proof.txt"), `bytes ${id}`);
     }
+    // 보관 증거가 사라진 외부 worktree를 가리켜도 링크 자체와 원본은 보존한다.
+    const evidenceLink = "archived/shared/host-transport.ts";
+    const evidenceTarget = path.join(directory, "missing-worktree/source/host-transport.ts");
+    fs.symlinkSync(evidenceTarget, path.join(objectiveRoot, evidenceLink));
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
     let connected = false;
     const open = () => createObjectiveStorage({ directory, stateStore, owners: () => connected ? [owner] : [] });
@@ -69,6 +73,7 @@ describe("durable console state", () => {
     try { expect(open().load().objectiveRecords).toEqual([]); } finally { fault.mockRestore(); }
     expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
     expect(fs.existsSync(path.join(objectiveRoot, "active", "objective.json"))).toBe(true);
+    expect(fs.readlinkSync(path.join(objectiveRoot, evidenceLink))).toBe(evidenceTarget);
     expect(fs.existsSync(destination)).toBe(false);
     const moved = open(); const state = moved.load();
     expect(state.objectiveRecords[0]?.session).toEqual({ harness: "claude-code", id: "resume-id" });
@@ -85,6 +90,9 @@ describe("durable console state", () => {
     expect(archive.entries[0].objective.launchedBy).toEqual(launchSource);
     expect(JSON.stringify({ active, archive })).not.toMatch(/"(?:pluginId|theaterId|geometry|payload|launchKey|userQuestions|resumeAvailable)"\s*:/);
     expect(fs.readFileSync(path.join(destination, "archived/shared/proof.txt"), "utf8")).toBe("bytes archived");
+    expect(fs.lstatSync(path.join(destination, evidenceLink)).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(path.join(destination, evidenceLink))).toBe(evidenceTarget);
+    expect(fs.existsSync(evidenceTarget)).toBe(false);
     expect(fs.existsSync(objectiveRoot)).toBe(false);
     expect(fs.existsSync(path.join(directory, "operations-archive.json"))).toBe(false);
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).not.toHaveProperty("objectiveRecords");
