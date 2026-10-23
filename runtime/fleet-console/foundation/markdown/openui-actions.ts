@@ -11,8 +11,10 @@ export interface OpenUIOpenPort {
   open(target: OpenUIOpenTarget, at: { readonly x: number; readonly y: number }): void;
 }
 
+// OAuth 동의 URL처럼 긴 실제 링크도 받는다 — 상한은 transcript 링크 추출(MAX_URL_CHARS)과 같은 8192자다.
+const MAX_OPEN_TARGET = 8192;
 export function parseOpenUIOpenTarget(raw: unknown): OpenUIOpenTarget | null {
-  if (typeof raw !== "string" || !raw || raw.length > 500) return null;
+  if (typeof raw !== "string" || !raw || raw.length > MAX_OPEN_TARGET) return null;
   // eslint-disable-next-line no-control-regex
   if (/[\s\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\\]/u.test(raw)) return null;
   const objective = /^objective:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(raw);
