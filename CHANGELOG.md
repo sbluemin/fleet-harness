@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.0] - 2026-10-23
+
+### fleet-console
+
+#### Changed
+- Each commodore now keeps its own Wiki, and the Wiki you already use moves there automatically the next time Console starts; old Wiki links keep opening.
+
+#### Removed
+- Wiki copies kept in a project's `.fleet/knowledge` folder are no longer imported, and Files no longer offers to open such copies in Codex; the files stay in the project untouched.
+
 ## [1.253.0] - 2026-10-22
 
 ### fleet-console

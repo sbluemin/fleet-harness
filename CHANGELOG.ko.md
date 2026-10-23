@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.0] - 2026-10-23
+
+### fleet-console
+
+#### Changed
+- 이제 사령관마다 자기 위키를 갖고, 쓰던 위키는 다음에 Console을 켤 때 자동으로 옮겨집니다. 예전 위키 링크도 그대로 열립니다.
+
+#### Removed
+- 프로젝트의 `.fleet/knowledge` 폴더에 남은 옛 위키 사본은 더 이상 가져오지 않으며, Files에서 그 사본을 Codex로 여는 안내도 사라집니다. 파일은 프로젝트에 그대로 남습니다.
+
 ## [1.253.0] - 2026-10-22
 
 ### fleet-console
