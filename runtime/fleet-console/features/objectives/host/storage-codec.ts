@@ -1,4 +1,5 @@
 import type { ObjectiveRecord } from "./records/objective-records-domain.js";
+import { readObjectiveLaunchSource } from "../shared/records/launch-source.js";
 import type { StoredObjective } from "../shared/types.js";
 
 /** 소유는 디렉터리가 나타낸다. 실행 어댑터의 옛 필드는 이 경계에서만 합성한다. */
@@ -18,6 +19,14 @@ function pick(value: Record<string, unknown>, keys: readonly string[]): Record<s
 function execution(payload: Record<string, unknown>): Record<string, unknown> {
   const out = pick(payload, executionKeys);
   if (object(out.session)) out.session = pick(out.session, sessionKeys);
+  if (out.launchedBy === null) delete out.launchedBy;
+  else if (out.launchedBy !== undefined) {
+    const source = readObjectiveLaunchSource(out.launchedBy);
+    if (!source) throw new Error("invalid_objective_launch_source");
+    out.launchedBy = source;
+  }
+  for (const key of ["consoleUse", "computerUse"] as const) if (object(out[key])) out[key] = pick(out[key], ["enabled", "language"]);
+  if (object(out.providerTitle)) out.providerTitle = pick(out.providerTitle, ["source"]);
   return out;
 }
 /** 사령관 행위자의 맥락도 파일의 소유와 같다. 기록의 나머지 내용은 그대로 둔다. */

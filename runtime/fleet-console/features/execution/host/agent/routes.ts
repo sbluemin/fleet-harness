@@ -1,3 +1,4 @@
+import { readObjectiveLaunchSource } from "../../../objectives/shared/records/launch-source.js";
 import crypto from "node:crypto";
 import os from "node:os";
 import fs from "node:fs";
@@ -615,10 +616,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         assertCurrent();
         await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
-        // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
+        // 계보 — 누가 시작했는지를 목표의 launchedBy에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
         const launched = ctx.host.objectiveRecords.get(launchedId);
-        if (launched) ctx.host.objectiveRecords.patch(launchedId, { ...({ ...launched, launchedBy: caller }) });
+        if (launched) {
+          const source = readObjectiveLaunchSource(caller);
+          if (!source) throw new ConsoleControlError("invalid_launch_source");
+          ctx.host.objectiveRecords.patch(launchedId, { ...launched, launchedBy: source });
+        }
         // 제목은 사람의 이름 바꾸기와 같은 길로 — 그래야 관측 세션이 사용자 소유 라벨로 기록해 자동 이름이 덮지 않는다.
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.

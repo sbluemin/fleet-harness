@@ -1,4 +1,5 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import { createObjectiveRecordsStore } from "../features/objectives/host/records/objective-records-domain.js";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { ensureWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { DurableConsoleState } from "../features/workspace/host/durable-state.js";
@@ -37,8 +38,9 @@ describe("durable console state", () => {
     const destination = path.join(directory, "commodore/owner/objectives");
     const owner = { theaterId: "t1", workspacePath: project, directory: destination };
     const node = { id: "active", theaterId: "t1", type: "agent", pluginId: null, title: "Active", groupId: "g1", order: 2, accent: "sky", geometry: { x: 1, y: 2, width: 300, height: 200 },
-      payload: { cwd: project, userQuestions: true, resumeAvailable: true, session: { harness: "claude-code", id: "resume-id" } },
-      childSessions: [{ id: "child", payload: { session: { harness: "claude-code", id: "child-resume" } }, ts: { createdAt: 1, updatedAt: 2 } }], ts: { createdAt: 1, updatedAt: 2 } };
+      payload: { cwd: project, userQuestions: true, resumeAvailable: true, launchKey: "fixture-launch", launchedBy: { kind: "plugin", pluginId: "objectives" },
+        consoleUse: { enabled: true, language: "en" }, computerUse: { enabled: true, language: "ko" }, providerTitle: { source: "provider" }, session: { harness: "claude-code", id: "resume-id" } },
+      childSessions: [{ id: "child", payload: { launchedBy: { kind: "plugin", pluginId: "objectives" }, session: { harness: "claude-code", id: "child-resume" } }, ts: { createdAt: 1, updatedAt: 2 } }], ts: { createdAt: 1, updatedAt: 2 } };
     const source = { version: 6, theaters: [{ id: "t1", path: project, realpath: project, label: "project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" }], operations: [node],
       groups: [{ id: "g1", theaterId: "t1", name: "Group", color: "sky", order: 0, createdAt: 1 }] };
     fs.writeFileSync(stateFile, JSON.stringify(source));
@@ -54,6 +56,13 @@ describe("durable console state", () => {
     expect(open().load().objectiveRecords).toEqual([]);
     expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
     connected = true;
+    // 해석할 수 없는 권한 출처는 버리거나 추측하지 않는다. 정상 원본으로 고치면 같은 마커에서 재시도한다.
+    const unreadableSource = JSON.stringify({ ...source, operations: [{ ...node, payload: { ...node.payload, launchedBy: { kind: "plugin" } } }] });
+    fs.writeFileSync(stateFile, unreadableSource);
+    expect(open().load().objectiveRecords).toEqual([]);
+    expect(fs.readFileSync(stateFile, "utf8")).toBe(unreadableSource);
+    expect(fs.existsSync(destination)).toBe(false);
+    fs.writeFileSync(stateFile, JSON.stringify(source));
     const rename = fs.renameSync.bind(fs);
     const fault = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { if (String(to) === destination) throw new Error("commit_interrupted"); rename(from, to); });
     try { expect(open().load().objectiveRecords).toEqual([]); } finally { fault.mockRestore(); }
@@ -67,14 +76,24 @@ describe("durable console state", () => {
     expect(moved.entries()[0]?.objectiveRecord?.id).toBe("archived");
     expect(moved.board.list("t1").map((board) => board.note).sort()).toEqual(["Board active", "Board archived"]);
     const activeFile = path.join(destination, "active/objective.json");
-    expect(JSON.parse(fs.readFileSync(activeFile, "utf8"))).toMatchObject({ id: "active", title: "Active", note: "Board active", session: { id: "resume-id" }, sessions: [{ id: "child" }] });
+    const active = JSON.parse(fs.readFileSync(activeFile, "utf8"));
+    const archive = JSON.parse(fs.readFileSync(path.join(destination, "archive.json"), "utf8"));
+    const launchSource = { kind: "feature", featureId: "objectives" };
+    expect(active).toMatchObject({ id: "active", title: "Active", note: "Board active", session: { id: "resume-id" }, launchedBy: launchSource,
+      sessions: [{ id: "child", launchedBy: launchSource }], consoleUse: { enabled: true, language: "en" }, computerUse: { enabled: true, language: "ko" }, providerTitle: { source: "provider" } });
+    expect(archive.entries[0].objective.launchedBy).toEqual(launchSource);
+    expect(JSON.stringify({ active, archive })).not.toMatch(/"(?:pluginId|theaterId|geometry|payload|launchKey|userQuestions|resumeAvailable)"\s*:/);
     expect(fs.readFileSync(path.join(destination, "archived/shared/proof.txt"), "utf8")).toBe("bytes archived");
     expect(fs.existsSync(objectiveRoot)).toBe(false);
     expect(fs.existsSync(path.join(directory, "operations-archive.json"))).toBe(false);
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).not.toHaveProperty("objectiveRecords");
     moved.board.save("t1", { ...moved.board.list("t1").find((board) => board.id === "active")!, note: "Edited" });
     moved.save(state);
-    const restarted = open(); expect(restarted.load().objectiveRecords).toHaveLength(1);
+    const restarted = open(); const restored = restarted.load(); expect(restored.objectiveRecords).toHaveLength(1);
+    const records = createObjectiveRecordsStore(); records.replace(restored.objectiveRecords);
+    expect(() => records.deleteChild("child", "another-feature")).toThrow("child_delete_forbidden");
+    expect(records.getChild("child")).not.toBeNull();
+    expect(records.deleteChild("child", "objectives")).toBe(true);
     expect(restarted.board.list("t1").find((board) => board.id === "active")?.note).toBe("Edited");
     expect(restarted.entries()).toHaveLength(1);
   });

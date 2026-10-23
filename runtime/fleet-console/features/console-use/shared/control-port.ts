@@ -1,7 +1,7 @@
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "./control.js";
 /**
  * Console Use 와 같은 제어 경로로 Objective 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
- * 자신이며(`{ kind: "plugin", pluginId }`), 시작한 Objective 의 `payload.launchedBy` 에 그렇게 남는다. 시트를 거치지
+ * 자신이며(`{ kind: "plugin", pluginId }`), 목표의 `launchedBy`에는 `{ kind: "feature", featureId }`로 남는다. 시트를 거치지
  * 않는다 — `console_launcher` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
  */
 export interface ConsoleControlHost {

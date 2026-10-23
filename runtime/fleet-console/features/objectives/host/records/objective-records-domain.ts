@@ -1,3 +1,4 @@
+import { readObjectiveLaunchSource } from "../../shared/records/launch-source.js";
 const EXECUTION_FIELDS = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"];
 function executionFields(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([key]) => EXECUTION_FIELDS.includes(key)));
@@ -237,8 +238,8 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     deps.assertRelationMutable?.(found.parent.id);
     deps.assertRelationMutable?.(id);
     if (requesterPluginId) {
-      const by = found.parent.launchedBy;
-      if (!by || typeof by !== "object" || (by as { kind?: string; pluginId?: string }).kind !== "plugin" || (by as { pluginId?: string }).pluginId !== requesterPluginId) throw new Error("child_delete_forbidden");
+      const by = readObjectiveLaunchSource(found.parent.launchedBy);
+      if (by?.kind !== "feature" || by.featureId !== requesterPluginId) throw new Error("child_delete_forbidden");
     }
     const at = now();
     const { sessions: _removed, ...rest } = found.parent;

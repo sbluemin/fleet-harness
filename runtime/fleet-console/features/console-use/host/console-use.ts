@@ -1,3 +1,4 @@
+import { readObjectiveLaunchSource } from "../../objectives/shared/records/launch-source.js";
 import { createEmbeddedMcpServer, defineTool } from "@fleet-console/agent-runtime/claude";
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -387,12 +388,10 @@ ts: child.ts});
   };
   const node = (id: string) => { const op = resolveObjective(id); if (!op) throw new ConsoleControlError("unknown_objectiveRecord"); return op; };
   const launchedBy = (op: ObjectiveRecord): ConsoleCaller | null => {
-    const raw = op.launchedBy;
-    if (!raw || typeof raw !== "object") return null;
-    const rec = raw as Record<string, unknown>;
-    if (rec.kind === "objectiveRecord" && typeof rec.objectiveId === "string") return { kind: "objectiveRecord", objectiveId: rec.objectiveId };
-    if (rec.kind === "plugin" && typeof rec.pluginId === "string") return { kind: "plugin", pluginId: rec.pluginId };
-    return null;
+    const source = readObjectiveLaunchSource(op.launchedBy);
+    if (source?.kind === "feature") return { kind: "plugin", pluginId: source.featureId };
+    return source;
+
   };
   const sameCaller = (a: ConsoleCaller | null, b: ConsoleCaller | null) => !!a && !!b && (a.kind === "objectiveRecord" && b.kind === "objectiveRecord" ? a.objectiveId === b.objectiveId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId);
   const theaterName = (id: string) => theaters().find((t) => t.id === id)?.name ?? id;

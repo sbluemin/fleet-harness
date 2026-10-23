@@ -1,3 +1,4 @@
+import { sameObjectiveLaunchSource } from "../../objectives/shared/records/launch-source.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -379,7 +380,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const owners = [op, ...(op.parentObjectiveId ? [node(op.parentObjectiveId)] : [])];
     return owners.some((candidate) => {
       const by = candidate?.launchedBy;
-      return caller.kind === "plugin" && !!by && typeof by === "object" && (by as { kind?: unknown }).kind === "plugin" && (by as { pluginId?: unknown }).pluginId === caller.pluginId;
+      return caller.kind === "plugin" && sameObjectiveLaunchSource(by, caller);
     });
   }
   /**
