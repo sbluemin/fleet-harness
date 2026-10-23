@@ -18,7 +18,7 @@ import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, dismissUpdateWatch, us
  *
  * 이 커튼이 없으면 같은 순간이 "연결 끊김"으로 보이고, 그것은 고장과 구별되지 않는다.
  * 그래서 커튼은 서버가 닿지 않는 동안에도 내려가지 않는다 — 닿지 않는 것이 곧 진행 중이라는
- * 뜻이기 때문이다. 커튼을 걷는 것은 종착 기록(성공/실패)과 사람의 손뿐이다. 실패만 알림으로 남는다.
+ * 뜻이기 때문이다. 커튼을 걷는 것은 종착 기록(성공/실패)과 사람의 손뿐이다. 실패와 세션 종료 고지는 알림으로 남는다.
  *
  * 단계는 이 화면이 관측할 수 있는 사실만큼만 나눈다. 서버가 닿지 않는 동안 설치와 기동은
  * 구별할 방법이 없으므로 한 단계다.
@@ -33,9 +33,9 @@ export function UpdateCurtain() {
   const mobileLayout = useViewMode().effective === "mobile";
   const currentVersion = useConsoleState().version;
 
-  if (state.outcome === "failed") return <UpdateFailureNotice progress={state.progress} currentVersion={currentVersion} />;
+  if (state.outcome !== null) return <UpdateOutcomeNotice progress={state.progress} currentVersion={currentVersion} />;
 
-  // 수락 전 대기와 성공은 화면 상단에 따로 알리지 않는다. 대기는 메뉴의 버전 행이 「요청 중」으로 말하고,
+  // 수락 전 대기와 별도 고지가 없는 성공은 화면 상단에 따로 알리지 않는다. 대기는 메뉴의 버전 행이 「요청 중」으로 말하고,
   // 성공은 커튼이 걷히고 새 버전의 화면이 돌아오는 것으로 드러난다(store가 성공 기록을 그 자리에서 확인한다).
   if (!state.watching) return null;
 
@@ -123,19 +123,20 @@ function StartCommand() {
 }
 
 /**
- * 돌아온 Console이 읽어 준 실패. 무슨 일이 있었는지와 옛 Console이 어떻게 끝났는지는 계약의 공유 문구를 본문에
+ * 돌아온 Console이 읽어 준 결과 고지. 무슨 일이 있었는지와 옛 Console이 어떻게 끝났는지는 계약의 공유 문구를 본문에
  * 그대로 보인다(사유 문구는 Console이 description으로 보내고, 결말 문구는 계약이 만든다). worker가 남긴 원문은
  * 진단용으로만 접어 둔다.
  */
-function UpdateFailureNotice({ progress, currentVersion }: { readonly progress: ConsoleUpdateProgress | null; readonly currentVersion: string }) {
+function UpdateOutcomeNotice({ progress, currentVersion }: { readonly progress: ConsoleUpdateProgress | null; readonly currentVersion: string }) {
   const t = useT();
+  const completed = progress?.state === "completed";
   const ending = progress?.oldConsoleOutcome;
   const words = progress?.error && progress.error !== progress.description ? progress.error : null;
   return (
-    <div className="update-outcome update-outcome--failed" role="status" aria-live="polite">
+    <div className={`update-outcome update-outcome--${completed ? "completed" : "failed"}`} role="status" aria-live="polite">
       <span className="update-outcome-signal" aria-hidden="true" />
       <div className="update-outcome-text">
-        <strong className="update-outcome-headline">{t("chrome.update.outcomeFailedTitle")}</strong>
+        <strong className="update-outcome-headline">{t(completed ? "chrome.update.outcomeCompletedTitle" : "chrome.update.outcomeFailedTitle")}</strong>
         {progress?.description ? <p className="update-outcome-contract">{progress.description}</p> : null}
         {ending ? <p className="update-outcome-contract">{describeConsoleUpdateOldConsoleEnding(ending)}</p> : null}
         <div className="update-outcome-facts">

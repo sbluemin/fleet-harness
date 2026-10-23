@@ -16,9 +16,9 @@ import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateProgress } from ".
  *   닿지 않아도 커튼은 내려가지 않는다 — 닿지 않는 것이 곧 진행 중이라는 뜻이기 때문이다.
  * - **progress**: 서버가 답할 수 있을 때 읽어 온 사실. 종착(completed/failed)만이 커튼을 걷는다.
  *
- * 새로고침해도 커튼이 유지돼야 하므로 watching은 sessionStorage에 남긴다. 성공은 따로 알리지 않는다 —
- * 커튼이 걷히고 새 버전의 화면이 돌아오는 것이 곧 결과다. 그래서 성공한 실행은 도착하는 즉시 확인한 것으로
- * 그 실행의 startedAt을 기억하고, 실패만 사람이 확인할 때까지 남긴다.
+ * 새로고침해도 커튼이 유지돼야 하므로 watching은 sessionStorage에 남긴다. 별도 고지가 없는 성공은
+ * 커튼이 걷히고 새 버전의 화면이 돌아오는 것이 곧 결과다. 그런 실행은 도착하는 즉시 확인한 것으로
+ * startedAt을 기억하고, 실패와 세션 종료 같은 완료 고지는 사람이 확인할 때까지 남긴다.
  */
 
 /**
@@ -41,8 +41,8 @@ export interface UpdateProgressSnapshot {
    */
   readonly preparing: ConsoleLifecycleWait | null;
   readonly progress: ConsoleUpdateProgress | null;
-  /** 실패로 끝났고 아직 사용자가 확인하지 않은 실행. 실패 알림이 이것을 읽는다. 성공은 남기지 않는다. */
-  readonly outcome: "failed" | null;
+  /** 아직 사용자가 확인하지 않은 실패나 완료 고지. 별도 고지가 없는 성공은 남기지 않는다. */
+  readonly outcome: "completed" | "failed" | null;
   /** 셸이 수행하기로 한 요청. 이 창은 곧 재시작된다. */
   readonly delegated: boolean;
   readonly targetVersion: string | null;
@@ -186,17 +186,17 @@ function rememberSeen(progress: ConsoleUpdateProgress | null): void {
 }
 
 /**
- * 종착 기록을 받은 자리. 실패는 사람이 확인할 때까지 남기고, 성공은 그 자리에서 확인한 것으로 기억한 뒤
- * 화면을 비운다 — 남겨 두면 업데이트 말풍선처럼 결과가 걷히기를 기다리는 화면이 계속 물러서 있게 된다.
+ * 종착 기록을 받은 자리. 실패와 완료 고지는 사람이 확인할 때까지 남긴다. 별도 고지가 없는 성공은
+ * 그 자리에서 확인한 것으로 기억한 뒤 화면을 비운다.
  */
 function concludeUpdate(progress: ConsoleUpdateProgress & { readonly state: "completed" | "failed" }): void {
   stopWatching();
-  if (progress.state === "completed") {
+  if (progress.state === "completed" && !progress.description) {
     rememberSeen(progress);
     setStore(IDLE_SNAPSHOT);
     return;
   }
-  setStore({ ...IDLE_SNAPSHOT, progress, outcome: "failed", targetVersion: progress.targetVersion ?? store.targetVersion });
+  setStore({ ...IDLE_SNAPSHOT, progress, outcome: progress.state, targetVersion: progress.targetVersion ?? store.targetVersion });
 }
 
 function stopWatching(): void {
@@ -392,18 +392,7 @@ export function hydrateUpdateProgress(): void {
       return;
     }
     if (progress.startedAt && readLocalValue(SEEN_KEY) === progress.startedAt) return;
-    if (progress.state === "completed") {
-      rememberSeen(progress);
-      return;
-    }
-    setStore({
-      ...store,
-      watching: false,
-      progress,
-      outcome: "failed",
-      delegated: false,
-      targetVersion: progress.targetVersion ?? null,
-    });
+    concludeUpdate({ ...progress, state: progress.state });
   })();
 }
 

@@ -120,17 +120,20 @@ export function readConsoleUpdateProgress(dataDir: string, deps: ReadConsoleUpda
   const readFile = deps.readFile ?? ((filePath: string) => fs.readFileSync(filePath, "utf8"));
   const now = deps.now ?? Date.now;
   const notice = readSessionUpdateNotice(dataDir, now(), CONSOLE_UPDATE_OUTCOME_TTL_MS);
-  if (notice) return notice;
   const pidAlive = deps.isPidAlive ?? isPidAlive;
   let raw: string;
   try {
     raw = readFile(consoleUpdateProgressPath(dataDir));
   } catch {
-    return IDLE_CONSOLE_UPDATE_PROGRESS;
+    return notice ?? IDLE_CONSOLE_UPDATE_PROGRESS;
   }
   const record = parseConsoleUpdateProgressRecord(raw);
-  if (!record) return IDLE_CONSOLE_UPDATE_PROGRESS;
-  return toConsoleUpdateProgressStatus(record, now(), pidAlive);
+  if (!record) return notice ?? IDLE_CONSOLE_UPDATE_PROGRESS;
+  const progress = toConsoleUpdateProgressStatus(record, now(), pidAlive);
+  if (!notice || progress.state === "running") return progress;
+  if (progress.state === "idle") return notice;
+  if (progress.state === "failed") return { ...progress, description: `${progress.description} ${notice.description}` };
+  return { ...progress, reason: notice.reason, description: notice.description };
 }
 
 function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowMs: number, pidAlive: (pid: number) => boolean): ConsoleUpdateProgressStatus {

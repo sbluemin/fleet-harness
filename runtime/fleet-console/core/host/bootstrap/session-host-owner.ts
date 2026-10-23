@@ -66,7 +66,7 @@ export class ConsoleSessionHostOwner {
     this.terminateRequested = true;
     this.stopFlight = this.get().catch(() => null).then(async (client) => {
       const endedForUpdate = reason === "update" && this.endsSessionsOnUpdate
-        && (await client?.listSessions().catch(() => null))?.sessions.some((session) => session.state === "live" || session.state === "starting");
+        && (await client?.listSessions().catch(() => null))?.sessions.some((session) => (session.kind === "sdk" || session.kind === "pty") && (session.state === "live" || session.state === "starting"));
       await stopSlotSessionHost(this.dataDir);
       if (endedForUpdate) {
         const progress = readConsoleUpdateProgress(this.dataDir);

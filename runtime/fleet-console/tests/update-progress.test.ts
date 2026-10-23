@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { takeConsoleResumePort } from "../core/host/bootstrap/server.js";
 import {
+  acknowledgeUpdateOutcome,
   dismissUpdateWatch,
   hydrateUpdateProgress,
   requestConsoleUpdate,
@@ -22,6 +23,8 @@ import {
   writeConsoleUpdateProgress,
   type ConsoleUpdateProgressRecord,
 } from "../features/updates/host/update-progress.js";
+
+import { recordSessionUpdateIncompatibility } from "../features/updates/host/session-update-notice.js";
 
 const dirs: string[] = [];
 /** 기록이 남은 직후의 시각. 결과에도 시효가 있으므로 판정 시각을 고정해야 뜻이 고정된다. */
@@ -53,6 +56,7 @@ describe("console update progress", () => {
     // Only ESRCH ends a worker: a running record whose worker pid is gone can never move again.
     const dir = makeDir();
     writeConsoleUpdateProgress(dir, record({ workerPid: 4242 }));
+    recordSessionUpdateIncompatibility(dir, "1.0.0", "1.1.0", JUST_AFTER - 1_000);
     const read = (alive: boolean) => readConsoleUpdateProgress(dir, { now: () => JUST_AFTER, isPidAlive: () => alive });
 
     expect(read(true).state).toBe("running");
@@ -194,6 +198,17 @@ describe("a screen waiting before an update is accepted", () => {
     expect(timedOut.progress?.reason).toBe("preflight-timeout");
     expect(timedOut.watching).toBe(false);
     expect(session.getItem("fleet-console.update.stage")).toBeNull();
+
+    acknowledgeUpdateOutcome();
+    writeConsoleUpdateProgress(dir, record({ phase: "completed", startedAt: "2026-08-19T00:00:30.000Z", updatedAt: "2026-08-19T00:00:59.000Z" }));
+    recordSessionUpdateIncompatibility(dir, "1.0.0", "1.1.0", JUST_AFTER - 1_000);
+    hydrateUpdateProgress();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readProgress()).toMatchObject({ watching: false, outcome: "completed", progress: { state: "completed", reason: "session-bridge-incompatible", description: expect.any(String) } });
+    acknowledgeUpdateOutcome();
+    hydrateUpdateProgress();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readProgress().outcome).toBeNull();
   });
 });
 

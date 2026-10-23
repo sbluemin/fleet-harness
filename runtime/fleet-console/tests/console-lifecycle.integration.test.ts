@@ -32,7 +32,7 @@ import { createConsoleObservabilityStore } from "../features/execution/host/agen
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
 import { createConsoleUpdateApplyService } from "../features/updates/host/update-apply.js";
 import { readConsoleUpdateProgress, writeConsoleUpdateProgress } from "../features/updates/host/update-progress.js";
-import { recordSessionUpdateIncompatibility } from "../features/updates/host/session-update-notice.js";
+import { clearSessionUpdateNotice, recordSessionUpdateIncompatibility } from "../features/updates/host/session-update-notice.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/controlled-console-child.mjs", import.meta.url));
 const CLAIMANT_FIXTURE_PATH = fileURLToPath(new URL("./fixtures/lock-reclaim-claimant.ts", import.meta.url));
@@ -115,13 +115,27 @@ describe("Console session-host lifecycle integration", () => {
       await owner.commitUpdate("bound-update"); expect(owner.preservingUpdate).toBe(false);
       owner.requestStop("update"); await owner.settleStop();
       writeConsoleUpdateProgress(root, { phase: "completed", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), fromVersion: "1.0.0", targetVersion: "1.0.1" });
-      expect(readConsoleUpdateProgress(root)).toMatchObject({ reason: "session-preservation-unavailable", fromVersion: "1.0.0", targetVersion: "1.0.1", description: expect.stringContaining("update ended them") });
+      expect(readConsoleUpdateProgress(root)).toMatchObject({ state: "completed", phase: "completed", reason: "session-preservation-unavailable", fromVersion: "1.0.0", targetVersion: "1.0.1", description: expect.stringContaining("update ended them") });
       execution.detach();
       for (const pid of [terminal.runtime.pid, terminal.runtime.runnerPid, client.manifest.pid]) {
         expect(pid).toBeTypeOf("number"); await vi.waitFor(() => expect(isRunning(pid as number)).toBe(false), { timeout: 15_000 });
       }
       if (process.platform === "win32") expect(registry.groups()).toHaveLength(0);
       expect(fs.readFileSync(path.join(root, "session-host/failures.jsonl"), "utf8")).toContain('"kind":"session_update_preservation_unavailable"');
+      clearSessionUpdateNotice(root);
+      const infrastructureOwner = new ConsoleSessionHostOwner(root, fileURLToPath(new URL("../", import.meta.url)), platform, env);
+      try {
+        const infrastructure = await infrastructureOwner.start(held.payload);
+        await infrastructure.bindBusiness(() => null);
+        await infrastructure.open({ kind: "gateway", sessionKey: "infrastructure-only", generation: infrastructure.generation, options: {}, ports: {} });
+        expect((await infrastructure.listSessions()).sessions).toMatchObject([{ kind: "gateway", state: "live" }]);
+        await infrastructureOwner.prepareUpdate("without-execution");
+        await infrastructureOwner.commitUpdate("without-execution");
+        infrastructureOwner.requestStop("update"); await infrastructureOwner.settleStop();
+        expect(fs.existsSync(path.join(root, "session-update-notice.json"))).toBe(false);
+        expect(readConsoleUpdateProgress(root)).toMatchObject({ state: "completed" });
+        expect(readConsoleUpdateProgress(root).reason).toBeUndefined();
+      } finally { infrastructureOwner.requestStop("api"); await infrastructureOwner.settleStop().catch(() => {}); }
     } finally { owner.requestStop("api"); await owner.settleStop().catch(() => {}); held.release(); }
   }, 60_000);
 

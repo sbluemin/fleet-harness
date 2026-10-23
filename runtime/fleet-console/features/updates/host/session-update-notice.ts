@@ -27,6 +27,6 @@ export function readSessionUpdateNotice(dataDir: string, now: number, ttlMs: num
     if (value.schema !== 1 || !Number.isFinite(value.at) || value.at! > now || now - value.at! > ttlMs || typeof value.fromVersion !== "string" || typeof value.targetVersion !== "string" || !/^[0-9A-Za-z.+_-]{1,100}$/.test(value.fromVersion) || !/^[0-9A-Za-z.+_-]{1,100}$/.test(value.targetVersion)) return null;
     if (value.reason !== undefined && value.reason !== "session-bridge-incompatible" && value.reason !== "session-preservation-unavailable") return null;
     const reason = value.reason ?? "session-bridge-incompatible";
-    return { state: "failed", phase: "failed", reason, description: describeConsoleUpdateFailure(reason), startedAt: new Date(value.at!).toISOString(), fromVersion: value.fromVersion, targetVersion: value.targetVersion };
+    return { state: "completed", phase: "completed", reason, description: describeConsoleUpdateFailure(reason), startedAt: new Date(value.at!).toISOString(), fromVersion: value.fromVersion, targetVersion: value.targetVersion };
   } catch { return null; }
 }

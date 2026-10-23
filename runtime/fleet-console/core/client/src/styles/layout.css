@@ -185,8 +185,8 @@
   to { transform: translateX(100%); }
 }
 
-/* 업데이트 실패 알림. 링크 배너와 같은 자리에 서되 색 띠를 두르지 않는다 — 신호는 점 하나가 맡고,
-   문장의 색은 제목 한 줄만 싣는다. 끝난 일을 알리는 자리이지 경보가 아니다. 성공과 수락 전 대기는 이 줄을 쓰지 않는다. */
+/* 업데이트 결과 고지. 링크 배너와 같은 자리에 서되 색 띠를 두르지 않는다 — 신호는 점 하나가 맡고,
+   문장의 색은 제목 한 줄만 싣는다. 끝난 일을 알리는 자리이지 경보가 아니다. 별도 고지가 없는 성공과 수락 전 대기는 이 줄을 쓰지 않는다. */
 .update-outcome {
   display: flex;
   align-items: center;
@@ -210,10 +210,14 @@
   background: var(--coral);
 }
 
-/* 실패는 줄을 늘린다 — 제목, 계약이 말하는 무슨 일이 있었나·옛 Console의 결말, 지금 버전. 색은 제목 한 줄만 싣는다. */
-.update-outcome--failed { align-items: flex-start; padding-top: var(--space-2); padding-bottom: var(--space-2); }
-.update-outcome--failed .update-outcome-signal { margin-top: 6px; }
+/* 결과 고지는 줄을 늘린다 — 제목, 계약이 말하는 무슨 일이 있었나·옛 Console의 결말, 지금 버전. 색은 제목 한 줄만 싣는다. */
+.update-outcome--failed,
+.update-outcome--completed { align-items: flex-start; padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.update-outcome--failed .update-outcome-signal,
+.update-outcome--completed .update-outcome-signal { margin-top: 6px; }
 .update-outcome-headline { color: var(--coral-ink); font-weight: var(--weight-bold); }
+.update-outcome--completed .update-outcome-signal { background: var(--warn); }
+.update-outcome--completed .update-outcome-headline { color: var(--warn-ink); }
 .update-outcome-facts { display: flex; flex-wrap: wrap; gap: 0 var(--space-3); margin-top: 2px; color: var(--text-tertiary); }
 
 /* 계약의 공유 문구(영어)는 화면의 말과 구별되도록 터미널 글꼴로, 본문 그대로 보인다. */
