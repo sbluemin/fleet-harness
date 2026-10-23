@@ -1,3 +1,4 @@
+import { createObjectiveStorage } from "../features/objectives/host/storage.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,7 @@ import { createTheaterSystemPromptService } from "../features/settings/host/agen
 import type { AgentOptionsData } from "@fleet-console/infra";
 import { STATE_VERSION, type DurableConsoleState, type DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
-import { createOperationArchiveStorage, type ArchivedOperation } from "../features/workspace/host/operation-archive-storage.js";
+import { type ArchivedOperation } from "../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../features/workspace/host/operation-archive.js";
 import { createOperationArchiveRouter } from "../features/workspace/host/operation-archive-routes.js";
 import { createSanitizedOpDto, createOperationStore, type OperationNode } from "../features/execution/host/operations/operations-domain.js";
@@ -119,7 +120,10 @@ describe("Operation archive persistence and deletion", () => {
       expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       expect(h.events.map((event) => event.channel)).toEqual(["operation:archived"]);
       expect(() => h.operations.create(makeOperation("11111111-1111-4111-8111-111111111111"))).toThrow("operation_exists");
-      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations.map((node: OperationNode) => node.id)).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations).toBeUndefined();
+      const saved = JSON.parse(fs.readFileSync(path.join(directory, "commodore/owner/objectives/archive.json"), "utf8"));
+      expect(saved.entries[0].objective.sessions[0].session.id).toBe("private-child-session");
+      expect(JSON.stringify(saved)).not.toMatch(/"(?:payload|geometry|theaterId|pluginId|userQuestions|resumeAvailable|launchKey)"\s*:/);
       const router = createOperationArchiveRouter({ archive: h.archive, isAuthorized: () => false,
         readJsonBody: async <T,>() => ({}) as T, sanitize: (node) => createSanitizedOpDto(node, { includeSessionNames: true }),
         writeJson: (res, status, body) => Object.assign(res, { status, body }),
@@ -164,7 +168,7 @@ describe("Operation archive persistence and deletion", () => {
       h.operations.createChild({ parentOperationId: "a", childSessionId: "11111111-1111-4111-8111-111111111111", payload: { session: { harness: "claude-code", id: "secret", sessionName: "구성원 이름" } } });
       h.save();
       await h.archive.archive("a"); await h.archive.archive("b");
-      const files = ["state.json", "operations-archive.json"].map((name) => path.join(directory, name));
+      const files = ["state.json", "commodore/owner/objectives/archive.json"].map((name) => path.join(directory, name));
       const before = files.map((file) => fs.readFileSync(file, "utf8"));
       const stale = h.archive.previewBatch(["a", "b"]);
       await expect(h.archive.purge({ ...stale, operationIds: ["a", "a"] })).rejects.toThrow("invalid_archive_request");
@@ -234,12 +238,14 @@ describe("Operation archive persistence and deletion", () => {
 
   it("deletes archived clusters through grace and purge, preserving original locations on Theater undo", async () => {
     await withArchiveDirectory(async (directory) => {
-      const h = createArchiveHarness(directory);
+      let h = createArchiveHarness(directory);
       h.operations.create(makeOperation("parent"));
       h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
       await h.archive.archive("parent");
       const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
       expect(theaterDeletion.archivedOperationCount).toBe(1);
+      h = createArchiveHarness(directory);
+      expect(h.theaters.list()).toEqual([]);
       await h.deletion.restore(theaterDeletion.deletionId);
       expect(h.operations.get("parent")).toBeNull();
       expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
@@ -255,7 +261,7 @@ describe("Operation archive persistence and deletion", () => {
       expect(boot.archive.listArchived().total).toBe(0);
       expect(boot.deletion.list()).toEqual([]);
       expect(boot.operations.list()).toEqual([]);
-      expect(fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8")).not.toContain('"id": "parent"');
+      expect(fs.readFileSync(path.join(directory, "commodore", "owner", "objectives", "archive.json"), "utf8")).not.toContain('"id": "parent"');
     });
   });
 
@@ -263,7 +269,7 @@ describe("Operation archive persistence and deletion", () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory); h.operations.create(makeOperation("op")); h.save();
       await h.archive.archive("op");
-      const archiveFile = path.join(directory, "operations-archive.json");
+      const archiveFile = path.join(directory, "commodore", "owner", "objectives", "archive.json");
       const intact = fs.readFileSync(archiveFile, "utf8");
       fs.unlinkSync(archiveFile);
       expect(() => createArchiveHarness(directory)).toThrow("archive_recovery_required");
@@ -383,10 +389,10 @@ describe("Operation archive persistence and deletion", () => {
       h.fault.finalize = true;
       await expect(h.archive.sweepRetention()).rejects.toThrow("archive_finalize_failed");
       expect(h.storage.blocked()).toBe(true);
-      const journal = fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8");
+      const journal = fs.readFileSync(path.join(directory, "commodore", "owner", "objectives", "archive.json"), "utf8");
       expect(journal).toContain("\"transaction\"");
       await expect(h.archive.sweepRetention()).rejects.toThrow("archive_recovery_required");
-      expect(fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8")).toBe(journal);
+      expect(fs.readFileSync(path.join(directory, "commodore", "owner", "objectives", "archive.json"), "utf8")).toBe(journal);
       const recovered = createArchiveHarness(directory);
       expect(recovered.archive.describe("old")).toBeNull();
     });
@@ -405,13 +411,14 @@ function createArchiveHarness(directory: string) {
   const clock = { value: 1_000 };
   const diskState = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
   const stateStore: DurableJsonStore<DurableConsoleState> = { ...diskState, save: (state) => { if (fault.state) throw new Error("state_write_failed"); diskState.save(state); } };
-  const storage = createOperationArchiveStorage({ directory, stateStore, createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
+  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(directory, "commodore/owner/objectives"), theaterId: THEATER.id, workspacePath: directory }], createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
     const store = createDurableJsonStore(deps);
-    return { ...store, save: (value: unknown) => { if (fault.finalize && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
+    return { ...store, save: (value: unknown) => { if (fault.finalize && deps.filePath.endsWith("archive.json") && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
   }) as typeof createDurableJsonStore });
+  const firstStart = !fs.existsSync(stateStore.path);
   const state = storage.load();
   const operations = createOperationStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) });
-  const theaters = new TheaterRegistry(); theaters.restore(state.theaters.length ? state.theaters : [THEATER]);
+  const theaters = new TheaterRegistry(); theaters.restore(firstStart ? [THEATER] : state.theaters);
   operations.replace(state.operations); operations.replaceGroups(state.groups ?? []);
   const events: Array<{ channel: string; operation: OperationNode }> = [];
   const purged: string[] = [];

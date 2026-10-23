@@ -624,7 +624,7 @@ describe("console static and terminal ticket boundary", () => {
         const consoleDir = path.join(fleetDataDir, "console");
         fs.mkdirSync(consoleDir, { recursive: true });
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 2,
+          version: 6,
           theaters: [{
             id: theaterId,
             path: dir,
@@ -660,15 +660,17 @@ describe("console static and terminal ticket boundary", () => {
 
     const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
     const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/agent/sessions`);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly title?: unknown; readonly payload?: { readonly session?: unknown; readonly providerTitle?: unknown } }> };
+    const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
+    const ownerId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
+    const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/session-a/objective.json"), "utf8"));
     const serialized = JSON.stringify({ theaters, sessions });
 
     expect(startedShells).toEqual([]);
     expect(theaters.theaters[0]).toMatchObject({ id: theaterId, label: path.basename(dir) });
     expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
     expect(sessions.sessions[0]).toMatchObject({ label: "Durable provider title" });
-    expect(state.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
-    expect(state.operations[0]).toMatchObject({ title: "Durable provider title", payload: { providerTitle: { source: "provider" } } });
+    expect(saved.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
+    expect(saved).toMatchObject({ title: "Durable provider title", providerTitle: { source: "provider" } });
     expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain("provider-session-secret");
     expect(serialized).not.toContain("transcript");
@@ -685,10 +687,10 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
       beforeCreateServer: ({ fleetDataDir }) => {
         const consoleDir = path.join(fleetDataDir, "console");
-        const objectivesDir = path.join(fleetDataDir, "workspaces", workspaceName, "objectives");
+        const objectivesDir = path.join(consoleDir, "workspaces", workspaceName, "objectives");
         fs.mkdirSync(consoleDir, { recursive: true });
         fs.mkdirSync(path.join(objectivesDir, "commander-1"), { recursive: true });
-        fs.writeFileSync(path.join(fleetDataDir, "workspaces", workspaceName, "cwd.json"), `${JSON.stringify({ cwd: realpath })}\n`);
+        fs.writeFileSync(path.join(consoleDir, "workspaces", workspaceName, "cwd.json"), `${JSON.stringify({ cwd: realpath })}\n`);
         fs.writeFileSync(path.join(objectivesDir, "commander-1", "objective.json"), `${JSON.stringify({
           operationId: "commander-1",
           rank: 0,
@@ -697,7 +699,7 @@ describe("console static and terminal ticket boundary", () => {
           missions: [],
         })}\n`);
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 2,
+          version: 6,
           theaters: [{
             id: theaterId,
             path: dir,
@@ -736,12 +738,12 @@ describe("console static and terminal ticket boundary", () => {
       body: JSON.stringify({ objectiveId: "commander-1", memberId: "member-1", patch: { subagents: false } }),
     });
     expect(response.status).toBe(200);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as {
-      readonly operations: ReadonlyArray<{ readonly id?: string; readonly parentOperationId?: string; readonly childSessions?: ReadonlyArray<{ readonly id: string; readonly payload: { readonly subagentSpawn?: string } }> }>;
-    };
-    expect(state.operations).toHaveLength(1);
-    expect(state.operations[0]).not.toHaveProperty("parentOperationId");
-    expect(state.operations[0]?.childSessions?.find((child) => child.id === "member-1")?.payload.subagentSpawn).toBe("blocked");
+    const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
+    const ownerId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
+    const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
+    expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
+    expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
+    expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("operations");
   });
 
   it("applies Claude trust only on consent while preserving global settings and rejecting invalid JSON", async () => {

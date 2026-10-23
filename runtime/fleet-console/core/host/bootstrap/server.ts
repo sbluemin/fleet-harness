@@ -1,17 +1,17 @@
 import type { OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../../../features/execution/shared/operations/types.js";
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
-import { createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
+import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createFileExplorerFeature } from "../../../features/file-explorer/host/index.js";
 import { createRepositoryFeature } from "../../../features/repository/host/index.js";
 import { createCodexFeature } from "../../../features/codex/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
-import { createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
+import { createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
-import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
+import { archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
 import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
@@ -81,7 +81,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
 import { DeferredDeletionError, createDeferredDeletionCoordinator, type DeferredDeletionReceipt } from "../../../features/workspace/host/deferred-deletion.js";
-import { deletionOperations, STATE_VERSION, backupDurableStateV3, backupDurableStateV4, createConsoleDurableStateStore, readDurableStateVersion, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
+import { deletionOperations, STATE_VERSION, createConsoleDurableStateStore, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
 import { migrateLegacyCaptures } from "../../../features/workspace/host/legacy-capture-migration.js";
 import type { TheaterRegistration } from "../../../features/workspace/host/theaters/theater-domain.js";
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
@@ -537,7 +537,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onLookupFailure: (error) => recordFailure("update_check_failed", error),
   });
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
-  const archiveStorage = createOperationArchiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore });
+  let ownership: ReturnType<typeof createCommodoreOwnership> | undefined;
+  const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
+    owners: () => ownership?.objectives() ?? [],
+    initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
+  });
   let stopForArchive: ((operation: OperationNode) => Promise<void>) | null = null;
   let purgeCoreOperation: ((operation: OperationNode) => void) | null = null;
   let resumeArchivedOperation: ConsoleUseActions["resume"];
@@ -2108,22 +2112,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function rehydrateDurableState(): Promise<void> {
-    const loadedVersion = readDurableStateVersion(durablePaths.stateFile);
-    // 이동 저널·버전·손상은 빈 Console로 숨기지 않는다. 공개·실행 전에 쌍 파일을 복구한다.
+    // 소유 색인 → 한 단계 이주 → 실행 복원. 저널 실패를 빈 Console로 숨기지 않는다.
     const state = archiveStorage.load();
     theaters.restore(state.theaters);
     operations.replace(state.operations);
     operations.replaceGroups(state.groups ?? []);
     deletionCoordinator.load(state.deletionTombstones ?? []);
-    // 지원하는 구버전을 실제로 복원한 경우에만 sanitizer의 단계형 이주를 현재 버전으로 확정한다.
-    // 알 수 없는 버전이나 복원 실패를 빈 v4 상태로 덮으면 재시도할 원본 자체를 잃는다.
-    if (loadedVersion !== null && loadedVersion < STATE_VERSION) {
-      try { fs.copyFileSync(durablePaths.stateFile, `${durablePaths.stateFile}.pre-archive-backup`, fs.constants.COPYFILE_EXCL); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-      if (loadedVersion === 3) backupDurableStateV3(durablePaths.stateFile);
-      if (loadedVersion === 4) backupDurableStateV4(durablePaths.stateFile);
-      persistDurableState();
-    }
     // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
     // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
     // 아직 그 스토어를 소유한 채 돌고 있을 수 있다. 특히 carriers.json.lock은 withDirectoryLock이
@@ -2689,6 +2683,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       purgeCoreOperation = execution.purgeOperation;
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
+        ownership,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),
@@ -2713,6 +2708,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
       }
       objectives = createObjectivesFeature({
+        storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         operations: { ...consoleFeaturePorts.operations, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },
         consoleControl: createFeatureConsoleControl("objectives"),

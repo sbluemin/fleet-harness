@@ -13,6 +13,7 @@ export type CommodoreTheaterLink = { readonly path: string };
 export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPath: string) => string) {
   const links = new Map<string, readonly CommodoreTheaterLink[]>();
   const reverse = new Map<string, string>();
+  const conflicts = new Set<string>();
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   if (fs.lstatSync(root).isSymbolicLink()) throw new Error("commodore_root_invalid");
   const base = fs.realpathSync.native(root);
@@ -48,7 +49,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
       try { if (fs.realpathSync.native(link.path) !== link.path) throw new Error("noncanonical_path"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       const theaterId = theaterIdOf(link.path);
-      if (reverse.has(theaterId)) { warn(entry.name, `duplicate_theater; using ${reverse.get(theaterId)}`); continue; }
+      if (reverse.has(theaterId)) { conflicts.add(theaterId); warn(entry.name, `duplicate_theater; using ${reverse.get(theaterId)}`); continue; }
       links.set(entry.name, state.theaters);
       reverse.set(theaterId, entry.name);
     } catch { warn(entry.name, "unreadable_state"); }
@@ -56,6 +57,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
   const canonical = (theater: string) => fs.realpathSync.native(theater);
   return {
     dirOf,
+    conflicts: () => [...conflicts],
     ids: () => [...links.keys()],
     resolve: (theaterId: string) => reverse.get(theaterId) ?? null,
     theatersOf: (id: string) => links.get(id) ?? [],

@@ -42,7 +42,7 @@ type InjectedFailure = { readonly error: string; readonly error_details?: string
 
 /** 저장된 레코드 — 이 계약이 들여다보는 값만. */
 type Saved = {
-  readonly operationId: string;
+  readonly id: string;
   readonly rank: number;
   readonly note?: string;
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
@@ -797,8 +797,8 @@ describe("Objectives contract", () => {
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
     expect(store.list("t1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
-    expect(savedObjective(objective.id).operationId).toBe(objective.id);
-    expect(savedObjective(objective.id)).toHaveProperty("pending.title", "Release");
+    expect(savedObjective(objective.id).id).toBe(objective.id);
+    expect(savedObjective(objective.id)).toHaveProperty("title", "Release");
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
@@ -825,7 +825,7 @@ describe("Objectives contract", () => {
     // 개시 — 구성원 전원을 한꺼번에, 첫 메시지 없이(대기) 서브에이전트 없이 띄운 뒤 지휘관에게만 한 줄을 보낸다.
     hostFault.afterCreate = 1;
     await expect(launch.startCommander(objective.id)).rejects.toThrow("request_timeout");
-    expect(savedObjective(objective.id)).toHaveProperty("pending.title", "Release renamed");
+    expect(savedObjective(objective.id)).toHaveProperty("title", "Release renamed");
     hostFault.sendError = "claude_trust_required";
     await expect(launch.startCommander(objective.id)).rejects.toThrow("claude_trust_required");
     expect(store.find(objective.id)?.title).toBe("Release renamed");
@@ -878,12 +878,14 @@ describe("Objectives contract", () => {
     const planned = store.plan(objective.id, { missions: [{ text: "x", prerequisites: [{ n: 2, why: "shares files" }] }, { text: "y", prerequisites: [{ missionId: a!.id, why: "builds on a" }] }] });
     expect(planned.missions.map((mission) => mission.text)).toEqual(["a", "b", "y", "x"]);
     expect(planned.missions[3]!.why[planned.missions[2]!.id]).toBe("shares files");
-    // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
+    // 저장 — 보드와 실행 신분은 같은 objective.json에 있고 어댑터의 소유·payload는 없다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["actionCounts", "actions", "boardUpdatedAt", "commenced", "commencedBy", "enlisted", "memberHistory", "members", "missions", "note", "operationId", "rank"]);
-    expect(saved.operationId).toBe(objective.id);
-    for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
+    expect(saved).toHaveProperty("session.id", "captured-session");
+    expect(saved).toHaveProperty("sessions.0.id", research);
+    expect(saved).not.toHaveProperty("payload");
+    expect(saved.id).toBe(objective.id);
+    for (const key of ["theaterId", "geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     // 행위자를 받지 않은 개시(사람의 화면)는 사람의 개시로 남고, 다시 읽어도 그대로다.
@@ -972,7 +974,7 @@ describe("Objectives contract", () => {
     const loose = await launch.create({ theaterId: "t1", title: "Loose", groupId: "g-temp" });
     removedGroups.add("g-temp");
     expect(store.releaseGroups({ theaterId: "t1", groupId: "g-temp" })).toBe(1);
-    expect(savedObjective(loose.id)).toHaveProperty("pending.groupId", null);
+    expect(savedObjective(loose.id)).toHaveProperty("groupId", null);
     const restarted = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
     expect(restarted.find(loose.id)?.groupId).toBeNull();
     await launch.startCommander(loose.id);
@@ -1730,7 +1732,7 @@ describe("Objectives contract", () => {
     expect(legacyReload.decisionRequest).toEqual(legacy.decisionRequest);
     expect(legacyReload.decisionDelivery).toEqual({ requestId: placed.id, at: 1, by: legacy.decisionDelivery.by });
     expect(legacyStore.storedAnswers(commander, placed.id)).toEqual(legacy.decisionDelivery.answers);
-    expect(legacyReload.decisions).toEqual(legacy.decisions);
+    expect(legacyReload.decisions).toEqual(legacy.decisions.map((row: { by: unknown }) => ({ ...row, by: typeof row.by === "object" ? { ...row.by, theaterId: "t1" } : row.by })));
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
@@ -2008,7 +2010,7 @@ describe("Objectives contract", () => {
     const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.operationId).toBe(targetId);
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", criteria: [], commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
-    expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
+    expect(savedObjective(targetId)).toHaveProperty("title", "Next");
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);

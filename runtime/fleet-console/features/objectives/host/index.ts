@@ -1,4 +1,4 @@
-import path from "node:path";
+export { createObjectiveStorage } from "./storage.js";
 
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "../../execution/shared/operations/types.js";
 import type { CommodoreBoardAdapter } from "../shared/commodore-board.js";
@@ -20,8 +20,8 @@ export const OBJECTIVES_MCP_SERVER = "fleet-objectives";
 /**
  * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
  *
- * 목표 고유값은 프로젝트의 워크스페이스 디렉터리(`workspaces/<프로젝트>/objectives/<목표>/objective.json`)에, 제목·그룹·세션은
- * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
+ * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
+ * Operation은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
  * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로 보드를 쓴다.
  */
 const operationIdOf = (payload: unknown): string | null => {
@@ -42,33 +42,12 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     cleanups.length = 0;
   };
   try {
-    const dirs = new Map<string, string>();
-    const unreadable = new Set<string>();
-    // 등록된 Theater 폴더가 지금 없을 수 있다(옮김·지움·외장 디스크 분리). 그 Theater 는 읽을 수 없는 것으로 두고
-    // 던지지 않는다 — 던지면 목표 초기화가 깨져 Console 전체가 뜨지 않는다. 실패는 캐시하지 않아
-    // 폴더가 돌아오면 다음 읽기가 다시 푼다.
-    const dirOf = (theaterId: string): string | null => {
-      const cached = dirs.get(theaterId);
-      if (cached) return cached;
-      const theaterPath = deps.paths.resolveTheaterPath(theaterId);
-      if (!theaterPath) return null;
-      let dir: string;
-      try { dir = path.join(deps.paths.ensureWorkspaceDirectory(theaterPath).path, "objectives"); }
-      catch (error) {
-        // 폴더가 없을 때 말고도(예: 워크스페이스 식별 충돌) 여기로 온다 — 원인을 가릴 수 있게 Theater 마다 한 번 남긴다.
-        if (!unreadable.has(theaterId)) console.warn(`[objectives] theater ${theaterId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
-        unreadable.add(theaterId);
-        return null;
-      }
-      unreadable.delete(theaterId);
-      dirs.set(theaterId, dir);
-      return dir;
-    };
+    const dirOf = (theaterId: string): string | null => deps.storage?.directory(theaterId) ?? null;
     const releaseChannel = deps.events.registerSseChannel(OBJECTIVE_CHANNEL);
     registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
     let watchQuiet: () => void = () => {};
-    const store = createObjectiveStore({ dirOf, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], operations: deps.operations, coordinates: (operationId) => deps.consoleControl?.coordinates?.(operationId) ?? null, advertisedTools: (operationId) => deps.consoleControl?.advertisedTools?.(operationId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (operationId) => deps.consoleControl?.observe(operationId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
+    const store = createObjectiveStore({ dirOf, storage: deps.storage, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], operations: deps.operations, coordinates: (operationId) => deps.consoleControl?.coordinates?.(operationId) ?? null, advertisedTools: (operationId) => deps.consoleControl?.advertisedTools?.(operationId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (operationId) => deps.consoleControl?.observe(operationId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });

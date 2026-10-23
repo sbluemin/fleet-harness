@@ -1,3 +1,5 @@
+import { boardFromDocument, documentFromBoard, documentFromOperation, type ObjectiveDocument } from "./storage-codec.js";
+import type { ObjectiveBoardStorage } from "./storage.js";
 import { missionDispatch } from "../shared/signals.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -114,7 +116,8 @@ export class ObjectiveStoreError extends Error {
 }
 
 export interface ObjectiveStoreOptions {
-  /** Theater 의 목표 디렉터리 — `workspaces/<프로젝트>/objectives`. Theater 경로를 모르면 null. */
+  readonly storage?: ObjectiveBoardStorage | undefined;
+  /** 현재 연결된 사령관의 목표 디렉터리. 소유 저장소를 쓸 수 없으면 null. */
   readonly dirOf: (theaterId: string) => string | null;
   readonly theaterIds?: () => readonly string[];
   readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null; readonly groups?: { get(id: string): { readonly theaterId: string } | null } };
@@ -387,6 +390,8 @@ const virtualRank = (node: Pick<OperationNode, "id" | "ts">): number => -(node.t
 /** 따로 만든 Operation 처럼 아직 목표 고유값이 없는 목표 — 저장하지 않고, 첫 편집 때 지금 자리를 그대로 받아 레코드가 된다. */
 // 레코드 없는 목표(새 Operation·우클릭·새 세션으로 만든 세션)의 빈 모양 — 만들어진 순간부터 목표다.
 const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", enlisted: true, missions: [] });
+/** 실행만 있는 빈 파일은 옛 가상 목표와 같다. 저장 위치가 생겼다는 이유로 터미널을 채팅으로 바꾸지 않는다. */
+const hasBoardRecord = (stored: StoredObjective | undefined): boolean => !!stored && (stored.rank >= 0 || !!stored.note || stored.missions.length > 0 || Object.keys(stored).some((key) => !["operationId", "rank", "note", "enlisted", "missions", "personHolds", "results", "evidence"].includes(key)));
 /** 목표가 되는 Operation — Console 이 띄우는 에이전트 세션(플러그인 소유 Operation 은 아니다). */
 export const isObjectiveOperation = (node: Pick<OperationNode, "type" | "pluginId">): boolean => node.type === "agent" && node.pluginId === null;
 
@@ -450,16 +455,17 @@ function quarantine(file: string): void {
 }
 
 /** 목표 파일 하나 — 없으면 null, 깨졌거나 디렉터리 이름과 어긋나면 비켜 두고 null. 읽기 자체가 실패하면 전파한다. */
-function readObjective(dir: string, segment: string): StoredObjective | null {
+function readObjective(dir: string, segment: string, theaterId: string, supplied?: StoredObjective): StoredObjective | null {
   const file = path.join(dir, OBJECTIVE_FILE);
   // 밖을 가리키는 자리는 따라가지 않는다 — 링크 자신을 비켜 두어 그 목표만 빈 목표가 된다.
   if (!inside(realOf(dir), realOf(file))) { quarantine(file); return null; }
   let raw: string;
   // 없는 파일만 「레코드 없음」이다. 권한·입출력 오류를 빈 목표로 읽으면 다음 편집이 남아 있는 파일을 덮어쓴다.
-  try { raw = fs.readFileSync(file, "utf8"); }
+  try { raw = supplied ? JSON.stringify(supplied) : fs.readFileSync(file, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   try {
-    const parsed = JSON.parse(raw) as Partial<StoredObjective>;
+    const value = JSON.parse(raw);
+    const parsed = (value?.id ? boardFromDocument(value as ObjectiveDocument, theaterId) : value) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
@@ -519,9 +525,9 @@ function writeFileExclusive(file: string, data: Buffer): void {
   }
 }
 
-function writeObjectiveAtomic(dir: string, objective: StoredObjective): void {
+function writeObjectiveAtomic(dir: string, objective: StoredObjective, node: OperationNode | null): void {
   fs.mkdirSync(dir, { recursive: true });
-  writeFileExclusive(containedFile(dir, OBJECTIVE_FILE), Buffer.from(`${JSON.stringify(compact(objective), null, 2)}\n`, "utf8"));
+  writeFileExclusive(containedFile(dir, OBJECTIVE_FILE), Buffer.from(`${JSON.stringify(documentFromBoard(compact(objective), node ? documentFromOperation(node) : undefined), null, 2)}\n`, "utf8"));
 }
 
 /** 구성원 기동 기록은 읽을 때 모양을 확인한다 — 어긋난 값은 없는 것으로 보고 화면에 싣지 않는다. */
@@ -688,8 +694,15 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (path.dirname(dir) !== path.resolve(root) || !inside(realOf(root), realOf(dir))) throw new ObjectiveStoreError("unsafe_path");
     return dir;
   };
-  const readAll = (dir: string): Map<string, StoredObjective> => {
+  const readAll = (dir: string, theaterId: string): Map<string, StoredObjective> => {
     const objectives = new Map<string, StoredObjective>();
+    if (options.storage) {
+      for (const board of options.storage.list(theaterId)) {
+        const stored = readObjective(path.join(dir, dirSegment(board.operationId)), dirSegment(board.operationId), theaterId, board);
+        if (stored) objectives.set(stored.operationId, stored);
+      }
+      return objectives;
+    }
     let entries: fs.Dirent[];
     // 아직 없는 폴더만 빈 보드다 — 권한·입출력 오류를 빈 보드로 캐시하면 그 뒤의 편집이 남아 있는 파일을 덮어쓴다.
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
@@ -697,7 +710,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     for (const entry of entries) {
       // 목표는 디렉터리다 — 파일과 (밖을 가리킬 수 있는) 심볼릭 링크는 목표가 아니다.
       if (!entry.isDirectory()) continue;
-      const stored = readObjective(path.join(dir, entry.name), entry.name);
+      const stored = readObjective(path.join(dir, entry.name), entry.name, theaterId);
       if (stored) objectives.set(stored.operationId, stored);
     }
     return objectives;
@@ -709,7 +722,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 폴더를 풀 수 없는 Theater 는 빈 보드로 보이되 캐시하지 않는다 — 빈 목록을 붙들어 두면 폴더가 돌아온 뒤에도
       // 저장된 목표가 보이지 않는다. 쓰기는 dirFor 가 unknown_theater 로 막는다.
       if (!dir) return new Map();
-      objectives = readAll(dir);
+      objectives = readAll(dir, theaterId);
       cache.set(theaterId, objectives);
     }
     return objectives;
@@ -772,7 +785,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(memberNode && lacksReportTool(options.advertisedTools?.(member.id) ?? null) ? { noReportTool: true as const } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
-    const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
+    const recorded = hasBoardRecord(load(node?.theaterId ?? pending!.theaterId).get(stored.operationId));
     // 단계 기록이 생기기 전의 옛 레코드 — 개시 여부는 기동 흔적으로 읽는다. 에이전트 Operation 은 레코드가 있든 없든 모두 목표다.
     const legacy = recorded && !pending && typeof stored.enlisted !== "boolean";
     const commanderOutcome = options.observe ? deriveFailedOutcome(options.observe(stored.operationId)) : undefined;
@@ -946,7 +959,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       : [{ id: randomUUID(), at: now(), kind: "left" as const, memberId: member.id, name: member.role, number: index + 1 }]);
     if (joined.length || left.length) changed = { ...changed, memberHistory: [...(changed.memberHistory ?? []), ...left, ...joined].slice(-MAX_OBJECTIVE_ACTIONS) };
     if (touch) changed = { ...changed, boardUpdatedAt: now() };
-    writeObjectiveAtomic(objectiveDir(theaterId, changed.operationId), changed);
+    if (options.storage) options.storage.save(theaterId, compact(changed));
+    else writeObjectiveAtomic(objectiveDir(theaterId, changed.operationId), changed, operationNode(changed.operationId));
     load(theaterId).set(changed.operationId, changed);
     if (reordered) return announce(theaterId, changed);
     const objective = view(theaterId, changed);
@@ -1206,7 +1220,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const node = operationNode(operationId);
       if (!pending && (!node || !isObjectiveOperation(node))) throw new ObjectiveStoreError("unknown_operation");
       const theaterId = pending?.theaterId ?? node!.theaterId;
-      if (load(theaterId).has(operationId)) throw new ObjectiveStoreError("already_objective");
+      const existing = load(theaterId).get(operationId);
+      if (existing && (!options.storage || existing.pending || existing.boardUpdatedAt !== undefined)) throw new ObjectiveStoreError("already_objective");
       const missionIds = (init.missions ?? []).map(() => randomUUID());
       const missions: StoredMission[] = (init.missions ?? []).map((mission, ix) => ({
         id: missionIds[ix]!,
@@ -1270,7 +1285,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     removePending(objectiveId) {
       const { theaterId, stored, node } = locate(objectiveId);
       if (node || !stored.pending) throw new ObjectiveStoreError("unknown_objective");
-      fs.rmSync(objectiveDir(theaterId, objectiveId), { recursive: true, force: true });
+      if (options.storage) options.storage.forget(theaterId, objectiveId);
+      else fs.rmSync(objectiveDir(theaterId, objectiveId), { recursive: true, force: true });
       load(theaterId).delete(objectiveId);
       options.emit({ op: "remove", theaterId, objectiveId });
       // 받은 목표의 되돌리기 가능 여부는 원본이 남아 있는지에서 나온다 — 비우기·보관 기한 어느 쪽으로 지워도 열린 보드가 곧바로 알게 다시 방송한다.
@@ -1418,7 +1434,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           // 복원 불가로 확정됐다 — 그 목표의 디렉터리가 통째로 사라진다(붙인 이미지도 함께). 지운 뒤에야 캐시를 갈고
           // 방송한다. 없는 디렉터리는 `force` 가 넘기고, 그 밖의 삭제 실패는 전파한다 — 지우지 못한 목표를 지운 척하면
           // 다음 기동이 남은 파일을 되살린다.
-          fs.rmSync(objectiveDir(theaterId, operationId), { recursive: true, force: true });
+          if (options.storage) options.storage.forget(theaterId, operationId);
+          else fs.rmSync(objectiveDir(theaterId, operationId), { recursive: true, force: true });
           objectives.delete(operationId);
           options.emit({ op: "remove", theaterId, objectiveId: operationId });
         }
@@ -2069,7 +2086,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
     recorded(operationId) {
       const node = operationNode(operationId);
-      return !!node && load(node.theaterId).has(operationId) || theaterIds().some((id) => !!load(id).get(operationId)?.pending);
+      return !!node && hasBoardRecord(load(node.theaterId).get(operationId)) || theaterIds().some((id) => !!load(id).get(operationId)?.pending);
     },
 
     decisionRequest(objectiveId, input) {
@@ -2270,7 +2287,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         // 이미 그 자리인 레코드는 다시 쓰지 않는다 — 레코드 없는 목표는 자리가 같아도 파일을 세워야 한다.
         if (entry !== placed && !entry.bare && entry.rank === rank) continue;
         const record: StoredObjective = { ...entry.stored, rank };
-        writeObjectiveAtomic(objectiveDir(theaterId, record.operationId), record);
+        if (options.storage) options.storage.save(theaterId, compact(record));
+        else writeObjectiveAtomic(objectiveDir(theaterId, record.operationId), record, operationNode(record.operationId));
         objectives.set(record.operationId, record);
         if (entry === placed) settled = record;
       }
