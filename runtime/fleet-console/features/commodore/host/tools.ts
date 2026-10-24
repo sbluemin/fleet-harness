@@ -22,7 +22,7 @@ import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type Commod
 
 export const COMMODORE_TOOL_GROUP = "commodore";
 /** 순찰 예약이 받는 가장 먼 값 — 순찰 간격 사다리의 끝. 실제 상한은 사람이 고른 간격이고, 넘는 값은 그 간격으로 줄인다. */
-export const MAX_WAKE_MINUTES: number = Math.max(...COMMODORE_PATROL_MINUTES);
+export const MAX_WAKE_MINUTES: number = Math.max(...COMMODORE_PATROL_MINUTES.filter((minutes) => typeof minutes === "number"));
 const MAX_FILE_BYTES = 64 * 1024;
 const MAX_LOG = 100;
 const MAX_ISSUES = 100;
@@ -126,8 +126,10 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), ...(item.editedAt !== undefined ? { editedAt: stamp(item.editedAt) } : {}), source: item.source, text: item.text }));
       return { items, truncated: items.length < scoped.length, ...(since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) };
     }),
-    tool("next_wake", "Schedule your next patrol: when (minutes from now) and a one-line reason. The person sets the patrol interval: you can patrol sooner but not later, and a later time is shortened to the interval (the result gives the time actually set and the interval). Without a schedule you are woken one interval after your turn ends. Board events, the directive, intel and the person's message wake you earlier regardless.", z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {
-      const intervalMinutes = patrolIntervalMs(state()) / 60_000;
+    tool("next_wake", "Schedule your next patrol: when (minutes from now) and a one-line reason. The person sets the patrol interval: you can patrol sooner but not later, and a later time is shortened to the interval (the result gives the time actually set and the interval). Without a schedule you are woken one interval after your turn ends. When patrol is off, this tool refuses with patrol_off and automatic wakes are disabled. The person can still send a message.", z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {
+      const interval = patrolIntervalMs(state());
+      if (interval === null) throw new Error("patrol_off");
+      const intervalMinutes = interval / 60_000;
       const minutes = Math.min(inMinutes, intervalMinutes);
       const at = now() + Math.round(minutes * 60_000);
       options.onNextWake(at, reason);

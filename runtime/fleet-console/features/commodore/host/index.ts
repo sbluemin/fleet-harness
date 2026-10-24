@@ -69,6 +69,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const routes = createCommodoreRoutes(context, store, {
     resolve: entities.resolve, create, theaterIds: entities.theaterIds,
+    acceptsMessage: (id) => supervisor.acceptsMessage(id),
     run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,
     objective: (id) => {

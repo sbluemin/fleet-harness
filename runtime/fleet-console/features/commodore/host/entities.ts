@@ -4,10 +4,11 @@ import path from "node:path";
 import { z } from "zod";
 import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "../shared/contracts/types.js";
 import { CommodoreStoreError } from "./errors.js";
+import { migrateCommodorePatrolState } from "./state-migration.js";
 
 export const COMMODORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const commodoreTheatersSchema = z.array(z.object({ path: z.string().min(1).max(4096).refine(path.isAbsolute) }).strict()).length(1);
-export const commodoreEntitySchema = commodoreStateSchema.extend({ theaters: commodoreTheatersSchema });
+export const commodoreEntitySchema = z.preprocess(migrateCommodorePatrolState, commodoreStateSchema.extend({ theaters: commodoreTheatersSchema }));
 export type CommodoreTheaterLink = { readonly path: string };
 /** state.json이 권위이고 이 색인은 기동마다 재구성한다. 잊힌 Theater의 연결도 그대로 보존한다. */
 export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPath: string) => string) {

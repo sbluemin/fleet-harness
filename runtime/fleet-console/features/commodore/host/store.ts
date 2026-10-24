@@ -8,6 +8,8 @@ import { createCommodoreImages } from "./images.js";
 import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
 import { CommodoreStoreError } from "./errors.js";
+import { migrateCommodorePatrolState } from "./state-migration.js";
+import { patrolIntervalMs } from "../shared/contracts/types.js";
 import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodorePatrolMinutes, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
@@ -46,7 +48,6 @@ export interface CommodoreTranscriptPage {
 export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(commodoreId: string): CommodoreState | null;
-  setAutonomy(commodoreId: string, autonomy: boolean): CommodoreState;
   /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
   setStopAt(commodoreId: string, stopAt: number | null): CommodoreState;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
@@ -59,8 +60,8 @@ export interface CommodoreStore {
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
-  /** 순찰 간격 — null 은 기본(60분)으로 되돌린다. 같으면 아무 일도 없다. */
-  setPatrol(commodoreId: string, minutes: CommodorePatrolMinutes | null): CommodoreState;
+  /** 순찰 간격 — 안 함은 자동 깨움과 종료 예약을 해제한다. 같으면 아무 일도 없다. */
+  setPatrol(commodoreId: string, minutes: CommodorePatrolMinutes): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
   setLanguage(commodoreId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
@@ -87,7 +88,7 @@ export interface CommodoreStore {
   /** 사령관이 답을 읽었다 — 답한 질문에 읽은 시각을 남긴다. */
   askRead(commodoreId: string, askIds: readonly string[]): CommodoreState;
   /** 저장된 상태가 자율 운영을 켠 Theater — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
-  autonomousCommodores(): readonly string[];
+  patrollingCommodores(): readonly string[];
   /** 서버 안 구독 — 감독자가 지시·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
   subscribe(listener: (event: CommodoreEvent) => void): () => void;
 }
@@ -216,15 +217,9 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
         throw error;
       }
     },
-    setAutonomy(commodoreId, autonomy) {
-      const current = load(commodoreId);
-      if (current.autonomy === autonomy && (autonomy || current.stopAt === undefined)) return current;
-      const { stopAt: _stopAt, ...withoutSchedule } = current;
-      return commit(commodoreId, { ...(autonomy ? current : withoutSchedule), autonomy }, "autonomy");
-    },
     setStopAt(commodoreId, stopAt) {
       const current = load(commodoreId);
-      if (!current.autonomy) throw new CommodoreStoreError("commodore_inactive");
+      if (patrolIntervalMs(current) === null) throw new CommodoreStoreError("commodore_inactive");
       const at = now();
       if (current.stopAt !== undefined && current.stopAt <= at) throw new CommodoreStoreError("commodore_stopping");
       if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new CommodoreStoreError("invalid_request");
@@ -285,9 +280,9 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     setPatrol(commodoreId, minutes) {
       const current = load(commodoreId);
-      if ((current.patrolMinutes ?? null) === minutes) return current;
-      const { patrolMinutes: _patrol, ...rest } = current;
-      return commit(commodoreId, minutes === null ? rest : { ...rest, patrolMinutes: minutes }, "patrol");
+      if ((current.patrolMinutes ?? "off") === minutes && (minutes !== "off" || current.stopAt === undefined)) return current;
+      const { stopAt: _stopAt, ...withoutSchedule } = current;
+      return commit(commodoreId, { ...(minutes === "off" ? withoutSchedule : current), patrolMinutes: minutes }, "patrol");
     },
     setLanguage(commodoreId, language) {
       const current = load(commodoreId);
@@ -383,11 +378,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const at = now();
       return commit(commodoreId, { ...current, asks: (current.asks ?? []).map((ask) => (unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined ? { ...ask, readAt: at } : ask)) }, "asks");
     },
-    autonomousCommodores() {
+    patrollingCommodores() {
       const ids = new Set<string>([...states.keys(), ...(options.commodoreIds?.() ?? [])]);
       const result: string[] = [];
       for (const commodoreId of ids) {
-        try { if (load(commodoreId).autonomy) result.push(commodoreId); }
+        try { if (patrolIntervalMs(load(commodoreId)) !== null) result.push(commodoreId); }
         catch { /* 읽을 수 없는 Theater 는 복원 대상이 아니다 — 폴더가 돌아오면 다음 읽기가 다시 푼다. */ }
       }
       return result;
@@ -416,7 +411,7 @@ function readStateFile(file: string): CommodoreState {
   }
   try {
     const { theaters: _theaters, ...state } = JSON.parse(raw);
-    const parsed = commodoreStateSchema.safeParse(state);
+    const parsed = commodoreStateSchema.safeParse(migrateCommodorePatrolState(state));
     if (parsed.success) return foldCommodoreModels(parsed.data);
   } catch { /* 아래에서 치운다 */ }
   console.warn(`[objectives] commodore state unreadable, set aside: ${file}`);

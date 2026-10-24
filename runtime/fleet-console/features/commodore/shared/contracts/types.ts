@@ -35,10 +35,10 @@ export const MAX_COMMODORE_REFERENCES = 3;
 
 /**
  * 순찰 간격(분) — 사람이 서랍에서 고르는 사다리. 사령관은 `next_wake` 로 이보다 일찍 깨어날 수 있지만 넘기지 못하고,
- * 예약 없이 턴을 마치면 이 간격 뒤에 깨어난다. 보드 사건·지시·정보·메시지는 간격과 무관하게 바로 깨운다.
+ * 예약 없이 턴을 마치면 이 간격 뒤에 깨어난다. 안 함은 재기동·보드 사건·지시·정보를 포함한 모든 자동 깨움을 막는다.
  */
-export const COMMODORE_PATROL_MINUTES = [15, 30, 60, 120, 240, 480] as const;
-export const DEFAULT_PATROL_MINUTES = 60;
+export const COMMODORE_PATROL_MINUTES = ["off", 15, 30, 60, 120, 240, 480] as const;
+export const DEFAULT_PATROL_MINUTES = "off";
 export type CommodorePatrolMinutes = (typeof COMMODORE_PATROL_MINUTES)[number];
 export const commodorePatrolSchema = z.literal(COMMODORE_PATROL_MINUTES);
 
@@ -107,8 +107,6 @@ export const commodoreAskSchema = z.object({
 }).strict();
 
 export const commodoreStateSchema = z.object({
-  /** 자율 운영 — 사이드바 Theater 머리의 사령관 글리프. 실험 기능이 꺼져 있으면 저장값과 무관하게 돌지 않는다. */
-  autonomy: z.boolean(),
   directive: commodoreDirectiveSchema,
   intel: z.array(commodoreIntelSchema).max(MAX_INTEL_ITEMS),
   sources: z.array(commodoreSourceSchema).max(MAX_SOURCES),
@@ -121,9 +119,9 @@ export const commodoreStateSchema = z.object({
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
   commanderEffort: z.string().trim().min(1).max(32).optional(),
-  /** 순찰 간격(분). 없으면 기본 60분이다. */
+  /** 순찰 간격(분) 또는 안 함. 없으면 기본 안 함이다. */
   patrolMinutes: commodorePatrolSchema.optional(),
-  /** 자율 운영 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 자율 운영을 끄면 함께 지운다. */
+  /** 순찰 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 안 함으로 바꾸면 함께 지운다. */
   stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).optional(),
   /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
   transcriptClearedThrough: z.number().int().nonnegative().optional(),
@@ -181,7 +179,6 @@ export interface CommodoreRunStatus {
 }
 
 export const EMPTY_COMMODORE_STATE: CommodoreState = Object.freeze({
-  autonomy: false,
   directive: Object.freeze({ text: "", rev: 0, updatedAt: 0 }),
   intel: Object.freeze([]) as unknown as CommodoreIntel[],
   sources: Object.freeze([]) as unknown as CommodoreSource[],
@@ -299,15 +296,16 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
-/** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
-export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {
-  return (state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES) * 60_000;
+/** 순찰 간격(ms) — 미설정·안 함은 null이며 자동 깨움 타이머를 만들지 않는다. */
+export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number | null {
+  const minutes = state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES;
+  return minutes === "off" ? null : minutes * 60_000;
 }
 
 export interface CommodoreStateView {
-  /** 보드 어댑터의 실행 가능 여부. 저장된 autonomy 스위치와 별개다. */
+  /** 보드 어댑터의 실행 가능 여부. 순찰 설정과 별개다. */
   readonly boardReady: boolean;
   readonly commodoreId: string;
   readonly theaterIds: readonly string[];
@@ -316,7 +314,7 @@ export interface CommodoreStateView {
   readonly enabled: boolean;
   /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
   readonly defaults: ExperimentAideSelection;
-  /** 실험 기능과 자율 운영이 모두 켜져 있다 — 사이드바 Theater 플래그와 같은 값. */
+  /** 실험 기능이 켜지고 순찰이 안 함이 아니다 — 자동 운영 여부이며 메시지 턴과는 별개다. */
   readonly active: boolean;
   /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
   readonly run: CommodoreRunStatus;
