@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.1] - 2026-10-24
+
+### fleet-console
+
+#### Fixed
+- Console starts and finishes updating again when many objectives are archived, instead of hanging unresponsive after the update to 1.255.0.
+
 ## [1.255.0] - 2026-10-24
 
 ### fleet-console
