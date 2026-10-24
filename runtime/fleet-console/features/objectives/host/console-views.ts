@@ -19,16 +19,16 @@ const preview = (value: string, limit: number) => value.slice(0, splitsPair(valu
 
 /** 큰 행 하나도 읽을 수 있다. 생략 표시와 상세 입구를 남겨 다음 행으로의 진행을 막지 않는다. */
 function compactRow(row: Row): Row {
-  const keys = ["id", "title", "objectiveRecord", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "operator", "removed", "mergedInto", "criteriaCount", "criteriaMet", "decisionRequested", "failedMembers", "reasons", "awaits", "self"];
+  const keys = ["id", "commodoreId", "title", "objectiveRecord", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "operator", "removed", "mergedInto", "criteriaCount", "criteriaMet", "decisionRequested", "failedMembers", "reasons", "awaits", "self"];
   return { ...Object.fromEntries(keys.filter((key) => key in row).map((key) => [key, row[key]])), id: row.id, title: row.title, rowTruncated: true, detailSection: "objective" };
 }
 
 /** 행 개수와 전체 JSON 바이트를 함께 제한한다. nextOffset은 실제 반환한 행 수로만 전진한다. */
-export function consoleObjectivePage(rows: readonly Row[], options: { readonly theaterId: string; readonly offset?: number; readonly limit?: number; readonly today?: string }) {
+export function consoleObjectivePage(rows: readonly Row[], options: { readonly commodoreId: string; readonly offset?: number; readonly limit?: number; readonly today?: string }) {
   const offset = options.offset ?? 0;
   const limit = options.limit ?? 50;
   const objectives: Row[] = [];
-  const frame = (entries: readonly Row[]) => ({ theaterId: options.theaterId, ...(options.today ? { today: options.today } : {}), total: rows.length, offset,
+  const frame = (entries: readonly Row[]) => ({ commodoreId: options.commodoreId, ...(options.today ? { today: options.today } : {}), total: rows.length, offset,
     nextOffset: offset + entries.length < rows.length ? offset + entries.length : null, objectives: entries });
   for (const row of rows.slice(offset, offset + limit)) {
     if (fits(frame([...objectives, row]))) { objectives.push(row); continue; }
@@ -64,7 +64,7 @@ export function createConsoleBoardViews(ctx: ObjectivesFeatureDeps, store: Objec
       if (givenOffset) throw new ObjectiveStoreError("section_required");
       const complete = { objective: { ...full, ...counts(objective) }, sections: OBJECTIVE_READ_SECTIONS };
       if (fits(complete)) return complete;
-      const summary = { objective: { ...compactRow(rowView(objective)), theaterId: objective.theaterId, boardUpdatedAt: objective.boardUpdatedAt,
+      const summary = { objective: { ...compactRow(rowView(objective)), commodoreId: objective.commodoreId, theaterId: objective.theaterId, boardUpdatedAt: objective.boardUpdatedAt,
         graph: { commander: full.graph.commander }, decisionRequestRevision: objective.decisionRequestRevision,
         criteriaProposalsCount: objective.criteriaProposals.length, followupCount: objective.followups.length, detailTruncated: true }, sections: OBJECTIVE_READ_SECTIONS };
       if (!fits(summary)) throw new ObjectiveStoreError("response_budget_exceeded");

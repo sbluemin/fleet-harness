@@ -317,11 +317,11 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     // 스트림 프레임은 살아 있는 세션에서만 온다.
     noteAlive();
     const event = payload as ObjectiveEvent | null;
-    if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
+    if (!event || typeof event.objectiveId !== "string" || typeof event.commodoreId !== "string") return;
     unknownToServer.delete(event.objectiveId);
-    invalidateFinishedFor(event.theaterId, event.objectiveId, event.objective ?? null);
-    const current = theaters.get(event.theaterId) ?? EMPTY;
-    if (event.op === "remove") { objectiveRecordLocations.set(event.objectiveId, "deleted"); setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
+    invalidateFinishedFor(event.commodoreId, event.objectiveId, event.objective ?? null);
+    const current = theaters.get(event.commodoreId) ?? EMPTY;
+    if (event.op === "remove") { objectiveRecordLocations.set(event.objectiveId, "deleted"); setTheater(event.commodoreId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
     upsertObjectiveLocally(event.objective, event.order);
   });

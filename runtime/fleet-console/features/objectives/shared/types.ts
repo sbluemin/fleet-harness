@@ -87,7 +87,7 @@ export type ObjectiveOperator = "commodore" | "human";
 /** 행위 귀속 — 권한은 이 값이 아니라 호스트 호출자와 도메인 경계가 정한다. */
 export type ObjectiveActor = "human" | "commander"
   /** `why` — 사령관이 그 보드 쓰기에 단 한 줄 근거(사람이 사령관 기록 곁에서 읽는다). 옛 기록과 사람의 행위에는 없다. */
-  | { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string }
+  | { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string }
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
@@ -542,6 +542,8 @@ export interface StoredPersonHold {
 }
 
 export interface PendingCommander {
+  readonly commodoreId: string;
+  readonly cwd: string;
   readonly theaterId: string;
   readonly title: string;
   readonly groupId: string | null;
@@ -556,6 +558,8 @@ export interface StoredObjective {
   /** 아직 지휘관 Objective 이 없다 — 첫 기동 때 제거한다. */
   readonly pending?: true;
   readonly title?: string;
+  readonly commodoreId?: string;
+  readonly cwd?: string;
   readonly theaterId?: string;
   readonly groupId?: string | null;
   readonly ts?: { readonly createdAt: number; readonly updatedAt: number };
@@ -663,7 +667,7 @@ export interface StoredRemoval {
 
 /** 옛 정리 DTO의 호환 시각에만 쓰는 값 — 자동 삭제는 하지 않는다. */
 export const REMOVED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
-/** 사령관이 정리한 기록의 행위자 id 머리 — `commodore:<theaterId>`. 보기에서 commodore: true 로 풀린다. */
+/** 사령관이 정리한 기록의 행위자 id 머리 — `commodore:<commodoreId>`. 보기에서 commodore: true 로 풀린다. */
 export const COMMODORE_TIDY_PREFIX = "commodore:";
 export const MAX_REMOVAL_REASON = 300;
 /** 사령관 보드 쓰기의 한 줄 근거 상한 — 곁 칸에서 두 줄 안에 읽히는 길이. */
@@ -747,6 +751,7 @@ export interface ObjectiveCriterion {
 }
 
 export interface Objective {
+  readonly commodoreId: string;
   /** Commander Objective의 보관 위치에서 파생한다. active 휴면과 구별한다. */
   readonly archived?: boolean;
   /** Objective 없는 목표는 보관 대신 영구 삭제된다. */
@@ -1050,14 +1055,14 @@ export function hasCycle(missions: readonly GraphMission[]): boolean {
 const ids = z.string().min(1).max(128);
 export const objectiveReviewerSchema = z.union([
   z.literal("human"),
-  z.object({ kind: z.literal("commodore"), theaterId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
+  z.object({ kind: z.literal("commodore"), commodoreId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
   z.object({ kind: z.literal("objectiveRecord"), objectiveId: ids, title: z.string().nullable() }).strict(),
 ]);
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
 /** 저장된 넘김 하나 — 어긋난 항목은 목표를 격리하지 않고 그 항목만 버린다(넘김이 없던 것과 같다). */
 export const storedPersonHoldSchema = z.object({
   target: z.enum(PERSON_HOLD_TARGETS), requestId: ids.optional(), reason: z.string().min(1).max(MAX_PERSON_HOLD_REASON), at: z.number().finite(),
-  by: z.object({ kind: z.literal("commodore"), theaterId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
+  by: z.object({ kind: z.literal("commodore"), commodoreId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
   settled: z.object({ at: z.number().finite(), by: objectiveReviewerSchema, outcome: z.enum(["answered", "returned"]) }).strict().optional(),
 }).strict();
 export const objectiveMemberHistorySchema = z.array(z.object({
@@ -1078,6 +1083,7 @@ const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
 const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
 export const createObjectiveSchema = z.object({
+  commodoreId: ids,
   theaterId: ids,
   viewMode: z.enum(["terminal", "chat"]).optional(),
   language: z.enum(["en", "ko"]).optional(),
@@ -1231,7 +1237,7 @@ export const OBJECTIVE_CHANNEL = "objectives:objective";
 
 export interface ObjectiveEvent {
   readonly op: "upsert" | "remove";
-  readonly theaterId: string;
+  readonly commodoreId: string;
   readonly objectiveId: string;
   readonly objective?: Objective;
   /** 순서가 바뀌었을 때만 — 그 Theater 항목 id 의 새 순서 전체. 받는 쪽은 이 순서로 다시 줄 세운다. */

@@ -508,6 +508,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   // 그룹 이동·삭제는 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮기거나 비운다.
   const objectiveRecords = createObjectiveRecordsStore({
+    resolveCreation: (input) => {
+      if (!ownership) throw new Error("objective_owner_unavailable");
+      if (!ownership.entities.dirOf(input.commodoreId)) throw new Error("objective_owner_unavailable");
+      const pending = input.id ? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === input.id) : null;
+      if (pending) {
+        if (pending.commodoreId !== input.commodoreId || !pending.cwd) throw new Error("objective_owner_unavailable");
+        return { commodoreId: pending.commodoreId, cwd: pending.cwd };
+      }
+      const location = ownership.creation(input.commodoreId, input.theaterId);
+      if (input.cwd !== undefined && input.cwd !== location.cwd) throw new Error("objective_location_mismatch");
+      return location;
+    },
     onGroupChanged: (event) => publishPluginEvent(OBJECTIVE_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, event),
     // 예전 전역 브라우저 id "global" 은 Objective이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
@@ -990,8 +1002,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveCommodore: (caller) => {
       if (caller.kind !== "objectiveRecord") return null;
       const objectiveRecord = objectiveRecords.get(caller.objectiveId);
-      const owner = objectiveRecord && commodore ? commodore.knowledge.forContext(objectiveRecord.theaterId) : null;
-      return owner?.ok ? owner.commodoreId : null;
+      return objectiveRecord && ownership?.entities.dirOf(objectiveRecord.commodoreId) ? objectiveRecord.commodoreId : null;
     },
   });
   const consoleFeaturePorts: ConsoleHostPorts = {
@@ -1064,7 +1075,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       reorder: (input) => consoleActions.reorder!(input),
       // 그룹 — 사이드바가 Objective 을 묶는 그 그룹을 플러그인 목록으로 연다. 사람의 PATCH 와 같은 길(영속 + 방송).
       groups: {
-        list: (theaterId) => (theaterId ? objectiveRecords.listGroups(theaterId) : objectiveRecords.listAllGroups()),
+        list: (commodoreId) => objectiveRecords.listAllGroups().filter((group) => !commodoreId || group.commodoreId === commodoreId),
         get: (id) => objectiveRecords.listAllGroups().find((group) => group.id === id) ?? null,
         create: (input) => { const group = objectiveRecords.createGroup(input); persistDurableState(); broadcastGroupChanged(group); return group; },
         patch: (id, input) => { const group = objectiveRecords.updateGroup(id, input); if (group) { persistDurableState(); broadcastGroupChanged(group); } return group; },
@@ -1128,6 +1139,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       fleetDataDir,
       consoleDataDir: durablePaths.dir,
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
+      resolveObjectivePath: (objectiveId) => {
+        try {
+          const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
+          const cwd = node?.cwd ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === objectiveId)?.cwd;
+          if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
+          const real = fs.realpathSync.native(cwd);
+          return fs.statSync(real).isDirectory() ? real : null;
+        } catch { return null; }
+      },
       listTheaterIds: () => theaters.list().map((theater) => theater.id),
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
@@ -2679,6 +2699,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
       }
       objectives = createObjectivesFeature({
+        resolveCreation: (commodoreId, theaterId) => { if (!ownership) throw new Error("objective_owner_unavailable"); return ownership.creation(commodoreId, theaterId); },
         storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },

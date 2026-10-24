@@ -42,12 +42,12 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     cleanups.length = 0;
   };
   try {
-    const dirOf = (theaterId: string): string | null => deps.storage?.directory(theaterId) ?? null;
+    const dirOf = (commodoreId: string): string | null => deps.storage?.directory(commodoreId) ?? null;
     const releaseChannel = deps.events.registerSseChannel(OBJECTIVE_CHANNEL);
     registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
     let watchQuiet: () => void = () => {};
-    const store = createObjectiveStore({ dirOf, storage: deps.storage, theaterIds: () => deps.paths.listTheaterIds?.() ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
+    const store = createObjectiveStore({ dirOf, storage: deps.storage, commodoreIds: () => deps.storage?.owners().map((owner) => owner.commodoreId) ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
@@ -58,7 +58,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(deps, store, {
-      commodoreCommander: (theaterId) => deps.commodoreCommander?.(theaterId) ?? null,
+      commodoreCommander: (commodoreId) => deps.commodoreCommander?.(commodoreId) ?? null,
     });
     watchQuiet = () => launch.watchReportQuiet();
     registerCleanup(() => launch.dispose());
@@ -91,14 +91,14 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     // 목표의 그룹은 지휘관 Objective 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
     on(OBJECTIVE_GROUPED_EVENT_CHANNEL, (_objectiveId, payload) => {
       const event = payload as Partial<ObjectiveGroupedEvent>;
-      if (typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
+      if (typeof event.commodoreId !== "string" || typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
       launch.objectiveRecordGrouped(event as ObjectiveGroupedEvent);
     });
     // 개시 전 목표와 후속 배치의 그룹은 저장 레코드에만 있다 — 그룹이 지워지면 미분류로 비우고, 기동 때는 이미 지워진 그룹을 가리키는 옛 레코드를 고쳐 쓴다.
     registerCleanup(deps.events.subscribe(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, (payload) => {
-      const event = payload as { groupId?: unknown; theaterId?: unknown };
-      if (typeof event.groupId !== "string" || typeof event.theaterId !== "string") return;
-      try { store.releaseGroups({ theaterId: event.theaterId, groupId: event.groupId }); }
+      const event = payload as { groupId?: unknown; commodoreId?: unknown };
+      if (typeof event.groupId !== "string" || typeof event.commodoreId !== "string") return;
+      try { store.releaseGroups({ commodoreId: event.commodoreId, groupId: event.groupId }); }
       catch (error) { console.warn(`[objectives] group release failed: ${error instanceof Error ? error.message : String(error)}`); }
     }));
     try { store.releaseGroups(); }
@@ -125,20 +125,20 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
 
     // 사령관은 Console feature다. 보드 의미와 도구만 명시 계약으로 건넨다.
     const board: CommodoreBoardAdapter = {
-      tools: (theaterId, turn) => createCommodoreBoardTools(deps, store, launch, theaterId, turn.readAttachments, turn.hasPersonMessage),
-      watch: (theaterId, sink) => createCommodoreBoardWatch({
+      tools: (commodoreId, turn) => createCommodoreBoardTools(deps, store, launch, commodoreId, turn.readAttachments, turn.hasPersonMessage),
+      watch: (commodoreId, sink) => createCommodoreBoardWatch({
         objectives: (id) => store.list(id),
         subscribeObjectives: (listener) => deps.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
         ...(deps.consoleControl ? { observe: (objectiveId) => launch.observeBoard(objectiveId) } : {}),
         notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
-      }, theaterId, sink),
-      objective: (theaterId, id) => {
+      }, commodoreId, sink),
+      objective: (commodoreId, id) => {
         const objective = store.find(id);
-        return objective?.theaterId === theaterId ? { id: objective.id, theaterId, title: objective.title, ...(objective.removed ? { removed: true as const } : {}) } : null;
+        return objective?.commodoreId === commodoreId ? { id: objective.id, commodoreId, title: objective.title, ...(objective.removed ? { removed: true as const } : {}) } : null;
       },
       // 목표 라우트가 남긴 언어 중 가장 최근 것 — 사령관에 저장된 언어가 없을 때만 쓴다.
-      language: (theaterId) => {
-        const latest = deps.objectiveRecords.list().filter((node) => node.theaterId === theaterId && (node.objectiveLanguage === "ko" || node.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
+      language: (commodoreId) => {
+        const latest = deps.objectiveRecords.list().filter((node) => node.commodoreId === commodoreId && (node.objectiveLanguage === "ko" || node.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
         return latest?.objectiveLanguage === "ko" ? "ko" : "en";
       },
     };

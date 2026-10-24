@@ -800,6 +800,24 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
+    // 같은 호스트의 생성 경계는 실행 전부터 소유 UUID와 고정 cwd를 분리한다.
+    const createdResponse = await fetch(`${origin}/api/v1/objectives/objective/create`, {
+      method: "POST", headers: { "Content-Type": "application/json", origin },
+      body: JSON.stringify({ commodoreId: ownerId, theaterId, title: "Unlaunched location" }),
+    });
+    expect(createdResponse.status).toBe(200);
+    const created = await createdResponse.json() as { objective: { id: string; commodoreId: string; theaterId: string } };
+    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId });
+    expect(created.objective).not.toHaveProperty("cwd");
+    const pending = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8"));
+    expect(pending).toMatchObject({ pending: true, cwd: realpath });
+    const deniedOwner = await fetch(`${origin}/api/v1/objectives/objective/create`, {
+      method: "POST", headers: { "Content-Type": "application/json", origin },
+      body: JSON.stringify({ commodoreId: "00000000-0000-4000-8000-000000000000", theaterId, title: "Not this owner" }),
+    });
+    expect(deniedOwner.status).toBe(409);
+    expect(await deniedOwner.json()).toEqual({ error: "objective_owner_unavailable" });
+
     expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("objectiveRecords");
   });
 
@@ -888,7 +906,7 @@ describe("console static and terminal ticket boundary", () => {
       const response = await fetch(`${origin}/api/v1/objectives/records`, {
         method: "POST",
         headers: { "Content-Type": "application/json", origin },
-        body: JSON.stringify({ id, theaterId: "theater", type: "terminal", pluginId: null, title: "spoof" }),
+        body: JSON.stringify({ id, commodoreId: "c1", theaterId: "theater", type: "terminal", pluginId: null, title: "spoof" }),
       });
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: "objectiveRecord_exists" });

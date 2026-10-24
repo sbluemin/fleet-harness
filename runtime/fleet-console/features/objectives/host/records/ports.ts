@@ -28,6 +28,7 @@ export interface ObjectiveRecordsHost extends Partial<ObjectiveArchiveCapability
 
 
 export interface ObjectiveGroup {
+  readonly commodoreId: string;
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -38,9 +39,9 @@ export interface ObjectiveGroup {
 
 
 export interface ObjectiveGroupsHost {
-  list(theaterId?: string): readonly ObjectiveGroup[];
+  list(commodoreId?: string): readonly ObjectiveGroup[];
   get(id: string): ObjectiveGroup | null;
-  create(input: { readonly theaterId: string; readonly name: string; readonly color: string; readonly order?: number }): ObjectiveGroup;
+  create(input: { readonly commodoreId: string; readonly theaterId: string; readonly name: string; readonly color: string; readonly order?: number }): ObjectiveGroup;
   patch(id: string, input: { readonly name?: string; readonly color?: string; readonly order?: number }): ObjectiveGroup | null;
   /** 빈 그룹만 지운다 — 멤버가 있으면 false. */
   delete(id: string): boolean;

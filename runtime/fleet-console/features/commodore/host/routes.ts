@@ -53,7 +53,7 @@ export interface CommodoreRouteHooks {
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (commodoreId: string) => Promise<void> | void;
   readonly clear?: (commodoreId: string) => Promise<void>;
-  readonly objective?: (objectiveId: string) => { readonly id: string; readonly theaterId: string; readonly title: string; readonly removed?: unknown } | null;
+  readonly objective?: (objectiveId: string) => { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: unknown } | null;
   /** 보드 어댑터가 등록돼 있는가 — 없으면 감독자가 runner를 세우지 않으므로 사령관은 꺼진 것으로 보이고 켜지지 않는다. */
   readonly boardReady?: () => boolean;
 }
@@ -72,7 +72,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     const asks = state.asks ?? [];
     const objectives = Object.fromEntries([...new Set(asks.flatMap((ask) => (ask.objectiveId ? [ask.objectiveId] : [])))].map((id) => {
       const found = hooks.objective?.(id);
-      return [id, found && (hooks.theaterIds?.(commodoreId) ?? []).includes(found.theaterId) ? { title: found.title } : null];
+      return [id, found && found.commodoreId === commodoreId ? { title: found.title } : null];
     }));
     return { commodoreId, theaterIds: hooks.theaterIds?.(commodoreId) ?? [], state, boardReady, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS }, asks: { open: asks.filter((ask) => !ask.settled).length, objectives } };
   };
@@ -167,7 +167,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new CommodoreStoreError("commodore_stopping");
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
       if (objectiveId && !objective) throw new CommodoreStoreError("unknown_objective");
-      if (objective && !(hooks.theaterIds?.(commodoreId) ?? []).includes(objective.theaterId)) throw new CommodoreStoreError("objective_theater_mismatch");
+      if (objective && objective.commodoreId !== commodoreId) throw new CommodoreStoreError("objective_owner_mismatch");
       // 본문 속 참조 — 참조가 있으면 표식 글자 수와 참조 수가 같아야 하고, 한 목표는 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다.
       // 하나라도 어긋나면 기록에 남기지 않는다. 참조가 없으면 본문의 표식 글자는 지운다 — 브라우저가 이미지 섞인 서식 글을 복사할 때 만들어
       // 내는 글자라(새 세션·그룹 대화에서 붙여 보낸 말) 거절하지 않고, 지운 뒤 비면 빈 메시지와 같이 거절한다. 어느 쪽이든 검증하지
@@ -178,7 +178,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       const references = referenceIds.map((id) => {
         const found = hooks.objective?.(id);
         if (!found || found.removed) throw new CommodoreStoreError("unknown_objective");
-        if (!(hooks.theaterIds?.(commodoreId) ?? []).includes(found.theaterId)) throw new CommodoreStoreError("objective_theater_mismatch");
+        if (found.commodoreId !== commodoreId) throw new CommodoreStoreError("objective_owner_mismatch");
         return { id: found.id, title: found.title };
       });
       const messageId = randomUUID();

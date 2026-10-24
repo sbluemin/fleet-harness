@@ -42,7 +42,7 @@ describe("deferred deletion coordinator", () => {
     const harness = createHarness();
     harness.objectiveRecords.create(makeObjective("op-a"));
     harness.objectiveRecords.create(makeObjective("op-b"));
-    harness.objectiveRecords.createGroup({ id: "group-a", theaterId: THEATER.id, name: "Alpha", color: "blue" });
+    harness.objectiveRecords.createGroup({ id: "group-a", commodoreId: "c1", theaterId: THEATER.id, name: "Alpha", color: "blue" });
     const deletion = harness.coordinator.deleteTheater(THEATER.id);
     if (!deletion) throw new Error("expected deletion");
 
@@ -438,7 +438,7 @@ function createArchiveHarness(directory: string) {
   const clock = { value: 1_000 };
   const diskState = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
   const stateStore: DurableJsonStore<DurableConsoleState> = { ...diskState, save: (state) => { if (fault.state) throw new Error("state_write_failed"); diskState.save(state); } };
-  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(directory, "commodore/owner/objectives"), theaterId: THEATER.id, workspacePath: directory }], createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
+  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(directory, "commodore/owner/objectives"), commodoreId: "c1", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id }], createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
     const store = createDurableJsonStore(deps);
     return { ...store, save: (value: unknown) => { if (fault.finalize && deps.filePath.endsWith("archive.json") && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
   }) as typeof createDurableJsonStore });
@@ -508,6 +508,7 @@ function createHarness() {
 function makeObjective(id: string) {
   return {
     id,
+    commodoreId: "c1",
     theaterId: THEATER.id,
     type: "agent",
     pluginId: "terminal",

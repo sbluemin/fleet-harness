@@ -24,9 +24,9 @@ describe("Console Use surface boundaries", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-surface-"));
     const me = { kind: "objectiveRecord" as const, objectiveId: "op-parent" };
     const objectiveRecords: import("../features/objectives/shared/records/types.js").ObjectiveRecord[] = [
-      { id: "op-parent", title: "Parent", theaterId: "theater-a", type: "agent", pluginId: null, ...({ consoleUse: { enabled: true, language: "en" } } as Record<string, unknown>), sessions: [{ id: "op-member", ...({ session: { sessionName: "objective-member-1" } }), ts: { createdAt: 4, updatedAt: 4 } }], geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
-      { id: "op-child", title: "Child", theaterId: "theater-a", type: "agent", pluginId: null, ...({ launchedBy: me } as Record<string, unknown>), geometry: null, ts: { createdAt: 2, updatedAt: 2 } },
-      { id: "op-human", title: "Human's", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 3, updatedAt: 3 } },
+      { id: "op-parent", title: "Parent", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({ consoleUse: { enabled: true, language: "en" } } as Record<string, unknown>), sessions: [{ id: "op-member", ...({ session: { sessionName: "objective-member-1" } }), ts: { createdAt: 4, updatedAt: 4 } }], geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
+      { id: "op-child", title: "Child", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({ launchedBy: me } as Record<string, unknown>), geometry: null, ts: { createdAt: 2, updatedAt: 2 } },
+      { id: "op-human", title: "Human's", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 3, updatedAt: 3 } },
     ];
     const answered: string[] = [];
     const slept: string[] = [];
@@ -38,6 +38,7 @@ describe("Console Use surface boundaries", () => {
     const deps = { directory, objectiveRecords: () => objectiveRecords, resolveObjective: (id: string) => objectiveRecords.find((op) => op.id === id) ?? (id === "op-member" ? {...(objectiveRecords[0]!.sessions![0]!),
 id,
 title: "objective-member-1",
+commodoreId: "c1",
 theaterId: "theater-a",
 type: "agent",
 pluginId: null,

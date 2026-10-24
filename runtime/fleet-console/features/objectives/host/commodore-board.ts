@@ -29,7 +29,7 @@ const SETTLED_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["answered", "ret
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
 
 interface Runner {
-  readonly theaterId: string;
+  readonly commodoreId: string;
   seen: Set<string>;
   stalledReported: Set<string>;
   notifiedStall: Map<string, string>;
@@ -38,7 +38,7 @@ interface Runner {
   selfWrites: Map<string, number>;
 }
 export interface CommodoreBoardWatchDeps {
-  readonly objectives: (theaterId: string) => readonly Objective[];
+  readonly objectives: (commodoreId: string) => readonly Objective[];
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   readonly observe?: BoardObserver;
   readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
@@ -46,11 +46,11 @@ export interface CommodoreBoardWatchDeps {
 }
 
 /** 보드와 같은 대기·운영·정체 규칙. 사령관 feature에는 정규화한 깨움만 보낸다. */
-export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theaterId: string, sink: CommodoreWakeSink): CommodoreBoardWatch {
+export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodoreId: string, sink: CommodoreWakeSink): CommodoreBoardWatch {
   const now = deps.now ?? Date.now;
   const cleanups: (() => void)[] = [];
   let disposed = false;
-  const runner: Runner = { theaterId, seen: waitingKeys(deps.objectives(theaterId), deps.observe), statuses: statusMap(deps.objectives(theaterId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, selfWrites: new Map() };
+  const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, selfWrites: new Map() };
   const wake = (_runner: Runner, code: WakeCode, input?: Parameters<CommodoreWakeSink["wake"]>[1]) => sink.wake(code, input);
   const forgetStatus = (_runner: Runner, objectiveId: string) => sink.forget(objectiveId);
   const publish = (runner: Runner) => sink.stalledChanged([...runner.stalledReported]);
@@ -65,7 +65,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   };
   /** 이번 턴의 보드 범위(기록 전용) — 보드 대기 코드는 지금 그 이유를 가진 운영 목표, 상태·정체는 모인 목표, 그리고 held. */
   const scopeOf = (runner: Runner, pending: ReadonlyMap<string, readonly string[]>) => {
-    const objectives = deps.objectives(runner.theaterId);
+    const objectives = deps.objectives(runner.commodoreId);
     const operators = operatorsOf(objectives);
     const woke = new Map<string, Set<string>>();
     const add = (id: string, code: string) => { let codes = woke.get(id); if (!codes) woke.set(id, codes = new Set()); codes.add(code); };
@@ -117,7 +117,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   };
   /** 보드를 다시 본다 — 대기 상태, 빈 보드, 상태 변화. 보드 사건과 대기 점검이 같은 길을 쓴다. */
   const boardChanged = (runner: Runner) => {
-    const objectives = deps.objectives(runner.theaterId);
+    const objectives = deps.objectives(runner.commodoreId);
     waitingChanged(runner, objectives);
     const empty = !hasOpenOperated(objectives);
     // 사령관 자신의 완료·정리로 보드가 비었으면 깨우지 않는다 — 방금 닫힌 운영 목표가 모두 그의 쓰기 대상이면 그것은 제가 한 일이다.
@@ -128,7 +128,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
     for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text, objectiveId: change.id }); }
   };
   cleanups.push(deps.subscribeObjectives((event) => {
-    if (!disposed && sink.automatic() && event.theaterId === theaterId) boardChanged(runner);
+    if (!disposed && sink.automatic() && event.commodoreId === commodoreId) boardChanged(runner);
   }));
 
   // 개시·검토 대기 — 지휘관이 일하는 동안의 목표는 대기가 아니다(commence 는 objective_busy·retryWhen commander_turn_end 로, 완료는
@@ -137,7 +137,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   const plannedTimer = setInterval(() => {
     if (disposed || !sink.automatic() || !deps.observe) return;
     {
-      const objectives = deps.objectives(runner.theaterId);
+      const objectives = deps.objectives(runner.commodoreId);
       const operators = operatorsOf(objectives);
       if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => (reason === "planned" || reason === "review" || (reason === "followup" && !objective.done)) && !heldForPerson(objective, reason)))) boardChanged(runner);
     }
@@ -210,7 +210,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   const stallTimer = setInterval(() => {
     if (disposed || !sink.automatic() || !deps.observe) return;
     {
-      const objectives = deps.objectives(runner.theaterId);
+      const objectives = deps.objectives(runner.commodoreId);
       const operators = operatorsOf(objectives);
       const stalled = new Set(stalledObjectives(objectives, deps.observe, now()));
       let changed = false;
@@ -241,9 +241,9 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   cleanups.push(() => clearInterval(stallTimer));
 
   return {
-    recount: () => new Map(inboxDigest(deps.objectives(theaterId), deps.observe)),
+    recount: () => new Map(inboxDigest(deps.objectives(commodoreId), deps.observe)),
     scope: (pending) => scopeOf(runner, pending),
-    emptyOperated: () => { const empty = !hasOpenOperated(deps.objectives(theaterId)); runner.emptyReported = empty; return empty; },
+    emptyOperated: () => { const empty = !hasOpenOperated(deps.objectives(commodoreId)); runner.emptyReported = empty; return empty; },
     attribute: (tool, turn) => selfAttributed(runner, tool, turn),
     dispose: () => { disposed = true; for (const cleanup of cleanups.splice(0)) cleanup(); },
   };

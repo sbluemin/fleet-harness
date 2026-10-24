@@ -35,7 +35,7 @@ export interface CompactTarget {
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
-  create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
+  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
@@ -203,7 +203,7 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 
 export interface LaunchServiceOptions {
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — Theater 의 사령관 설정. 없으면 보드 기본값(COMMANDER_PRESET)이다. */
-  readonly commodoreCommander?: (theaterId: string) => { readonly model: string; readonly effort?: string } | null;
+  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
   readonly reportQuietMs?: number;
   readonly now?: () => number;
@@ -298,15 +298,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
   // 지워졌거나 다른 Theater 의 그룹은 미분류로 연다 — 거절하면 옛 그룹을 쥔 개시가 실패한다. 그룹을 모르는 호스트에서는 그대로 둔다.
-  const liveGroupId = (theaterId: string, groupId: string | null | undefined): string | null => {
+  const liveGroupId = (commodoreId: string, groupId: string | null | undefined): string | null => {
     const groups = ctx.objectiveRecords.groups;
     if (!groupId || !groups) return groupId ?? null;
-    return groups.get(groupId)?.theaterId === theaterId ? groupId : null;
+    return groups.get(groupId)?.commodoreId === commodoreId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newObjectiveId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
-    const groupId = liveGroupId(input.theaterId, input.groupId);
+  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
+    const groupId = liveGroupId(input.commodoreId, input.groupId);
     const result = await control().request({
       kind: "launch",
+      commodoreId: input.commodoreId,
       theaterId: input.theaterId,
       ...(input.title ? { title: input.title } : {}),
       viewMode: input.viewMode ?? "terminal",
@@ -355,7 +356,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (existing) {
       await accessObjective(objectiveId);
       if (pendingCommander) {
-        if (existing.theaterId !== pendingCommander.theaterId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+        if (existing.commodoreId !== pendingCommander.commodoreId || readObjectiveLaunch(existing).sessionName !== pendingCommander.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
         store.launched(objectiveId);
       }
       return;
@@ -471,9 +472,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     for (const member of current.members) {
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
-      if (reference && reference.theaterId !== current.theaterId) break;
+      if (reference && reference.commodoreId !== current.commodoreId) break;
       const node = sessionId ? ctx.objectiveRecords.get(sessionId) : null;
-      if (node && node.theaterId !== current.theaterId) break;
+      if (node && node.commodoreId !== current.commodoreId) break;
       if (sessionId && (node || reference)) continue;
       if (member.launch.mode === "route") launching.push(member);
     }
@@ -536,13 +537,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const config = store.pending(id);
     let existing = referenceNode(id);
     if (existing && config) {
-      if (existing.theaterId !== current.theaterId || readObjectiveLaunch(existing).sessionName !== config.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+      if (existing.commodoreId !== current.commodoreId || readObjectiveLaunch(existing).sessionName !== config.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     }
     if (!existing) {
       if (!config) throw new ObjectiveStoreError("unknown_objectiveRecord");
       // 이관·보관은 모델·자격증명·Agent 기동에 의존하지 않는다. 공개 Objective 저장 포트로 휴면 메타데이터만 만든다.
       try {
-        const created = ctx.objectiveRecords.create({ id, theaterId: config.theaterId,
+        const created = ctx.objectiveRecords.create({ id, commodoreId: config.commodoreId, cwd: config.cwd, theaterId: config.theaterId,
           title: config.title, createdAt: config.createdAt,
           ...({ dormantBorn: true, restoredDormant: true,
             chatMode: true, chatBorn: true,
@@ -551,10 +552,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (created.id !== id) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       } catch (error) { asStoreError(error); }
       existing = referenceNode(id);
-      if (!existing || existing.theaterId !== current.theaterId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+      if (!existing || existing.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     }
     if (config && ctx.objectiveRecords.get(id)) {
-      const groupId = liveGroupId(config.theaterId, config.groupId);
+      const groupId = liveGroupId(config.commodoreId, config.groupId);
       if ((existing.groupId ?? null) !== groupId) patchObjective(id, { groupId });
     }
     // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·Theater·세션 이름으로 재시도한다.
@@ -622,11 +623,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const member = current.members[index]!;
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
-      if (reference && reference.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_objectiveRecord");
+      if (reference && reference.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_objectiveRecord");
       if (sessionId && reference) await accessObjective(sessionId);
       const observation = sessionId ? ctx.consoleControl?.observe(sessionId) : null;
       const node = sessionId ? ctx.objectiveRecords.get(sessionId) : null;
-      if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_objectiveRecord");
+      if (node && node.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_objectiveRecord");
       if (sessionId && node?.chatMode === true) {
         const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
         rememberSubagentSpawn(sessionId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
@@ -676,7 +677,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
-      const spawn = (with_: MemberPreset) => launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
+      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: ctx.paths.resolveObjectivePath?.(current.id) ?? store.pending(current.id)?.cwd, theaterId: current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
       let launchedId: string;
       try { launchedId = await spawn(preset); }
       catch (error) {
@@ -965,7 +966,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (existing && (existing.origin?.objectiveId !== objectiveId || existing.origin.candidateId !== candidateId)) throw new ObjectiveStoreError("objective_id_taken");
         // 후보·배치 스냅샷에 옛 criteria 가 남아 있어도 새 목표로 옮기지 않는다. 기준은 그 목표의 지휘관이 계획 때 제안한다.
         const created = existing ?? await service.create({
-          theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
+          commodoreId: source.commodoreId, cwd: ctx.paths.resolveObjectivePath?.(source.id) ?? store.pending(source.id)?.cwd, theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
           note: entry.snapshot.brief, addedBy: objectiveId,
           origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
         }, { language: batch.launch.language, actor: batch.by });
@@ -1274,9 +1275,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
-      const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.theaterId) ?? null : null;
+      const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null;
+      if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
+      const location = (() => { try { return input.cwd ? { cwd: input.cwd } : ctx.resolveCreation(input.commodoreId, input.theaterId); } catch (error) { return asStoreError(error); } })();
       return store.adopt(id, { ...init, by: actor }, {
-        theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
+        commodoreId: input.commodoreId,
+        theaterId: input.theaterId,
+        cwd: input.cwd ?? location.cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });
     },
@@ -1324,7 +1329,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const config = store.pending(objectiveId);
       const existing = referenceNode(objectiveId);
       if (config && existing) {
-        if (existing.theaterId !== current.theaterId || readObjectiveLaunch(existing).sessionName !== config.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
+        if (existing.commodoreId !== current.commodoreId || readObjectiveLaunch(existing).sessionName !== config.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       }
       // 옛 정리 데이터는 새 pending 삭제 정책보다 먼저 무손실 이관한다.
       if (current.removed) await migrateRemoval(objectiveId);
@@ -1420,7 +1425,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     regroup: (objectiveId, groupId) => orderedObjectiveRequest(objectiveId, async () => {
       const current = editableObjective(objectiveId);
       // 없는 그룹이나 다른 Theater 의 그룹으로 옮기지 않는다. 잘못된 편집은 복원도 일으키지 않는다.
-      if (groupId !== null && ctx.objectiveRecords.groups?.get(groupId)?.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_group");
+      if (groupId !== null && ctx.objectiveRecords.groups?.get(groupId)?.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_group");
       if (store.pending(objectiveId)) return store.patchPending(objectiveId, { groupId });
       await accessObjective(objectiveId);
       editableObjective(objectiveId);

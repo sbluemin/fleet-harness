@@ -55,7 +55,7 @@ export function trailFamily(kind: string): CommodoreTrailFamily {
 }
 
 const commodoreActor = (by: ObjectiveActor | undefined, theaterId: string): Extract<ObjectiveActor, { kind: "commodore" }> | null =>
-  typeof by === "object" && by.kind === "commodore" && by.theaterId === theaterId ? by : null;
+  typeof by === "object" && by.kind === "commodore" && by.commodoreId === theaterId ? by : null;
 
 function actWord(t: T, kind: string): string {
   const key = `commodore.board.prov.act.${kind}`;
@@ -73,7 +73,7 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
   const groups: CommodoreTrailGroup[] = [];
   for (const objective of objectives) {
     const entries: CommodoreTrailEntry[] = [];
-    const added = objective.addedBy && "kind" in objective.addedBy && objective.addedBy.theaterId === theaterId ? objective.addedBy : null;
+    const added = objective.addedBy && "kind" in objective.addedBy && objective.addedBy.commodoreId === theaterId ? objective.addedBy : null;
     if (added) {
       entries.push({
         key: `${objective.id}:added`,

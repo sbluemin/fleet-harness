@@ -65,7 +65,7 @@ describe("archive destructive action safeguards", () => {
 
   it("keeps deletion reversible and never transfers focus to the next delete button", async () => {
     const entries: ObjectiveDescription[] = ["a", "b", "c"].map((id, index) => ({ location: "archived", rootObjectiveId: id, archivedAt: Date.now() - index,
-      objectiveRecord: { id, theaterId: "theater", pluginId: "terminal", type: "agent", title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
+      objectiveRecord: { id, commodoreId: "c1", theaterId: "theater", pluginId: "terminal", type: "agent", title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
     }));
     let revision = 20;
     let pending = false;

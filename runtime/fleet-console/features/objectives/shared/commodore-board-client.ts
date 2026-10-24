@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 export type CommodoreBoardActor = "human" | "commander"
-  | { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string }
+  | { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string }
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
 
 /** 사령관 표면이 읽는 보드 투영. 보드 구현·판정 함수는 플러그인 밖으로 나오지 않는다. */

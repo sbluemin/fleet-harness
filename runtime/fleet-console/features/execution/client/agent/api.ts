@@ -416,6 +416,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   if (
     !payload
     || typeof payload.id !== "string"
+    || typeof payload.commodoreId !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.type !== "string"
     || (payload.pluginId !== null && typeof payload.pluginId !== "string")
@@ -433,6 +434,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   }
   return {
     id: payload.id,
+    commodoreId: payload.commodoreId!,
     theaterId: payload.theaterId,
     title: payload.title,
     ...(payload),

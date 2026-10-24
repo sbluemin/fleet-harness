@@ -20,7 +20,7 @@ function fixture() {
   const root = path.resolve(".fleet/isolated/durable-tests"); fs.mkdirSync(root, { recursive: true });
   const directory = fs.mkdtempSync(path.join(root, "case-")); tempDirs.push(directory);
   const destination = path.join(directory, "commodore/owner/objectives");
-  const owner = { theaterId: "t1", workspacePath: directory, directory: destination };
+  const owner = { commodoreId: "c1", legacyTheaterId: "t1", legacyCwd: directory, theaterIdOf: () => "t1", directory: destination };
   const registration = { id: "t1", path: directory, realpath: directory, label: "project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" };
   const source = { version: 6, theaters: [registration] };
   const stateFile = path.join(directory, "state.json");
@@ -32,7 +32,7 @@ function fixture() {
   const file = (id: string) => path.join(destination, id, "objective.json");
   const archiveFile = path.join(destination, "archive.json");
   const put = (id: string, value: unknown) => { fs.mkdirSync(path.dirname(file(id)), { recursive: true }); fs.writeFileSync(file(id), JSON.stringify(value)); };
-  const doc = (id: string) => ({ id, title: id, rank: 1, note: `Board ${id}`, missions: [], ts: { createdAt: 1, updatedAt: 2 }, session: { harness: "claude-code", id: `private-${id}` } });
+  const doc = (id: string) => ({ id, cwd: directory, title: id, rank: 1, note: `Board ${id}`, missions: [], ts: { createdAt: 1, updatedAt: 2 }, session: { harness: "claude-code", id: `private-${id}` } });
   return { directory, destination, owner, registration, source, stateFile, stateStore, open, file, archiveFile, put, doc };
 }
 
@@ -81,8 +81,8 @@ describe("durable console state", () => {
     });
     expect(interrupted.load().objectiveRecords).toEqual([]);
     expect(interrupted.blocked()).toBe(false);
-    expect(interrupted.board.directory("t1")).toBeNull();
-    expect(() => interrupted.board.save("t1", { ...h.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
+    expect(interrupted.board.directory("c1")).toBeNull();
+    expect(() => interrupted.board.save("c1", { ...h.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
     expect(fs.readFileSync(h.archiveFile, "utf8")).toBe(source);
     const moved = h.open(); const state = moved.load();
     expect(state.objectiveRecords.map((node) => node.id)).toEqual(["active"]);
@@ -91,13 +91,13 @@ describe("durable console state", () => {
     expect(moved.isReserved("linked")).toBe(true);
     expect(fs.readFileSync(path.join(outside, "objective.json"), "utf8")).toBe("outside original");
     expect(fs.readlinkSync(path.join(h.destination, "linked"))).toBe(outside);
-    expect(() => moved.board.save("t1", { ...existing, theaterId: "t1" })).toThrow("archive_recovery_required");
+    expect(() => moved.board.save("c1", { ...existing, theaterId: "t1" })).toThrow("archive_recovery_required");
     expect(JSON.parse(fs.readFileSync(h.file("archived"), "utf8"))).toEqual(archived);
     expect(JSON.parse(fs.readFileSync(h.file("deleted"), "utf8"))).toEqual(h.doc("deleted"));
     expect(JSON.parse(fs.readFileSync(h.file("conflict"), "utf8"))).toEqual(existing);
     expect(fs.readFileSync(h.file("active"), "utf8")).toBe(originalActive);
     expect(fs.existsSync(h.file("already-purged"))).toBe(false);
-    expect(moved.events()).toEqual([{ eventId: "purged-event", channel: "objective:purged", objectiveId: "already-purged", theaterId: "t1", sessionIds: [] }]);
+    expect(moved.events()).toEqual([{ eventId: "purged-event", channel: "objective:purged", objectiveId: "already-purged", commodoreId: "c1", theaterId: "t1", sessionIds: [] }]);
     const archive = JSON.parse(fs.readFileSync(h.archiveFile, "utf8"));
     expect(archive.entries).toEqual(["archived", "absent-directory", "conflict", "linked"].map((objectiveId) => ({ objectiveId, archiveId: `archive-${objectiveId}`, archivedAt: 3 })));
     expect(archive.deletions[0]).toMatchObject({ objectiveIds: ["deleted"], archived: { deleted: { archiveId: "was-archived", archivedAt: 2 } } });
@@ -105,14 +105,14 @@ describe("durable console state", () => {
     const backup = path.join(h.destination, ".archive-migration", `${createHash("sha256").update(source).digest("hex")}.json`);
     expect(fs.readFileSync(backup, "utf8")).toBe(source);
     expect(fs.readlinkSync(link)).toBe(target); expect(fs.existsSync(target)).toBe(false);
-    moved.board.save("t1", { ...moved.board.list("t1").find((row) => row.id === "archived")!, note: "Edited archive" });
+    moved.board.save("c1", { ...moved.board.list("c1").find((row) => row.id === "archived")!, note: "Edited archive" });
     moved.save(state);
     const reopened = h.open(); const restored = reopened.load();
     expect(restored.objectiveRecords.map((node) => node.id)).toEqual(["active"]);
-    expect(reopened.board.list("t1").find((row) => row.id === "archived")?.note).toBe("Edited archive");
+    expect(reopened.board.list("c1").find((row) => row.id === "archived")?.note).toBe("Edited archive");
     expect(fs.readFileSync(backup, "utf8")).toBe(source);
     const records = createObjectiveRecordsStore(); records.replace(restored.objectiveRecords);
-    const boardStore = createObjectiveStore({ storage: reopened.board, dirOf: reopened.board.directory, theaterIds: () => ["t1"], objectiveRecords: records, emit: () => {} });
+    const boardStore = createObjectiveStore({ storage: reopened.board, dirOf: reopened.board.directory, commodoreIds: () => ["c1"], objectiveRecords: records, emit: () => {} });
     expect(() => records.deleteChild("child", "another-feature")).toThrow("child_delete_forbidden");
     expect(records.deleteChild("child", "objectives")).toBe(true);
     reopened.save({ ...restored, objectiveRecords: records.list() });
@@ -120,21 +120,21 @@ describe("durable console state", () => {
     reopened.save({ ...restored, objectiveRecords: records.list() });
     const after = h.open(); const afterState = after.load();
     expect(afterState.objectiveRecords[0]?.sessions ?? []).toHaveLength(0);
-    expect(after.board.list("t1").find((row) => row.id === "active")?.memberHistory?.map((entry) => entry.kind)).toEqual(["left"]);
+    expect(after.board.list("c1").find((row) => row.id === "active")?.memberHistory?.map((entry) => entry.kind)).toEqual(["left"]);
     const entry = after.entries().find((row) => row.objectiveRecord.id === "archived")!;
     after.save({ ...afterState, objectiveRecords: [...afterState.objectiveRecords, entry.objectiveRecord] }, after.entries().filter((row) => row.objectiveRecord.id !== "archived"));
     const boot = h.open(); records.replace(boot.load().objectiveRecords);
-    const boards = createObjectiveStore({ storage: boot.board, dirOf: boot.board.directory, theaterIds: () => ["t1"], objectiveRecords: records, emit: () => {} });
+    const boards = createObjectiveStore({ storage: boot.board, dirOf: boot.board.directory, commodoreIds: () => ["c1"], objectiveRecords: records, emit: () => {} });
     expect(boards.find("archived")?.note).toBe("Edited archive");
     expect((await boards.evidenceRead("archived", result.id)).data).toEqual(bytes);
-    expect(boot.board.directory("t1")).toBe(h.destination);
+    expect(boot.board.directory("c1")).toBe(h.destination);
     expect(fs.readFileSync(leftoverArchive, "utf8")).toBe(leftoverBytes);
     expect(fs.readFileSync(path.join(leftoverBoard, "untouched"), "utf8")).toBe("older board");
 
     // 손상 행은 같은 owner의 정상 행과 다른 owner를 막지 않는다. 파싱 불능은 해당 owner만 멈춘다.
     const damaged = fixture();
-    const healthy = { ...damaged.owner, theaterId: "healthy", directory: path.join(damaged.directory, "commodore/healthy/objectives") };
-    const broken = { ...damaged.owner, theaterId: "broken", directory: path.join(damaged.directory, "commodore/broken/objectives") };
+    const healthy = { ...damaged.owner, commodoreId: "healthy", legacyTheaterId: "healthy", theaterIdOf: () => "healthy", directory: path.join(damaged.directory, "commodore/healthy/objectives") };
+    const broken = { ...damaged.owner, commodoreId: "broken", legacyTheaterId: "broken", theaterIdOf: () => "broken", directory: path.join(damaged.directory, "commodore/broken/objectives") };
     const empty = { revision: 0, entries: [], deletions: [], events: [] };
     for (const owner of [healthy, broken]) {
       fs.mkdirSync(owner.directory, { recursive: true });
@@ -144,7 +144,7 @@ describe("durable console state", () => {
     fs.writeFileSync(path.join(healthy.directory, "live/objective.json"), JSON.stringify(damaged.doc("live")));
     fs.writeFileSync(path.join(healthy.directory, "archive.json"), JSON.stringify({ ...empty, entries: [{ archiveId: "healthy-archive", archivedAt: 1, objective: damaged.doc("healthy-archived") }] }));
     fs.writeFileSync(path.join(broken.directory, "archive.json"), "{broken archive");
-    fs.writeFileSync(damaged.stateFile, JSON.stringify({ ...damaged.source, theaters: [damaged.registration, ...[healthy, broken].map((owner) => ({ ...damaged.registration, id: owner.theaterId }))] }));
+    fs.writeFileSync(damaged.stateFile, JSON.stringify({ ...damaged.source, theaters: [damaged.registration, ...[healthy, broken].map((owner) => ({ ...damaged.registration, id: owner.legacyTheaterId }))] }));
     for (const id of ["bad-event", "bad-deletion", "unrelated-active"]) damaged.put(id, damaged.doc(id));
     const damagedSource = JSON.stringify({ ...empty,
       entries: [{ archiveId: "good", archivedAt: 1, objective: damaged.doc("good") },
@@ -159,7 +159,7 @@ describe("durable console state", () => {
     expect(partial.blocked()).toBe(false);
     expect(partialState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(partial.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
-    expect(partial.board.directory("t1")).toBe(damaged.destination);
+    expect(partial.board.directory("c1")).toBe(damaged.destination);
     expect(partial.board.directory("broken")).toBeNull();
     expect(partial.board.directory("healthy")).toBe(healthy.directory);
     for (const id of ["bad-event", "bad-deletion"]) {
@@ -202,7 +202,7 @@ describe("durable console state", () => {
     expect(retry.blocked()).toBe(false);
     const afterDenied = openAll();
     expect(afterDenied.load().objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
-    expect(afterDenied.board.directory("t1")).toBe(damaged.destination);
+    expect(afterDenied.board.directory("c1")).toBe(damaged.destination);
     // 정상 owner의 삭제는 계속 허용하며 state 등록과 archive tombstone이 함께 재기동된다.
     const receipt = coordinator.deleteTheater("healthy")!;
     coordinator.dispose();
@@ -251,8 +251,8 @@ describe("durable console state", () => {
     const marker = `${legacy.stateFile}.objectives-migration.json`;
     fs.writeFileSync(marker, "old marker bytes");
     const unavailable = legacy.open(); expect(unavailable.load().objectiveRecords).toEqual([]);
-    expect(unavailable.board.directory("t1")).toBeNull();
-    expect(() => unavailable.board.save("t1", { ...legacy.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
+    expect(unavailable.board.directory("c1")).toBeNull();
+    expect(() => unavailable.board.save("c1", { ...legacy.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
     expect(fs.existsSync(legacy.destination)).toBe(false);
     expect(fs.readFileSync(oldArchive, "utf8")).toBe("older archive bytes");
     expect(fs.readFileSync(path.join(oldBoard, "untouched"), "utf8")).toBe("older original");

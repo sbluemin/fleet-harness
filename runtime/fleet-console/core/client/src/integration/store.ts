@@ -174,7 +174,7 @@ function partitionObjectiveRecordsPatch(patch: Partial<ConsoleState>): Partial<C
   }
   const nested = patch.objectiveRecords.flatMap((parent) => (parent.sessions ?? []).map((child): ObjectiveRecord => ({...(child),
 id: child.id,
-theaterId: parent.theaterId,
+commodoreId: parent.commodoreId, theaterId: parent.theaterId,
 title: child.id.slice(0, 8),
 ts: child.ts,
 parentObjectiveId: parent.id})));

@@ -389,6 +389,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   if (
     !payload
     || typeof payload.id !== "string"
+    || typeof payload.commodoreId !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.title !== "string"
     || !payload
@@ -403,6 +404,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   }
   return {
     id: payload.id,
+    commodoreId: payload.commodoreId,
     theaterId: payload.theaterId,
     title: payload.title,
     ...(payload),
@@ -421,6 +423,7 @@ function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
   if (
     !payload
     || typeof payload.id !== "string"
+    || typeof payload.commodoreId !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.name !== "string"
     || typeof payload.color !== "string"
@@ -431,6 +434,7 @@ function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
   }
   return {
     id: payload.id,
+    commodoreId: payload.commodoreId,
     theaterId: payload.theaterId,
     name: payload.name,
     color: payload.color,

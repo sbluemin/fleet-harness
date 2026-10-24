@@ -205,12 +205,12 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
     tool("evidence_dir", "The objective's evidence directory: one directory the Commander and every member share, and the only place seal_evidence_from_path reads from. Its path is returned only through MCP, not to the browser. The Theater working directory, a session's system-prompt Scratchpad directory and Bash temporary directories are not this root.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
-      return text({ root: store.sharedDir(objective.theaterId, objective.id), note: "Only files under root can be sealed." });
+      return text({ root: store.sharedDir(objective.commodoreId, objective.id), note: "Only files under root can be sealed." });
     }),
     tool("seal_evidence_from_path", `Copy a file from this objective's evidence directory (evidence_dir) into this objective's evidence store. Relative paths resolve there, not in the Theater or the session's working directory. Files copied from the Theater or elsewhere into this directory are subject to the same sealing checks as files created here; sealing does not read or compare the originals outside it. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the evidence directory and files changed during reading are refused. The Commander and members can seal files. The returned evidenceId identifies an immutable copy, not an attached result. Only the Commander can attach it through complete_mission or replace existing evidence through update_result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours; this expiry does not apply while attached.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
-      const root = store.sharedDir(objective.theaterId, objective.id);
+      const root = store.sharedDir(objective.commodoreId, objective.id);
       const bytes = await readSharedEvidence(path.isAbsolute(source) ? source : path.join(root, source), root, context.signal);
       // 읽기를 기다리는 동안 명단이 바뀌었다면 그 목표에 bytes를 남기지 않는다.
       if (!roleIn(find(objectiveId), caller) || caller?.kind !== "objectiveRecord") return refuse("not_participant");

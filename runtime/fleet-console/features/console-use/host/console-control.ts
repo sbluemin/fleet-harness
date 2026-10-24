@@ -17,6 +17,7 @@ const sameCaller = (a: ConsoleCaller, b: ConsoleCaller) => a.kind === "objective
 const activity = z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]);
 const actionObjectSchema = z.object({
   kind: z.enum(["launch", "send", "interrupt", "resume"]),
+  commodoreId: z.string().min(1).max(128).optional(),
   theaterId: z.string().min(1).max(128).optional(), objectiveId: z.string().min(1).max(128).optional(),
   // send 는 첨부가 있으면 빈 문면도 받는다(자식은 첨부 지시 줄만 받는다). 그 밖의 빈 문면은 아래 `empty_prompt`가 거절한다.
   text: z.string().max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
@@ -35,7 +36,7 @@ const actionObjectSchema = z.object({
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.objectiveId : !value.objectiveId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentObjectiveId !== undefined || value.childSessionId !== undefined || value.newObjectiveId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.commodoreId || value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentObjectiveId !== undefined || value.childSessionId !== undefined || value.newObjectiveId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
   if ((value.parentObjectiveId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.newObjectiveId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
@@ -179,7 +180,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   function observe(id: string) { return adapter?.observe(id) ?? null; }
   function validTarget(input: ConsoleActionInput, theaterId?: string) {
     if (input.kind === "launch") {
-      if (!deps.theaters().some((t) => t.id === input.theaterId) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
+      if ((!input.newObjectiveId && !input.parentObjectiveId && !deps.theaters().some((t) => t.id === input.theaterId)) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
     } else {
       const op = node(input.objectiveId!);
       if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_objectiveRecord");
@@ -223,7 +224,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (input.newObjectiveId) {
       const pending = [...inflight.values()].find((entry) => entry.input.newObjectiveId === input.newObjectiveId && !entry.objectiveId);
       if (pending) {
-        if (!sameCaller(pending.caller, caller) || pending.input.theaterId !== input.theaterId) fail("objectiveRecord_id_taken");
+        if (!sameCaller(pending.caller, caller) || pending.input.commodoreId !== input.commodoreId) fail("objectiveRecord_id_taken");
         return pending.result!;
       }
     }

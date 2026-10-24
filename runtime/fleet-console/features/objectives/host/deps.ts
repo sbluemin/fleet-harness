@@ -11,6 +11,7 @@ import type { CommodoreFeature } from "../../commodore/host/index.js";
 
 /** 목표가 쓰는 Console 포트. 조합이 소유·호출자·정리 수명을 명시로 묶는다. */
 export interface ObjectivesFeatureDeps {
+  readonly resolveCreation: (commodoreId: string, theaterId: string) => { readonly commodoreId: string; readonly cwd: string };
   readonly storage?: import("./storage.js").ObjectiveBoardStorage;
   readonly paths: WorkspacePaths;
   readonly events: EventPort;

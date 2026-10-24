@@ -47,7 +47,7 @@ import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
+type SessionCreateBody = { readonly commodoreId?: unknown; readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -264,7 +264,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const consoleTerminal = createConsoleTerminalObserver({
     transcript: (id) => readProviderSession(ctx.host.objectiveRecords.get(id))?.transcriptPath,
     onTurnEnd: (id, output) => ctx.consoleControl?.reportTurnEnd(id, output),
-    cwd: (id) => { const op = ctx.host.objectiveRecords.get(id); return op ? readPayloadString(op, "cwd") ?? ctx.host.paths.resolveTheaterPath(op.theaterId) ?? undefined : undefined; },
+    cwd: (id) => { const op = ctx.host.objectiveRecords.get(id); return op ? readPayloadString(op, "cwd") ?? undefined : undefined; },
   });
   ctx.host.lifecycle.registerCleanup(() => consoleTerminal.dispose());
   const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OBJECTIVE_TYPE, (sessionId, title) => {
@@ -303,7 +303,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       observability.notifySessionUpdated(updated);
       const objectiveRecord = ctx.host.objectiveRecords.get(payload.objectiveId);
       if (objectiveRecord) {
-        const cwd = readPayloadString(objectiveRecord, "cwd") || ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId) || "";
+        const cwd = readPayloadString(objectiveRecord, "cwd") || "";
         const providerSession = readCapturedProviderSession(objectiveRecord.session);
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
@@ -598,13 +598,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       let response: { status: number; value: any } | undefined;
       const reply = (status: number, value: unknown) => { response = { status, value }; };
       if (input.kind === "launch") {
-        const cwd = ctx.host.paths.resolveTheaterPath(input.theaterId!);
+        const locationId = input.parentObjectiveId ?? input.newObjectiveId;
+        const cwd = locationId ? ctx.host.paths.resolveObjectivePath?.(locationId) : ctx.host.paths.resolveTheaterPath(input.theaterId!);
         if (!cwd) throw new ConsoleControlError("unknown_theater");
         // 부모는 세션을 만들기 전에 따진다 — 저장소도 거절하지만, 그때는 이미 세운 대기 세션이 남는다.
         if (input.childSessionId) {
           if (caller.kind !== "plugin") throw new ConsoleControlError("invalid_launch_option");
           const parent = ctx.host.objectiveRecords.list().find((candidate) => candidate.id === input.parentObjectiveId);
-          if (!parent || parent.theaterId !== input.theaterId) throw new ConsoleControlError("invalid_parent_objectiveRecord");
+          if (!parent || parent.commodoreId !== input.commodoreId) throw new ConsoleControlError("invalid_parent_objectiveRecord");
           const existing = ctx.host.objectiveRecords.get(input.childSessionId);
           if (existing) {
             if (existing.parentObjectiveId !== parent.id) throw new ConsoleControlError("objectiveRecord_id_taken");
@@ -614,7 +615,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 목표의 launchedBy에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -750,7 +751,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           return true;
         }
         ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
-          cwd: readPayloadString(objectiveRecord, "cwd") || (ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId) ?? ""),
+          cwd: readPayloadString(objectiveRecord, "cwd") ?? "",
           sessionId: objectiveRecord.id,
           objectiveId: objectiveRecord.id,
           objectiveRecordType: "agent",
@@ -772,7 +773,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ctx.host.http.writeJson(res, 409, { error: "objectiveRecord_chat_mode" });
         return true;
       }
-      const cwd = readPayloadString(objectiveRecord, "cwd") || ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId);
+      const cwd = readPayloadString(objectiveRecord, "cwd");
       if (!cwd) {
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
@@ -936,6 +937,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     try {
       await createSession(cwd, theaterId, cliId, (status, value) => ctx.host.http.writeJson(res, status, value), {
+        commodoreId: typeof body?.commodoreId === "string" ? body.commodoreId : undefined,
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
         // 첨부가 붙으면 자식에게 갈 프롬프트와 원장에 설 문면이 갈린다 — 후자는 사용자가 실제로
@@ -1133,7 +1135,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1187,6 +1189,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     } else {
       ctx.host.objectiveRecords.create({
         id: session.sessionId,
+        commodoreId: launchOptions.commodoreId ?? "",
         theaterId,
         title: namedSession.label ?? session.label ?? path.basename(cwd),
         ...payload,
@@ -1349,7 +1352,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const launchEffort = launchSession?.effort || undefined;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
     // 복귀를 건너뛰어 세션이 starting에 고착된다.
-    const cwd = readPayloadString(node, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
+    const cwd = readPayloadString(node, "cwd");
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     resetOscActivity(sessionId);
     let starting = observability.updateTerminalSessionStatus(sessionId, "starting");
@@ -1555,7 +1558,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const livePty = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (!livePty) trustedPtySessions.delete(sessionId);
     if (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId)) {
-      const cwd = readPayloadString(node, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId) || "";
+      const cwd = readPayloadString(node, "cwd") || "";
       if (!await deps.isClaudePathTrusted(cwd)) {
         settleAttachments(false);
         reply(409, { error: "claude_trust_required" });
@@ -2021,7 +2024,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
       return true;
     }
-    const cwd = readPayloadString(node, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId) || undefined;
+    const cwd = readPayloadString(node, "cwd") || undefined;
     const history = await readTranscriptHistory(transcriptPath, { ...(cwd ? { cwd } : {}), limit: CHAT_HISTORY_ENTRY_LIMIT, maxBytes: CHAT_HISTORY_MAX_BYTES, resolveSessionMessageRecipient: resolveRecipient });
     if (!history) {
       ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
@@ -2117,7 +2120,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       : { kind: "fresh" };
     const origin = ctx.host.server.origin();
     if (!origin) return { ok: false, status: 503, error: "chat_gateway_unavailable" };
-    const cwd = readPayloadString(node, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
+    const cwd = readPayloadString(node, "cwd");
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Objective은 native Opus 1M로 계속된다.
     // 저장된 bare 네이티브 별칭은 시드부터 `[1m]`라서 첫 라이브 미터가 200k로 열리지 않는다.
@@ -2670,7 +2673,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function injectRenameCommand(sessionId: string, label: string | undefined): Promise<void> {
     if (!label) return;
     const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
-    const cwd = objectiveRecord && (readPayloadString(objectiveRecord, "cwd") || ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId));
+    const cwd = objectiveRecord && (readPayloadString(objectiveRecord, "cwd"));
     if (!cwd || (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId) && !(await deps.isClaudePathTrusted(cwd)))) return;
     // 신뢰 조회 중 더 새 이름이 저장됐다면 낡은 /rename을 나중에 보내지 않는다.
     if (ctx.host.objectiveRecords.get(sessionId)?.title !== objectiveRecord.title) return;
@@ -2688,7 +2691,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   function injectObjective(objectiveRecord: ObjectiveRecord): AgentTerminalSessionInfo {
-    const cwd = readPayloadString(objectiveRecord, "cwd") || (ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId) ?? "");
+    const cwd = readPayloadString(objectiveRecord, "cwd") ?? "";
     const providerTitle = readProviderTitle(objectiveRecord);
     const injected = observability.injectDormantObjective({
       sessionId: objectiveRecord.id,
@@ -2734,7 +2737,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const dormant = injectObjective(objectiveRecord);
       // 채팅은 live/idle 어댑터만 복원한다. 자식과 transcript 재생은 첫 send/명시 준비로 늦춘다.
       if (objectiveRecord[CHAT_MODE_PAYLOAD_KEY] === true) continue;
-      const cwd = readPayloadString(objectiveRecord, "cwd") || (ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId) ?? "");
+      const cwd = readPayloadString(objectiveRecord, "cwd") ?? "";
       ctx.host.objectiveRecords.patch(objectiveRecord.id, {
         ...({
           ...toObjectivePayload(objectiveRecord, cwd, dormant, providerSession, observability.getDurableObjective(objectiveRecord.id)?.providerTitle),

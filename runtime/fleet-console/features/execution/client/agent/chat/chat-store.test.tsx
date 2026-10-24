@@ -349,7 +349,7 @@ it("keeps independent group journals alive across view closure, merges only conf
   const clusters = [{ id: "objective", theaterId: "theater", title: "Objective", root: "root", members: [], conversation: board }];
   const clusterSource: ObjectiveClusterSource = { get: () => clusters, subscribe: () => () => {} };
   const session = (id: string) => ({ sessionId: id, terminalSessionId: id, cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true });
-  setState({ objectiveRecords: [{ id: "root", theaterId: "theater", title: "Commander",
+  setState({ objectiveRecords: [{ id: "root", commodoreId: "c1", theaterId: "theater", title: "Commander",
     ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "member", chatMode: true, ts: { createdAt: 2, updatedAt: 2 } },
       { id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", chatMode: false, ts: { createdAt: 4, updatedAt: 4 } }] }],
     objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, member: { lifecycle: "live", activity: "running" } } });
@@ -451,7 +451,7 @@ it("keeps group timeline sockets and dormant history closed until the conversati
   let active = false;
   let subject: string | null = null;
   const listeners = new Set<() => void>();
-  setState({ objectiveRecords: [{ id: "root", theaterId: "theater", title: "Commander",
+  setState({ objectiveRecords: [{ id: "root", commodoreId: "c1", theaterId: "theater", title: "Commander",
     ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }] }],
     objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" } } });
   setObjectiveRuntime("root", { lifecycle: "live", activity: "running" });

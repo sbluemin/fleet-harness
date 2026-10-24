@@ -9,6 +9,7 @@ function makeStore() {
 }
 
 const BASE_OP = {
+  commodoreId: "c1",
   theaterId: "theater-1",
   type: "shell",
   pluginId: "terminal",
@@ -19,7 +20,7 @@ describe("ObjectiveRecordsStore — 그룹 CRUD", () => {
 
   it("deleteGroup은 멤버 chip의 groupId를 null로 unset한다", () => {
     const store = makeStore();
-    const group = store.createGroup({ theaterId: "theater-1", name: "Alpha", color: "blue" });
+    const group = store.createGroup({ commodoreId: "c1", theaterId: "theater-1", name: "Alpha", color: "blue" });
     const op = store.create({ ...BASE_OP, title: "Shell", groupId: group.id });
     expect(store.get(op.id)?.groupId).toBe(group.id);
 
@@ -31,9 +32,9 @@ describe("ObjectiveRecordsStore — 그룹 CRUD", () => {
 
   it("deleteByTheater는 해당 Theater의 그룹도 cascade 삭제한다", () => {
     const store = makeStore();
-    store.createGroup({ theaterId: "theater-1", name: "A", color: "teal" });
-    store.createGroup({ theaterId: "theater-1", name: "B", color: "rose" });
-    store.createGroup({ theaterId: "theater-2", name: "C", color: "amber" });
+    store.createGroup({ commodoreId: "c1", theaterId: "theater-1", name: "A", color: "teal" });
+    store.createGroup({ commodoreId: "c1", theaterId: "theater-1", name: "B", color: "rose" });
+    store.createGroup({ commodoreId: "c1", theaterId: "theater-2", name: "C", color: "amber" });
     store.create({ ...BASE_OP, title: "Shell" });
 
     store.deleteByTheater("theater-1");

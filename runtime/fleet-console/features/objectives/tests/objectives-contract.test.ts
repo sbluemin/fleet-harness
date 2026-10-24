@@ -53,6 +53,8 @@ type Saved = {
   readonly results?: readonly ObjectiveResult[];
 };
 
+const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
+
 function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-"));
   dirs.push(dir);
@@ -67,6 +69,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         const child = owner.sessions?.find((entry) => entry.id === id);
         if (child) return {...(child),
 id,
+commodoreId: owner.commodoreId,
 theaterId: owner.theaterId,
 type: "agent",
 pluginId: null,
@@ -96,7 +99,7 @@ ts: child.ts};
   const accessCalls: string[] = [];
   let clock = 1_000;
   const add = (id: string, init: Partial<Node> = {}) => {
-    const node: Node = { id, theaterId: "t1", type: "agent", pluginId: null, title: id, groupId: null, ...({}), geometry: null, ts: { createdAt: clock++, updatedAt: clock }, ...init };
+    const node: Node = { id, commodoreId: "c1", cwd: theaterPath, theaterId: "t1", type: "agent", pluginId: null, title: id, groupId: null, ...({}), geometry: null, ts: { createdAt: clock++, updatedAt: clock }, ...init };
     objectiveRecords.set(id, node);
     return node;
   };
@@ -171,12 +174,12 @@ title: input.title});
       if (node.parentObjectiveId) { const child = objectiveRecords.get(node?.parentObjectiveId)?.sessions?.find((entry) => entry.id === id); if (child) Object.assign(child, input); }
       if (input.title) node.title = input.title;
       // 호스트처럼 그룹이 실제로 바뀌면 objectiveRecord:grouped 를 낸다.
-      if (input.groupId !== undefined && (node?.groupId ?? null) !== input.groupId) { const previousGroupId = node?.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ objectiveId: id, theaterId: node?.theaterId, groupId: input.groupId, previousGroupId }); }
+      if (input.groupId !== undefined && (node?.groupId ?? null) !== input.groupId) { const previousGroupId = node?.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ objectiveId: id, commodoreId: node.commodoreId, theaterId: node?.theaterId, groupId: input.groupId, previousGroupId }); }
       return node;
     },
     delete: (id: string) => { deleted.push(id); return objectiveRecords.delete(id) || archivedObjectiveRecords.delete(id); },
     deleteChild: (id: string) => { if (!objectiveRecords.get(id)?.parentObjectiveId) return false; deleted.push(id); return objectiveRecords.delete(id); },
-    groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
+    groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, commodoreId: "c1", theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const surfaceOf = (id: string) => surfaces.get(id) ?? (objectiveRecords.get(id)?.chatMode === true ? "chat" : "terminal");
   const chatCoordinates = (id: string) => {
@@ -197,11 +200,12 @@ title: input.title});
     } : null;
   };
   let watchQuiet: () => void = () => {};
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchQuiet() } : {}) });
+  const store = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchQuiet() } : {}) });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
   const ctx = {
+    resolveCreation: (commodoreId: string, theaterId: string) => { if (commodoreId !== "c1" || theaterId !== "t1") throw new Error("objective_owner_unavailable"); return { commodoreId, cwd: theaterPath }; },
     security: { isTerminalAuthorized: () => authorized },
     http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
     server: { origin: routingOrigin },
@@ -278,7 +282,7 @@ title: input.title});
         return { ok: true, applied: "now" };
       },
     },
-    paths: { resolveTheaterPath: () => theaterPath },
+    paths: { resolveTheaterPath: () => theaterPath, resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
   launchServices.push(launch);
@@ -286,7 +290,7 @@ title: input.title});
   // 재시작 — 같은 목표 파일과 같은 호스트 위에 저장소와 기동 서비스를 새로 세운다(메모리 상태는 잃고 보드 파일만 남는다).
   const restart = () => {
     let watchAgain: () => void = () => {};
-    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? path.join(workspace, "objectives") : null), objectiveRecords: objectiveRecordsHost, emit: (event) => events.push(event), now: () => clock++, coordinates: (id) => chatCoordinates(id), advertisedTools: (id) => advertised.get(id) ?? null, observe: observeSession, ...(options?.reportQuietMs !== undefined ? { onAssignment: () => watchAgain() } : {}) });
     const relaunched = createLaunchService(ctx, reloaded, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
     launchServices.push(relaunched);
     watchAgain = () => relaunched.watchReportQuiet();
@@ -348,12 +352,12 @@ describe("Objectives contract", () => {
     // 완료는 보관하지 않는다 — 지휘관 Objective 은 제자리에 남고 살아 있는 목록에 done 으로 선다.
     await h.launch.complete("completion-recovery");
     expect(h.archivedObjectiveRecords.has("completion-recovery")).toBe(false);
-    expect(h.store.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false }));
+    expect(h.store.list("c1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false }));
     expect(h.savedObjective("completion-recovery").lifecycleIntent).toBeUndefined();
     // 완료가 보관하던 옛 버전이 남긴 archive 의도는 로드되지만 적용 없이 승인만 된다.
     const file = h.objectiveFile("completion-recovery");
     fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), lifecycleIntent: { requestId: "legacy-archive", action: "archive" } }));
-    const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => h.objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
     const launch = createLaunchService(h.ctx, reloaded);
     launchServices.push(launch);
     await launch.resumeObjectiveIntents();
@@ -367,7 +371,7 @@ describe("Objectives contract", () => {
     await launch.remove("completion-recovery");
     await launch.remove("completion-recovery");
     expect(h.archivedObjectiveRecords.has("completion-recovery")).toBe(true);
-    expect(reloaded.list("t1").some((entry) => entry.id === "completion-recovery")).toBe(false);
+    expect(reloaded.list("c1").some((entry) => entry.id === "completion-recovery")).toBe(false);
     expect(reloaded.all().some((entry) => entry.id === "completion-recovery")).toBe(true);
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(true);
     // 완료 뒤 지휘관과의 대화 — 보관된 지휘관을 휴면으로 되살려 전하고 레코드(완료·확장 회차·보드)는 그대로다. 구성원은 받지 않는다.
@@ -378,7 +382,7 @@ describe("Objectives contract", () => {
     expect(h.sent.at(-1)).toEqual({ objectiveId: "completion-recovery", text: "one more question" });
     expect(h.archivedObjectiveRecords.has("completion-recovery")).toBe(false);
     expect(h.savedObjective("completion-recovery")).toEqual(closed);
-    expect(reloaded.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false, extensions: [] }));
+    expect(reloaded.list("c1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false, extensions: [] }));
     await launch.archive("completion-recovery");
     h.archivedObjectiveRecords.delete("completion-recovery");
     launch.objectiveRecordPurged("completion-recovery");
@@ -390,12 +394,12 @@ describe("Objectives contract", () => {
   it("migrates legacy removed and merged records without losing files across creation response loss, archive failure, ID collision and restart", async () => {
     const h = harness();
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const target = await h.launch.create({ theaterId: "t1", title: "Legacy target", groupId: null });
-    const source = await h.launch.create({ theaterId: "t1", title: "Legacy merged source", groupId: null, note: "original brief" });
+    const target = await h.launch.create({ commodoreId: "c1", theaterId: "t1", title: "Legacy target", groupId: null });
+    const source = await h.launch.create({ commodoreId: "c1", theaterId: "t1", title: "Legacy merged source", groupId: null, note: "original brief" });
     const attached = h.store.attachmentAdd(source.id, { name: "legacy.png", type: "image/png", data: PNG });
     const attachmentFile = h.store.attachmentPath(attached.objective, attached.attachment);
-    const collision = await h.launch.create({ theaterId: "t1", title: "Legacy removed", groupId: null });
-    const completed = await h.launch.create({ theaterId: "t1", title: "Legacy pending completion", groupId: null, note: "completed without a session" });
+    const collision = await h.launch.create({ commodoreId: "c1", theaterId: "t1", title: "Legacy removed", groupId: null });
+    const completed = await h.launch.create({ commodoreId: "c1", theaterId: "t1", title: "Legacy pending completion", groupId: null, note: "completed without a session" });
     h.store.complete(completed.id);
     const removal = { at: 1, by: "old-agent", reason: "old merge", mergedInto: target.id };
     for (const [id, removed] of [[source.id, removal], [collision.id, { at: 1 }]] as const) {
@@ -452,7 +456,7 @@ describe("Objectives contract", () => {
     expect((await h.route("objective/extend", { objectiveId: id, context: "add first scope", language: "en" })).value.error).toBe("restore_failed");
     expect(h.store.find(id)).toMatchObject({ done: completed.done, extensions: [], handoff: completed.handoff });
     // 복원 의도만 기록된 중단도 재시작에서 같은 회차로 끝낸다.
-    const store = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
+    const store = createObjectiveStore({ documentContext, dirOf: () => h.objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
     const launch = createLaunchService(h.ctx, store);
     launchServices.push(launch);
     await launch.resumeObjectiveIntents();
@@ -499,7 +503,7 @@ describe("Objectives contract", () => {
     store.handOff(id, { by: "human" });
     // 완료 버튼을 거치지 않은 검토 대기도 같은 입구로 다음 회차에 들어간다.
     await launch.extend(id, "third scope");
-    const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => h.objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: h.objectiveRecordsHost, emit: () => {} });
     expect(reloaded.find(id)!.extensions.map((round) => round.n)).toEqual([1, 2, 3]);
     expect(reloaded.find(id)!.extensions.map((round) => round.previousHandoff?.by)).toEqual(["commander", "commander", "human"]);
     expect(reloaded.find(id)!.extensions[0]!.previousHandoff).toMatchObject({ retrospective });
@@ -516,7 +520,7 @@ describe("Objectives contract", () => {
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
     const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, savedObjective, objectiveRecords, objectiveRecordsHost, surfaces } = harness(() => routingOrigin);
-    const objective = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
     const allowed = store.memberAdd(objective.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(objective.id, { role: "research" }, "human").members[1]!;
     expect(store.find(objective.id)!.members.map((member) => member.subagents)).toEqual([true, false]);
@@ -605,7 +609,7 @@ describe("Objectives contract", () => {
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 고른 순간 바뀌고(일하는 중이면 그 턴 뒤), 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("switches a launched member's model now or after its turn and keeps one refused member from stopping the muster", async () => {
     const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     await launch.startCommander(objective.id);
     objectiveRecordsHost.patch(reviewer.id, { chatMode: false });
@@ -740,7 +744,7 @@ describe("Objectives contract", () => {
       const items = (JSON.parse(init.body) as { items: { key: string }[] }).items;
       return Response.json({ mode: "model", decisions: items.map((item) => ({ key: item.key, model: "sonnet", effort: "low", label: "Sonnet", because: "Sonnet @low · AI model · difficulty low", fallback: false })) });
     });
-    const objective = await launch.create({ theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
     const analyst = store.memberAdd(objective.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
 
     const first = await route("routing/preview", { objectiveId: objective.id });
@@ -763,7 +767,7 @@ describe("Objectives contract", () => {
 
   it("batch-updates member launch mode to same or route while preserving custom models", async () => {
     const { store, launch, route, call, savedObjective, objectiveFile, objectivesDir, objectiveRecordsHost } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
     const m1 = store.memberAdd(objective.id, { role: "architect" }, "commander").members[0]!;
     const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "commander").members[1]!;
     const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
@@ -792,22 +796,25 @@ describe("Objectives contract", () => {
     const legacy = savedObjective(objective.id) as unknown as { members: { launchBy?: string }[] };
     delete legacy.members[0]!.launchBy;
     fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(legacy));
-    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(reloaded.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
     // launch가 없는 옛 구성원도 다른 필드 저장으로 소유를 추론해 풀지 않는다.
     reloaded.patch(objective.id, { note: "Saved after loading legacy members" });
-    const savedAgain = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const savedAgain = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(savedAgain.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, call, route, resultFile, objectiveRecords, objectiveRecordsHost, archivedObjectiveRecords, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
+    const { ctx, store, events, launch, call, route, resultFile, objectiveRecords, objectiveRecordsHost, archivedObjectiveRecords, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(objectiveRecords.has(objective.id)).toBe(false);
-    expect(store.list("t1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
+    expect(store.list("c1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
     expect(savedObjective(objective.id).id).toBe(objective.id);
     expect(savedObjective(objective.id)).toHaveProperty("title", "Release");
+    expect(savedObjective(objective.id)).toHaveProperty("cwd", ctx.paths.resolveTheaterPath("t1"));
+    expect(objective).toMatchObject({ commodoreId: "c1", theaterId: "t1" });
+    expect(objective).not.toHaveProperty("cwd");
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
@@ -873,11 +880,11 @@ describe("Objectives contract", () => {
     activity.set(research, "idle");
     // 사령관의 완료도 보관하지 않는다 — 지휘관 Objective 은 제자리에 남고 active 목록에 done 으로 서며 기록·연결도 그대로 보인다.
     activity.set(objective.id, "awaiting");
-    const commodore = { kind: "commodore", theaterId: "t1" } as const;
+    const commodore = { kind: "commodore", commodoreId: "c1" } as const;
     expect((await launch.complete(objective.id, { actor: commodore })).done).toMatchObject({ by: commodore });
     expect(archiveCalls.filter((id) => id === objective.id)).toEqual([]);
     expect(objectiveRecords.has(objective.id)).toBe(true);
-    const completed = store.list("t1").find((item) => item.id === objective.id);
+    const completed = store.list("c1").find((item) => item.id === objective.id);
     expect(completed).toMatchObject({ archived: false, done: { by: commodore } });
     expect(completed!.missions[0]!.records.map((record) => record.lines)).toEqual([["a done"], ["a redone", "fixed the gap"]]);
     expect((await launch.reopen(objective.id)).missions.map((mission) => mission.member)).toEqual([research, build, build]);
@@ -896,7 +903,7 @@ describe("Objectives contract", () => {
     expect(saved.id).toBe(objective.id);
     for (const key of ["theaterId", "geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Objective 에서 온다.
-    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     // 행위자를 받지 않은 개시(사람의 화면)는 사람의 개시로 남고, 다시 읽어도 그대로다.
     expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], commencedBy: "human", actionCounts: { complete: 1, reopen: 1, commence: 1 } });
     expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "complete", by: commodore }));
@@ -914,7 +921,7 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.results.map((result) => result.id)).toEqual([prId]);
     expect((await call("complete_mission", { objectiveId: objective.id, missionId: a!.id, summary: ["Duplicate"], results: [{ kind: "pr", url: "https://github.com/example/project/pull/12" }] }, objective.id)).structuredContent).toMatchObject({ error: "result_exists", resultId: prId });
     expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" } }, objective.id)).isError).toBe(false);
-    const restored = createObjectiveStore({ dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const restored = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(restored.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
     expect(restored.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" }));
     expect((await route("objective/get", { objectiveId: objective.id })).value.objective).toHaveProperty("results", restored.find(objective.id)!.results);
@@ -924,7 +931,7 @@ describe("Objectives contract", () => {
     expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).structuredContent.error).toBe("unknown_result");
     expect(savedObjective(objective.id).results).toBeUndefined();
     // 구성원은 자기 증거를 seal하고 지휘관이 결과물로 붙인다. 원본·세션 종료 후에도 목표의 복사본이 열린다.
-    const ownedRoot = store.sharedDir(objective.theaterId, objective.id);
+    const ownedRoot = store.sharedDir(objective.commodoreId, objective.id);
     fs.mkdirSync(ownedRoot, { recursive: true, mode: 0o700 });
     const screenshot = path.join(fs.realpathSync(ownedRoot), "G01.png");
     const document = path.join(fs.realpathSync(ownedRoot), "EVIDENCE.md");
@@ -950,7 +957,7 @@ describe("Objectives contract", () => {
     expect(textResponse).toMatchObject({ status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": "inline", "Cache-Control": "private, no-store" } });
     expect(textResponse.data.toString("utf8")).toBe("# 검증\n\n확인했습니다.\n");
     fs.rmSync(ownedRoot, { recursive: true }); objectiveRecords.delete(research);
-    const evidenceReload = createObjectiveStore({ dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const evidenceReload = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect((await evidenceReload.evidenceRead(objective.id, imageId)).data).toEqual(textResponse.data);
     expect(JSON.stringify((await route("objective/get", { objectiveId: objective.id })).value)).not.toContain(ownedRoot);
     expect(JSON.stringify(events)).not.toContain("ownerObjectiveId");
@@ -980,11 +987,11 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([]);
     // 그룹 삭제 — 개시 전 목표의 그룹은 레코드에만 있어 코어가 옮겨 주지 않는다. 삭제 사건이 미분류로 비워 영속하고,
     // 재시작 뒤에도 미분류이며, 그 목표를 개시한 Objective 도 없는 그룹이 아니라 미분류에 선다.
-    const loose = await launch.create({ theaterId: "t1", title: "Loose", groupId: "g-temp" });
+    const loose = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Loose", groupId: "g-temp" });
     removedGroups.add("g-temp");
-    expect(store.releaseGroups({ theaterId: "t1", groupId: "g-temp" })).toBe(1);
+    expect(store.releaseGroups({ commodoreId: "c1", groupId: "g-temp" })).toBe(1);
     expect(savedObjective(loose.id)).toHaveProperty("groupId", null);
-    const restarted = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const restarted = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(restarted.find(loose.id)?.groupId).toBeNull();
     await launch.startCommander(loose.id);
     expect(objectiveRecords.get(loose.id)?.groupId).toBeNull();
@@ -993,7 +1000,7 @@ describe("Objectives contract", () => {
   it("writes one objective's file per change and turns no link, failed write, failed read or failed delete into success", async () => {
     const { store, events, call, add, objectiveRecords, objectivesDir, objectiveFile, savedIds, workspace } = harness();
     const bytes = (objectiveId: string) => fs.readFileSync(objectiveFile(objectiveId));
-    const reload = () => createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const reload = () => createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     add("alpha");
     add("beta");
     // 레코드 없는 Objective 은 파일 없이 보드에 선다 — 첫 편집이 그 목표의 파일 하나를 만든다.
@@ -1018,7 +1025,7 @@ describe("Objectives contract", () => {
     expect(bytes("alpha")).toEqual(completionBytes);
     expect(events).toHaveLength(completionEvents);
     expect(reload().find("alpha")).toEqual(beforeCompletion);
-    const sourceDir = store.sharedDir("t1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
+    const sourceDir = store.sharedDir("c1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
     const source = path.join(fs.realpathSync(sourceDir), "EVIDENCE.md"); fs.writeFileSync(source, "# preserved source");
     const binaryDir = path.join(objectivesDir, "alpha", "evidence");
     const write = fs.writeFileSync.bind(fs); let writes = 0;
@@ -1034,7 +1041,7 @@ describe("Objectives contract", () => {
     // 읽기 실패는 빈 보드가 아니다 — 없는 폴더만 빈 보드이고, 권한·입출력 오류는 전파돼 남은 파일을 빈 편집으로 덮지 않는다.
     const guarded = reload();
     const denied = vi.spyOn(fs, "readdirSync").mockImplementationOnce(() => { throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }); });
-    expect(() => guarded.list("t1")).toThrow(/EACCES/);
+    expect(() => guarded.list("c1")).toThrow(/EACCES/);
     denied.mockRestore();
     expect(guarded.find("alpha")!.note).toBe("a");
 
@@ -1080,7 +1087,7 @@ describe("Objectives contract", () => {
     fs.writeFileSync(objectiveFile("beta"), JSON.stringify({ id: "beta", rank: 1, note: "preserve", missions: [], results: [{ kind: "pr", url: "invalid" }], evidence: [{ evidenceId: "12345678-1234-4123-8123-123456789012" }] }));
     const corruptResults = bytes("beta");
     const isolated = reload();
-    expect(isolated.list("t1")).toHaveLength(2);
+    expect(isolated.list("c1")).toHaveLength(2);
     expect(isolated.find("alpha")!.note).toBe("other objective survives");
     expect(isolated.find("beta")).toMatchObject({ note: "", results: [] });
     const backup = fs.readdirSync(path.join(objectivesDir, "beta")).find((name) => name.startsWith("objective.json.broken-") && !priorBackups.has(name))!;
@@ -1095,8 +1102,8 @@ describe("Objectives contract", () => {
   it("keeps the dropped position of objectives with and without records, through reload and a stopped respread", () => {
     const { store, events, add, objectiveRecords, objectivesDir, objectiveFile, savedIds } = harness();
     const reload = (emit: (event: ObjectiveEvent) => void = () => undefined) =>
-      createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit });
-    const order = (board: ObjectiveStore) => board.list("t1").map((objective) => objective.id);
+      createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit });
+    const order = (board: ObjectiveStore) => board.list("c1").map((objective) => objective.id);
     add("one");
     add("two");
     add("three");
@@ -1176,7 +1183,7 @@ describe("Objectives contract", () => {
   it("renumbers a board whose ranks leave no representable gap, and refuses the drop instead of corrupting the order", () => {
     const { objectiveRecords, add, workspace } = harness();
     const objectivesDir = path.join(workspace, "objectives-packed");
-    const open = () => createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t2" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const open = () => createObjectiveStore({ documentContext, dirOf: (theaterId) => (theaterId === "c2" ? objectivesDir : null), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     const board = (rank: number) => {
       fs.rmSync(objectivesDir, { recursive: true, force: true });
       for (const id of ["pack-a", "pack-b", "pack-c"]) {
@@ -1185,8 +1192,8 @@ describe("Objectives contract", () => {
       }
       return open();
     };
-    for (const id of ["pack-a", "pack-b", "pack-c"]) add(id, { theaterId: "t2" });
-    const order = (store: ObjectiveStore) => store.list("t2").map((objective) => objective.id);
+    for (const id of ["pack-a", "pack-b", "pack-c"]) add(id, { commodoreId: "c2", theaterId: "t2" });
+    const order = (store: ObjectiveStore) => store.list("c2").map((objective) => objective.id);
     const rankOf = (id: string) => (JSON.parse(fs.readFileSync(path.join(objectivesDir, id, "objective.json"), "utf8")) as Saved).rank;
 
     // 1.5×2^62 에서 ulp 는 1024 다 — 1024 를 뺀 자리까지는 있어도 그 사이 중간값이 없어, 구간을 보드 전체로 넓혀도
@@ -1232,21 +1239,21 @@ describe("Objectives contract", () => {
       if (!parsed.ok) throw new Error("action gate rejected representative input");
       return await use(parsed.call);
     };
-    const created = await throughGate({ action: "add", title: "From Console Use", note: "brief" });
+    const created = await throughGate({ action: "add", theaterId: "t1", title: "From Console Use", note: "brief" });
     expect(created.isError).toBe(false);
     const id = created.structuredContent.objectiveId as string;
     // 브리핑만 들고, 기준·임무·구성원 없이, 호출 Objective 의 그룹과 만든 표시를 들고 태어난다. 저장본을 다시 읽어도 같다.
     expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", criteria: [], missions: [], members: [], addedBy: { objectiveId: caller.id } });
-    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(reloaded.find(id)).toMatchObject({ note: "brief", criteria: [] });
     // add 는 title·note 만 받는다 — 달성 기준·편성 키·읽기 전용 키(groupId)는 선검사에서도, 직접 부른 실행에서도
     // invalid_arguments 로 막혀 기동도 Objective 도 레코드도 늘지 않는다. 기준은 지휘관의 제안으로만 생긴다.
-    const fenced = { launches: launches.length, objectiveRecords: objectiveRecords.size, listed: store.list("t1").length };
-    for (const args of [{ action: "add", title: "Criteria inline", note: "b", criteria: ["x"] }, { action: "add", title: "Missions inline", missions: ["x"] }, { action: "add", title: "Borrowed group", note: "b", groupId: "g-other" }]) {
+    const fenced = { launches: launches.length, objectiveRecords: objectiveRecords.size, listed: store.list("c1").length };
+    for (const args of [{ action: "add", theaterId: "t1", title: "Criteria inline", note: "b", criteria: ["x"] }, { action: "add", theaterId: "t1", title: "Missions inline", missions: ["x"] }, { action: "add", theaterId: "t1", title: "Borrowed group", note: "b", groupId: "g-other" }]) {
       expect(gate(args)).toMatchObject({ ok: false, error: "invalid_arguments" });
       expect((await use(args)).structuredContent.error).toBe("invalid_arguments");
     }
-    expect({ launches: launches.length, objectiveRecords: objectiveRecords.size, listed: store.list("t1").length }).toEqual(fenced);
+    expect({ launches: launches.length, objectiveRecords: objectiveRecords.size, listed: store.list("c1").length }).toEqual(fenced);
     expect(savedIds()).toEqual([id]);
   });
 
@@ -1254,8 +1261,8 @@ describe("Objectives contract", () => {
     const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "objectiveRecord" as const, objectiveId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
-    const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
-    const started = await launch.create({ theaterId: "t1", title: "Started", groupId: null });
+    const waiting = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
+    const started = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Started", groupId: null });
     await launch.requestPlan(started.id);
     type Row = { id: string; objectiveRecord: boolean; done: boolean; self?: boolean; brief?: string; briefTruncated?: boolean; criteria?: string[] };
     const rows = async (filter?: string) => ((await use({ action: "list", ...(filter ? { filter } : {}) })).structuredContent.objectives as Row[]);
@@ -1280,9 +1287,9 @@ describe("Objectives contract", () => {
     expect((await use({ action: "archive", objectiveIds: [started.id] })).structuredContent).toMatchObject({ ok: true, archived: [started.id], deleted: [] });
     expect(store.find(started.id)).toMatchObject({ archived: true, done });
 
-    const duplicate = await launch.create({ theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
-    const planned = await launch.create({ theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
-    const stale = await launch.create({ theaterId: "t1", title: "Stale", groupId: null });
+    const duplicate = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
+    const planned = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
+    const stale = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Stale", groupId: null });
     const before = store.find(waiting.id)!;
     // Objective 이 있는 목표·옮길 수 없는 것을 가진 원본이 하나라도 끼면 아무것도 바꾸지 않고 이유를 하나씩 댄다.
     const refused = await use({ action: "merge", into: waiting.id, from: [duplicate.id, started.id, caller.id, planned.id] });
@@ -1305,7 +1312,7 @@ describe("Objectives contract", () => {
     expect(byId(await rows("all")).has(duplicate.id)).toBe(false);
     expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(404);
     expect(savedIds()).not.toContain(duplicate.id);
-    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (oid) => objectiveRecords.get(oid) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(reloaded.find(waiting.id)!.merged).toContainEqual(expect.objectContaining({ sourceId: duplicate.id, restorable: false }));
     const disk = JSON.parse(fs.readFileSync(path.join(workspace, "objectives", waiting.id, "objective.json"), "utf8"));
     expect(disk.merged[0].source).toMatchObject({ id: duplicate.id, note: "dup brief", criteria: expect.any(Array) });
@@ -1313,7 +1320,7 @@ describe("Objectives contract", () => {
     expect((await use({ action: "remove", objectiveIds: [stale.id] })).structuredContent).toMatchObject({ deleted: [stale.id], archived: [] });
     expect(store.find(stale.id)).toBeNull();
     expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(404);
-    const live = await launch.create({ theaterId: "t1", title: "Archive me", groupId: null, note: "keep me" });
+    const live = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive me", groupId: null, note: "keep me" });
     await launch.requestPlan(live.id);
     expect((await use({ action: "remove", objectiveIds: [live.id] })).structuredContent).toMatchObject({ archived: [live.id], deleted: [] });
     expect(store.find(live.id)).toMatchObject({ archived: true, note: "keep me" });
@@ -1323,7 +1330,7 @@ describe("Objectives contract", () => {
     expect((await use({ action: "restore", objectiveIds: [live.id] })).isError).toBe(false);
     expect(store.find(live.id)).toMatchObject({ archived: false, note: "keep me" });
     // 기동 전 목표의 완료는 레코드만 바꾼다 — Objective 을 만들거나 보관하지 않는다. 사람이 「보관」하면 무기동 지휘관으로 보관되고 복원해도 완료가 남는다.
-    const pendingCompletion = await launch.create({ theaterId: "t1", title: "Finish without launching", groupId: null });
+    const pendingCompletion = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Finish without launching", groupId: null });
     const launchedBefore = launches.length;
     expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, hasSession: false, done: expect.any(Object) });
     expect(launches).toHaveLength(launchedBefore);
@@ -1331,12 +1338,12 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Objective 으로 보관되고, 복원하면 기록과 함께 돌아온다.
-    const shelved = await launch.create({ theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
+    const shelved = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/restore", { objectiveId: shelved.id })).value.objective).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
     // 플래그 없는 보관(목표 머리의 두 번 확정 삭제)은 그대로 영구 삭제다.
-    const discarded = await launch.create({ theaterId: "t1", title: "Delete before starting", groupId: null });
+    const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Delete before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: true });
     expect(store.find(discarded.id)).toBeNull();
 
@@ -1356,7 +1363,7 @@ describe("Objectives contract", () => {
       previewPurge: (id: string) => ({ targetId: id, objectiveIds: [id], revision }),
       purge,
     });
-    const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
+    const commodore = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
     const board = async (args: Record<string, unknown>, tool = commodore) => {
       const parsed = tool.actionSchema!.parse(args);
       expect(parsed.ok).toBe(true);
@@ -1400,13 +1407,13 @@ describe("Objectives contract", () => {
     add("legacy", { title: "Saved outside objectives" });
     fs.mkdirSync(path.dirname(objectiveFile("legacy")), { recursive: true });
     fs.writeFileSync(objectiveFile("legacy"), JSON.stringify({ id: "legacy", rank: 5, note: "kept", enlisted: false, missions: [] }));
-    const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, missions: [{ text: "one" }] });
+    const made = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Made in Objectives", groupId: null, missions: [{ text: "one" }] });
     const madeMember = store.memberAdd(made.id, { role: "build" }, "human").members[0]!;
     await launch.requestPlan(made.id);
     store.setPlanning(made.id, false);
     await launch.muster(made.id);
     // 레코드 없는 Objective 은 빈 목표로 선다 — 구성원(launched-2)과 플러그인 Objective 은 목표가 아니다.
-    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "legacy", "sidebar"].sort());
+    expect(store.list("c1").map((objective) => objective.id).sort()).toEqual([made.id, "legacy", "sidebar"].sort());
     expect(store.find("sidebar")).toMatchObject({ title: "Made in the sidebar", groupId: "g-a", note: "", missions: [], awaitingReview: false });
     expect(store.find(madeMember.id)).toBeNull();
     // 첫 편집이 레코드를 만든다 — 목표인 채 그대로다.
@@ -1433,7 +1440,7 @@ describe("Objectives contract", () => {
 
   it("keeps the group on the parent without adding group metadata to children", async () => {
     const { store, launch, objectiveRecords } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Ship", groupId: "g-review", missions: [{ text: "a" }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ship", groupId: "g-review", missions: [{ text: "a" }] });
     store.memberAdd(objective.id, { role: "build" }, "human");
     await launch.requestPlan(objective.id);
     store.setPlanning(objective.id, false);
@@ -1448,10 +1455,10 @@ describe("Objectives contract", () => {
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
     const { ctx, store, call, launch, workspace, events, add, objectiveFile, objectiveRecords, objectivesDir } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    const other = (await launch.create({ theaterId: "t1", title: "Other", groupId: null })).id;
+    const other = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Other", groupId: null })).id;
     // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
     expect((await call("read", { objectiveId: objective.id }, other)).structuredContent.error).toBe("not_participant");
@@ -1524,14 +1531,14 @@ describe("Objectives contract", () => {
     expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" }] }, commander)).structuredContent.error).toBe("unsupported_pr_host");
     expect((await call("complete_mission", { ...completion, results: [{ kind: "artifact", url: "https://claude.ai/artifact/Board?token=secret" }] }, commander)).structuredContent.error).toBe("invalid_artifact_url");
     expect((await call("update_result", { objectiveId: objective.id, resultId: artifactId, patch: { url: "HTTPS://CLAUDE.AI/code/artifact/ABCDEF12-ABCD-7123-8123-ABCDEF123456/", label: "Design" } }, commander)).isError).toBe(false);
-    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     expect(reloaded.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
     expect((await call("read", { objectiveId: objective.id }, member.id)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([
       expect.objectContaining({ id: resultId }), expect.objectContaining({ id: artifactId, kind: "artifact", url: "https://claude.ai/code/artifact/abcdef12-abcd-7123-8123-abcdef123456" }),
     ]));
     expect((await call("detach_result", { objectiveId: objective.id, resultId: artifactId }, commander)).isError).toBe(false);
     expect(store.find(objective.id)!.results).toHaveLength(1);
-    const own = store.sharedDir(objective.theaterId, objective.id); fs.mkdirSync(own, { recursive: true });
+    const own = store.sharedDir(objective.commodoreId, objective.id); fs.mkdirSync(own, { recursive: true });
     const root = fs.realpathSync(own);
     const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "shared evidence");
     const seal = (source: string, by = member.id) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
@@ -1629,7 +1636,7 @@ describe("Objectives contract", () => {
 
   it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
     const { ctx, store, call, launch, route, sent, activity, hostFault, objectiveRecordsHost, objectivesDir } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
     await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
@@ -1706,7 +1713,7 @@ describe("Objectives contract", () => {
     expect(sent.length).toBe(sends);
     // 구성원은 사람의 답을 보드에서 읽고, 결정은 다시 읽어 들인 저장에도 그대로다.
     expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ header: "Publishing", question: "How far should publishing go?", text: "then stop", missionId, memberId: member }, { text: written }] });
-    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), objectiveRecords: objectiveRecordsHost, emit: () => {} });
+    const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? objectivesDir : null), objectiveRecords: objectiveRecordsHost, emit: () => {} });
     expect(reloaded.find(commander)!.decisions).toHaveLength(2);
     // 기다리는 요청 — 그 안에 온 답은 도구 응답으로 돌아가고 결정으로 남는다. 프롬프트는 보내지 않는다.
     const waiting = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 60_000 }).find((tool) => tool.name === "request_decision")!;
@@ -1715,10 +1722,10 @@ describe("Objectives contract", () => {
     await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
     const live = store.find(commander)!.decisionRequest!;
     const beforeAnswer = sent.length;
-    const actor = { kind: "commodore", theaterId: "t1" } as const;
+    const actor = { kind: "commodore", commodoreId: "c1" } as const;
     await launch.answerDecision(commander, { requestId: live.id, answers: [{ questionId: live.questions[0]!.id, selectedOptionIds: [live.questions[0]!.options[0]!.id], text: "" }] }, { actor });
     expect((await pendingAsk).structuredContent).toMatchObject({ answered: true, answers: [{ question: "Publish?", selected: ["Yes"], by: actor }] });
-    const afterAnswer = createObjectiveStore({ dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
+    const afterAnswer = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
     expect(afterAnswer.find(commander)!.decisions.at(-1)).toMatchObject({ by: actor });
     expect(sent.length).toBe(beforeAnswer);
     expect(store.find(commander)).toMatchObject({ decisionRequest: null });
@@ -1733,17 +1740,17 @@ describe("Objectives contract", () => {
     legacy.decisions[0].question = { text: legacyQuestion.text, options: legacyQuestion.options, multiSelect: legacyQuestion.multiSelect };
     legacy.decisions[0].answer.text = "a".repeat(2000);
     fs.writeFileSync(file, JSON.stringify(legacy));
-    const legacyStore = createObjectiveStore({ dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
+    const legacyStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
     const legacyReload = legacyStore.find(commander)!;
     expect(legacyReload.decisionRequest).toEqual(legacy.decisionRequest);
     expect(legacyReload.decisionDelivery).toEqual({ requestId: placed.id, at: 1, by: legacy.decisionDelivery.by });
     expect(legacyStore.storedAnswers(commander, placed.id)).toEqual(legacy.decisionDelivery.answers);
-    expect(legacyReload.decisions).toEqual(legacy.decisions.map((row: { by: unknown }) => ({ ...row, by: typeof row.by === "object" ? { ...row.by, theaterId: "t1" } : row.by })));
+    expect(legacyReload.decisions).toEqual(legacy.decisions.map((row: { by: unknown }) => ({ ...row, by: typeof row.by === "object" ? { ...row.by, commodoreId: "c1" } : row.by })));
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
     const { store, call, launch, route, sent, deliveries, activity, hostFault, objectiveRecords, objectiveRecordsHost } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
     await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
@@ -1857,7 +1864,7 @@ describe("Objectives contract", () => {
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {
     const { store, call, route, launch, events, savedObjective, launches, objectiveRecords, hostFault } = harness();
-    const objective = await launch.create({ theaterId: "t1", title: "Criteria", groupId: null, missions: [{ text: "fix" }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Criteria", groupId: null, missions: [{ text: "fix" }] });
     const as = objective.id;
     const first = store.criterionAdd(as, "tests pass", "human").criteria[0]!;
     const second = store.criterionAdd(as, "copy unchanged", "human").criteria[1]!;
@@ -1976,7 +1983,7 @@ describe("Objectives contract", () => {
 
   it("admits observable follow-ups and creates records once after hand-off without launching their Objectives", async () => {
     const { store, route, call, launch, launches, objectiveRecords, savedObjective, objectiveFile, restart } = harness();
-    const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
+    const source = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
@@ -2013,14 +2020,14 @@ describe("Objectives contract", () => {
     interrupted.mockRestore();
     expect((await route("followup/retry", { objectiveId: source.id, batchId, candidateId: candidate.id })).status).toBe(200);
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
-    const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
+    const targetId = store.list("c1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.objectiveId).toBe(targetId);
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", criteria: [], commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("title", "Next");
     expect(objectiveRecords.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);
-    expect(store.list("t1").filter((entry) => entry.id === targetId)).toHaveLength(1);
+    expect(store.list("c1").filter((entry) => entry.id === targetId)).toHaveLength(1);
     await launch.remove(targetId);
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
   });
@@ -2058,7 +2065,7 @@ describe("Objectives contract", () => {
     });
     const firstImage = image();
     let hasPersonMessage = false;
-    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1", readAttachments, () => hasPersonMessage) as [ConsoleMcpTool, ConsoleMcpTool];
+    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "c1", readAttachments, () => hasPersonMessage) as [ConsoleMcpTool, ConsoleMcpTool];
     // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
     const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
     const board = async (args: Record<string, unknown>) => {
@@ -2079,13 +2086,13 @@ describe("Objectives contract", () => {
       { model: "cursor--grok-4.7-500k", label: "Grok", provider: "cursor", efforts: [], available: true, quotaScope: "auto", quotaPool: "cursor:auto" },
     ]);
     expect(loadout.quota).toEqual(quota.providers);
-    const actor = { kind: "commodore", theaterId: "t1" };
-    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage] });
+    const actor = { kind: "commodore", commodoreId: "c1" };
+    const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage] });
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31" } });
     const id = created.objectiveId as string;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor });
     expect((await board({ action: "list", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
-    const reloadObjective = () => createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
+    const reloadObjective = () => createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
     expect(reloadObjective()).toMatchObject({ addedBy: actor, dueDate: "2026-10-31", attachments: [expect.objectContaining({ n: 1, type: "image/png", bytes: PNG.length })] });
     const secondImage = image(), thirdImage = image();
     await board({ action: "edit_brief", objectiveId: id, brief: "With original images", attachmentIds: [secondImage, thirdImage] });
@@ -2113,9 +2120,9 @@ describe("Objectives contract", () => {
     });
     try {
       expect(await attachmentRefusal({ ...edit, attachmentIds: [secondImage, thirdImage] })).toBe("objectives_failed");
-      const count = store.list("t1").length;
-      expect(await attachmentRefusal({ action: "add", title: "Must not exist", attachmentIds: [firstImage, secondImage] }, commodoreList)).toBe("objectives_failed");
-      expect(store.list("t1")).toHaveLength(count);
+      const count = store.list("c1").length;
+      expect(await attachmentRefusal({ action: "add", theaterId: "t1", title: "Must not exist", attachmentIds: [firstImage, secondImage] }, commodoreList)).toBe("objectives_failed");
+      expect(store.list("c1")).toHaveLength(count);
     } finally { failedWrite.mockRestore(); }
     expect(JSON.stringify(store.find(id))).toBe(beforeAttachments);
     expect(fs.readdirSync(path.join(objectivesDir, id, "attachments"))).toEqual(beforeFiles);
@@ -2130,12 +2137,12 @@ describe("Objectives contract", () => {
     expect(reloadObjective()?.dueDate).toBeNull();
     // 운영 주체 — 사람이 만든 목표도 사령관 조회에 그대로 서고 operator 로 구분된다. 맡기는 것은 사람의 라우트뿐이고,
     // 맡긴 값은 다시 읽어도 남으며 행위 기록에 사람의 손으로 남는다.
-    const personal = (await launch.create({ theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;
+    const personal = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ operator: "commodore" });
     expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id: personal, operator: "human" }));
     expect((await route("objective/operator", { objectiveId: personal, commodore: true })).status).toBe(200);
     expect((await board({ action: "read", objectiveId: personal })).objective).toMatchObject({ operator: "commodore", actions: [expect.objectContaining({ kind: "edit", by: "human" })] });
-    expect(createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(personal)?.commodoreOperated).toBe(true);
+    expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(personal)?.commodoreOperated).toBe(true);
     expect(launches).toHaveLength(0);
     // 사령관이 만든 목표의 지휘관도 채팅 뷰로 준비된다 — 보기 선택은 없다.
     expect(store.find(id)!.commander.viewMode).toBe("chat");
@@ -2167,7 +2174,7 @@ describe("Objectives contract", () => {
     await command("set_member_launch", { member: observer.id, mode: "model", model: "sonnet" }, id);
     expect(store.find(id)!.members.at(-1)!.launch).toEqual({ mode: "model", model: "sonnet[1m]" });
     await command("set_member_launch", { member: observer.id, mode: "route" }, id);
-    expect(createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
+    expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
     expect((await route("member/remove", { objectiveId: id, memberId: observer.id })).status).toBe(200);
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
@@ -2193,13 +2200,13 @@ describe("Objectives contract", () => {
     expect(store.find(personal)).toBeNull();
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
     // 완료 목표 보관은 현재 턴의 사람 메시지가 권한이다. 미기동 완료 목표도 삭제하지 않고 완료 기록과 함께 보관한다.
-    const completed = await launch.create({ theaterId: "t1", title: "Completed before launch", groupId: null });
+    const completed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Completed before launch", groupId: null });
     await launch.complete(completed.id);
     const completion = store.find(completed.id)!.done;
     const archiveCompleted = { action: "remove", objectiveIds: [completed.id] };
     const deniedArchive = await commodoreList.execute(archiveCompleted, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
     expect(deniedArchive.structuredContent).toMatchObject({ error: "tidy_refused", refusals: [{ objectiveId: completed.id, reason: "person_message_required", hint: expect.any(String) }] });
-    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t1")[0]!, archiveCompleted)).toBe("tidy_refused");
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "c1")[0]!, archiveCompleted)).toBe("tidy_refused");
     expect(store.find(completed.id)).toMatchObject({ archived: false, hasSession: false, done: completion });
     hasPersonMessage = true;
     expect(await board(archiveCompleted)).toMatchObject({ ok: true, archived: [completed.id], deleted: [] });
@@ -2232,13 +2239,13 @@ describe("Objectives contract", () => {
     expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.arrayContaining([expect.objectContaining({ state: "idle", outcome: "failed" })]) }) }));
     const personView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(personView.objective.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
-    const personState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
+    const personState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
     expect(personState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)).toMatchObject({ outcome: "failed" });
     outcomes.delete(workerId);
     expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.not.arrayContaining([expect.objectContaining({ outcome: "failed" })]) }) }));
     const recoveredView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    const recoveredState = (await route("state", { theaterId: "t1" })).value as { objectives: readonly Objective[] };
+    const recoveredState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     // 지휘관이 고른 구성원은 라우팅 없이 그 모델로 뜨고, 생략한 구성원은 판단이 보여 준 값으로 뜬다(이 하네스에서는 판단이 실패해 지휘관 프리셋).
     expect(objectiveRecords.get(workerId)!.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
@@ -2302,7 +2309,7 @@ describe("Objectives contract", () => {
     const protectedResult = await call("set_member_launch", { objectiveId: id, member: workerId, mode: "model", model: "sonnet", effort: "low" }, id);
     expect(protectedResult.structuredContent).toMatchObject({ error: "member_launch_person_chosen", reason: expect.any(String) });
     expect(store.storedMember(id, workerId)).toEqual(personSelection);
-    const reloadedStore = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const reloadedStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
     expect(reloadedStore.storedMember(id, workerId)?.launchBy).toBe("human");
     // 실행값을 same에서 명시 모델로 고정해도 같은 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
     const reviewerId = store.find(id)!.members[1]!.id;
@@ -2423,7 +2430,7 @@ describe("Objectives contract", () => {
     const largeBrief = '한글🙂\\"\n'.repeat(1_500);
     let largeId = "";
     for (let index = 0; index < 123; index += 1) {
-      const objective = await launch.create({ theaterId: "t1", title: `Backlog ${index}`, groupId: null,
+      const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: `Backlog ${index}`, groupId: null,
         note: largeBrief, today: true, dueDate: "2026-10-09", addedBy: id,
         criteria: Array.from({ length: 20 }, (_, n) => `Criterion ${n}: ${"필수 계약 ".repeat(35)}`),
         missions: Array.from({ length: 32 }, (_, n) => ({ text: `Mission ${n}` })) });
@@ -2499,7 +2506,7 @@ describe("Objectives contract", () => {
   it("delivers each failed member turn once without retrying and resolves one failure inbox row on recovery or explicit reissue", async () => {
     const h = harness();
     const { ctx, store, launch, events, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, workspace, restart } = h;
-    const objective = await launch.create({ theaterId: "t1", title: "Failure delivery", groupId: null });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Failure delivery", groupId: null });
     const id = objective.id;
     const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
@@ -2519,7 +2526,7 @@ describe("Objectives contract", () => {
       error_details: "The backend is temporarily overloaded. Please retry.",
       last_assistant_message: "API Error: 529 The backend is temporarily overloaded. Please retry. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:49188).",
     };
-    const board = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
+    const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
     const failureRows = async () => {
       const result = await board.execute({ action: "inbox" }, { cwd: workspace }) as { isError: boolean; structuredContent: { objectives: { id: string; reasons: string[] }[] } };
       expect(result.isError).toBe(false);
@@ -2616,7 +2623,7 @@ describe("Objectives contract", () => {
       expect(following.structuredContent.nextOffset).toBeNull();
       expect(Buffer.byteLength(compactInbox.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
       expect.soft(compactInbox.structuredContent.objectives).toContainEqual(expect.objectContaining({ id, rowTruncated: true, failedMembers: 1, reasons: ["member-failed"] }));
-      const detail = createCommodoreBoardTools(ctx, store, launch, "t1")[1]!;
+      const detail = createCommodoreBoardTools(ctx, store, launch, "c1")[1]!;
       let joined = "";
       let offset = 0;
       do {
@@ -2670,7 +2677,7 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(5_000);
       const restartedMember = () => after.store.find(id)!.members.find((member) => member.id === memberId);
       const restartedRows = async () => {
-        const result = await createCommodoreBoardTools(ctx, after.store, after.launch, "t1")[0]!.execute({ action: "inbox" }, { cwd: workspace }) as { structuredContent: { objectives: { id: string; reasons: string[] }[] } };
+        const result = await createCommodoreBoardTools(ctx, after.store, after.launch, "c1")[0]!.execute({ action: "inbox" }, { cwd: workspace }) as { structuredContent: { objectives: { id: string; reasons: string[] }[] } };
         return result.structuredContent.objectives.filter((row) => row.id === id && row.reasons.includes("member-failed"));
       };
       expect(restartedMember()).toMatchObject({ failure: { ...compaction, consecutiveFailures: 1, acknowledged: true } });
@@ -2730,7 +2737,7 @@ describe("Objectives contract", () => {
   it("tells the Commander once when a member turn closes without failure but delivers no message, keeping the last response verbatim, and stays silent on normal turns", async () => {
     const h = harness();
     const { ctx, store, launch, activity, outcomes, outputDetails, surfaces, call, sent, launches, resumed, restart, advertised } = h;
-    const objective = await launch.create({ theaterId: "t1", title: "Unreported stop", groupId: null });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Unreported stop", groupId: null });
     const id = objective.id;
     const memberId = store.memberAdd(id, { role: "worker", launch: { mode: "same" } }, "human").members[0]!.id;
     const mission = launch.missionAdded(id, { text: "Report the result", member: memberId }).missions[0]!;
@@ -2909,7 +2916,7 @@ describe("Objectives contract", () => {
     const workspaceOf = (theaterId: string) => path.join(dir, "workspaces", theaterId);
     fs.mkdirSync(path.join(workspaceOf("present"), "objectives", "cmdr"), { recursive: true });
     fs.writeFileSync(path.join(workspaceOf("present"), "objectives", "cmdr", "objective.json"), JSON.stringify({ id: "cmdr", rank: 0, note: "", missions: [], members: [{ id: "m1", role: "보조", by: "human", objectiveId: "member" }] }));
-    const node = (id: string, theaterId: string): Node => ({ id, theaterId, type: "agent", pluginId: null, title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } });
+    const node = (id: string, theaterId: string): Node => ({ commodoreId: `c-${theaterId}`, id, theaterId, type: "agent", pluginId: null, title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } });
     const objectiveRecords = new Map<string, Node>([["cmdr", node("cmdr", "present")], ["member", node("member", "present")], ["lost", node("lost", "gone")]]);
     const noop = () => () => undefined;
     const ctx = {
@@ -2942,7 +2949,7 @@ describe("Objectives contract", () => {
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
     const { store, launch, call, sent, activity, advanceClock, restart, emitSessionMessage } = harness(() => null, { reportQuietMs });
-    const objective = await launch.create({ theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
     expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "worker" }] }, commander)).isError).toBe(false);
@@ -3030,7 +3037,7 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toHaveLength(2);
       // ② 사령관의 스티어링은 멈춤을 거두고 보고 기대를 되살린다. 스티어링은 보드 시각을 옮기므로 침묵은 그때부터 다시 센다.
-      await after.launch.steer(objective.id, { actor: { kind: "commodore", theaterId: "t1" }, context: "Resume the mission." });
+      await after.launch.steer(objective.id, { actor: { kind: "commodore", commodoreId: "c1" }, context: "Resume the mission." });
       expect(after.store.find(objective.id)?.stoppedAt).toBeNull();
       advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);
