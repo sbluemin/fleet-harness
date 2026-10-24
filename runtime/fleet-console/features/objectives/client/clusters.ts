@@ -101,9 +101,9 @@ const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.auton
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
- * `autonomy` 는 스위치(표식의 켬·끔), `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
+ * 사령관 표식은 순찰과 무관하게 활성이고, `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
  */
-export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled?: boolean; readonly autonomy?: boolean; readonly peek?: boolean }
+export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled?: boolean; readonly peek?: boolean }
 const NO_COMMODORE: CommodoreBoard = { active: false, stalled: [] };
 
 /** 경과 시간의 칸 — 5분 단위라 정체 점검과 같은 간격(5분)으로 다시 셀 때 「N분 전」이 그 간격보다 낡지 않는다. */
@@ -144,18 +144,17 @@ function provenanceOf(objective: Objective, board: CommodoreBoard, now: number):
 
 /**
  * 줄 끝 사령관 표식 — 그 자체가 맡김 스위치다. 기준은 서버가 판정해 보낸 운영 주체(`operator`) 하나이고(깨움과 같은 값),
- * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 켠 표식은 사령관 스위치와 같은 글리프로 자율 운영을 따라 켬·끔 잉크가 바뀌고,
+ * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 표식의 활성 잉크는 순찰 설정과 무관하며,
  * 꺼진 표식은 외곽선이다. 실험 기능이 꺼져 있으면 서지 않는다.
  */
 function commodoreMarkOf(objective: Objective, board: CommodoreBoard): ObjectiveClusterRowMark | undefined {
   if (!board.enabled) return undefined;
   const operated = objective.operator === "commodore";
-  const on = board.autonomy === true;
   return {
-    square: on ? "filled" : "hollow",
+    square: "filled",
     renderGlyph: operated ? renderCommodoreRowGlyph : renderCommodoreRowGlyphOff,
     ...(board.peek && operated ? { emphasized: true } : {}),
-    label: (locale) => getT(locale)(operated ? (on ? "objectives.mark.commodore.onTip" : "objectives.mark.commodore.onTipOff") : "objectives.mark.commodore.offTip"),
+    label: (locale) => getT(locale)(operated ? "objectives.mark.commodore.onTip" : "objectives.mark.commodore.offTip"),
     toggle: {
       pressed: operated,
       label: (locale) => getT(locale)("objectives.mark.commodore.toggle", { title: objective.title }),

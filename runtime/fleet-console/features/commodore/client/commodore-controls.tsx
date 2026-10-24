@@ -15,8 +15,8 @@ type T = Translate<CommodoreMessageKey>;
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 
 /** 순찰 간격 사다리 — 서버 `COMMODORE_PATROL_MINUTES` 와 같다(서버 모듈은 브라우저 번들에 싣지 않는다). */
-export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = [15, 30, 60, 120, 240, 480];
-export const DEFAULT_PATROL: CommodorePatrolMinutes = 60;
+export const PATROL_STEPS: readonly CommodorePatrolMinutes[] = ["off", 15, 30, 60, 120, 240, 480];
+export const DEFAULT_PATROL: CommodorePatrolMinutes = "off";
 
 /**
  * 사령관·지휘관 좌표 한 칸 — Console 공유 선택기(설정 행의 선택 상자). 사령관 세션은 `agent` 대상이라 ULTRACODE가 서지 않고,
@@ -90,7 +90,8 @@ export function commanderCoordinates(state: CommodoreStateFields, next: { readon
 
 /* ── 순찰 간격 ───────────────────────────────────────────────────────── */
 
-export function patrolWord(t: T, minutes: number): string {
+export function patrolWord(t: T, minutes: CommodorePatrolMinutes): string {
+  if (minutes === "off") return t("commodore.patrol.off");
   if (minutes < 60) return t("commodore.patrol.minutes", { n: minutes });
   return minutes === 60 ? t("commodore.patrol.hour") : t("commodore.patrol.hours", { n: minutes / 60 });
 }

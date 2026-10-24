@@ -14,7 +14,7 @@ import { isComposerAttachmentCandidate } from "../../execution/client/composer-p
 import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
-import { SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
+import { SettingsRow } from "../../settings/client/preferences-context.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -49,7 +49,6 @@ import {
   useCommodoreIntelEdits,
   retryCommodore,
   saveCommodoreDirective,
-  setCommodoreAutonomy,
   setCommodoreCommander,
   setCommodoreCoordinates,
   setCommodorePatrol,
@@ -87,12 +86,12 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
   const on = view.active;
   const run = view.run;
   return [
-    on ? t("commodore.meta.autonomous") : t("commodore.meta.manual"),
+    on ? t("commodore.meta.autonomous") : t("commodore.meta.patrolOff"),
     on && view.state.stopAt ? t("commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
     on && run.phase === "idle" && run.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
-    on && run.phase === "turn" ? t("commodore.meta.turn") : null,
-    on && run.phase === "retrying" && run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
-    on && run.phase === "error" ? `${t("commodore.meta.error")}${run.reason ? ` · ${errorWord(t, run.reason)}` : ""}` : null,
+    run.phase === "turn" ? t("commodore.meta.turn") : null,
+    run.phase === "retrying" && run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
+    run.phase === "error" ? `${t("commodore.meta.error")}${run.reason ? ` · ${errorWord(t, run.reason)}` : ""}` : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -170,7 +169,6 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
     setTrailPreferred(TRAIL_WIDTH_DEFAULT);
     writeTrailWidth(TRAIL_WIDTH_DEFAULT);
   };
-  const on = view?.active === true;
   const run = view?.run;
 
   // 입구가 맡긴 포커스 — 기록은 입력란(바로 말할 수 있게), 지시는 지시 입력란. 링크로 온 「입력 끝」은 커서를 글 끝에 둔다.
@@ -205,7 +203,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
 
   return (
     <div ref={rootRef} className={`objectives-commodore-inbox${compact ? " is-compact" : ""}`}>
-      {on && (run?.phase === "retrying" || run?.phase === "error") ? (
+      {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
@@ -245,7 +243,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
@@ -266,16 +264,12 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
  */
 export function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
-  const on = state.autonomy === true;
   const modelOverridden = state.model !== undefined;
   const patrol = state.patrolMinutes ?? DEFAULT_PATROL;
   const commanderOverridden = state.commanderModel !== undefined;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
-      <SettingsRow label={t("commodore.settings.autonomy")} hint={t(view.boardReady ? "commodore.settings.autonomyHint" : "commodore.failed.boardUnavailable")}>
-        <SettingsToggle disabled={!view.boardReady} checked={on} ariaLabel={t("commodore.switchAria")} onChange={(next) => act(() => setCommodoreAutonomy(theaterId, next))} />
-      </SettingsRow>
       <SettingsRow
         label={t("commodore.settings.model")}
         hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
@@ -291,13 +285,13 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
       </SettingsRow>
       <SettingsRow
         label={t("commodore.settings.patrol")}
-        hint={<>{t("commodore.settings.patrolHint")}{state.patrolMinutes !== undefined ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, null))} /> : null}</>}
+        hint={<>{t("commodore.settings.patrolHint")}{patrol !== DEFAULT_PATROL ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, DEFAULT_PATROL))} /> : null}</>}
       >
         <PatrolControl
           t={t}
           minutes={patrol}
           nextPatrolAt={view.active && run.phase === "idle" ? run.nextWakeAt : undefined}
-          onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes))}
+          onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes))}
         />
       </SettingsRow>
       <SettingsRow label={t("commodore.stop.title")} hint={t("commodore.stop.hint")}>
@@ -357,14 +351,14 @@ const CheckGlyph = () => <svg viewBox="0 0 12 12" fill="none" stroke="currentCol
  * 순찰 간격 — 모델 칩 옆의 같은 문법(글리프 + 낱말)이고, 누르면 같은 유리 메뉴에 사다리가 선다. 고르면 곧바로 저장하고 닫힌다.
  * 메뉴는 body 포털이라 서랍의 Esc(서랍 닫기)에 닿지 않게 키 입력을 메뉴 안에서 끝낸다.
  */
-function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; readonly minutes: number; readonly nextPatrolAt: number | undefined; readonly onPick: (minutes: CommodorePatrolMinutes) => void }) {
+function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; readonly minutes: CommodorePatrolMinutes; readonly nextPatrolAt: number | undefined; readonly onPick: (minutes: CommodorePatrolMinutes) => void }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const focusOnOpen = useRef(false);
   const word = patrolWord(t, minutes);
-  const title = [t("commodore.patrol.title", { interval: word }), nextPatrolAt ? t("commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
+  const title = [minutes === "off" ? t("commodore.meta.patrolOff") : t("commodore.patrol.title", { interval: word }), nextPatrolAt ? t("commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -671,7 +665,7 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
 
 /**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
- * 자율 운영이 꺼져 있으면 메시지 전송은 막지만 /clear는 받는다. 쓰던 초안은 그대로 두어 다시 켜면 보낼 수 있다.
+ * 순찰 안 함에서도 메시지와 /clear를 받는다. 서버가 전송을 거절하면 쓰던 초안은 그대로 둔다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
 function useClearConfirmation(theaterId: string, onFail: (error: unknown) => void, onClear: () => void) {
@@ -865,7 +859,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const menuId = `commodore-composer-menu-${theaterId}`;
-  // 폰은 연결이 끊겨도 잠근다. 데스크톱은 자율 운영이 꺼져도 /clear 를 받으므로 입력은 열어 둔다.
+  // 폰은 연결이 끊기면 잠근다. 데스크톱은 /clear와 초안 편집을 위해 입력을 열어 둔다.
   const usable = active && (phone ? phone.online : true);
   const finishSentDraft = (sentKeys: readonly string[], sentRevision: number, discardSent: boolean, sentQuoteKeys: readonly string[] = []) => {
     const current = draft.read();

@@ -70,7 +70,7 @@ export function installCommodoreHost(next: CommodoreClientHost | undefined): () 
 }
 export const subscribeCommodore = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const commodoreRevision = () => revision;
-const EMPTY = { commodoreId: "", active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false, view: null, asks: [] };
+const EMPTY = { commodoreId: "", active: false, stalled: [] as readonly string[], enabled: false, peek: false, view: null, asks: [] };
 export const commodoreBoardOf = (theaterId: string) => host?.read(theaterId) ?? EMPTY;
 export const readCommodore = commodoreBoardOf;
 export const openAsks = (theaterId: string | null) => theaterId ? host?.read(theaterId).asks ?? EMPTY.asks : EMPTY.asks;

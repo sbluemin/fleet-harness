@@ -1,7 +1,7 @@
 import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { AgentConversationEntry, AgentConversationProps } from "../../execution/shared/chat-renderer.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
@@ -34,7 +34,6 @@ import {
   removeCommodoreIntel,
   retryCommodore,
   saveCommodoreDirective,
-  setCommodoreAutonomy,
   setCommodoreCommander,
   setCommodoreCoordinates,
   setCommodoreMobileTab,
@@ -97,12 +96,11 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
     const view = readCommodore(theaterId).view;
     if (!view) return null;
     const t = getT(commodoreLanguage());
-    if (!view.active) return { text: t("commodore.mobile.off"), tone: "faint" };
     const run = view.run;
     if (run.phase === "turn") return { text: t("commodore.meta.turn") };
     if (run.phase === "retrying" && run.nextWakeAt) return { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) };
     if (run.phase === "error") return { text: t("commodore.meta.error"), tone: "danger" };
-    return { text: t("commodore.mobile.on") };
+    return { text: t(view.active ? "commodore.meta.autonomous" : "commodore.meta.patrolOff") };
   },
 };
 
@@ -141,21 +139,20 @@ function CommodoreDisabled({ t }: { readonly t: T }) {
   );
 }
 
-/** 대화 pill 의 보조 줄 — 자율 운영과 지금의 실행 상태를 한 줄로(켜면 다음 순찰, 도는 중·재시도·오류는 그 사실). */
+/** 순찰 여부와 별개로 메시지 턴의 진행·오류도 그대로 보인다. */
 function commodorePillStatus(t: T, view: CommodoreView | null): string {
   if (!view) return "";
-  if (!view.active) return t("commodore.mobile.autonomyOff");
   const run = view.run;
-  const autonomy = t("commodore.settings.autonomy");
-  if (run.phase === "turn") return `${autonomy} · ${t("commodore.meta.turn")}`;
-  if (run.phase === "retrying" && run.nextWakeAt) return `${autonomy} · ${t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })}`;
-  if (run.phase === "error") return `${autonomy} · ${t("commodore.meta.error")}`;
-  return run.nextWakeAt ? `${autonomy} · ${t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) })}` : autonomy;
+  const mode = t(view.active ? "commodore.meta.autonomous" : "commodore.meta.patrolOff");
+  if (run.phase === "turn") return `${mode} · ${t("commodore.meta.turn")}`;
+  if (run.phase === "retrying" && run.nextWakeAt) return `${mode} · ${t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })}`;
+  if (run.phase === "error") return `${mode} · ${t("commodore.meta.error")}`;
+  return run.nextWakeAt ? `${mode} · ${t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) })}` : mode;
 }
 
 /**
  * 화면은 두 장이다. 기본은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 한 단 깊은 칩 화면
- * — 맨 위 자율 운영 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
+ * — 맨 위 사령관 상태 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
  */
 function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
@@ -193,7 +190,6 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
   const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
-  const on = view?.active === true;
   const run = view?.run;
   const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
     { id: "log", label: t("commodore.tabs.log") },
@@ -203,16 +199,16 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
     { id: "settings", label: t("commodore.tabs.settings") },
   ];
 
-  // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비우고, 칩 화면은 자율 운영 행과
+  // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비우고, 칩 화면은 사령관 상태 행과
   // 탭이 막대와 한 덩어리로 떠 있는 머리가 되어 탭 본문이 막대 몫에 머리의 제 높이(--objectives-cm-head)를 더해 비운다. 재시도·오류 띠는 알림 띠라
   // 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
-  const flow = !(on && (run?.phase === "retrying" || run?.phase === "error"));
+  const flow = !(run?.phase === "retrying" || run?.phase === "error");
   const rootRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
   useChromeHeightProperty(headRef, rootRef, "--objectives-cm-head", chromeRowHeight);
   return (
     <div ref={rootRef} className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
-      {on && (run?.phase === "retrying" || run?.phase === "error") ? (
+      {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (
             <span className="objectives-cm-band-text">{[run.reason ? errorWord(t, run.reason) : null, run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null].filter(Boolean).join(" · ")}</span>
@@ -225,7 +221,7 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
       {panel ? (
         <>
           <div ref={headRef} className="objectives-cm-chrome">
-            <AutonomyRow t={t} theaterId={theaterId} view={view} online={online} onFail={fail} onClear={clear} />
+            <CommodoreStatusRow t={t} theaterId={theaterId} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
           {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
@@ -293,54 +289,22 @@ function CommodoreMobileTabs({ t, tabs, selected, onSelect }: {
   </div>;
 }
 
-/* ── 자율 운영 행(CM-2a-3) ─────────────────────────────────────────────── */
+/* ── 사령관 상태 행 ─────────────────────────────────────────────────── */
 
-function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView | null; readonly online: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreStatusRow({ t, theaterId, view }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView | null }) {
   const board = useObjectiveTheater(theaterId);
-  const [busy, setBusy] = useState(false);
-  // 상태 줄은 한 줄 말줄임이다(commodore-mobile.css) — 잘린 끝도 스위치 설명으로 읽히게 이어 둔다.
-  const statusId = useId();
-  const on = view?.state.autonomy === true;
-  const run = view?.run;
-  const { meta } = commodoreSummary(t, view, board.objectives);
-  const parts = meta.filter((part) => part.key === "running" || part.key === "handled").map((part) => part.text).join(" · ");
-  let status: ReactNode = null;
-  if (busy) status = t("commodore.mobile.switching");
-  else if (view && !view.boardReady) status = t("commodore.failed.boardUnavailable");
-  else if (view && !view.active) status = meta.map((part) => part.text).join(" · ");
-  else if (view && run?.phase === "turn") status = <>{t("commodore.meta.turn")} · {parts}</>;
-  else if (view && run?.phase === "retrying" && run.nextWakeAt) status = <>{t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })} · {parts}</>;
-  else if (view && run?.phase === "error") status = <><span className="is-danger">{t("commodore.meta.error")}</span> · {parts}</>;
-  else if (view) status = <>{[run?.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null, parts].filter(Boolean).join(" · ")}</>;
-  const toggle = () => {
-    // 바꾸는 동안의 두 번째 누름은 버린다 — 서버 결과가 진실이다.
-    if (busy || !view || !view.boardReady || !online) return;
-    onClear();
-    setBusy(true);
-    void setCommodoreAutonomy(theaterId, !on).catch(onFail).finally(() => setBusy(false));
-  };
+  const name = useCommodoreName(theaterId, t);
+  const { meta, patrol } = commodoreSummary(t, view, board.objectives);
+  const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : [...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ");
   return (
     <div className="objectives-cm-top">
-      <button
-        type="button"
-        role="switch"
-        data-press="r2"
-        className="objectives-cm-trow"
-        aria-checked={on}
-        aria-busy={busy || undefined}
-        aria-label={t("commodore.settings.autonomy")}
-        aria-describedby={status !== null ? statusId : undefined}
-        disabled={!view || !view.boardReady || !online}
-        onClick={toggle}
-      >
-        {/* 머리는 이 Theater 사령관의 아바타다 — 사이드바 머리 표식과 같은 얼굴(작업 중·대기·오류·쉼)로 상태를 말하고, 상태 줄은 글이 맡는다. */}
-        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} off={!view?.active} label="" decorative /></span>
+      <div className="objectives-cm-trow">
+        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
         <span className="objectives-cm-trow-tx">
-          <b>{t("commodore.settings.autonomy")}</b>
-          {status !== null ? <span id={statusId} className="objectives-cm-trow-ds">{status}</span> : null}
+          <b>{name}</b>
+          <span className="objectives-cm-trow-ds">{status}</span>
         </span>
-        <span className={`objectives-cm-tog${on ? " is-on" : ""}${busy ? " is-busy" : ""}`} aria-hidden="true" />
-      </button>
+      </div>
     </div>
   );
 }
@@ -384,7 +348,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
       ...(pending.images.length > 0 ? { attachments: pending.images.map((image) => ({ preview: { id: image.key, url: image.url } })) } : {}),
     }];
   }, [t, entries, live, confirmed, pending, name]);
-  const turning = view?.active === true && view.run.phase === "turn";
+  const turning = view?.run.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
@@ -407,7 +371,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
+      <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
     </div>
   );
   return (
@@ -472,9 +436,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const pinned = useRef(true);
   const programmaticTop = useRef<number | null>(null);
   const olderAnchor = useRef<number | null>(null);
-  const on = view?.active === true;
   const run = view?.run;
-  const turn = on && run?.phase === "turn";
+  const turn = run?.phase === "turn";
 
   const scrollToBottom = useCallback((node: HTMLDivElement) => {
     node.scrollTop = node.scrollHeight;
@@ -557,7 +520,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
-        <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
+        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
       </div>
     </div>
   );
@@ -731,8 +694,8 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
                   value: String(patrol),
                   options: PATROL_STEPS.map((step) => ({ value: String(step), label: patrolWord(t, step), ...(step === DEFAULT_PATROL ? { description: defaultWord } : {}) })),
                   anchor: { top: rect.top, bottom: rect.bottom },
-                  // 1시간을 고르면 기본값으로 저장한다(현행 null).
-                  onSelect: (value) => { const minutes = Number(value) as CommodorePatrolMinutes; if (minutes !== patrol) act(() => setCommodorePatrol(theaterId, minutes === DEFAULT_PATROL ? null : minutes)); },
+                  // 안 함은 숫자로 바꾸지 않고 명시적으로 저장한다.
+                  onSelect: (value) => { const minutes = (value === "off" ? "off" : Number(value)) as CommodorePatrolMinutes; if (minutes !== patrol) act(() => setCommodorePatrol(theaterId, minutes)); },
                 });
               }}
             >

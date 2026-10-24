@@ -5,7 +5,6 @@ export interface CommodoreClientSnapshot {
   readonly active: boolean;
   readonly stalled: readonly string[];
   readonly enabled: boolean;
-  readonly autonomy: boolean;
   readonly peek: boolean;
   readonly view: CommodoreStateView | null;
   readonly asks: readonly CommodoreAsk[];
