@@ -539,6 +539,15 @@ export function createObjectiveStorage(deps: {
       const transaction: Transaction = { documents: [...documents.values()], groups: (next.groups ?? []).filter((group) => group.commodoreId === commodoreId).map(withoutOwner), archive, state: registration,
         purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id)) };
       return { scope, transaction, id: "" };
+    }).filter(({ scope, transaction }) => {
+      // 읽기에서 복구한 cwd·행위자는 메모리 뷰다. 다른 owner의 저장이 원문 확정 쓰기가 되면 안 된다.
+      // 동일한 writer 투영끼리 비교해 옛 직렬화 모양이나 문서 순서만 다른 scope도 건너뛴다.
+      const previous = new Map([...scope.documents].filter(([id]) => !unavailable(scope, id)).map(([id, doc]) => [id,
+        doc.pending ? doc : readDocument(documentFromObjective(objectiveRecordFromDocument(doc, scope.owner), doc), scope.owner),
+      ]));
+      const groups = scope.groups.map((group) => ({ ...group, theaterId: group.theaterId ?? scope.owner.legacyTheaterId }));
+      return transaction.purgeIds.length > 0 || !isDeepStrictEqual(previous, new Map(transaction.documents.map((doc) => [doc.id, doc])))
+        || !isDeepStrictEqual(groups, transaction.groups) || !isDeepStrictEqual(scope.archive, transaction.archive);
     });
     try {
       // owner별 prepare → 등록 → apply → finalize 의미는 유지한다. 본문은 별도 일시 저널에만 담는다.

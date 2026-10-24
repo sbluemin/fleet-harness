@@ -190,9 +190,16 @@ describe("durable console state", () => {
       fs.mkdirSync(owner.directory, { recursive: true });
       fs.writeFileSync(path.join(owner.directory, "groups.json"), JSON.stringify({ groups: [] }));
     }
+    const storedGroup = { id: "healthy-group", name: "Healthy", color: "blue", order: 0, createdAt: 1 };
+    fs.writeFileSync(path.join(healthy.directory, "groups.json"), JSON.stringify({ groups: [storedGroup] }));
     fs.mkdirSync(path.join(healthy.directory, "live"));
-    fs.writeFileSync(path.join(healthy.directory, "live/objective.json"), JSON.stringify(damaged.doc("live")));
-    fs.writeFileSync(path.join(healthy.directory, "archive.json"), JSON.stringify({ ...empty, entries: [{ archiveId: "healthy-archive", archivedAt: 1, objective: damaged.doc("healthy-archived") }] }));
+    const { cwd: _legacyCwd, ...legacyLive } = damaged.doc("live");
+    const stableFile = path.join(healthy.directory, "live/objective.json");
+    const stableBytes = JSON.stringify({ ...legacyLive, addedBy: { kind: "commodore", theaterId: "healthy", why: "preserve" } });
+    fs.writeFileSync(stableFile, stableBytes);
+    fs.mkdirSync(path.join(healthy.directory, "healthy-archived"));
+    fs.writeFileSync(path.join(healthy.directory, "healthy-archived/objective.json"), JSON.stringify(damaged.doc("healthy-archived")));
+    fs.writeFileSync(path.join(healthy.directory, "archive.json"), JSON.stringify({ ...empty, entries: [{ archiveId: "healthy-archive", archivedAt: 1, objectiveId: "healthy-archived" }] }));
     fs.writeFileSync(path.join(broken.directory, "archive.json"), "{broken archive");
     fs.writeFileSync(damaged.stateFile, JSON.stringify({ ...damaged.source, theaters: [damaged.registration, ...[healthy, broken].map((owner) => ({ ...damaged.registration, id: owner.legacyTheaterId }))] }));
     for (const id of ["bad-event", "bad-deletion", "unrelated-active"]) damaged.put(id, damaged.doc(id));
@@ -208,6 +215,7 @@ describe("durable console state", () => {
     const partial = openAll(), partialState = partial.load();
     expect(partial.blocked()).toBe(false);
     expect(partialState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
+    expect(partialState.groups).toEqual([{ ...storedGroup, commodoreId: "healthy", theaterId: "healthy" }]);
     expect(partial.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(partial.board.directory("c1")).toBe(damaged.destination);
     expect(partial.board.directory("broken")).toBeNull();
@@ -229,8 +237,12 @@ describe("durable console state", () => {
     const brokenHash = createHash("sha256").update("{broken archive").digest("hex");
     expect(fs.readFileSync(path.join(broken.directory, ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken archive");
     expect(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).toBe("{broken archive");
-    partial.save(partialState);
+    // 이주와 무관한 owner의 legacy 본문은 읽기와 다른 owner의 정상 저장 모두에서 바이트가 고정이다.
+    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
+    partial.save({ ...partialState, objectiveRecords: partialState.objectiveRecords.map((node) => node.id === "unrelated-active" ? { ...node, title: "saved after migration" } : node) });
+    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
     const retry = openAll(); const retryState = retry.load();
+    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
     expect(retryState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolationIndex.quarantine);
