@@ -168,6 +168,13 @@ export function createObjectiveStorage(deps: {
   createStore?: typeof createDurableJsonStore;
 }) {
   const scopes = new Map<string, Scope>();
+  // 저장한 문서는 바꾸지 않고 교체한다. 같은 문서의 깊은 정규화와 cwd 판정을 조회마다 반복하지 않는다.
+  const decoded = new WeakMap<ObjectiveDocument, { readonly owner: ObjectiveOwner; readonly record: ObjectiveRecord }>();
+  function recordOf(scope: Scope, doc: ObjectiveDocument): ObjectiveRecord {
+    let hit = decoded.get(doc);
+    if (hit?.owner !== scope.owner) { hit = { owner: scope.owner, record: objectiveRecordFromDocument(doc, scope.owner) }; decoded.set(doc, hit); }
+    return { ...hit.record };
+  }
   const createStore = deps.createStore ?? createDurableJsonStore;
   let ready = false, blocked = false;
   let state: DurableConsoleState = { version: STATE_VERSION, theaters: [], objectiveRecords: [] };
@@ -421,7 +428,7 @@ export function createObjectiveStorage(deps: {
   }
   function decodeDeletion(row: Deletion, scope: Scope): DurableDeletionTombstone {
     const { objectiveIds, groups, kind, ...base } = row;
-    const decode = (id: string) => objectiveRecordFromDocument(document(scope, id), scope.owner);
+    const decode = (id: string) => recordOf(scope, document(scope, id));
     if (kind === "objective") return { ...base, kind: "objectiveRecord", objectiveRecord: decode(row.targetId),
       ...(objectiveIds.length > 1 ? { descendants: objectiveIds.filter((id) => id !== row.targetId).map(decode) } : {}) };
     const registration = state.deletionTombstones?.find((entry) => entry.kind === "theater" && entry.deletionId === row.deletionId);
@@ -477,7 +484,7 @@ export function createObjectiveStorage(deps: {
     const objectiveRecords: ObjectiveRecord[] = [], groups: DurableObjectiveGroup[] = [], deletions: DurableDeletionTombstone[] = [];
     for (const scope of scopes.values()) {
       const hidden = inactive(scope);
-      for (const doc of scope.documents.values()) if (!doc.pending && !hidden.has(doc.id)) objectiveRecords.push(objectiveRecordFromDocument(doc, scope.owner));
+      for (const doc of scope.documents.values()) if (!doc.pending && !hidden.has(doc.id)) objectiveRecords.push(recordOf(scope, doc));
       groups.push(...scope.groups.map((group) => ({ ...group, commodoreId: scope.owner.commodoreId, theaterId: group.theaterId ?? scope.owner.legacyTheaterId })));
       deletions.push(...scope.archive.deletions.filter((row) => !row.objectiveIds.some((id) => unavailable(scope, id))).map((row) => decodeDeletion(row, scope)));
     }
@@ -493,14 +500,14 @@ export function createObjectiveStorage(deps: {
   }
   function entries(): readonly ArchivedObjective[] {
     assertReady();
-    return [...scopes.values()].flatMap((scope) => scope.archive.entries.filter((row) => !unavailable(scope, row.objectiveId)).map(({ objectiveId, ...rest }) => ({ ...rest, objectiveRecord: objectiveRecordFromDocument(document(scope, objectiveId), scope.owner) })));
+    return [...scopes.values()].flatMap((scope) => scope.archive.entries.filter((row) => !unavailable(scope, row.objectiveId)).map(({ objectiveId, ...rest }) => ({ ...rest, objectiveRecord: recordOf(scope, document(scope, objectiveId)) })));
   }
   function events(): readonly ArchiveLifecycleEvent[] {
     assertReady();
     return [...scopes.values()].flatMap((scope) => scope.archive.events.filter((row) => !unavailable(scope, row.objectiveId)).map((row) => {
       const doc = scope.documents.get(row.objectiveId);
       return { ...row, commodoreId: scope.owner.commodoreId, theaterId: row.theaterId ?? (doc ? scope.owner.theaterIdOf(doc.cwd as string) : scope.owner.legacyTheaterId),
-        ...(row.channel === "objective:restored" && doc && !inactive(scope).has(doc.id) ? { objectiveRecord: objectiveRecordFromDocument(doc, scope.owner) } : {}),
+        ...(row.channel === "objective:restored" && doc && !inactive(scope).has(doc.id) ? { objectiveRecord: recordOf(scope, doc) } : {}),
       };
     }));
   }
@@ -543,7 +550,7 @@ export function createObjectiveStorage(deps: {
       // 읽기에서 복구한 cwd·행위자는 메모리 뷰다. 다른 owner의 저장이 원문 확정 쓰기가 되면 안 된다.
       // 동일한 writer 투영끼리 비교해 옛 직렬화 모양이나 문서 순서만 다른 scope도 건너뛴다.
       const previous = new Map([...scope.documents].filter(([id]) => !unavailable(scope, id)).map(([id, doc]) => [id,
-        doc.pending ? doc : readDocument(documentFromObjective(objectiveRecordFromDocument(doc, scope.owner), doc), scope.owner),
+        doc.pending ? doc : readDocument(documentFromObjective(recordOf(scope, doc), doc), scope.owner),
       ]));
       const groups = scope.groups.map((group) => ({ ...group, theaterId: group.theaterId ?? scope.owner.legacyTheaterId }));
       return transaction.purgeIds.length > 0 || !isDeepStrictEqual(previous, new Map(transaction.documents.map((doc) => [doc.id, doc])))

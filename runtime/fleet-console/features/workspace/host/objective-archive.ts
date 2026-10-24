@@ -67,9 +67,12 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     return objectiveRecord;
   }
   function describe(id: string): ObjectiveDescription | null {
-    const objectiveRecord = find(id);
+    // 조회마다 보관 목록을 두 번 만들지 않는다 — 목표 화면 투영이 이 함수를 목표 수만큼 부른다.
+    const entries = deps.storage.entries();
+    const objectiveRecord = [...deps.objectiveRecords.list(), ...entries.map((entry) => entry.objectiveRecord)]
+      .find((node) => node.id === id || node.sessions?.some((child) => child.id === id));
     if (!objectiveRecord) return null;
-    const entry = deps.storage.entries().find((entry) => entry.objectiveRecord.id === objectiveRecord.id);
+    const entry = entries.find((entry) => entry.objectiveRecord.id === objectiveRecord.id);
     return { objectiveRecord, location: entry ? "archived" : "active", rootObjectiveId: objectiveRecord.id, archivedAt: entry?.archivedAt ?? null };
   }
   function listArchived(theaterId?: string) {
