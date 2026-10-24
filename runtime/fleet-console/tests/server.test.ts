@@ -16,6 +16,11 @@ import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@
 import { deriveObjectiveLabel } from "../features/execution/host/agent/auto-name.js";
 import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
 import { retireConsoleData } from "../core/host/bootstrap/retired-data.js";
+import { createDurableJsonStore } from "@fleet-console/infra";
+import { createCommodoreEntities } from "../features/commodore/host/entities.js";
+import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import type { ObjectiveRecord } from "../features/objectives/host/records/objective-records-domain.js";
+import { STATE_VERSION, sanitizeDurableConsoleState, type DurableConsoleState } from "../features/workspace/host/durable-state.js";
 import { createQuotaSettingsStore } from "../features/quota/host/storage.js";
 import { createAgentCliPathStore } from "../features/execution/host/agent/agent-cli-paths.js";
 import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecycle.js";
@@ -698,36 +703,26 @@ describe("console static and terminal ticket boundary", () => {
     const startedShells: string[] = [];
     const fixture = await startFixture({
       beforeCreateServer: ({ fleetDataDir }) => {
-        const consoleDir = path.join(fleetDataDir, "console");
-        fs.mkdirSync(consoleDir, { recursive: true });
-        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 6,
-          theaters: [{
-            id: theaterId,
-            path: dir,
-            realpath,
-            label: path.basename(dir),
-            registeredAt: "2026-06-16T00:00:00.000Z",
-            lastOpenedAt: "2026-06-16T00:00:01.000Z",
-          }],
-          operations: [{
-            id: "session-a",
-            theaterId,
-            title: "Durable provider title",
-            pluginId: "terminal",
-            type: "agent",
-            payload: {
-              cwd: dir,
-              providerTitle: { source: "provider" },
-              session: {
-                harness: "claude-code",
-                id: "provider-session-secret",
-                capturedAt: "2026-06-16T00:00:02.000Z",
-              },
-            },
-            ts: { createdAt: 1_000, updatedAt: 1_000 },
-          }],
-        }));
+        seedDurableObjectives(fleetDataDir, {
+          id: theaterId,
+          path: dir,
+          realpath,
+          label: path.basename(dir),
+          registeredAt: "2026-06-16T00:00:00.000Z",
+          lastOpenedAt: "2026-06-16T00:00:01.000Z",
+        }, [{
+          id: "session-a",
+          theaterId,
+          title: "Durable provider title",
+          cwd: dir,
+          providerTitle: { source: "provider" },
+          session: {
+            harness: "claude-code",
+            id: "provider-session-secret",
+            capturedAt: "2026-06-16T00:00:02.000Z",
+          },
+          ts: { createdAt: 1_000, updatedAt: 1_000 },
+        }]);
       },
       terminalStartShell: (launch) => {
         startedShells.push(launch.cwd);
@@ -760,52 +755,37 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const realpath = fs.realpathSync.native(dir);
     const theaterId = workspaceHash(realpath);
-    const workspaceName = realpath.replace(/[^a-zA-Z0-9]/g, "-");
     const fixture = await startFixture({
       beforeCreateServer: ({ fleetDataDir }) => {
-        const consoleDir = path.join(fleetDataDir, "console");
-        const objectivesDir = path.join(consoleDir, "workspaces", workspaceName, "objectives");
-        fs.mkdirSync(consoleDir, { recursive: true });
-        fs.mkdirSync(path.join(objectivesDir, "commander-1"), { recursive: true });
-        fs.writeFileSync(path.join(consoleDir, "workspaces", workspaceName, "cwd.json"), `${JSON.stringify({ cwd: realpath })}\n`);
-        fs.writeFileSync(path.join(objectivesDir, "commander-1", "objective.json"), `${JSON.stringify({
-          operationId: "commander-1",
+        const storage = seedDurableObjectives(fleetDataDir, {
+          id: theaterId,
+          path: dir,
+          realpath,
+          label: path.basename(dir),
+          registeredAt: "2026-09-25T00:00:00.000Z",
+          lastOpenedAt: "2026-09-25T00:00:01.000Z",
+        }, [{
+          id: "commander-1",
+          theaterId,
+          title: "Objective",
+          cwd: dir,
+          session: { harness: "claude-code", sessionName: "objective-cmdr" },
+          sessions: [{
+            id: "member-1",
+            cwd: dir,
+            subagentSpawn: "default",
+            session: { harness: "claude-code", sessionName: "objective-member-1", disableSubagents: true },
+            ts: { createdAt: 1_001, updatedAt: 1_001 },
+          }],
+          ts: { createdAt: 1_000, updatedAt: 1_000 },
+        }]);
+        storage.board.save(theaterId, {
+          ...storage.board.list(theaterId)[0]!,
           rank: 0,
           note: "",
           members: [{ id: "member-1", role: "Bravo", by: "human", subagents: true }],
           missions: [],
-        })}\n`);
-        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
-          version: 6,
-          theaters: [{
-            id: theaterId,
-            path: dir,
-            realpath,
-            label: path.basename(dir),
-            registeredAt: "2026-09-25T00:00:00.000Z",
-            lastOpenedAt: "2026-09-25T00:00:01.000Z",
-          }],
-          operations: [
-            {
-              id: "commander-1",
-              theaterId,
-              title: "Objective",
-              pluginId: null,
-              type: "agent",
-              payload: { cwd: dir, session: { harness: "claude-code", sessionName: "objective-cmdr" } },
-              childSessions: [{
-                id: "member-1",
-                payload: {
-                  cwd: dir,
-                  subagentSpawn: "default",
-                  session: { harness: "claude-code", sessionName: "objective-member-1", disableSubagents: true },
-                },
-                ts: { createdAt: 1_001, updatedAt: 1_001 },
-              }],
-              ts: { createdAt: 1_000, updatedAt: 1_000 },
-            },
-          ],
-        }));
+        });
       },
     });
     const origin = new URL(fixture.endpoint).origin;
@@ -982,6 +962,18 @@ describe("console static and terminal ticket boundary", () => {
     await socketClosed;
   }, 10_000);
 });
+
+// 현재 writer로 명부와 owner별 objective/groups/archive를 함께 심는다. 폐기된 위치 이주에 기대지 않는다.
+function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly ObjectiveRecord[]) {
+  const directory = path.join(fleetDataDir, "console");
+  const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
+  const ownerId = entities.create(theater.realpath);
+  const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
+  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(entities.dirOf(ownerId)!, "objectives"), theaterId: theater.id, workspacePath: theater.realpath }] });
+  storage.load();
+  storage.save({ version: STATE_VERSION, theaters: [theater], objectiveRecords });
+  return storage;
+}
 
 async function startReminderFixture(options: Parameters<typeof startFixture>[0] = {}): Promise<ServerFixture> {
   return startFixture(options);
