@@ -211,6 +211,7 @@ describe("durable console state", () => {
     expect(partial.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(partial.board.directory("c1")).toBe(damaged.destination);
     expect(partial.board.directory("broken")).toBeNull();
+    expect(partial.board.owners().flatMap((owner) => partial.board.list(owner.commodoreId)).map((row) => row.id)).toContain("live");
     expect(partial.board.directory("healthy")).toBe(healthy.directory);
     for (const id of ["bad-event", "bad-deletion"]) {
       expect(partial.isReserved(id)).toBe(true);

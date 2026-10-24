@@ -34,7 +34,7 @@ interface Deletion {
   archived?: DurableDeletionTombstone["archived"];
 }
 type EventIndex = Pick<ArchiveLifecycleEvent, "eventId" | "channel" | "objectiveId" | "sessionIds"> & { readonly theaterId?: string };
-interface Quarantine { id: string | null; sourceHash: string; location: string; reason: string }
+interface Quarantine { id: string | null; sourceHash: string; location: string; reason: string; theaterId?: string }
 interface Archive {
   revision: number;
   entries: readonly { archiveId: string; archivedAt: number; objectiveId: string }[];
@@ -121,7 +121,8 @@ function readArchive(value: unknown): Archive {
   const quarantine = value.quarantine === undefined ? [] : value.quarantine;
   if (!Array.isArray(quarantine) || quarantine.some((row) => !object(row) || (row.id !== null && typeof row.id !== "string")
     || typeof row.sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(row.sourceHash) || typeof row.location !== "string" || typeof row.reason !== "string"
-    || Object.keys(row).some((key) => !["id", "sourceHash", "location", "reason"].includes(key)))) throw failure();
+    || (row.theaterId !== undefined && typeof row.theaterId !== "string")
+    || Object.keys(row).some((key) => !["id", "sourceHash", "location", "reason", "theaterId"].includes(key)))) throw failure();
   const archive: Archive = { revision: Number(value.revision), entries, deletions, events,
     ...(quarantine.length ? { quarantine: quarantine as Quarantine[] } : {}),
     ...(value.unavailable !== undefined ? { unavailable: ids(value.unavailable) } : {}),
@@ -130,6 +131,7 @@ function readArchive(value: unknown): Archive {
   assertMinimal({ ...archive,
     deletions: archive.deletions.map((row) => ({ ...row, ...(row.groups ? { groups: minimalGroups(row.groups) } : {}) })),
     events: archive.events.map(({ theaterId: _location, ...row }) => row),
+    quarantine: archive.quarantine?.map(({ theaterId: _location, ...row }) => row),
   });
   const located = [...entries.map((row) => row.objectiveId), ...deletions.flatMap((row) => row.objectiveIds)];
   if (new Set(located).size !== located.length) throw failure();
@@ -278,7 +280,7 @@ export function createObjectiveStorage(deps: {
     const reject = (row: unknown, location: string, reason: string): void => {
       const failedIds = knownIds(row);
       for (const id of failedIds) { try { conflicted.add(segment(id)); } catch { /* 경로로 사용할 수 없는 ID는 기록에만 남긴다. */ } }
-      for (const id of failedIds.length ? failedIds : [null]) quarantine.push({ id, sourceHash, location, reason });
+      for (const id of failedIds.length ? failedIds : [null]) quarantine.push({ id, sourceHash, location, reason, ...(object(row) && row.kind === "theater" && typeof row.targetId === "string" ? { theaterId: row.targetId } : {}) });
     };
     const prefix = oldTx ? "transaction.archive." : "";
     const located = new Set<string>();
@@ -388,7 +390,7 @@ export function createObjectiveStorage(deps: {
       scope.archive = { ...scope.archive,
         deletions: scope.archive.deletions.filter((row) => !rejected.has(row)),
         unavailable: [...new Set([...scope.archive.unavailable ?? [], ...orphans.flatMap(({ row }) => row.objectiveIds)])],
-        quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration" }))],
+        quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration", theaterId: row.targetId }))],
       };
     }
     // 소유자 하나의 충돌은 다른 목표의 정상 저장을 막지 않는다. 격리 ID는 재기동에도 예약한다.
@@ -445,10 +447,12 @@ export function createObjectiveStorage(deps: {
   function heldTheaters(): Set<string> {
     const held = new Set(deps.owners().filter((owner) => unavailableOwners.has(owner.commodoreId)).map((owner) => owner.legacyTheaterId));
     for (const scope of scopes.values()) {
-      if (scope.archive.quarantine?.some((row) => row.location.includes("deletions["))) {
-        held.add(scope.owner.legacyTheaterId);
-        // 행이 격리되어 색인에서 빠졌어도 원래 Theater 삭제의 등록은 고정한다.
-        for (const row of state.deletionTombstones ?? []) if (row.kind === "theater") held.add(row.targetId);
+      for (const row of scope.archive.quarantine ?? []) if (row.location.includes("deletions[")) {
+        if (row.theaterId) held.add(row.theaterId);
+        else {
+          held.add(scope.owner.legacyTheaterId);
+          for (const doc of scope.documents.values()) held.add(scope.owner.theaterIdOf(doc.cwd as string));
+        }
       }
       for (const row of scope.archive.deletions) if (row.kind === "theater" && row.objectiveIds.some((id) => unavailable(scope, id))) held.add(row.targetId);
     }
@@ -554,7 +558,7 @@ export function createObjectiveStorage(deps: {
     } catch (error) { blocked = true; throw error; }
   }
   const board: ObjectiveBoardStorage = {
-    owners: () => deps.owners(),
+    owners: () => deps.owners().filter((owner) => !unavailableOwners.has(owner.commodoreId)),
     unavailable: (id) => isReserved(id),
     forget(commodoreId, id) {
       const scope = scopeOf(commodoreId);

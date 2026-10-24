@@ -1016,7 +1016,7 @@ describe("console static and terminal ticket boundary", () => {
 });
 
 // 현재 writer로 명부와 owner별 objective/groups/archive를 함께 심는다. 폐기된 위치 이주에 기대지 않는다.
-function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly Omit<ObjectiveRecord, "commodoreId">[], additionalTheaters: readonly DurableConsoleState["theaters"][number][] = []) {
+function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly (Pick<ObjectiveRecord, "id" | "theaterId" | "title" | "ts"> & Record<string, unknown>)[], additionalTheaters: readonly DurableConsoleState["theaters"][number][] = []) {
   const directory = path.join(fleetDataDir, "console");
   const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
   const ownerId = entities.create(theater.realpath);
