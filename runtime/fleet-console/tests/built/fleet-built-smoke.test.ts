@@ -399,19 +399,30 @@ afterEach(async () => {
     const run = createRun("starting");
     const marker = path.join(run.dir, "starting-stalled");
     const exited = path.join(run.dir, "exited");
+    // Remote-listener activation is awaited before ready. Unlike an incidental mkdir, this enabled startup step
+    // cannot disappear when an unrelated feature stops creating a directory. The preload never binds the remote port.
+    fs.mkdirSync(path.dirname(run.lockFile), { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(run.lockFile), "settings.json"), JSON.stringify({ version: 1, general: { remoteAccess: {
+      enabled: true, publicEndpointEnabled: false, listenAddress: "192.0.2.1", advertisedHost: "",
+      listenPort: { mode: "custom", value: 49_152 }, advertisedPort: { mode: "auto", value: 49_153 }, acknowledgment: null,
+    } } }));
     const preload = writePreload(run, "stall-start.mjs", [
       "import fs from 'node:fs';",
+      "import http2 from 'node:http2';",
       "import { syncBuiltinESMExports } from 'node:module';",
       `const lock = ${JSON.stringify(run.lockFile)}, marker = ${JSON.stringify(marker)}, exited = ${JSON.stringify(exited)};`,
       `if (process.argv[1] === ${JSON.stringify(cliDist)} && process.argv[2] === 'serve') {`,
       "  process.on('exit', (code) => fs.writeFileSync(exited, String(code)));",
-      "  const mkdir = fs.promises.mkdir;",
+      "  const createServer = http2.createSecureServer;",
       "  const ownsLock = () => { try { return JSON.parse(fs.readFileSync(lock, 'utf8')).pid === process.pid; } catch { return false; } };",
-      // Startup stands still at its first asynchronous directory creation after this Console published its lock, whatever
-      // that step is: the Console holds the lock and stays starting, as a long durable restore would leave it.
-      "  fs.promises.mkdir = function (target, ...rest) {",
-      "    if (ownsLock()) { fs.writeFileSync(marker, ''); return new Promise(() => {}); }",
-      "    return mkdir.call(this, target, ...rest);",
+      "  http2.createSecureServer = function (...args) {",
+      "    const server = createServer.apply(this, args);",
+      "    server.listen = function () {",
+      "      if (!ownsLock()) throw new Error('remote listener started without the Console lock');",
+      "      fs.writeFileSync(marker, '');",
+      "      return this;", // Never emits listening: startup cannot settle, but the event loop and stop deadline still run.
+      "    };",
+      "    return server;",
       "  };",
       "  syncBuiltinESMExports();",
       "}",
@@ -420,10 +431,10 @@ afterEach(async () => {
     const lockPid = readRunLock(run)?.pid;
     // start가 detached로 띄운 Console이다. 기다리기 전에 등록해야 start보다 오래 사는 Console도 afterEach가 거둔다.
     if (lockPid !== undefined) own(lockPid);
-    if (lockPid !== undefined) await waitUntil(() => !isAlive(lockPid), 20_000, "the starting Console outlived start's cleanup");
-
+    // Fail on a missing injection before waiting for a normally ready Console to exit.
     expect(fs.existsSync(marker), "the Console must hold the lock and still be starting when start gives up").toBe(true);
     expect(start.status).not.toBe(0);
+    if (lockPid !== undefined) await waitUntil(() => !isAlive(lockPid), 20_000, "the starting Console outlived start's cleanup");
     lifecycleCheck("L8", fs.existsSync(exited), "start does not SIGKILL a lock-holding starting Console before it can stop by itself");
   }, 40_000);
 
