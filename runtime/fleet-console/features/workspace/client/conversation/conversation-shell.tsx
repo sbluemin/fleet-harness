@@ -1142,7 +1142,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const sectionId = sectionInfo ? conversationSurfaceInboxSectionId(descriptor, sectionInfo.inboxSection) : null;
   const sectionTheaterId = sectionInfo?.theaterId ?? null;
   const sectionTitle = sectionId && sectionTheaterId
-    ? theaterInboxSections.find((candidate) => candidate.id === sectionId)?.title(language, sectionTheaterId) ?? descriptor.title(context)
+    ? theaterInboxSections.find((candidate) => candidate.id === sectionId)?.title(language) ?? descriptor.title(context)
     : null;
   const section = useMemo<ConversationTabSection | null>(() => (
     sectionId !== null && sectionTheaterId !== null && sectionTitle !== null

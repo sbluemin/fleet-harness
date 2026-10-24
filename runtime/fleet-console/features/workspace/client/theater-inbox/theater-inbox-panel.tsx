@@ -94,7 +94,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     const disposers: (() => void)[] = [];
     sections.forEach((section, sectionIndex) => {
       if (!available(sectionIndex) || section.id === centerSectionId) return;
-      const sectionTag = { id: section.id, title: section.descriptor.title(language, theater.id), theaterId: theater.id };
+      const sectionTag = { id: section.id, title: section.descriptor.title(language), theaterId: theater.id };
       section.descriptor.pages.forEach((page, pageIndex) => {
         const address = { sectionId: section.id, pageId: page.id };
         disposers.push(registerConversationObjectiveTab({
