@@ -37,6 +37,7 @@ import { useDesktopRailEntries, useRailEntries } from "../chrome/pane/pane-regis
 import { useFeatureRegistry, useExpandedSurfaceDescriptors } from "../integration/feature-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
+import { commodoreAliasEditor } from "../integration/commodore-identity.js";
 import { ObjectiveRecords } from "../../../../features/workspace/client/objective-records.js";
 import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
@@ -569,7 +570,7 @@ function ConnectedApp() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/objectives" replace />} />
-                <Route path="/objectives" element={<ObjectiveRecords state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/objectives" element={<ObjectiveRecords aliasEditor={commodoreAliasEditor} state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/objectives" replace />} />
               </Routes>

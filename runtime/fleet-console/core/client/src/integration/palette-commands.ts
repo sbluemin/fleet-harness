@@ -183,14 +183,14 @@ export function buildPaletteCommands(
   for (const section of theaterSections) {
     const theater = current.theaters.find((candidate) => candidate.id === section.theaterId);
     if (!theater) continue;
-    const name = theater.alias || theater.label;
+    const name = theater.commodore?.alias || theater.label;
     const title = language === "ko" ? section.titles.ko : section.titles.en;
     const otherTitle = language === "ko" ? section.titles.en : section.titles.ko;
     push({
       commandId: `open-theater-section:${section.sectionId}@${section.theaterId}`,
       label: t("palette.openTheaterSection", { section: title, theater: name }),
       aliasLabel: alias("palette.openTheaterSection", { section: otherTitle, theater: name }),
-      ...(theater.alias ? { extraAliases: [
+      ...(theater.commodore?.alias ? { extraAliases: [
         t("palette.openTheaterSection", { section: title, theater: theater.label }),
         alias("palette.openTheaterSection", { section: otherTitle, theater: theater.label }),
       ] } : {}),
@@ -202,12 +202,12 @@ export function buildPaletteCommands(
     });
   }
   for (const theater of current.theaters) {
-    const name = theater.alias || theater.label;
+    const name = theater.commodore?.alias || theater.label;
     push({
       commandId: `switch-theater:${theater.id}`,
       label: t("palette.switchTheater", { label: name }),
       aliasLabel: alias("palette.switchTheater", { label: name }),
-      ...(theater.alias ? { extraAliases: [t("palette.switchTheater", { label: theater.label }), alias("palette.switchTheater", { label: theater.label })] } : {}),
+      ...(theater.commodore?.alias ? { extraAliases: [t("palette.switchTheater", { label: theater.label }), alias("palette.switchTheater", { label: theater.label })] } : {}),
       current: theater.id === viewedTheaterId,
       action: { kind: "switch-theater", theaterId: theater.id },
       group: "theater",

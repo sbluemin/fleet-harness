@@ -109,6 +109,13 @@ describe("commodore theater state", () => {
     const entityEvents: CommodoreEvent[] = [];
     const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: (event) => entityEvents.push(event) });
     entityStore.setDirective(id, "Keep entity links intact.");
+    // UUID 이름은 경로 연결·실행 설정과 독립적으로 보존된다.
+    entityStore.setAlias(id, "Flagship");
+    const reopenedEntity = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: () => {} });
+    expect(reopenedEntity.read(id)?.alias).toBe("Flagship");
+    expect(reopenedEntity.read(id)?.patrolMinutes).toBeUndefined();
+    reopenedEntity.setAlias(id, null);
+    expect(JSON.parse(fs.readFileSync(entityFile, "utf8"))).not.toHaveProperty("alias");
     expect(JSON.parse(fs.readFileSync(entityFile, "utf8")).theaters).toEqual([{ path: canonical }]);
     expect(entityEvents[0]).toMatchObject({ commodoreId: id, theaterIds: [workspaceHash(canonical)] });
     expect(JSON.stringify(entityEvents)).not.toContain(canonical);
@@ -143,6 +150,12 @@ describe("commodore theater state", () => {
     expect(patrolIntervalMs(h.store.read("t1"))).toBeNull();
     expect(createCommodoreRoutes(h.ctx, h.store).some((route) => route.name === "commodore/autonomy")).toBe(false);
     expect((await h.route("commodore/patrol", { commodoreId: "t1", minutes: null })).status).toBe(400);
+    // 별칭 쓰기는 실행이 꺼져 있어도 되고, 응답·재시작·사건은 같은 사령관 상태를 읽는다.
+    expect((await h.route("commodore/alias", { commodoreId: "t1", alias: "  Flagship  " })).value).toMatchObject({ active: false, state: { alias: "Flagship" } });
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")?.alias).toBe("Flagship");
+    expect(await h.route("commodore/alias", { commodoreId: "t1", alias: "abc\u202Egnp.exe" })).toMatchObject({ status: 400 });
+    expect((await h.route("commodore/alias", { commodoreId: "t1", alias: null })).value.state).not.toHaveProperty("alias");
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).not.toHaveProperty("alias");
 
     // 옛 Settings 좌표는 무시하지만 Theater 별 선택은 아래 경로에서 유지된다.
     h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
@@ -183,7 +196,7 @@ describe("commodore theater state", () => {
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).patrollingCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["patrol", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "patrol", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
 
     // 저장된 스위치와 실행 가능 여부는 별개다. 보드 없는 view는 꺼짐이며 켜기 요청도 거절한다.
     expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { patrolMinutes: 60 }, run: { phase: "off" } });
@@ -192,6 +205,8 @@ describe("commodore theater state", () => {
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
     expect((await h.route("commodore/state", { commodoreId: "t1" })).status).toBe(401);
+    expect((await h.route("commodore/alias", { commodoreId: "t1", alias: "Forbidden" })).status).toBe(401);
+    expect(h.store.read("t1")).not.toHaveProperty("alias");
   });
 
   it("refuses unavailable recipients but accepts messages with patrol off, appends the log in order and pages it from the newest end", async () => {

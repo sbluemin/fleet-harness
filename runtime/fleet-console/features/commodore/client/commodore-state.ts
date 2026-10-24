@@ -160,7 +160,7 @@ export function subscribeCommodore(listener: () => void): () => void {
 
 /** Theater 목록 중 사령관 행선지 이름이 기대는 몫(id·이름·별칭)의 서명 — 바뀐 때만 덱을 다시 읽게 한다. */
 function commodoreNamesKey(): string {
-  return (installed?.consoleState.getTheaters() ?? []).map((theater) => `${theater.id}\u0000${theater.label}\u0000${theater.alias ?? ""}`).join("\u0001");
+  return (installed?.consoleState.getTheaters() ?? []).map((theater) => `${theater.id}\u0000${theater.label}\u0000${theater.commodore?.id ?? ""}\u0000${theater.commodore?.alias ?? ""}`).join("\u0001");
 }
 
 /**
@@ -424,7 +424,7 @@ export function commodoreTheaterLabel(theaterId: string): string {
 
 /** 사람이 지정한 사령관 별칭 — 없거나 지웠으면 null 이다. 구버전 호스트는 싣지 않으므로 늘 null 이다. */
 export function commodoreAlias(theaterId: string): string | null {
-  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.alias || null;
+  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.alias || null;
 }
 
 /* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */

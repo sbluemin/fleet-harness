@@ -1,10 +1,11 @@
+import { commodoreAliasEditor } from "../../integration/commodore-identity.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { clampTheaterAlias, createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath, saveTheaterAlias } from "../../../../../features/workspace/client/theater.js";
+import { createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
@@ -171,8 +172,8 @@ function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater:
     >
       <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
       <span className="mobile-sheet-row-copy">
-        <strong>{theater.alias ?? theater.label}</strong>
-        <small className={awaiting > 0 ? "is-awaiting" : undefined}>{theater.alias ? `${theater.label} · ${summary}` : summary}</small>
+        <strong>{theater.commodore?.alias ?? theater.label}</strong>
+        <small className={awaiting > 0 ? "is-awaiting" : undefined}>{theater.commodore?.alias ? `${theater.label} · ${summary}` : summary}</small>
       </span>
       {here ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
     </button>
@@ -188,8 +189,8 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
   useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
   if (!theater) return null;
   return (
-    <MobileSheet title={theater.alias ?? theater.label} onClose={popMobileSheet}>
-      {theater.alias ? <p className="mobile-sheet-lead">{theater.label}</p> : null}
+    <MobileSheet title={theater.commodore?.alias ?? theater.label} onClose={popMobileSheet}>
+      {theater.commodore?.alias ? <p className="mobile-sheet-lead">{theater.label}</p> : null}
       <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "theater-alias", theaterId: theater.id })}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
@@ -223,7 +224,7 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
 function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
   const t = useT();
   const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
-  const [value, setValue] = useState(theater?.alias ?? "");
+  const [value, setValue] = useState(theater?.commodore?.alias ?? "");
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
   // 다른 창의 잊기로 Theater가 사라지면 이 시트도 걷는다 — 그리지 않은 채 스택에 남으면 뒤로 가기가 빈 시트로 돌아간다.
@@ -231,11 +232,11 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
   if (!theater) return null;
   const save = () => {
     if (saving) return;
-    const next = clampTheaterAlias(value).trim();
+    const next = commodoreAliasEditor.clamp(value).trim();
     const alias = next.length > 0 ? next : null;
-    if (alias === (theater.alias ?? null)) { popMobileSheet(); return; }
+    if (alias === (theater.commodore?.alias ?? null)) { popMobileSheet(); return; }
     setSaving(true);
-    void saveTheaterAlias(theater.id, alias)
+    void commodoreAliasEditor.save(theater.id, alias)
       .then(() => { closeMobileSheets(); showMobileToast(t(alias === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
       .catch(() => setSaving(false));
   };
@@ -253,9 +254,9 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
         value={value}
         placeholder={theater.label}
         aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
-        onChange={(event) => setValue(composingRef.current ? event.target.value : clampTheaterAlias(event.target.value))}
+        onChange={(event) => setValue(composingRef.current ? event.target.value : commodoreAliasEditor.clamp(event.target.value))}
         onCompositionStart={() => { composingRef.current = true; }}
-        onCompositionEnd={(event) => { composingRef.current = false; setValue(clampTheaterAlias(event.currentTarget.value)); }}
+        onCompositionEnd={(event) => { composingRef.current = false; setValue(commodoreAliasEditor.clamp(event.currentTarget.value)); }}
         onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
         autoFocus
       />

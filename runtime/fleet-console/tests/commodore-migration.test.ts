@@ -1,3 +1,9 @@
+import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import { predecessorStateHash } from "../features/objectives/host/predecessor-hash.js";
+import { createDurableJsonStore } from "@fleet-console/infra";
+import { sanitizeDurableConsoleState, type DurableConsoleState } from "../features/workspace/host/durable-state.js";
+import { createCommodoreOwnership, migrateCommodoreAliases } from "../features/commodore/host/index.js";
+import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -214,10 +220,118 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(feature.knowledge.legacySources(pendingOwner)).toEqual([{ path: path.join(pending.workspace, "knowledge"), label: path.basename(pending.workspace) }]);
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
     expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
+    // 별칭의 명시적 발급은 기록 이주 보류를 푸는 것이 아니다. 원본은 보존하고 실행은 시작하지 않는다.
+    const aliasRoot = theater("pending-with-alias");
+    const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending directive");
+    fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
+    roots.set(workspaceHash(aliasRoot), aliasRoot);
+    await feature.dispose(); feature = createCommodoreFeature(deps);
+    expect(await call("commodore/resolve", { theaterId: workspaceHash(aliasRoot) })).toEqual({ commodoreId: null });
+    expect(await call("commodore/create", { theaterId: workspaceHash(aliasRoot) }, 409)).toEqual({ error: "commodore_migration_pending" });
+    const aliasOwner = (await call("commodore/create", { theaterId: workspaceHash(aliasRoot), forAlias: true })).commodoreId as string;
+    expect(await call("commodore/alias", { commodoreId: aliasOwner, alias: "Assigned" })).toMatchObject({ active: false, state: { alias: "Assigned" }, run: { phase: "off" } });
+    expect(feature.identity(workspaceHash(aliasRoot))).toEqual({ id: aliasOwner, alias: "Assigned" });
+    expect(fs.readFileSync(path.join(aliasPending.dir, "state.json"), "utf8")).toBe(state(aliasPending.text));
     expect(warn).toHaveBeenCalled();
   } finally {
     await feature?.dispose();
     vi.restoreAllMocks();
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+// 별칭은 명부에서 사령관으로 옮겨지는 데이터다. 중단 지점과 구 저널 복구를 같은 저장소 경계에서 검증한다.
+it("moves registration aliases to their UUID owners before writes and resumes cleanup without replaying stale journals", () => {
+  const temp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-alias-migration-")));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const directory = path.join(temp, "console");
+    const project = path.join(temp, "project"); fs.mkdirSync(project);
+    const gone = path.join(temp, "forgotten"); fs.mkdirSync(gone);
+    const roots = new Map([[workspaceHash(project), project]]);
+    const paths = { consoleDataDir: directory, workspaceHash, listTheaterIds: () => [...roots.keys()], resolveTheaterPath: (id: string) => roots.get(id) ?? null } as unknown as CommodoreFeatureDeps["paths"];
+    const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
+    const forgottenId = entities.create(gone);
+    const registration = (root: string) => ({ id: workspaceHash(root), path: root, realpath: root, label: path.basename(root), registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z", order: 3 });
+    const live = { ...registration(project), alias: "  Flagship  " };
+    const tombstone = (root: string, alias: string, deletionId: string) => ({ kind: "theater", deletionId, targetId: workspaceHash(root), deletedAt: 1, expiresAt: 10, theater: { ...registration(root), alias } });
+    const source = { version: 6, theaters: [live], deletionTombstones: [tombstone(gone, "Retired", "forgotten"), tombstone(path.join(temp, "orphan"), "No owner", "orphan"), tombstone(path.join(temp, "invalid"), "abc\u202Egnp.exe", "invalid")] };
+    const stateFile = path.join(directory, "state.json");
+    fs.writeFileSync(stateFile, JSON.stringify(source));
+    const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
+    let ownership: ReturnType<typeof createCommodoreOwnership>;
+    let includeObjectives = false;
+    const open = () => createObjectiveStorage({ directory, stateStore,
+      initializeOwners: () => { ownership = createCommodoreOwnership(paths); },
+      owners: () => includeObjectives ? ownership.objectives() : [],
+      migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership),
+    });
+    // 명부에 첫 쓰기를 하기 전에 대상이 확정되어야 한다. 대상 커밋 실패는 원본을 그대로 둔다.
+    const nativeRename = fs.renameSync.bind(fs);
+    const failTarget = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to).startsWith(path.join(directory, "commodore")) && String(to).endsWith("state.json")) throw new Error("alias_target_write_failed");
+      nativeRename(from, to);
+    });
+    try { expect(() => open().load()).toThrow("alias_target_write_failed"); } finally { failTarget.mockRestore(); }
+    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
+    const ownerId = ownership!.entities.resolve(workspaceHash(project))!;
+    expect(ownerId).toEqual(expect.any(String));
+    const ownerFile = path.join(directory, "commodore", ownerId, "state.json");
+    const before = JSON.parse(fs.readFileSync(ownerFile, "utf8"));
+    // 대상은 성공하고 명부 정리만 실패한 재시작. 사용자 데이터와 연결은 바뀌지 않는다.
+    const save = stateStore.save.bind(stateStore);
+    const failSource = vi.spyOn(stateStore, "save").mockImplementation(() => { throw new Error("alias_source_cleanup_failed"); });
+    try { expect(() => open().load()).toThrow("alias_source_cleanup_failed"); } finally { failSource.mockRestore(); }
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).toEqual({ ...before, alias: "Flagship" });
+    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
+    // 대상 우선: 정리 전에 남은 명부 값으로 기존 별칭을 덮어쓰지 않는다.
+    fs.writeFileSync(ownerFile, JSON.stringify({ ...before, alias: "Current" }));
+    const loaded = open().load();
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).toEqual({ ...before, alias: "Current" });
+    expect(JSON.parse(fs.readFileSync(path.join(directory, "commodore", forgottenId, "state.json"), "utf8")).alias).toBe("Retired");
+    expect(ownership!.entities.ids()).toHaveLength(2); // 등록된 Theater만 발급, 고아 tombstone은 발급하지 않는다.
+    const cleaned = { ...source, theaters: source.theaters.map(({ alias: _alias, ...row }) => row), deletionTombstones: source.deletionTombstones.map(({ theater: { alias: _alias, ...theater }, ...row }) => ({ ...row, theater })) };
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).toEqual(cleaned);
+    expect(loaded.theaters).toEqual(cleaned.theaters);
+    expect(warn.mock.calls.some(([message]) => String(message).includes("orphan_tombstone"))).toBe(true);
+    expect(warn.mock.calls.some(([message]) => String(message).includes("invalid_alias"))).toBe(true);
+    // 해제한 UUID 이름은 재기동 때 명부에서 되살아나지 않는다.
+    fs.writeFileSync(ownerFile, JSON.stringify(before));
+    open().load();
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).not.toHaveProperty("alias");
+
+    // 구 archive 저널의 beforeHash 검증은 별칭 정리보다 먼저다. 틀린 해시는 이관으로 우회하지 않는다.
+    const journalSource = { version: 6, theaters: [live], operations: [], groups: [], deletionTombstones: [] };
+    fs.writeFileSync(stateFile, JSON.stringify(journalSource));
+    const journalFile = path.join(directory, "operations-archive.json");
+    const archive = { version: 1, revision: 0, entries: [], deletions: [], events: [] };
+    const journal = { ...archive, transaction: { beforeRevision: 0, beforeHash: predecessorStateHash(journalSource), state: { ...journalSource, revision: 1 }, archive } };
+    fs.writeFileSync(journalFile, JSON.stringify({ ...journal, transaction: { ...journal.transaction, beforeHash: "0".repeat(64) } }));
+    expect(() => open().load()).toThrow("archive_recovery_required");
+    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(journalSource));
+    fs.writeFileSync(journalFile, JSON.stringify(journal));
+    includeObjectives = true;
+    // 구 저널 자체가 아직 남은 중간 실패: alias는 원래 해시에 참여한 채로 남아야 한다.
+    const nativeRemove = fs.rmSync.bind(fs);
+    const failJournalRemoval = vi.spyOn(fs, "rmSync").mockImplementation((file, options) => {
+      if (String(file) === journalFile) throw new Error("journal_cleanup_interrupted");
+      nativeRemove(file, options);
+    });
+    try { expect(() => open().load()).toThrow("journal_cleanup_interrupted"); } finally { failJournalRemoval.mockRestore(); }
+    expect(fs.existsSync(journalFile)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0]).toHaveProperty("alias");
+    // 구 저널 커밋 후 별칭 정리 전에 끊겨도 다음 기동에서 복구한다.
+    const failCleanup = vi.spyOn(stateStore, "save").mockImplementation((value) => {
+      if (!JSON.stringify(value).includes('"alias"')) throw new Error("alias_cleanup_interrupted");
+      save(value);
+    });
+    try { expect(() => open().load()).toThrow("alias_cleanup_interrupted"); } finally { failCleanup.mockRestore(); }
+    expect(fs.existsSync(journalFile)).toBe(false);
+    const restarted = open(); const snapshot = restarted.load();
+    expect(snapshot.theaters).toEqual(cleaned.theaters);
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Flagship");
+    restarted.save(snapshot);
+    expect(JSON.stringify(JSON.parse(fs.readFileSync(stateFile, "utf8")))).not.toContain('"alias"');
+    expect(JSON.stringify(open().load())).not.toContain('"alias"');
+  } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });

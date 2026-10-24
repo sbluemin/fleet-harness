@@ -139,25 +139,14 @@ describe("durable console state", () => {
     expect(open().load().objectiveRecords.map((node) => node.id).sort()).toEqual(["active", "archived"]);
   });
 
-  it("keeps a Theater alias across reload and still reads records saved without one", () => {
-    const base = { path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z" };
-    const state = sanitizeDurableConsoleState({
-      version: 6,
-      theaters: [
-        { ...base, id: "aliased", alias: "  Flagship  " },
-        { ...base, id: "legacy" },
-        { ...base, id: "bidi", alias: "abc\u202Egnp.exe" },
-        { ...base, id: "oversized", alias: "x".repeat(41) },
-      ],
-      objectiveRecords: [],
-      groups: [],
-      deletionTombstones: [],
-    });
-    const byId = new Map(state.theaters.map((theater) => [theater.id, theater]));
-    expect(byId.get("aliased")?.alias).toBe("Flagship");
-    expect(byId.get("legacy")).not.toHaveProperty("alias");
-    expect(byId.get("bidi")).not.toHaveProperty("alias");
-    expect(byId.get("oversized")).not.toHaveProperty("alias");
+  it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {
+    const theater = { id: "t1", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z", order: 2 };
+    const state = sanitizeDurableConsoleState({ version: 6, theaters: [{ ...theater, alias: "Flagship" }], deletionTombstones: [
+      { deletionId: "d1", kind: "theater", targetId: "t1", deletedAt: 1, expiresAt: 2, theater: { ...theater, alias: "Old name" }, objectiveRecords: [], groups: [] },
+    ] });
+    expect(state.theaters).toEqual([theater]);
+    expect(state.deletionTombstones?.[0]).toMatchObject({ theater });
+    expect(JSON.stringify(state)).not.toContain('"alias"');
   });
 
   it("reads the on-disk version and preserves the first v3 backup", () => {

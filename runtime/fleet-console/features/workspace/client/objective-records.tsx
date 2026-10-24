@@ -1,3 +1,4 @@
+import type { CommodoreAliasEditor } from "../shared/console-state.js";
 import { getViewedTheaterId, useViewedTheaterId } from "../../../core/client/src/integration/viewed-theater.js";
 import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
 import { pluginRuntimeState } from "../../execution/client/objective-activity.js";
@@ -7,7 +8,7 @@ import type { ObjectiveLaunchKind } from "../../objectives/shared/records/types.
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientFeatureDescriptor } from "../shared/feature-surfaces.js";
 
-import { ApiError, createGroup, deleteGroup, fetchGroups, fetchObjectiveRecords, fetchTheaters, patchObjective, patchTheaterAlias, patchTheaterOrder, renameObjective, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
+import { ApiError, createGroup, deleteGroup, fetchGroups, fetchObjectiveRecords, fetchTheaters, patchObjective, patchTheaterOrder, renameObjective, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveObjective, shouldReleaseActiveObjective } from "../../../core/client/src/integration/active-objective-surface.js";
 import { blocksObjectiveRecordsShortcutWhileEditing, isBlockingDialogOpen, resolveObjectiveRecordsArrowShortcutAction } from "../../../core/client/src/integration/shortcuts.js";
 import { archiveObjectiveFromUi, resumeDormantOnOpen, resumeObjectiveInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
@@ -47,13 +48,14 @@ const DEFAULT_SHELL_HEIGHT = 360;
 const CHROME_FLOAT_GUTTER = 24;
 
 interface ObjectiveRecordsProps {
+  readonly aliasEditor: CommodoreAliasEditor;
   readonly state: ConsoleState;
   readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
   readonly onArchived: (outcome: ArchiveOutcome) => void;
   readonly deletionToast?: ReactNode;
 }
 
-export function ObjectiveRecords({ state, onDeferredDeletion, onArchived, deletionToast }: ObjectiveRecordsProps) {
+export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArchived, deletionToast }: ObjectiveRecordsProps) {
   const viewedTheaterId = useViewedTheaterId();
   const registry = useFeatureRegistry();
   const viewMode = useViewMode();
@@ -400,8 +402,8 @@ export function ObjectiveRecords({ state, onDeferredDeletion, onArchived, deleti
   }, [refreshTheaters, runMutation]);
 
   const handleSetTheaterAlias = useCallback((theaterId: string, alias: string | null) => {
-    runMutation(() => patchTheaterAlias(theaterId, alias).then(refreshTheaters), refreshTheaters);
-  }, [refreshTheaters, runMutation]);
+    runMutation(() => aliasEditor.save(theaterId, alias), refreshTheaters);
+  }, [aliasEditor, refreshTheaters, runMutation]);
 
   const handleUngroupAll = useCallback((groupId: string) => {
     let deleted = false;
@@ -475,6 +477,7 @@ export function ObjectiveRecords({ state, onDeferredDeletion, onArchived, deleti
       onReorderGroups={handleReorderGroups}
       onReorderTheaters={handleReorderTheaters}
       onSetTheaterAlias={handleSetTheaterAlias}
+      clampAlias={aliasEditor.clamp}
       onUngroupAll={handleUngroupAll}
       onAddTheater={handleAddTheater}
       onCancelAddTheater={cancelAddTheater}

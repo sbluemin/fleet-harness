@@ -37,7 +37,6 @@ import { ObjectiveRecordsSideBarChip, type SideBarEntry } from "./objective-reco
 import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
-import { clampTheaterAlias } from "../theater.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarRowFold, SideBarRowZone, theaterClusterHead, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../objective-clusters.js";
@@ -95,6 +94,7 @@ interface ObjectiveRecordsSideBarProps {
   readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
   readonly onReorderTheaters: (orderedTheaterIds: readonly string[]) => void;
   /** 사령관 별칭 지정 — null 은 해제다. */
+  readonly clampAlias: (value: string) => string;
   readonly onSetTheaterAlias: (theaterId: string, alias: string | null) => void;
   readonly onUngroupAll: (groupId: string) => void;
   readonly onAddTheater: (path: string) => void;
@@ -180,6 +180,7 @@ interface TheaterSummary {
 
 /** 머리의 별칭 편집 — 한 번에 한 머리만 그 자리에서 편집한다. 끝낼 때 undefined 는 취소, null 은 해제다. */
 interface TheaterAliasEditing {
+  readonly clampAlias: (value: string) => string;
   readonly editingAlias: boolean;
   readonly onStartAliasEdit: (theaterId: string) => void;
   readonly onFinishAliasEdit: (theaterId: string, alias: string | null | undefined) => void;
@@ -341,6 +342,7 @@ export function ObjectiveRecordsSideBar({
   onReorderGroups,
   onReorderTheaters,
   onSetTheaterAlias,
+  clampAlias,
   onUngroupAll,
   onAddTheater,
   onCancelAddTheater,
@@ -951,6 +953,7 @@ export function ObjectiveRecordsSideBar({
     if (alias !== undefined) onSetTheaterAlias(theaterId, alias);
   };
   const aliasEditingFor = (theaterId: string): TheaterAliasEditing => ({
+    clampAlias,
     editingAlias: aliasEditingTheaterId === theaterId,
     onStartAliasEdit: startAliasEdit,
     onFinishAliasEdit: finishAliasEdit,
@@ -1448,6 +1451,7 @@ function TheaterSectionHeader({
   summary,
   statusAxis,
   editingAlias,
+  clampAlias,
   showStatusLiveTick,
   dragging,
   dropTarget,
@@ -1486,7 +1490,7 @@ function TheaterSectionHeader({
     if (!editingAlias) keyFinishRef.current = false;
     wasEditingRef.current = editingAlias;
   }, [editingAlias]);
-  const displayName = theater.alias ?? theater.label;
+  const displayName = theater.commodore?.alias ?? theater.label;
   const summaryText = summary.commanders === 0
     ? t("sidebar.theater.summary.none")
     : [
@@ -1494,7 +1498,7 @@ function TheaterSectionHeader({
         ...(summary.waiting > 0 ? [t("sidebar.theater.summary.waiting", { count: summary.waiting })] : []),
       ].join(" · ");
   // 둘째 줄 — 별칭이 있으면 원래 Theater 이름이 먼저 선다(어느 폴더인지 늘 보인다). 사령관 카드는 그 뒤에 요약을 잇는다.
-  const subline = [...(theater.alias ? [theater.label] : []), summaryText].join(" · ");
+  const subline = [...(theater.commodore?.alias ? [theater.label] : []), summaryText].join(" · ");
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
@@ -1599,7 +1603,7 @@ function TheaterSectionHeader({
         <>
           {mark === null ? avatarAnchor(false) : null}
           <span className="side-bar-theater-text">
-            <TheaterAliasInput theater={theater} onDone={(alias, viaKey) => { keyFinishRef.current = viaKey; onFinishAliasEdit(theater.id, alias); }} />
+            <TheaterAliasInput clampAlias={clampAlias} theater={theater} onDone={(alias, viaKey) => { keyFinishRef.current = viaKey; onFinishAliasEdit(theater.id, alias); }} />
             <span className="side-bar-theater-sub">{[theater.label, summaryText].join(" · ")}</span>
           </span>
         </>
@@ -1643,9 +1647,9 @@ function TheaterSectionHeader({
  * 머리 자리의 별칭 입력 — Enter 는 저장, Esc 나 다른 곳을 누르면 취소, 비우고 저장하면 해제다. 바뀐 것이 없으면 저장하지 않는다.
  * IME 조합 중의 Enter·Esc 는 조합의 것이라 편집을 끝내지 않는다.
  */
-function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined, viaKey: boolean) => void }) {
+function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlias: (value: string) => string; readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined, viaKey: boolean) => void }) {
   const t = useT();
-  const [value, setValue] = useState(theater.alias ?? "");
+  const [value, setValue] = useState(theater.commodore?.alias ?? "");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
   const doneRef = useRef(false);
@@ -1659,8 +1663,8 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
     onDone(alias, viaKey);
   };
   const commit = () => {
-    const next = clampTheaterAlias(value).trim();
-    finish(next === (theater.alias ?? "") ? undefined : next.length > 0 ? next : null, true);
+    const next = clampAlias(value).trim();
+    finish(next === (theater.commodore?.alias ?? "") ? undefined : next.length > 0 ? next : null, true);
   };
   return (
     <input
@@ -1670,9 +1674,9 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
       value={value}
       placeholder={theater.label}
       aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
-      onChange={(event) => setValue(composingRef.current ? event.target.value : clampTheaterAlias(event.target.value))}
+      onChange={(event) => setValue(composingRef.current ? event.target.value : clampAlias(event.target.value))}
       onCompositionStart={() => { composingRef.current = true; }}
-      onCompositionEnd={(event) => { composingRef.current = false; setValue(clampTheaterAlias(event.currentTarget.value)); }}
+      onCompositionEnd={(event) => { composingRef.current = false; setValue(clampAlias(event.currentTarget.value)); }}
       onKeyDown={(event) => {
         if (composingRef.current || event.nativeEvent.isComposing) return;
         if (event.key === "Enter") {
@@ -1766,7 +1770,7 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
         ref={menuRef}
         className="theater-menu side-bar-theater-menu"
         role="menu"
-        aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.alias ?? theater.label })}
+        aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.commodore?.alias ?? theater.label })}
         style={{
           position: "fixed",
           left: menuPosition.left,
@@ -1778,8 +1782,8 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
         <div className="theater-menu-title" aria-hidden="true">
           <TheaterAvatar theaterId={theater.id} size={22} label="" decorative />
           <span className="theater-menu-title-text">
-            <strong>{theater.alias ?? theater.label}</strong>
-            {theater.alias ? <span>{theater.label}</span> : null}
+            <strong>{theater.commodore?.alias ?? theater.label}</strong>
+            {theater.commodore?.alias ? <span>{theater.label}</span> : null}
           </span>
         </div>
         {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}

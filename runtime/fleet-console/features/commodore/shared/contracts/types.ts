@@ -1,6 +1,7 @@
 import { AGENT_EFFORTS, type AgentEffort } from "../../../ai-gateway/shared/models.js";
 import { isExperimentModelId, type ExperimentAideSelection } from "../../../settings/shared/experiments.js";
 import { z } from "zod";
+import { normalizeCommodoreAlias } from "../alias.js";
 
 import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
 
@@ -107,6 +108,8 @@ export const commodoreAskSchema = z.object({
 }).strict();
 
 export const commodoreStateSchema = z.object({
+  /** 사람이 지정한 사령관 이름. Theater 연결과는 독립된 UUID의 속성이다. */
+  alias: z.string().refine((value) => normalizeCommodoreAlias(value) === value).optional(),
   directive: commodoreDirectiveSchema,
   intel: z.array(commodoreIntelSchema).max(MAX_INTEL_ITEMS),
   sources: z.array(commodoreSourceSchema).max(MAX_SOURCES),
@@ -296,7 +299,7 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
-export type CommodoreStateChange = "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
 /** 순찰 간격(ms) — 미설정·안 함은 null이며 자동 깨움 타이머를 만들지 않는다. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number | null {

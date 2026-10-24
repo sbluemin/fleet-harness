@@ -1,4 +1,5 @@
 import { predecessorStateHash } from "./predecessor-hash.js";
+import { legacyTheaterAliases, retainRegistrationAliases, withoutTheaterAliases, type LegacyTheaterAlias } from "../../workspace/host/registration-migration.js";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -88,7 +89,7 @@ function readArchive(value: unknown): Archive {
   assertMinimal(value);
   return value as unknown as Archive;
 }
-function readRegistrations(raw: unknown): DurableConsoleState {
+function readRegistrations(raw: unknown, recovering = false): DurableConsoleState {
   if (!object(raw)) throw failure();
   const tombstones = Array.isArray(raw.deletionTombstones) ? raw.deletionTombstones.map((row) => object(row) && row.kind === "theater" ? { ...row, objectiveRecords: row.objectiveRecords ?? row.operations ?? [], groups: row.groups ?? [] } : row) : [];
   const state = sanitizeDurableConsoleState({ ...raw, deletionTombstones: tombstones });
@@ -96,7 +97,7 @@ function readRegistrations(raw: unknown): DurableConsoleState {
   if (Array.isArray(raw.groups) && state.groups?.length !== raw.groups.length) throw failure();
   const sourceRecords = raw.objectiveRecords ?? raw.operations;
   if (Array.isArray(sourceRecords) && sourceRecords.some((row) => !object(row) || (row.type !== "shell" && !state.objectiveRecords.some((node) => node.id === row.id)))) throw failure();
-  return state;
+  return recovering ? retainRegistrationAliases(raw, state as unknown as Record<string, unknown>) as unknown as DurableConsoleState : state;
 }
 function withoutOwner(group: DurableObjectiveGroup): Group { const { theaterId: _owner, ...rest } = group; return rest; }
 function allDocuments(scope: Scope): Map<string, ObjectiveDocument> {
@@ -111,6 +112,8 @@ export function createObjectiveStorage(deps: {
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
   initializeOwners?: (state: DurableConsoleState) => void;
+  /** 명부 원본의 별칭을 소유 저장소에 커밋한다. 실패하면 명부를 쓰지 않고 기동을 중단한다. */
+  migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => void;
   createStore?: typeof createDurableJsonStore;
 }) {
   const scopes = new Map<string, Scope>();
@@ -140,11 +143,11 @@ export function createObjectiveStorage(deps: {
   function recover(scope: Scope): void {
     const tx = scope.archive.transaction;
     if (!tx) return;
-    deps.stateStore.save(registrationState(tx.state, true));
+    deps.stateStore.save(registrationState(readRegistrations(tx.state, !ready && !!deps.migrateRegistrationAliases), true));
     writeDocuments(scope, tx.documents, tx.groups);
     archiveStore(scope).save(tx.archive);
     scope.documents = new Map(tx.documents.map((doc) => [doc.id, doc])); scope.groups = tx.groups; scope.archive = tx.archive;
-    state = readRegistrations(tx.state);
+    state = readRegistrations(tx.state, !ready && !!deps.migrateRegistrationAliases);
   }
   function readScope(owner: ObjectiveOwner): Scope {
     const existing = exists(owner.directory);
@@ -307,7 +310,7 @@ export function createObjectiveStorage(deps: {
       const raw = exists(deps.stateStore.path) ? readJson(deps.stateStore.path) : { version: STATE_VERSION, theaters: [] };
       if (!object(raw) || raw.version !== STATE_VERSION || !Array.isArray(raw.theaters)) throw failure();
       previousRaw = raw;
-      state = readRegistrations(raw);
+      state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
       if (state.theaters.length !== raw.theaters.length) throw failure();
       const legacyArchivePath = path.join(deps.directory, "operations-archive.json");
       if (exists(legacyArchivePath)) {
@@ -319,11 +322,24 @@ export function createObjectiveStorage(deps: {
           const before = (state.revision ?? 0) === tx.beforeRevision && predecessorStateHash(raw) === tx.beforeHash;
           const after = state.revision === tx.state.revision && predecessorStateHash(raw) === predecessorStateHash(tx.state);
           if (!before && !after) throw failure();
-          state = readRegistrations(tx.state); deferredArchive = tx.archive; predecessorPrepared = true;
+          state = readRegistrations(tx.state, !ready && !!deps.migrateRegistrationAliases); deferredArchive = tx.archive; predecessorPrepared = true;
         } else deferredArchive = legacy;
       }
-      deps.initializeOwners?.(state);
+      deps.initializeOwners?.(readRegistrations(state));
+      deps.migrateRegistrationAliases?.(legacyTheaterAliases(raw));
       migrate(state);
+      // 저널 복구가 끝난 뒤만 명부에서 키를 지운다. 이전 체크섬을 바꾸는 중간 상태를 남기지 않는다.
+      if (deps.migrateRegistrationAliases) {
+        if (exists(deps.stateStore.path)) {
+          const current = readJson(deps.stateStore.path);
+          if (!object(current)) throw failure();
+          const cleaned = withoutTheaterAliases(current);
+          if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
+        }
+        previousRaw = withoutTheaterAliases(previousRaw);
+        state = readRegistrations(state);
+        deferred = readRegistrations(deferred);
+      }
       ready = true; blocked = false;
       return snapshot();
     } catch (error) { blocked = true; throw error instanceof SyntaxError ? failure() : error; }
