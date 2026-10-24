@@ -11,14 +11,15 @@ import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 import type { MemoryEntry } from "../shared/contracts/memory.js";
 import { patrolIntervalMs, type CommodorePatrolMinutes, type CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
-import { postCommodore as post } from "./request.js";
+import { post } from "./request.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
- * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
+ * 사령관(Commodore)의 브라우저 쪽 상태 — 소유 UUID마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
  *
- * 진실은 서버다: 화면은 응답이 아니라 `commodore` 사건으로 갱신되고, 스트림이 다시 붙으면 읽은 Theater 를
- * 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면 머리 글리프·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
+ * Theater는 사령관을 찾기 위한 화면 문맥일 뿐이다. 진실은 서버다: 화면은 응답이 아니라 `commodore` 사건으로
+ * 갱신되고, 스트림이 다시 붙으면 읽어 둔 사령관을 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면
+ * 머리 글리프·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
  */
 
 export const COMMODORE_CHANNEL = "commodore";
@@ -65,7 +66,11 @@ const TRANSCRIPT_PAGE = 200;
 const MAX_HELD_ENTRIES = 2_000;
 
 let installed: CommodoreClientDeps | null = null;
+/** 소유 UUID → 그 사령관의 화면 상태. */
 const theaters = new Map<string, TheaterCommodore>();
+/** 화면 문맥(Theater) → 사령관 UUID. 경로·정체성이 아니다. */
+const contextOwners = new Map<string, string>();
+const contextResolving = new Map<string, Promise<string | null>>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let enabledSnapshot = false;
@@ -100,15 +105,61 @@ export function commodoreRevision(): number {
   return revision;
 }
 
+function rememberContext(theaterId: string, commodoreId: string): void {
+  if (contextOwners.get(theaterId) === commodoreId) return;
+  contextOwners.set(theaterId, commodoreId);
+  notify();
+}
+
+/** 이미 풀어 둔 화면 문맥의 사령관 UUID. 아직 모르면 null. */
+export function ownerOfContext(theaterId: string): string | null {
+  return contextOwners.get(theaterId) ?? null;
+}
+
+/** 그 사령관을 가리키는 화면 문맥. 이동에만 쓰고 정체성으로 쓰지 않는다. */
+export function contextsOf(commodoreId: string): readonly string[] {
+  return [...contextOwners.entries()].filter(([, id]) => id === commodoreId).map(([theaterId]) => theaterId);
+}
+
+/** Theater 머리·사이드바에서 사령관 UUID를 구한다. 실패·없음은 null이고 Theater로 대체하지 않는다. */
+export function resolveContext(theaterId: string): Promise<string | null> {
+  const known = contextOwners.get(theaterId);
+  if (known) return Promise.resolve(known);
+  const inflight = contextResolving.get(theaterId);
+  if (inflight) return inflight;
+  const client = api();
+  if (!client) return Promise.resolve(null);
+  const request = post<{ readonly commodoreId: string | null }>(client, "/commodore/resolve", { theaterId })
+    .then((result) => {
+      if (!result.commodoreId) return null;
+      rememberContext(theaterId, result.commodoreId);
+      return result.commodoreId;
+    })
+    .catch(() => null)
+    .finally(() => { if (contextResolving.get(theaterId) === request) contextResolving.delete(theaterId); });
+  contextResolving.set(theaterId, request);
+  return request;
+}
+
+export function useCommodoreOwner(theaterId: string | null): string | null {
+  const owner = useSyncExternalStore(
+    subscribeCommodore,
+    () => (theaterId ? ownerOfContext(theaterId) : null),
+    () => (theaterId ? ownerOfContext(theaterId) : null),
+  );
+  useEffect(() => { if (theaterId) void resolveContext(theaterId); }, [theaterId]);
+  return owner;
+}
+
 /**
  * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
  * 읽지 않은 Theater 는 자동 운영하지 않는 것으로 다룬다. `enabled` 는 사령관 표면의 가용 여부이고,
  * `peek` 는 사람이 이 Theater 머리의 사령관 글리프에 머무는 중이다.
  */
-export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly peek: boolean } {
+export function commodoreBoardOf(commodoreId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly peek: boolean } {
   if (!enabledSnapshot) return DISABLED_BOARD;
-  const view = theaters.get(theaterId)?.view;
-  const peek = peekTheater === theaterId;
+  const view = theaters.get(commodoreId)?.view;
+  const peek = peekTheater !== null && ownerOfContext(peekTheater) === commodoreId;
   if (!view?.active) return { active: false, stalled: [], enabled: true, peek };
   return { active: true, stalled: view.run.stalled ?? [], enabled: true, peek };
 }
@@ -174,7 +225,9 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
-  const loadRegistered = () => { for (const theaterId of commodoreTheaterIds()) void loadCommodore(theaterId); };
+  const loadRegistered = () => {
+    for (const theaterId of commodoreTheaterIds()) void resolveContext(theaterId).then((commodoreId) => { if (commodoreId) void loadCommodore(commodoreId); });
+  };
   let registered = commodoreTheaterIds().join("\0");
   // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 등록 목록이 바뀔 때만 새로 한다.
   let names = commodoreNamesKey();
@@ -190,40 +243,39 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
     }
     notify();
   });
-  const applyEvent = (event: CommodoreEvent, theaterId: string) => {
+  const applyEvent = (event: CommodoreEvent) => {
+    const commodoreId = event.commodoreId;
+    for (const theaterId of event.theaterIds) rememberContext(theaterId, commodoreId);
     if (event.op === "memory") {
-      // 기억 칸을 연 적 있는 Theater 만 다시 읽는다 — 사건은 무엇이 바뀌었는지만 말하고 목록은 서버가 준다.
-      if (memories.has(theaterId)) void loadCommodoreMemory(theaterId);
+      if (memories.has(commodoreId)) void loadCommodoreMemory(commodoreId);
       return;
     }
-    if (event.op === "state" && event.change === "clear") setTheater(theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
-    const current = theaters.get(theaterId);
+    if (event.op === "state" && event.change === "clear") setTheater(commodoreId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
+    const current = theaters.get(commodoreId);
     if (event.op === "transcript") {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
       if (!current?.transcriptLoaded) return;
       if (current.entries.some((entry) => entry.seq === event.entry.seq)) return;
-      setTheater(theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
+      setTheater(commodoreId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
       return;
     }
     if (event.op === "live") {
-      // 기록을 열지 않은 Theater 의 흐름은 버린다 — 그릴 화면이 없고, 열 때는 확정 줄을 읽는다.
       if (!current?.transcriptLoaded) return;
-      setTheater(theaterId, { live: appendLive(current.live, event.live) }, false);
+      setTheater(commodoreId, { live: appendLive(current.live, event.live) }, false);
       return;
     }
     if (!current?.view) {
-      void loadCommodore(theaterId, true);
+      void loadCommodore(commodoreId, true);
       return;
     }
     if (event.op === "state") {
       const automatic = patrolIntervalMs(event.state) !== null;
-      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && automatic } }, false);
+      setTheater(commodoreId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && automatic } }, false);
       return;
     }
     if (event.op === "run") {
-      setTheater(theaterId, { view: { ...current.view, run: event.run, active: current.view.boardReady && current.view.enabled && patrolIntervalMs(current.view.state) !== null } }, false);
-      // 어댑터 수명이 바뀐 경우 저장 상태 사건만으로는 준비 여부를 알 수 없다. 서버 view로 다시 수렴한다.
-      if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(theaterId, true);
+      setTheater(commodoreId, { view: { ...current.view, run: event.run, active: current.view.boardReady && current.view.enabled && patrolIntervalMs(current.view.state) !== null } }, false);
+      if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(commodoreId, true);
     }
   };
   const stream = createConversationStream<CommodoreEvent>({
@@ -231,10 +283,10 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
     withText: (event, text) => ({ op: "live", commodoreId: event.commodoreId, theaterIds: event.theaterIds, live: { kind: "text-delta", text } }),
     apply: (events) => {
       let changed = false;
-      for (const event of events) for (const theaterId of event.theaterIds) {
-        const before = theaters.get(theaterId);
-        applyEvent(event, theaterId);
-        changed ||= before !== theaters.get(theaterId);
+      for (const event of events) {
+        const before = theaters.get(event.commodoreId);
+        applyEvent(event);
+        changed ||= before !== theaters.get(event.commodoreId);
       }
       if (changed) notify();
     },
@@ -242,7 +294,7 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (!event || typeof event.commodoreId !== "string" || !Array.isArray(event.theaterIds)) return;
-    if (event.op === "live" && !event.theaterIds.some((id) => theaters.get(id)?.transcriptLoaded)) return;
+    if (event.op === "live" && !theaters.get(event.commodoreId)?.transcriptLoaded) return;
     stream.push(event);
   });
   // 단절 중의 사건은 다시 오지 않는다 — 읽어 둔 Theater 를 처음부터 다시 읽는다.
@@ -274,6 +326,8 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
     offExperiments();
     if (installed === ctx) installed = null;
     theaters.clear();
+    contextOwners.clear();
+    contextResolving.clear();
     loading.clear();
     memories.clear();
     notify();
@@ -284,38 +338,37 @@ function api(): ClientApiCapability | null {
   return installed?.api ?? null;
 }
 
-export function loadCommodore(theaterId: string, force = false): Promise<void> {
+export function loadCommodore(commodoreId: string, force = false): Promise<void> {
   const client = api();
-  if (!client || !enabledSnapshot) return Promise.resolve();
-  if (!force && theaters.get(theaterId)?.view) return Promise.resolve();
-  const inflight = loading.get(theaterId);
+  if (!client || !commodoreId || !enabledSnapshot) return Promise.resolve();
+  if (!force && theaters.get(commodoreId)?.view) return Promise.resolve();
+  const inflight = loading.get(commodoreId);
   if (inflight && !force) return inflight;
-  const request = post<CommodoreStateView>(client, "/commodore/state", withLanguage({ theaterId }))
-    .then((view) => { setTheater(theaterId, { view }); })
+  const request = post<CommodoreStateView>(client, "/commodore/state", withLanguage({ commodoreId }))
+    .then((view) => { setTheater(commodoreId, { view }); })
     .catch(() => undefined)
-    .finally(() => { if (loading.get(theaterId) === request) loading.delete(theaterId); });
-  loading.set(theaterId, request);
+    .finally(() => { if (loading.get(commodoreId) === request) loading.delete(commodoreId); });
+  loading.set(commodoreId, request);
   return request;
 }
 
-export async function loadTranscript(theaterId: string, options: { readonly older?: boolean; readonly reset?: boolean } = {}): Promise<void> {
+export async function loadTranscript(commodoreId: string, options: { readonly older?: boolean; readonly reset?: boolean } = {}): Promise<void> {
   const client = api();
-  if (!client) return;
-  const current = theaters.get(theaterId) ?? EMPTY;
+  if (!client || !commodoreId) return;
+  const current = theaters.get(commodoreId) ?? EMPTY;
   const before = options.older && !options.reset ? current.entries[0]?.seq : undefined;
-  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number }>(client, "/commodore/transcript", withLanguage({ theaterId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
+  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number }>(client, "/commodore/transcript", withLanguage({ commodoreId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
   if (!page) return;
-  if (page.clearedThrough < (theaters.get(theaterId)?.clearedThrough ?? 0)) return;
-  setTheater(theaterId, { clearedThrough: page.clearedThrough });
-  const latest = theaters.get(theaterId) ?? EMPTY;
+  if (page.clearedThrough < (theaters.get(commodoreId)?.clearedThrough ?? 0)) return;
+  setTheater(commodoreId, { clearedThrough: page.clearedThrough });
+  const latest = theaters.get(commodoreId) ?? EMPTY;
   if (options.older && !options.reset) {
     const known = new Set(latest.entries.map((entry) => entry.seq));
-    setTheater(theaterId, { entries: [...page.entries.filter((entry) => !known.has(entry.seq)), ...latest.entries], hasMore: page.hasMore, transcriptLoaded: true });
+    setTheater(commodoreId, { entries: [...page.entries.filter((entry) => !known.has(entry.seq)), ...latest.entries], hasMore: page.hasMore, transcriptLoaded: true });
     return;
   }
-  // 읽는 사이에 사건으로 들어온 줄은 쪽의 뒤에 이어 붙인다.
   const tail = latest.transcriptLoaded ? latest.entries.filter((entry) => entry.seq > (page.entries.at(-1)?.seq ?? -1)) : [];
-  setTheater(theaterId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, ...(options.reset ? { live: [] } : {}) });
+  setTheater(commodoreId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, ...(options.reset ? { live: [] } : {}) });
 }
 
 /** 호스트의 채팅 턴 렌더러 — Objective 채팅과 같은 컴포넌트다. 설치 전이면 null. */
@@ -345,12 +398,12 @@ export function commodoreComposerTopEntriesRenderer(): ComponentType | null {
 
 const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
 
-export function readCommodore(theaterId: string): TheaterCommodore {
-  return theaters.get(theaterId) ?? EMPTY_VIEW_SNAPSHOT;
+export function readCommodore(commodoreId: string | null): TheaterCommodore {
+  return commodoreId ? theaters.get(commodoreId) ?? EMPTY_VIEW_SNAPSHOT : EMPTY_VIEW_SNAPSHOT;
 }
 
-export function useCommodore(theaterId: string): TheaterCommodore {
-  return useSyncExternalStore(subscribeCommodore, () => readCommodore(theaterId), () => readCommodore(theaterId));
+export function useCommodore(commodoreId: string | null): TheaterCommodore {
+  return useSyncExternalStore(subscribeCommodore, () => readCommodore(commodoreId), () => readCommodore(commodoreId));
 }
 
 /**
@@ -367,30 +420,30 @@ const EMPTY_MEMORY: CommodoreMemoryView = { entries: [], loaded: false, failed: 
 const memories = new Map<string, CommodoreMemoryView>();
 const memoryRequests = new Map<string, number>();
 
-export function loadCommodoreMemory(theaterId: string): Promise<void> {
+export function loadCommodoreMemory(commodoreId: string): Promise<void> {
   const client = api();
-  if (!client) return Promise.resolve();
-  if (!memories.has(theaterId)) memories.set(theaterId, EMPTY_MEMORY);
-  const ticket = (memoryRequests.get(theaterId) ?? 0) + 1;
-  memoryRequests.set(theaterId, ticket);
-  return post<{ readonly entries: readonly MemoryEntry[] }>(client, "/commodore/memory", withLanguage({ theaterId }))
+  if (!client || !commodoreId) return Promise.resolve();
+  if (!memories.has(commodoreId)) memories.set(commodoreId, EMPTY_MEMORY);
+  const ticket = (memoryRequests.get(commodoreId) ?? 0) + 1;
+  memoryRequests.set(commodoreId, ticket);
+  return post<{ readonly entries: readonly MemoryEntry[] }>(client, "/commodore/memory", withLanguage({ commodoreId }))
     .then((page) => ({ entries: page.entries, loaded: true, failed: false }))
-    .catch(() => ({ ...(memories.get(theaterId) ?? EMPTY_MEMORY), loaded: true, failed: true }))
+    .catch(() => ({ ...(memories.get(commodoreId) ?? EMPTY_MEMORY), loaded: true, failed: true }))
     .then((next) => {
-      if (memoryRequests.get(theaterId) !== ticket || !memories.has(theaterId)) return;
-      memories.set(theaterId, next);
+      if (memoryRequests.get(commodoreId) !== ticket || !memories.has(commodoreId)) return;
+      memories.set(commodoreId, next);
       notify();
     });
 }
 
-export function readCommodoreMemory(theaterId: string): CommodoreMemoryView {
-  return memories.get(theaterId) ?? EMPTY_MEMORY;
+export function readCommodoreMemory(commodoreId: string | null): CommodoreMemoryView {
+  return commodoreId ? memories.get(commodoreId) ?? EMPTY_MEMORY : EMPTY_MEMORY;
 }
 
 /** 기억 칸이 서는 동안 — 처음 서면 읽기를 건다. */
-export function useCommodoreMemory(theaterId: string): CommodoreMemoryView {
-  useEffect(() => { if (!memories.get(theaterId)?.loaded) void loadCommodoreMemory(theaterId); }, [theaterId]);
-  return useSyncExternalStore(subscribeCommodore, () => readCommodoreMemory(theaterId), () => readCommodoreMemory(theaterId));
+export function useCommodoreMemory(commodoreId: string | null): CommodoreMemoryView {
+  useEffect(() => { if (commodoreId && !memories.get(commodoreId)?.loaded) void loadCommodoreMemory(commodoreId); }, [commodoreId]);
+  return useSyncExternalStore(subscribeCommodore, () => readCommodoreMemory(commodoreId), () => readCommodoreMemory(commodoreId));
 }
 
 /** 실험 기능 「자율 운영」을 읽었는가와 켜져 있는가 — Theater Inbox 섹션이 리액트 밖에서 읽는다(부수효과 없음). */
@@ -471,11 +524,11 @@ export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string |
 
 /* ── 사람의 행위 ─────────────────────────────────────────────────────── */
 
-async function write(theaterId: string, path: string, body: Record<string, unknown>): Promise<void> {
+async function write(commodoreId: string, path: string, body: Record<string, unknown>): Promise<void> {
   const client = api();
-  if (!client) throw new Error("not_installed");
-  const view = await post<CommodoreStateView>(client, path, withLanguage({ theaterId, ...body }));
-  if (view && typeof view === "object" && "state" in view) setTheater(theaterId, { view });
+  if (!client || !commodoreId) throw new Error("not_installed");
+  const view = await post<CommodoreStateView>(client, path, withLanguage({ commodoreId, ...body }));
+  if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
 }
 
 export const saveCommodoreDirective = (theaterId: string, text: string) => write(theaterId, "/commodore/directive", { text });
@@ -589,14 +642,14 @@ export function discardCommodoreAttachment(id: string): Promise<void> {
 }
 
 /** `references` — 본문 속 지휘관 참조의 목표 id(본문의 표식 글자 순서). 서버가 짝·Theater·실재를 검증한다. */
-export async function messageCommodore(theaterId: string, text: string, attachmentIds?: readonly string[], references?: readonly string[]): Promise<void> {
+export async function messageCommodore(commodoreId: string, text: string, attachmentIds?: readonly string[], references?: readonly string[]): Promise<void> {
   const client = api();
-  if (!client) throw new Error("not_installed");
-  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text, ...(attachmentIds?.length ? { attachmentIds } : {}), ...(references?.length ? { references } : {}) }));
+  if (!client || !commodoreId) throw new Error("not_installed");
+  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ commodoreId, text, ...(attachmentIds?.length ? { attachmentIds } : {}), ...(references?.length ? { references } : {}) }));
   const entry = result?.entry;
-  const current = theaters.get(theaterId);
+  const current = theaters.get(commodoreId);
   if (entry && current?.transcriptLoaded && !current.entries.some((candidate) => candidate.seq === entry.seq)) {
-    setTheater(theaterId, { entries: [...current.entries, entry].slice(-MAX_HELD_ENTRIES) });
+    setTheater(commodoreId, { entries: [...current.entries, entry].slice(-MAX_HELD_ENTRIES) });
   }
 }
 
@@ -608,19 +661,20 @@ const openAskMemo = new Map<string, { readonly source: readonly CommodoreAsk[] |
  * 사령관이 사람에게 물어 아직 답을 기다리는 질문 — 물은 순서. 「내 결정」 줄·레일 배지·확인 필요·사령관 얼굴 배지·폰 칩 배지·질문 카드가
  * 모두 이 하나를 읽는다. 읽지 않은 Theater 는 없다. 같은 상태면 같은 배열을 돌려준다(스냅샷).
  */
-export function openAsks(theaterId: string | null): readonly CommodoreAsk[] {
-  if (!theaterId) return NO_ASKS;
-  const source = theaters.get(theaterId)?.view?.state.asks;
-  const hit = openAskMemo.get(theaterId);
+export function openAsks(commodoreId: string | null): readonly CommodoreAsk[] {
+  if (!commodoreId) return NO_ASKS;
+  const source = theaters.get(commodoreId)?.view?.state.asks;
+  const hit = openAskMemo.get(commodoreId);
   if (hit && hit.source === source) return hit.open;
   const open = source?.some((ask) => !ask.settled) ? source.filter((ask) => !ask.settled) : NO_ASKS;
-  openAskMemo.set(theaterId, { source, open });
+  openAskMemo.set(commodoreId, { source, open });
   return open;
 }
 
-/** 서 있는 질문이 있는 Theater — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다(읽은 Theater 만). */
+/** 서 있는 질문이 있는 화면 문맥 — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다. 정체성은 UUID다. */
 export function openAskTheaters(): readonly string[] {
-  return [...theaters.keys()].filter((theaterId) => openAsks(theaterId).length > 0);
+  const asking = new Set([...theaters.keys()].filter((commodoreId) => openAsks(commodoreId).length > 0));
+  return [...contextOwners.entries()].filter(([, commodoreId]) => asking.has(commodoreId)).map(([theaterId]) => theaterId);
 }
 
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */

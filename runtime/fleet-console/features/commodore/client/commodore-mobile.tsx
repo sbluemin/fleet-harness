@@ -40,6 +40,8 @@ import {
   setCommodorePatrol,
   subscribeCommodore,
   useCommodore,
+  useCommodoreOwner,
+  ownerOfContext,
   useCommodoreEnabled,
   useCommodoreExperimentKnown,
   INTEL_EDIT_ATTRIBUTE,
@@ -93,7 +95,7 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
   subscribe: (listener) => subscribeCommodore(listener),
   get: (theaterId): RailEntryDestinationTrailingValue | null => {
     if (!theaterId) return null;
-    const view = readCommodore(theaterId).view;
+    const view = readCommodore(ownerOfContext(theaterId)).view;
     if (!view) return null;
     const t = getT(commodoreLanguage());
     const run = view.run;
@@ -111,6 +113,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const enabled = useCommodoreEnabled();
   const known = useCommodoreExperimentKnown();
   const theaterId = ctx.theaterId ?? "";
+  const commodoreId = useCommodoreOwner(theaterId || null);
   const { mobileBar, visible } = ctx;
   if (ctx.language) noteCommodoreLanguage(ctx.language);
   const title = useCommodoreName(theaterId, t);
@@ -124,7 +127,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
 
   if (known && !enabled) return <CommodoreDisabled t={t} />;
   if (!theaterId) return <div className="objectives-cm" />;
-  return <CommodoreScreen key={theaterId} t={t} theaterId={theaterId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={title} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
+  return <CommodoreScreen key={commodoreId ?? theaterId} t={t} theaterId={theaterId} commodoreId={commodoreId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={title} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
 }
 
 /** 실험 기능이 꺼진 채 들어온 화면 — 보던 중 꺼지면 호스트가 홈으로 돌려보내므로, 옛 주소로 들어온 순간에만 잠깐 선다. */
@@ -154,8 +157,8 @@ function commodorePillStatus(t: T, view: CommodoreView | null): string {
  * 화면은 두 장이다. 기본은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 한 단 깊은 칩 화면
  * — 맨 위 사령관 상태 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
  */
-function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
+function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly commodoreId: string | null; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
+  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const board = useObjectiveTheater(theaterId);
@@ -182,9 +185,10 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
 
   useEffect(() => {
     if (!enabled) return;
-    void loadCommodore(theaterId);
-    if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
-  }, [theaterId, enabled]);
+    if (!commodoreId) return;
+    void loadCommodore(commodoreId);
+    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  }, [commodoreId, enabled]);
   useEffect(() => { setFailure(null); }, [tab, panel]);
 
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
@@ -215,7 +219,7 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
           ) : (
             <span className="objectives-cm-band-text is-danger">{[t("commodore.meta.error"), run.reason ? errorWord(t, run.reason) : null].filter(Boolean).join(" · ")}</span>
           )}
-          <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online} onClick={() => { clear(); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online || !commodoreId} onClick={() => { if (!commodoreId) return; clear(); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       {panel ? (
@@ -224,11 +228,11 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, pane
             <CommodoreStatusRow t={t} theaterId={theaterId} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
-          {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
-          {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={theaterId} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
-          {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
+          {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
+          {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
         <CommodoreMobileChat
@@ -292,7 +296,7 @@ function CommodoreMobileTabs({ t, tabs, selected, onSelect }: {
 /* ── 사령관 상태 행 ─────────────────────────────────────────────────── */
 
 function CommodoreStatusRow({ t, theaterId, view }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView | null }) {
-  const board = useObjectiveTheater(theaterId);
+  const board = useObjectiveTheater(useCommodoreOwner(theaterId));
   const name = useCommodoreName(theaterId, t);
   const { meta, patrol } = commodoreSummary(t, view, board.objectives);
   const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : [...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ");

@@ -20,6 +20,7 @@ import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
+import { contextsOf, ownerOfContext } from "./commodore-state.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -75,7 +76,8 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
 /** 가운데 칸의 사령관 대화가 이 Theater 를 가리키는가 — 읽기 전용 기록도 같은 사령관 행을 강조한다. */
 export function isCommodoreConversationSelected(theaterId: string): boolean {
   const surface = port?.current();
-  return surface?.surfaceId === COMMODORE_SURFACE_ID && readParams(surface.params)?.theaterId === theaterId;
+  const owner = ownerOfContext(theaterId);
+  return surface?.surfaceId === COMMODORE_SURFACE_ID && owner !== null && readParams(surface.params)?.commodoreId === owner;
 }
 
 /**
@@ -86,7 +88,8 @@ export function isCommodoreConversationOpen(theaterId: string): boolean {
   const surface = port?.current();
   if (!surface || surface.surfaceId !== COMMODORE_SURFACE_ID) return false;
   const params = readParams(surface.params);
-  return params?.theaterId === theaterId && !params.readOnly;
+  const owner = ownerOfContext(theaterId);
+  return owner !== null && params?.commodoreId === owner && !params.readOnly;
 }
 
 /** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
@@ -99,13 +102,14 @@ export function useCommodoreConversationActive(): boolean {
 }
 
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. */
-export function openCommodoreConversation(theaterId: string, options: CommodoreConversationOptions = {}): boolean {
-  if (!port || !port.isActive()) return false;
-  const opened = port.open(COMMODORE_SURFACE_ID, { theaterId, ...options });
+export function openCommodoreConversation(commodoreId: string, options: CommodoreConversationOptions = {}): boolean {
+  if (!port || !port.isActive() || !commodoreId) return false;
+  const theaterId = contextsOf(commodoreId)[0];
+  const opened = port.open(COMMODORE_SURFACE_ID, { commodoreId, ...(theaterId ? { theaterId } : {}), ...options });
   if (!opened) return false;
-  void loadCommodore(theaterId);
-  if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
-  if (options.revealAt !== undefined) revealCommodoreTurn(theaterId, options.revealAt);
+  void loadCommodore(commodoreId);
+  if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  if (options.revealAt !== undefined) revealCommodoreTurn(commodoreId, options.revealAt);
   return true;
 }
 
@@ -113,18 +117,18 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
  * 사령관 기록을 연다 — 대화 중심 화면이면 가운데 대화, 아니면 Theater Inbox 의 사령관 기록 칸(질문 카드가 그 위에 서 있다).
  * 사이드바 「내 결정」의 질문 줄과 확인 필요 행이 부른다.
  */
-export function openCommodoreLog(theaterId: string): void {
-  if (openCommodoreConversation(theaterId)) return;
-  inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
+export function openCommodoreLog(commodoreId: string, theaterId: string | null = null): void {
+  if (openCommodoreConversation(commodoreId)) return;
+  if (theaterId) inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
 }
 
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
 
-let reveal: { readonly theaterId: string; readonly at: number; readonly nonce: number } | null = null;
+let reveal: { readonly commodoreId: string; readonly at: number; readonly nonce: number } | null = null;
 const revealListeners = new Set<() => void>();
 
-export function revealCommodoreTurn(theaterId: string, at: number): void {
-  reveal = { theaterId, at, nonce: (reveal?.nonce ?? 0) + 1 };
+export function revealCommodoreTurn(commodoreId: string, at: number): void {
+  reveal = { commodoreId, at, nonce: (reveal?.nonce ?? 0) + 1 };
   for (const listener of revealListeners) listener();
 }
 
@@ -134,7 +138,7 @@ function useCommodoreReveal(theaterId: string) {
     () => reveal,
     () => null,
   );
-  return current?.theaterId === theaterId ? current : null;
+  return current?.commodoreId === theaterId ? current : null;
 }
 
 /* ── 사령관 원장 — 가운데 칸의 읽기 전용 턴 기록 ─────────────────────── */
@@ -195,8 +199,9 @@ function useConversationFailure(theaterId: string): string | null {
 
 /* ── 가운데 칸 ─────────────────────────────────────────────────────────── */
 
-function readParams(params: Readonly<Record<string, unknown>>): { readonly theaterId: string; readonly readOnly: boolean } | null {
-  return typeof params.theaterId === "string" ? { theaterId: params.theaterId, readOnly: params.readOnly === true } : null;
+function readParams(params: Readonly<Record<string, unknown>>): { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean } | null {
+  if (typeof params.commodoreId !== "string") return null;
+  return { commodoreId: params.commodoreId, theaterId: typeof params.theaterId === "string" ? params.theaterId : null, readOnly: params.readOnly === true };
 }
 
 function failureWord(t: T, error: unknown): string {
@@ -213,25 +218,26 @@ const REVEAL_PAGE_LIMIT = 10;
  * 보드에 쓴 행위는 가운데 행위 줄(펼치면 이유, 누르면 그 목표), 세션 교대·실패는 노트 줄이다. 입력·지우기·읽기 전용 돌아가기는
  * 이 플러그인의 것을 그 화면의 입력 자리에 세운다. 접힌 턴 줄과 곁 칸 이음매는 Inbox 시트의 기록(`CommodoreLog`)에만 남는다.
  */
-function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { readonly theaterId: string; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
+function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
-  const board = useObjectiveTheater(theaterId);
-  const reveal = useCommodoreReveal(theaterId);
-  const failure = useConversationFailure(theaterId);
-  const setFailure = (next: string | null) => setConversationFailure(theaterId, next);
+  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
+  const board = useObjectiveTheater(commodoreId);
+  const reveal = useCommodoreReveal(commodoreId);
+  const failure = useConversationFailure(commodoreId);
+  const setFailure = (next: string | null) => setConversationFailure(commodoreId, next);
   useEffect(() => {
-    void loadCommodore(theaterId);
-    if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
-  }, [theaterId]);
+    void loadCommodore(commodoreId);
+    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
   const { meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
-  const index = useCommodoreObjectiveIndex(theaterId);
-  const name = useCommodoreName(theaterId, t);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, theaterId, entries, board.objectives, view?.state.asks, index.finished, name]);
+  const screenTheaterId = theaterId ?? "";
+  const index = useCommodoreObjectiveIndex(commodoreId);
+  const name = useCommodoreName(screenTheaterId, t);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = run?.phase === "turn";
@@ -243,7 +249,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const readOlder = () => {
     if (loadingOlder) return;
     setLoadingOlder(true);
-    void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
+    void loadTranscript(commodoreId, { older: true }).finally(() => setLoadingOlder(false));
   };
   // 곁 칸·목표 대화가 가리킨 시각이 읽은 창보다 앞이면, 그 시각에 닿을 때까지 이전 쪽을 읽는다(상한 있음).
   const revealPages = useRef<{ nonce: number; pages: number }>({ nonce: -1, pages: 0 });
@@ -258,19 +264,19 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   }, [reveal, hasMore, entries, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps -- readOlder 는 위 값만 읽는다.
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
   const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
-  const references = useCommodoreReferenceHost(t, theaterId);
-  const openUIOpen = useCommodoreOpenUIPort(theaterId);
+  const references = useCommodoreReferenceHost(t, commodoreId);
+  const openUIOpen = useCommodoreOpenUIPort(commodoreId);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
-    open: (entry) => { if (entry.objectiveId) openReferencedObjective(theaterId, entry.objectiveId); },
-  }), [t, theaterId]);
+    open: (entry) => { if (entry.objectiveId && screenTheaterId) openReferencedObjective(screenTheaterId, entry.objectiveId); },
+  }), [t, screenTheaterId]);
 
   // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 원장에 설 턴이 없으면
   // 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다). 읽은 창은 아무 줄에서나 시작하므로(쪽·보관 상한) 깨움 줄이 아니라
   // 턴을 이루는 줄과 지금의 실행 상태로 가린다 — 창이 턴 한가운데서 시작해도 도는 턴의 원장은 열린다.
   const Ledger = commodoreLedgerRenderer();
-  const ledgerOpen = useCommodoreLedger(theaterId) && Ledger !== null;
+  const ledgerOpen = useCommodoreLedger(commodoreId) && Ledger !== null;
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   // 도는 턴의 시작 — 그 깨움이 창 밖이면 창의 첫 줄에서 그 턴이 이어진다(`commodoreChatEntries` 가 거기서 턴을 연다).
   const runningAt = turning ? entries.findLast((entry) => entry.kind === "wake")?.at ?? entries[0]?.at : undefined;
@@ -278,13 +284,13 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const showInLedger = (at: number) => setLedgerReveal((previous) => ({ at, nonce: (previous?.nonce ?? 0) + 1 }));
   const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn && Ledger ? () => {
     if (runningAt !== undefined) showInLedger(runningAt); else setLedgerReveal(null);
-    setCommodoreLedger(theaterId, true);
-  } : null), [hasTurn, Ledger, runningAt, theaterId]);
+    setCommodoreLedger(commodoreId, true);
+  } : null), [hasTurn, Ledger, runningAt, commodoreId]);
   // 원장이 열린 채 곁 칸·목표 대화가 턴을 가리키면 그 요청은 원장이 받는다 — 대화는 지금 그려지지 않는다. 앞쪽 읽기는 위의 같은 효과가 맡는다.
   useEffect(() => {
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
-  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, theaterId, entries, live, view?.state.asks, index) : []), [ledgerOpen, t, theaterId, entries, live, view?.state.asks, index]);
+  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, commodoreId, entries, live, view?.state.asks, index) : []), [ledgerOpen, t, commodoreId, entries, live, view?.state.asks, index]);
   // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Objective 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
   // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
   const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);
@@ -295,14 +301,14 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   }, [run?.session, lastSession]);
 
   // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
-  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   const composer = (
     <footer className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (
@@ -312,7 +318,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
       {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
-          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       {ledgerOpen && Ledger ? (
@@ -320,9 +326,9 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
           <Ledger
             speaker={speaker}
-            theaterId={theaterId}
+            theaterId={screenTheaterId}
             language={language}
-            onBack={() => setCommodoreLedger(theaterId, false)}
+            onBack={() => setCommodoreLedger(commodoreId, false)}
             entries={ledgerEntries}
             reveal={ledgerReveal}
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
@@ -339,7 +345,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             participants={participants}
             working={working}
             language={language}
-            theaterId={theaterId}
+            theaterId={screenTheaterId}
             loading={!transcriptLoaded}
             empty={t("commodore.log.empty")}
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
@@ -347,7 +353,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
-            cards={readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
+            cards={readOnly ? null : <CommodoreAskCards theaterId={commodoreId} t={t} language={language} onEnded={fail} />}
             composer={composer}
             composerTopEntries={!readOnly}
             {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}
@@ -360,31 +366,31 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
 }
 
 /** 머리 pill 안의 기록 비우기 — 사령관 원장은 구성원 턴 접기 없이 서며, 실패는 가운데 본문의 실패 줄이 말한다. */
-function CommodoreConversationActions({ theaterId, language }: { readonly theaterId: string; readonly language: "en" | "ko" }) {
+function CommodoreConversationActions({ commodoreId, language }: { readonly commodoreId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   return (
     <CommodoreClearButton
       t={t}
-      theaterId={theaterId}
+      theaterId={commodoreId}
       variant="caption"
-      onFail={(error) => setConversationFailure(theaterId, failureWord(t, error))}
-      onClear={() => setConversationFailure(theaterId, null)}
+      onFail={(error) => setConversationFailure(commodoreId, failureWord(t, error))}
+      onClear={() => setConversationFailure(commodoreId, null)}
     />
   );
 }
 
 /* ── 오른쪽 패널 탭 ────────────────────────────────────────────────────── */
 
-function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: ConversationTab; readonly theaterId: string; readonly language: "en" | "ko" }) {
+function CommodoreConversationTab({ tab, commodoreId, theaterId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly theaterId: string | null; readonly language: "en" | "ko" }) {
   const t = getT(language);
-  const { view } = useCommodore(theaterId);
+  const { view } = useCommodore(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
   if (tab === "goals") {
     return (
       <div className="objectives-commodore-conversation-tab is-goals">
-        <CommodoreTrail t={t} language={language} theaterId={theaterId} onReveal={(at) => revealCommodoreTurn(theaterId, at)} />
+        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
       </div>
     );
   }
@@ -393,12 +399,12 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
       {tab === "directive" ? (
         <>
-          <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => inbox?.open({ theaterId, sectionId: THEATER_SETTINGS_SECTION, pageId: THEATER_SYSTEM_PROMPT_PAGE, focus: "editor-end" })} onFail={fail} onClear={clear} />
-          <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
+          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => { if (theaterId) inbox?.open({ theaterId, sectionId: THEATER_SETTINGS_SECTION, pageId: THEATER_SYSTEM_PROMPT_PAGE, focus: "editor-end" }); }} onFail={fail} onClear={clear} />
+          <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
         </>
       ) : null}
-      {tab === "memory" ? <CommodoreMemory t={t} theaterId={theaterId} /> : null}
-      {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={fail} onClear={clear} /> : null}
+      {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId} /> : null}
+      {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
     </div>
   );
@@ -423,9 +429,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
   avatar: (ctx) => {
-    const theaterId = readParams(ctx.params)?.theaterId;
-    // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: commodoreName(theaterId, getT(ctx.language)), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
+    const params = readParams(ctx.params);
+    const theaterId = params?.theaterId;
+    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: commodoreName(theaterId, getT(ctx.language)), state: commodoreMongleState(readCommodore(params.commodoreId).view, readTheater(params.commodoreId).objectives) } : null;
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);
@@ -437,23 +443,20 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     if (!params) return null;
     // 플릿 브라우저의 주석·스크린샷은 이 대화의 사령관 입력창에 붙는다 — 읽기 전용(보관) 대화에는 입력창이 없다.
-    const { theaterId } = params;
-    const commodoreId = readCommodore(theaterId).view?.commodoreId;
-    if (!commodoreId) return null;
-    return { scopeId: `commodore:${commodoreId}`, ...(params.readOnly ? {} : { attach: (files: readonly File[]) => attachToCommodoreComposer(theaterId, files) }) };
+    return { scopeId: `commodore:${params.commodoreId}`, ...(params.readOnly || !params.theaterId ? {} : { attach: (files: readonly File[]) => attachToCommodoreComposer(params.commodoreId, files) }) };
   },
   actions: (ctx) => {
     const params = readParams(ctx.params);
-    return params && !params.readOnly ? <CommodoreConversationActions theaterId={params.theaterId} language={ctx.language} /> : null;
+    return params && !params.readOnly ? <CommodoreConversationActions commodoreId={params.commodoreId} language={ctx.language} /> : null;
   },
   render: (ctx) => {
     const params = readParams(ctx.params);
-    return params ? <CommodoreConversationBody theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
+    return params ? <CommodoreConversationBody commodoreId={params.commodoreId} theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
   },
   // 이 대화는 그 Theater 의 Inbox 「사령관」 섹션을 대신한다 — 오른쪽 패널이 이 탭들을 Theater 설정 곁의 「사령관」 섹션으로 묶는다.
   theater: (ctx) => {
     const params = readParams(ctx.params);
-    return params ? { theaterId: params.theaterId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
+    return params?.theaterId ? { theaterId: params.theaterId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
   },
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
@@ -463,7 +466,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);
-      return params ? <CommodoreConversationTab tab={tab} theaterId={params.theaterId} language={ctx.language} /> : null;
+      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} theaterId={params.theaterId} language={ctx.language} /> : null;
     },
   })),
   defaultTab: TAB_IDS.goals,

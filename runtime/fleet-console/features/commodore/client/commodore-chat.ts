@@ -268,8 +268,8 @@ export function formatContextTokens(tokens: number): string {
 function actionReason(theaterId: string, objectives: readonly Objective[], tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string | undefined {
   const objective = tool.objectiveId ? objectives.find((candidate) => candidate.id === tool.objectiveId) : undefined;
   if (!objective) return undefined;
-  const mine = (by: unknown): by is { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string } =>
-    typeof by === "object" && by !== null && (by as { kind?: unknown }).kind === "commodore" && (by as { theaterId?: unknown }).theaterId === theaterId;
+  const mine = (by: unknown): by is { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string } =>
+    typeof by === "object" && by !== null && (by as { kind?: unknown }).kind === "commodore" && (by as { commodoreId?: unknown }).commodoreId === theaterId;
   const candidates = tool.action === "answer"
     ? objective.decisions.flatMap((decision) => (mine(decision.by) ? [{ at: decision.at, why: decision.by.why }] : []))
     : (objective.actions ?? []).flatMap((action) => (mine(action.by) ? [{ at: action.at, why: action.by.why }] : []));

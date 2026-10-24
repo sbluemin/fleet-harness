@@ -646,7 +646,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
         // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패로 돌려주면 재시도가 같은 Objective 을 하나 더 만든다.
-        if (!input.childSessionId && input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
+        if (!input.childSessionId && input.groupId && input.theaterId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { objectiveId: launchedId, delivery: "queued" };
       }
       const objectiveId = input.objectiveId!;
