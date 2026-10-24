@@ -365,6 +365,18 @@ export function createObjectiveStorage(deps: {
       if (!scope.documents.has(id)) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], id])] };
     }
     for (const row of scope.archive.deletions) if (row.objectiveIds.some((id) => unavailable(scope, id))) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], ...row.objectiveIds])] };
+    // 이미 어긋난 Theater 삭제도 행 단위로 격리한다. snapshot의 decode가 Console 전체를 막지 않는다.
+    const orphans = scope.archive.deletions.flatMap((row, index) => row.kind === "theater"
+      && (row.targetId !== owner.theaterId || !state.deletionTombstones?.some((entry) => entry.kind === "theater" && entry.targetId === row.targetId && entry.deletionId === row.deletionId)) ? [{ row, index }] : []);
+    if (orphans.length) {
+      const sourceHash = preserveSource(owner, readBytes(archiveFile));
+      const rejected = new Set(orphans.map(({ row }) => row));
+      scope.archive = { ...scope.archive,
+        deletions: scope.archive.deletions.filter((row) => !rejected.has(row)),
+        unavailable: [...new Set([...scope.archive.unavailable ?? [], ...orphans.flatMap(({ row }) => row.objectiveIds)])],
+        quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration" }))],
+      };
+    }
     // 소유자 하나의 충돌은 다른 목표의 정상 저장을 막지 않는다. 격리 ID는 재기동에도 예약한다.
     archiveStore(scope).save(scope.archive);
     if (!existing) writeJson(groupsFile, { groups: [] });
@@ -413,10 +425,13 @@ export function createObjectiveStorage(deps: {
     const cleaned = retainHeldAliases(source, withoutTheaterAliases(source));
     return isDeepStrictEqual(source, cleaned) ? source : cleaned;
   }
+  function heldTheaters(): Set<string> {
+    return new Set([...unavailableOwners, ...[...scopes.values()].filter((scope) => scope.archive.quarantine?.some((row) => row.location.includes("deletions["))
+      || scope.archive.deletions.some((row) => row.kind === "theater" && row.objectiveIds.some((id) => unavailable(scope, id)))).map((scope) => scope.owner.theaterId)]);
+  }
   function registrationState(next: DurableConsoleState): DurableConsoleState {
     // 더 오래된 원본과 격리된 Theater의 등록은 승계하거나 정리하지 않고 그대로 남긴다.
-    const held = new Set([...unavailableOwners, ...[...scopes.values()].filter((scope) => scope.archive.quarantine?.some((row) => row.location.includes("deletions["))
-      || scope.archive.deletions.some((row) => row.kind === "theater" && row.objectiveIds.some((id) => unavailable(scope, id)))).map((scope) => scope.owner.theaterId)]);
+    const held = heldTheaters();
     const untouched = Array.isArray(previousRaw.deletionTombstones) ? previousRaw.deletionTombstones.filter((row) => {
       if (!object(row)) return true;
       const node = row.objectiveRecord ?? row.operation;
@@ -456,6 +471,15 @@ export function createObjectiveStorage(deps: {
   function save(next: DurableConsoleState, archived: readonly ArchivedObjective[] = entries(), eventRows: readonly ArchiveLifecycleEvent[] = []): void {
     assertReady();
     validateLocations(next.objectiveRecords, archived, next.deletionTombstones ?? []);
+    // 격리한 삭제 기록은 등록과 함께 바꿀 수 없다. prepare 전에 거절해 호출자가 메모리도 되돌리게 한다.
+    for (const theaterId of heldTheaters()) {
+      const scope = scopes.get(theaterId);
+      const before = scope?.archive.deletions.filter((row) => row.kind === "theater" && !row.objectiveIds.some((id) => unavailable(scope, id))).map((row) => row.deletionId).sort() ?? [];
+      const after = (next.deletionTombstones ?? []).filter((row) => row.kind === "theater" && row.targetId === theaterId).map((row) => row.deletionId).sort();
+      if (state.theaters.some((row) => row.id === theaterId) !== next.theaters.some((row) => row.id === theaterId) || !isDeepStrictEqual(before, after)) {
+        throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+      }
+    }
     for (const id of new Set([...next.objectiveRecords.map((node) => node.theaterId), ...(next.groups ?? []).map((group) => group.theaterId), ...archived.map((entry) => entry.objectiveRecord.theaterId), ...(next.deletionTombstones ?? []).map((row) => row.kind === "theater" ? row.targetId : row.objectiveRecord.theaterId)])) scopeOf(id);
     const registration = registrationState(next);
     const plans = [...scopes.values()].map((scope) => {

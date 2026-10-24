@@ -4,6 +4,8 @@ import { createObjectiveStore } from "../features/objectives/host/store.js";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { ensureWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { DurableConsoleState } from "../features/workspace/host/durable-state.js";
+import { createDeferredDeletionCoordinator } from "../features/workspace/host/deferred-deletion.js";
+import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
@@ -177,10 +179,51 @@ describe("durable console state", () => {
     expect(fs.readFileSync(path.join(broken.directory, ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken archive");
     expect(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).toBe("{broken archive");
     partial.save(partialState);
-    const retry = openAll();
-    expect(retry.load().objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
+    const retry = openAll(); const retryState = retry.load();
+    expect(retryState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolated.quarantine);
+
+    // 격리 deletion이 있는 owner의 Theater 삭제는 prepare 전에 거절한다. 호출자의 메모리도 복구된다.
+    const deletionRecords = createObjectiveRecordsStore(); deletionRecords.replace(retryState.objectiveRecords);
+    const theaters = new TheaterRegistry(); theaters.restore(retryState.theaters);
+    const coordinator = createDeferredDeletionCoordinator({ objectiveRecords: deletionRecords, theaters, archives: retry.entries,
+      save: (tombstones, archives) => retry.save({ ...retryState, theaters: theaters.list(), objectiveRecords: deletionRecords.list(), deletionTombstones: tombstones }, archives),
+      publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
+      now: () => 1, setTimer: () => ({ unref() {} }) as never, clearTimer: () => {},
+    });
+    coordinator.load(retryState.deletionTombstones ?? []);
+    const beforeDelete = [damaged.stateFile, damaged.archiveFile].map((file) => fs.readFileSync(file, "utf8"));
+    expect(() => coordinator.deleteTheater("t1")).toThrow("objective_owner_recovery_required");
+    expect([damaged.stateFile, damaged.archiveFile].map((file) => fs.readFileSync(file, "utf8"))).toEqual(beforeDelete);
+    expect(theaters.get("t1")).not.toBeNull();
+    expect(deletionRecords.get("unrelated-active")).not.toBeNull();
+    expect(coordinator.list()).toEqual([]);
+    expect(retry.blocked()).toBe(false);
+    const afterDenied = openAll();
+    expect(afterDenied.load().objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
+    expect(afterDenied.board.directory("t1")).toBe(damaged.destination);
+    // 정상 owner의 삭제는 계속 허용하며 state 등록과 archive tombstone이 함께 재기동된다.
+    const receipt = coordinator.deleteTheater("healthy")!;
+    coordinator.dispose();
+    const afterAllowed = openAll(); const allowedState = afterAllowed.load();
+    expect(afterAllowed.blocked()).toBe(false);
+    expect(allowedState.theaters.some((row) => row.id === "healthy")).toBe(false);
+    expect(allowedState.deletionTombstones?.some((row) => row.deletionId === receipt.deletionId && row.kind === "theater" && row.targetId === "healthy")).toBe(true);
+
+    // 이전 코드로 이미 생긴 불일치도 전역 기동 실패로 번지지 않는다. 연결을 잃은 삭제 행만 격리한다.
+    const mismatched = JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8"));
+    mismatched.entries = [];
+    mismatched.deletions.push({ deletionId: "orphan-theater", kind: "theater", targetId: "t1", deletedAt: 1, expiresAt: 999999, objectiveIds: ["good", "unrelated-active"], groups: [] });
+    fs.writeFileSync(damaged.archiveFile, JSON.stringify(mismatched));
+    const orphaned = openAll(); const orphanState = orphaned.load();
+    expect(orphaned.blocked()).toBe(false);
+    expect(orphaned.board.directory("healthy")).toBe(healthy.directory);
+    expect(orphanState.deletionTombstones?.some((row) => row.deletionId === receipt.deletionId)).toBe(true);
+    expect(orphaned.isReserved("good")).toBe(true);
+    expect(orphanState.objectiveRecords.some((row) => row.id === "unrelated-active")).toBe(false);
+    expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toContainEqual(expect.objectContaining({ id: "t1", reason: "missing_theater_registration" }));
+    expect(() => openAll().load()).not.toThrow();
   });
 
   // 준비된 직전 transaction과 금지된 옛 위치는 서로 다른 복구 경계다.
