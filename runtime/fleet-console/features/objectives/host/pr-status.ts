@@ -6,25 +6,29 @@ import type { ObjectiveStore } from "./store.js";
 
 export type PrErrorCode = Extract<PrObservation, { state: "error" }>["error"]["code"];
 export type PrLookupResult = { readonly state: "open" | "merged" | "closed"; readonly title?: string } | { readonly error: PrErrorCode; readonly retryAt?: number };
-export type PrLookup = (url: string, signal: AbortSignal, objectiveId?: string) => Promise<PrLookupResult>;
+export type PrLookup = (url: string, signal: AbortSignal, objectiveIds?: readonly string[]) => Promise<PrLookupResult>;
 
 const execute = promisify(execFile);
 type Execute = (args: readonly string[], signal: AbortSignal, context: { readonly cwd: string }) => Promise<{ readonly stdout: string; readonly stderr: string }>;
 
 /** 이미 인증된 gh만 사용한다. 로그인·자격증명 추출·공개 API fallback은 없다. */
-export function createGhPrLookup(options: { readonly cwd: string | ((objectiveId: string) => string | null); readonly execute?: Execute }): PrLookup {
+export function createGhPrLookup(options: { readonly cwd: string; readonly objectiveCwd?: (objectiveId: string) => string | null; readonly execute?: Execute }): PrLookup {
   const run: Execute = options.execute ?? (async (args, signal, context) => {
     const env: NodeJS.ProcessEnv = { ...process.env, GH_PROMPT_DISABLED: "1", GH_PAGER: "cat", PAGER: "cat" };
     delete env.GH_DEBUG;
     delete env.GH_FORCE_TTY;
     return execute("gh", [...args], { cwd: context.cwd, env, signal, timeout: RESULT_LIMITS.prTimeoutMs, maxBuffer: RESULT_LIMITS.prResponseBytes, shell: false, windowsHide: true });
   });
-  return async (url, signal, objectiveId) => {
+  return async (url, signal, objectiveIds = []) => {
     const target = prTarget(url);
     const args = ["api", "--hostname", "github.com", "--include", `repos/${target.owner}/${target.repo}/pulls/${target.number}`];
     try {
-      const cwd = typeof options.cwd === "string" ? options.cwd : objectiveId ? options.cwd(objectiveId) : null;
-      if (!cwd) return { error: "lookup_failed" };
+      // 조회 대상은 URL로 고정된다. 참조 목표의 위치를 모두 잃었어도 Console 데이터 폴더에서 조회할 수 있다.
+      let cwd = options.cwd;
+      for (const objectiveId of objectiveIds) {
+        const resolved = options.objectiveCwd?.(objectiveId);
+        if (resolved) { cwd = resolved; break; }
+      }
       const response = await run(args, signal, { cwd });
       const parsed = responseParts(response.stdout);
       if (parsed.status !== null && parsed.status !== 200) return classifyFailure(response.stdout, response.stderr);
@@ -99,7 +103,7 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
         try { found = targets().filter((entry) => entry.result.url === url); } catch { report(); return; }
         if (!found.length || stopped) return;
         let answer: PrLookupResult;
-        try { answer = await options.lookup(url, controller.signal, found[0]!.objectiveId); }
+        try { answer = await options.lookup(url, controller.signal, found.map((entry) => entry.objectiveId)); }
         catch { answer = { error: "lookup_failed" }; }
         if (stopped) return;
         const checkedAt = now();

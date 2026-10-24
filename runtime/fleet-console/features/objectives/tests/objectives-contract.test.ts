@@ -1819,7 +1819,9 @@ describe("Objectives contract", () => {
       return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ title: "Review\u0000\nresult", number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
     });
     vi.useFakeTimers();
-    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: (objectiveId) => objectiveRecords.get(objectiveId)?.cwd ?? null, execute }) });
+    const unavailable = new Set([store.all()[0]!.id]);
+    const consoleDataDir = "/isolated/console";
+    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: consoleDataDir, objectiveCwd: (objectiveId) => unavailable.has(objectiveId) ? null : objectiveRecords.get(objectiveId)?.cwd ?? null, execute }) });
     const observed = () => store.find("pr-owner")!.results.find((entry) => entry.id === first.id) as Extract<ObjectiveResult, { kind: "pr" }>;
     try {
       await vi.advanceTimersByTimeAsync(250);
@@ -1836,8 +1838,11 @@ describe("Objectives contract", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(execute).toHaveBeenCalledTimes(count);
       mode = "closed";
+      for (const objective of store.all()) unavailable.add(objective.id);
       await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(execute).toHaveBeenLastCalledWith(["api", "--hostname", "github.com", "--include", "repos/example/project/pulls/7"], expect.any(AbortSignal), { cwd: consoleDataDir });
       expect(observed().observation.state).toBe("closed");
+      expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "closed");
       mode = "merged";
       await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
       expect(observed().observation.state).toBe("merged");
