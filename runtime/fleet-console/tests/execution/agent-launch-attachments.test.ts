@@ -118,7 +118,7 @@ describe("agent attachment routes", () => {
 
   it("rejects a launch carrying an unknown attachment id before creating a session", async () => {
     const harness = await createHarness();
-    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: ["missing"] });
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: ["missing"] });
 
     expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
     expect(harness.objectiveRecords).toHaveLength(0);
@@ -129,7 +129,7 @@ describe("agent attachment routes", () => {
     await harness.postAttachment(PNG_BYTES);
     const id = (harness.responses.at(-1)?.body as { id: string }).id;
 
-    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     // 경로 합성은 서버의 일이다 — spawn 프롬프트에는 사용자 텍스트 뒤에 절대 경로 지시가 실린다.
@@ -140,7 +140,7 @@ describe("agent attachment routes", () => {
     }));
 
     // 발사된 첨부는 세션에 묶인다 — 두 번째 실행이 같은 id를 실으면 스폰 전에 거절된다.
-    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "again", attachmentIds: [id] });
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "again", attachmentIds: [id] });
     expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
   });
 
@@ -150,11 +150,11 @@ describe("agent attachment routes", () => {
     const id = (harness.responses.at(-1)?.body as { id: string }).id;
 
     // 실패한 스폰은 첨부를 묶지 않는다 — 재시도가 같은 id를 다시 실을 수 있다.
-    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
     expect(harness.responses.at(-1)).toEqual({ status: 503, body: { error: "terminal_unavailable" } });
 
     harness.clearAttachError();
-    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
     expect(harness.responses.at(-1)?.status).toBe(200);
   });
 });

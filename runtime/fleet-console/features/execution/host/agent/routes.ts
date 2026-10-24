@@ -956,6 +956,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 400, { error: "theater_required" });
       return true;
     }
+    const commodoreId = objectiveContext?.commodoreId ?? body?.commodoreId;
+    if (typeof commodoreId !== "string" || !commodoreId.trim()) {
+      ctx.host.http.writeJson(res, 400, { error: "commodore_required" });
+      return true;
+    }
     let composedPrompt: string | undefined;
     try {
       // 모르는 id·상한 초과는 스폰 전에 거절한다 — 세션을 만들고 나서 거절하면 빈 Objective이 남는다.
@@ -972,7 +977,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     try {
       await createSession(cwd, recordTheaterId, cliId, (status, value) => ctx.host.http.writeJson(res, status, value), {
-        commodoreId: objectiveContext?.commodoreId ?? (typeof body?.commodoreId === "string" ? body.commodoreId : undefined),
+        commodoreId,
         ...(objectiveId ? { sourceObjectiveId: objectiveId } : {}),
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
@@ -1191,136 +1196,143 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const sessionId = launchOptions.childSessionId ?? launchOptions.newObjectiveId ?? crypto.randomUUID();
     // 대기 세션이 곧 첫 세대다 — 저장소가 세운다.
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
-    workspaceContext.observe(sessionId, theaterId, cwd);
-    // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
-    // 경로라 deriveObjectiveLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
-    // 서버에 있으므로 같은 휴리스틱으로 첫 작명을 여기서 적용한다. payload·브라우저 DTO에는
-    // 원문을 넣지 않는다.
-    const named = launchOptions.prompt === undefined
-      ? null
-      : observability.autoNameTerminalSession(sessionId, deriveObjectiveLabel(launchOptions.prompt));
-    // 호출자가 제목을 들고 왔으면 사람이 붙인 이름으로 태어난다 — 자동 작명이 덮지 않고, rename 사건도 나지 않는다.
-    const titled = launchOptions.title ? observability.renameTerminalSession(sessionId, launchOptions.title) : null;
-    const namedSession = titled ?? named?.session ?? session;
-    const bornPayload = {
-      ...toObjectivePayload(undefined, cwd, namedSession),
-      session: {
-        harness: "claude-code",
-        ...(launchOptions.model ? { model: launchOptions.model } : {}),
-        ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
-        ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
-        ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
-        // 태어날 때의 auto-memory 정책은 세션 스냅샷에 남아 재개·재기동·모델 변경이 그대로 따른다.
-        ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
-      },
-      // 채팅으로 태어난 Objective은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
-      // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
-      ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
-      ...(launchOptions.dormant ? { dormantBorn: true } : {}),
-    };
-    const payload = launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload;
-    if (launchOptions.parentObjectiveId && launchOptions.childSessionId) {
-      if (!ctx.host.objectiveRecords.createChild) throw new ConsoleControlError("capability_unavailable");
-      ctx.host.objectiveRecords.createChild({ parentObjectiveId: launchOptions.parentObjectiveId, childSessionId: session.sessionId, ...payload });
-    } else {
-      ctx.host.objectiveRecords.create({
-        id: session.sessionId,
-        commodoreId: launchOptions.commodoreId ?? "",
-        ...(launchOptions.sourceObjectiveId ? { sourceObjectiveId: launchOptions.sourceObjectiveId } : {}),
-        theaterId,
-        title: namedSession.label ?? session.label ?? path.basename(cwd),
-        ...payload,
-        ...(launchOptions.geometry ? { } : {}),
-        createdAt: session.createdAt,
-      });
-    }
-    if (launchOptions.dormant) {
-      const dormant = injectObjective(ctx.host.objectiveRecords.get(sessionId)!);
-      observability.notifySessionUpdated(dormant);
-      reply(200, dormant);
-      return;
-    }
-    if (launchOptions.chatBorn) {
-      await startChatBornSession(sessionId, reply, launchOptions);
-      return;
-    }
-    if (launchOptions.onSettled && launchOptions.prompt) consoleTerminal.begin(sessionId, launchOptions.prompt, true, launchOptions.onSettled);
     try {
-      trustedPtySessions.delete(sessionId);
-      await terminalRuntime.attach({
-        cwd,
-        sessionId,
-        objectiveId: sessionId,
-        objectiveRecordType: AGENT_OBJECTIVE_TYPE,
-        pluginId: null,
-        theaterId,
-        cliId,
-        ...(launchOptions.model ? { model: launchOptions.model } : {}),
-        ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
-        // spawn-only 상태 — Objective payload·브라우저 DTO에 넣지 않는다
-        // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
-        ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
-        ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
-        ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
-        ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
-      });
-      // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
-      // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
-      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
-        launchAttachments.bind(sessionId, launchOptions.attachmentIds);
-        // attach의 await 동안 DELETE가 지나갔다면 이 bind는 고아다 — 되짚어 거둔다(멘션 경로와 같은 계약).
-        if (!ctx.host.objectiveRecords.get(sessionId)) launchAttachments.releaseSession(sessionId);
-      }
-      const runtimeSession = pendingRuntimeSessions.get(sessionId);
-      pendingRuntimeSessions.delete(sessionId);
-      const created = runtimeSession
-        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? namedSession
-        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? namedSession;
-      observability.notifySessionUpdated(created);
-      // 세션 좌표는 런치 시점에 이미 확정이다 — Fleet이 못박은 id이므로 capture hook을 기다리지
-      // 않는다. 첫 프롬프트 없이 닫히는 패널도 자기 플러그인 트리를 걷을 수 있어야 한다.
-      // 이미 좌표가 있으면 그것을 남긴다 — 재개 런치의 기존 기록이 트랜스크립트 경로까지 들고
-      // 있고, 못박은 id는 그 기록과 같은 값이라 덮어써서 얻을 것이 없다.
-      const launchedProviderSession = readProviderSession(ctx.host.objectiveRecords.get(sessionId))
-        ?? (runtimeSession?.claudeSessionId
-          ? {
-            harness: "claude-code" as const,
-            id: runtimeSession.claudeSessionId,
-            capturedAt: new Date().toISOString(),
-            source: "launch",
-          }
-          : undefined);
-      ctx.host.objectiveRecords.patch(sessionId, { ...(toObjectivePayload(ctx.host.objectiveRecords.get(sessionId), cwd, created, launchedProviderSession, observability.getDurableObjective(sessionId)?.providerTitle)) });
-      reply(200, created);
-    } catch (error) {
-      consoleTerminal.cancel(sessionId);
-      // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
-      // 남으면 TTL이 거둔다.
-      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
-        launchAttachments.unreserve(launchOptions.attachmentIds);
-      }
-      if (error instanceof GatewayLaunchOptionError) {
-        removeSession(sessionId);
-        reply(gatewayLaunchOptionErrorStatus(error), { error: error.code });
-        return;
-      }
-      // 프롬프트를 이 실행 경로로 안전하게 전달할 수 없을 때 spawn 전에 거부된다(cmd.exe shim 재해석,
-      // FLEET_TERMINAL_CMD 대체 실행). 요청이 잘못된 것이지 터미널이 죽은 게 아니므로 503이 아니라 400이다.
-      if (error instanceof LaunchPromptError) {
-        removeSession(sessionId);
-        // 몇 글자를 줄여야 하는지는 서버만 알 수 있다 — 상한이 이 실행의 argv 전체에 달려 있어
-        // 브라우저가 되계산할 수 없다. 코드만 실어 보내면 사용자는 다시 찍어 보는 수밖에 없다.
-        reply(400, {
-          error: error.code,
-          ...(error.shortenByChars === undefined ? {} : { shortenByChars: error.shortenByChars }),
+      workspaceContext.observe(sessionId, theaterId, cwd);
+      // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
+      // 경로라 deriveObjectiveLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
+      // 서버에 있으므로 같은 휴리스틱으로 첫 작명을 여기서 적용한다. payload·브라우저 DTO에는
+      // 원문을 넣지 않는다.
+      const named = launchOptions.prompt === undefined
+        ? null
+        : observability.autoNameTerminalSession(sessionId, deriveObjectiveLabel(launchOptions.prompt));
+      // 호출자가 제목을 들고 왔으면 사람이 붙인 이름으로 태어난다 — 자동 작명이 덮지 않고, rename 사건도 나지 않는다.
+      const titled = launchOptions.title ? observability.renameTerminalSession(sessionId, launchOptions.title) : null;
+      const namedSession = titled ?? named?.session ?? session;
+      const bornPayload = {
+        ...toObjectivePayload(undefined, cwd, namedSession),
+        session: {
+          harness: "claude-code",
+          ...(launchOptions.model ? { model: launchOptions.model } : {}),
+          ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+          ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
+          ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+          // 태어날 때의 auto-memory 정책은 세션 스냅샷에 남아 재개·재기동·모델 변경이 그대로 따른다.
+          ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        },
+        // 채팅으로 태어난 Objective은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
+        // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
+        ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
+        ...(launchOptions.dormant ? { dormantBorn: true } : {}),
+      };
+      const payload = launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload;
+      if (launchOptions.parentObjectiveId && launchOptions.childSessionId) {
+        if (!ctx.host.objectiveRecords.createChild) throw new ConsoleControlError("capability_unavailable");
+        ctx.host.objectiveRecords.createChild({ parentObjectiveId: launchOptions.parentObjectiveId, childSessionId: session.sessionId, ...payload });
+      } else {
+        ctx.host.objectiveRecords.create({
+          id: session.sessionId,
+          commodoreId: launchOptions.commodoreId ?? "",
+          ...(launchOptions.sourceObjectiveId ? { sourceObjectiveId: launchOptions.sourceObjectiveId } : {}),
+          theaterId,
+          title: namedSession.label ?? session.label ?? path.basename(cwd),
+          ...payload,
+          ...(launchOptions.geometry ? { } : {}),
+          createdAt: session.createdAt,
         });
+      }
+      if (launchOptions.dormant) {
+        const dormant = injectObjective(ctx.host.objectiveRecords.get(sessionId)!);
+        observability.notifySessionUpdated(dormant);
+        reply(200, dormant);
         return;
       }
-      pendingRuntimeSessions.delete(sessionId);
-      observability.updateTerminalSessionStatus(sessionId, "error");
-      // 실패의 종류만 내보낸다. spawn 오류 메시지에는 실행 파일의 절대 경로가 실려 있어
-      // 그대로 실으면 경로가 브라우저 DTO로 새어 나간다 — errno는 경로를 담지 않는다.
-      reply(503, { error: classifyLaunchSpawnFailure(error) });
+      if (launchOptions.chatBorn) {
+        await startChatBornSession(sessionId, reply, launchOptions);
+        return;
+      }
+      if (launchOptions.onSettled && launchOptions.prompt) consoleTerminal.begin(sessionId, launchOptions.prompt, true, launchOptions.onSettled);
+      try {
+        trustedPtySessions.delete(sessionId);
+        await terminalRuntime.attach({
+          cwd,
+          sessionId,
+          objectiveId: sessionId,
+          objectiveRecordType: AGENT_OBJECTIVE_TYPE,
+          pluginId: null,
+          theaterId,
+          cliId,
+          ...(launchOptions.model ? { model: launchOptions.model } : {}),
+          ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+          // spawn-only 상태 — Objective payload·브라우저 DTO에 넣지 않는다
+          // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
+          ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
+          ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
+          ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+          ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
+        });
+        // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
+        // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
+        if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+          launchAttachments.bind(sessionId, launchOptions.attachmentIds);
+          // attach의 await 동안 DELETE가 지나갔다면 이 bind는 고아다 — 되짚어 거둔다(멘션 경로와 같은 계약).
+          if (!ctx.host.objectiveRecords.get(sessionId)) launchAttachments.releaseSession(sessionId);
+        }
+        const runtimeSession = pendingRuntimeSessions.get(sessionId);
+        pendingRuntimeSessions.delete(sessionId);
+        const created = runtimeSession
+          ? observability.registerTerminalRuntimeSession(runtimeSession) ?? namedSession
+          : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? namedSession;
+        observability.notifySessionUpdated(created);
+        // 세션 좌표는 런치 시점에 이미 확정이다 — Fleet이 못박은 id이므로 capture hook을 기다리지
+        // 않는다. 첫 프롬프트 없이 닫히는 패널도 자기 플러그인 트리를 걷을 수 있어야 한다.
+        // 이미 좌표가 있으면 그것을 남긴다 — 재개 런치의 기존 기록이 트랜스크립트 경로까지 들고
+        // 있고, 못박은 id는 그 기록과 같은 값이라 덮어써서 얻을 것이 없다.
+        const launchedProviderSession = readProviderSession(ctx.host.objectiveRecords.get(sessionId))
+          ?? (runtimeSession?.claudeSessionId
+            ? {
+              harness: "claude-code" as const,
+              id: runtimeSession.claudeSessionId,
+              capturedAt: new Date().toISOString(),
+              source: "launch",
+            }
+            : undefined);
+        ctx.host.objectiveRecords.patch(sessionId, { ...(toObjectivePayload(ctx.host.objectiveRecords.get(sessionId), cwd, created, launchedProviderSession, observability.getDurableObjective(sessionId)?.providerTitle)) });
+        reply(200, created);
+      } catch (error) {
+        consoleTerminal.cancel(sessionId);
+        // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
+        // 남으면 TTL이 거둔다.
+        if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+          launchAttachments.unreserve(launchOptions.attachmentIds);
+        }
+        if (error instanceof GatewayLaunchOptionError) {
+          removeSession(sessionId);
+          reply(gatewayLaunchOptionErrorStatus(error), { error: error.code });
+          return;
+        }
+        // 프롬프트를 이 실행 경로로 안전하게 전달할 수 없을 때 spawn 전에 거부된다(cmd.exe shim 재해석,
+        // FLEET_TERMINAL_CMD 대체 실행). 요청이 잘못된 것이지 터미널이 죽은 게 아니므로 503이 아니라 400이다.
+        if (error instanceof LaunchPromptError) {
+          removeSession(sessionId);
+          // 몇 글자를 줄여야 하는지는 서버만 알 수 있다 — 상한이 이 실행의 argv 전체에 달려 있어
+          // 브라우저가 되계산할 수 없다. 코드만 실어 보내면 사용자는 다시 찍어 보는 수밖에 없다.
+          reply(400, {
+            error: error.code,
+            ...(error.shortenByChars === undefined ? {} : { shortenByChars: error.shortenByChars }),
+          });
+          return;
+        }
+        pendingRuntimeSessions.delete(sessionId);
+        observability.updateTerminalSessionStatus(sessionId, "error");
+        // 실패의 종류만 내보낸다. spawn 오류 메시지에는 실행 파일의 절대 경로가 실려 있어
+        // 그대로 실으면 경로가 브라우저 DTO로 새어 나간다 — errno는 경로를 담지 않는다.
+        reply(503, { error: classifyLaunchSpawnFailure(error) });
+      }
+    } catch (error) {
+      // 원장 생성·채팅 준비의 예외도 예약된 starting 세션을 남기지 않는다.
+      if (launchOptions.attachmentIds?.length) launchAttachments.unreserve(launchOptions.attachmentIds);
+      removeSession(sessionId);
+      throw error;
     }
   }
 

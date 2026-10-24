@@ -753,6 +753,13 @@ describe("console static and terminal ticket boundary", () => {
   it("persists a member subagent block across the durable state boundary", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-subagent-"));
     tempDirs.push(dir);
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-location-"));
+    tempDirs.push(other);
+    const registered = path.join(fs.realpathSync.native(other), "B");
+    const unregistered = path.join(fs.realpathSync.native(other), "C");
+    fs.mkdirSync(registered);
+    fs.mkdirSync(unregistered);
+    fs.symlinkSync(unregistered, path.join(dir, "escape"), "junction");
     const realpath = fs.realpathSync.native(dir);
     const theaterId = workspaceHash(realpath);
     const fixture = await startFixture({
@@ -778,14 +785,20 @@ describe("console static and terminal ticket boundary", () => {
             ts: { createdAt: 1_001, updatedAt: 1_001 },
           }],
           ts: { createdAt: 1_000, updatedAt: 1_000 },
-        }]);
-        storage.board.save(theaterId, {
-          ...storage.board.list(theaterId)[0]!,
+        }], [{ id: workspaceHash(registered), path: registered, realpath: registered, label: "B", registeredAt: "2026-09-25T00:00:00.000Z", lastOpenedAt: "2026-09-25T00:00:01.000Z" }]);
+        const ownerId = storage.board.owners()[0]!.commodoreId;
+        storage.board.save(ownerId, {
+          ...storage.board.list(ownerId)[0]!,
           rank: 0,
           note: "",
           members: [{ id: "member-1", role: "Bravo", by: "human", subagents: true }],
           missions: [],
         });
+        const commodoreId = storage.board.owners()[0]!.commodoreId;
+        for (const [id, cwd] of [["fixed-b", registered], ["outside-c", unregistered], ["escaped", path.join(realpath, "escape")]] as const) {
+          storage.board.save(commodoreId, { id, cwd, commodoreId, theaterId, pending: true, title: id, rank: 0, note: "", members: [], missions: [], ts: { createdAt: 1_000, updatedAt: 1_000 } });
+        }
+
       },
     });
     const origin = new URL(fixture.endpoint).origin;
@@ -796,10 +809,31 @@ describe("console static and terminal ticket boundary", () => {
     });
     expect(response.status).toBe(200);
     const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
-    const ownerId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
+    const ownerId = fs.readdirSync(ownerRoot).find((id) => fs.existsSync(path.join(ownerRoot, id, "objectives/commander-1/objective.json")))!;
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
+    // 소유 Theater A와 무관하게 등록된 B는 열되 미등록 C·심볼릭 링크 탈출은 닫힌다.
+    const location = await fetch(`${origin}/api/v1/conversation-workbench/location?objectiveId=fixed-b`);
+    expect(location.status).toBe(200);
+    expect(await location.json()).toMatchObject({ location: { theaterId: workspaceHash(registered), label: "B" } });
+    for (const objectiveId of ["outside-c", "escaped"]) {
+      const unavailable = await fetch(`${origin}/api/v1/conversation-workbench/location?objectiveId=${objectiveId}`);
+      expect(unavailable.status).toBe(404);
+      expect(await unavailable.json()).toEqual({ error: "unavailable" });
+      const files = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
+        method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId, relativePath: "" }),
+      });
+      expect(files.status).toBe(404);
+      expect(await files.json()).toEqual({ error: "unavailable" });
+    }
+    const sessionsBefore = await getJson(`${origin}/api/v1/agent/sessions`);
+    const ownerless = await fetch(`${origin}/api/v1/agent/sessions`, {
+      method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ theaterId, cliId: "claude" }),
+    });
+    expect(ownerless.status).toBe(400);
+    expect(await ownerless.json()).toEqual({ error: "commodore_required" });
+    expect(await getJson(`${origin}/api/v1/agent/sessions`)).toEqual(sessionsBefore);
     // 같은 호스트의 생성 경계는 실행 전부터 소유 UUID와 고정 cwd를 분리한다.
     const createdResponse = await fetch(`${origin}/api/v1/objectives/objective/create`, {
       method: "POST", headers: { "Content-Type": "application/json", origin },
@@ -982,14 +1016,14 @@ describe("console static and terminal ticket boundary", () => {
 });
 
 // 현재 writer로 명부와 owner별 objective/groups/archive를 함께 심는다. 폐기된 위치 이주에 기대지 않는다.
-function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly ObjectiveRecord[]) {
+function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly Omit<ObjectiveRecord, "commodoreId">[], additionalTheaters: readonly DurableConsoleState["theaters"][number][] = []) {
   const directory = path.join(fleetDataDir, "console");
   const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
   const ownerId = entities.create(theater.realpath);
   const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
-  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(entities.dirOf(ownerId)!, "objectives"), theaterId: theater.id, workspacePath: theater.realpath }] });
+  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(entities.dirOf(ownerId)!, "objectives"), commodoreId: ownerId, legacyTheaterId: theater.id, legacyCwd: theater.realpath, theaterIdOf: (cwd: string) => workspaceHash(cwd) }] });
   storage.load();
-  storage.save({ version: STATE_VERSION, theaters: [theater], objectiveRecords });
+  storage.save({ version: STATE_VERSION, theaters: [theater, ...additionalTheaters], objectiveRecords: objectiveRecords.map((node) => ({ ...node, commodoreId: ownerId })) });
   return storage;
 }
 

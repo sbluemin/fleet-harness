@@ -199,7 +199,7 @@ ts: { createdAt, updatedAt: createdAt }};
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
-        readJsonBody: async <T,>() => ({ theaterId: "theater-1", cliId: "claude", ...body }) as T,
+        readJsonBody: async <T,>() => ({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", ...body }) as T,
         securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
       },
       security: {

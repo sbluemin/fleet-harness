@@ -30,6 +30,7 @@ describe("terminal connection replay input gate", () => {
     connection.start();
     await vi.waitFor(() => expect(socket).toBeDefined());
     socket!.open();
+    expect(fetch).toHaveBeenCalledWith("/ticket", expect.objectContaining({ body: JSON.stringify({ objectiveId: "session-a" }) }));
 
     expect(socket!.sent).toEqual([JSON.stringify({ type: "resize", cols: 120, rows: 40 })]);
     terminal.emitData("before-replay-end");
@@ -72,7 +73,8 @@ describe("terminal connection replay input gate", () => {
     const replayStates: boolean[] = [];
     const sockets: FakeWebSocket[] = [];
     const connection = createTerminalConnection({
-      objectiveId: "session-c",
+      objectiveId: "shell-surface",
+      ticketFields: { shell: "conversation-c", cwd: { objectiveId: "session-c", path: "" } },
       terminal,
       ticketPath: "/ticket",
       wsPath: "/ws",
@@ -96,6 +98,7 @@ describe("terminal connection replay input gate", () => {
     sockets[0]!.close();
     await vi.waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2_000 });
     sockets[1]!.open();
+    expect(fetch).toHaveBeenNthCalledWith(2, "/ticket", expect.objectContaining({ body: JSON.stringify({ shell: "conversation-c", cwd: { objectiveId: "session-c", path: "" } }) }));
     expect(replayStates).toEqual([true, true]);
 
     // The dead socket's callback finally lands. It must not close the live socket's window.

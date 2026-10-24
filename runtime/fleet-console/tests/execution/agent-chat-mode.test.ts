@@ -86,7 +86,7 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result"));
     expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript");
     expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).objectiveId;
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).objectiveId;
     expect(launched).not.toBe(sessionId);
     expect(harness.objectiveRecord(launched)?.launchedBy).toEqual(caller);
 
@@ -145,12 +145,12 @@ describe("agent chat mode routes", () => {
     expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ systemPrompt: { mode: "append", text: "Theater rules" }, disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
     expect(launched).not.toBe(sessionId);
     expect(harness.objectiveRecord(launched)?.chatBorn).toBe(true);
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]));
     // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
-    const commander = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).objectiveId;
+    const commander = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
     expect(harness.sends).toHaveLength(2);
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Begin the objective" });
@@ -160,12 +160,12 @@ describe("agent chat mode routes", () => {
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 서브에이전트 차단 규칙이 없다.
-    const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).objectiveId;
+    const member = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).objectiveId;
     harness.setSubagentSpawn(member, "default");
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
-    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).objectiveId;
+    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).objectiveId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
@@ -306,14 +306,14 @@ describe("agent chat mode routes", () => {
     // 살아 있는 프로세스를 바꾸는 문이라 그 플러그인이 띄운 Objective 만 받는다.
     const plugin = { kind: "plugin" as const, pluginId: "fleet-todo" };
     // adopt된 미기동 대화의 프리셋은 기존 저장 좌표 경로다. 자식이 생기면 소유 검사를 우회할 수 없다.
-    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat" })).objectiveId;
+    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat" })).objectiveId;
     const childrenBeforePreset = harness.openSession.mock.calls.length;
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.objectiveRecord(unstarted)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect(harness.openSession.mock.calls).toHaveLength(childrenBeforePreset);
     await harness.get(unstarted, "chat-catalog");
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "opus[1m]", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
-    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).objectiveId;
+    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).objectiveId;
     await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", surface: "chat", activity: "idle" }));
     await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.modelChanges.at(-1)).toBe("sonnet[1m]");
@@ -326,7 +326,7 @@ describe("agent chat mode routes", () => {
     expect("entries" in tail && tail.entries.some((entry) => entry.kind === "user" && String(entry.text).includes("Own work"))).toBe(true);
     await expect(harness.consoleControl.transcript(plugin, commander, { limit: 5, tail: true })).resolves.toEqual({ error: "forbidden" });
     // 세션 간 메시지 도착은 보낸·받은 Objective 과 시각만 그 둘을 띄운 플러그인에 건넨다 — 본문은 없고, 남이 띄운 세션 사이의 말은 건네지 않는다.
-    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).objectiveId;
+    const peer = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "peer" })).objectiveId;
     const arrivals: import("../../features/console-use/shared/control.js").ConsoleSessionMessage[] = [];
     cleanups.push(harness.consoleControl.subscribeSessionMessages(plugin, (event) => arrivals.push(event)));
     harness.emitToLatest(sent("call-peer", "peer", "Mission 2 is yours."));
@@ -826,7 +826,7 @@ ts: { createdAt, updatedAt: createdAt }};
       },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
-        readJsonBody: async <T,>(req: http.IncomingMessage) => ((req as TestRequest).__body ?? { theaterId: "theater-1", cliId }) as T,
+        readJsonBody: async <T,>(req: http.IncomingMessage) => ((req as TestRequest).__body ?? { commodoreId: "owner-1", theaterId: "theater-1", cliId }) as T,
         securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
       },
       security: {

@@ -277,9 +277,9 @@ describe("Repository Theater-root Git routes", () => {
     await runGit(["commit", "-m", "objective"], { cwd: objectiveRoot });
     const head = (await runGit(["rev-parse", "HEAD"], { cwd: objectiveRoot })).stdout.trim();
     const theaterCalls: string[] = [];
-    const call = async (body: Record<string, unknown>) => {
+    const call = async (body: Record<string, unknown>, handler = handleRepositoryBlob) => {
       const writes: JsonWrite[] = [];
-      await handleRepositoryBlob({ method: "POST" } as never, {} as never, {
+      await handler({ method: "POST" } as never, {} as never, {
         host: {
           http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); } },
           security: { isTerminalAuthorized: () => true },
@@ -295,6 +295,10 @@ describe("Repository Theater-root Git routes", () => {
     expect(opened[0]?.status).toBe(200);
     expect((opened[0]?.payload as { content: string }).content).toContain("objective");
     expect(JSON.stringify(opened)).not.toContain(objectiveRoot);
+    const history = await call({ objectiveId: "obj-1", repoRel: "" }, handleRepositoryLog);
+    expect(history[0]?.status).toBe(200);
+    expect(JSON.stringify(history)).toContain(head);
+    expect(JSON.stringify(history)).not.toContain(objectiveRoot);
     const conflict = await call({ objectiveId: "obj-1", theaterId: "theater", ref: head, filePath: "only-here.txt" });
     expect(conflict).toEqual([{ status: 400, payload: { error: "ambiguous_selector" } }]);
     const missing = await call({ objectiveId: "missing", ref: head, filePath: "only-here.txt" });

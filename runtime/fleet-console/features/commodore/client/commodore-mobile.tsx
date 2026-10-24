@@ -162,7 +162,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
-  const board = useObjectiveTheater(theaterId);
+  const board = useObjectiveTheater(commodoreId);
   const [panel, setPanel] = useState(false);
   const openPanel = useCallback(() => setPanel(true), []);
   useCommodoreMobilePanelRequest(panelRequest, openPanel);
@@ -239,6 +239,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
         <CommodoreMobileChat
           t={t}
           language={commodoreLanguage() ?? "en"}
+          commodoreId={commodoreId ?? ""}
           theaterId={theaterId}
           view={view}
           entries={entries}
@@ -322,9 +323,10 @@ function CommodoreStatusRow({ t, theaterId, view }: { readonly t: T; readonly th
  * 첨부 미리보기(`messageImages` → `ChatDispatchAttachments`)로 선다. 보내는 동안의 말은 확정 줄이 오기 전까지 흐린 사람 말풍선이다.
  * 사령관 이름은 칩 화면의 기록 탭(상세 원장)을 연다.
  */
-function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear, onOpenLog }: {
+function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear, onOpenLog }: {
   readonly t: T;
   readonly language: "en" | "ko";
+  readonly commodoreId: string;
   readonly theaterId: string;
   readonly view: CommodoreView | null;
   readonly entries: readonly CommodoreTranscriptEntry[];
@@ -339,12 +341,12 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
 }) {
   const Conversation = commodoreConversationRenderer();
   const TopEntries = commodoreComposerTopEntriesRenderer();
-  const board = useObjectiveTheater(theaterId);
+  const board = useObjectiveTheater(commodoreId);
   const asks = view?.state.asks;
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
-  const index = useCommodoreObjectiveIndex(theaterId);
-  const name = useCommodoreName(theaterId, t);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, asks, index.finished, name), [t, theaterId, entries, board.objectives, asks, index.finished, name]);
+  const index = useCommodoreObjectiveIndex(commodoreId);
+  const name = useCommodoreOwnerName(commodoreId, t);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, asks, index.finished, name), [t, commodoreId, entries, board.objectives, asks, index.finished, name]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
     const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name);
     if (!pending) return base;
@@ -360,23 +362,23 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = useCallback(() => {
     setLoadingOlder(true);
-    void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
-  }, [theaterId]);
-  const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
-  const references = useCommodoreReferenceHost(t, theaterId, openReference);
-  const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
+    void loadTranscript(commodoreId, { older: true }).finally(() => setLoadingOlder(false));
+  }, [commodoreId]);
+  const openReference = useCallback((objectiveId: string) => openOwnedObjectiveOnPhone(commodoreId, objectiveId), [commodoreId]);
+  const references = useCommodoreReferenceHost(t, commodoreId, openReference);
+  const openUIOpen = useCommodoreOpenUIPort(commodoreId, openReference);
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
-    open: (entry) => { if (entry.objectiveId) openObjectiveOnPhone(entry.objectiveId, theaterId); },
-  }), [t, theaterId]);
+    open: (entry) => { if (entry.objectiveId) openOwnedObjectiveOnPhone(commodoreId, entry.objectiveId); },
+  }), [t, commodoreId]);
   // 원장(기록 탭)에 설 턴이 있을 때만 이름이 눌린다 — 눌리는 척하지 않는다.
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn ? () => onOpenLog() : null), [hasTurn, onOpenLog]);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
-  const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
+  const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
+      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
     </div>
   );
   return (
@@ -394,7 +396,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
           openBoardAction={openBoardAction}
           openLedger={openLedger}
           references={references} openUIOpen={openUIOpen}
-          cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />}
+          cards={<CommodoreAskCards theaterId={commodoreId} contextTheaterId={theaterId} t={t} language={language} phone onEnded={onFail} />}
           composer={composer}
           composerTopEntries
           onOpenUISend={sendOpenUI}

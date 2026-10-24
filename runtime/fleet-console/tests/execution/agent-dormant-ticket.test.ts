@@ -29,6 +29,12 @@ afterEach(async () => {
 describe("agent dormant ticket guards", () => {
   it("launches an enabled host-only model by its advertised gateway id", async () => {
     const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] } });
+    const createRecord = vi.spyOn(harness.records, "create").mockImplementationOnce(() => { throw new Error("objective_owner_unavailable"); });
+    await expect(harness.postSessions()).rejects.toThrow("objective_owner_unavailable");
+    expect(await harness.getSessions()).toEqual([]);
+    expect(harness.objectiveRecords).toEqual([]);
+    expect(harness.attach).not.toHaveBeenCalled();
+    createRecord.mockRestore();
     await harness.createLiveSession();
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ model: "codex--gpt-6-luna", effort: "low" }));
     expect(harness.responses.at(-1)?.status).toBe(200);
@@ -38,7 +44,7 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
+    const id = (await control.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send", "resume"] });
     const objectiveRecord = harness.objectiveRecords.find((op) => op.id === id)!;
@@ -287,7 +293,7 @@ ts: { createdAt, updatedAt: createdAt }};
           const url = req.url ?? "";
           if (url.includes("/ticket")) return { objectiveId: (req as TestRequest).__body?.objectiveId } as T;
           if (url.includes("/resume")) return ((req as TestRequest).__body ?? {}) as T;
-          return { theaterId: "theater-1", cliId: "claude", ...options.body } as T;
+          return { commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", ...options.body } as T;
         },
         securityHeaders: (extra?: Readonly<Record<string, string>>) => ({ ...(extra ?? {}) }),
       },
@@ -402,6 +408,7 @@ ts: { createdAt, updatedAt: createdAt }};
     control,
     objectiveRecords,
     patch: ctx.host.objectiveRecords.patch,
+    records: ctx.host.objectiveRecords,
     tickets,
     responses,
     invalidateCalls,

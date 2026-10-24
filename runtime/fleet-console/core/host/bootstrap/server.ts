@@ -1021,8 +1021,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
         const cwd = node?.cwd ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === objectiveId)?.cwd;
         if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
+        const within = (root: string, candidate: string): boolean => {
+          const relative = path.relative(root, candidate);
+          return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+        };
         const real = fs.realpathSync.native(cwd);
-        return fs.statSync(real).isDirectory() ? real : null;
+        // 소유자의 연결과 무관하게 현재 등록된 작업 경계 안에서만 연다. 심볼릭 링크 탈출도 거절한다.
+        const registered = theaters.list().some((theater) => {
+          if (!within(theater.path, cwd) && !within(theater.realpath, cwd)) return false;
+          try { return within(fs.realpathSync.native(theater.realpath), real); }
+          catch { return false; }
+        });
+        return registered && fs.statSync(real).isDirectory() ? real : null;
       } catch { return null; }
     },
     listTheaterIds: () => theaters.list().map((theater) => theater.id),
