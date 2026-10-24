@@ -7,7 +7,7 @@ import type { ExperimentsHost } from "../../../features/settings/shared/experime
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { EventPort, CleanupPort, HttpSecurityPort, HttpPort, ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
-import type { SettingsStorageHost } from "../../../features/settings/host/storage-port.js";
+import type { QuotaSettingsHost } from "../../../features/quota/host/storage.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import type { ObjectiveRecordsHost } from "../../../features/objectives/host/records/ports.js";
 import type { ModelRosterHost } from "../../../features/ai-gateway/host/model-ports.js";
@@ -20,7 +20,7 @@ export interface ConsoleHostPorts {
   readonly events: EventPort;
   readonly paths: WorkspacePaths;
   readonly server: ServerOriginPort;
-  readonly storage: SettingsStorageHost;
+  readonly storage: QuotaSettingsHost;
   readonly http: HttpPort;
   readonly security: HttpSecurityPort;
   readonly lifecycle: CleanupPort;

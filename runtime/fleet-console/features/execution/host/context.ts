@@ -24,7 +24,7 @@ export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; reado
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
   readonly useContext?: import("./use-context.js").UseContext;
   readonly objectiveRecords: Pick<ObjectiveRecordsHost, "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
-  readonly paths: Omit<WorkspacePaths, "pluginDataDir">;
+  readonly paths: WorkspacePaths;
   /**
    * 이 요청이 입장한 접속의 수명. 원격 리스너에서는 그 원격 세션이고, 루프백에서는 끝나지 않는다.
    * 판정은 리스너와 세션을 아는 Console이 하고, 실행 기능은 묻기만 한다. 이 능력이 없는 호스트에서는
@@ -50,7 +50,6 @@ export interface ConsoleRuntimeContext {
   readonly wsBasePath: string;
   readonly dataDir: string;
   readonly recordFailure?: (kind: string, error: unknown) => void;
-  readonly legacyDataDir: string;
   /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
   readonly agentOptions: AgentOptionsService;
   /** 기동에 한 번 렌더한 Claude 플러그인 트리. 런치는 이것을 쓰기만 한다. */

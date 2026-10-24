@@ -1,5 +1,5 @@
 
-/** 한 프로젝트 경로에 딸린, 플러그인이 쓸 수 있는 데이터 디렉터리. */
+/** 한 프로젝트 경로에 딸린 데이터 디렉터리. */
 export interface WorkspaceDirectory {
   /** 이 워크스페이스의 데이터가 사는 절대 경로. */
   readonly path: string;
@@ -20,14 +20,14 @@ export interface WorkspacePaths {
    */
   readonly consoleDataDir: string;
   resolveTheaterPath(theaterId: string): string | null;
-  /** Objective 이 아직 없는 Theater 의 플러그인 레코드도 다시 찾는다. */
+  /** Objective 이 아직 없는 Theater 의 기능 레코드도 다시 찾는다. */
   listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
   /**
    * 한 프로젝트 경로의 워크스페이스 디렉터리를 만들어 준다(있으면 그대로).
    *
-   * 플러그인이 직접 만들면 이름 규칙과 정체성 파일이 호스트와 갈라져, 같은 프로젝트가
+   * 기능이 직접 만들면 이름 규칙과 정체성 파일이 호스트와 갈라져, 같은 프로젝트가
    * 두 디렉터리로 나뉜다.
    */
   ensureWorkspaceDirectory(cwd: string): WorkspaceDirectory;

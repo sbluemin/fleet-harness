@@ -166,7 +166,7 @@ export async function registerAgentRoutes(
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
-  const agentCliPathStore = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
+  const agentCliPathStore = createAgentCliPathStore(ctx.dataDir);
   const readAgentCliPaths = async () => (await agentCliPathStore.read()).paths;
   // 이 연결 하나를 모든 Objective이 공유한다 — 그래서 허용은 연결이 아니라 호출자 Objective 단위로
   // 판정해야 하고, 그 판정은 호스트가 도구 호출마다 직접 한다.

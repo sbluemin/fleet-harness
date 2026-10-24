@@ -93,7 +93,6 @@ function createContext(options: {
   return {
     pluginId: null,
     dataDir: "/unused",
-    legacyDataDir: "/unused",
     basePath: BASE_PATH,
     wsBasePath: `${BASE_PATH}/ws`,
     host: {

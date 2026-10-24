@@ -168,7 +168,7 @@ function createHarness(authorized: boolean, body: unknown = {}, origin: string |
       agent: { createSession: async () => { throw new Error("agent_gateway_unavailable"); } },
       security: { isTerminalAuthorized: () => authorized },
       http: { writeJson, readJsonBody: async () => body },
-      paths: { pluginDataDir: () => "/private/fleet/api/v1/scuttlebutt" },
+      paths: { consoleDataDir: "/private/fleet/scuttlebutt-test" },
       server: { origin: () => origin },
       lifecycle: { registerCleanup: vi.fn(() => () => undefined) },
     },

@@ -25,7 +25,7 @@ interface StoredSettings {
 }
 
 async function readStoredSettings(ctx: QuotaRouteContext): Promise<StoredSettings> {
-  const stored = await ctx.host.storage.readJson("quota", "settings");
+  const stored = await ctx.host.storage.read();
   return stored !== null && typeof stored === "object" && !Array.isArray(stored)
     ? stored as StoredSettings
     : {};
@@ -113,12 +113,13 @@ export async function handleConnect(
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
     return;
   }
+  const connected = body.connected;
   await serializeSettings(async () => {
     const next = {
       ...retainedSettings(await readStoredSettings(ctx)),
-      claudeConnected: body.connected,
+      claudeConnected: connected,
     };
-    await ctx.host.storage.writeJson("quota", "settings", next);
+    await ctx.host.storage.write(next);
   });
   const summary = await service.getSummary({ forceProvider: body.provider });
   ctx.host.http.writeJson(res, 200, summary);

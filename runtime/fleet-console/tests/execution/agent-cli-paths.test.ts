@@ -2,16 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { SettingsStorageHost } from "../../features/settings/host/storage-port.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  AGENT_CLI_COMMANDS,
-  AGENT_CLI_PATHS_STORAGE_KEY,
-  agentCliCommandForId,
-  applyAgentCliPathEnvOverlay,
-  createAgentCliPathStore,
-  normalizeAgentCliPaths,
   resolveAgentCliBinary,
 } from "../../features/execution/host/agent/agent-cli-paths.js";
 

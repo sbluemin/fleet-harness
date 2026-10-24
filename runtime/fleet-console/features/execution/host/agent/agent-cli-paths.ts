@@ -4,7 +4,6 @@ import path from "node:path";
 import { resolvePathBinary, type ResolvedBinary } from "@fleet-console/process";
 import { createDurableJsonStore } from "@fleet-console/infra";
 
-export const AGENT_CLI_PATHS_STORAGE_KEY = "agent-cli-paths";
 export const AGENT_CLI_COMMANDS = ["claude"] as const;
 const STORED_AGENT_CLI_COMMANDS = ["claude", "codex"] as const;
 
@@ -33,8 +32,8 @@ const OVERRIDE_ENV_BY_COMMAND: Readonly<Record<string, string>> = {
   codex: "CODEX_BIN",
 };
 
-/** Console의 단일 영속 writer. 구 플러그인 경로는 최초 승계 시에만 읽는다. */
-export function createAgentCliPathStore(dataDir: string, legacyDataDir: string) {
+/** Console 슬롯의 실행 파일 설정. 구 위치 승계는 기동 시 durable writer가 먼저 마친다. */
+export function createAgentCliPathStore(dataDir: string) {
   const filePath = path.join(dataDir, "agent-cli-paths.json");
   const store = createDurableJsonStore<AgentCliPathsData>({
     filePath,
@@ -42,16 +41,6 @@ export function createAgentCliPathStore(dataDir: string, legacyDataDir: string) 
     sensitivity: "sensitive",
     sanitize: normalizeAgentCliPaths,
   });
-  if (!fs.existsSync(filePath)) {
-    const legacyFile = path.join(legacyDataDir, "agent-cli-paths.json");
-    let legacy: AgentCliPathsData | undefined;
-    try {
-      legacy = normalizeAgentCliPaths(JSON.parse(fs.readFileSync(legacyFile, "utf8")));
-    } catch {
-      // 선택 설정의 손상으로 Console 기동을 막지 않는다. 원본과 목적지를 그대로 두어 복구 후 재시도한다.
-    }
-    if (legacy) store.update(() => fs.existsSync(filePath) ? undefined : legacy);
-  }
   return {
     read: async (): Promise<AgentCliPathsData> => store.load(),
   };

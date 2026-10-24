@@ -11,7 +11,6 @@ export function createConsoleRuntimeContext(deps: {
   readonly host: ConsoleRuntimeHost;
   readonly dataDir: string;
   readonly recordFailure?: (kind: string, error: unknown) => void;
-  readonly legacyDataDir: string;
   readonly agentOptions: AgentOptionsService;
   readonly agentCliPlugin: AgentCliPlugin;
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
@@ -36,7 +35,6 @@ export function createConsoleRuntimeContext(deps: {
     ...(deps.agentCallRedirect ? { agentCallRedirect: deps.agentCallRedirect } : {}),
     dataDir: deps.dataDir,
     recordFailure: deps.recordFailure,
-    legacyDataDir: deps.legacyDataDir,
     agentOptions: deps.agentOptions,
     agentCliPlugin: deps.agentCliPlugin,
     ...(deps.launchPromptDirectories ? { launchPromptDirectories: deps.launchPromptDirectories } : {}),

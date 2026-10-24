@@ -1,6 +1,6 @@
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
-import type { SettingsStorageHost } from "../../settings/host/storage-port.js";
+import type { QuotaSettingsHost } from "./storage.js";
 import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -30,7 +30,7 @@ const LOGIN_ROUTES: readonly { readonly action: LoginAction; readonly method: "G
   { action: "logout", method: "POST", summary: (label) => `Remove the local ${label} sign-in from the quota panel.` },
 ];
 
-export type QuotaFeatureDeps = { readonly server: ServerOriginPort; readonly storage: SettingsStorageHost; readonly http: HttpPort; readonly security: HttpSecurityPort; };
+export type QuotaFeatureDeps = { readonly server: ServerOriginPort; readonly storage: QuotaSettingsHost; readonly http: HttpPort; readonly security: HttpSecurityPort; };
 export interface QuotaRouteContext { readonly host: QuotaFeatureDeps }
 export function createQuotaFeature(deps: QuotaFeatureDeps) {
   const ctx = { host: deps };

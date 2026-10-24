@@ -143,7 +143,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
   const applied: boolean[] = [];
   const ctx = {
     dataDir: "/unused",
-    legacyDataDir: "/unused",
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
     registerRouter: (path: string, handler: Parameters<ConsoleRuntimeContext["registerRouter"]>[1]) => { routers.set(path, handler); },

@@ -84,7 +84,6 @@ async function mount(options: MountOptions): Promise<{
 
   const ctx = {
     dataDir: "/unused",
-    legacyDataDir: "/unused",
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
     registerRouter: (routePath: string, handler: RouteHandler) => { routes.set(routePath, handler); },

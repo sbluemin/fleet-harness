@@ -27,7 +27,8 @@ interface RouterHarnessOptions {
   readonly body?: unknown;
   readonly bodyNull?: boolean;
   readonly general?: ConsoleGeneralSettings;
-  readonly plugins?: ConsoleSettingsData["plugins"];
+  readonly quota?: ConsoleSettingsData["quota"];
+  readonly scuttlebutt?: ConsoleSettingsData["scuttlebutt"];
   readonly execution?: ConsoleSettingsData["execution"];
   readonly onThemeChanged?: (theme: "dark" | "light") => void;
   readonly onRemoteAccessChanged?: (change: { readonly previous: ConsoleGeneralSettings["remoteAccess"] & {}; readonly next: ConsoleGeneralSettings["remoteAccess"] & {} }) => void;
@@ -39,7 +40,7 @@ describe("global settings routes", () => {
     const uiFont = { source: "system", familyName: "A Font's Name", size: 15 } as const;
     const localFont = { source: "custom", customName: "Local Code", cjkFallbackName: "Local CJK", size: 16 };
     const serverFont = { source: "curated", id: "fira-code", customName: "", cjkFallbackName: "Apple SD Gothic Neo", size: 13 };
-    const options: RouterHarnessOptions = { general: { uiFont }, execution: { font: serverFont }, plugins: { quota: { claudeConnected: true }, scuttlebutt: { tori: true, introduced: true } }, body: { terminal: localFont } };
+    const options: RouterHarnessOptions = { general: { uiFont }, execution: { font: serverFont }, quota: { toolbarProviders: ["claude"] }, scuttlebutt: { tori: true, introduced: true }, body: { terminal: localFont } };
     const harness = createRouterHarness(options);
     await harness.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
     const migrated = harness.currentGeneral()?.fonts;
@@ -71,7 +72,8 @@ describe("global settings routes", () => {
     });
     await executionRouter({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/execution" });
     expect(harness.currentData().execution).toEqual({ font: serverFont, chatReadingWidth: "wide" });
-    expect(harness.currentData().plugins).toEqual({ quota: { claudeConnected: true }, scuttlebutt: { tori: true, introduced: true } });
+    expect(harness.currentData().quota).toEqual({ toolbarProviders: ["claude"] });
+    expect(harness.currentData().scuttlebutt).toEqual({ tori: true, introduced: true });
     const local = createRouterHarness({ general: { uiFont }, body: { terminal: localFont } });
     await local.router({ req: jsonReq("POST"), res: res(), pathname: "/api/v1/settings/fonts/migration" });
     expect(local.currentGeneral()?.fonts?.code).toEqual({ font: { source: "system", familyName: localFont.customName }, size: 16, cjk: localFont.cjkFallbackName });
@@ -231,7 +233,7 @@ describe("global settings routes", () => {
 function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
   let body = options.body;
-  let data: ConsoleSettingsData = { version: 1, general: { remoteAccess: DEFAULT_REMOTE_ACCESS, ...options.general }, plugins: options.plugins ?? {}, execution: options.execution };
+  let data: ConsoleSettingsData = { version: 1, general: { remoteAccess: DEFAULT_REMOTE_ACCESS, ...options.general }, quota: options.quota, scuttlebutt: options.scuttlebutt, execution: options.execution };
   let updateCalls = 0;
   const store: Parameters<typeof createGlobalSettingsRouter>[0]["consoleSettingsStore"] = {
       path: "/fake/settings.json",

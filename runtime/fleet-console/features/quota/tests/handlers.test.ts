@@ -28,7 +28,7 @@ function harness(
   const ctx = {
     host: {
       security: { isTerminalAuthorized: () => true },
-      storage: { readJson, writeJson },
+      storage: { read: readJson, write: writeJson },
       http: {
         readJsonBody: async () => body,
         writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }),

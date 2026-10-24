@@ -102,7 +102,8 @@ import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { CONSOLE_FAILURE_LOG_FILE, createConsoleFailureLog } from "./failure-log.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
-import { reclaimRetiredPluginData } from "./retired-plugin-data.js";
+import { retireConsoleData } from "./retired-data.js";
+import { createQuotaSettingsStore } from "../../../features/quota/host/storage.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -545,6 +546,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let purgeCoreObjective: ((objectiveRecord: ObjectiveRecord) => void) | null = null;
   let resumeArchivedObjective: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
+  let retiredDataSettled = false;
+  const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => retiredDataSettled);
   const avatarStore = createAvatarStore(durablePaths.dir);
   const conversationWorkbenchStore = createConversationWorkbenchStore(durablePaths.dir);
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
@@ -804,7 +807,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 보지만 락과 승계 표식(목적지 파일의 존재)이 같아 서로를 덮지 않는다.
   const gatewaySettings = createAiGatewaySettingsStore({
     dataDir: durablePaths.dir,
-    legacyDirs: [fleetDataDir, path.join(durablePaths.dir, "plugins", "terminal")],
+    legacyDirs: [fleetDataDir],
   });
   const mcpHttp = createMcpHttpTransport(() => consoleFeaturePorts.server.origin());
   const consoleAgentOwners = new Set<string>();
@@ -1146,10 +1149,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         };
       },
     },
-    storage: {
-      readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
-      writeJson: (pluginId, key, value) => writePluginStorageJson(durablePaths.dir, pluginId, key, value),
-    },
+    storage: quotaSettings,
     http: {
       writeJson,
       readJsonBody,
@@ -2610,8 +2610,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
       adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
       reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
-      // 같은 id로 발견된 플러그인(거절된 외부 플러그인 포함)이 있으면 그 폴더는 그 플러그인의 것이다.
-      reclaimRetiredPluginData(durablePaths.dir, new Set());
+      retiredDataSettled = retireConsoleData(durablePaths.dir);
       consoleSettingsStore.load();
       await rehydrateDurableState();
       // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
@@ -2631,7 +2630,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         host: { ...consoleFeaturePorts, computerUseMcp, browserMcp, useRequests, useContext, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
         dataDir: durablePaths.dir,
         recordFailure,
-        legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
         agentOptions,
         agentCliPlugin,
         launchPromptDirectories,
@@ -3496,29 +3494,6 @@ function isAllowedTerminalOrigin(req: http.IncomingMessage, expectedOrigin: stri
   const origin = req.headers.origin;
   if (origin === undefined) return true;
   return origin === expectedOrigin;
-}
-
-async function readPluginStorageJson(dataDir: string, pluginId: string, key: string): Promise<unknown> {
-  const file = resolvePluginStorageFile(dataDir, pluginId, key);
-  try {
-    return JSON.parse(await fs.promises.readFile(file, "utf8")) as unknown;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-
-async function writePluginStorageJson(dataDir: string, pluginId: string, key: string, value: unknown): Promise<void> {
-  const file = resolvePluginStorageFile(dataDir, pluginId, key);
-  await fs.promises.mkdir(path.dirname(file), { recursive: true });
-  await fs.promises.writeFile(file, JSON.stringify(value), "utf8");
-}
-
-function resolvePluginStorageFile(dataDir: string, pluginId: string, key: string): string {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pluginId) || !/^[a-z0-9][a-z0-9._-]*$/i.test(key)) {
-    throw new Error("invalid_plugin_storage_key");
-  }
-  return path.join(dataDir, "plugins", pluginId, `${key}.json`);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
