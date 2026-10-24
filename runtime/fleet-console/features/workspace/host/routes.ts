@@ -1,6 +1,7 @@
 import type * as http from "node:http";
 import { canonicalizeTheaterPathSync, workspaceHash, listTheaterFolders, TheaterFolderListError, type TheaterRegistry, type TheaterRegistration, type createFolderGrantStore } from "./theaters/theater-domain.js";
 import { DeferredDeletionError, type createDeferredDeletionCoordinator } from "./deferred-deletion.js";
+import { ObjectiveArchiveError } from "./objective-archive-storage.js";
 import { ClaudeTrustError, trustClaudeTheater } from "./theaters/claude-trust.js";
 import type { ConsoleTheaterFolderListResponse, ConsoleTheaterInfo } from "../../../core/host/transport/console-contract-types.js";
 
@@ -150,8 +151,16 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
       writeJson(res, 200, toTheaterInfo(theater, true));
       return;
     }
-    const deletion = deletionCoordinator.deleteTheater(theaterId);
-    writeJson(res, 200, { ok: true, deletion });
+    try {
+      const deletion = deletionCoordinator.deleteTheater(theaterId);
+      writeJson(res, 200, { ok: true, deletion });
+    } catch (error) {
+      if (error instanceof ObjectiveArchiveError) {
+        writeJson(res, error.status, { error: error.message });
+        return;
+      }
+      throw error;
+    }
   }
 
   async function handleDeferredDeletionRestore(req: http.IncomingMessage, res: http.ServerResponse, deletionId: string): Promise<void> {
@@ -167,7 +176,7 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
       const restored = await deletionCoordinator.restore(deletionId);
       writeJson(res, 200, restored);
     } catch (error) {
-      if (error instanceof DeferredDeletionError) {
+      if (error instanceof DeferredDeletionError || error instanceof ObjectiveArchiveError) {
         writeJson(res, error.status, { error: error.message });
         return;
       }
