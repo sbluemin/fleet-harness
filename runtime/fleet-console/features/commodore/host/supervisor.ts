@@ -30,8 +30,6 @@ import { commodoreCompactAt, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolInterv
  * 순찰 간격만 사람의 노브다(서랍). 재시도 간격·모으는 시간·교대 비율은 감독자 내부 값이다.
  */
 
-/** 저장값이 없으면 자동 순찰을 예약하지 않는다. */
-export const DEFAULT_PATROL_MS = null;
 export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000];
 export const RETRY_STEADY_MS = 60 * 60_000;
 /** 깨움 이유를 모으는 시간. */
@@ -297,7 +295,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   /** 이유를 모은다 — 턴이 돌고 있으면 끝난 뒤, 아니면 잠깐 뒤 한 턴. 수는 절대값이 덮고 `bump` 는 누적한다. */
   const wake = (runner: Runner, code: WakeCode, input: { readonly count?: number; readonly bump?: boolean; readonly detail?: string } = {}) => {
     if (runner.stopping || runner.draining || runner.ending) return;
-    if (!shouldRun(runner.commodoreId) && code !== "message" && code !== "retry") return;
+    const automatic = shouldRun(runner.commodoreId);
+    if (!automatic && code !== "message" && code !== "retry") return;
     if (deadlineReached(runner)) { endScheduled(runner); return; }
     const existing = runner.pending.get(code);
     const reason: PendingReason = existing ?? { details: [] };
@@ -306,7 +305,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (input.detail && !reason.details.includes(input.detail)) reason.details.push(input.detail);
     if (!existing) runner.pending.set(code, reason);
     if (runner.inflight) return;
-    if (runner.phase === "retrying" || runner.phase === "error") return; // 재시도 시각에 함께 실린다
+    // 자동 운영은 예약 재시도에 합친다. 안 함에서는 새 사람 메시지가 명시적인 다음 시도다.
+    if ((runner.phase === "retrying" || runner.phase === "error") && (automatic || code !== "message")) return;
     schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
   };
 
@@ -613,6 +613,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, draining: false, automatic: shouldRun(commodoreId), ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
     const current = runner;
     current.board = deps.board()?.watch(theaterIdOf(commodoreId), {
+      automatic: () => !current.draining && shouldRun(commodoreId),
       wake: (code, input) => {
         wake(current, code, input);
         if (input?.objectiveId && input.detail) noteIds(current, code, input.objectiveId, input.detail);

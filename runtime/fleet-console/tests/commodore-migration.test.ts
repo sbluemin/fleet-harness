@@ -34,8 +34,10 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     };
     const a = seed("-old-readable-name", theater("registered"));
     const b = seed("digest-name--" + "b".repeat(64), theater("forgotten"));
+    write(path.join(b.dir, "state.json"), JSON.stringify({ ...JSON.parse(state(b.text)), autonomy: false, patrolMinutes: 120 }));
     const failedCopy = seed("cross-device-copy-verification", theater("failed-copy"));
     const stopped = seed("stopped-before-commit", theater("before"));
+    write(path.join(stopped.dir, "state.json"), JSON.stringify({ ...JSON.parse(state(stopped.text)), patrolMinutes: 120 }));
     const stoppedId = randomUUID();
     write(path.join(stopped.dir, ".migration.json"), marker(stoppedId, stopped.root));
     const after = seed("stopped-after-commit", theater("after"));
@@ -139,10 +141,11 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     };
     const resolved = await call("commodore/resolve", { theaterId: workspaceHash(a.root) });
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
-    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
+    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { patrolMinutes: 60, directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
     expect(JSON.stringify(view)).not.toContain(a.root);
+    expect(view.state).not.toHaveProperty("autonomy");
     expect((await call("commodore/resolve", { theaterId: workspaceHash(stopped.root) })).commodoreId).toBe(stoppedId);
-    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { directive: { text: stopped.text, rev: 1 } } });
+    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { patrolMinutes: 120, directive: { text: stopped.text, rev: 1 } } });
     expect((await call("commodore/resolve", { theaterId: workspaceHash(fresh) })).commodoreId).toEqual(expect.any(String));
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(await call("commodore/resolve", { theaterId: workspaceHash(unknown.root) })).toEqual({ commodoreId: null });
@@ -175,7 +178,10 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(fs.existsSync(path.join(entities, afterStateId, ".migration.json"))).toBe(false);
     const finalStates = fs.readdirSync(entities).map((id) => ({ id, value: JSON.parse(fs.readFileSync(path.join(entities, id, "state.json"), "utf8")) }));
     expect(finalStates.filter((entry) => entry.value.theaters[0].path === a.root)).toHaveLength(1);
-    const bId = finalStates.find((entry) => entry.value.theaters[0].path === b.root)!.id;
+    const bState = finalStates.find((entry) => entry.value.theaters[0].path === b.root)!;
+    expect(bState.value).toMatchObject({ patrolMinutes: "off", directive: { text: b.text } });
+    expect(bState.value).not.toHaveProperty("autonomy");
+    const bId = bState.id;
     expect(fs.readFileSync(path.join(entities, bId, "memory", "MEMORY.md"), "utf8")).toBe("keep memory\n");
     const brokenId = finalStates.find((entry) => entry.value.theaters[0].path === broken.root)!.id;
     const backup = fs.readdirSync(path.join(entities, brokenId)).find((name) => name.startsWith("state.json.broken-"))!;

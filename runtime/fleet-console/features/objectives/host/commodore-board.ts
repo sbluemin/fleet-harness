@@ -128,14 +128,14 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
     for (const change of statusChanges(runner, objectives)) { wake(runner, "status", { bump: true, detail: change.text, objectiveId: change.id }); }
   };
   cleanups.push(deps.subscribeObjectives((event) => {
-    if (event.theaterId === theaterId) boardChanged(runner);
+    if (!disposed && sink.automatic() && event.theaterId === theaterId) boardChanged(runner);
   }));
 
   // 개시·검토 대기 — 지휘관이 일하는 동안의 목표는 대기가 아니다(commence 는 objective_busy·retryWhen commander_turn_end 로, 완료는
   // objective_busy 로 거절된다; 인계는 지휘관 턴 도중에 기록된다). 그 일이 끝나 쉬게 되면 새 항목으로 한 번 깨운다. 일이 시작될 때도
   // 보드 사건이 없으므로 같은 점검이 그 항목을 들은 것에서 내린다. 깨우기까지만 한다 — 다음 행위는 사령관이 정한다.
   const plannedTimer = setInterval(() => {
-    if (disposed || !deps.observe) return;
+    if (disposed || !sink.automatic() || !deps.observe) return;
     {
       const objectives = deps.objectives(runner.theaterId);
       const operators = operatorsOf(objectives);
@@ -208,7 +208,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, theater
   // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남았는데 구성원이 일하는 동안 지휘관이 오래 쉬거나, 보드가 오래 그대로인데
   // 모두 쉰다. 새로 정체된 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
   const stallTimer = setInterval(() => {
-    if (disposed || !deps.observe) return;
+    if (disposed || !sink.automatic() || !deps.observe) return;
     {
       const objectives = deps.objectives(runner.theaterId);
       const operators = operatorsOf(objectives);

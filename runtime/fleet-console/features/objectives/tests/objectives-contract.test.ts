@@ -2228,10 +2228,6 @@ describe("Objectives contract", () => {
     expect(await board({ action: "commence", objectiveId: id })).toMatchObject({ objectiveId: id, failed: [] });
     // 구상 요청과 개시도 부른 손으로 남는다. 개시한 손은 행위 기록이 접혀도 commencedBy 로 남아 사이드바가 읽는다.
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ commencedBy: actor, actions: expect.arrayContaining([expect.objectContaining({ kind: "plan", by: actor }), expect.objectContaining({ kind: "commence", by: actor })]) });
-    // 사이드바 줄 — 사령관이 개시한 목표는 제자리에서 사령관 표식을 단다(자율 운영 스위치를 따라 켬·끔). 실험 기능이 꺼지면 표식이 없다.
-    const commodoreRow = (board: { enabled: boolean; autonomy: boolean }) => clustersOf([store.find(id)!], new Map(), () => false, () => ({ active: board.enabled && board.autonomy, stalled: [], ...board }))[0]!.row!;
-    expect(commodoreRow({ enabled: true, autonomy: false }).mark?.square).toBe("hollow");
-    expect(commodoreRow({ enabled: false, autonomy: false }).mark).toBeUndefined();
     outcomes.set(workerId, "failed");
     expect((await board({ action: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id, sessions: expect.objectContaining({ members: expect.arrayContaining([expect.objectContaining({ state: "idle", outcome: "failed" })]) }) }));
     const personView = (await route("objective/get", { objectiveId: id })).value as { objective: Objective };
