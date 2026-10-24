@@ -414,7 +414,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
 }
 
 function normalizeCreateInput(input: ObjectiveRecordCreateInput, id: string, timestamp: number): ObjectiveRecord {
-  const { createdAt, ...fields } = input;
+  const { createdAt, sourceObjectiveId: _source, ...fields } = input;
   return { ...fields, id, title: input.title.trim() || "Untitled Objective", ts: { createdAt: createdAt ?? timestamp, updatedAt: timestamp } };
 }
 function patchedFields<T extends { readonly id: string }>(existing: T, input: Record<string, unknown>): T & Record<string, unknown> {

@@ -24,7 +24,7 @@ import {
 export const CONVERSATION_WORKBENCH_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Read the saved tool split layout of each conversation.", category: "Workspace", gate: "loopback", transport: "http" },
   { method: "PUT", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Save or clear one conversation's tool split layout.", category: "Workspace", gate: "origin-write", transport: "http" },
-  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's work location as a Theater-relative coordinate.", category: "Workspace", gate: "loopback", transport: "http" },
+  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's fixed work location without exposing an absolute path.", category: "Workspace", gate: "loopback", transport: "http" },
 ];
 
 /**
@@ -75,11 +75,8 @@ export function createConversationWorkbenchRouter(deps: {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly now?: () => number;
-  /**
-   * Objective(또는 구성원 세션) id → 그 대화의 작업 위치. 모르는 id 면 null. `folder`(Theater 상대)를 주면 세션이 옮겨 간 그
-   * 폴더를 분류한다 — 브라우저가 이미 받은 「지금 어디」 투영이다. 루트 밖으로 오르거나 실제로 밖을 가리키면 루트다.
-   */
-  readonly locate?: (objectiveId: string, folder: string | null) => ConversationWorkLocation | "unavailable" | null;
+  /** Objective·구성원·미실행 목표의 고정 위치. 브라우저의 folder override는 받지 않는다. */
+  readonly locate?: (objectiveId: string) => ConversationWorkLocation | "unavailable" | null;
 }) {
   const now = deps.now ?? Date.now;
   return async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
@@ -90,8 +87,8 @@ export function createConversationWorkbenchRouter(deps: {
       }
       const query = new URL(req.url ?? "", "http://localhost").searchParams;
       const objectiveId = query.get("objectiveId");
-      const folder = query.get("folder");
-      const location = objectiveId && deps.locate ? deps.locate(objectiveId, folder) : null;
+      if (query.has("folder")) { deps.writeJson(res, 400, { error: "invalid_request" }); return true; }
+      const location = objectiveId && deps.locate ? deps.locate(objectiveId) : null;
       if (location === null) deps.writeJson(res, 404, { error: "objectiveRecord_not_found" });
       else if (location === "unavailable") deps.writeJson(res, 404, { error: "unavailable" });
       else deps.writeJson(res, 200, { location });

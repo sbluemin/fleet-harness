@@ -54,7 +54,8 @@ describe("durable console state", () => {
     const bytes = Buffer.from("sealed proof");
     const evidence = { evidenceId: "d7f24ad7-6854-4b2a-8802-e4f242b30629", name: "proof.txt", mediaType: "text/plain", bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), capturedAt: 1 };
     const result = { ...evidence, kind: "evidence", id: "e9d2bf4c-a424-45aa-92aa-d87b4fd78bcc", createdAt: 1, updatedAt: 2 };
-    const active = { ...h.doc("active"), launchedBy: { kind: "feature", featureId: "objectives" }, members: [{ id: "child", role: "Member", by: "human" }], sessions: [{ id: "child", ts: { createdAt: 1, updatedAt: 2 }, launchedBy: { kind: "feature", featureId: "objectives" }, session: { harness: "claude-code", id: "private-child" } }] };
+    const otherProject = path.join(h.directory, "B"); fs.mkdirSync(otherProject);
+    const active = { ...h.doc("active"), cwd: otherProject, addedBy: { kind: "commodore", theaterId: "t1" }, launchedBy: { kind: "feature", featureId: "objectives" }, members: [{ id: "child", role: "Member", by: "human" }], sessions: [{ id: "child", ts: { createdAt: 1, updatedAt: 2 }, launchedBy: { kind: "feature", featureId: "objectives" }, session: { harness: "claude-code", id: "private-child" } }] };
     const archived = { ...h.doc("archived"), evidence: [{ ...evidence, ownerObjectiveId: "archived" }], results: [result] };
     const conflict = h.doc("conflict"), existing = { ...conflict, note: "different original" };
     h.put("active", active); h.put("conflict", existing);
@@ -130,6 +131,43 @@ describe("durable console state", () => {
     expect(boot.board.directory("c1")).toBe(h.destination);
     expect(fs.readFileSync(leftoverArchive, "utf8")).toBe(leftoverBytes);
     expect(fs.readFileSync(path.join(leftoverBoard, "untouched"), "utf8")).toBe("older board");
+
+    // 소유자의 A와 목표의 B는 다르다. 읽기·실행 저장·보드 저장이 B를 A로 바꾸면 안 된다.
+    const beforeRead = fs.readFileSync(h.file("active"), "utf8");
+    const fixed = h.open(); const fixedState = fixed.load();
+    expect(fs.readFileSync(h.file("active"), "utf8")).toBe(beforeRead);
+    fixed.save({ ...fixedState, objectiveRecords: fixedState.objectiveRecords.map((record) => ({ ...record, cwd: h.directory })) });
+    expect(JSON.parse(fs.readFileSync(h.file("active"), "utf8")).cwd).toBe(otherProject);
+    fixed.board.save("c1", { ...fixed.board.list("c1").find((record) => record.id === "active")!, cwd: h.directory });
+    expect(JSON.parse(fs.readFileSync(h.file("active"), "utf8")).cwd).toBe(otherProject);
+    // 현행 옛 파일의 식별자 없는 행위자와 cwd 없는 미실행 목표는 읽기에서만 복구한다.
+    const legacyFile = path.join(h.destination, "legacy-pending/objective.json");
+    fs.mkdirSync(path.dirname(legacyFile));
+    const legacyPending = JSON.stringify({ id: "legacy-pending", title: "Pending", pending: true, rank: 0, note: "keep", missions: [], ts: { createdAt: 1, updatedAt: 1 }, addedBy: { kind: "commodore", why: "keep" } });
+    fs.writeFileSync(legacyFile, legacyPending);
+    const legacyStore = h.open(); legacyStore.load();
+    const pending = legacyStore.board.list("c1").find((record) => record.id === "legacy-pending")!;
+    expect(pending).toMatchObject({ commodoreId: "c1", cwd: h.directory, addedBy: { kind: "commodore", commodoreId: "c1", why: "keep" } });
+    expect(fs.readFileSync(legacyFile, "utf8")).toBe(legacyPending);
+    legacyStore.board.save("c1", pending);
+    expect(JSON.parse(fs.readFileSync(legacyFile, "utf8")).cwd).toBe(h.directory);
+    expect(() => legacyStore.board.save("c1", { ...pending, addedBy: { kind: "commodore", commodoreId: "other-owner" } })).toThrow("objective_actor_owner_mismatch");
+    // 한 목표의 잘못된 소유자/위치는 기동과 형제 목표를 막지 않으며 다음 저장도 원본을 지우지 않는다.
+    const badOwner = JSON.stringify({ ...JSON.parse(fs.readFileSync(legacyFile, "utf8")), addedBy: { kind: "commodore", commodoreId: "other-owner" } });
+    fs.writeFileSync(legacyFile, badOwner);
+    const badLocationFile = path.join(h.destination, "unlocated/objective.json");
+    fs.mkdirSync(path.dirname(badLocationFile));
+    const badLocation = JSON.stringify({ ...JSON.parse(legacyPending), id: "unlocated", cwd: "relative" });
+    fs.writeFileSync(badLocationFile, badLocation);
+    const isolated = h.open(); const readable = isolated.load();
+    expect(readable.objectiveRecords.map((record) => record.id).sort()).toEqual(["active", "archived"]);
+    expect(isolated.board.unavailable("legacy-pending")).toBe(true);
+    expect(isolated.board.unavailable("unlocated")).toBe(true);
+    expect(isolated.board.list("c1").map((record) => record.id)).not.toContain("legacy-pending");
+    isolated.save(readable);
+    expect(fs.readFileSync(legacyFile, "utf8")).toBe(badOwner);
+    expect(fs.readFileSync(badLocationFile, "utf8")).toBe(badLocation);
+    expect(() => isolated.board.save("c1", pending)).toThrow("archive_recovery_required");
 
     // 손상 행은 같은 owner의 정상 행과 다른 owner를 막지 않는다. 파싱 불능은 해당 owner만 멈춘다.
     const damaged = fixture();

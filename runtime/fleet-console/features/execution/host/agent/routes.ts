@@ -646,7 +646,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
         // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패로 돌려주면 재시도가 같은 Objective 을 하나 더 만든다.
-        if (!input.childSessionId && input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: recordTheaterId, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
+        if (!input.childSessionId && input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { objectiveId: launchedId, delivery: "queued" };
       }
       const objectiveId = input.objectiveId!;
@@ -940,7 +940,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const objectiveNode = objectiveId ? ctx.host.objectiveRecords.get(objectiveId) : undefined;
-    const recordTheaterId = theaterId ?? objectiveNode?.theaterId ?? null;
+    const objectiveContext = objectiveId ? ctx.host.objectiveRecords.context?.(objectiveId) ?? objectiveNode : null;
+    const recordTheaterId = theaterId ?? objectiveContext?.theaterId ?? null;
     const cwd = objectiveId
       ? confirmedObjectiveCwd(objectiveId, objectiveNode)
       : (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null);
@@ -968,7 +969,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     try {
       await createSession(cwd, recordTheaterId, cliId, (status, value) => ctx.host.http.writeJson(res, status, value), {
-        commodoreId: typeof body?.commodoreId === "string" ? body.commodoreId : undefined,
+        commodoreId: objectiveContext?.commodoreId ?? (typeof body?.commodoreId === "string" ? body.commodoreId : undefined),
+        ...(objectiveId ? { sourceObjectiveId: objectiveId } : {}),
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
         // 첨부가 붙으면 자식에게 갈 프롬프트와 원장에 설 문면이 갈린다 — 후자는 사용자가 실제로
@@ -1166,7 +1168,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1221,6 +1223,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.objectiveRecords.create({
         id: session.sessionId,
         commodoreId: launchOptions.commodoreId ?? "",
+        ...(launchOptions.sourceObjectiveId ? { sourceObjectiveId: launchOptions.sourceObjectiveId } : {}),
         theaterId,
         title: namedSession.label ?? session.label ?? path.basename(cwd),
         ...payload,

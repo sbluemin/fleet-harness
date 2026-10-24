@@ -512,6 +512,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveCreation: (input) => {
       if (!ownership) throw new Error("objective_owner_unavailable");
       if (!ownership.entities.dirOf(input.commodoreId)) throw new Error("objective_owner_unavailable");
+      const sourceId = typeof input.sourceObjectiveId === "string" ? input.sourceObjectiveId : null;
+      if (sourceId) {
+        const source = objectiveRecords.get(sourceId) ?? objectiveRecordArchive.describe(sourceId)?.objectiveRecord ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === sourceId);
+        if (!source || source.commodoreId !== input.commodoreId || !source.cwd) throw new Error("objective_owner_unavailable");
+        return { commodoreId: input.commodoreId, cwd: source.cwd };
+      }
       const pending = input.id ? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === input.id) : null;
       if (pending) {
         if (pending.commodoreId !== input.commodoreId || !pending.cwd) throw new Error("objective_owner_unavailable");
@@ -1041,6 +1047,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     objectiveRecords: {
       describe: objectiveRecordArchive.describe,
+      context: (id) => {
+        const node = objectiveRecords.get(id) ?? objectiveRecordArchive.describe(id)?.objectiveRecord ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === id);
+        return node?.commodoreId && node.theaterId ? { commodoreId: node.commodoreId, theaterId: node.theaterId } : null;
+      },
       listArchived: objectiveRecordArchive.listArchived,
       archive: objectiveRecordArchive.archive,
       access: objectiveRecordArchive.access,
@@ -1507,9 +1517,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
-    locate: (objectiveId, _folder) => {
-      const child = objectiveRecords.getChild(objectiveId);
-      const node = child ? child.parent : objectiveRecords.get(objectiveId);
+    locate: (objectiveId) => {
+      const node = consoleFeaturePorts.objectiveRecords.context?.(objectiveId);
       if (!node) return null;
       // 폴더 override는 쓰지 않는다. 좌표는 목표 cwd 자신이다(상대 경로는 빈 문자열). 없거나 사라졌으면 unavailable.
       const cwd = workspacePaths.resolveObjectivePath?.(objectiveId) ?? null;

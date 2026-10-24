@@ -7,3 +7,11 @@ export function askObjectiveTitle(board: { readonly loaded: boolean; readonly ob
   const live = board.objectives.find((objective) => objective.id === objectiveId);
   return live && !live.removed ? live.title : null;
 }
+
+/** 화면에서 선택한 장소의 소유 UUID를 새 생성 요청에 명시한다. 목표를 읽을 때는 사용하지 않는다. */
+export async function resolveOwnerForContext(theaterId: string, signal?: AbortSignal): Promise<string> {
+  const response = await fetch("/api/v1/commodore/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId }), signal });
+  const body = await response.json() as { commodoreId?: unknown; error?: unknown };
+  if (!response.ok || typeof body.commodoreId !== "string" || !body.commodoreId) throw new Error("commodore_unavailable");
+  return body.commodoreId;
+}

@@ -1,4 +1,5 @@
 export interface OpenFileRequest {
+  readonly objectiveId?: string;
   readonly theaterId: string;
   readonly path: string;
   readonly pathKind: "theater-relative" | "absolute";

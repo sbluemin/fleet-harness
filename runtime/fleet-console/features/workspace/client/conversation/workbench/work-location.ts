@@ -8,8 +8,8 @@ import { CONVERSATION_WORKBENCH_API_PATH } from "../../../shared/conversation-wo
  * 대화의 작업 위치 — 도구 칸이 대화에서 파생하는 유일한 좌표다(시안 v2 규칙 c). 사람이 다시 고르지 않는다.
  *
  * - 사령관(Theater 를 대신하는 플러그인 대화)은 Theater 루트다.
- * - 지휘관(Objective 대화)은 그 에이전트 세션의 작업 폴더다 — 브라우저 DTO 에는 작업 폴더가 실리지 않으므로(원시 경로 금지)
- *   호스트가 Theater 상대 좌표로 접어 준 값을 읽는다. 워크트리면 그 워크트리, 그 밖은 Theater 루트다.
+ * - 지휘관(Objective 대화)은 생성 때 고정한 목표 작업 폴더다 — 브라우저 DTO 에는 작업 폴더가 실리지 않으므로(원시 경로 금지)
+ *   호스트가 목표 루트 기준 좌표로 접어 준 값을 읽는다. 소실된 위치는 사용할 수 없다.
  *
  * Objective 이 바뀌었다는 신호(`revision` — 그 노드의 갱신 시각)가 오면 다시 읽되, 잦은 활동 갱신에 끌려다니지 않게 짧게 묶는다.
  */
@@ -32,7 +32,7 @@ function pairKey(objectiveId: string, folder: string | null): string {
 
 async function fetchLocation(objectiveId: string, folder: string | null): Promise<ConversationWorkLocation | null> {
   try {
-    const query = new URLSearchParams({ objectiveId, ...(folder === null ? {} : { folder }) });
+    const query = new URLSearchParams({ objectiveId });
     const response = await fetch(`${CONVERSATION_WORKBENCH_API_PATH}/location?${query}`, { headers: { Accept: "application/json" } });
     if (!response.ok) return null;
     const body = await response.json() as { readonly location?: unknown };
@@ -67,7 +67,7 @@ export function useConversationWorkLocation(target: WorkLocationTarget): Convers
   const objectiveId = target.kind === "objectiveRecord" ? target.objectiveId : null;
   const revision = target.kind === "objectiveRecord" ? target.revision : 0;
   // 세션이 옮겨 간 폴더(「지금 어디」 투영, Theater 상대) — 있으면 그 자리가 작업 위치다. 없으면 세션의 실행 작업 폴더.
-  const folder = target.kind === "objectiveRecord" ? target.folder ?? null : null;
+  const folder = null;
   const theaterId = target.kind === "none" ? null : target.theaterId;
   const theaterLabel = target.kind === "none" ? "" : target.theaterLabel;
   const key = objectiveId === null ? null : pairKey(objectiveId, folder);

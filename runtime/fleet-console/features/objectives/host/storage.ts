@@ -239,7 +239,7 @@ export function createObjectiveStorage(deps: {
         if (doc.id !== entry.name) throw failure();
         scope.documents.set(doc.id, doc);
       } catch (error) {
-        if (!(error instanceof SyntaxError) && !(error instanceof ObjectiveArchiveError) && !(error instanceof Error && /^(objective_owner|objective_location|invalid_objective)/.test(error.message))) throw error;
+        if (!(error instanceof SyntaxError) && !(error instanceof ObjectiveArchiveError) && !(error instanceof Error && /^(objective_actor|objective_owner|objective_location|invalid_objective)/.test(error.message))) throw error;
         // 참조 중인 원본도 지우거나 빈 본문으로 바꾸지 않는다. 해당 목표만 격리한다.
         scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], entry.name])] };
       }

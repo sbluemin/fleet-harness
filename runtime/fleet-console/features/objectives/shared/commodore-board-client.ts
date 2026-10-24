@@ -5,6 +5,7 @@ export type CommodoreBoardActor = "human" | "commander"
 
 /** 사령관 표면이 읽는 보드 투영. 보드 구현·판정 함수는 플러그인 밖으로 나오지 않는다. */
 export interface CommodoreBoardObjective {
+  readonly commodoreId: string;
   readonly id: string;
   readonly theaterId: string;
   readonly title: string;
@@ -36,16 +37,16 @@ export interface CommodoreBoardClient {
   readonly railEntryIds: readonly string[];
   /** 사령관 요청이 인가된 서버에 닿았다 — 보드의 일시 조회 게이트도 같은 연결 증거를 받는다. */
   serverReached(): void;
-  read(theaterId: string): CommodoreBoardSnapshot;
+  read(commodoreId: string): CommodoreBoardSnapshot;
   subscribe(listener: () => void): () => void;
-  finished(theaterId: string): readonly CommodoreBoardObjective[];
-  finishedLoaded(theaterId: string): boolean;
+  finished(commodoreId: string): readonly CommodoreBoardObjective[];
+  finishedLoaded(commodoreId: string): boolean;
   findFinished(id: string): CommodoreBoardObjective | null;
-  loadFinished(theaterId: string): void;
+  loadFinished(commodoreId: string): void;
   subscribeFinished(listener: () => void): () => void;
   openObjective(objectiveId: string, theaterId: string, done?: boolean): void;
   openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void;
   openObjectiveOnPhone(objectiveId: string, theaterId?: string): void;
   revealObjective(input: { readonly objectiveId: string }): void;
-  renderObjectiveAvatar(theaterId: string, objectiveId: string, size: number): ReactNode;
+  renderObjectiveAvatar(commodoreId: string, objectiveId: string, size: number): ReactNode;
 }

@@ -7,6 +7,7 @@ export type SidebarPosition = "first" | "last" | { readonly before: string } | {
 export interface ObjectiveRecordsHost extends Partial<ObjectiveArchiveCapability> {
   list(): readonly ObjectiveRecord[];
   get(id: string): ObjectiveRecord | null;
+  context?(id: string): { readonly commodoreId: string; readonly theaterId: string } | null;
   create(input: ObjectiveRecordCreateInput): ObjectiveRecord;
   /** 실행 호스트가 부모 안에 자식 세션을 저장한다. */
   createChild?(input: { readonly parentObjectiveId: string; readonly childSessionId: string; readonly [key: string]: unknown }): ObjectiveRecord;

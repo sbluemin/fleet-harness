@@ -51,7 +51,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
-    prStatus = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: deps.paths.consoleDataDir }), onError: (code) => console.warn(`[objectives] ${code}`) });
+    prStatus = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: (objectiveId) => deps.paths.resolveObjectivePath?.(objectiveId) ?? null }), onError: (code) => console.warn(`[objectives] ${code}`) });
     registerCleanup(() => prStatus!.dispose());
     const collectEvidence = () => { try { store.evidenceCollect(); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };
     collectEvidence();

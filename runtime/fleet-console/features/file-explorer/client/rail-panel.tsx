@@ -72,8 +72,8 @@ export const fileExplorerEntry: RailEntryDescriptor = {
       const ref = parseFileLocation(request.path);
       if (!ref) { showFileNavigationError("unsupported"); return { ok: false, reason: "unsupported" }; }
       try {
-        const resolved = await resolveFilePath(request.theaterId, ref.path, request.pathKind);
-        return filePaneTarget(request.theaterId, resolved, { ...ref, line: request.line ?? ref.line, column: request.column ?? ref.column });
+        const resolved = await resolveFilePath(request.theaterId, ref.path, request.pathKind, undefined, request.objectiveId);
+        return filePaneTarget(request.theaterId, resolved, { ...ref, line: request.line ?? ref.line, column: request.column ?? ref.column }, request.objectiveId);
       } catch (error) {
         const reason = error instanceof FileNavigationError ? error.reason : "not_found";
         showFileNavigationError(reason);
@@ -168,7 +168,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const { theaterId, panes } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
-  const objectiveId = ctx.conversation?.objectiveId;
+  const objectiveId = ctx.params.objectiveId ?? ctx.conversation?.objectiveId;
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
   // 트리의 루트 = 목표 cwd(상대 경로는 그 기준) 또는 대화 밖이면 Theater 루트.
   const location = objectiveId ? ctx.conversation?.location ?? null : ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;

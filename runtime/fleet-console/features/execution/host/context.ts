@@ -23,7 +23,7 @@ export type ConsoleRuntimeHost = { readonly consoleUse: ConsoleUseMcpHost; reado
   readonly useRequests?: Pick<import("../../console-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 세 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
   readonly useContext?: import("./use-context.js").UseContext;
-  readonly objectiveRecords: Pick<ObjectiveRecordsHost, "list" | "get" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
+  readonly objectiveRecords: Pick<ObjectiveRecordsHost, "list" | "get" | "context" | "create" | "createChild" | "patch" | "delete" | "deleteChild" | "isTransitioning">;
   readonly paths: WorkspacePaths;
   /**
    * 이 요청이 입장한 접속의 수명. 원격 리스너에서는 그 원격 세션이고, 루프백에서는 끝나지 않는다.

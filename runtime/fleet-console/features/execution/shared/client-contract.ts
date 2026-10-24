@@ -91,6 +91,7 @@ export interface ClientObjectiveRecordsCapability {
 
 
 export interface ConsoleObjectiveSummary {
+  readonly commodoreId: string;
   readonly id: string;
   readonly theaterId: string;
   readonly type: string;

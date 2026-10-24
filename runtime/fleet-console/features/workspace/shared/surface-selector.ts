@@ -4,9 +4,10 @@ export type SurfaceSelector = { readonly objectiveId: string } | { readonly thea
 export function surfaceSelector(input: {
   readonly objectiveId?: string | null;
   readonly theaterId?: string | null;
+  readonly params?: { readonly objectiveId?: string };
   readonly conversation?: { readonly objectiveId?: string } | null;
 }): SurfaceSelector | null {
-  const objectiveId = input.objectiveId || input.conversation?.objectiveId;
+  const objectiveId = input.objectiveId || input.params?.objectiveId || input.conversation?.objectiveId;
   if (objectiveId) return { objectiveId };
   if (input.theaterId) return { theaterId: input.theaterId };
   return null;

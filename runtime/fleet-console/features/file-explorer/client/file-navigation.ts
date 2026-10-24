@@ -31,12 +31,12 @@ export async function resolveFilePath(theaterId: string, filePath: string, pathK
   return response.json() as Promise<FileResolveResult>;
 }
 
-export function filePaneTarget(theaterId: string, resolved: FileResolveResult, location: Pick<FileRef, "line" | "column"> & { readonly anchor?: string } = {}): PaneTarget {
+export function filePaneTarget(theaterId: string, resolved: FileResolveResult, location: Pick<FileRef, "line" | "column"> & { readonly anchor?: string } = {}, objectiveId?: string): PaneTarget {
   return {
     paneId: resolved.kind === "dir" ? "file-explorer" : DOCUMENT_PANE_ID,
     theaterId,
     params: {
-      theaterId, path: resolved.path, pathKind: "theater-relative", requestId: crypto.randomUUID(), preview: "true",
+      theaterId, ...(objectiveId ? { objectiveId } : {}), path: resolved.path, pathKind: "theater-relative", requestId: crypto.randomUUID(), preview: "true",
       ...(resolved.kind === "dir" ? { directory: resolved.path } : {}),
       ...(location.line ? { line: String(location.line) } : {}),
       ...(location.column ? { column: String(location.column) } : {}),

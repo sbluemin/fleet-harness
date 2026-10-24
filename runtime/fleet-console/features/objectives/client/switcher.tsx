@@ -22,9 +22,9 @@ type T = Translate<ObjectiveMessageKey>;
  * 목록 안으로 들어가고, Esc 는 초점을 연 입구로 돌려보낸다.
  */
 
-/** 그룹별 「시작 전」 펼침 — `${theaterId}:${groupId}`. 새로 고침하면 모두 접힌다. */
+/** 그룹별 「시작 전」 펼침 — `${commodoreId}:${groupId}`. 새로 고침하면 모두 접힌다. */
 const foldOpen = new Map<string, boolean>();
-const foldKey = (theaterId: string, groupId: string | null) => `${theaterId}:${groupId ?? ""}`;
+const foldKey = (commodoreId: string, groupId: string | null) => `${commodoreId}:${groupId ?? ""}`;
 /** 목록에서 고른 직후 — 상세가 새 목표로 다시 마운트돼도 새 ⌄ 가 초점을 받는다. 닫힌 목록의 줄과 함께 초점이 사라지지 않게. */
 let refocusTrigger = false;
 
@@ -39,7 +39,7 @@ const activityOfGlyph = (state: StatusGlyphState): string => (state === "fresh" 
 export interface SwitcherProps {
   readonly t: T;
   readonly language: "en" | "ko";
-  readonly theaterId: string;
+  readonly commodoreId: string;
   readonly objectives: readonly Objective[];
   readonly groups: readonly ObjectiveGroup[];
   readonly selected: string | null;
@@ -53,9 +53,9 @@ export interface SwitcherProps {
   readonly onNewObjective: () => void;
 }
 
-export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasSession, onPick, open, onOpenChange: setOpen, onNewObjective }: SwitcherProps) {
+export function ObjectiveSwitcher({ t, language, commodoreId, objectives, groups, selected, glyphOf, hasSession, onPick, open, onOpenChange: setOpen, onNewObjective }: SwitcherProps) {
   const [, setFoldTick] = useState(0);
-  const commodore = useCommodoreBoard(theaterId);
+  const commodore = useCommodoreBoard(commodoreId);
   const popRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -112,7 +112,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
 
   // 열 때: 고른 목표가 접기 안에 있으면 그 접기를 펼치고, 고른 줄이 보이게 스크롤한다.
   const selectedObjective = selected ? rest.find((objective) => objective.id === selected) : undefined;
-  if (open && selectedObjective && freshOf(selectedObjective)) foldOpen.set(foldKey(theaterId, sectionOf(selectedObjective)), true);
+  if (open && selectedObjective && freshOf(selectedObjective)) foldOpen.set(foldKey(commodoreId, sectionOf(selectedObjective)), true);
   useLayoutEffect(() => {
     if (!open) return;
     const current = popRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
@@ -164,7 +164,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     const name = group ? group.name : t("objectives.list.ungrouped");
     const shown = items.filter((objective) => !freshOf(objective));
     const fresh = items.filter(freshOf);
-    const key = foldKey(theaterId, group?.id ?? null);
+    const key = foldKey(commodoreId, group?.id ?? null);
     const expanded = foldOpen.get(key) === true;
     return (
       <li key={group?.id ?? "ungrouped"} className="objectives-pop-group">

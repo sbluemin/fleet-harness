@@ -1,3 +1,4 @@
+import { resolveOwnerForContext } from "../../../../features/commodore/shared/contracts/client-helpers.js";
 import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
 import * as React from "react";
 import { assertObjectiveRecord, ApiError } from "../../../../features/execution/client/objective-records.js";
@@ -116,7 +117,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         const response = await fetch("/api/v1/objectives/records", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
+          body: JSON.stringify({ ...input, commodoreId: await resolveOwnerForContext(input.theaterId) }),
         });
         if (!response.ok) throw new ApiError(response.status, `Objective create failed: ${response.status}`);
         const payload = await response.json() as { readonly objectiveRecord?: unknown };
