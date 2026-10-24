@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import type http from "node:http";
 
 import type { RepositoryRouteContext } from "./index.js";
@@ -51,17 +52,14 @@ export async function handleRepositoryCommit(
   }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const theaterId = body.theaterId;
-  if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-
   const ref = body.ref;
   if (typeof ref !== "string" || !REF_RE.test(ref)) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_ref" });
     return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }

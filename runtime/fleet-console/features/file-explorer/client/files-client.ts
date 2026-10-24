@@ -1,4 +1,5 @@
 import type { FolderListResult } from "../shared/types.js";
+import { surfaceSelector, type SurfaceSelector } from "../../workspace/shared/surface-selector.js";
 import type { ListFolderOptions, PluginFilesClient } from "./tree.js";
 
 /**
@@ -14,10 +15,11 @@ export const LIST_TIMEOUT_MS = 10_000;
  * 트리 페인과 문서 로더가 함께 부르므로 어느 컴포넌트에도 속하지 않는다 — 문서 창은 이미지의
  * 기준 mtime을 얻으려 부모 폴더를 한 번 나열하고, 트리는 목록 그 자체를 그린다.
  */
-export function makeFilesClient(theaterId: string | null): PluginFilesClient {
+export function makeFilesClient(selector: string | SurfaceSelector | null): PluginFilesClient {
+  const resolved = typeof selector === "string" ? surfaceSelector({ theaterId: selector }) : selector;
   return {
     listFolder: async (relativePath?, options: ListFolderOptions = {}) => {
-      if (!theaterId) throw new Error("no_theater");
+      if (!resolved) throw new Error("no_theater");
       const { signal, timeoutMs } = options;
       const controller = new AbortController();
       let timedOut = false;
@@ -29,7 +31,7 @@ export function makeFilesClient(theaterId: string | null): PluginFilesClient {
         const res = await fetch("/api/v1/file-explorer/files/list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theaterId, relativePath: relativePath ?? "" }),
+          body: JSON.stringify({ ...resolved, relativePath: relativePath ?? "" }),
           signal: controller.signal,
         });
         if (!res.ok) {

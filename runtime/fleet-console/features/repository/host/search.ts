@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import type http from "node:http";
 
 import type { RepositoryRouteContext } from "./index.js";
@@ -39,7 +40,7 @@ export async function handleRepositorySearch(
   }>(req);
   if (
     !isPlainObject(body)
-    || typeof body.theaterId !== "string"
+   
     || typeof body.query !== "string"
     || body.query.trim() === ""
     || !Number.isInteger(body.limit)
@@ -52,8 +53,8 @@ export async function handleRepositorySearch(
     return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let gitCwd: string;
   try {

@@ -168,11 +168,12 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const { theaterId, panes } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
+  const objectiveId = ctx.conversation?.objectiveId;
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
-  // 트리의 루트 = 이 대화의 작업 위치(호스트가 파생한다 — 사람이 고르지 않는다). 대화 밖이면 Theater 루트다.
-  const location = ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
+  // 트리의 루트 = 목표 cwd(상대 경로는 그 기준) 또는 대화 밖이면 Theater 루트.
+  const location = objectiveId ? ctx.conversation?.location ?? null : ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
   const rootPath = location?.relative ?? "";
-  const shellAction = useShellAction(ctx.shell, theaterId, selectedPath);
+  const shellAction = useShellAction(ctx.shell, theaterId, selectedPath, objectiveId);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
   const nextTransientIdRef = useRef(0);
@@ -189,7 +190,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
   }, [contextScope, ctx.params.requestId, ctx.visible, directoryPath, panes, theaterId]);
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
-  const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+  const files = useMemo(() => makeFilesClient(objectiveId ? { objectiveId } : theaterId), [objectiveId, theaterId]);
 
   // 이 칸이 놓인 대화가 이 Theater 의 보기 상태를 갖는다 — 같은 Theater 의 다른 대화(다른 워크트리)가 열어 둔 문서가 여기에 뜨지 않게.
   // 칠하기 전에 세워, 아래 복원이 이 대화의 상태와 저장된 세션을 읽는다.
@@ -262,7 +263,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
     }
     // 500개 밖의 열린 문서는 목록 부재로 삭제를 단정하지 않는다. 내용 없이 stat만 확인한다.
     const unlisted = result.truncated ? openDocsRef.current.filter((doc) => parentDirOf(doc.relativePath) === result.relativePath && !entries.some((entry) => entry.relativePath === doc.relativePath)).map((doc) => doc.relativePath) : [];
-    if (unlisted.length > 0) void refreshDocumentDiskStatus(contextScope, unlisted).catch(() => undefined);
+    if (unlisted.length > 0) void refreshDocumentDiskStatus(contextScope, unlisted, undefined, objectiveId).catch(() => undefined);
   }, [contextScope]);
 
   const showFeedback = useCallback((message: string) => {
@@ -307,7 +308,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
       shellAction.open(entry.kind === "file" ? parentDirOf(entry.relativePath) : entry.relativePath);
       return;
     }
-    void performFileContextAction(action, theaterId, entry.relativePath)
+    void performFileContextAction(action, theaterId, entry.relativePath, {}, objectiveId)
       .then((feedbackKey) => {
         if (feedbackKey) showFeedback(t(feedbackKey));
       })
@@ -346,6 +347,7 @@ function FileExplorerTreePane(ctx: PaneContext) {
           ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
+          objectiveId={objectiveId}
           contextKey={treeScope}
           rootPath={rootPath}
           selectedPath={selectedPath}

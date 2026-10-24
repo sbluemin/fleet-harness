@@ -22,10 +22,10 @@ export class FileNavigationError extends Error {
   constructor(readonly reason: "outside_theater" | "not_found") { super(reason); }
 }
 
-export async function resolveFilePath(theaterId: string, filePath: string, pathKind: OpenFileRequest["pathKind"], signal?: AbortSignal): Promise<FileResolveResult> {
+export async function resolveFilePath(theaterId: string, filePath: string, pathKind: OpenFileRequest["pathKind"], signal?: AbortSignal, objectiveId?: string): Promise<FileResolveResult> {
   const response = await fetch("/api/v1/file-explorer/files/resolve", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, path: filePath, pathKind }), ...(signal ? { signal } : {}),
+    body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), path: filePath, pathKind }), ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new FileNavigationError(response.status === 403 ? "outside_theater" : "not_found");
   return response.json() as Promise<FileResolveResult>;
@@ -45,12 +45,12 @@ export function filePaneTarget(theaterId: string, resolved: FileResolveResult, l
   };
 }
 
-export async function findReferencedFile(theaterId: string, query: string, signal?: AbortSignal): Promise<{ readonly resolved: FileResolveResult; readonly ref: FileLocation } | null> {
+export async function findReferencedFile(theaterId: string, query: string, signal?: AbortSignal, objectiveId?: string): Promise<{ readonly resolved: FileResolveResult; readonly ref: FileLocation } | null> {
   const ref = parseFileLocation(query);
   if (!ref) return null;
   const explicit = isAbsolute(ref) || ref.line !== undefined || ref.column !== undefined;
   try {
-    const resolved = await resolveFilePath(theaterId, ref.path, isAbsolute(ref) ? "absolute" : "theater-relative", signal);
+    const resolved = await resolveFilePath(theaterId, ref.path, isAbsolute(ref) ? "absolute" : "theater-relative", signal, objectiveId);
     return { resolved, ref };
   } catch (error) {
     if (explicit || signal?.aborted) throw error;

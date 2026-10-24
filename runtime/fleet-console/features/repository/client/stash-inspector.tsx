@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.js";
 
@@ -58,7 +59,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     fetch("/api/v1/repository/stash", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, action: "show", name: stash.name, sha: stash.sha }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, action: "show", name: stash.name, sha: stash.sha }),
     }).then(async (response) => {
       const payload = await response.json().catch(() => ({})) as { readonly files?: readonly { readonly status: string; readonly path: string }[]; readonly truncated?: boolean; readonly error?: string };
       if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "git_failed");
@@ -129,7 +130,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
       </div>
       </div>} main={<div className="repository-stash-diff">
         {selectedFile ? <><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div>
-          {ctx.theaterId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId, repoRel, fullHash: stash.sha }} emptyDiffMessage={t("repository.stash.untrackedPreview")} /> : null}
+          {ctx.theaterId || ctx.conversation?.objectiveId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId ?? "", ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}), repoRel, fullHash: stash.sha }} emptyDiffMessage={t("repository.stash.untrackedPreview")} /> : null}
         </> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
       </div>} />
       {onAction && <div className="repository-stash-inspector-actions">

@@ -28,28 +28,27 @@ export const CONVERSATION_WORKBENCH_API_CATALOG: readonly ApiCatalogEntry[] = [
 ];
 
 /**
- * 대화의 작업 위치 — 그 Objective 의 작업 폴더(payload cwd)를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
- * 작업 폴더가 없거나, 사라졌거나, Theater 밖이면 Theater 루트다(사람이 다시 고르지 않는다 — 가장 안전한 기본값).
+ * 대화의 작업 위치 — 그 Objective 의 작업 폴더를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
+ * 작업 폴더가 없거나, 사라졌거나, Theater 밖이면 null이다. Theater 루트로 바꾸지 않는다.
  */
 export function resolveConversationWorkLocation(input: {
   readonly theaterId: string;
   readonly theaterRoot: string;
   readonly theaterLabel: string;
   readonly cwd: string | null;
-}): ConversationWorkLocation {
-  const root: ConversationWorkLocation = { theaterId: input.theaterId, relative: "", kind: "root", label: input.theaterLabel };
-  if (input.cwd === null || input.cwd === "" || !path.isAbsolute(input.cwd)) return root;
+}): ConversationWorkLocation | null {
+  if (input.cwd === null || input.cwd === "" || !path.isAbsolute(input.cwd)) return null;
   let realRoot: string;
   let real: string;
   try {
     realRoot = realpathSync.native(input.theaterRoot);
     real = realpathSync.native(input.cwd);
   } catch {
-    return root;
+    return null;
   }
   const relative = path.relative(realRoot, real);
-  if (relative === "") return root;
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return root;
+  if (relative === "") return { theaterId: input.theaterId, relative: "", kind: "root", label: input.theaterLabel };
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
   let kind: ConversationWorkLocation["kind"] = "directory";
   try {
     // git 워크트리의 루트에는 `.git` 이 디렉터리가 아니라 파일(gitdir 포인터)로 있다.
@@ -80,7 +79,7 @@ export function createConversationWorkbenchRouter(deps: {
    * Objective(또는 구성원 세션) id → 그 대화의 작업 위치. 모르는 id 면 null. `folder`(Theater 상대)를 주면 세션이 옮겨 간 그
    * 폴더를 분류한다 — 브라우저가 이미 받은 「지금 어디」 투영이다. 루트 밖으로 오르거나 실제로 밖을 가리키면 루트다.
    */
-  readonly locate?: (objectiveId: string, folder: string | null) => ConversationWorkLocation | null;
+  readonly locate?: (objectiveId: string, folder: string | null) => ConversationWorkLocation | "unavailable" | null;
 }) {
   const now = deps.now ?? Date.now;
   return async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
@@ -94,6 +93,7 @@ export function createConversationWorkbenchRouter(deps: {
       const folder = query.get("folder");
       const location = objectiveId && deps.locate ? deps.locate(objectiveId, folder) : null;
       if (location === null) deps.writeJson(res, 404, { error: "objectiveRecord_not_found" });
+      else if (location === "unavailable") deps.writeJson(res, 404, { error: "unavailable" });
       else deps.writeJson(res, 200, { location });
       return true;
     }

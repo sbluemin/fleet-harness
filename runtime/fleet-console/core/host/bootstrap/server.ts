@@ -15,7 +15,8 @@ import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
-import { createConversationWorkbenchRouter, createConversationWorkbenchStore, resolveConversationWorkLocation } from "../../../features/workspace/host/conversation-workbench.js";
+import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
+import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -1005,6 +1006,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return objectiveRecord && ownership?.entities.dirOf(objectiveRecord.commodoreId) ? objectiveRecord.commodoreId : null;
     },
   });
+  const workspacePaths: WorkspacePaths = {
+    fleetDataDir,
+    consoleDataDir: durablePaths.dir,
+    resolveTheaterPath: (theaterId: string) => theaters.get(theaterId)?.realpath ?? null,
+    resolveObjectivePath: (objectiveId) => {
+      try {
+        const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
+        const cwd = node?.cwd ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === objectiveId)?.cwd;
+        if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
+        const real = fs.realpathSync.native(cwd);
+        return fs.statSync(real).isDirectory() ? real : null;
+      } catch { return null; }
+    },
+    listTheaterIds: () => theaters.list().map((theater) => theater.id),
+    canonicalizeTheaterPath: canonicalizeTheaterPathSync,
+    workspaceHash,
+    ensureWorkspaceDirectory: (cwd: string) => {
+      const workspace = ensureWorkspaceDirectory(durablePaths.dir, cwd);
+      return { path: workspace.path, id: workspaceHash(workspace.cwd) };
+    },
+    withDirectoryLock: <T,>(lockDir: string, objectiveRecord: () => T): T => withDirectoryLock({ lockDir }, objectiveRecord),
+  };
   const consoleFeaturePorts: ConsoleHostPorts = {
     consoleUse,
     mcpTransport: mcpHttp.transport,
@@ -1135,28 +1158,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return activePort ? `http://127.0.0.1:${activePort}` : null;
       },
     },
-    paths: {
-      fleetDataDir,
-      consoleDataDir: durablePaths.dir,
-      resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
-      resolveObjectivePath: (objectiveId) => {
-        try {
-          const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
-          const cwd = node?.cwd ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === objectiveId)?.cwd;
-          if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
-          const real = fs.realpathSync.native(cwd);
-          return fs.statSync(real).isDirectory() ? real : null;
-        } catch { return null; }
-      },
-      listTheaterIds: () => theaters.list().map((theater) => theater.id),
-      canonicalizeTheaterPath: canonicalizeTheaterPathSync,
-      workspaceHash,
-      ensureWorkspaceDirectory: (cwd: string) => {
-        const workspace = ensureWorkspaceDirectory(durablePaths.dir, cwd);
-        return { path: workspace.path, id: workspaceHash(workspace.cwd) };
-      },
-      withDirectoryLock: <T,>(lockDir: string, objectiveRecord: () => T): T => withDirectoryLock({ lockDir }, objectiveRecord),
-    },
+    paths: workspacePaths,
     knowledge: {
       root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
       ids: () => commodore?.knowledge.ids() ?? [],
@@ -1505,20 +1507,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
-    locate: (objectiveId, folder) => {
+    locate: (objectiveId, _folder) => {
       const child = objectiveRecords.getChild(objectiveId);
       const node = child ? child.parent : objectiveRecords.get(objectiveId);
       if (!node) return null;
-      const theater = theaters.get(node.theaterId);
-      if (!theater?.realpath) return null;
-      const payload = child ? child.child : node;
-      // 세션이 옮겨 간 폴더(Theater 상대)가 오면 그것을, 아니면 세션의 실행 작업 폴더를 쓴다. 상대 폴더는 어휘로 루트 위로 오르지 못하고,
-      // 분류 함수가 realpath 포함 검사를 한 번 더 한다.
-      const relative = folder === null ? null : path.posix.normalize(folder.replaceAll("\\", "/"));
-      const cwd = relative !== null && relative !== ".." && !relative.startsWith("../") && !relative.startsWith("/") && !relative.includes("\0")
-        ? path.join(theater.realpath, ...relative.split("/"))
-        : typeof payload?.cwd === "string" ? payload.cwd : null;
-      return resolveConversationWorkLocation({ theaterId: node.theaterId, theaterRoot: theater.realpath, theaterLabel: theater.label ?? path.basename(theater.realpath), cwd });
+      // 폴더 override는 쓰지 않는다. 좌표는 목표 cwd 자신이다(상대 경로는 빈 문자열). 없거나 사라졌으면 unavailable.
+      const cwd = workspacePaths.resolveObjectivePath?.(objectiveId) ?? null;
+      if (!cwd) return "unavailable";
+      let real: string;
+      try {
+        real = fs.realpathSync.native(cwd);
+        if (!fs.statSync(real).isDirectory()) return "unavailable";
+      } catch {
+        return "unavailable";
+      }
+      let kind: "root" | "worktree" | "directory" = "directory";
+      try {
+        kind = fs.statSync(path.join(real, ".git")).isFile() ? "worktree" : "root";
+      } catch {
+        kind = "directory";
+      }
+      return { theaterId: node.theaterId, relative: "", kind, label: path.basename(real) };
     },
   }));
   routeRegistry.register("/api/v1/theaters", async (context) => {

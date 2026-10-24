@@ -12,10 +12,12 @@ import { readSocketRole } from "./index.js";
 import type { TerminalRuntime } from "./index.js";
 import { createShellTerminalLaunchResolver } from "./pty.js";
 import { applyShellCwdIntegration } from "./shell-cwd-integration.js";
+import { resolveSurfaceRoot } from "../../../workspace/host/path-selector.js";
 
 type TicketBody = {
   readonly cwd?: OpenAtBody;
   readonly theaterId?: unknown;
+  readonly objectiveId?: unknown;
   readonly colorScheme?: unknown;
   readonly role?: unknown;
   /** 어느 Shell 인가 — 대화 키. 없으면 Console 기본 Shell(폰 배치·옛 호출). */
@@ -24,6 +26,7 @@ type TicketBody = {
 
 type OpenAtBody = {
   readonly theaterId?: unknown;
+  readonly objectiveId?: unknown;
   readonly path?: unknown;
   readonly shell?: unknown;
 };
@@ -238,7 +241,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
 
     if (instance.pinnedCwd === null) {
-      const hint = body?.cwd ?? (body?.theaterId !== undefined ? { theaterId: body.theaterId } : undefined);
+      const hint = body?.cwd ?? (body?.theaterId !== undefined || body?.objectiveId !== undefined ? { theaterId: body?.theaterId, objectiveId: body?.objectiveId } : undefined);
       if (hint === undefined || hint === null) {
         instance.pinnedCwd = homedir();
       } else {
@@ -450,18 +453,17 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     return { directory: resolved.directory, instance };
   }
 
-  /** 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다. */
+  /**
+   * 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다.
+   * 이미 핀된 Shell은 호출자가 다시 열어도 여기로 오지 않는다 — 살아 있는 Shell을 옮기지 않는다.
+   */
   function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {
-    const theaterId = typeof hint?.theaterId === "string" ? hint.theaterId : null;
-    if (!theaterId) {
-      ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
+    const selected = resolveSurfaceRoot(ctx.host.paths, hint);
+    if (!selected.ok) {
+      ctx.host.http.writeJson(res, selected.status, { error: selected.error === "invalid_request" ? "theater_id_required" : selected.error });
       return null;
     }
-    const theaterRoot = ctx.host.paths.resolveTheaterPath(theaterId);
-    if (!theaterRoot) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-      return null;
-    }
+    const theaterRoot = selected.root;
     const requested = hint?.path === undefined || hint.path === null ? "" : hint.path;
     if (typeof requested !== "string") {
       ctx.host.http.writeJson(res, 400, { error: "invalid_path" });

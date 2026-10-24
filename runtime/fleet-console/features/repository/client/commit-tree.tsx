@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
@@ -56,7 +57,7 @@ export function CommitTreeView({ ctx, repoRel, fullHash, commitFiles, selectedPa
     ctx.api.fetch("repository/tree", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: fullHash, ...(dirPath ? { dirPath } : {}) }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ref: fullHash, ...(dirPath ? { dirPath } : {}) }),
     }).then(async (response) => {
       if (!response.ok) throw new Error("tree_failed");
       return response.json() as Promise<TreeResult>;
@@ -190,7 +191,7 @@ export function CommitBlobView({ ctx, repoRel, fullHash, path }: { readonly ctx:
     ctx.api.fetch("repository/blob", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: fullHash, filePath: path }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ref: fullHash, filePath: path }),
     }).then(async (response) => {
       const payload = await response.json().catch(() => ({})) as Partial<BlobResult> & { readonly error?: string };
       if (cancelled) return;

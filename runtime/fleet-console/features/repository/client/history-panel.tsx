@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -355,14 +356,14 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
   const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes" || tab === "tree");
   // 남겨 둔 본문이 옛 커밋의 것이면 파일 diff·트리·blob도 옛 커밋을 향한다 — 새 해시로 옛 경로를 조회하면 빈 diff가 잠깐 그려진다.
   const loadedHash = state.kind === "ok" ? state.fullHash : target.fullHash;
-  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", repoRel }), [loadedHash, ctx.theaterId, repoRel]);
+  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}), repoRel }), [loadedHash, ctx.theaterId, ctx.conversation?.objectiveId, repoRel]);
   useEffect(() => {
     let cancelled = false;
     // 커밋 사이를 옮길 때 본문을 "불러오는 중"으로 갈아 끼우지 않는다 — 독이 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면.
     setState((current) => current.kind === "ok" ? current : { kind: "loading" });
     setPending(true);
     setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */
-    ctx.api.fetch("repository/commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) })
+    ctx.api.fetch("repository/commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ref: target.fullHash }) })
       .then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; })
       .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath((current) => result.files.some((file) => file.path === current) ? current : result.files[0]?.path ?? null); } })
       .catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); })
@@ -831,7 +832,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     loadingMoreRef.current = false;
     setLoadingMore(false);
     setLoadMoreError(null);
-    ctx.api.fetch("repository/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: 0, order, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => {
+    ctx.api.fetch("repository/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, limit: HISTORY_PAGE_SIZE, skip: 0, order, ...(refFilter ? { ref: refFilter } : {}) }) }).then(async (response) => {
       if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<LogResult>;
     }).then(async (firstPage) => {
@@ -839,7 +840,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       // 선택한 ref의 팁까지 순서대로 페이지를 잇는다. 팁만 끼워 넣으면 계보와 skip이 어긋난다.
       const containsRequestedRef = (commits: readonly LogCommitEntry[]) => !refFilter || commits.some((commit) => commit.refs.some((ref) => ref === refFilter || ref === `HEAD -> ${refFilter}` || ref === `tag: ${refFilter}`));
       while (!cancelled && data.hasMore && data.commits.length > 0 && !containsRequestedRef(data.commits)) {
-        const response = await ctx.api.fetch("repository/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: data.commits.length, order, ref: refFilter }) });
+        const response = await ctx.api.fetch("repository/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, limit: HISTORY_PAGE_SIZE, skip: data.commits.length, order, ref: refFilter }) });
         if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
         const page = await response.json() as LogResult;
         if (page.commits.length === 0) break;
@@ -1037,7 +1038,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     ctx.api.fetch("repository/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, limit: HISTORY_PAGE_SIZE, skip: state.commits.length, order, ...(refFilter ? { ref: refFilter } : {}) }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, limit: HISTORY_PAGE_SIZE, skip: state.commits.length, order, ...(refFilter ? { ref: refFilter } : {}) }),
     }).then(async (response) => {
       if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<LogResult>;

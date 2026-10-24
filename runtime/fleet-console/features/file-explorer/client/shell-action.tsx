@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientShellCapability, ShellOpenAtResult } from "../../workspace/shared/navigation.js";
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 
 type ShellReason = Extract<ShellOpenAtResult, { readonly ok: false }>["reason"] | "failed";
 
-export function useShellAction(shell: ClientShellCapability, theaterId: string | null, contextKey?: string | null) {
+export function useShellAction(shell: ClientShellCapability, theaterId: string | null, contextKey?: string | null, objectiveId?: string | null) {
   const [notice, setNotice] = useState<{ readonly path: string; readonly reason: ShellReason } | null>(null);
   const [pending, setPending] = useState(false);
   const generation = useRef(0);
@@ -16,12 +17,14 @@ export function useShellAction(shell: ClientShellCapability, theaterId: string |
     return () => { generation.current += 1; };
   }, [contextKey, shell, theaterId]);
   const run = useCallback(async (path: string, restart = false) => {
-    if (!theaterId) return;
+    const selector = surfaceSelector({ theaterId, objectiveId });
+    if (!selector) return;
     const id = ++generation.current;
     setPending(true);
     setNotice(null);
     try {
-      const result = await (restart ? shell.restartAt({ theaterId, path }) : shell.openAt({ theaterId, path }));
+      const request = { ...selector, path };
+      const result = await (restart ? shell.restartAt(request) : shell.openAt(request));
       if (id !== generation.current) return;
       if (!result.ok) setNotice({ path, reason: result.reason });
     } catch {
@@ -29,7 +32,7 @@ export function useShellAction(shell: ClientShellCapability, theaterId: string |
     } finally {
       if (id === generation.current) setPending(false);
     }
-  }, [contextKey, shell, theaterId]);
+  }, [contextKey, objectiveId, shell, theaterId]);
   return { notice, pending, open: (path: string) => { void run(path); }, restart: (path: string) => { void run(path, true); } };
 }
 

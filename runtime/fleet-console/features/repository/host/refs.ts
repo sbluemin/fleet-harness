@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import type http from "node:http";
 import type { RepositoryRouteContext } from "./index.js";
 import { GitExecutorError, runGit } from "./git-executor.js";
@@ -66,9 +67,9 @@ export async function handleRepositoryRefs(req: http.IncomingMessage, res: http.
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
   const body = await ctx.host.http.readJsonBody<{ theaterId?: unknown; repoRel?: unknown; subPath?: unknown }>(req);
-  if (!isObject(body) || "subPath" in body || typeof body.theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  if (!isObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
   let resolved: { gitCwd: string };
   try { resolved = await resolveGitCwd(theaterPath, body.repoRel); }
   catch (error) {

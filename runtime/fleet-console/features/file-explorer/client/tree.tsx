@@ -44,6 +44,7 @@ interface FileTreeProps {
   readonly rootPath?: string;
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
+  readonly objectiveId?: string;
   readonly selectedPath: string | null;
   readonly revealTarget?: FileRevealTarget | null;
   readonly onSelect: (entry: FolderEntry, mode: "preview" | "pinned") => void;
@@ -872,7 +873,7 @@ function isPermanentFolderError(code: string): boolean {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, rootPath = "", files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
+  { contextKey, rootPath = "", files, theaterId, objectiveId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -964,7 +965,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       const response = await fetch("/api/v1/file-explorer/files/git-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId }),
+        body: JSON.stringify(objectiveId ? { objectiveId } : { theaterId }),
       });
       if (!response.ok) return;
       const nextResult = await response.json() as GitStatusResult;
@@ -976,7 +977,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     } catch {
       // Git 상태는 보조 신호다. 조회 실패는 파일 탐색을 방해하거나 오류 UI를 만들지 않는다.
     }
-  }, [contextKey, theaterId]);
+  }, [contextKey, objectiveId, theaterId]);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -1137,7 +1138,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       void (async () => {
         try {
           if (searchScope === "files") {
-            const referenced = await findReferencedFile(theaterId, query, controller.signal);
+            const referenced = await findReferencedFile(theaterId ?? "", query, controller.signal, objectiveId);
             if (referenced) {
               if (requestId !== filterRequestRef.current || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
               setFilterOutcome({ files: [{ relativePath: referenced.resolved.path, kind: referenced.resolved.kind, source: "path", exact: true, location: { line: referenced.ref.line, column: referenced.ref.column, anchor: referenced.ref.anchor } }], totalMatches: 1, complete: true, ignoredSkipped: false });
@@ -1149,7 +1150,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           const response = await fetch("/api/v1/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current, searchScope)),
+            body: JSON.stringify({ ...paletteSearchRequestBody(theaterId ?? "", query, showHiddenRef.current, searchScope), ...(objectiveId ? { objectiveId, theaterId: undefined } : {}) }),
             signal: controller.signal,
           });
           if (!response.ok) {
@@ -1180,7 +1181,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [contextKey, filterText, searchScope, showHidden, theaterId]);
+  }, [contextKey, filterText, objectiveId, searchScope, showHidden, theaterId]);
 
   const attachTreeRef = useCallback((node: HTMLDivElement | null) => {
     treeResizeObserverRef.current?.disconnect();
@@ -1206,7 +1207,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
     let isFirstOpen = true;
     let gitStatusTimer: ReturnType<typeof setTimeout> | null = null;
-    const url = `/api/v1/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
+    const url = `/api/v1/file-explorer/files/watch?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}`;
     const es = new EventSource(url);
 
     // 루트 재조회 성공 시 stale error를 함께 걷어 에러 화면에서 회복한다
@@ -1289,7 +1290,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (gitStatusTimer !== null) clearTimeout(gitStatusTimer);
       es.close();
     };
-  }, [contextKey, theaterId, files, refreshGitStatus, rootListed]);
+  }, [contextKey, files, objectiveId, refreshGitStatus, rootListed, theaterId]);
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
@@ -1637,7 +1638,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       return;
     }
     setCursorPath(row.entry.relativePath);
-    void performFileContextAction(action, theaterId, row.entry.relativePath)
+    void performFileContextAction(action, theaterId ?? "", row.entry.relativePath, {}, objectiveId)
       .then(() => {
         if (action !== "copyRelativePath") return;
         rowNoteIdRef.current += 1;
@@ -2125,6 +2126,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           {peekRow && (
             <FilePeek
               theaterId={theaterId}
+              objectiveId={objectiveId}
               relativePath={peekRow.row.entry.relativePath}
               name={peekRow.row.entry.name}
               anchorTop={TREE_PADDING_Y + peekRow.index * rowHeight - scrollTop}

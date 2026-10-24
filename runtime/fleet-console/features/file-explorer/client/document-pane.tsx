@@ -75,11 +75,12 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
+  const objectiveId = ctx.conversation?.objectiveId;
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
   const conversationKey = ctx.conversation?.key ?? null;
   useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
   const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError, discardedTabs } = useFileExplorerViewState(contextScope);
-  const shellAction = useShellAction(ctx.shell, theaterId, activePath);
+  const shellAction = useShellAction(ctx.shell, theaterId, activePath, objectiveId);
   const consumedRequestRef = useRef<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const tabsMoreRef = useRef<HTMLButtonElement>(null);
@@ -161,6 +162,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
       silent: false,
       language,
       signal,
+      ...(objectiveId ? { objectiveId } : {}),
     });
   }, [activePath, ctx.visible, language, signal, theaterId]);
 
@@ -168,8 +170,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   useEffect(() => {
     if (!theaterId || !activePath || !ctx.visible) return;
     const controller = new AbortController();
-    const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal).catch(() => undefined); };
-    const source = new EventSource(`/api/v1/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
+    const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal, objectiveId).catch(() => undefined); };
+    const source = new EventSource(`/api/v1/file-explorer/files/watch?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
     source.addEventListener("change", (event) => {
       try {
         const directory: unknown = JSON.parse((event as MessageEvent).data as string);
@@ -228,7 +230,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   }, [contextScope]);
 
   const reloadDoc = useCallback((relativePath: string) => {
-    void loadDocument(theaterId, relativePath, { silent: true, language, signal });
+    void loadDocument(theaterId, relativePath, { silent: true, language, signal, ...(objectiveId ? { objectiveId } : {}) });
   }, [language, signal, theaterId]);
 
   const readWindow = useCallback((request: FileReadRequest) => {
@@ -237,7 +239,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     setReadingWindow(true);
     setFileRevealTarget(theaterId, { theaterId, relativePath: activePath, requestId: crypto.randomUUID() });
     panes.replaceParams({ path: activePath, theaterId, pathKind: "theater-relative" });
-    void loadDocument(theaterId, activePath, { silent: true, language, signal, window: request }).finally(() => {
+    void loadDocument(theaterId, activePath, { silent: true, language, signal, window: request, ...(objectiveId ? { objectiveId } : {}) }).finally(() => {
       if (id === windowRequestRef.current) setReadingWindow(false);
     });
   }, [activePath, language, panes, signal, theaterId]);
@@ -257,7 +259,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const handleCopyPath = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     if (!activePath) return;
     const action: FileContextAction = event.altKey ? "copyPath" : "copyRelativePath";
-    void performFileContextAction(action, contextScope, activePath)
+    void performFileContextAction(action, contextScope, activePath, {}, objectiveId)
       .then(() => setCopied(true))
       .catch(() => {
         // 복사 실패는 조용히 지나간다 — 알림 토스트는 트리 페인이 소유한다.
@@ -270,7 +272,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     const requestId = ++externalRequestRef.current;
     setExternalOpening(true);
     setExternalFailed(false);
-    void performFileContextAction("openExternal", theaterId, activePath)
+    void performFileContextAction("openExternal", theaterId, activePath, {}, objectiveId)
       .catch(() => {
         if (externalRequestRef.current === requestId) setExternalFailed(true);
       })
@@ -634,6 +636,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             target={revealTarget?.relativePath === activePath ? revealTarget : undefined}
             relativePath={viewState.relativePath}
             theaterId={theaterId}
+            objectiveId={objectiveId}
             truncated={viewState.truncated}
             language={language}
           />
@@ -839,7 +842,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

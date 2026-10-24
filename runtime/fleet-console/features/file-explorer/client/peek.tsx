@@ -34,6 +34,7 @@ type PeekState =
 
 interface FilePeekProps {
   readonly theaterId: string;
+  readonly objectiveId?: string;
   readonly relativePath: string;
   readonly name: string;
   /** 행의 위·아래 y — 뷰포트(boundary) 기준 px. 카드는 아래에 서고, 자리가 없으면 위로 뒤집힌다. */
@@ -60,7 +61,7 @@ export function resolvePeekTop(
   return Math.max(margin, Math.min(below, boundaryHeight - cardHeight - margin));
 }
 
-export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
+export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PeekState>({ kind: "loading" });
   const [top, setTop] = useState<number | null>(null);
@@ -69,7 +70,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
     if (IMAGE_EXTS.has(ext)) {
       const src = cacheBustedImageSrc(
-        `/api/v1/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,
+        `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&path=${encodeURIComponent(relativePath)}`,
         knownMtime(theaterId, relativePath),
       );
       setState({ kind: "image", src });
@@ -82,7 +83,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
         const res = await fetch("/api/v1/file-explorer/files/read", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theaterId, relativePath, maxLines: PEEK_LINES }),
+          body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), relativePath, maxLines: PEEK_LINES }),
           signal: controller.signal,
         });
         if (!res.ok) {

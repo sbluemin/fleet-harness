@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { handleRepositoryBlob } from "../host/blob.js";
 import { handleRepositoryCommit } from "../host/commit.js";
 import { handleRepositoryCommitFile } from "../host/commit-file.js";
 import { handleRepositoryCompare } from "../host/compare.js";
@@ -265,6 +266,40 @@ describe("Repository Theater-root Git routes", () => {
     const subjects = readPayload<LogPayload>(writes).commits.map((commit) => commit.subject);
     expect(subjects).toContain("inside Theater commit");
     expect(subjects).not.toContain("outside Theater commit");
+  });
+
+  it("reads the objective cwd and rejects a second selector without using the Theater", async () => {
+    const objectiveRoot = path.join(tmpDir, "objective");
+    await fs.mkdir(objectiveRoot);
+    await initGitRepo(objectiveRoot);
+    await fs.writeFile(path.join(objectiveRoot, "only-here.txt"), "objective\n");
+    await runGit(["add", "."], { cwd: objectiveRoot });
+    await runGit(["commit", "-m", "objective"], { cwd: objectiveRoot });
+    const head = (await runGit(["rev-parse", "HEAD"], { cwd: objectiveRoot })).stdout.trim();
+    const theaterCalls: string[] = [];
+    const call = async (body: Record<string, unknown>) => {
+      const writes: JsonWrite[] = [];
+      await handleRepositoryBlob({ method: "POST" } as never, {} as never, {
+        host: {
+          http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); } },
+          security: { isTerminalAuthorized: () => true },
+          paths: {
+            resolveTheaterPath: (id: string) => { theaterCalls.push(id); return fixture.theaterPath; },
+            resolveObjectivePath: (id: string) => id === "obj-1" ? objectiveRoot : null,
+          },
+        },
+      } as unknown as RepositoryRouteContext);
+      return writes;
+    };
+    const opened = await call({ objectiveId: "obj-1", ref: head, filePath: "only-here.txt" });
+    expect(opened[0]?.status).toBe(200);
+    expect((opened[0]?.payload as { content: string }).content).toContain("objective");
+    expect(JSON.stringify(opened)).not.toContain(objectiveRoot);
+    const conflict = await call({ objectiveId: "obj-1", theaterId: "theater", ref: head, filePath: "only-here.txt" });
+    expect(conflict).toEqual([{ status: 400, payload: { error: "ambiguous_selector" } }]);
+    const missing = await call({ objectiveId: "missing", ref: head, filePath: "only-here.txt" });
+    expect(missing).toEqual([{ status: 404, payload: { error: "unavailable" } }]);
+    expect(theaterCalls).toEqual([]);
   });
 });
 

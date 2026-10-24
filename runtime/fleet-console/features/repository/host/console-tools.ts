@@ -12,6 +12,7 @@ import { resolveContainedGitDir } from "./git-marker.js";
 import { isCanonicalRepositoryRef, parseLogOutput, parseWorktreePorcelainEntries } from "./log.js";
 import { isPathContained, isSelectableRepoRel } from "./path-containment.js";
 import { parseStatusV2 } from "./status.js";
+import { resolveSurfaceRoot } from "../../workspace/host/path-selector.js";
 
 /**
  * Console Use 에 싣는 저장소 읽기 도구. HTTP 라우트와 같은 부품(`resolveGitCwd`·`runGit`·파서)을 쓰되
@@ -20,7 +21,7 @@ import { parseStatusV2 } from "./status.js";
  */
 
 const ids = z.string().min(1).max(128);
-const rel = z.string().max(512).optional().describe("A relPath from worktrees; omitted, the Theater root.");
+const rel = z.string().max(512).optional().describe("A relPath under the selected root; omitted, that root.");
 const ref = z.string().max(200).optional().describe("A full ref (refs/heads/…, refs/remotes/…, refs/tags/…); a short name is refused.");
 const DIFF_TEXT_CAP = 200_000;
 const LOG_PRETTY = "--pretty=format:%x1e%H%x00%h%x00%s%x00%an%x00%ar%x00%at%x00%D%x00%P%x00%<(8,trunc)%b";
@@ -39,19 +40,19 @@ function gitError(error: unknown): never {
 }
 
 export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): readonly ConsoleMcpTool[] {
-  const cwdOf = async (theaterId: string, worktree: string | undefined) => {
-    const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-    if (!theaterPath) throw new ToolError("unknown_theater");
-    try { return { theaterPath, gitCwd: (await resolveGitCwd(theaterPath, worktree ?? "")).gitCwd }; }
+  const cwdOf = async (args: { readonly theaterId?: string; readonly objectiveId?: string }, worktree: string | undefined) => {
+    const resolved = resolveSurfaceRoot(ctx.host.paths, args);
+    if (!resolved.ok) throw new ToolError(resolved.error === "theater_not_found" ? "unknown_theater" : resolved.error);
+    try { return { theaterPath: resolved.root, gitCwd: (await resolveGitCwd(resolved.root, worktree ?? "")).gitCwd }; }
     catch (error) { return gitError(error); }
   };
   // 한 도구, 다섯 동작 — 저장소 패널의 탭이 그렇듯. 호스트는 호출마다 레일의 「저장소」 아이콘에 표식을 그린다.
   type Action = "status" | "diff" | "log" | "search" | "worktrees";
   const define = <S extends z.ZodObject>(action: Action, schema: S, run: (args: z.output<S>, signal?: AbortSignal) => Promise<unknown>) => ({ action, schema, run: run as (args: unknown, signal?: AbortSignal) => Promise<unknown> });
-  const scope = z.object({ theaterId: ids, worktree: rel });
+  const scope = z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel });
   const actions = [
     define("status", scope, async (args) => {
-      const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
+      const { gitCwd } = await cwdOf(args, args.worktree);
       try {
         const [status, staged, unstaged, branch] = await Promise.all([
           runGit(["status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z"], { cwd: gitCwd }),
@@ -64,8 +65,8 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { branch, ...(ahead ? { ahead: Number(ahead[1]), behind: Number(ahead[2]) } : {}), staged: parsed.staged, unstaged: parsed.unstaged, truncated: status.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("diff", z.object({ theaterId: ids, worktree: rel, path: z.string().min(1).max(512).optional().describe("One file's unified diff; omitted, the changed files against HEAD."), ref }), async (args) => {
-      const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
+    define("diff", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, path: z.string().min(1).max(512).optional().describe("One file's unified diff; omitted, the changed files against HEAD."), ref }), async (args) => {
+      const { gitCwd } = await cwdOf(args, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       try {
         // 읽기 전용이다 — 저장소가 설정한 textconv·외부 diff 드라이버를 실행하지 않는다(HTTP diff 핸들러와 같은 플래그).
@@ -111,8 +112,8 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { path: relative, diff: cut ? diff.slice(0, DIFF_TEXT_CAP) : diff, truncated: cut || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("log", z.object({ theaterId: ids, worktree: rel, ref, limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }), async (args) => {
-      const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
+    define("log", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, ref, limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }), async (args) => {
+      const { gitCwd } = await cwdOf(args, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       const limit = args.limit ?? 30;
       try {
@@ -124,8 +125,8 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return gitError(error);
       }
     }),
-    define("search", z.object({ theaterId: ids, worktree: rel, query: z.string().trim().min(1).max(200).describe("Case-insensitive fixed string, git grep over tracked files."), limit: z.number().int().min(1).max(200).optional() }), async (args) => {
-      const { gitCwd } = await cwdOf(args.theaterId, args.worktree);
+    define("search", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, query: z.string().trim().min(1).max(200).describe("Case-insensitive fixed string, git grep over tracked files."), limit: z.number().int().min(1).max(200).optional() }), async (args) => {
+      const { gitCwd } = await cwdOf(args, args.worktree);
       const limit = args.limit ?? 50;
       try {
         const result = await runGit(["grep", "-I", "-n", "-i", "-F", "--no-color", "-e", args.query, "--", "."], { cwd: gitCwd, allowExitCodes: [1] });
@@ -137,8 +138,8 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { matches, total: lines.length, truncated: lines.length > limit || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("worktrees", z.object({ theaterId: ids }), async (args) => {
-      const { theaterPath, gitCwd } = await cwdOf(args.theaterId, undefined);
+    define("worktrees", z.object({ theaterId: ids.optional(), objectiveId: ids.optional() }), async (args) => {
+      const { theaterPath, gitCwd } = await cwdOf(args, undefined);
       let realTheaterPath: string; let realGitCwd: string;
       try { [realTheaterPath, realGitCwd] = await Promise.all([fs.realpath(theaterPath), fs.realpath(gitCwd)]); }
       catch { throw new ToolError("invalid_repo"); }
@@ -172,7 +173,8 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
       describe: (args) => {
         const action = typeof args.action === "string" && byAction.has(args.action as Action) ? args.action : null;
         const theaterId = typeof args.theaterId === "string" ? args.theaterId : "";
-        if (!action || !theaterId) return null;
+        const objectiveId = typeof args.objectiveId === "string" ? args.objectiveId : "";
+        if (!action || !theaterId || objectiveId) return null;
         const path = typeof args.path === "string" ? args.path : undefined;
         const summary = action === "diff" ? (path ? `저장소 diff 읽음 · ${path}` : `저장소 변경 목록 읽음 (${typeof args.ref === "string" ? args.ref : "HEAD"})`) : action === "log" ? "저장소 커밋 이력 읽음" : action === "search" ? `저장소 검색 「${typeof args.query === "string" ? args.query : ""}」` : action === "worktrees" ? "저장소 worktree 목록 봄" : "저장소 상태 봄";
         return { theaterId, summary, view: action, ...(path ? { path } : {}) };

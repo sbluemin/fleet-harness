@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import fs from "node:fs/promises";
 import type http from "node:http";
 
@@ -230,8 +231,8 @@ export async function handleRepositoryLog(
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
