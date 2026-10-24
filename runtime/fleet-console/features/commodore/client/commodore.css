@@ -108,7 +108,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* ─── 사령관(자율 운영) ──────────────────────────────────────────────────────
    사이드바 Theater 머리의 사령관 표식 — 호스트가 이니셜 칩 자리(18px)에 세우는 사령관 몽글 아바타(베이스 + brass 별 배지)다.
-   켬은 제 색, 끔은 흐리고 채도를 뺀 회색이며 누르면 바로 켜고 끈다. 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
+   순찰 설정과 무관하게 제 색이며 누르면 대화를 연다. 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
    턴을 도는 동안의 물결은 호스트가 Theater 이름에 함께 흘린다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
 .objectives-commodore-mark {
   display: grid;
@@ -138,12 +138,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 @media (prefers-reduced-motion: reduce) {
   .objectives-commodore-mark-glyph { transition: none; }
 }
-/* Theater 우클릭 메뉴의 「자율 운영 켜기/끄기」 — 호스트 메뉴 줄(.theater-menu-item)의 표식 칸에 같은 마크(켬 brass·끔 회색). */
-.objectives-commodore-menu-glyph { color: var(--text-tertiary); }
-.objectives-commodore-menu-glyph.is-on { color: var(--brass-ink); }
-.objectives-commodore-menu-glyph-svg { display: block; width: 13px; height: 13px; }
-
-
 .objectives-commodore-clear-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .objectives-commodore-clear { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .objectives-commodore-clear svg { width: 16px; height: 16px; }

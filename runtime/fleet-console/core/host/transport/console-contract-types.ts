@@ -65,6 +65,7 @@ export interface ConsoleTheaterInfo {
   readonly alias?: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+  /** 자동 운영 여부 — 순찰 안 함의 사람 메시지 턴은 이 플래그를 켜지 않는다. */
   readonly commodoreActive?: boolean;
 }
 

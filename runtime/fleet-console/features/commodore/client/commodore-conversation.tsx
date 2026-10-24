@@ -227,14 +227,14 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   }, [theaterId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
-  const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
+  const { meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
   const index = useCommodoreObjectiveIndex(theaterId);
   const name = useCommodoreName(theaterId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, theaterId, entries, board.objectives, view?.state.asks, index.finished, name]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
-  const turning = on && run?.phase === "turn";
+  const turning = run?.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
@@ -302,14 +302,14 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (
     <div className="objectives-commodore-conversation">
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
-      {on && (run?.phase === "retrying" || run?.phase === "error") ? (
+      {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>

@@ -9,7 +9,7 @@ import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports
 import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
 import type { MemoryEntry } from "../shared/contracts/memory.js";
-import type { CommodoreStateView } from "../shared/contracts/types.js";
+import { patrolIntervalMs, type CommodorePatrolMinutes, type CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { postCommodore as post } from "./request.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
@@ -102,17 +102,17 @@ export function commodoreRevision(): number {
 
 /**
  * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
- * 읽지 않은 Theater 는 돌지 않는 것으로 다룬다. `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다), `autonomy` 는 글리프,
+ * 읽지 않은 Theater 는 자동 운영하지 않는 것으로 다룬다. `enabled` 는 사령관 표면의 가용 여부이고,
  * `peek` 는 사람이 이 Theater 머리의 사령관 글리프에 머무는 중이다.
  */
-export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly autonomy: boolean; readonly peek: boolean } {
+export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly peek: boolean } {
   if (!enabledSnapshot) return DISABLED_BOARD;
   const view = theaters.get(theaterId)?.view;
   const peek = peekTheater === theaterId;
-  if (!view?.active) return { active: false, stalled: [], enabled: true, autonomy: false, peek };
-  return { active: true, stalled: view.run.stalled ?? [], enabled: true, autonomy: true, peek };
+  if (!view?.active) return { active: false, stalled: [], enabled: true, peek };
+  return { active: true, stalled: view.run.stalled ?? [], enabled: true, peek };
 }
-const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false };
+const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, peek: false };
 
 /** 사람이 사령관 글리프에 머무는 Theater — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
 let peekTheater: string | null = null;
@@ -216,12 +216,12 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
       return;
     }
     if (event.op === "state") {
-      const autonomy = event.state.autonomy;
-      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && autonomy } }, false);
+      const automatic = patrolIntervalMs(event.state) !== null;
+      setTheater(theaterId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && automatic } }, false);
       return;
     }
     if (event.op === "run") {
-      setTheater(theaterId, { view: { ...current.view, run: event.run, active: event.run.phase !== "off" && current.view.boardReady && current.view.enabled && current.view.state.autonomy } }, false);
+      setTheater(theaterId, { view: { ...current.view, run: event.run, active: current.view.boardReady && current.view.enabled && patrolIntervalMs(current.view.state) !== null } }, false);
       // 어댑터 수명이 바뀐 경우 저장 상태 사건만으로는 준비 여부를 알 수 없다. 서버 view로 다시 수렴한다.
       if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(theaterId, true);
     }
@@ -478,7 +478,6 @@ async function write(theaterId: string, path: string, body: Record<string, unkno
   if (view && typeof view === "object" && "state" in view) setTheater(theaterId, { view });
 }
 
-export const setCommodoreAutonomy = (theaterId: string, autonomy: boolean) => write(theaterId, "/commodore/autonomy", { autonomy });
 export const saveCommodoreDirective = (theaterId: string, text: string) => write(theaterId, "/commodore/directive", { text });
 export const addCommodoreIntel = (theaterId: string, text: string) => write(theaterId, "/commodore/intel/add", { text });
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });
@@ -559,7 +558,7 @@ export const setCommodoreCoordinates = (theaterId: string, coordinates: { readon
 export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string } | null) =>
   write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
 /** 순찰 간격(분) — null 은 기본으로 되돌린다. */
-export const setCommodorePatrol = (theaterId: string, minutes: number | null) => write(theaterId, "/commodore/patrol", { minutes });
+export const setCommodorePatrol = (theaterId: string, minutes: CommodorePatrolMinutes) => write(theaterId, "/commodore/patrol", { minutes });
 export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => write(theaterId, "/commodore/stop-at", { stopAt });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
