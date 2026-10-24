@@ -7,7 +7,7 @@ export function migrateCommodorePatrolState(value: unknown): unknown {
   const state = value as Record<string, unknown>;
   if (typeof state.autonomy !== "boolean") return value;
   const { autonomy, stopAt, ...rest } = state;
-  // 결정 대기·추천안 임시: 켜져 있던 상태는 기존 간격(미설정 60분), 꺼져 있던 상태는 안 함으로 잇는다.
+  // 켜져 있던 상태는 기존 간격(미설정 60분), 꺼져 있던 상태는 안 함으로 잇는다.
   const patrolMinutes = autonomy ? (rest.patrolMinutes ?? 60) : "off";
   return { ...rest, patrolMinutes, ...(patrolMinutes !== "off" && stopAt !== undefined ? { stopAt } : {}) };
 }

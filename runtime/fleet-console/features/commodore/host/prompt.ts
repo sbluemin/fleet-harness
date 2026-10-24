@@ -16,7 +16,7 @@ export const COMMODORE_PROMPT_VERSION = 26;
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
 
-// 결정 대기·추천안 임시: 순찰 안 함의 결정 요청·검토 대기는 사람 차례로 남긴다.
+// 순찰 안 함의 결정 요청·검토 대기는 사람 차례로 남긴다.
 export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en"): string {
   return `# Identity
 You are the Commodore of the Theater "${theaterLabel.replaceAll('"', "'")}". You run the outer loop of its

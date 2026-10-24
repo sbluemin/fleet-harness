@@ -401,7 +401,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   /** 종료는 일반 턴과 분리한다. 취소된 턴을 거둔 뒤 한 번만 알리고, 실패해도 순찰로 돌아가지 않는다. */
   const endScheduled = (runner: Runner) => {
     if (runner.ending || runner.stopping || disposed) return;
-    // 결정 대기·추천안 임시: 종료 알림 뒤 순찰을 안 함으로 바꾼다.
+    // 종료 알림 뒤 순찰을 안 함으로 바꾼다.
     runner.ending = true;
     clearTimer(runner, "stopTimer"); clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
     runner.pending.clear();
@@ -453,6 +453,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (deadlineReached(runner)) { endScheduled(runner); return; }
     if (runner.inflight) return runner.inflight;
     if (!runner.pending.size) return;
+    // 안 함일 때 받은 답은 스스로 깨우지 않고, 다음 사람 메시지 턴이 asks로 읽도록 알린다.
+    if (!shouldRun(runner.commodoreId) && runner.messages.length) {
+      const unread = (deps.store.read(runner.commodoreId)?.asks ?? []).filter((ask) => ask.settled?.outcome === "answered" && ask.readAt === undefined);
+      if (unread.length) runner.pending.set("answered", { count: unread.length, details: unread.map((ask) => askDetail(ask.questions[0]?.text ?? ask.id)) });
+    }
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
@@ -620,6 +625,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     scheduleStop(runner);
     // Clear 직후는 빈 기록을 유지한다. 다음 메시지·사건·순찰에서 새 세션을 연다.
     if (!wakeImmediately) {
+      // 안 함의 재기동 자체는 깨우지 않는다. 다음 사람 메시지가 올 때만 미전달 말을 함께 싣는다.
+      if (reason === "message") requeueUndelivered(runner);
       const interval = patrolInterval(commodoreId);
       if (interval !== null) schedulePatrol(runner, now() + interval, "");
       return;
@@ -746,7 +753,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 사람이 사령관의 질문에 답했다 — 답은 asks 도구로 읽는다(깨움 문장에는 싣지 않는다).
     if (event.op === "transcript" && event.entry.kind === "ask-answered" && runner) { wake(runner, "answered", { bump: true, detail: askDetail(event.entry.answers[0]?.question ?? event.entry.askId) }); return; }
     if (event.op === "transcript" && event.entry.kind === "message") {
-      // 결정 대기·추천안 임시: 사람 메시지는 안 함에서도 실행기를 세우되 자동 사건은 깨우지 못한다.
+      // 사람 메시지는 안 함에서도 실행기를 세우되 자동 사건은 깨우지 못한다.
       if (!runner) { start(event.commodoreId, "message", false); runner = runners.get(event.commodoreId); }
       if (!runner) return;
       const { entry } = event;

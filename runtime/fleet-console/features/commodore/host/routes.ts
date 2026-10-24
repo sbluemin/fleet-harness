@@ -158,7 +158,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       const state = read(commodoreId);
       // 서버가 권위다 — 종료·Clear 중이거나 보드가 없으면 기록에 남기기 전에 거절한다.
       if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
-      // 결정 대기·추천안 임시: 안 함에서도 사람 메시지 한 턴은 받되 자동 깨움은 열지 않는다.
+      // 안 함에서도 사람 메시지 한 턴은 받되 자동 깨움은 열지 않는다.
       if (!(hooks.acceptsMessage?.(commodoreId) ?? (patrolIntervalMs(state) !== null && !!hooks.run?.(commodoreId)))) throw new CommodoreStoreError("commodore_inactive");
       if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new CommodoreStoreError("commodore_stopping");
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
