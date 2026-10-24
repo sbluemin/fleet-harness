@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.0] - 2026-10-24
+
+### fleet-console
+
+#### Changed
+- 사령관에게 언제든 메시지를 보내고, 켜기·끄기 스위치 대신 순찰 간격으로 자동 운영을 조절할 수 있습니다. 새 기본값인 안 함은 Console 재기동 뒤에도 자동 깨움을 막으며, 기존 자동 운영은 사용하던 간격을 유지합니다.
+
+#### Fixed
+- 폰에서 목표의 지휘관·구성원 채팅을 열면 메시지와 입력창이 다시 보입니다.
+
 ## [1.254.3] - 2026-10-24
 
 ### fleet-console

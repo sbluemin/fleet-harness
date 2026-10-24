@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.0] - 2026-10-24
+
+### fleet-console
+
+#### Changed
+- Message the Commodore at any time, and control automatic operation through its patrol interval instead of an on/off switch. The new default, Off, prevents automatic wakes even after Console restarts; existing automatic operation keeps its interval.
+
+#### Fixed
+- Show the messages and composer again when you open an objective's Commander or member chat on a phone.
+
 ## [1.254.3] - 2026-10-24
 
 ### fleet-console
