@@ -702,13 +702,7 @@ export function useQuotaData(api: ClientApiCapability) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(async (response) => {
-        if (!response.ok) {
-          const body = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(body?.error === "quota_migration_pending" ? body.error : `${path}_failed`);
-        }
-        return response.json() as Promise<SummaryResponse>;
-      })
+      .then((response) => response.json() as Promise<SummaryResponse>)
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
@@ -720,7 +714,10 @@ export function useQuotaData(api: ClientApiCapability) {
       })
       .catch((error: unknown) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
-          setRequestError(error instanceof Error && error.message === "quota_migration_pending" ? "quota.error.migration" : "quota.error.summary");
+          // 호스트 포트는 비정상 응답을 ApiError로 거절한다. core 클래스에 의존하지 않고 공개된 오류 모양만 읽는다.
+          const failure = error as { name?: unknown; status?: unknown; body?: { error?: unknown } } | null;
+          const migrationPending = failure?.name === "ApiError" && failure.status === 409 && failure.body?.error === "quota_migration_pending";
+          setRequestError(migrationPending ? "quota.error.migration" : "quota.error.summary");
         }
       });
   }, [api]);
