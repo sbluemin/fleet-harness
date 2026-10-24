@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ObjectiveKindDescriptor } from "../../../../execution/shared/client-contract.js";
+import { findAgentObjectiveKind } from "../../../../execution/shared/objective-kind.js";
 
 import type { WorkbenchLayout, WorkbenchTile } from "../../../shared/conversation-workbench.js";
 import { useT } from "../../../../../core/client/src/i18n/index.js";
@@ -708,7 +709,7 @@ function BrowserTile(props: WorkbenchTileViewProps) {
 function ObjectiveBrowserTile(props: WorkbenchTileViewProps & { readonly objectiveRecord: ObjectiveRecord; readonly title: string }) {
   const { objectiveRecord, state, language, objectiveRecordKinds, hidden, title } = props;
   const capabilities = useHostCapabilities();
-  const descriptor = objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+  const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
   const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
   const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, objectiveRecord.id);
   const [geometry, setGeometry] = useState<ObjectiveGeometry>({ x: 0, y: 0, width: 480, height: 640, zIndex: 0 });

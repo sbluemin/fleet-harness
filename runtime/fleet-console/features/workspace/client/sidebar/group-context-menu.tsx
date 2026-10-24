@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { AccentToneList } from "../components/accent-tone-list.js";
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { findAgentObjectiveKind } from "../../../execution/shared/objective-kind.js";
 import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
@@ -323,7 +324,7 @@ function CloseWindowItem({ onCloseObjective, onClose }: { onCloseObjective: () =
 function PluginObjectiveMenuSection({ objectiveRecord, onClose }: { objectiveRecord: ObjectiveRecord; onClose: () => void }) {
   const registry = useFeatureRegistry();
   const language = useConsoleLocale();
-  const descriptor = registry.objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+  const descriptor = findAgentObjectiveKind(registry.objectiveRecordKinds);
   if (!descriptor?.objectiveRecordMenu) return null;
   return (
     <FeatureErrorBoundary fallback={<></>}>

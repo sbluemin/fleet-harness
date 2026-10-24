@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { findAgentObjectiveKind } from "../../../execution/shared/objective-kind.js";
 import { useAgentState } from "../../../execution/client/agent/store.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getObjectiveWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
@@ -458,7 +459,7 @@ function displayTitle(objectiveRecord: ObjectiveRecord): string {
 function PluginObjectiveMarks({ objectiveRecord }: { readonly objectiveRecord: ObjectiveRecord }) {
   const registry = useFeatureRegistry();
   const language = useConsoleLocale();
-  const descriptor = registry.objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+  const descriptor = findAgentObjectiveKind(registry.objectiveRecordKinds);
   return (
     <>
       <ObjectiveCaptionContributions objectiveRecord={objectiveRecord} language={language} surface="chip" />

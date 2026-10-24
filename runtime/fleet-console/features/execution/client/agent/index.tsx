@@ -1,4 +1,5 @@
 import type { ObjectiveKindDescriptor } from "../../shared/client-contract.js";
+import { AGENT_OBJECTIVE_KIND } from "../../shared/objective-kind.js";
 import type { ExecutionClientDeps } from "../deps.js";
 import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
@@ -81,8 +82,7 @@ const TRACK_PHASE_COPY_KEYS = {
 const AGENT_PREVIEW_CHROME_ROWS = 7;
 
 export const agentObjectiveKind: ObjectiveKindDescriptor = ({
-  pluginId: null,
-  type: "agent",
+  ...AGENT_OBJECTIVE_KIND,
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: () => "Claude Code",
   render: (context) => <AgentObjectiveView context={context} />,

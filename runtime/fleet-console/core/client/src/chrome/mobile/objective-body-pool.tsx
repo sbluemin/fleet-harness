@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import { createPortal } from "react-dom";
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
+import { findAgentObjectiveKind } from "../../../../../features/execution/shared/objective-kind.js";
 import type { ClientMobileObjectiveCapability } from "../../../../../features/workspace/shared/mobile.js";
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 import type { ObjectiveKindDescriptor, ObjectiveRenderContext, ObjectiveRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
@@ -132,7 +133,7 @@ export function ObjectiveBodyPool({ objectiveRecords, objectiveRecordKinds, capa
       {children}
       <div className="objective-body-parking" ref={attachParking} aria-hidden="true" inert>
         {objectiveRecords.map((objectiveRecord) => {
-          const descriptor = objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+          const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
           if (!descriptor?.render) return null;
           const config = configsRef.current.get(objectiveRecord.id) ?? defaultConfig(objectiveRecord);
           const parked = !slotsRef.current.has(objectiveRecord.id);
