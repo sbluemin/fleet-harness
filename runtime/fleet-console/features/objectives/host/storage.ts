@@ -112,7 +112,7 @@ export function createObjectiveStorage(deps: {
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
   initializeOwners?: (state: DurableConsoleState) => void;
-  /** 명부 원본의 별칭을 소유 저장소에 커밋한다. 실패하면 명부를 쓰지 않고 기동을 중단한다. */
+  /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 실패하면 별칭을 지우지 않고 기동을 중단한다. */
   migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => void;
   createStore?: typeof createDurableJsonStore;
 }) {
@@ -326,10 +326,11 @@ export function createObjectiveStorage(deps: {
         } else deferredArchive = legacy;
       }
       deps.initializeOwners?.(readRegistrations(state));
-      deps.migrateRegistrationAliases?.(legacyTheaterAliases(raw));
       migrate(state);
-      // 저널 복구가 끝난 뒤만 명부에서 키를 지운다. 이전 체크섬을 바꾸는 중간 상태를 남기지 않는다.
+      // 저널의 새 이름·해제까지 복구한 명부가 권위다. 대상 커밋 전에는 복구된 별칭도 명부에 남긴다.
+      // 원래 raw를 쓰면 준비 저널에서 복구한 이름을 잃거나, 해제한 옛 이름을 되살린다.
       if (deps.migrateRegistrationAliases) {
+        deps.migrateRegistrationAliases(legacyTheaterAliases(state as unknown as Record<string, unknown>));
         if (exists(deps.stateStore.path)) {
           const current = readJson(deps.stateStore.path);
           if (!object(current)) throw failure();

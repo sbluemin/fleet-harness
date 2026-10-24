@@ -241,7 +241,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
 });
 
 // 별칭은 명부에서 사령관으로 옮겨지는 데이터다. 중단 지점과 구 저널 복구를 같은 저장소 경계에서 검증한다.
-it("moves registration aliases to their UUID owners before writes and resumes cleanup without replaying stale journals", () => {
+it("moves recovered registration aliases to their UUID owners and resumes cleanup without replaying stale journals", () => {
   const temp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-alias-migration-")));
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   try {
@@ -266,7 +266,7 @@ it("moves registration aliases to their UUID owners before writes and resumes cl
       owners: () => includeObjectives ? ownership.objectives() : [],
       migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership),
     });
-    // 명부에 첫 쓰기를 하기 전에 대상이 확정되어야 한다. 대상 커밋 실패는 원본을 그대로 둔다.
+    // 대상 커밋 실패는 원본 별칭을 그대로 두고 기동을 중단한다.
     const nativeRename = fs.renameSync.bind(fs);
     const failTarget = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
       if (String(to).startsWith(path.join(directory, "commodore")) && String(to).endsWith("state.json")) throw new Error("alias_target_write_failed");
@@ -332,6 +332,42 @@ it("moves registration aliases to their UUID owners before writes and resumes cl
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Flagship");
     restarted.save(snapshot);
     expect(JSON.stringify(JSON.parse(fs.readFileSync(stateFile, "utf8")))).not.toContain('"alias"');
+    expect(JSON.stringify(open().load())).not.toContain('"alias"');
+
+    // 구 별칭 저장이 archive 준비 뒤 명부 쓰기 전에 끊겼다. 저널의 새 이름/해제가 권위다.
+    const ownerArchiveFile = path.join(directory, "commodore", ownerId, "objectives", "archive.json");
+    const ownerArchive = JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"));
+    for (const alias of ["Recovered name", undefined]) {
+      fs.writeFileSync(ownerFile, JSON.stringify(before));
+      fs.writeFileSync(stateFile, JSON.stringify(journalSource));
+      const recoveredTheater = { ...registration(project), ...(alias === undefined ? {} : { alias }) };
+      fs.writeFileSync(ownerArchiveFile, JSON.stringify({ ...ownerArchive, transaction: {
+        documents: [], groups: [], archive: ownerArchive, state: { version: 6, theaters: [recoveredTheater] },
+      } }));
+      if (alias !== undefined) {
+        // 복구 후 대상 이관이 실패해도 기동은 중단되고 새 이름이 명부에 남아 다음 기동이 재시도한다.
+        const failRecoveredTarget = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+          if (String(to) === ownerFile) throw new Error("recovered_alias_write_failed");
+          nativeRename(from, to);
+        });
+        try { expect(() => open().load()).toThrow("recovered_alias_write_failed"); } finally { failRecoveredTarget.mockRestore(); }
+        expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe(alias);
+        expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).not.toHaveProperty("alias");
+      }
+      open().load();
+      expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe(alias);
+      expect(JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"))).not.toHaveProperty("transaction");
+      expect(JSON.stringify(open().load())).not.toContain('"alias"');
+    }
+    // 직전 operations-archive 저널도 raw와 다른 이름을 복구할 수 있다. 검증된 tx.state를 이관한다.
+    fs.writeFileSync(ownerFile, JSON.stringify(before));
+    fs.writeFileSync(stateFile, JSON.stringify(journalSource));
+    fs.writeFileSync(journalFile, JSON.stringify({ ...journal, transaction: { ...journal.transaction,
+      state: { ...journal.transaction.state, theaters: [{ ...registration(project), alias: "Predecessor name" }] },
+    } }));
+    open().load();
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Predecessor name");
+    expect(fs.existsSync(journalFile)).toBe(false);
     expect(JSON.stringify(open().load())).not.toContain('"alias"');
   } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });
