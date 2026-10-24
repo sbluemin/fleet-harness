@@ -1,4 +1,4 @@
-import { commodoreName, useCommodoreName } from "./commodore-name.js";
+import { commodoreName, useCommodoreOwnerName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -236,7 +236,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const Conversation = commodoreConversationRenderer();
   const screenTheaterId = theaterId ?? "";
   const index = useCommodoreObjectiveIndex(commodoreId);
-  const name = useCommodoreName(screenTheaterId, t);
+  const name = useCommodoreOwnerName(commodoreId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.

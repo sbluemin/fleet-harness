@@ -1,5 +1,5 @@
 import { openOwnedObjectiveOnPhone } from "./board.js";
-import { useCommodoreName } from "./commodore-name.js";
+import { useCommodoreName, useCommodoreOwnerName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";

@@ -22,6 +22,7 @@ export interface CommodoreSessionOptions {
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterLabel: string;
+  readonly theaterIds?: readonly string[];
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
   readonly theaterRoot: string;
@@ -188,7 +189,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
       sessionName: `commodore-${options.theaterLabel.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
+      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias, theaterIds: options.theaterIds }),
       continuation: "conversation",
       settlement: "result",
       cwd: options.cwd,

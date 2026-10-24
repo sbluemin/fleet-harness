@@ -349,7 +349,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, theaterIds: deps.theaterIds(runner.commodoreId), language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },

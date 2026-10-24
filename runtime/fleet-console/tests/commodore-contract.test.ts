@@ -452,7 +452,7 @@ describe("commodore session", () => {
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
     const options = stub.created[0]!;
     expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation", sessionName: "commodore-fleet-harness-t1" });
-    expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
+    expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read"], browser: { scopeId: "commodore:t1" } });

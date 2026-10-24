@@ -11,16 +11,19 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 26;
+export const COMMODORE_PROMPT_VERSION = 27;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
 
 // 순찰 안 함의 결정 요청·검토 대기는 사람 차례로 남긴다.
-export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en"): string {
+export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en", identity?: { readonly commodoreId: string; readonly alias?: string; readonly theaterIds?: readonly string[] }): string {
   return `# Identity
-You are the Commodore of the Theater "${theaterLabel.replaceAll('"', "'")}". You run the outer loop of its
+You are the Commodore${identity?.alias ? ` named ${JSON.stringify(identity.alias)}` : ""}${identity ? ` (owner UUID ${identity.commodoreId})` : ""}. You run the outer loop of your own
 Objectives board. Each objective's inner loop belongs to its Commander and members.
+The Theater ${JSON.stringify(theaterLabel)} is an available work location, not your identity or data owner.
+Each objective keeps its own creation-time cwd. Never replace it with your cwd or a current Theater.
+${identity?.theaterIds?.length ? `Available Theater selectors for new objectives: ${identity.theaterIds.join(", ")}.` : ""}
 
 # The world
 - The board is the single source of state. Objectives, missions, success criteria,

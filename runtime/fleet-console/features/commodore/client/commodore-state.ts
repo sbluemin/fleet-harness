@@ -113,7 +113,7 @@ function rememberContext(theaterId: string, commodoreId: string): void {
 
 /** 이미 풀어 둔 화면 문맥의 사령관 UUID. 아직 모르면 null. */
 export function ownerOfContext(theaterId: string): string | null {
-  return contextOwners.get(theaterId) ?? null;
+  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.id ?? contextOwners.get(theaterId) ?? null;
 }
 
 /** 그 사령관을 가리키는 화면 문맥. 이동에만 쓰고 정체성으로 쓰지 않는다. */
@@ -123,8 +123,8 @@ export function contextsOf(commodoreId: string): readonly string[] {
 
 /** Theater 머리·사이드바에서 사령관 UUID를 구한다. 실패·없음은 null이고 Theater로 대체하지 않는다. */
 export function resolveContext(theaterId: string): Promise<string | null> {
-  const known = contextOwners.get(theaterId);
-  if (known) return Promise.resolve(known);
+  const known = ownerOfContext(theaterId);
+  if (known) { rememberContext(theaterId, known); return Promise.resolve(known); }
   const inflight = contextResolving.get(theaterId);
   if (inflight) return inflight;
   const client = api();
@@ -477,7 +477,13 @@ export function commodoreTheaterLabel(theaterId: string): string {
 
 /** 사람이 지정한 사령관 별칭 — 없거나 지웠으면 null 이다. 구버전 호스트는 싣지 않으므로 늘 null 이다. */
 export function commodoreAlias(theaterId: string): string | null {
-  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.alias || null;
+  const owner = ownerOfContext(theaterId);
+  return owner ? commodoreOwnerAlias(owner) : null;
+}
+/** 별칭은 UUID 소유 상태다. 아직 상태를 읽지 않았으면 서버의 같은 UUID identity 투영을 사용한다. */
+export function commodoreOwnerAlias(commodoreId: string): string | null {
+  const view = theaters.get(commodoreId)?.view;
+  return view ? view.state.alias ?? null : installed?.consoleState.getTheaters().find((theater) => theater.commodore?.id === commodoreId)?.commodore?.alias ?? null;
 }
 
 /* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */

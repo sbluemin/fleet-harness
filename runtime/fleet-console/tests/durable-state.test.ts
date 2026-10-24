@@ -168,6 +168,18 @@ describe("durable console state", () => {
     expect(fs.readFileSync(legacyFile, "utf8")).toBe(badOwner);
     expect(fs.readFileSync(badLocationFile, "utf8")).toBe(badLocation);
     expect(() => isolated.board.save("c1", pending)).toThrow("archive_recovery_required");
+    // 보관 본문은 목표 파일에 남는다. 격리한 본문과 색인은 형제 저장 뒤에도 보존한다.
+    isolated.save({ ...readable, objectiveRecords: readable.objectiveRecords.filter((record) => record.id !== "archived") }, [{ archiveId: "held-archive", archivedAt: 5, objectiveRecord: readable.objectiveRecords.find((record) => record.id === "archived")! }]);
+    const corruptBody = { ...JSON.parse(fs.readFileSync(h.file("archived"), "utf8")), addedBy: { kind: "commodore", commodoreId: "other-owner" } };
+    fs.writeFileSync(h.file("archived"), JSON.stringify(corruptBody));
+    const indexBefore = JSON.parse(fs.readFileSync(h.archiveFile, "utf8")).entries;
+    const archiveHeld = h.open(); const availableState = archiveHeld.load();
+    expect(availableState.objectiveRecords.map((record) => record.id)).toEqual(["active"]);
+    expect(archiveHeld.entries()).toEqual([]);
+    archiveHeld.save(availableState);
+    expect(JSON.parse(fs.readFileSync(h.archiveFile, "utf8")).entries).toEqual(indexBefore);
+    expect(JSON.parse(fs.readFileSync(h.file("archived"), "utf8"))).toEqual(corruptBody);
+
 
     // 손상 행은 같은 owner의 정상 행과 다른 owner를 막지 않는다. 파싱 불능은 해당 owner만 멈춘다.
     const damaged = fixture();
@@ -205,8 +217,8 @@ describe("durable console state", () => {
       expect(JSON.parse(fs.readFileSync(damaged.file(id), "utf8"))).toEqual(damaged.doc(id));
     }
     const sourceHash = createHash("sha256").update(damagedSource).digest("hex");
-    const isolated = JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8"));
-    expect(isolated.quarantine).toEqual([
+    const isolationIndex = JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8"));
+    expect(isolationIndex.quarantine).toEqual([
       { id: "../unsafe", sourceHash, location: "entries[1]", reason: "invalid_inline_row" },
       { id: null, sourceHash, location: "entries[2]", reason: "invalid_inline_row" },
       { id: "bad-deletion", sourceHash, location: "deletions[0]", reason: "invalid_inline_row" },
@@ -220,7 +232,7 @@ describe("durable console state", () => {
     const retry = openAll(); const retryState = retry.load();
     expect(retryState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
-    expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolated.quarantine);
+    expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolationIndex.quarantine);
 
     // 격리 deletion이 있는 owner의 Theater 삭제는 prepare 전에 거절한다. 호출자의 메모리도 복구된다.
     const deletionRecords = createObjectiveRecordsStore(); deletionRecords.replace(retryState.objectiveRecords);
