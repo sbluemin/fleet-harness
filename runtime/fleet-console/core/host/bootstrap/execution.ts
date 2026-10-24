@@ -118,9 +118,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
       ctx.host.useRequests?.settle(objectiveRecord.id);
       ctx.host.consoleUse.endObjectiveUse?.(objectiveRecord.id);
     },
-    purgeObjective: (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord) => {
-
-      agent.purgeObjective(objectiveRecord.id);
+    purgeObjective: (objectiveId: string) => {
+      agent.purgeObjective(objectiveId);
     },
   };
 }

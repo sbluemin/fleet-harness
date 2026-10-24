@@ -1,5 +1,4 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
-import { predecessorStateHash } from "../features/objectives/host/predecessor-hash.js";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { sanitizeDurableConsoleState, type DurableConsoleState } from "../features/workspace/host/durable-state.js";
 import { createCommodoreOwnership, migrateCommodoreAliases } from "../features/commodore/host/index.js";
@@ -300,33 +299,22 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     open().load();
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).not.toHaveProperty("alias");
 
-    // 구 archive 저널의 beforeHash 검증은 별칭 정리보다 먼저다. 틀린 해시는 이관으로 우회하지 않는다.
-    const journalSource = { version: 6, theaters: [live], operations: [], groups: [], deletionTombstones: [] };
+    // 지원하는 직전 owner 저널을 먼저 복구한다. 본문 색인 전환과 명부의 별칭 이주는 독립이다.
+    const journalSource = { version: 6, theaters: [live] };
     fs.writeFileSync(stateFile, JSON.stringify(journalSource));
-    const journalFile = path.join(directory, "operations-archive.json");
-    const archive = { version: 1, revision: 0, entries: [], deletions: [], events: [] };
-    const journal = { ...archive, transaction: { beforeRevision: 0, beforeHash: predecessorStateHash(journalSource), state: { ...journalSource, revision: 1 }, archive } };
-    fs.writeFileSync(journalFile, JSON.stringify({ ...journal, transaction: { ...journal.transaction, beforeHash: "0".repeat(64) } }));
-    expect(() => open().load()).toThrow("archive_recovery_required");
-    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(journalSource));
-    fs.writeFileSync(journalFile, JSON.stringify(journal));
+    const ownerArchiveFile = path.join(directory, "commodore", ownerId, "objectives", "archive.json");
+    const archive = { revision: 0, entries: [], deletions: [], events: [] };
+    fs.mkdirSync(path.dirname(ownerArchiveFile), { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(ownerArchiveFile), "groups.json"), JSON.stringify({ groups: [] }));
+    fs.writeFileSync(ownerArchiveFile, JSON.stringify({ ...archive, transaction: { documents: [], groups: [], state: journalSource, archive } }));
     includeObjectives = true;
-    // 구 저널 자체가 아직 남은 중간 실패: alias는 원래 해시에 참여한 채로 남아야 한다.
-    const nativeRemove = fs.rmSync.bind(fs);
-    const failJournalRemoval = vi.spyOn(fs, "rmSync").mockImplementation((file, options) => {
-      if (String(file) === journalFile) throw new Error("journal_cleanup_interrupted");
-      nativeRemove(file, options);
-    });
-    try { expect(() => open().load()).toThrow("journal_cleanup_interrupted"); } finally { failJournalRemoval.mockRestore(); }
-    expect(fs.existsSync(journalFile)).toBe(true);
-    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0]).toHaveProperty("alias");
-    // 구 저널 커밋 후 별칭 정리 전에 끊겨도 다음 기동에서 복구한다.
+    // owner 저널 커밋 후 별칭 정리 전에 끊겨도 다음 기동에서 복구한다.
     const failCleanup = vi.spyOn(stateStore, "save").mockImplementation((value) => {
       if (!JSON.stringify(value).includes('"alias"')) throw new Error("alias_cleanup_interrupted");
       save(value);
     });
     try { expect(() => open().load()).toThrow("alias_cleanup_interrupted"); } finally { failCleanup.mockRestore(); }
-    expect(fs.existsSync(journalFile)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"))).not.toHaveProperty("transaction");
     const restarted = open(); const snapshot = restarted.load();
     expect(snapshot.theaters).toEqual(cleaned.theaters);
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Flagship");
@@ -335,7 +323,6 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     expect(JSON.stringify(open().load())).not.toContain('"alias"');
 
     // 구 별칭 저장이 archive 준비 뒤 명부 쓰기 전에 끊겼다. 저널의 새 이름/해제가 권위다.
-    const ownerArchiveFile = path.join(directory, "commodore", ownerId, "objectives", "archive.json");
     const ownerArchive = JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"));
     for (const alias of ["Recovered name", undefined]) {
       fs.writeFileSync(ownerFile, JSON.stringify(before));
@@ -359,14 +346,18 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
       expect(JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"))).not.toHaveProperty("transaction");
       expect(JSON.stringify(open().load())).not.toContain('"alias"');
     }
-    // 직전 operations-archive 저널도 raw와 다른 이름을 복구할 수 있다. 검증된 tx.state를 이관한다.
+    // 분리한 owner 저널에서도 raw와 다른 이름을 복구한다. alias는 본문이 아니라 등록 상태다.
     fs.writeFileSync(ownerFile, JSON.stringify(before));
     fs.writeFileSync(stateFile, JSON.stringify(journalSource));
-    fs.writeFileSync(journalFile, JSON.stringify({ ...journal, transaction: { ...journal.transaction,
-      state: { ...journal.transaction.state, theaters: [{ ...registration(project), alias: "Predecessor name" }] },
-    } }));
+    const transactionId = randomUUID();
+    const journalFile = path.join(path.dirname(ownerArchiveFile), ".transactions", `${transactionId}.json`);
+    fs.mkdirSync(path.dirname(journalFile), { recursive: true });
+    fs.writeFileSync(journalFile, JSON.stringify({ documents: [], groups: [], purgeIds: [], archive: ownerArchive,
+      state: { version: 6, theaters: [{ ...registration(project), alias: "Recovered external name" }] },
+    }));
+    fs.writeFileSync(ownerArchiveFile, JSON.stringify({ ...ownerArchive, transaction: transactionId }));
     open().load();
-    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Predecessor name");
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Recovered external name");
     expect(fs.existsSync(journalFile)).toBe(false);
     expect(JSON.stringify(open().load())).not.toContain('"alias"');
   } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }

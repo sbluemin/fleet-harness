@@ -511,7 +511,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onGroupChanged: (event) => publishPluginEvent(OBJECTIVE_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, event),
     // 예전 전역 브라우저 id "global" 은 Objective이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
-    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.isReserved(id) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
     assertRelationMutable: (id) => objectiveRecordArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();
@@ -544,7 +544,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership!),
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
-  let purgeCoreObjective: ((objectiveRecord: ObjectiveRecord) => void) | null = null;
+  let purgeCoreObjective: ((objectiveId: string) => void) | null = null;
   let resumeArchivedObjective: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   let quotaMigrationReady = false;
@@ -698,7 +698,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     assertMutable: (id) => objectiveRecordArchive.assertMutable(id),
     beforePurge: (purged, tombstone) => {
       if (!purgeCoreObjective) throw new ObjectiveArchiveError(503, "archive_recovery_required");
-      for (const objectiveRecord of purged.flatMap(archiveSessionNodes)) purgeCoreObjective(objectiveRecord);
+      for (const objectiveRecord of purged.flatMap(archiveSessionNodes)) purgeCoreObjective(objectiveRecord.id);
       if (tombstone.kind === "theater") theaterSystemPrompts.purge(tombstone.targetId);
     },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
@@ -751,14 +751,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     readRetentionDays: () => readArchiveRetentionDays(consoleSettingsStore.load().general?.archiveRetentionDays),
     publish: (event) => {
-      for (const node of archiveSessionNodes(event.objectiveRecord)) {
+      // 후속 전이가 끝난 복원 사건으로 지운 목표를 다시 방송하지 않는다.
+      if (event.channel === "objective:restored" && !event.objectiveRecord) return;
+      const restored = new Map(event.objectiveRecord ? archiveSessionNodes(event.objectiveRecord).map((node) => [node.id, node]) : []);
+      const ids = event.channel === "objective:restored" ? [...restored.keys()] : [event.objectiveId, ...event.sessionIds];
+      for (const id of ids) {
         if (event.channel === "objective:purged") {
           if (!purgeCoreObjective) throw new ObjectiveArchiveError(503, "archive_recovery_required");
-          purgeCoreObjective(node);
+          purgeCoreObjective(id);
         }
-        publishPluginEvent(event.channel, { eventId: `${event.eventId}:${node.id}`, objectiveId: node.id, theaterId: node.theaterId, pluginId: null, type: "agent",
-          ...(event.channel === "objective:restored" ? { objectiveRecord: node } : {}) }, true);
-        if (event.channel === "objective:archived") pendingClusterRemoved.add(node.id);
+        publishPluginEvent(event.channel, { eventId: `${event.eventId}:${id}`, objectiveId: id, theaterId: event.theaterId, pluginId: null, type: "agent",
+          ...(event.channel === "objective:restored" ? { objectiveRecord: restored.get(id) } : {}) }, true);
+        if (event.channel === "objective:archived") pendingClusterRemoved.add(id);
       }
     },
     publishChanged: publishArchiveChanged,
