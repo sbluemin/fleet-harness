@@ -12,7 +12,7 @@ import { readSocketRole } from "./index.js";
 import type { TerminalRuntime } from "./index.js";
 import { createShellTerminalLaunchResolver } from "./pty.js";
 import { applyShellCwdIntegration } from "./shell-cwd-integration.js";
-import { resolveSurfaceRoot } from "../../../workspace/host/path-selector.js";
+import { conflictingSurfaceSelectors, resolveSurfaceRoot } from "../../../workspace/host/path-selector.js";
 
 type TicketBody = {
   readonly cwd?: OpenAtBody;
@@ -229,6 +229,9 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return true;
     }
     const body = await ctx.host.http.readJsonBody<TicketBody>(req);
+    if (conflictingSurfaceSelectors(body) || conflictingSurfaceSelectors(body?.cwd) || (body?.cwd !== undefined && (body.theaterId !== undefined || body.objectiveId !== undefined))) {
+      ctx.host.http.writeJson(res, 400, { error: "ambiguous_selector" }); return true;
+    }
     const key = readShellKey(body?.shell);
     if (key === null) {
       ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });

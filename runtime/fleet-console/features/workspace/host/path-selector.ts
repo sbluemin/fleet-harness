@@ -23,7 +23,7 @@ export type SurfaceRoot =
   | SurfaceRootFailure;
 
 export function conflictingSurfaceSelectors(source: SurfaceSelectorSource): boolean {
-  return typeof source?.theaterId === "string" && typeof source.objectiveId === "string";
+  return source?.theaterId !== undefined && source?.objectiveId !== undefined;
 }
 
 export function resolveSurfaceRoot(
