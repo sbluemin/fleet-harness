@@ -1,3 +1,4 @@
+import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -114,7 +115,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const theaterId = ctx.theaterId ?? "";
   const { mobileBar, visible } = ctx;
   if (ctx.language) noteCommodoreLanguage(ctx.language);
-  const title = t("commodore.name");
+  const title = useCommodoreName(theaterId, t);
   const theaterLabel = useCommodoreTheaterLabel(theaterId);
 
   // 사령관 화면이 서면 막대는 그 화면이 올린다(대화 pill · 칩 화면 제목). 그 밖(꺼짐·Theater 없음)은 제목과 지금 Theater 이름뿐이다.
@@ -373,17 +374,18 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   const asks = view?.state.asks;
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const index = useCommodoreObjectiveIndex(theaterId);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, asks, index.finished), [t, theaterId, entries, board.objectives, asks, index.finished]);
+  const name = useCommodoreName(theaterId, t);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, asks, index.finished, name), [t, theaterId, entries, board.objectives, asks, index.finished, name]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
-    const base = commodoreConversationLiveEntries(t, entries, live, confirmed);
+    const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name);
     if (!pending) return base;
     return [...base, {
       kind: "message", id: `pending-${pending.key}`, at: pending.at, objectiveId: "", speaker: { kind: "human", name: "Human" }, text: pending.text, streaming: false, pending: true,
       ...(pending.images.length > 0 ? { attachments: pending.images.map((image) => ({ preview: { id: image.key, url: image.url } })) } : {}),
     }];
-  }, [t, entries, live, confirmed, pending]);
+  }, [t, entries, live, confirmed, pending, name]);
   const turning = view?.active === true && view.run.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
   const [loadingOlder, setLoadingOlder] = useState(false);

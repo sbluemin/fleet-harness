@@ -100,7 +100,7 @@ export interface TheaterInboxPageDescriptor {
 
 export interface TheaterInboxSectionDescriptor {
   readonly id: string;
-  title(language: ConsoleLocale): string;
+  title(language: ConsoleLocale, theaterId?: string): string;
   icon(context: { readonly theater: ConsoleTheaterSummary }): ReactNode;
   readonly pages: readonly TheaterInboxPageDescriptor[];
   /** The page other sections may link to as "the directive for this Theater's operator". */

@@ -1,3 +1,4 @@
+import { commodoreName } from "./commodore-name.js";
 import type { CommodoreClientDeps } from "./deps.js";
 import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
 import type { CommodoreBoardClient } from "../../objectives/shared/commodore-board-client.js";
@@ -20,7 +21,7 @@ export const commodoreMobilePane: PaneDescriptor = {
   id: COMMODORE_MOBILE_PANE,
   role: "primary",
   mounts: ["rail"],
-  title: (ctx) => getT(ctx.language)("commodore.name"),
+  title: (ctx) => commodoreName(ctx.theaterId ?? "", getT(ctx.language)),
   hideCaption: true,
   render: (ctx) => ctx.mobileBar ? <MobileCommodore ctx={ctx} /> : null,
 };

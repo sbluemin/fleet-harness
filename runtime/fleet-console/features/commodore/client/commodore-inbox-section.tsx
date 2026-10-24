@@ -1,3 +1,4 @@
+import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -101,7 +102,7 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   id: COMMODORE_INBOX_SECTION_ID,
-  title: (language) => getT(language)("commodore.name"),
+  title: (language, theaterId) => commodoreName(theaterId ?? "", getT(language)),
   icon: () => <CommodoreMentionGlyph className="objectives-commodore-inbox-glyph" />,
   pages: [
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.

@@ -320,7 +320,7 @@ export function buildTheaterSectionSearchEntries(
         if (!page) continue;
         const status = section.read(summary, language);
         if (status.availability !== "available") continue;
-        const titles = { ko: section.title("ko"), en: section.title("en") };
+        const titles = { ko: section.title("ko", theater.id), en: section.title("en", theater.id) };
         rows.push({
           key: `${section.id}@${theater.id}`,
           theaterId: theater.id,
@@ -328,7 +328,7 @@ export function buildTheaterSectionSearchEntries(
           ...(theater.alias ? { theaterAlias: theater.alias } : {}),
           sectionId: section.id,
           pageId: page.id,
-          title: section.title(language),
+          title: section.title(language, theater.id),
           titles,
           caption: status.scope,
           // 표시 언어와 무관하게 두 언어 제목·별칭·원래 이름 어느 것으로도 찾아진다.

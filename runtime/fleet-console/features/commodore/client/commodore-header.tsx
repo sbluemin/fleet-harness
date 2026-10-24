@@ -1,3 +1,4 @@
+import { useCommodoreName } from "./commodore-name.js";
 import { useEffect, useState, type MouseEvent } from "react";
 
 import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
@@ -112,10 +113,11 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
   const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
-  const status = [`${t("commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
+  const name = useCommodoreName(theater.id, t);
+  const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
   // 꺼짐 회색은 다른 표면의 Theater 아바타와 같은 규칙이다 — `header.face` 의 off 와 같은 조건(자율 운영 꺼짐)이다.
-  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
+  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={name} decorative off={!on} className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(theater.id).length;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
