@@ -607,7 +607,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(commodoreId) || stops.has(commodoreId) || !canRun(commodoreId) || (!shouldRun(commodoreId) && reason !== "message")) return;
     let runner = runners.get(commodoreId);
     if (runner && !runner.stopping) {
-      if (!runner.automatic && shouldRun(commodoreId)) { runner.automatic = true; wake(runner, reason); }
+      if (!runner.automatic && shouldRun(commodoreId)) {
+        runner.automatic = true;
+        // 안 함의 메시지 오류에는 재시도 타이머가 없다. 순찰을 시작할 때만 새 사다리로 다시 깨운다.
+        if (runner.phase === "error" && !runner.retry) {
+          runner.retryAttempt = 0;
+          setPhase(runner, "idle");
+        }
+        wake(runner, reason);
+      }
       return;
     }
     runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, draining: false, automatic: shouldRun(commodoreId), ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };

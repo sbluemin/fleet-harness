@@ -945,9 +945,24 @@ describe("commodore supervisor", () => {
       await h.route("commodore/message", { commodoreId: "t1", text: "Try with this new message." }, hooks);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(sent).toHaveLength(3);
-      h.store.setPatrol("t1", 15);
+      // 메시지 전용 실행기가 오류로 쉰 뒤 순찰을 켜면 즉시 재시도하고 자동 재시도 사다리도 다시 선다.
+      failMessage = true;
+      await h.route("commodore/message", { commodoreId: "t1", text: "Fail before enabling patrol." }, hooks);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(sent).toHaveLength(4);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "error" });
+      expect(supervisor.status("t1")?.nextWakeAt).toBeUndefined();
+      h.store.setPatrol("t1", 15);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sent).toHaveLength(5);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying" });
+      expect(supervisor.status("t1")!.nextWakeAt).toBeGreaterThan(Date.now() + RETRY_DELAYS_MS[0]! - 10);
+      expect(supervisor.status("t1")!.nextWakeAt).toBeLessThanOrEqual(Date.now() + RETRY_DELAYS_MS[0]!);
+      failMessage = false;
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
+      expect(sent).toHaveLength(6);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      expect(supervisor.status("t1")!.nextWakeAt).toBeGreaterThan(Date.now());
       h.store.setPatrol("t1", "off");
       await vi.advanceTimersByTimeAsync(1);
       expect(disposed).toHaveBeenCalledTimes(1);
@@ -960,7 +975,7 @@ describe("commodore supervisor", () => {
       release!();
       await vi.advanceTimersByTimeAsync(1);
       expect(disposed).toHaveBeenCalledTimes(2);
-      expect(sent).toHaveLength(4);
+      expect(sent).toHaveLength(6);
       expect(supervisor.status("t1")).toBeNull();
     } finally { release?.(); await supervisor.dispose(); vi.useRealTimers(); }
   });
