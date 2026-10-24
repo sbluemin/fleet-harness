@@ -4,5 +4,5 @@ branch: fix/objectives-symlink-m5
 
 ### fleet-console
 #### Fixed
-- Keep existing objectives and their archive available after upgrading when shared evidence contains symbolic links.
-  ko: 공유 증거에 심볼릭 링크가 있어도 업그레이드 후 기존 목표와 보관 목록을 계속 사용할 수 있습니다.
+- Preserve existing objectives, archived objectives, and their sealed evidence during upgrades, including shared evidence with symbolic links.
+  ko: 공유 증거에 심볼릭 링크가 있어도 업그레이드할 때 기존 목표, 보관된 목표와 봉인된 증거를 보존합니다.

@@ -449,5 +449,5 @@ function migrateBoardKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(migrateBoardKeys);
   if (!object(value)) return value;
   const board = "rank" in value && ("missions" in value || "note" in value);
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === "operationId" ? board ? "id" : "objectiveId" : key === "operationIntent" ? "lifecycleIntent" : key === "parentOperationId" ? "parentObjectiveId" : key, key === "kind" && item === "operation" ? "objectiveRecord" : migrateBoardKeys(item)]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === "operationId" ? board ? "id" : "objectiveId" : key === "operationIntent" ? "lifecycleIntent" : key === "parentOperationId" ? "parentObjectiveId" : key === "ownerOperationId" ? "ownerObjectiveId" : key, key === "kind" && item === "operation" ? "objectiveRecord" : migrateBoardKeys(item)]));
 }
