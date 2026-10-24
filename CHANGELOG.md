@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.3] - 2026-10-24
+
+### fleet-console
+
+#### Fixed
+- Preserve existing objectives, archived objectives, and their sealed evidence during upgrades, including shared evidence with symbolic links.
+
 ## [1.254.2] - 2026-10-23
 
 ### fleet-console

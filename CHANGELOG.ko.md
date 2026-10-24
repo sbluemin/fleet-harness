@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.254.3] - 2026-10-24
+
+### fleet-console
+
+#### Fixed
+- 공유 증거에 심볼릭 링크가 있어도 업그레이드할 때 기존 목표, 보관된 목표와 봉인된 증거를 보존합니다.
+
 ## [1.254.2] - 2026-10-23
 
 ### fleet-console
