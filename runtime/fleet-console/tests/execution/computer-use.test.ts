@@ -179,7 +179,7 @@ describe("Computer Use authorization and lifecycle", () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     let markResolving!: () => void;
     const resolving = new Promise<void>((resolve) => { markResolving = resolve; });
-    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", commodoreId: "c1", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
     const service = new ComputerUseService({
       directory: "unused", enabled: () => true, localControl: () => true,
       platform: { ...macOSComputerUsePlatform, supported: () => true, inspectInstallation: async () => true, resolveTarget: async (app) => { markResolving(); await gate; return app; }, createBroker: async () => { throw new Error("device must not be claimed"); } },
@@ -212,9 +212,9 @@ describe("Computer Use authorization and lifecycle", () => {
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
     f.call.mockImplementationOnce(async () => { markStarted(); await gate; return { content: [{ type: "text", text: "<app_state>app state</app_state>" }] }; });
     const ts = { createdAt: 0, updatedAt: 0 };
-    const root = { id: "op-root", theaterId: "t", type: "agent", pluginId: null, title: "Commander", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), sessions: [{ id: "m-b", ...({}), ts }], geometry: null, ts };
+    const root = { id: "op-root", commodoreId: "c1", theaterId: "t", type: "agent", pluginId: null, title: "Commander", ...({ computerUse: { enabled: true, language: "en" } } as Record<string, unknown>), sessions: [{ id: "m-b", ...({}), ts }], geometry: null, ts };
     let memberDeleted = false;
-    const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentObjectiveId: root.id, ...({} as Record<string, unknown>), geometry: null, ts } : null;
+    const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, commodoreId: "c1", theaterId: "t", type: "agent", pluginId: null, title: "B", parentObjectiveId: root.id, ...({} as Record<string, unknown>), geometry: null, ts } : null;
     const useContext = createUseContext({ get, turnOpen: () => false });
     // 허용을 통과한 호출은 그 컨텍스트의 허가를 만진다 — 두 호출이 모두 호스트에 닿았는지를 여기서 본다.
     const touch = vi.fn();
@@ -259,7 +259,7 @@ describe("Computer Use authorization and lifecycle", () => {
     // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.
     const f = setup();
     let experiment = true;
-    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", commodoreId: "c1", theaterId: "t", type: "agent", pluginId: null, title: "A", ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 0, updatedAt: 0 } }];
     const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => objectiveRecords, experimentEnabled: () => experiment, language: () => "ko" });
     const connection = host.connect();
     try {

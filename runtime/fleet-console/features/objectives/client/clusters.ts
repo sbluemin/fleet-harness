@@ -13,7 +13,7 @@ import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./board-commodore.js";
-import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
+import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore, ownerOfContext } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -286,19 +286,19 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (objectiveId: string | null | undefined): string | null => (objectiveId && objectiveId !== commander && activity.has(objectiveId) ? objectiveId : null);
     const liveMembers = objective.members.flatMap((member) => { const objectiveId = live(member.id); return objectiveId ? [{ member, objectiveId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.objectiveId), ...objective.missions.flatMap((mission) => { const objectiveId = live(mission.objectiveId); return objectiveId ? [objectiveId] : []; })])];
-    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.theaterId), stalled.has(objective.id), now);
+    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.commodoreId), stalled.has(objective.id), now);
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Objective 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     // 목록 밖 표면의 결정 표식(얼굴 「!」·칩·궤도·폰 대화 행)은 사람의 차례인 요청에만 — 사령관이 맡은 요청은 사람을 기다리지 않는다.
-    const personDecision = decisionTurn(objective, boardOf(objective.theaterId).active) === "person";
+    const personDecision = decisionTurn(objective, boardOf(objective.commodoreId).active) === "person";
     const openDetail = () => {
       revealObjective({ objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId, objective.id);
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Objective 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
-    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-      { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster }, boardOf(objective.theaterId).active);
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+      { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster }, boardOf(objective.commodoreId).active);
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
@@ -368,12 +368,12 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   }
   // 사령관의 질문 — 목표 묶음이 아닌 줄로 「내 결정」에 선다(물은 시각순). 누르면 질문 카드가 선 사령관 기록이 열린다.
   for (const theaterId of openAskTheaters()) {
-    const served = readCommodore(theaterId).view?.asks?.objectives;
+    const served = readCommodore(ownerOfContext(theaterId) ?? "").view?.asks?.objectives;
     const board = readTheater(theaterId);
-    for (const ask of openAsks(theaterId)) {
+    for (const ask of openAsks(ownerOfContext(theaterId))) {
       const objectiveTitle = ask.objectiveId ? askObjectiveTitle(board, served, ask.objectiveId) : null;
       out.push({
-        id: `commodore-ask:${ask.id}`, theaterId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(theaterId),
+        id: `commodore-ask:${ask.id}`, theaterId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(ownerOfContext(theaterId) ?? ""),
         row: {
           groupId: null, order: -1, fold: [], commodore: true, decisionRequestedAt: ask.at, decisionQuestions: ask.questions.length,
           decisionNote: (locale) => { const t = getT(locale); return objectiveTitle ? `${t("objectives.ask.title")} · ${objectiveTitle}` : t("objectives.ask.title"); },
@@ -426,8 +426,8 @@ let cachedInputs: readonly unknown[] = [];
  */
 function doneStandInCluster(objective: Objective, roster: ModelRoster | null, boardOf: (theaterId: string) => CommodoreBoard): ObjectiveCluster {
   const open = () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); };
-  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, open, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-    { state: () => "closed", roster }, boardOf(objective.theaterId).active);
+  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, open, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+    { state: () => "closed", roster }, boardOf(objective.commodoreId).active);
   return { id: objective.id, theaterId: objective.theaterId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
 }
 

@@ -11,6 +11,7 @@ export interface ArchiveLifecycleEvent {
   readonly eventId: string;
   readonly channel: "objective:archived" | "objective:restored" | "objective:deleted" | "objective:purged";
   readonly objectiveId: string;
+  readonly commodoreId: string;
   readonly theaterId: string;
   readonly sessionIds: readonly string[];
   /** 복원 방송만 현재 본문을 읽는다. outbox에는 이 뷰를 저장하지 않는다. */
@@ -36,12 +37,12 @@ export interface ObjectiveArchiveStorage {
 /** 실행 정리용 투영이다. 자식은 별도 보관 레코드나 active 최상위 노드로 저장하지 않는다. */
 export function archiveSessionNodes(objectiveRecord: ObjectiveRecord): readonly ObjectiveRecord[] {
   return [objectiveRecord, ...(objectiveRecord.sessions ?? []).map((child): ObjectiveRecord => ({ ...child,
-    id: child.id, theaterId: objectiveRecord.theaterId, title: child.id, parentObjectiveId: objectiveRecord.id, ts: child.ts,
+    id: child.id, commodoreId: objectiveRecord.commodoreId, cwd: objectiveRecord.cwd, theaterId: objectiveRecord.theaterId, title: child.id, parentObjectiveId: objectiveRecord.id, ts: child.ts,
   }))];
 }
 
 export function archiveEvent(channel: ArchiveLifecycleEvent["channel"], objectiveRecord: ObjectiveRecord): ArchiveLifecycleEvent {
-  return { eventId: crypto.randomUUID(), channel, objectiveId: objectiveRecord.id, theaterId: objectiveRecord.theaterId,
+  return { eventId: crypto.randomUUID(), channel, objectiveId: objectiveRecord.id, commodoreId: objectiveRecord.commodoreId, theaterId: objectiveRecord.theaterId,
     sessionIds: (objectiveRecord.sessions ?? []).map((child) => child.id),
     ...(channel === "objective:restored" ? { objectiveRecord } : {}),
   };

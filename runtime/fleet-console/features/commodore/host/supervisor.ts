@@ -239,7 +239,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       hasPersonMessage: () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0,
       stopping: () => disposed || runner.stopping || runner.ending || deadlineReached(runner),
     };
-    return (deps.board()?.tools(theaterIdOf(runner.commodoreId), turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
+    return (deps.board()?.tools(runner.commodoreId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
   };
 
   const takeUndelivered = (runner: Runner) => {
@@ -248,9 +248,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return messages.map((message) => message.seq);
   };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
-  const canRun = (commodoreId: string) => settings().commodore && deps.store.read(commodoreId) !== null && deps.theater(theaterIdOf(commodoreId)) !== null && deps.board() !== null;
+  const canRun = (commodoreId: string) => settings().commodore && deps.store.read(commodoreId) !== null && deps.cwd(commodoreId) !== null && deps.board() !== null;
   const shouldRun = (commodoreId: string) => canRun(commodoreId) && patrolIntervalMs(deps.store.read(commodoreId)) !== null;
-  const resolveLanguage = (commodoreId: string): "en" | "ko" => deps.store.read(commodoreId)?.language ?? deps.board()?.language?.(theaterIdOf(commodoreId)) ?? "en";
+  const resolveLanguage = (commodoreId: string): "en" | "ko" => deps.store.read(commodoreId)?.language ?? deps.board()?.language?.(commodoreId) ?? "en";
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
   const resolveCoordinates = (commodoreId: string): RunCoordinates => {
     const state = deps.store.read(commodoreId);
@@ -349,10 +349,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
+      commodoreId: runner.commodoreId, cwd, theaterLabel: theater.label, theaterIds: deps.theaterIds(runner.commodoreId), language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
-      objective: (objectiveId) => { const objective = deps.board()?.objective(theaterIdOf(runner.commodoreId), objectiveId); return objective && !objective.removed ? objective : null; },
+      objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
       onInput: ({ id, state }) => {
@@ -620,7 +620,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, draining: false, automatic: shouldRun(commodoreId), ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
     const current = runner;
-    current.board = deps.board()?.watch(theaterIdOf(commodoreId), {
+    current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.draining && shouldRun(commodoreId),
       wake: (code, input) => {
         wake(current, code, input);

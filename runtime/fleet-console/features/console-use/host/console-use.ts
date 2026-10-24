@@ -193,7 +193,7 @@ const LAUNCHER_TOOL = defineConsoleTool({
   name: "console_launcher",
   description: "New session: starts a new Objective in a Theater, captioned with your name. Answers once it has started, not when its turn completes; each call starts another Objective.",
   kind: "write",
-  input: z.object({ theaterId: ids, text: z.string().min(1).max(32000), model: ids.optional().describe("A model the person named, in their spelling; otherwise Fleet assigns one at start."), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), groupId: ids.optional(), title: TITLE.optional() }),
+  input: z.object({ commodoreId: ids.optional().describe("Owner UUID; omitted only when inherited from the calling Objective."), theaterId: ids, text: z.string().min(1).max(32000), model: ids.optional().describe("A model the person named, in their spelling; otherwise Fleet assigns one at start."), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), groupId: ids.optional(), title: TITLE.optional() }),
 });
 
 const askId = z.string().min(1).max(200).describe("A question ask of an Objective you launched.");
@@ -315,7 +315,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const sessionName = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).sessionName : undefined;
       all.push({...(child),
 id: child.id,
-theaterId: parent.theaterId,
+commodoreId: parent.commodoreId, theaterId: parent.theaterId,
 title: typeof sessionName === "string" && sessionName.length ? sessionName : child.id.slice(0, 8),
 parentObjectiveId: parent.id,
 ts: child.ts});
@@ -637,7 +637,9 @@ ts: child.ts});
     const me = requireCaller(ctx);
     if (args.groupId && !(readActions().groups?.(args.theaterId) ?? []).some((g) => g.id === args.groupId)) throw new ConsoleControlError("unknown_group");
     gesture(ctx, "console_launcher", `${theaterName(args.theaterId)} 에 「${args.title ?? args.text.slice(0, 40)}」 시작`, "create", { kind: "theater", theaterId: args.theaterId });
-    return { action: "launch", ...await control!.request(me, { ...args, kind: "launch" }) };
+    const commodoreId = args.commodoreId ?? (me.kind === "objectiveRecord" ? deps.resolveObjective?.(me.objectiveId)?.commodoreId ?? deps.objectiveRecords?.().find((node) => node.id === me.objectiveId)?.commodoreId : undefined);
+    if (!commodoreId) throw new ConsoleControlError("commodore_required");
+    return { action: "launch", ...await control!.request(me, { ...args, commodoreId, kind: "launch" }) };
   }));
   return entries;
 }

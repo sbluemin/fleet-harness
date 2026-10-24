@@ -36,13 +36,13 @@ export interface CommodoreBoardWatch {
 }
 
 export interface CommodoreBoardAdapter {
-  tools(theaterId: string, turn: CommodoreTurnBindings): readonly ConsoleMcpTool[];
-  watch(theaterId: string, sink: CommodoreWakeSink): CommodoreBoardWatch;
-  objective(theaterId: string, id: string): { readonly id: string; readonly theaterId: string; readonly title: string; readonly removed?: true } | null;
-  language?(theaterId: string): "en" | "ko" | null;
+  tools(commodoreId: string, turn: CommodoreTurnBindings): readonly ConsoleMcpTool[];
+  watch(commodoreId: string, sink: CommodoreWakeSink): CommodoreBoardWatch;
+  objective(commodoreId: string, id: string): { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: true } | null;
+  language?(commodoreId: string): "en" | "ko" | null;
 }
 
 export interface CommodoreBoardHost {
   registerBoard(adapter: CommodoreBoardAdapter): () => void;
-  commander(theaterId: string): { readonly model: string; readonly effort?: string } | null;
+  commander(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
 }

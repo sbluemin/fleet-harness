@@ -1372,9 +1372,10 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
   const theater = await consoleApi<{ id?: string; theater?: { id: string } }>(endpoint, "/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
   const theaterId = theater.id ?? theater.theater?.id;
+  const { commodoreId } = await consoleApi<{ commodoreId: string }>(endpoint, "/api/v1/commodore/resolve", { theaterId });
   const count = (role: string) => agentProcs(run).filter((entry) => entry.role === role).length;
   const turns = count("turn-open");
-  await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
+  await consoleApi(endpoint, "/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
   const turnDeadline = Date.now() + 20_000;
   while (count("turn-open") <= turns && Date.now() < turnDeadline) await delay(25);
   if (count("turn-open") <= turns) {
@@ -1388,7 +1389,7 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
   }
   if (options.terminal) {
     const terminals = count("terminal");
-    await consoleApi(endpoint, "/api/v1/agent/sessions", { theaterId, cliId: "claude" });
+    await consoleApi(endpoint, "/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude" });
     await waitUntil(() => count("terminal") > terminals, 20_000, "the terminal did not start");
   }
 }

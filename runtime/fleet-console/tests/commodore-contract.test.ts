@@ -41,7 +41,7 @@ function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" |
     watch: (theaterId, sink) => createCommodoreBoardWatch(deps, theaterId, sink),
     objective: (theaterId, id) => {
       const objective = deps.objectives(theaterId).find((objective) => objective.id === id && !objective.removed);
-      return objective ? { id: objective.id, theaterId, title: objective.title } : null;
+      return objective ? { id: objective.id, commodoreId: theaterId, title: objective.title } : null;
     },
   }) });
 }
@@ -221,13 +221,13 @@ describe("commodore theater state", () => {
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
     expect(await h.route("commodore/message", { commodoreId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const hooks: CommodoreRouteHooks = { acceptsMessage: () => true, run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: id === "o1" ? "Small scope" : `Scope ${id}`, ...(id === "gone" ? { removed: { at: 1 } } : {}) } };
-    expect((await h.route("commodore/message", { commodoreId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
+    const hooks: CommodoreRouteHooks = { acceptsMessage: () => true, run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, commodoreId: id === "foreign" ? "t2" : "t1", title: id === "o1" ? "Small scope" : `Scope ${id}`, ...(id === "gone" ? { removed: { at: 1 } } : {}) } };
+    expect((await h.route("commodore/message", { commodoreId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_owner_mismatch" });
     expect((await h.route("commodore/message", { commodoreId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
     // 본문 속 지휘관 참조 — 같은 Theater 의 지운 적 없는 목표만, 셋까지, 본문의 표식 글자 수와 짝이 맞을 때만 기록한다. 참조와 짝이 맞지
     // 않는 표식 글자는 거절한다(검증하지 않은 참조가 서지 않는다).
     for (const [body, error] of [
-      [{ text: `${MARK} vs ${MARK}`, references: ["o2", "foreign"] }, "objective_theater_mismatch"],
+      [{ text: `${MARK} vs ${MARK}`, references: ["o2", "foreign"] }, "objective_owner_mismatch"],
       [{ text: `${MARK} ${MARK}`, references: ["o2", "missing"] }, "unknown_objective"],
       [{ text: MARK, references: ["gone"] }, "unknown_objective"],
       [{ text: MARK.repeat(4), references: ["o2", "o3", "o4", "o5"] }, "invalid_request"],
@@ -452,7 +452,7 @@ describe("commodore session", () => {
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
     const options = stub.created[0]!;
     expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation", sessionName: "commodore-fleet-harness-t1" });
-    expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
+    expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read"], browser: { scopeId: "commodore:t1" } });
@@ -943,7 +943,7 @@ describe("commodore supervisor", () => {
       h.store.setDirective("t1", "Still do not wake automatically.");
       h.store.addIntel("t1", { text: "Still wait." });
       objectives.push({ id: "waiting", theaterId: "t1", title: "Waiting", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "Waiting work", done: false }] } as unknown as Objective);
-      for (const listener of listeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "waiting" });
+      for (const listener of listeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "waiting" });
       supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(24 * TEST_PATROL_MS);
       expect(sent).toHaveLength(1);
@@ -1062,7 +1062,7 @@ describe("commodore supervisor", () => {
         boardTools: () => [{ name: "console_objectives_detail", description: "", inputSchema: {}, execute: async (args) => {
           const target = objectives.find((objective) => objective.id === (args as { objectiveId?: string }).objectiveId);
           if (target && commanderActivity.has(target.id)) return { content: [], structuredContent: { error: "objective_busy", retryWhen: "commander_turn_end" }, isError: true };
-          if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: target.id }); }
+          if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: target.id }); }
           return { content: [] };
         } }], observe: restClock((id) => ({ lifecycle: "live", activity: commanderActivity.get(id) ?? "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never)),
         notifyCommanderRest: async (id) => { restNotices.push(id); return true; },
@@ -1123,15 +1123,15 @@ describe("commodore supervisor", () => {
       // 보드 — 사령관이 운영하는 목표의 상태가 한 단계 옮겨 갈 때마다(새 목표 포함) 깨우고, 대기 상태는 지금 그 상태인 목표 수로 함께 싣는다.
       // 진행 중에 모인 후속 후보는 깨우지 않는다 — 인계 뒤 검토와 함께 한 번에 선다(아래).
       objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [{ id: "f1", rev: 1, state: "open", title: "Later" }], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["decision:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('1 objective status change: "Remote pairing" new → in progress');
       expect(sessions[0]!.sent).toHaveLength(3);
       // 구상이 내려앉으면(미션이 생긴 시작 전 목표) planned 로도 깨운다.
       objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o2" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["planned:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("1 objective has a lineup ready to commence");
@@ -1156,13 +1156,13 @@ describe("commodore supervisor", () => {
       expect(tokens().slice(-2)).toEqual([["planned:1"], ["planned:1"]]);
       // 임무가 끝나 인계를 기다리는 단계는 지휘관의 몫이다 — 깨우지 않는다.
       (objectives[0] as { awaitingHandoff: boolean }).awaitingHandoff = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(6);
       // 인계는 지휘관 턴 도중에 기록된다 — 그 턴이 끝난 뒤에 검토 대기로 깨운다(그 전의 완료는 objective_busy 다).
       commanderActivity.set("o1", "running");
       Object.assign(objectives[0]!, { awaitingHandoff: false, awaitingReview: true });
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(6);
       commanderActivity.delete("o1");
@@ -1178,14 +1178,14 @@ describe("commodore supervisor", () => {
       // 그 턴의 범위 줄에 목표 id·운영 판정·코드가 남는다. 돌려받은 뒤의 변화는 다시 깨우지 않는다.
       const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { commodoreOperated?: boolean; planning: boolean; missions: { id: string; text: string; done: boolean }[] };
       objectives.push(human);
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       human.planning = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(7);
       human.planning = false;
       human.commodoreOperated = true;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["pending:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own" handed to you by the person (not started)');
@@ -1193,9 +1193,9 @@ describe("commodore supervisor", () => {
       expect(entries.at(-1)).toMatchObject({ kind: "result" });
       expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["pending:1", "status:1"] }, { kind: "wake-scope", woke: [{ id: "o3", operator: "commodore", codes: ["pending", "status"] }], held: [{ id: "o3", operator: "human", codes: ["pending", "status"] }] }]);
       human.commodoreOperated = false;
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       human.missions.push({ id: "m1", text: "x", done: false });
-      for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o3" });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(8);
       (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;

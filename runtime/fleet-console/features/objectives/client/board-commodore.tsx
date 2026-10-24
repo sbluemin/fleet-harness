@@ -6,7 +6,7 @@ import { followupsJudgeable, livePersonHold, reasonAwaits } from "../shared/boar
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { goToObjective } from "./fresh-conversation.js";
-import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readTheater, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
+import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
 /** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
 export function isRunningObjective(objective: Objective): boolean {
@@ -56,6 +56,8 @@ export function isCommodoreWaiting(objective: Objective): boolean {
 
 
 let host: CommodoreClientHost | undefined;
+export const ownerOfContext = (theaterId: string | null) => theaterId ? host?.ownerOfContext(theaterId) ?? null : null;
+export const resolveContext = (theaterId: string) => host?.resolveContext(theaterId) ?? Promise.resolve(null);
 let revision = 0;
 const listeners = new Set<() => void>();
 const conversationListeners = new Set<() => void>();
@@ -71,50 +73,50 @@ export function installCommodoreHost(next: CommodoreClientHost | undefined): () 
 export const subscribeCommodore = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const commodoreRevision = () => revision;
 const EMPTY = { commodoreId: "", active: false, stalled: [] as readonly string[], enabled: false, peek: false, view: null, asks: [] };
-export const commodoreBoardOf = (theaterId: string) => host?.read(theaterId) ?? EMPTY;
+export const commodoreBoardOf = (commodoreId: string) => host?.read(commodoreId) ?? EMPTY;
 export const readCommodore = commodoreBoardOf;
-export const openAsks = (theaterId: string | null) => theaterId ? host?.read(theaterId).asks ?? EMPTY.asks : EMPTY.asks;
+export const openAsks = (commodoreId: string | null) => commodoreId ? host?.read(commodoreId).asks ?? EMPTY.asks : EMPTY.asks;
 export const openAskTheaters = () => host?.askTheaters() ?? [];
 export const commodoreLanguage = () => host?.language();
 export const isCommodoreConversationActive = () => host?.conversationActive() ?? false;
 export const subscribeCommodoreConversationActive = (listener: () => void) => { conversationListeners.add(listener); return () => { conversationListeners.delete(listener); }; };
-export const openCommodoreConversation = (theaterId: string, options?: Parameters<CommodoreClientHost["open"]>[1]) => host?.open(theaterId, options) ?? false;
-export const openCommodoreLog = (theaterId: string) => { host?.open(theaterId, { tab: "log" }); };
-export const openCommodoreMobile = (tab: "log" | "directive" | "memory" | "settings" | "goals", theaterId: string | null) => { if (theaterId) host?.open(theaterId, { tab, mobile: true }); };
+export const openCommodoreConversation = (commodoreId: string, options?: Parameters<CommodoreClientHost["open"]>[1]) => host?.open(commodoreId, options) ?? false;
+export const openCommodoreLog = (commodoreId: string) => { host?.open(commodoreId, { tab: "log" }); };
+export const openCommodoreMobile = (tab: "log" | "directive" | "memory" | "settings" | "goals", commodoreId: string | null) => { if (commodoreId) host?.open(commodoreId, { tab, mobile: true }); };
 export const renderCommodoreRowGlyph = () => host?.renderRowGlyph("", true) ?? null;
 export const renderCommodoreRowGlyphOff = () => host?.renderRowGlyph("", false) ?? null;
 const boards = new Map<string, { readonly key: string; readonly value: { readonly active: boolean; readonly stalled: readonly string[] } }>();
-function boardSnapshot(theaterId: string) {
-  const { active, stalled } = commodoreBoardOf(theaterId);
+function boardSnapshot(commodoreId: string) {
+  const { active, stalled } = commodoreBoardOf(commodoreId);
   const key = `${active}:${stalled.join(",")}`;
-  const hit = boards.get(theaterId);
+  const hit = boards.get(commodoreId);
   if (hit?.key === key) return hit.value;
-  const value = { active, stalled }; boards.set(theaterId, { key, value }); return value;
+  const value = { active, stalled }; boards.set(commodoreId, { key, value }); return value;
 }
-export function useCommodoreBoard(theaterId: string) {
-  const result = useSyncExternalStore(subscribeCommodore, () => boardSnapshot(theaterId), () => boardSnapshot(theaterId));
-  const enabled = useSyncExternalStore(subscribeCommodore, () => commodoreBoardOf(theaterId).enabled, () => commodoreBoardOf(theaterId).enabled);
-  useEffect(() => { if (enabled && theaterId) void host?.load(theaterId); }, [enabled, theaterId]);
+export function useCommodoreBoard(commodoreId: string) {
+  const result = useSyncExternalStore(subscribeCommodore, () => boardSnapshot(commodoreId), () => boardSnapshot(commodoreId));
+  const enabled = useSyncExternalStore(subscribeCommodore, () => commodoreBoardOf(commodoreId).enabled, () => commodoreBoardOf(commodoreId).enabled);
+  useEffect(() => { if (enabled && commodoreId) void host?.load(commodoreId); }, [enabled, commodoreId]);
   return result;
 }
 
 const projected = new WeakMap<Objective, CommodoreBoardObjective>();
 function project(objective: Objective): CommodoreBoardObjective {
   const hit = projected.get(objective); if (hit) return hit;
-  const { id, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions } = objective;
-  const view = { id, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
+  const { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions } = objective;
+  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
   projected.set(objective, view); return view;
 }
 const lists = new WeakMap<readonly Objective[], readonly CommodoreBoardObjective[]>();
 function projectList(source: readonly Objective[]) { let hit = lists.get(source); if (!hit) { hit = source.map(project); lists.set(source, hit); } return hit; }
-const snapshots = new WeakMap<ReturnType<typeof readTheater>, CommodoreBoardSnapshot>();
+const snapshots = new WeakMap<ReturnType<typeof readBoard>, CommodoreBoardSnapshot>();
 const NO_FINISHED: readonly CommodoreBoardObjective[] = [];
-function ObjectiveMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
-  const source = useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId));
-  const readFinished = () => finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_FINISHED;
+function ObjectiveMark({ commodoreId, objectiveId, size }: { readonly commodoreId: string; readonly objectiveId: string; readonly size: number }) {
+  const source = useSyncExternalStore(subscribeObjective, () => readBoard(commodoreId), () => readBoard(commodoreId));
+  const readFinished = () => finishedObjectivesLoaded(commodoreId) ? finishedObjectives(commodoreId) : NO_FINISHED;
   useSyncExternalStore(subscribeFinishedObjectivesStore, readFinished, readFinished);
   const objectiveRecords = useObjectiveSummaries();
-  const objective = source.objectives.find((candidate) => candidate.id === objectiveId) ?? finishedObjectives(theaterId).find((candidate) => candidate.id === objectiveId);
+  const objective = source.objectives.find((candidate) => candidate.id === objectiveId) ?? finishedObjectives(commodoreId).find((candidate) => candidate.id === objectiveId);
   if (!objective) return null;
   const activity = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === objectiveId)?.activity ?? "closed";
   return <ObjectiveAvatar objectiveId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
@@ -122,9 +124,9 @@ function ObjectiveMark({ theaterId, objectiveId, size }: { readonly theaterId: s
 export const commodoreBoard: CommodoreBoardClient = {
   railEntryIds: ["objectives"],
   serverReached: noteAlive,
-  read(theaterId) { const source = readTheater(theaterId); let hit = snapshots.get(source); if (!hit) { hit = { loaded: source.loaded, objectives: projectList(source.objectives) }; snapshots.set(source, hit); } return hit; },
+  read(commodoreId) { const source = readBoard(commodoreId); let hit = snapshots.get(source); if (!hit) { hit = { loaded: source.loaded, objectives: projectList(source.objectives) }; snapshots.set(source, hit); } return hit; },
   subscribe: subscribeObjective,
-  finished: (theaterId) => finishedObjectivesLoaded(theaterId) ? projectList(finishedObjectives(theaterId)) : NO_FINISHED,
+  finished: (commodoreId) => finishedObjectivesLoaded(commodoreId) ? projectList(finishedObjectives(commodoreId)) : NO_FINISHED,
   finishedLoaded: finishedObjectivesLoaded,
   loadFinished: loadFinishedObjectives,
   subscribeFinished: subscribeFinishedObjectivesStore,
@@ -133,5 +135,5 @@ export const commodoreBoard: CommodoreBoardClient = {
   openObjectiveFromCluster,
   openObjectiveOnPhone,
   revealObjective,
-  renderObjectiveAvatar: (theaterId, objectiveId, size) => <ObjectiveMark theaterId={theaterId} objectiveId={objectiveId} size={size} />,
+  renderObjectiveAvatar: (commodoreId, objectiveId, size) => <ObjectiveMark commodoreId={commodoreId} objectiveId={objectiveId} size={size} />,
 };

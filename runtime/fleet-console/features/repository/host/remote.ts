@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import type http from "node:http";
 
 import type { RepositoryRouteContext } from "./index.js";
@@ -37,12 +38,12 @@ async function resolveRemoteContext(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return null; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return null; }
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown }>(req);
-  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body) || "subPath" in body) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return null;
   }
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return null; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return null;
   let gitCwd: string;
   try { ({ gitCwd } = await resolveGitCwd(theaterPath, body.repoRel)); }
   catch (error) {

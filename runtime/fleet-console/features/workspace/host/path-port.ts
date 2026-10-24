@@ -20,6 +20,7 @@ export interface WorkspacePaths {
    */
   readonly consoleDataDir: string;
   resolveTheaterPath(theaterId: string): string | null;
+  resolveObjectivePath?(objectiveId: string): string | null;
   /** Objective 이 아직 없는 Theater 의 기능 레코드도 다시 찾는다. */
   listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;

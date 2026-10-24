@@ -114,7 +114,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
     };
   };
   const objectiveView = (objective: Objective) => ({
-    id: objective.id, theaterId: objective.theaterId, title: objective.title, archived: objective.archived === true,
+    id: objective.id, commodoreId: objective.commodoreId, theaterId: objective.theaterId, title: objective.title, archived: objective.archived === true,
     ...withoutEmpty({
       // 사람이 쓴 목표 설명 — 도구 설명이 부르는 이름(brief)으로 싣는다.
       groupId: objective.groupId, brief: objective.note,

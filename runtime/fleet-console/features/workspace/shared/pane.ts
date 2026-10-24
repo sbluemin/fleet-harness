@@ -179,6 +179,8 @@ export type PaneMount = "rail" | "expanded";
 export interface ConversationToolScope {
   readonly key: string;
   readonly location: ConversationWorkLocation;
+  /** 이 대화가 목표면 그 id. 도구 요청은 theaterId 대신 이것을 보낸다. */
+  readonly objectiveId?: string;
 }
 
 export interface ConversationWorkLocation {

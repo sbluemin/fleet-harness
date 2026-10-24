@@ -42,7 +42,7 @@ describe("deferred deletion coordinator", () => {
     const harness = createHarness();
     harness.objectiveRecords.create(makeObjective("op-a"));
     harness.objectiveRecords.create(makeObjective("op-b"));
-    harness.objectiveRecords.createGroup({ id: "group-a", theaterId: THEATER.id, name: "Alpha", color: "blue" });
+    harness.objectiveRecords.createGroup({ id: "group-a", commodoreId: "c1", theaterId: THEATER.id, name: "Alpha", color: "blue" });
     const deletion = harness.coordinator.deleteTheater(THEATER.id);
     if (!deletion) throw new Error("expected deletion");
 
@@ -125,7 +125,7 @@ describe("Objective archive persistence and deletion", () => {
       expect(saved.entries).toEqual([{ objectiveId: "parent", archiveId: receipt.archiveId, archivedAt: receipt.archivedAt }]);
       const objectiveFile = path.join(directory, "commodore/owner/objectives/parent/objective.json");
       expect(JSON.parse(fs.readFileSync(objectiveFile, "utf8")).sessions[0].session.id).toBe("private-child-session");
-      h.storage.board.save(THEATER.id, { ...h.storage.board.list(THEATER.id)[0]!, note: "archived note", missions: [{ id: "m1", text: "retain", records: [{ at: 1, lines: ["proof"] }] }] } as never);
+      h.storage.board.save("c1", { ...h.storage.board.list("c1")[0]!, note: "archived note", missions: [{ id: "m1", text: "retain", records: [{ at: 1, lines: ["proof"] }] }] } as never);
       expect(JSON.parse(fs.readFileSync(objectiveFile, "utf8")).note).toBe("archived note");
       expect(fs.readFileSync(path.join(directory, "commodore/owner/objectives/archive.json"), "utf8")).not.toContain("archived note");
       expect(JSON.stringify(saved)).not.toMatch(/"(?:payload|geometry|theaterId|pluginId|userQuestions|resumeAvailable|launchKey)"\s*:/);
@@ -145,7 +145,7 @@ describe("Objective archive persistence and deletion", () => {
       const restarted = createArchiveHarness(directory);
       expect(restarted.archive.listArchived().total).toBe(1);
       expect(restarted.objectiveRecords.list()).toEqual([]);
-      expect(restarted.storage.board.list(THEATER.id)[0]).toMatchObject({ note: "archived note", missions: [{ id: "m1", records: [{ lines: ["proof"] }] }] });
+      expect(restarted.storage.board.list("c1")[0]).toMatchObject({ note: "archived note", missions: [{ id: "m1", records: [{ lines: ["proof"] }] }] });
       const restored = await restarted.archive.undoArchive(receipt);
       expect(restored.rootObjectiveId).toBe("parent");
       expect(restored.objectiveRecords.map((node) => node.id).sort()).toEqual(["parent"]);
@@ -153,8 +153,8 @@ describe("Objective archive persistence and deletion", () => {
       expect(restarted.objectiveRecords.get("parent")?.session).toEqual({ harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" });
       expect(restarted.objectiveRecords.get("11111111-1111-4111-8111-111111111111")?.restoredDormant).toBe(true);
       expect(restarted.objectiveRecords.list()).toHaveLength(1);
-      expect(restarted.storage.board.list(THEATER.id)[0]?.note).toBe("archived note");
-      expect(() => restarted.storage.board.forget(THEATER.id, "parent")).toThrow("archive_recovery_required");
+      expect(restarted.storage.board.list("c1")[0]?.note).toBe("archived note");
+      expect(() => restarted.storage.board.forget("c1", "parent")).toThrow("archive_recovery_required");
       expect(restarted.archive.listArchived().entries).toEqual([]);
       await restarted.archive.archive("parent");
       const confirm = restarted.archive.previewPurge("parent");
@@ -166,7 +166,7 @@ describe("Objective archive persistence and deletion", () => {
       expect(restarted.events.filter((event) => event.channel === "objective:purged").map((event) => event.objectiveId).sort()).toEqual(["parent"]);
       expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
       expect(fs.existsSync(path.dirname(objectiveFile))).toBe(false);
-      expect(() => restarted.storage.board.save(THEATER.id, { id: "parent", note: "late", missions: [], rank: 0 })).toThrow("archive_recovery_required");
+      expect(() => restarted.storage.board.save("c1", { id: "parent", note: "late", missions: [], rank: 0 })).toThrow("archive_recovery_required");
     });
   });
 
@@ -249,27 +249,32 @@ describe("Objective archive persistence and deletion", () => {
 
   it("deletes archived clusters through grace and purge, preserving original locations on Theater undo", async () => {
     await withArchiveDirectory(async (directory) => {
-      let h = createArchiveHarness(directory);
-      h.objectiveRecords.create(makeObjective("parent"));
+      let h = createArchiveHarness(directory, true);
+      h.objectiveRecords.create({ ...makeObjective("parent"), cwd: THEATER.path });
       h.objectiveRecords.createChild({ parentObjectiveId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
       await h.archive.archive("parent");
       const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
       expect(theaterDeletion.archivedObjectiveCount).toBe(1);
       const objectiveFile = path.join(directory, "commodore/owner/objectives/parent/objective.json");
       expect(fs.existsSync(objectiveFile)).toBe(true);
-      h.storage.board.save(THEATER.id, { ...h.storage.board.list(THEATER.id)[0]!, note: "grace preserved" });
+      h.storage.board.save("c1", { ...h.storage.board.list("c1")[0]!, note: "grace preserved" });
       const index = JSON.parse(fs.readFileSync(path.join(directory, "commodore/owner/objectives/archive.json"), "utf8"));
       expect(index.deletions[0].objectiveIds).toEqual(["parent"]);
       expect(index.deletions[0]).not.toHaveProperty("objectives");
-      expect(() => h.storage.board.forget(THEATER.id, "parent")).toThrow("archive_recovery_required");
-      h = createArchiveHarness(directory);
+      const locationOwnerIndex = JSON.parse(fs.readFileSync(path.join(directory, "commodore/location-owner/objectives/archive.json"), "utf8"));
+      expect(locationOwnerIndex.deletions[0].objectiveIds).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(objectiveFile, "utf8")).cwd).toBe(THEATER.path);
+      expect(() => h.storage.board.forget("c1", "parent")).toThrow("archive_recovery_required");
+      h = createArchiveHarness(directory, true);
       expect(h.theaters.list()).toEqual([]);
+      expect(h.deletion.list()).toHaveLength(1);
       await h.deletion.restore(theaterDeletion.deletionId);
-      expect(h.storage.board.list(THEATER.id)[0]?.note).toBe("grace preserved");
+      expect(h.storage.board.list("c1")[0]?.note).toBe("grace preserved");
       expect(JSON.parse(fs.readFileSync(objectiveFile, "utf8")).note).toBe("grace preserved");
       expect(h.objectiveRecords.get("parent")).toBeNull();
       expect(h.objectiveRecords.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
+      expect(h.archive.describe("parent")?.objectiveRecord).toMatchObject({ commodoreId: "c1", cwd: THEATER.path, theaterId: THEATER.id });
       await h.archive.archive("parent");
       const deletion = h.deletion.deleteObjective("parent")!;
       expect(h.archive.listArchived().total).toBe(0);
@@ -277,7 +282,7 @@ describe("Objective archive persistence and deletion", () => {
       h.clock.value = deletion.expiresAt;
       h.deletion.sweepExpired();
       expect(h.purged).toEqual(["parent"]);
-      const boot = createArchiveHarness(directory);
+      const boot = createArchiveHarness(directory, true);
       expect(boot.archive.listArchived().total).toBe(0);
       expect(boot.deletion.list()).toEqual([]);
       expect(boot.objectiveRecords.list()).toEqual([]);
@@ -295,15 +300,15 @@ describe("Objective archive persistence and deletion", () => {
       fs.unlinkSync(archiveFile);
       const missingIndex = createArchiveHarness(directory);
       expect(missingIndex.storage.blocked()).toBe(false);
-      expect(missingIndex.storage.board.directory(THEATER.id)).toBeNull();
-      expect(() => missingIndex.storage.board.save(THEATER.id, { id: "new", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_unavailable");
+      expect(missingIndex.storage.board.directory("c1")).toBeNull();
+      expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_unavailable");
       expect(fs.existsSync(archiveFile)).toBe(false);
       fs.writeFileSync(archiveFile, intact);
       fs.writeFileSync(archiveFile, "{broken");
       const brokenIndex = createArchiveHarness(directory);
       expect(brokenIndex.storage.blocked()).toBe(false);
-      expect(brokenIndex.storage.board.directory(THEATER.id)).toBeNull();
-      expect(() => brokenIndex.storage.board.forget(THEATER.id, "op")).toThrow("objective_owner_unavailable");
+      expect(brokenIndex.storage.board.directory("c1")).toBeNull();
+      expect(() => brokenIndex.storage.board.forget("c1", "op")).toThrow("objective_owner_unavailable");
       expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
     });
   });
@@ -433,12 +438,12 @@ async function withArchiveDirectory(run: (directory: string) => Promise<void>): 
   try { await run(directory); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
-function createArchiveHarness(directory: string) {
+function createArchiveHarness(directory: string, crossOwner = false) {
   const fault = { state: false, finalize: false };
   const clock = { value: 1_000 };
   const diskState = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
   const stateStore: DurableJsonStore<DurableConsoleState> = { ...diskState, save: (state) => { if (fault.state) throw new Error("state_write_failed"); diskState.save(state); } };
-  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(directory, "commodore/owner/objectives"), theaterId: THEATER.id, workspacePath: directory }], createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
+  const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(directory, "commodore/owner/objectives"), commodoreId: "c1", legacyTheaterId: crossOwner ? "owner-home" : THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id }, ...(crossOwner ? [{ directory: path.join(directory, "commodore/location-owner/objectives"), commodoreId: "c2", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id }] : [])], createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
     const store = createDurableJsonStore(deps);
     return { ...store, save: (value: unknown) => { if (fault.finalize && deps.filePath.endsWith("archive.json") && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
   }) as typeof createDurableJsonStore });
@@ -508,6 +513,7 @@ function createHarness() {
 function makeObjective(id: string) {
   return {
     id,
+    commodoreId: "c1",
     theaterId: THEATER.id,
     type: "agent",
     pluginId: "terminal",

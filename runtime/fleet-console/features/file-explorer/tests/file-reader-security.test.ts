@@ -138,6 +138,34 @@ describe("Files reference resolution", () => {
   });
 });
 
+describe("objective selector", () => {
+  it("reads the objective directory and does not fall back to the Theater", async () => {
+    const objectiveRoot = path.join(tmpDir, "objective");
+    await fs.promises.mkdir(objectiveRoot);
+    await fs.promises.writeFile(path.join(objectiveRoot, "only-here.txt"), "objective\n");
+    const theaterCalls: string[] = [];
+    const call = async (body: Record<string, unknown>) => {
+      let status = 0;
+      let payload: unknown;
+      const ctx = { host: {
+        security: { isTerminalAuthorized: () => true },
+        paths: {
+          resolveTheaterPath: (id: string) => { theaterCalls.push(id); return theaterPath; },
+          resolveObjectivePath: (id: string) => id === "obj-1" ? objectiveRoot : null,
+        },
+        http: { readJsonBody: async () => body, writeJson: (_res: unknown, code: number, value: unknown) => { status = code; payload = value; } },
+      } } as unknown as FileExplorerRouteContext;
+      await handleFilesRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+      expect(JSON.stringify(payload)).not.toContain(tmpDir);
+      return { status, payload };
+    };
+    expect(await call({ objectiveId: "obj-1", relativePath: "only-here.txt" })).toMatchObject({ status: 200, payload: { content: "objective\n" } });
+    expect(await call({ objectiveId: "obj-1", theaterId: "fixture", relativePath: "only-here.txt" })).toEqual({ status: 400, payload: { error: "ambiguous_selector" } });
+    expect(await call({ objectiveId: "missing", relativePath: "only-here.txt" })).toEqual({ status: 404, payload: { error: "unavailable" } });
+    expect(theaterCalls).toEqual([]);
+  });
+});
+
 describe("readImageForTheater — symlink containment", () => {
 
   it("rejects a symlinked image that resolves outside the Theater", async () => {

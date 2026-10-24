@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import type { Dir } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -129,9 +130,9 @@ export async function handleRepositoryRepos(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly maxDepth?: unknown }>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let realTheaterPath: string;
   try { realTheaterPath = await fs.realpath(theaterPath); }

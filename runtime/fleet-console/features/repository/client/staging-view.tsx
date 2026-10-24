@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "./icons.js";
 
@@ -144,7 +145,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     fetch("/api/v1/repository/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel }),
     }).then(async (response) => {
       if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<StatusResult>;
@@ -196,7 +197,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       const response = await fetch(`/api/v1/repository/${route}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...body }),
+        body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ...body }),
       });
       const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (!response.ok) {
@@ -263,7 +264,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     ctx.api.fetch("repository/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: workstate.headSha }),
+      body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ref: workstate.headSha }),
     }).then(async (response) => {
       if (!response.ok) return null;
       return response.json() as Promise<CommitResult>;

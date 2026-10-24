@@ -22,10 +22,10 @@ export function nameOfPath(relativePath: string): string {
   return relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
 }
 
-export async function refreshDocumentDiskStatus(theaterId: string, paths: readonly string[], signal?: AbortSignal): Promise<void> {
+export async function refreshDocumentDiskStatus(theaterId: string, paths: readonly string[], signal?: AbortSignal, objectiveId?: string): Promise<void> {
   if (paths.length === 0) return;
   const before = getFileExplorerSnapshot(theaterId).docStates;
-  const response = await fetch("/api/v1/file-explorer/files/disk-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, paths }), ...(signal ? { signal } : {}) });
+  const response = await fetch("/api/v1/file-explorer/files/disk-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), paths }), ...(signal ? { signal } : {}) });
   if (!response.ok || signal?.aborted) return;
   const result = await response.json() as { statuses: FileDiskStatus[] };
   if (signal?.aborted) return;
@@ -44,12 +44,13 @@ export interface LoadDocumentOptions {
   readonly language?: ConsoleLocale;
   readonly signal?: AbortSignal;
   readonly window?: FileReadRequest;
+  readonly objectiveId?: string;
 }
 
 export async function loadDocument(
   theaterId: string | null,
   relativePath: string,
-  { silent, language, signal, window: requestedWindow }: LoadDocumentOptions,
+  { silent, language, signal, window: requestedWindow, objectiveId }: LoadDocumentOptions,
 ): Promise<void> {
   if (!theaterId) return;
   const t = getT(language);
@@ -69,7 +70,7 @@ export async function loadDocument(
     // 그 상태로 두면 첫 목록이 "이미 바뀐 뒤"의 값일 수 있어 그 변경을 영영 놓친다 — 지금 확보한다.
     if (knownMtime(theaterId, relativePath) === undefined) {
       try {
-        const listing = await makeFilesClient(theaterId).listFolder(parentDirOf(relativePath));
+        const listing = await makeFilesClient(objectiveId ? { objectiveId } : theaterId).listFolder(parentDirOf(relativePath));
         noteEntryStats(theaterId, listing.entries);
       } catch { /* 목록 실패는 표식 없이 여는 것으로 감수한다 — 다음 목록에서 회복된다 */ }
       if (!current()) return;
@@ -77,7 +78,7 @@ export async function loadDocument(
     const mtimeMs = knownMtime(theaterId, relativePath);
     const sizeBytes = knownSize(theaterId, relativePath);
     const src = cacheBustedImageSrc(
-      `/api/v1/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,
+      `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&path=${encodeURIComponent(relativePath)}`,
       mtimeMs,
     );
     setDocViewState(theaterId, relativePath, { kind: "image", relativePath, name, src, mtimeMs, sizeBytes, stale: false });
@@ -90,7 +91,7 @@ export async function loadDocument(
     const res = await fetch("/api/v1/file-explorer/files/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, relativePath, window: readWindow }),
+      body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), relativePath, window: readWindow }),
       ...(signal ? { signal } : {}),
     });
     if (!res.ok) {

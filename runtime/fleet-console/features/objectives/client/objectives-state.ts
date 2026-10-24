@@ -1,3 +1,4 @@
+import { ownerOfContext, resolveContext, subscribeCommodore } from "./board-commodore.js";
 import type { ObjectivesClientDeps } from "./deps.js";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -22,10 +23,10 @@ export interface ObjectiveGroup {
   readonly name: string;
   readonly color: string;
   readonly order: number;
-  readonly theaterId: string;
+  readonly commodoreId: string;
 }
 
-interface TheaterState {
+interface OwnerState {
   readonly objectives: readonly Objective[];
   readonly groups: readonly ObjectiveGroup[];
   readonly loaded: boolean;
@@ -40,8 +41,8 @@ export interface RevealTarget {
   readonly at: number;
 }
 
-const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
-const theaters = new Map<string, TheaterState>();
+const EMPTY: OwnerState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
+const boards = new Map<string, OwnerState>();
 const listeners = new Set<() => void>();
 /** 대화 중심 화면 가운데 칸의 시작 전 목표 화면(fresh-conversation.tsx 의 conversationSurface). */
 export const FRESH_SURFACE_ID = "objective-fresh";
@@ -95,9 +96,9 @@ function isTransient(error: unknown): boolean {
 }
 
 /** 미룬 조회를 마지막 실패에서 첫 간격만 지나면 다시 묻게 당긴다 — 증거·사람의 동작이 잦아도 2초에 한 번을 넘지 않는다. */
-function rearm(theaterId: string): void {
-  const retry = loadRetries.get(theaterId);
-  if (retry && !retry.permanent) loadRetries.set(theaterId, { ...retry, nextAt: Math.min(retry.nextAt, retry.failedAt + RETRY_BASE_MS) });
+function rearm(commodoreId: string): void {
+  const retry = loadRetries.get(commodoreId);
+  if (retry && !retry.permanent) loadRetries.set(commodoreId, { ...retry, nextAt: Math.min(retry.nextAt, retry.failedAt + RETRY_BASE_MS) });
 }
 
 function noteTransient(): void {
@@ -115,7 +116,7 @@ function noteTransient(): void {
 export function noteAlive(): void {
   if (!degraded) return;
   degraded = null;
-  for (const theaterId of loadRetries.keys()) rearm(theaterId);
+  for (const commodoreId of loadRetries.keys()) rearm(commodoreId);
   scheduleRetry(true);
 }
 
@@ -129,7 +130,7 @@ export function noteAlive(): void {
 function noteReconnected(): void {
   const now = Date.now();
   if (degraded) degraded = { failures: degraded.failures, until: now };
-  for (const [theaterId, retry] of loadRetries) if (!retry.permanent) loadRetries.set(theaterId, { ...retry, nextAt: now });
+  for (const [commodoreId, retry] of loadRetries) if (!retry.permanent) loadRetries.set(commodoreId, { ...retry, nextAt: now });
   scheduleRetry(true);
 }
 
@@ -163,9 +164,9 @@ function scheduleRetry(sweep = false): void {
 }
 
 /** 확정 실패로 정착시킨 Theater 를 처음부터 다시 묻게 한다 — 다시 등록됐거나 플러그인이 새로 설치됐다. */
-function unsettle(theaterId: string): void {
-  loadRetries.delete(theaterId);
-  setTheater(theaterId, { loaded: false });
+function unsettle(commodoreId: string): void {
+  loadRetries.delete(commodoreId);
+  setBoard(commodoreId, { loaded: false });
 }
 
 /**
@@ -181,7 +182,7 @@ let describedRevision = 0;
 
 function referencedObjectiveIds(): ReadonlySet<string> {
   const ids = new Set<string>();
-  for (const state of theaters.values()) {
+  for (const state of boards.values()) {
     for (const objective of state.objectives) {
       ids.add(objective.id);
     }
@@ -204,7 +205,7 @@ function describeMissingObjectiveRecords(): void {
       .then((description) => {
         described.set(id, description === null ? null : {
           id: description.objectiveRecord.id,
-          theaterId: description.objectiveRecord.theaterId,
+          commodoreId: description.objectiveRecord.commodoreId, theaterId: description.objectiveRecord.theaterId,
           type: "agent",
           title: description.objectiveRecord.title,
           // 보관된 Objective 은 실행이 멈춘 상태다 — 지금의 휴면 줄과 같은 모양으로 선다.
@@ -212,7 +213,7 @@ function describeMissingObjectiveRecords(): void {
           ownActivity: "ended",
         });
         if (description) for (const child of description.objectiveRecord.sessions ?? []) {
-          described.set(child.id, { id: child.id, theaterId: description.objectiveRecord.theaterId, type: "agent",
+          described.set(child.id, { id: child.id, commodoreId: description.objectiveRecord.commodoreId, theaterId: description.objectiveRecord.theaterId, type: "agent",
             title: readObjectiveLaunch(child).sessionName ?? child.id.slice(0, 8),
             parentObjectiveId: description.objectiveRecord.id, activity: "ended", ownActivity: "ended" });
         }
@@ -244,29 +245,29 @@ function reconcileObjectiveRecords(api: ClientApiCapability): void {
   const listed = new Set(objectiveRecordsSnapshot.map((objectiveRecord) => objectiveRecord.id));
   // 세션이 일시 거절 중이면 목표를 묻지 않는다 — 게이트가 내려가거나 기한이 지난 뒤의 스냅숏·타이머가 다시 맞춘다.
   const holding = degraded !== null && Date.now() < degraded.until;
-  for (const [theaterId, state] of theaters) {
+  for (const [commodoreId, state] of boards) {
     if (!state.loaded) continue;
     if (state.objectives.some((objective) => objective.recorded === false && !listed.has(objective.id))) {
-      setTheater(theaterId, { objectives: state.objectives.filter((objective) => objective.recorded !== false || listed.has(objective.id)) });
+      setBoard(commodoreId, { objectives: state.objectives.filter((objective) => objective.recorded !== false || listed.has(objective.id)) });
     }
     // 제목은 Objective 의 것이다 — 자동 작명처럼 사건 없이 바뀐 제목도 Objective 목록에서 따라간다.
     const titles = new Map(objectiveRecordsSnapshot.map((objectiveRecord) => [objectiveRecord.id, objectiveRecord.title]));
-    const stale = (theaters.get(theaterId) ?? state).objectives;
+    const stale = (boards.get(commodoreId) ?? state).objectives;
     if (stale.some((objective) => titles.has(objective.id) && titles.get(objective.id) !== objective.title)) {
-      setTheater(theaterId, { objectives: stale.map((objective) => (titles.has(objective.id) && titles.get(objective.id) !== objective.title ? { ...objective, title: titles.get(objective.id)! } : objective)) });
+      setBoard(commodoreId, { objectives: stale.map((objective) => (titles.has(objective.id) && titles.get(objective.id) !== objective.title ? { ...objective, title: titles.get(objective.id)! } : objective)) });
     }
-    const known = new Set((theaters.get(theaterId) ?? state).objectives.map((objective) => objective.id));
+    const known = new Set((boards.get(commodoreId) ?? state).objectives.map((objective) => objective.id));
     const members = memberIds(state.objectives);
     for (const objectiveRecord of objectiveRecordsSnapshot) {
       // 부모 아래 선 Objective(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
-      if (objectiveRecord.theaterId !== theaterId || objectiveRecord.type !== "agent" || objectiveRecord.parentObjectiveId || known.has(objectiveRecord.id) || members.has(objectiveRecord.id) || fetching.has(objectiveRecord.id) || unknownToServer.has(objectiveRecord.id)) continue;
+      if (objectiveRecord.commodoreId !== commodoreId || objectiveRecord.type !== "agent" || objectiveRecord.parentObjectiveId || known.has(objectiveRecord.id) || members.has(objectiveRecord.id) || fetching.has(objectiveRecord.id) || unknownToServer.has(objectiveRecord.id)) continue;
       if (holding) continue;
       fetching.add(objectiveRecord.id);
       void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: objectiveRecord.id })
         .then(({ objective }) => {
-          const latest = theaters.get(objective.theaterId) ?? EMPTY;
+          const latest = boards.get(objective.commodoreId) ?? EMPTY;
           // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
-          if (!objective.archived && !isClosedObjective(objective.id) && !latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
+          if (!objective.archived && !isClosedObjective(objective.id) && !latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setBoard(objective.commodoreId, { objectives: [objective, ...latest.objectives] });
         })
         .catch((error: unknown) => {
           // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
@@ -282,33 +283,35 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-function setTheater(theaterId: string, next: Partial<TheaterState>): void {
-  theaters.set(theaterId, { ...(theaters.get(theaterId) ?? EMPTY), ...next });
+function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
+  boards.set(commodoreId, { ...(boards.get(commodoreId) ?? EMPTY), ...next });
   notify();
   describeMissingObjectiveRecords();
 }
 
 /** 모든 등록 Theater와 관측된 Objective의 Theater를 같은 조회 정책으로 읽는다. */
 function loadRegisteredTheaters(api: ClientApiCapability): void {
-  const ids = [...new Set([...(installed?.consoleState.getTheaters() ?? []).map((theater) => theater.id), ...objectiveRecordsSnapshot.filter((objectiveRecord) => objectiveRecord.type === "agent" && !objectiveRecord.parentObjectiveId).map((objectiveRecord) => objectiveRecord.theaterId)])].filter(Boolean);
+  for (const theater of installed?.consoleState.getTheaters() ?? []) {
+    if (!ownerOfContext(theater.id)) void resolveContext(theater.id).then((id: string | null) => { if (id && installed?.api === api) void loadBoard(api, id); }).catch(() => {});
+  }
+  const ids = [...new Set([...(installed?.consoleState.getTheaters() ?? []).flatMap((theater) => ownerOfContext(theater.id) ?? []), ...objectiveRecordsSnapshot.map((node) => node.commodoreId)])].filter(Boolean);
   if (degraded) {
     if (Date.now() < degraded.until || inflight.size > 0) return;
-    const probe = ids.find((theaterId) => !theaters.get(theaterId)?.loaded || refreshAfterReconnect.has(theaterId));
-    if (probe) void loadTheater(api, probe, true);
+    const probe = ids.find((id) => !boards.get(id)?.loaded || refreshAfterReconnect.has(id));
+    if (probe) void loadBoard(api, probe, true);
     return;
   }
   const [first, ...rest] = ids;
-  const lead = first ? loadTheater(api, first, refreshAfterReconnect.has(first)) : Promise.resolve();
-  void lead.then(() => {
+  void (first ? loadBoard(api, first, refreshAfterReconnect.has(first)) : Promise.resolve()).then(() => {
     if (installed?.api !== api || degraded) return;
-    for (const theaterId of rest) void loadTheater(api, theaterId, refreshAfterReconnect.has(theaterId));
+    for (const id of rest) void loadBoard(api, id, refreshAfterReconnect.has(id));
   });
 }
 
 export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   installed = ctx;
   // 실패 장부는 새 설치에서 처음부터다 — 확정 실패로 정착시킨 Theater 도 다시 묻는다.
-  for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent) unsettle(theaterId);
+  for (const [commodoreId, retry] of [...loadRetries]) if (retry.permanent) unsettle(commodoreId);
   loadRetries.clear();
   refreshAfterReconnect.clear();
   degraded = null;
@@ -317,11 +320,11 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     // 스트림 프레임은 살아 있는 세션에서만 온다.
     noteAlive();
     const event = payload as ObjectiveEvent | null;
-    if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
+    if (!event || typeof event.objectiveId !== "string" || typeof event.commodoreId !== "string") return;
     unknownToServer.delete(event.objectiveId);
-    invalidateFinishedFor(event.theaterId, event.objectiveId, event.objective ?? null);
-    const current = theaters.get(event.theaterId) ?? EMPTY;
-    if (event.op === "remove") { objectiveRecordLocations.set(event.objectiveId, "deleted"); setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
+    invalidateFinishedFor(event.commodoreId, event.objectiveId, event.objective ?? null);
+    const current = boards.get(event.commodoreId) ?? EMPTY;
+    if (event.op === "remove") { objectiveRecordLocations.set(event.objectiveId, "deleted"); setBoard(event.commodoreId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
     upsertObjectiveLocally(event.objective, event.order);
   });
@@ -344,10 +347,10 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
     noteAlive();
     const group = (payload as { group?: ObjectiveGroup } | null)?.group;
-    if (!group || typeof group.id !== "string" || typeof group.theaterId !== "string") return;
-    const current = theaters.get(group.theaterId) ?? EMPTY;
+    if (!group || typeof group.id !== "string" || typeof group.commodoreId !== "string") return;
+    const current = boards.get(group.commodoreId) ?? EMPTY;
     const exists = current.groups.some((candidate) => candidate.id === group.id);
-    setTheater(group.theaterId, { groups: (exists ? current.groups.map((candidate) => (candidate.id === group.id ? group : candidate)) : [...current.groups, group]).slice().sort((a, b) => a.order - b.order) });
+    setBoard(group.commodoreId, { groups: (exists ? current.groups.map((candidate) => (candidate.id === group.id ? group : candidate)) : [...current.groups, group]).slice().sort((a, b) => a.order - b.order) });
   });
   // 영구 삭제된 Objective 의 목표는 되살아날 수 없다 — 서버도 같은 때 remove 를 보내지만, 받는 순서와 무관하게 거둔다.
   const offPurged = ctx.consoleEvents.subscribe(OBJECTIVE_PURGED_EVENT, (payload) => {
@@ -361,9 +364,9 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   });
   const offRemoved = ctx.consoleEvents.subscribe("group:removed", (payload) => {
     noteAlive();
-    const data = payload as { groupId?: string; theaterId?: string } | null;
+    const data = payload as { groupId?: string; commodoreId?: string } | null;
     if (!data || typeof data.groupId !== "string") return;
-    for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
+    for (const [commodoreId, state] of boards) if (state.groups.some((group) => group.id === data.groupId)) setBoard(commodoreId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
   });
   /**
    * 스트림이 다시 붙었다 — 단절 중의 목표·그룹 사건은 다시 오지 않는다. 이미 읽은 Theater 를 표시해 스냅숏 경로에 맡긴다.
@@ -372,24 +375,25 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
    */
   const offReconnect = ctx.consoleEvents.onReconnect?.(() => {
     objectiveRecordLocations.clear();
-    for (const [theaterId, state] of theaters) if (state.loaded && !loadRetries.get(theaterId)?.permanent) refreshAfterReconnect.add(theaterId);
+    for (const [commodoreId, state] of boards) if (state.loaded && !loadRetries.get(commodoreId)?.permanent) refreshAfterReconnect.add(commodoreId);
     loadRegisteredTheaters(ctx.api);
   });
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Objective 이 속한 Theater 를 읽는다.
-  // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
+  // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadBoard 는 멱등이다.
   let lastContextObjective = contextObjectiveId(ctx);
-  let listedTheaters = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
+  let listedTheaters = new Set(ctx.consoleState.getTheaters().flatMap((theater) => ownerOfContext(theater.id) ?? []));
   let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   objectiveRecordsSnapshot = ctx.consoleState.getObjectiveRecords({ nested: true });
   loadRegisteredTheaters(ctx.api);
+  const offOwners = subscribeCommodore(() => { loadRegisteredTheaters(ctx.api); notify(); });
   const offConsole = ctx.consoleState.subscribe(() => {
     // live 동안의 잦은 통지가 아니라 non-live→live 전이에서만 스윕한다.
     const connection = ctx.consoleState.getConnection?.() ?? "live";
     if (connection === "live" && lastConnection !== "live") noteReconnected();
     lastConnection = connection;
     // 등록·복원으로 다시 나타난 Theater 는 확정 실패를 풀고 처음부터 묻는다.
-    const theaterIds = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
-    for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(theaterId) && !listedTheaters.has(theaterId)) unsettle(theaterId);
+    const theaterIds = new Set(ctx.consoleState.getTheaters().flatMap((theater) => ownerOfContext(theater.id) ?? []));
+    for (const [commodoreId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(commodoreId) && !listedTheaters.has(commodoreId)) unsettle(commodoreId);
     listedTheaters = theaterIds;
     // 가장 마지막 선택이 이긴다 — 어느 경로로든 Objective 이 활성이 되거나 사이드바에서 열지 않고 골라지면 그 전에 줄·팔레트가
     // 남긴 reveal 은 버리고, 표면이 열려 있으면 그 Objective 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
@@ -423,7 +427,7 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
-    offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offConsole();
+    offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offOwners(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
@@ -442,7 +446,7 @@ export function upsertObjectiveLocally(objective: Objective, order?: readonly st
   // 복원 후 도착한 옛 보관 DTO도, 보관 후 도착한 옛 활성 DTO도 최신 위치 사건을 뒤집지 못한다.
   if (location === "active" && objective.archived) return;
   if (objective.archived || isClosedObjective(objective.id)) { removeObjectiveLocally(objective.id); return; }
-  const current = theaters.get(objective.theaterId) ?? EMPTY;
+  const current = boards.get(objective.commodoreId) ?? EMPTY;
   const exists = current.objectives.some((candidate) => candidate.id === objective.id);
   const merged = exists ? current.objectives.map((candidate) => (candidate.id === objective.id ? objective : candidate)) : [objective, ...current.objectives];
   // 위임 직후 담당 Objective 을 목표로 먼저 받아 왔을 수 있다 — 어느 목표의 담당이 된 Objective 은 목록에서 뺀다.
@@ -451,16 +455,16 @@ export function upsertObjectiveLocally(objective: Objective, order?: readonly st
   // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
   if (order) {
     const rank = new Map(order.map((id, index) => [id, index]));
-    setTheater(objective.theaterId, { objectives: [...objectives].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
+    setBoard(objective.commodoreId, { objectives: [...objectives].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
     return;
   }
-  setTheater(objective.theaterId, { objectives });
+  setBoard(objective.commodoreId, { objectives });
 }
 
 /** 목표 하나를 이 화면에서 거둔다 — 영구 삭제 사건과, 휴지통처럼 사람이 지운 직후에 쓴다(서버의 remove 는 유예가 끝난 뒤에 온다). */
 export function removeObjectiveLocally(objectiveId: string): void {
-  for (const [theaterId, state] of theaters) {
-    if (state.objectives.some((objective) => objective.id === objectiveId)) setTheater(theaterId, { objectives: state.objectives.filter((objective) => objective.id !== objectiveId) });
+  for (const [commodoreId, state] of boards) {
+    if (state.objectives.some((objective) => objective.id === objectiveId)) setBoard(commodoreId, { objectives: state.objectives.filter((objective) => objective.id !== objectiveId) });
   }
 }
 
@@ -483,6 +487,11 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
+  if (path === "/objective/create" && !!body && typeof body === "object" && "theaterId" in body && typeof body.theaterId === "string" && !("commodoreId" in body)) {
+    const commodoreId = await resolveContext(body.theaterId);
+    if (!commodoreId) throw new Error("commodore_unavailable");
+    body = { ...body, commodoreId };
+  }
   let response: Response;
   try {
     response = await api.fetch(`/objectives${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -517,48 +526,48 @@ function apiErrorCode(error: unknown): string | null {
 }
 
 /** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침과 재연결 뒤 다시 읽기가 쓴다. */
-export function loadTheater(api: ClientApiCapability, theaterId: string, force = false): Promise<void> {
-  const current = theaters.get(theaterId);
+export function loadBoard(api: ClientApiCapability, commodoreId: string, force = false): Promise<void> {
+  const current = boards.get(commodoreId);
   if (current?.loaded && !force) return Promise.resolve();
-  const pending = inflight.get(theaterId);
+  const pending = inflight.get(commodoreId);
   if (pending) return pending;
   // 일시 실패로 미룬 Theater 는 기한 전에 다시 묻지 않는다 — 스냅숏마다 부르는 길이 /state 를 두드리지 않게.
-  const retry = loadRetries.get(theaterId);
+  const retry = loadRetries.get(commodoreId);
   if (retry && !force && Date.now() < retry.nextAt) return Promise.resolve();
   const fail = (permanent: boolean) => {
     if (!permanent) noteTransient();
     // 확정 실패는 다시 물어도 같은 답이다 — 재연결 표시도 거둔다. 일시 실패는 게이트가 내려간 뒤 다시 묻도록 남긴다.
-    else refreshAfterReconnect.delete(theaterId);
+    else refreshAfterReconnect.delete(commodoreId);
     // 이미 읽은 Theater 의 재조회 실패는 기존 목록을 그대로 둔다.
-    if (theaters.get(theaterId)?.loaded) return;
+    if (boards.get(commodoreId)?.loaded) return;
     const now = Date.now();
     if (permanent) {
-      loadRetries.set(theaterId, { permanent: true, failures: 0, failedAt: now, nextAt: Number.POSITIVE_INFINITY });
-      setTheater(theaterId, { loaded: true });
+      loadRetries.set(commodoreId, { permanent: true, failures: 0, failedAt: now, nextAt: Number.POSITIVE_INFINITY });
+      setBoard(commodoreId, { loaded: true });
       return;
     }
-    const previous = loadRetries.get(theaterId);
+    const previous = loadRetries.get(commodoreId);
     const failures = (previous?.failures ?? 0) + 1;
-    loadRetries.set(theaterId, { permanent: false, failures, failedAt: now, nextAt: now + retryDelay(failures) });
+    loadRetries.set(commodoreId, { permanent: false, failures, failedAt: now, nextAt: now + retryDelay(failures) });
   };
-  const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
+  const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { commodoreId })
     .then((state) => {
       // 200 인데 모양이 다르면 확정 실패다 — 다시 물어도 같은 답이 온다.
       if (!Array.isArray(state?.objectives) || !Array.isArray(state.groups) || typeof state.launch !== "object" || state.launch === null) { fail(true); return; }
-      loadRetries.delete(theaterId);
-      refreshAfterReconnect.delete(theaterId);
-      setTheater(theaterId, { objectives: state.objectives.filter((objective) => !objective.archived && !isClosedObjective(objective.id)), groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
+      loadRetries.delete(commodoreId);
+      refreshAfterReconnect.delete(commodoreId);
+      setBoard(commodoreId, { objectives: state.objectives.filter((objective) => !objective.archived && !isClosedObjective(objective.id)), groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Objective 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { objectiveRecordsSnapshot = installed.consoleState.getObjectiveRecords({ nested: true }); reconcileObjectiveRecords(installed.api); }
     }, (error: unknown) => { fail(!isTransient(error)); })
     // 응답을 적용하다 던진 것은 요청 실패가 아니다 — 같은 답이 다시 올 테니 확정으로 정착시킨다.
     .catch(() => { fail(true); })
     .finally(() => {
-      inflight.delete(theaterId);
+      inflight.delete(commodoreId);
       // 아직 미룬 Theater 가 남았으면 그 기한에 다시 깨운다 — 더 이른 예약(게이트가 내려간 스윕 등)은 그대로 둔다.
       if (installed) scheduleRetry();
     });
-  inflight.set(theaterId, task);
+  inflight.set(commodoreId, task);
   return task;
 }
 
@@ -567,8 +576,8 @@ export function subscribeObjective(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-export function readAllTheaters(): readonly TheaterState[] {
-  return [...theaters.values()];
+export function readAllTheaters(): readonly OwnerState[] {
+  return [...boards.values()];
 }
 
 // ── 끝난 목표(보관) ──
@@ -577,7 +586,7 @@ export function readAllTheaters(): readonly TheaterState[] {
  * 완료로 지휘관 Objective 이 보관된 목표들(`/finished`) — 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다. 폰 홈 「끝남」과
  * 가운데 칸의 완료 화면(범위 넓히기 입력창)이 같은 레코드를 읽는다. 보는 사람의 편의라 메모리에만 둔다.
  */
-const finishedByTheater = new Map<string, readonly Objective[]>();
+const finishedByOwner = new Map<string, readonly Objective[]>();
 const finishedListeners = new Set<() => void>();
 const finishedInflight = new Set<string>();
 /** 마지막 읽기가 실패한 Theater — 완료 화면이 오류와 다시 시도를 보인다. 다음 읽기가 성공하면 걷힌다. */
@@ -593,62 +602,62 @@ const finishedDirty = new Set<string>();
  * 바뀌었거나(확장으로 복원), 완료로 보관된 목표가 왔다(다시 완료). 캐시는 지우지 않는다: 다시 읽는 동안 지금 보고 있는 완료 화면은 기존
  * 레코드로 서 있고, 새 목록이 오면 바뀐다. 보관·복원 Objective 사건은 브라우저로 나오지 않으므로 이 사건이 수명주기를 말한다.
  */
-function invalidateFinishedFor(theaterId: string, objectiveId: string, objective: Objective | null): void {
-  const list = finishedByTheater.get(theaterId);
+function invalidateFinishedFor(commodoreId: string, objectiveId: string, objective: Objective | null): void {
+  const list = finishedByOwner.get(commodoreId);
   if (!list) return;
   if (!list.some((entry) => entry.id === objectiveId) && !(objective?.done && objective.archived)) return;
-  if (finishedInflight.has(theaterId)) finishedDirty.add(theaterId);
-  else loadFinishedObjectives(theaterId);
+  if (finishedInflight.has(commodoreId)) finishedDirty.add(commodoreId);
+  else loadFinishedObjectives(commodoreId);
 }
 
 /** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
-export function loadFinishedObjectives(theaterId: string): void {
+export function loadFinishedObjectives(commodoreId: string): void {
   const api = objectivesApi();
-  if (!api || finishedInflight.has(theaterId)) return;
-  finishedInflight.add(theaterId);
-  finishedFailed.delete(theaterId);
+  if (!api || !commodoreId || finishedInflight.has(commodoreId)) return;
+  finishedInflight.add(commodoreId);
+  finishedFailed.delete(commodoreId);
   noteFinished();
-  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
+  void post<{ objectives: Objective[] }>(api, "/finished", { commodoreId })
     .then((result) => {
       if (!Array.isArray(result?.objectives)) throw new Error("finished_unreadable");
-      finishedByTheater.set(theaterId, result.objectives);
+      finishedByOwner.set(commodoreId, result.objectives);
       finishedRevision += 1;
     })
-    .catch(() => { finishedFailed.add(theaterId); })
+    .catch(() => { finishedFailed.add(commodoreId); })
     .finally(() => {
-      finishedInflight.delete(theaterId);
+      finishedInflight.delete(commodoreId);
       noteFinished();
-      if (finishedDirty.delete(theaterId)) loadFinishedObjectives(theaterId);
+      if (finishedDirty.delete(commodoreId)) loadFinishedObjectives(commodoreId);
     });
 }
 
 /** 아직 읽지 않은 Theater 면 읽는다. */
-export function ensureFinishedObjectives(theaterId: string | null): void {
-  if (theaterId && !finishedByTheater.has(theaterId)) loadFinishedObjectives(theaterId);
+export function ensureFinishedObjectives(commodoreId: string | null): void {
+  if (commodoreId && !finishedByOwner.has(commodoreId)) loadFinishedObjectives(commodoreId);
 }
 
 /** 그 Theater 의 끝난 목표를 지금 읽는 중이다. */
-export function finishedObjectivesLoading(theaterId: string): boolean {
-  return finishedInflight.has(theaterId);
+export function finishedObjectivesLoading(commodoreId: string): boolean {
+  return finishedInflight.has(commodoreId);
 }
 
 /** 그 Theater 의 마지막 끝난 목표 읽기가 실패했다(읽는 중이 아니다). */
-export function finishedObjectivesFailed(theaterId: string): boolean {
-  return finishedFailed.has(theaterId) && !finishedInflight.has(theaterId);
+export function finishedObjectivesFailed(commodoreId: string): boolean {
+  return finishedFailed.has(commodoreId) && !finishedInflight.has(commodoreId);
 }
 
 /** 그 Theater 의 끝난 목표를 한 번이라도 읽었다. */
-export function finishedObjectivesLoaded(theaterId: string): boolean {
-  return finishedByTheater.has(theaterId);
+export function finishedObjectivesLoaded(commodoreId: string): boolean {
+  return finishedByOwner.has(commodoreId);
 }
 
-export function finishedObjectives(theaterId: string): readonly Objective[] {
-  return finishedByTheater.get(theaterId) ?? [];
+export function finishedObjectives(commodoreId: string): readonly Objective[] {
+  return finishedByOwner.get(commodoreId) ?? [];
 }
 
 /** 읽어 둔 끝난 목표 하나 — 어느 Theater 든. 없으면 null. */
 export function findFinishedObjective(objectiveId: string): Objective | null {
-  for (const list of finishedByTheater.values()) {
+  for (const list of finishedByOwner.values()) {
     const found = list.find((objective) => objective.id === objectiveId);
     if (found) return found;
   }
@@ -667,11 +676,30 @@ export function subscribeFinishedObjectivesStore(listener: () => void): () => vo
 
 /** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표에서 찾는다. */
 export function findAnyObjective(objectiveId: string): Objective | null {
-  for (const state of theaters.values()) {
+  for (const state of boards.values()) {
     const found = state.objectives.find((objective) => objective.id === objectiveId);
     if (found) return found;
   }
   return findFinishedObjective(objectiveId);
+}
+
+/** 이미 존재하는 목표는 id로 수화한다. 화면 Theater로 소유자를 다시 추론하지 않는다. */
+const objectiveRequests = new Map<string, Promise<Objective>>();
+export function loadObjective(objectiveId: string): Promise<Objective> {
+  const pending = objectiveRequests.get(objectiveId);
+  if (pending) return pending;
+  const api = objectivesApi();
+  if (!api) return Promise.reject(new Error("console_unavailable"));
+  const task = post<{ objective: Objective }>(api, "/objective/get", { objectiveId }).then(({ objective }) => {
+    if (objective.archived) {
+      const previous = finishedByOwner.get(objective.commodoreId) ?? [];
+      finishedByOwner.set(objective.commodoreId, [...previous.filter((row) => row.id !== objective.id), objective]);
+      finishedRevision += 1; noteFinished();
+    } else upsertObjectiveLocally(objective);
+    return objective;
+  }).finally(() => { objectiveRequests.delete(objectiveId); });
+  objectiveRequests.set(objectiveId, task);
+  return task;
 }
 
 /** 목표 상태나 끝난 목표가 바뀌면 깨운다. */
@@ -681,12 +709,12 @@ export function subscribeObjectiveOrFinished(listener: () => void): () => void {
   return () => { off(); finishedListeners.delete(listener); };
 }
 
-export function readTheater(theaterId: string | null): TheaterState {
-  return theaterId ? theaters.get(theaterId) ?? EMPTY : EMPTY;
+export function readBoard(commodoreId: string | null): OwnerState {
+  return commodoreId ? boards.get(commodoreId) ?? EMPTY : EMPTY;
 }
 
-export function useObjectiveTheater(theaterId: string | null): TheaterState {
-  return useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId));
+export function useObjectiveBoard(commodoreId: string | null): OwnerState {
+  return useSyncExternalStore(subscribeObjective, () => readBoard(commodoreId), () => readBoard(commodoreId));
 }
 
 /** 일반 목록의 Objective 과, 목표가 가리키는 보관 Objective 의 describe 요약. 참조는 바뀔 때만 새로 만든다. */
@@ -763,12 +791,12 @@ export interface ObjectiveViewState {
 const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all", externalSelectionId: null };
 const views = new Map<string, ObjectiveViewState>();
 const viewListeners = new Set<() => void>();
-export function readObjectiveView(theaterId: string | null): ObjectiveViewState {
-  return (theaterId ? views.get(theaterId) : undefined) ?? VIEW_DEFAULT;
+export function readOwnerView(commodoreId: string | null): ObjectiveViewState {
+  return (commodoreId ? views.get(commodoreId) : undefined) ?? VIEW_DEFAULT;
 }
-export function patchObjectiveView(theaterId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void {
-  if (!theaterId) return;
-  const current = readObjectiveView(theaterId);
+export function patchOwnerView(commodoreId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void {
+  if (!commodoreId) return;
+  const current = readOwnerView(commodoreId);
   const next = { ...current, ...patch(current) };
   if (
     next.list === current.list &&
@@ -778,7 +806,7 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
     next.externalSelectionId === current.externalSelectionId &&
     next.detailTab === current.detailTab
   ) return;
-  views.set(theaterId, next);
+  views.set(commodoreId, next);
   for (const listener of viewListeners) listener();
 }
 /** 표면이 열리고 닫힌 것을 보기 구독자에게 알린다 — 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다. */
@@ -789,11 +817,11 @@ export function subscribeObjectiveView(listener: () => void): () => void {
   viewListeners.add(listener);
   return () => { viewListeners.delete(listener); };
 }
-export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
+export function useOwnerView(commodoreId: string | null): ObjectiveViewState {
   return useSyncExternalStore(
     subscribeObjectiveView,
-    () => readObjectiveView(theaterId),
-    () => readObjectiveView(theaterId),
+    () => readOwnerView(commodoreId),
+    () => readOwnerView(commodoreId),
   );
 }
 
@@ -806,7 +834,15 @@ function isObjectiveEditing(element: EventTarget | null = typeof document === "u
     && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
 }
 
-let selectionTheater: { readonly contextTheaterId: string | null; readonly theaterId: string } | null = null;
+/** Theater는 화면 입구에서만 사령관 UUID로 해석한다. 목표 자체는 readBoard(commodoreId)를 쓴다. */
+export function readTheater(theaterId: string | null): OwnerState { return readBoard(ownerOfContext(theaterId)); }
+export async function loadTheater(api: ClientApiCapability, theaterId: string, force = false): Promise<void> { const id = await resolveContext(theaterId); if (id) await loadBoard(api, id, force); }
+export function useObjectiveTheater(theaterId: string | null): OwnerState { return useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId)); }
+export function readObjectiveView(theaterId: string | null): ObjectiveViewState { return readOwnerView(ownerOfContext(theaterId)); }
+export function patchObjectiveView(theaterId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void { patchOwnerView(ownerOfContext(theaterId), patch); }
+export function useObjectiveView(theaterId: string | null): ObjectiveViewState { return useOwnerView(ownerOfContext(theaterId)); }
+
+let selectionTheater: { readonly contextTheaterId: string | null; readonly commodoreId: string } | null = null;
 
 function clearSelectionTheater(): void {
   pendingSelectionObjectiveId = null;
@@ -816,11 +852,15 @@ function clearSelectionTheater(): void {
 }
 
 /** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
-export function objectiveDisplayTheaterId(contextTheaterId: string | null): string | null {
-  return selectionTheater?.contextTheaterId === contextTheaterId ? selectionTheater.theaterId : contextTheaterId;
+export function objectiveDisplayOwnerId(contextTheaterId: string | null): string | null {
+  if (selectionTheater?.contextTheaterId === contextTheaterId) return selectionTheater.commodoreId;
+  const activeId = contextObjectiveId();
+  const surfaceId = installed?.conversation?.current()?.params.objectiveId;
+  const objectiveId = activeId ?? (typeof surfaceId === "string" ? surfaceId : null);
+  return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? ownerOfContext(contextTheaterId) : ownerOfContext(contextTheaterId);
 }
-export function useObjectiveDisplayTheater(contextTheaterId: string | null): string | null {
-  const read = () => objectiveDisplayTheaterId(contextTheaterId);
+export function useObjectiveDisplayOwner(contextTheaterId: string | null): string | null {
+  const read = () => objectiveDisplayOwnerId(contextTheaterId);
   const theaterId = useSyncExternalStore(subscribeObjective, read, read);
   useEffect(() => {
     if (selectionTheater && selectionTheater.contextTheaterId !== contextTheaterId) clearSelectionTheater();
@@ -850,9 +890,9 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
   const op = allOps.find((candidate) => candidate.id === objectiveId)
     ?? installed.consoleState.getObjectiveRecords({ nested: true }).find((candidate) => candidate.id === objectiveId);
 
-  let targetTheaterId: string | null = op?.theaterId ?? null;
+  let targetTheaterId: string | null = op?.commodoreId ?? null;
   if (!targetTheaterId) {
-    for (const [tId, tState] of theaters) {
+    for (const [tId, tState] of boards) {
       if (tState.objectives.some((objective) => objective.id === objectiveId || objective.members.some((m) => m.id === objectiveId && m.sessionName !== null))) {
         targetTheaterId = tId;
         break;
@@ -860,25 +900,25 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
     }
   }
   if (!targetTheaterId) {
-    targetTheaterId = viewedTheaterId();
+    targetTheaterId = ownerOfContext(viewedTheaterId());
   }
   if (!targetTheaterId) return;
 
   const theaterId = targetTheaterId;
-  selectionTheater = { contextTheaterId: viewedTheaterId(), theaterId };
+  selectionTheater = { contextTheaterId: viewedTheaterId(), commodoreId: theaterId };
   const select = () => {
     if (token !== latestSelectionToken || !shown()) return;
-    if (selectionTheater?.theaterId !== theaterId) return;
+    if (selectionTheater?.commodoreId !== theaterId) return;
     // 조회를 기다리는 사이 시작한 편집도 같은 보류 규칙을 따른다.
     if (isObjectiveEditing()) { pendingSelectionObjectiveId = objectiveId; return; }
-    const matchingObjective = theaters.get(theaterId)?.objectives.find(
+    const matchingObjective = boards.get(theaterId)?.objectives.find(
       (objective) => objective.id === objectiveId || objective.members.some((member) => member.id === objectiveId && member.sessionName !== null),
     );
     if (!matchingObjective) return;
-    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
+    patchOwnerView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
   };
-  if (theaters.get(theaterId)?.loaded) select();
-  else { rearm(theaterId); void loadTheater(installed.api, theaterId).then(select); }
+  if (boards.get(theaterId)?.loaded) select();
+  else { rearm(theaterId); void loadBoard(installed.api, theaterId).then(select); }
   // 연결된 목표가 없어도 목록은 무대 소속 Theater만 보여 준다.
   notify();
 }
@@ -950,6 +990,7 @@ export function openNewObjective(): void {
  * 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
  */
 export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
+  if (objectiveId) selectObjectiveObjective(objectiveId, () => true);
   const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
   if (installed && theaterId && viewed !== theaterId) {
     if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
@@ -1004,7 +1045,7 @@ function showObjectiveConversation(objectiveId: string, theaterId: string): bool
     host.objectiveRecords.focus(objectiveId, { snap: "full" });
     return true;
   }
-  const objective = readTheater(theaterId).objectives.find((candidate) => candidate.id === objectiveId);
+  const objective = findAnyObjective(objectiveId);
   if (!objective || objective.commander.started) return false;
   return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId });
 }

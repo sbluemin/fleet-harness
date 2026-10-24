@@ -24,7 +24,7 @@ import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchedWords, localized, routingReason, useLaunchRows } from "./launch-control.js";
 import { memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
-import { findAnyObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, post, readTheater, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { findAnyObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, post, readBoard, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -168,7 +168,7 @@ function liveOf(objective: Objective): BoardLive {
     commander: shown(commander ? commander.ownActivity ?? commander.activity : undefined),
     member: (objectiveId) => shown(byId.get(objectiveId)?.activity),
     // 보관된 완료 목표는 살아 있는 목록에 없다 — 목록이 아니라 그 Theater 의 기동 가능 여부를 읽는다.
-    launchAvailable: readTheater(objective.theaterId).launchAvailable,
+    launchAvailable: readBoard(objective.commodoreId).launchAvailable,
   };
 }
 

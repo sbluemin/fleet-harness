@@ -14,6 +14,7 @@ import { MAX_GROUP_NAME_LENGTH, type ObjectiveRecord } from "../../objectives/ho
 import { type TheaterRegistration } from "./theaters/theater-domain.js";
 
 export interface DurableObjectiveGroup {
+  readonly commodoreId: string;
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -191,6 +192,7 @@ export function sanitizeObjectiveRecord(value: unknown): ObjectiveRecord | null 
   return {
     id,
     theaterId,
+    commodoreId: readNonEmptyString(value.commodoreId) ?? "",
     title,
     ...(readRecord(value.payload ?? value)),
     ...(accent ? { accent } : {}),
@@ -285,7 +287,7 @@ function sanitizeObjectiveGroup(value: unknown): DurableObjectiveGroup | null {
   const createdAt = readFiniteNumber(value.createdAt);
   if (!id || !theaterId || !rawName || order === null || createdAt === null) return null;
   if (rawName.length > MAX_GROUP_NAME_LENGTH) return null;
-  return { id, theaterId, name: rawName, color, order, createdAt };
+  return { id, commodoreId: readNonEmptyString(value.commodoreId) ?? "", theaterId, name: rawName, color, order, createdAt };
 }
 
 function readDeletionTombstones(value: unknown): readonly DurableDeletionTombstone[] {

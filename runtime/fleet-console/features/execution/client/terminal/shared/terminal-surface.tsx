@@ -45,7 +45,7 @@ type TerminalPaletteId = TerminalThemeId | "mobile-dark" | "mobile-light";
 export interface TerminalSurfaceProps {
   readonly objectiveId: string;
   readonly ticketPath: string;
-  /** 티켓 요청 본문에 얹을 추가 필드(전역 Shell의 첫 기동 Theater 등). */
+  /** 표면별 티켓 식별자·위치. 생략하면 Agent의 { objectiveId }를 쓴다. */
   readonly ticketFields?: Readonly<Record<string, unknown>>;
   readonly wsPath: string;
   /** 독립 Shell은 terminal tint를, Objective 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */

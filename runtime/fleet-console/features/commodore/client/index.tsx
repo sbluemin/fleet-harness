@@ -9,7 +9,7 @@ import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
-import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
@@ -41,7 +41,7 @@ export const commodoreEntry: RailEntryDescriptor = {
   // 사령관 칩 배지 — 사령관이 사람에게 물어 답을 기다리는 질문 수(`openAsks`). 행은 「목표」의 확인 필요가 같은 질문을 이미 세우므로 두지 않는다.
   attention: {
     subscribe: subscribeCommodore,
-    count: (theaterId) => openAsks(theaterId).length,
+    count: (theaterId) => theaterId ? openAsks(ownerOfContext(theaterId)).length : 0,
     label: (count, locale) => getT(locale)("commodore.board.ask.badge", { count }),
   },
 };
@@ -50,25 +50,28 @@ export const commodoreEntry: RailEntryDescriptor = {
 export function createCommodoreClient(board: CommodoreBoardClient | null) {
   const snapshots = new Map<string, { readonly revision: number; readonly value: CommodoreClientSnapshot }>();
   const host: CommodoreClientHost = {
-    read(theaterId) {
+    read(commodoreId) {
       const revision = commodoreRevision();
-      const hit = snapshots.get(theaterId); if (hit?.revision === revision) return hit.value;
-      const value = { commodoreId: readCommodore(theaterId).view?.commodoreId ?? null, ...commodoreBoardOf(theaterId), view: readCommodore(theaterId).view, asks: openAsks(theaterId) };
-      snapshots.set(theaterId, { revision, value }); return value;
+      const hit = snapshots.get(commodoreId); if (hit?.revision === revision) return hit.value;
+      const value = { commodoreId: readCommodore(commodoreId).view?.commodoreId ?? commodoreId, ...commodoreBoardOf(commodoreId), view: readCommodore(commodoreId).view, asks: openAsks(commodoreId) };
+      snapshots.set(commodoreId, { revision, value }); return value;
     },
     subscribe: subscribeCommodore,
     revision: commodoreRevision,
     askTheaters: openAskTheaters,
-    load: (theaterId) => loadCommodore(theaterId),
-    open(theaterId, options) {
+    load: (commodoreId) => loadCommodore(commodoreId),
+    resolveContext,
+    ownerOfContext,
+    open(commodoreId, options) {
+      const theaterId = contextsOf(commodoreId)[0] ?? null;
       if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", theaterId); return true; }
-      if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(theaterId, options);
-      openCommodoreLog(theaterId); return true;
+      if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(commodoreId, options);
+      openCommodoreLog(commodoreId, theaterId); return true;
     },
     language: commodoreLanguage,
     conversationActive: isCommodoreConversationActive,
     subscribeConversation: subscribeCommodoreConversationActive,
-    renderRowGlyph: (_theaterId, operated = true) => operated ? renderCommodoreRowGlyph() : renderCommodoreRowGlyphOff(),
+    renderRowGlyph: (_commodoreId, operated = true) => operated ? renderCommodoreRowGlyph() : renderCommodoreRowGlyphOff(),
   };
   const install = (ctx: CommodoreClientDeps): (() => void) => {
       const offBoard = installCommodoreBoard(board);

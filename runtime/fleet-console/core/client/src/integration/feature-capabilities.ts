@@ -228,6 +228,7 @@ export function createHostCapabilities(
         const own = parents && parents.size > 0 ? ownObjectiveRuntime() : null;
         return objectiveRecords.map((objectiveRecord) => ({
           id: objectiveRecord.id,
+          commodoreId: objectiveRecord.commodoreId,
           theaterId: objectiveRecord.theaterId,
           type: "agent",
           title: objectiveRecord.title,
@@ -262,14 +263,14 @@ export function createHostCapabilities(
         const binding = readBindings().find((item) => item.entry.handles?.openFile);
         const handler = binding?.entry.handles?.openFile;
         if (!handler) return { ok: false, reason: "no_handler" };
-        if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+        if (!request.objectiveId && !getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
         const target = await handler(request, capabilities);
         if ("ok" in target) {
           if (target.ok) capabilities.rail.open(binding!.entry.id);
           return target;
         }
         return land({ ...target, theaterId: request.theaterId, params: {
-          theaterId: request.theaterId, path: request.path, pathKind: request.pathKind,
+          theaterId: request.theaterId, ...(request.objectiveId ? { objectiveId: request.objectiveId } : {}), path: request.path, pathKind: request.pathKind,
           ...(request.line === undefined ? {} : { line: String(request.line) }),
           ...(request.column === undefined ? {} : { column: String(request.column) }),
           ...target.params,

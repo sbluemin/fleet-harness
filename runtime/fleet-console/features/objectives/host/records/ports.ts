@@ -7,6 +7,7 @@ export type SidebarPosition = "first" | "last" | { readonly before: string } | {
 export interface ObjectiveRecordsHost extends Partial<ObjectiveArchiveCapability> {
   list(): readonly ObjectiveRecord[];
   get(id: string): ObjectiveRecord | null;
+  context?(id: string): { readonly commodoreId: string; readonly theaterId: string } | null;
   create(input: ObjectiveRecordCreateInput): ObjectiveRecord;
   /** 실행 호스트가 부모 안에 자식 세션을 저장한다. */
   createChild?(input: { readonly parentObjectiveId: string; readonly childSessionId: string; readonly [key: string]: unknown }): ObjectiveRecord;
@@ -28,6 +29,7 @@ export interface ObjectiveRecordsHost extends Partial<ObjectiveArchiveCapability
 
 
 export interface ObjectiveGroup {
+  readonly commodoreId: string;
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -38,9 +40,9 @@ export interface ObjectiveGroup {
 
 
 export interface ObjectiveGroupsHost {
-  list(theaterId?: string): readonly ObjectiveGroup[];
+  list(commodoreId?: string): readonly ObjectiveGroup[];
   get(id: string): ObjectiveGroup | null;
-  create(input: { readonly theaterId: string; readonly name: string; readonly color: string; readonly order?: number }): ObjectiveGroup;
+  create(input: { readonly commodoreId: string; readonly theaterId: string; readonly name: string; readonly color: string; readonly order?: number }): ObjectiveGroup;
   patch(id: string, input: { readonly name?: string; readonly color?: string; readonly order?: number }): ObjectiveGroup | null;
   /** 빈 그룹만 지운다 — 멤버가 있으면 false. */
   delete(id: string): boolean;

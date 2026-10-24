@@ -149,7 +149,10 @@ if (typeof prompt !== "string") {
   process.exit(0);
 }
 
+const { commodoreId } = await api("POST", "/api/v1/commodore/resolve", { theaterId });
+if (!commodoreId) fail("Theater has no Commodore owner");
 const session = await api("POST", "/api/v1/agent/sessions", {
+  commodoreId,
   theaterId,
   cliId: "claude-gateway",
   viewMode: "chat",

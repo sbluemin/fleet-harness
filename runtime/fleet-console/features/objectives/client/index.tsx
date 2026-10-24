@@ -4,7 +4,7 @@ import type { CommodoreClientHost } from "../../commodore/shared/contracts/clien
 import type { PaneDescriptor } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
-import { installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./board-commodore.js";
+import { installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive, resolveContext } from "./board-commodore.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { connectFreshConversation, freshConversationSurface, goToObjective } from "./fresh-conversation.js";
@@ -94,8 +94,10 @@ export const objectivesEntry: RailEntryDescriptor = {
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
     if (!api) return [];
+    const commodoreId = await resolveContext(theaterId);
+    if (!commodoreId) return [];
     await loadTheater(api, theaterId);
-    const response = await api.fetch("/objectives/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
+    const response = await api.fetch("/objectives/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, query, limit }) });
     if (!response.ok) return [];
     const result = await response.json() as { objectives: { id: string; title: string; done?: boolean }[] };
     const t = getT(language);

@@ -14,6 +14,7 @@ export interface ConsoleHumanInput {
 
 export interface ConsoleActionInput {
   readonly kind: ConsoleActionKind;
+  readonly commodoreId?: string;
   readonly theaterId?: string;
   readonly objectiveId?: string;
   /** launch 의 첫 프롬프트 / send 의 본문. launch 에서는 생략할 수 있다 — 그 세션은 첫 턴 없이 서서 메시지를 기다린다. */

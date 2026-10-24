@@ -44,6 +44,7 @@ describe("pending request lifecycle", () => {
 function makeObjective(id: string, overrides: Partial<ObjectiveRecord> = {}): ObjectiveRecord {
   return {
     id,
+    commodoreId: "c1",
     theaterId: "th-a",
     title: id,
     ...({}),

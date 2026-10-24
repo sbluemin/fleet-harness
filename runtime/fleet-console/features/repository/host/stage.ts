@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import path from "node:path";
 import type http from "node:http";
 
@@ -55,12 +56,12 @@ async function resolveWriteContext(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return null; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return null; }
   const body = await ctx.host.http.readJsonBody<WriteHandlerBody>(req);
-  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body) || "subPath" in body) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return null;
   }
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return null; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return null;
   try {
     const { gitCwd } = await resolveGitCwd(theaterPath, body.repoRel);
     return { gitCwd, body };

@@ -711,9 +711,11 @@ export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theat
  * 데스크톱 기록 토큰이 여는 목표 — 팔레트의 목표 결과와 같은 착지(`goToObjective`)다. 완료로 보관된 목표는 살아 있는 목록에 없으므로
  * 읽어 둔 끝난 목표에서 완료를 읽는다(그 목표의 완료 화면을 세우고 보드가 그 레코드를 고른다).
  */
-export function openReferencedObjective(theaterId: string, objectiveId: string): void {
-  const live = readTheater(theaterId).objectives.find((objective) => objective.id === objectiveId);
-  goToObjective(objectiveId, theaterId, !!(live ?? findFinishedObjective(objectiveId))?.done);
+export function openReferencedObjective(commodoreId: string, objectiveId: string): void {
+  const live = readTheater(commodoreId).objectives.find((objective) => objective.id === objectiveId);
+  const finished = findFinishedObjective(objectiveId);
+  const screen = live?.theaterId || finished?.theaterId || "";
+  goToObjective(objectiveId, screen, !!(live ?? finished)?.done);
 }
 
 /**

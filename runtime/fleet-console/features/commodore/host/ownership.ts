@@ -52,11 +52,19 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return entities.resolve(theaterId) ?? entities.create(root);
   };
   return { entities, create, issueForAlias, ensureRegistered, knowledge,
+    creation(commodoreId: string, theaterId: string) {
+      if (!entities.dirOf(commodoreId) || !entities.theaterIds(commodoreId).includes(theaterId)) throw new Error("objective_owner_unavailable");
+      const cwd = paths.resolveTheaterPath(theaterId);
+      if (!cwd) throw new Error("objective_location_unavailable");
+      return { commodoreId, cwd };
+    },
     objectives: () => entities.ids().flatMap((id) => {
       const directory = entities.dirOf(id);
-      const root = entities.theatersOf(id)[0]?.path;
-      if (!directory || !root || entities.conflicts().includes(entities.theaterIds(id)[0]!) || migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name))) return [];
-      return [{ directory: path.join(directory, "objectives"), theaterId: entities.theaterIds(id)[0]!, workspacePath: root }];
+      // 단일 링크였던 옛 파일의 위치 복구에만 쓴다. 소유 키는 위 디렉터리의 UUID다.
+      const [legacyLink] = entities.theatersOf(id);
+      const root = legacyLink?.path;
+      if (!directory || !root || entities.theaterIds(id).some((theaterId) => entities.conflicts().includes(theaterId)) || migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name))) return [];
+      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: paths.workspaceHash(root), legacyCwd: root, theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
     }),
   };
 }

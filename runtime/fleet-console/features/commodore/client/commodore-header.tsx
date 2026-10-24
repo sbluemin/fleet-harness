@@ -11,9 +11,11 @@ import {
   readCommodore,
   readCommodoreExperiment,
   COMMODORE_INBOX_SECTION_ID,
+  ownerOfContext,
   setCommodorePeek,
   subscribeCommodore,
   useCommodore,
+  useCommodoreOwner,
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { openCommodoreConversation, isCommodoreConversationSelected, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
@@ -43,11 +45,13 @@ export const commodoreTheaterContribution: TheaterContribution = {
     // 사이드바 밖에서 그 Theater 의 사령관 아바타를 그리는 표면(새 세션 칩·팔레트 행)이 머리 표식과 같은 얼굴을 읽는다.
     face: (theaterId) => {
       if (!readCommodoreExperiment().enabled) return null;
-      const view = readCommodore(theaterId).view;
-      return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: false };
+      const commodoreId = ownerOfContext(theaterId);
+      if (!commodoreId) return null;
+      const view = readCommodore(commodoreId).view;
+      return { state: commodoreMongleState(view, readTheater(commodoreId).objectives), off: false };
     },
     selected: isCommodoreConversationSelected,
-    live: (theaterId) => readCommodore(theaterId).view?.run.phase === "turn",
+    live: (theaterId) => readCommodore(ownerOfContext(theaterId)).view?.run.phase === "turn",
     landing: () => ({ sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }),
   },
 };
@@ -60,13 +64,12 @@ export const commodoreTheaterContribution: TheaterContribution = {
  */
 function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContributionContext) {
   const t = getT(language);
-  const { view } = useCommodore(theater.id);
-  const board = useObjectiveTheater(theater.id);
-  // 언어를 먼저 알린다 — 첫 읽기부터 서버가 사람의 언어를 기억한다.
+  const commodoreId = useCommodoreOwner(theater.id);
+  const { view } = useCommodore(commodoreId);
+  const board = useObjectiveTheater(commodoreId);
   noteCommodoreLanguage(language);
-  // 아직 읽지 않았거나 읽어 둔 상태가 비워졌으면(플러그인 재설치 등) 다시 읽는다 — 활성이 아닌 Theater 는 이 표식만 읽는다.
   const loaded = view !== null && view !== undefined;
-  useEffect(() => { if (!loaded) void loadCommodore(theater.id); }, [theater.id, loaded]);
+  useEffect(() => { if (commodoreId && !loaded) void loadCommodore(commodoreId); }, [commodoreId, loaded]);
   // 표식이 사라지면(Theater 잊기 등) 밝힘을 거둔다.
   useEffect(() => () => setCommodorePeek(null), [theater.id]);
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
@@ -77,7 +80,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
   const state = commodoreMongleState(view, board.objectives);
   const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
-  const asks = openAsks(theater.id).length;
+  const asks = openAsks(commodoreId).length;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
   return (
     <button
@@ -85,7 +88,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
       className={`objectives-commodore-mark${warn ? " is-warn" : ""}`}
       aria-label={[t("commodore.mark.open", { theater: theater.label }), asksWord].filter(Boolean).join(", ")}
       title={[theater.label, status, asksWord, t("commodore.mark.open", { theater: theater.label })].filter(Boolean).join("\n")}
-      onClick={(event) => { event.stopPropagation(); if (!openCommodoreConversation(theater.id)) theaterInbox?.open({ theaterId: theater.id, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }); }}
+      onClick={(event) => { event.stopPropagation(); if (!commodoreId || !openCommodoreConversation(commodoreId)) theaterInbox?.open({ theaterId: theater.id, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }); }}
       onMouseEnter={peek(true)}
       onMouseLeave={peek(false)}
       onFocus={peek(true)}

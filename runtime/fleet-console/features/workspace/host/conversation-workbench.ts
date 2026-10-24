@@ -1,4 +1,3 @@
-import { realpathSync, statSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
@@ -24,41 +23,8 @@ import {
 export const CONVERSATION_WORKBENCH_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Read the saved tool split layout of each conversation.", category: "Workspace", gate: "loopback", transport: "http" },
   { method: "PUT", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Save or clear one conversation's tool split layout.", category: "Workspace", gate: "origin-write", transport: "http" },
-  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's work location as a Theater-relative coordinate.", category: "Workspace", gate: "loopback", transport: "http" },
+  { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's fixed work location without exposing an absolute path.", category: "Workspace", gate: "loopback", transport: "http" },
 ];
-
-/**
- * 대화의 작업 위치 — 그 Objective 의 작업 폴더(payload cwd)를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
- * 작업 폴더가 없거나, 사라졌거나, Theater 밖이면 Theater 루트다(사람이 다시 고르지 않는다 — 가장 안전한 기본값).
- */
-export function resolveConversationWorkLocation(input: {
-  readonly theaterId: string;
-  readonly theaterRoot: string;
-  readonly theaterLabel: string;
-  readonly cwd: string | null;
-}): ConversationWorkLocation {
-  const root: ConversationWorkLocation = { theaterId: input.theaterId, relative: "", kind: "root", label: input.theaterLabel };
-  if (input.cwd === null || input.cwd === "" || !path.isAbsolute(input.cwd)) return root;
-  let realRoot: string;
-  let real: string;
-  try {
-    realRoot = realpathSync.native(input.theaterRoot);
-    real = realpathSync.native(input.cwd);
-  } catch {
-    return root;
-  }
-  const relative = path.relative(realRoot, real);
-  if (relative === "") return root;
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return root;
-  let kind: ConversationWorkLocation["kind"] = "directory";
-  try {
-    // git 워크트리의 루트에는 `.git` 이 디렉터리가 아니라 파일(gitdir 포인터)로 있다.
-    if (statSync(path.join(real, ".git")).isFile()) kind = "worktree";
-  } catch {
-    kind = "directory";
-  }
-  return { theaterId: input.theaterId, relative: relative.split(path.sep).join("/"), kind, label: path.basename(real) };
-}
 
 export function createConversationWorkbenchStore(dataDir: string): DurableJsonStore<WorkbenchStoreData> {
   const filePath = path.join(dataDir, "conversation-workbench.json");
@@ -76,11 +42,8 @@ export function createConversationWorkbenchRouter(deps: {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly now?: () => number;
-  /**
-   * Objective(또는 구성원 세션) id → 그 대화의 작업 위치. 모르는 id 면 null. `folder`(Theater 상대)를 주면 세션이 옮겨 간 그
-   * 폴더를 분류한다 — 브라우저가 이미 받은 「지금 어디」 투영이다. 루트 밖으로 오르거나 실제로 밖을 가리키면 루트다.
-   */
-  readonly locate?: (objectiveId: string, folder: string | null) => ConversationWorkLocation | null;
+  /** Objective·구성원·미실행 목표의 고정 위치. 브라우저의 folder override는 받지 않는다. */
+  readonly locate?: (objectiveId: string) => ConversationWorkLocation | "unavailable" | null;
 }) {
   const now = deps.now ?? Date.now;
   return async ({ req, res, pathname }: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean> => {
@@ -91,9 +54,10 @@ export function createConversationWorkbenchRouter(deps: {
       }
       const query = new URL(req.url ?? "", "http://localhost").searchParams;
       const objectiveId = query.get("objectiveId");
-      const folder = query.get("folder");
-      const location = objectiveId && deps.locate ? deps.locate(objectiveId, folder) : null;
+      if (query.has("folder")) { deps.writeJson(res, 400, { error: "invalid_request" }); return true; }
+      const location = objectiveId && deps.locate ? deps.locate(objectiveId) : null;
       if (location === null) deps.writeJson(res, 404, { error: "objectiveRecord_not_found" });
+      else if (location === "unavailable") deps.writeJson(res, 404, { error: "unavailable" });
       else deps.writeJson(res, 200, { location });
       return true;
     }

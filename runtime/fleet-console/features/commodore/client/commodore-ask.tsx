@@ -1,4 +1,4 @@
-import { useCommodoreName } from "./commodore-name.js";
+import { useCommodoreOwnerName } from "./commodore-name.js";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
@@ -26,8 +26,10 @@ export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "a
  *
  * `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로.
  */
-export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnded }: {
+export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, language, phone = false, onEnded }: {
   readonly theaterId: string;
+  /** 목표를 여는 화면 문맥. 생략하면 theaterId와 같다. */
+  readonly contextTheaterId?: string;
   readonly t: T;
   readonly language: "en" | "ko";
   readonly phone?: boolean;
@@ -39,7 +41,7 @@ export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnd
   // 답이 받아들여진 질문은 상태가 다시 읽히기 전에도 내린다 — 그룹 대화의 결정 카드와 같은 규칙.
   const [answered, setAnswered] = useState<readonly string[]>([]);
   useEffect(() => setAnswered([]), [theaterId]);
-  const name = useCommodoreName(theaterId, t);
+  const name = useCommodoreOwnerName(theaterId, t);
   const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
@@ -50,7 +52,7 @@ export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnd
       {shown.map((ask) => (
         <Card
           key={ask.id}
-          decision={askDecision(ask, { theaterId, t, phone, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
+          decision={askDecision(ask, { theaterId, contextTheaterId: board.objectives.find((row) => row.id === ask.objectiveId)?.theaterId ?? contextTheaterId, t, phone, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
           asker={asker}
           language={language}
           theaterId={theaterId}
@@ -63,8 +65,9 @@ export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnd
 }
 
 /** 사령관의 질문 → 그룹 대화 결정 카드의 계약. 질문·선택지는 그대로 옮기고, 이미 끝난 질문의 거절만 카드 밖으로 돌린다. */
-function askDecision(ask: CommodoreAsk, { theaterId, t, phone, onEnded, objectiveOnBoard }: {
+function askDecision(ask: CommodoreAsk, { theaterId, contextTheaterId, t, phone, onEnded, objectiveOnBoard }: {
   readonly theaterId: string;
+  readonly contextTheaterId: string;
   readonly t: T;
   readonly phone: boolean;
   readonly onEnded: ((error: unknown) => void) | undefined;
@@ -87,9 +90,9 @@ function askDecision(ask: CommodoreAsk, { theaterId, t, phone, onEnded, objectiv
     route: t("commodore.board.ask.route"),
     ...(objectiveId && objectiveOnBoard ? {
       open: () => {
-        if (phone) { openObjectiveOnPhone(objectiveId, theaterId); return; }
+        if (phone) { openObjectiveOnPhone(objectiveId, contextTheaterId); return; }
         revealObjective({ objectiveId });
-        openObjectiveFromCluster(theaterId, objectiveId);
+        openObjectiveFromCluster(contextTheaterId, objectiveId);
       },
     } : {}),
     answer: async (answers) => {

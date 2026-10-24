@@ -42,6 +42,7 @@ import {
   discardCommodoreAttachment,
   noteCommodoreLanguage,
   openCommodoreMobile,
+  ownerOfContext,
   readCommodore,
   readCommodoreExperiment,
   removeCommodoreIntel,
@@ -55,6 +56,7 @@ import {
   setCommodoreStopAt,
   subscribeCommodore,
   useCommodore,
+  useCommodoreOwner,
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -81,7 +83,7 @@ function cachedSectionState(state: TheaterInboxSectionState): TheaterInboxSectio
 
 /** 사령관의 지금 한 줄 — 옛 「사령관 기록」 시트 왼쪽 머리에 있던 그 말(자율 운영 · 다음 순찰 …). */
 function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): string {
-  const view = readCommodore(theaterId).view;
+  const view = readCommodore(ownerOfContext(theaterId)).view;
   if (!view) return t("commodore.inbox.scope");
   const on = view.active;
   const run = view.run;
@@ -130,10 +132,11 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {
   const { theater, language, pageId, visible, focusRequest, links, navigation } = context;
   const theaterId = theater.id;
+  const commodoreId = useCommodoreOwner(theaterId);
   const t = getT(language);
   noteCommodoreLanguage(language);
   const tab: CommodoreTab = COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log";
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
+  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
@@ -143,9 +146,10 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const [logBodyWidth, setLogBodyWidth] = useState(0);
   // 섹션을 처음 들를 때 상태와 기록 한 쪽을 읽는다 — 이미 읽었으면 다시 읽지 않는다.
   useEffect(() => {
-    void loadCommodore(theaterId);
-    if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
-  }, [theaterId]);
+    if (!commodoreId) return;
+    void loadCommodore(commodoreId);
+    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  }, [commodoreId]);
   useLayoutEffect(() => {
     const node = bodyRef.current;
     if (!node || !visible) return;
@@ -206,19 +210,19 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
       {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
-          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { if (!commodoreId) return; setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
       {tab === "log" ? (
         <div className="objectives-commodore-toolbar">
           <span className="objectives-commodore-totals">{totals}</span>
-          <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />
+          <CommodoreClearButton t={t} theaterId={commodoreId ?? ""} onFail={fail} onClear={() => setFailure(null)} />
         </div>
       ) : null}
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>
-            <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />} />
+            <CommodoreLog t={t} language={language} theaterId={commodoreId ?? ""} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} cards={<CommodoreAskCards theaterId={commodoreId ?? ""} contextTheaterId={theaterId} t={t} language={language} onEnded={fail} />} />
             {compact ? null : (
               <CommodoreTrailSeam
                 label={t("commodore.trail.resize")}
@@ -228,22 +232,22 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
                 onReset={resetTrailWidth}
               />
             )}
-            <CommodoreTrail t={t} language={language} theaterId={theaterId} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
+            <CommodoreTrail t={t} language={language} theaterId={commodoreId ?? ""} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
           </>
         ) : null}
         {tab === "directive" && view ? (
           <>
-            <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} />
-            <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
+            <CommodoreDirective t={t} theaterId={commodoreId ?? ""} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} />
+            <CommodoreIntel t={t} theaterId={commodoreId ?? ""} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
           </>
         ) : null}
-        {tab === "memory" ? <CommodoreMemory t={t} theaterId={theaterId} /> : null}
+        {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId ?? ""} /> : null}
         {/* 설정 칸의 메뉴(순찰·종료 시각·모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
-        {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
+        {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }

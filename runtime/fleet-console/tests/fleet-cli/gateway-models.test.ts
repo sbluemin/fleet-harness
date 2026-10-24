@@ -24,7 +24,7 @@ describe("fleet-console-use host", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-control-"));
     let time = Date.now();
     let activity: "idle" | "running" = "idle";
-    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
     const allow = (on: boolean) => { if (on) objectiveRecords[0]! = { ...objectiveRecords[0]!, consoleUse: { enabled: true, language: "ko" } }; else delete objectiveRecords[0]!.consoleUse; };
     const deps = { directory, now: () => time, objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
@@ -110,7 +110,7 @@ describe("fleet-console-use host", () => {
   it("holds an unauthorized Objective call for the person's answer in its panel, and a turn-only grant ends with the turn", async () => {
     // 허용받지 않은 호출은 거부 대신 붙잡혀 사람의 답을 기다린다. 답하기 전에는 아무것도 실행되지 않고, 「이번 작업만」은
     // 턴이 끝나면 풀리며, 거절은 이번 턴에 다시 묻지 말라는 사유로 끝난다.
-    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const objectiveRecords: import("../../features/objectives/shared/records/types.js").ObjectiveRecord[] = [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", type: "agent", pluginId: null, ...({} as Record<string, unknown>), geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
     const requests = createUseRequestBroker({ recheckMs: 10 });
     const host = createConsoleUseMcpHost({ objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-a", name: "Project" }], requests, language: () => "en" });
     const connection = host.connect({ tools: ["console_context"], allowControl: true, objectiveRecordCallers: true });
@@ -220,7 +220,7 @@ describe("fleet-console-use host", () => {
     const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => JSON.parse((await rpc(connection, "tools/call", { name, arguments: args })).content[0].text);
     try {
       expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
-      const args = { theaterId: "theater-a", text: "Run the requested check" };
+      const args = { commodoreId: "c1", theaterId: "theater-a", text: "Run the requested check" };
       // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
       const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
       expect(listed.map((tool) => tool.name)).toEqual(["console_context", "console_sidebar", "console_objective_session"]);
@@ -254,9 +254,9 @@ describe("fleet-console-use host", () => {
     let enabled = true;
     const host = createConsoleUseMcpHost({
       theaters: () => [{ id: "theater-a", name: "Project A" }],
-      objectiveRecords: () => [{ id: "op-a", title: "Build", theaterId: "theater-a", ...({ secret: "/private/transcript" }), ts: { createdAt: 1, updatedAt: 1 } }],
+      objectiveRecords: () => [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", ...({ secret: "/private/transcript" }), ts: { createdAt: 1, updatedAt: 1 } }],
     });
-    const a = host.connect({ tools: ["console_sidebar"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], objectiveRecords: [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
+    const a = host.connect({ tools: ["console_sidebar"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], objectiveRecords: [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
     const b = host.connect({ tools: ["console_context", "console_sidebar"] });
     try {
       const endpointA = (await a.getEndpoint()).servers[0]!;

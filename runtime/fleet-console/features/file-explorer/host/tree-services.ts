@@ -5,6 +5,8 @@ import type http from "node:http";
 import path from "node:path";
 
 import type { FileExplorerRouteContext } from "./index.js";
+import { takeExplorerRoot } from "./surface-root.js";
+import { selectorFromSearch } from "../../workspace/host/path-selector.js";
 
 import { ClipboardUnavailableError, copyPathToClipboard, isPathContained, PathActionError } from "./path-actions.js";
 import { FileActionUnavailableError, revealPath, type FileRevealMode } from "./path-actions.js";
@@ -617,7 +619,6 @@ export async function handleFilesSearch(
   }>(req);
   if (
     !isPlainObject(body)
-    || typeof body.theaterId !== "string"
     || typeof body.query !== "string"
     || body.query.trim() === ""
     || !Number.isInteger(body.limit)
@@ -644,8 +645,9 @@ export async function handleFilesSearch(
   }
   // 생략은 기존 전역 팔레트 계약대로 hidden 포함, 트리 scope는 명시 false를 보낸다.
   const includeHidden = body.includeHidden !== false;
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
   const abort = new AbortController();
   // 취소 신호는 응답 소켓에서 읽는다. IncomingMessage의 "close"는 요청 본문을 다 읽은 직후에도
   // 발생하므로(본문이 짧으면 항상), 그걸 취소로 쓰면 모든 검색이 응답 없이 끝난다.
@@ -761,20 +763,19 @@ export async function handleFilesList(
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown }>(req);
   if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const rawTheaterId = body.theaterId;
-  if (typeof rawTheaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-
   const rawRel = body.relativePath;
   const relPath = rawRel === undefined || rawRel === null ? "" : typeof rawRel === "string" ? rawRel : null;
   if (relPath === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(rawTheaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
+  const watchKey = selected.key;
 
   try {
     const result = await listTheaterContents(theaterPath, relPath);
     // 감시 등록은 응답을 막지 않는다. Linux 첫 펼침의 중복 realpath/stat를 목록 지연에서 뺀다.
-    void watcherRegistry.trackDirectory(rawTheaterId, theaterPath, relPath).catch(() => {});
+    void watcherRegistry.trackDirectory(watchKey, theaterPath, relPath).catch(() => {});
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FolderBrowserError) {
@@ -795,13 +796,14 @@ export async function handleFilesGitStatus(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown }>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body)) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
 
   try {
     ctx.host.http.writeJson(res, 200, await readTheaterGitStatus(theaterPath));
@@ -830,11 +832,12 @@ export async function handleFilesResolve(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly path?: unknown; readonly pathKind?: unknown }>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string" || typeof body.path !== "string" || !body.path.trim() || (body.pathKind !== "theater-relative" && body.pathKind !== "absolute")) {
+  if (!isPlainObject(body) || typeof body.path !== "string" || !body.path.trim() || (body.pathKind !== "theater-relative" && body.pathKind !== "absolute")) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
   }
-  const root = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!root) { ctx.host.http.writeJson(res, 404, { error: "not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const root = selected.root;
   try {
     ctx.host.http.writeJson(res, 200, await resolveFileForTheater(root, body.path, body.pathKind));
   } catch (error) {
@@ -858,11 +861,12 @@ export async function handleFilesDiskStatus(req: http.IncomingMessage, res: http
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly paths?: unknown }>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string" || !Array.isArray(body.paths) || body.paths.length > 20 || body.paths.some((p) => typeof p !== "string" || path.isAbsolute(p) || /^[a-z]:/i.test(p) || p.includes("\0"))) {
+  if (!isPlainObject(body) || !Array.isArray(body.paths) || body.paths.length > 20 || body.paths.some((p) => typeof p !== "string" || path.isAbsolute(p) || /^[a-z]:/i.test(p) || p.includes("\0"))) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
   }
-  const root = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!root) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const root = selected.root;
   const statuses: FileDiskStatus[] = await Promise.all((body.paths as string[]).map(async (relativePath): Promise<FileDiskStatus> => {
     try {
       const metadata = await statFileForTheater(root, relativePath);
@@ -885,14 +889,13 @@ export async function handleFilesRead(
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown; readonly maxLines?: unknown; readonly window?: unknown }>(req);
   if (!isPlainObject(body) || typeof body.relativePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
-  const theaterId = body.theaterId;
-  if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const maxLines = resolveReadMaxLines(body.maxLines);
   const readWindow = resolveReadWindow(body.window);
   if (maxLines === null || readWindow === null || (maxLines !== undefined && readWindow !== undefined)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
 
   try {
     const result = await readFileForTheater(theaterPath, body.relativePath, { maxLines, window: readWindow });
@@ -916,14 +919,13 @@ export async function handleFilesImage(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const url = readUrl(req);
-  const theaterId = url.searchParams.get("theaterId");
   const relPath = url.searchParams.get("path");
 
-  if (!theaterId) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   if (!relPath) { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, selectorFromSearch(url.searchParams));
+  if (!selected) return;
+  const theaterPath = selected.root;
 
   try {
     const result = await readImageForTheater(theaterPath, relPath);
@@ -948,13 +950,14 @@ export async function handleFilesClipboard(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown }>(req);
-  if (!isPlainObject(body) || typeof body.theaterId !== "string" || typeof body.relativePath !== "string") {
+  if (!isPlainObject(body) || typeof body.relativePath !== "string") {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
 
   try {
     await dependencies.copyPath(theaterPath, body.relativePath);
@@ -988,7 +991,6 @@ export async function handleFilesReveal(
   }>(req);
   if (
     !isPlainObject(body)
-    || typeof body.theaterId !== "string"
     || typeof body.relativePath !== "string"
     || !isFileRevealMode(body.mode)
   ) {
@@ -996,8 +998,9 @@ export async function handleFilesReveal(
     return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, body);
+  if (!selected) return;
+  const theaterPath = selected.root;
 
   try {
     await dependencies.revealPath(theaterPath, body.relativePath, body.mode);
@@ -1025,11 +1028,10 @@ export function handleFilesWatch(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const url = readUrl(req);
-  const theaterId = url.searchParams.get("theaterId");
-  if (!theaterId) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const selected = takeExplorerRoot(res, ctx, selectorFromSearch(url.searchParams));
+  if (!selected) return;
+  const theaterPath = selected.root;
+  const watchKey = selected.key;
 
   // SSE 헤더 — 응답을 스트림으로 유지
   res.writeHead(200, {
@@ -1048,7 +1050,7 @@ export function handleFilesWatch(
   }
 
   const unsubscribe = watcherRegistry.subscribe(
-    theaterId,
+    watchKey,
     theaterPath,
     // 개행 포함 파일명이 SSE 필드 경계를 깨지 않도록 JSON으로 프레이밍한다.
     // 같은 신호로 path catalog도 무효화해 다음 질의가 디스크를 다시 읽는다.
@@ -1060,7 +1062,7 @@ export function handleFilesWatch(
   );
 
   const directory = url.searchParams.get("directory");
-  if (directory !== null) void watcherRegistry.trackDirectory(theaterId, theaterPath, directory);
+  if (directory !== null) void watcherRegistry.trackDirectory(watchKey, theaterPath, directory);
 
   req.on("close", () => {
     unsubscribe();

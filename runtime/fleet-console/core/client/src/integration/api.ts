@@ -1,3 +1,4 @@
+import { resolveOwnerForContext } from "../../../../features/commodore/shared/contracts/client-helpers.js";
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import { parseConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, ObjectiveGroup, ObjectiveRecord, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
@@ -305,10 +306,11 @@ export async function fetchGroups(theaterId?: string | null, signal?: AbortSigna
 }
 
 export async function createGroup(input: ObjectiveGroupCreateInput, signal?: AbortSignal): Promise<ObjectiveGroup> {
+  const commodoreId = await resolveOwnerForContext(input.theaterId, signal);
   const response = await fetch("/api/v1/objectives/records/groups", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, commodoreId }),
     signal,
   });
   await assertOk(response);
@@ -358,10 +360,11 @@ export async function createObjective(input: {
   readonly payload?: Record<string, unknown>;
   readonly geometry?: ObjectiveRecord["geometry"];
 }, signal?: AbortSignal): Promise<ObjectiveRecord> {
+  const commodoreId = await resolveOwnerForContext(input.theaterId, signal);
   const response = await fetch("/api/v1/objectives/records", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, commodoreId }),
     signal,
   });
   await assertOk(response);
@@ -389,6 +392,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   if (
     !payload
     || typeof payload.id !== "string"
+    || typeof payload.commodoreId !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.title !== "string"
     || !payload
@@ -403,6 +407,7 @@ function assertObjectiveRecord(value: unknown, status: number): ObjectiveRecord 
   }
   return {
     id: payload.id,
+    commodoreId: payload.commodoreId,
     theaterId: payload.theaterId,
     title: payload.title,
     ...(payload),
@@ -421,6 +426,7 @@ function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
   if (
     !payload
     || typeof payload.id !== "string"
+    || typeof payload.commodoreId !== "string"
     || typeof payload.theaterId !== "string"
     || typeof payload.name !== "string"
     || typeof payload.color !== "string"
@@ -431,6 +437,7 @@ function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
   }
   return {
     id: payload.id,
+    commodoreId: payload.commodoreId,
     theaterId: payload.theaterId,
     name: payload.name,
     color: payload.color,

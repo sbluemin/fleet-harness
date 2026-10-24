@@ -59,7 +59,7 @@ const HINTS: Readonly<Record<string, string>> = {
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
-const scope = { theaterId: ids.optional() };
+const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: keep Objectives or done objectives; delete unlaunched. Commodore: done needs a person message this turn.");
 const listTool = defineConsoleTool({
@@ -73,7 +73,7 @@ const listTool = defineConsoleTool({
     history: { kind: "read", input: z.object(rows) },
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
     models: { kind: "read", input: z.object(scope) },
-    add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -133,8 +133,8 @@ export function createObjectiveConsoleTools(ctx: ObjectivesFeatureDeps, store: O
   return createBoardTools(ctx, store, launch);
 }
 
-/** 호스트가 호출자를 넣지 않는 사령관 전용 도구. Theater는 모델 입력이 아니라 생성 때 고정한다. */
-export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
+/** 호스트가 호출자를 넣지 않는 사령관 전용 도구. 소유 UUID는 호스트가 고정하고 생성 장소는 별도로 받는다. */
+export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, commodoreId: string, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   // 호스트와 플러그인 번들은 오류 클래스도 따로 갖는다 — 공개 포트의 거절을 보드 오류로 옮겨 코드·힌트를 보존한다.
   const read: CommodoreAttachmentReader | undefined = readAttachments ? (ids) => {
     try { return readAttachments(ids); }
@@ -144,9 +144,9 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
       throw error;
     }
   } : undefined;
-  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, read, hasPersonMessage);
+  return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read, hasPersonMessage);
 }
-type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
+type CommodoreCaller = { readonly kind: "commodore"; readonly commodoreId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
 function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader, hasPersonMessage?: CommodorePersonMessageReader): readonly ConsoleMcpTool[] {
   const { languageOf, sessions } = createBoardViews(ctx, store);
@@ -171,19 +171,19 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     budget.count += 1; budgets.set(key, budget);
     return true;
   };
-  const theaterOfCaller = (caller: BoardCaller | undefined): string | null => caller?.kind === "commodore" ? caller.theaterId : caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId ?? null : null;
-  const callerKey = (caller: BoardCaller | undefined): string => caller?.kind === "commodore" ? `commodore:${caller.theaterId}` : caller?.kind === "objectiveRecord" ? `op:${caller.objectiveId}` : caller?.kind === "plugin" ? `plugin:${caller.pluginId}` : "anonymous";
+  const ownerOfCaller = (caller: BoardCaller | undefined): string | null => caller?.kind === "commodore" ? caller.commodoreId : caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.commodoreId ?? null : null;
+  const callerKey = (caller: BoardCaller | undefined): string => caller?.kind === "commodore" ? `commodore:${caller.commodoreId}` : caller?.kind === "objectiveRecord" ? `op:${caller.objectiveId}` : caller?.kind === "plugin" ? `plugin:${caller.pluginId}` : "anonymous";
   const actorOf = (caller: BoardCaller | undefined): ObjectiveReviewer | null => caller?.kind === "commodore" ? caller : caller?.kind === "objectiveRecord" ? { kind: "objectiveRecord", objectiveId: caller.objectiveId, title: ctx.objectiveRecords.get(caller.objectiveId)?.title ?? null } : null;
   const language = (caller: BoardCaller | undefined) => languageOf(caller?.kind === "commodore" ? undefined : caller);
   const scoped = (objectiveId: string) => {
     const found = store.find(objectiveId);
     if (!found) throw new ObjectiveStoreError("unknown_objective");
-    if (bound && found.theaterId !== bound.theaterId) throw new ObjectiveStoreError("other_theater");
+    if (bound && found.commodoreId !== bound.commodoreId) throw new ObjectiveStoreError("other_theater");
     return found;
   };
-  // 사령관 묶음은 Theater 가 생성 때 고정된다 — theaterId 는 광고하지도 받지도 않는다(보내면 invalid_arguments). 모델이 고를 수 없는 필드를
+  // 사령관 묶음은 소유 UUID가 고정된다 — commodoreId 는 광고하지도 받지도 않는다(보내면 invalid_arguments). 모델이 고를 수 없는 필드를
   // 스키마에 남기면 라벨 같은 값을 지어내 other_theater 로 실패한다.
-  const boundFilter: ConsoleToolFilter | undefined = bound ? { caller: "commodore", omit: ["theaterId"] } : undefined;
+  const boundFilter: ConsoleToolFilter | undefined = bound ? { caller: "commodore", omit: ["commodoreId"] } : undefined;
   // 호스트는 연결의 필터로 이미 검증한 호출을 넘긴다. 실행은 호출자 종류로 한 번 더 같은 검증을 지난다 — 직접 부른 호출과 사령관 묶음도 같은 길이다.
   const filterOf = (caller: BoardCaller | undefined): ConsoleToolFilter | undefined => boundFilter ?? (caller ? { caller: caller.kind } : undefined);
   const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
@@ -202,8 +202,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const action = typeof args.action === "string" ? args.action : null;
         if (!action || !(action in listTool.actions)) return null;
         const argTheater = typeof args.theaterId === "string" ? args.theaterId : undefined;
-        const theaterId = bound?.theaterId ?? argTheater ?? "";
-        const theaterOf = (id: string | undefined) => bound?.theaterId ?? argTheater ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
+        const theaterId = argTheater ?? "";
+        const theaterOf = (id: string | undefined) => argTheater ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
         if (action === "add") return { theaterId, summary: `목표 추가 「${short(typeof args.title === "string" ? args.title : "")}」`, view: "objectives", gesture: "create", ...listAt(theaterId, args.groupId) };
         if (action === "remove" || action === "archive") { const removeIds = stringIds(args.objectiveIds); const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 보관·정리 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 보관·정리`, view: "objectives", gesture: "press", ...listAt(removeTheaterId, undefined) }; }
         if (action === "purge") { const purgeIds = stringIds(args.objectiveIds); const purgeTheaterId = theaterOf(purgeIds[0]); return { theaterId: purgeTheaterId, summary: purgeIds.length === 1 ? `보관 목표 영구 삭제 예약 「${titleOf(purgeIds[0]!)}」` : `보관 목표 ${purgeIds.length}개 영구 삭제 예약`, view: "objectives", gesture: "press", ...listAt(purgeTheaterId, undefined) }; }
@@ -225,14 +225,14 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           if (bound && call.action !== "purge") for (const id of call.action === "merge" ? [call.into, ...call.from] : call.objectiveIds) scoped(id);
           if (!spend(tidyBudget, callerKey(caller), MAX_TIDY_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_TIDY_PER_TURN, hint: HINTS.budget_exceeded });
           if (call.action === "purge") return await purgeObjectives(call.objectiveIds, caller);
-          const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { objectiveId: `${COMMODORE_TIDY_PREFIX}${caller.theaterId}`, title: null } : { objectiveId: caller.objectiveId, title: ctx.objectiveRecords.get(caller.objectiveId)?.title ?? null }), ...(why ? { reason: why } : {}) });
+          const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { objectiveId: `${COMMODORE_TIDY_PREFIX}${caller.commodoreId}`, title: null } : { objectiveId: caller.objectiveId, title: ctx.objectiveRecords.get(caller.objectiveId)?.title ?? null }), ...(why ? { reason: why } : {}) });
           // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
           const touched = (changed: readonly string[]) => { for (const id of changed) launch.followupTargetChanged(id); };
           if (call.action === "remove" || call.action === "archive") {
             const targets = [...new Set(call.objectiveIds)].map(scoped);
             const refusals = targets.flatMap((found) => {
               const reason = caller.kind === "objectiveRecord" && roleIn(found, caller) ? "own_objective"
-                : caller.kind === "objectiveRecord" && found.theaterId !== theaterOfCaller(caller) ? "other_theater"
+                : caller.kind === "objectiveRecord" && found.commodoreId !== ownerOfCaller(caller) ? "other_theater"
                 : found.done && caller.kind === "commodore" && !hasPersonMessage?.() ? "person_message_required" : null;
               return reason ? [{ objectiveId: found.id, reason, ...(HINTS[reason] ? { hint: HINTS[reason] } : {}) }] : [];
             });
@@ -251,21 +251,23 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           touched(restored);
           return text({ ok: true, restored });
         }
-        // 사령관은 자기 Theater 에 묶여 있다 — 그 묶음의 파싱은 theaterId 를 받지 않는다.
-        const asked = "theaterId" in call ? call.theaterId : undefined;
-        const theaterId = bound?.theaterId ?? asked ?? theaterOfCaller(caller);
-        if (call.action === "models") return text(await models(theaterId, context.signal));
+        // 사령관의 소유 UUID는 호출 인자로 바꿀 수 없다.
+        const asked = "commodoreId" in call ? call.commodoreId : undefined;
+        const commodoreId = bound?.commodoreId ?? asked ?? ownerOfCaller(caller);
+        if (call.action === "models") return text(await models(commodoreId, context.signal));
         if (call.action !== "add") {
-          if (!theaterId) return refuse("theater_required");
-          return text(read(call, theaterId, caller));
+          if (!commodoreId) return refuse("commodore_required");
+          return text(read(call, commodoreId, caller));
         }
-        if (!theaterId) return refuse("theater_required");
+        if (!commodoreId) return refuse("commodore_required");
         if (caller?.kind === "objectiveRecord" && !spend(addBudget, callerKey(caller), MAX_ADD_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN, hint: HINTS.budget_exceeded });
         // 그룹은 입력으로 받지 않는다 — 호출 Objective 의 그룹을 그대로 따른다.
         const groupId = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.groupId ?? null : null;
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
+        const theaterId = call.theaterId ?? (caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined);
+        if (!theaterId) return refuse("theater_required");
         const objective = await launch.create({
-          theaterId, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
+          commodoreId, theaterId, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
@@ -284,7 +286,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         const action = typeof args.action === "string" ? args.action : null;
         if (!action || !(action in detailTool.actions)) return null;
         const found = typeof args.objectiveId === "string" ? store.find(args.objectiveId) : null;
-        const theaterId = bound?.theaterId ?? found?.theaterId ?? "";
+        const theaterId = found?.theaterId ?? "";
         const at = { view: "objective", ...(found ? { path: found.id } : {}), ...rowAt(found?.id, theaterId) };
         const title = short(found?.title ?? "");
         if (action === "edit_due") return { theaterId, summary: `목표 기한 ${args.dueDate === null ? "해제" : "변경"} 「${title}」`, gesture: "press", ...at };
@@ -394,7 +396,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     for (const id of targets) {
       const found = store.find(id);
       const reason = !found ? "unknown_objective"
-        : found.theaterId !== theaterOfCaller(caller) ? "other_theater"
+        : found.commodoreId !== ownerOfCaller(caller) ? "other_theater"
         : caller.kind === "objectiveRecord" && roleIn(found, caller) ? "own_objective"
         : null;
       if (reason) { refusals.push({ objectiveId: id, reason }); continue; }
@@ -422,11 +424,11 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return text({ ok: true, scheduled, warning });
   }
 
-  async function models(theaterId: string | null, signal: AbortSignal | undefined) {
+  async function models(commodoreId: string | null, signal: AbortSignal | undefined) {
     const [catalog, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.quota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
     // 바꾸지 못한 전환(곧바로든 턴 뒤든) — 그 모델로 다시 고르기 전에 볼 사유다. cause 는 자식이 거절하며 던진 원문이다.
-    const failedSwitches = theaterId ? store.list(theaterId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
+    const failedSwitches = commodoreId ? store.list(commodoreId).filter((objective) => !objective.done && !objective.removed).flatMap((objective) => objective.members.flatMap((member) => member.next?.failed
       ? [{ objectiveId: objective.id, memberId: member.id, role: member.role, model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}), failed: member.next.failed, ...(member.next.cause ? { cause: member.next.cause } : {}) }]
       : [])) : [];
     return { models: catalog, quota, failedSwitches };
@@ -464,21 +466,21 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return { objectiveId: objective.id, session, source: page.source, latest: !args.cursor, entries: page.entries, nextCursor: page.nextCursor, truncated: page.truncated };
   }
 
-  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" }>, theaterId: string, caller: BoardCaller | undefined) {
+  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" }>, commodoreId: string, caller: BoardCaller | undefined) {
     if (args.action === "archived") {
       if (!ctx.objectiveRecords.listArchived) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
-      const snapshot = ctx.objectiveRecords.listArchived(theaterId);
+      const snapshot = ctx.objectiveRecords.listArchived();
       const objectives = snapshot.entries.flatMap(({ objectiveRecord, location, archivedAt }) => {
         if (location !== "archived" || archivedAt === null || (args.archivedBefore !== undefined && archivedAt >= args.archivedBefore)) return [];
         const found = store.find(objectiveRecord.id);
-        if (!found || found.theaterId !== theaterId || (args.groupId && found.groupId !== args.groupId)) return [];
+        if (!found || found.commodoreId !== commodoreId || (args.groupId && found.groupId !== args.groupId)) return [];
         return [{ id: found.id, objectiveId: found.id, title: found.title, archivedAt }];
       }).sort((a, b) => b.archivedAt - a.archivedAt || a.id.localeCompare(b.id));
-      return consoleObjectivePage(objectives, { theaterId, offset: args.offset, limit: args.limit });
+      return consoleObjectivePage(objectives, { commodoreId, offset: args.offset, limit: args.limit });
     }
-    if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.objectiveRecords.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
-    const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { theaterId, offset: args.offset, limit: args.limit, today });
-    const supply = args.action === "history" ? store.all().filter((objective) => objective.theaterId === theaterId) : store.list(theaterId);
+    if (args.action === "groups") { const objectives = store.list(commodoreId); return { commodoreId, groups: (ctx.objectiveRecords.groups?.list(commodoreId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
+    const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { commodoreId, offset: args.offset, limit: args.limit, today });
+    const supply = args.action === "history" ? store.all().filter((objective) => objective.commodoreId === commodoreId) : store.list(commodoreId);
     const board = supply.filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
     if (args.action === "inbox") {
       const now = Date.now();
@@ -501,7 +503,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     if (args.action === "history") return page(board.filter((objective) => objective.done || objective.handoff || objective.extensions.length || (objective.actionCounts?.["hand-off"] ?? 0) > 0)
       .sort((a, b) => (b.boardUpdatedAt ?? b.createdAt) - (a.boardUpdatedAt ?? a.createdAt)).map(historyView));
     const today = new Date().toISOString().slice(0, 10);
-    const objectives = store.list(theaterId).filter((objective) => {
+    const objectives = store.list(commodoreId).filter((objective) => {
       if (args.groupId && objective.groupId !== args.groupId) return false;
       const filter = args.action === "list" ? args.filter : undefined;
       if (filter !== "all" && objective.removed) return false;

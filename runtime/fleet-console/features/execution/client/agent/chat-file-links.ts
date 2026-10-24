@@ -3,7 +3,7 @@ import { parseFileRef, isAbsolute } from "@fleet-console/markdown/file-ref";
 import type { MarkdownLinkActivation } from "@fleet-console/markdown/link-activation";
 import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 
-export function createChatFileLinkPorts(theaterId: string, navigate: ClientNavigateCapability, onFailure: (reason: "unsupported" | "failed" | null) => void): {
+export function createChatFileLinkPorts(theaterId: string, navigate: ClientNavigateCapability, onFailure: (reason: "unsupported" | "failed" | null) => void, objectiveId?: string): {
   readonly resolveLink: NonNullable<RenderMarkdownOptions["resolveLink"]>;
   readonly onActivate: MarkdownLinkActivation;
 } {
@@ -25,7 +25,7 @@ export function createChatFileLinkPorts(theaterId: string, navigate: ClientNavig
       if (kind !== "file" || !data.path) return;
       onFailure(null);
       void navigate.openFile({
-        theaterId,
+        theaterId, ...(objectiveId ? { objectiveId } : {}),
         path: data.path,
         pathKind: data.pathKind === "absolute" ? "absolute" : "theater-relative",
         ...(data.line === undefined ? {} : { line: Number(data.line) }),

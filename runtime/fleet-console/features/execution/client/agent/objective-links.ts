@@ -64,6 +64,6 @@ export function useObjectiveLinks(target: ObjectiveLinkTarget): ObjectiveLinks {
   }, [availability, linkOpen.choose]);
   const onLinkClick = React.useMemo(() => createChatLinkInterceptor(choose, openDirect), [choose, openDirect]);
   const [fileLinkFailure, setFileLinkFailure] = React.useState<"unsupported" | "failed" | null>(null);
-  const fileLinks = React.useMemo(() => createChatFileLinkPorts(theaterId, navigate, setFileLinkFailure), [theaterId, navigate]);
+  const fileLinks = React.useMemo(() => createChatFileLinkPorts(theaterId, navigate, setFileLinkFailure, objectiveId), [theaterId, navigate, objectiveId]);
   return { choose, openDirect, onLinkClick, fileLinks, fileLinkFailure, card: linkOpen.card };
 }

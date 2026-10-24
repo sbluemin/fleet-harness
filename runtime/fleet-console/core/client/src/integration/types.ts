@@ -182,6 +182,7 @@ export interface ObjectiveGeometry {
 }
 
 export interface ObjectiveGroup {
+  readonly commodoreId: string;
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -191,6 +192,7 @@ export interface ObjectiveGroup {
 }
 
 export interface ObjectiveRecord {
+  readonly commodoreId: string;
   readonly [key: string]: unknown;
   readonly sessions?: readonly { readonly id: string; readonly [key: string]: unknown; readonly ts: { readonly createdAt: number; readonly updatedAt: number } }[];
   readonly id: string;

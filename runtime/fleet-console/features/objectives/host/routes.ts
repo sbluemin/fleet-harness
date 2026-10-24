@@ -123,7 +123,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     moved = store.find(moved.id) ?? moved;
     const members = ctx.objectiveRecords.list().filter((node) => node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
     const memberIds = new Set(members.map((node) => node.id));
-    const boardIds = store.list(moved.theaterId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
+    const boardIds = store.list(moved.commodoreId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
     const objectives = new Set(boardIds);
     // 목표가 차지한 자리만 재배열한다. 터미널·담당 Objective 은 기존 자리에 그대로 둔다.
     const slots = members.map((node) => node.id);
@@ -143,13 +143,13 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
   };
 
   return [
-    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
+    { name: "state", method: "POST", summary: "Read the objectives and groups of a Commodore.", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => { prStatus?.refresh(); return { objectives: store.list(commodoreId), groups: groupsOf(commodoreId), launch: launch.describe() }; }) },
     // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 홈의 「완료 N」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
-    { name: "finished", method: "POST", summary: "Read the completed objectives of a Theater that a person archived (completion itself does not archive), most recent first (the phone home's Done section).", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.all().filter((item) => item.theaterId === theaterId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
+    { name: "finished", method: "POST", summary: "Read the completed objectives of a Commodore that a person archived (completion itself does not archive), most recent first (the phone home's Done section).", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => ({ objectives: store.all().filter((item) => item.commodoreId === commodoreId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Objective 도 목표다 — 화면이 처음 보는 에이전트 Objective 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Objective of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표 레코드만 만든다 — 같은 ID의 지휘관 Objective은 첫 「구상」·「시작」 때 선다.
-    { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander session.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
+    { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander session.", handler: json(createObjectiveSchema, async ({ language, commodoreId, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ commodoreId, theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
     { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Objective's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
@@ -204,12 +204,12 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
       }), actions.message) },
     { name: "conversation/broadcast", method: "POST", summary: "Send the person's words to the live Commander and members concurrently, including idle or restored chats, but skipping dormant terminals.", handler: json(objectiveRef.extend({ text: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), ({ objectiveId, text }) => launch.broadcast(objectiveId, text)) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), actions.steer) },
-    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette: open ones first, then completed ones, archived or not.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
+    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette: open ones first, then completed ones, archived or not.", handler: json(z.object({ commodoreId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ commodoreId, query, limit }) => {
       const needle = query.toLowerCase();
       const matches = (candidate: Objective) => !candidate.removed && candidate.title.toLowerCase().includes(needle);
       // 끝나지 않은 목표가 먼저, 그다음 보관 여부와 무관한 완료 목표 — 완료는 보관하지 않으므로 아직 보관하지 않은 완료도 찾아 보관할 수 있어야 한다.
-      const open = store.list(theaterId).filter((candidate) => !candidate.done && matches(candidate));
-      const done = store.all().filter((candidate) => candidate.theaterId === theaterId && !!candidate.done && candidate.recorded !== false && matches(candidate)).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
+      const open = store.list(commodoreId).filter((candidate) => !candidate.done && matches(candidate));
+      const done = store.all().filter((candidate) => candidate.commodoreId === commodoreId && !!candidate.done && candidate.recorded !== false && matches(candidate)).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
       const hits = [...open, ...done].slice(0, limit ?? 20);
       return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId, ...(candidate.done ? { done: true } : {}) })) };
     }) },

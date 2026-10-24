@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import fs from "node:fs/promises";
 import type http from "node:http";
 
@@ -216,11 +217,9 @@ export async function handleRepositoryLog(
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
-  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown; readonly order?: unknown }>(req);
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly objectiveId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly limit?: unknown; readonly skip?: unknown; readonly order?: unknown }>(req);
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const theaterId = body.theaterId;
-  if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const order = resolveLogOrder(body.order);
   if (order === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const limit = body.limit === undefined ? 200 : body.limit;
@@ -230,8 +229,8 @@ export async function handleRepositoryLog(
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return;
   }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }

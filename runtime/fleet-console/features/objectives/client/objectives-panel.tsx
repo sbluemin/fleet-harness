@@ -20,7 +20,7 @@ import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { canOpenLedger, toggleLedger, useLedgerObjective, openNewObjective, hasDecisionRequest, focusObjective, followActiveObjective, listedObjectiveSummaries, loadBoard, notifyObjectiveSurface, patchOwnerView, post, takeReveal, useObjectiveSummaries, useReveal, useObjectiveBoard, useOwnerView, useObjectiveDisplayOwner } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./board-commodore.js";
 import { ObjectiveSwitcher } from "./switcher.js";
@@ -136,15 +136,15 @@ const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const t = getT(ctx.language);
   const language = ctx.language === "ko" ? "ko" : "en";
-  const theaterId = useObjectiveDisplayTheater(ctx.theaterId);
-  const state = useObjectiveTheater(theaterId);
+  const commodoreId = useObjectiveDisplayOwner(ctx.theaterId);
+  const state = useObjectiveBoard(commodoreId);
   const objectiveRecords = useObjectiveSummaries();
   const reveal = useReveal();
   // 보기 상태(고른 목표 · 상세 구획 접힘)는 Theater 별 모듈 스토어에 산다 — 표면을 닫았다 열어도 보던 자리 그대로.
-  const view = useObjectiveView(theaterId);
+  const view = useOwnerView(commodoreId);
   const selected = view.selected;
   const collapsed = view.collapsed;
-  const setSelected = useCallback((next: string | null) => patchObjectiveView(theaterId, () => ({ selected: next, externalSelectionId: null })), [theaterId]);
+  const setSelected = useCallback((next: string | null) => patchOwnerView(commodoreId, () => ({ selected: next, externalSelectionId: null })), [commodoreId]);
   /**
    * 사람이 고른 목표 — 완료해 지휘관이 보관된 목표는 가운데 칸에 완료 화면을 세운다. 범위 넓히기는 그 화면의 입력창이 받는다
    * (대화 중심 화면이 꺼져 있으면 아무 일도 없다).
@@ -154,7 +154,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const picked = next === null ? undefined : state.objectives.find((objective) => objective.id === next);
     if (picked?.done && !listedObjectiveSummaries().some((summary) => summary.id === picked.id)) openFreshConversation(picked.id, picked.theaterId);
   }, [setSelected, state.objectives]);
-  const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
+  const toggleSection = (key: string, defaultOpen: boolean) => patchOwnerView(commodoreId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
   const [highlightMission, setHighlightMission] = useState<string | null>(null);
   // 전환 목록의 열림 — ⌄ 와 빈 상태의 「목표 목록 열기」가 함께 쓴다. 사이드바가 다시 보이면 ⌄ 와 함께 닫는다.
@@ -173,7 +173,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     return () => { setTimeout(notifyObjectiveSurface, 0); };
   }, []);
   // 목표 상세는 대화 중심 화면의 우측 레일에만 선다 — 머리(제목·완료·보관·작업 줄)는 가운데 대화의 머리와 레일 캡션이 맡는다.
-  useEffect(() => { if (theaterId) void loadTheater(ctx.api, theaterId); }, [ctx.api, theaterId]);
+  useEffect(() => { if (commodoreId) void loadBoard(ctx.api, commodoreId); }, [ctx.api, commodoreId]);
   // 남겨 둔 자리가 사라졌으면(항목 삭제) 그 자리만 거둔다 — 다른 곳에서 지워진 것을 붙들고 빈 화면을 보이지 않게.
   // 가운데 칸이 보관된 완료 목표의 완료 화면이면 그 목표는 목록에 없어도 남는다 — 보드는 읽어 둔 끝난 목표 레코드를 보인다(완료라 고칠 수 없다).
   const standingId = useSyncExternalStore(subscribeFreshConversation, freshConversationObjectiveId, freshConversationObjectiveId);
@@ -227,7 +227,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const detailRef = useRef<HTMLElement | null>(null);
   // 사람의 차례만 센다 — 사이드바 「내 결정」·레일 배지와 같은 판정(`personTurnAt`). 상세 머리의 「다른 요청」이 이 줄을 돈다.
   // 사령관이 맡은 요청은 그룹 제자리의 그 목표 줄(「사령관이 답하는 중」)에서 연다.
-  const commodore = useCommodoreBoard(theaterId ?? "");
+  const commodore = useCommodoreBoard(commodoreId ?? "");
   const requests = useMemo(() => state.objectives
     .flatMap((objective) => { const at = objective.removed ? null : personTurnAt(objective, commodore.active); return at === null ? [] : [{ objective, at }]; })
     .sort((a, b) => a.at - b.at).map((entry) => entry.objective), [state.objectives, commodore.active]);
@@ -247,7 +247,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       if (listedObjectiveSummaries().some((summary) => summary.id === target.id)) focusObjective(target.id);
     } else if (n > 0 && followupGate(target) === "criteria") {
       // 후보 목록은 탭에 두지 않는다 — 기준 제안이 고르기를 막고 있으면 그 제안이 선 목표 탭을 연다.
-      patchObjectiveView(theaterId, () => ({ detailTab: "goal" }));
+      patchOwnerView(commodoreId, () => ({ detailTab: "goal" }));
     }
     // 스티어링이 먼저이거나 아직 고를 때가 아니면(openTip) 할 일은 구성원 채팅 입력창 위 제안 줄에 선다 — 다른 번들의 DOM 이라 초점을 옮기지 않는다.
   };
@@ -276,14 +276,14 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     if (reveal.followups) openFollowupPicker(objective);
   }, [reveal, state.objectives]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-pick-pane"><div className="objectives-pick"><p>{t("objectives.objectives.emptyTheater")}</p></div></div></div></div>;
+  if (!commodoreId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-pick-pane"><div className="objectives-pick"><p>{t("objectives.objectives.emptyTheater")}</p></div></div></div></div>;
 
   // 사이드바가 보이면 트리는 거기 있다. 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
   const switcher = ctx.sideBarVisible === true ? null : (
     <ObjectiveSwitcher
       t={t}
       language={language}
-      theaterId={theaterId}
+      commodoreId={commodoreId}
       objectives={state.objectives}
       groups={state.groups}
       selected={selected}
@@ -355,12 +355,12 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         busy={isBusy(current)}
         request={request}
         tab={detailTabOf(view.detailTab)}
-        onTab={(next) => patchObjectiveView(theaterId, () => ({ detailTab: next }))}
+        onTab={(next) => patchOwnerView(commodoreId, () => ({ detailTab: next }))}
         sectionOpen={(key) => isOpen(key, false)}
         onToggleSection={(key) => toggleSection(key, false)}
         groupOpen={(key) => isOpen(key, false)}
         onToggleGroup={(key) => toggleSection(key, false)}
-        onOpenGroup={(key) => patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
+        onOpenGroup={(key) => patchOwnerView(commodoreId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
         highlightMission={highlightMission}
         detailRef={detailRef}
         onToggleEdge={(from, to, linked) => toggleEdge(current, from, to, linked)}

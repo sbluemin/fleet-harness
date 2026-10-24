@@ -8,7 +8,7 @@ import { freshConversationObjectiveId, shownFinishedObjective, subscribeFreshCon
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { objectiveOfObjective } from "./mobile.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayTheaterId, objectivesApi, objectiveRecordSummaries, patchObjectiveView, post, readObjectiveView, readTheater, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { findAnyObjective, followedObjectiveId, isObjectiveSurfaceOpen, objectiveDisplayOwnerId, objectivesApi, objectiveRecordSummaries, patchOwnerView, post, readOwnerView, readBoard, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다 — 첫 줄은 오늘·기한(사령관 패널의 섹션 줄 자리),
@@ -28,12 +28,12 @@ const UNSEEN_DOT = { tone: "unseen", label: T("objectives.tabs.unseenDot") } as 
  * 머리 탭이 가리키는 목표 — 패널이 열려 있으면 패널이 보이는 목표, 닫혀 있으면 열 때 따라갈 목표(시작 전 화면·완료 화면·지금 대화의 목표).
  */
 function headObjective(contextTheaterId: string | null): { readonly theaterId: string | null; readonly objective: Objective | null } {
-  const theaterId = objectiveDisplayTheaterId(contextTheaterId);
+  const theaterId = objectiveDisplayOwnerId(contextTheaterId);
   if (isObjectiveSurfaceOpen()) {
-    const selected = readObjectiveView(theaterId).selected;
+    const selected = readOwnerView(theaterId).selected;
     if (!selected) return { theaterId, objective: null };
     const shownDone = shownFinishedObjective();
-    return { theaterId, objective: readTheater(theaterId).objectives.find((objective) => objective.id === selected && !objective.removed) ?? (shownDone?.id === selected ? shownDone : null) };
+    return { theaterId, objective: readBoard(theaterId).objectives.find((objective) => objective.id === selected && !objective.removed) ?? (shownDone?.id === selected ? shownDone : null) };
   }
   const standing = freshConversationObjectiveId();
   if (standing) return { theaterId, objective: findAnyObjective(standing) };
@@ -53,7 +53,7 @@ const tabsCache = new Map<string, { readonly key: string; readonly state: RailEn
 function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTabsState {
   // 대화가 곧 목표다 — 목표를 아직 읽지 못한 순간에도 세 탭은 그대로 서고, 점만 비어 있다.
   const { theaterId, objective } = headObjective(contextTheaterId);
-  const selected = detailTabOf(readObjectiveView(theaterId).detailTab);
+  const selected = detailTabOf(readOwnerView(theaterId).detailTab);
   return readTabs(contextTheaterId ?? "", objective, selected);
 }
 
@@ -81,11 +81,11 @@ export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationP
   subscribe: subscribeHead,
   read: (objectiveId) => {
     const objective = objectiveOfObjective(objectiveId);
-    return readTabs(undefined, objective, detailTabOf(readObjectiveView(objective?.theaterId ?? null).detailTab));
+    return readTabs(undefined, objective, detailTabOf(readOwnerView(objective?.commodoreId ?? null).detailTab));
   },
   select: (tabId, objectiveId) => {
     const objective = objectiveOfObjective(objectiveId);
-    if (objective) patchObjectiveView(objective.theaterId, () => ({ detailTab: detailTabOf(tabId) }));
+    if (objective) patchOwnerView(objective.commodoreId, () => ({ detailTab: detailTabOf(tabId) }));
   },
 };
 
@@ -126,6 +126,6 @@ function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonl
 export const objectiveConversationTabs: RailEntryConversationTabs = {
   subscribe: subscribeHead,
   read: readHeadTabs,
-  select: (tabId, contextTheaterId) => patchObjectiveView(objectiveDisplayTheaterId(contextTheaterId), () => ({ detailTab: detailTabOf(tabId) })),
+  select: (tabId, contextTheaterId) => patchOwnerView(objectiveDisplayOwnerId(contextTheaterId), () => ({ detailTab: detailTabOf(tabId) })),
   renderTools: ({ theaterId, language }) => <ObjectiveHeadTools theaterId={theaterId} language={language} />,
 };

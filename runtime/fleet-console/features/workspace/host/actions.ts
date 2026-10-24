@@ -83,7 +83,11 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
     accent: (objectiveId, accent) => !!patchObjective(objectiveId, { accent }),
     group: ({ mode, theaterId, name, color, groupId, objectiveIds }) => {
       let group: ReturnType<typeof objectiveRecords.createGroup> | null = null;
-      if (mode === "create") { group = objectiveRecords.createGroup({ theaterId, name: name!, color: color ?? "teal" }); broadcastGroupChanged(group); }
+      if (mode === "create") {
+        const owners = new Set(objectiveIds.map((id) => objectiveRecords.get(id)?.commodoreId));
+        const [commodoreId] = owners;
+        if (owners.size !== 1 || !commodoreId) throw new Error("mixed_owners");
+        group = objectiveRecords.createGroup({ commodoreId, theaterId, name: name!, color: color ?? "teal" }); broadcastGroupChanged(group); }
       else if (mode === "assign") {
         const existing = objectiveRecords.listGroups(theaterId).find((candidate) => candidate.id === groupId);
         if (!existing) throw new Error("unknown_group");

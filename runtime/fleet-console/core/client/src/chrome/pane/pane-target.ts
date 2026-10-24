@@ -24,7 +24,7 @@ export function landPaneTarget(target: PaneTarget, ports: PaneTargetPorts, fallb
   const descriptor = owner?.panes.find((pane) => pane.id === target.paneId);
   if (!descriptor && !fallbackEntryId) return { ok: false, reason: "no_handler" };
   const theaterId = target.theaterId ?? target.params?.theaterId;
-  if (theaterId && !ports.activateTheater(theaterId)) return { ok: false, reason: "not_found" };
+  if (!target.params?.objectiveId && theaterId && !ports.activateTheater(theaterId)) return { ok: false, reason: "not_found" };
   const params = { ...target.params, ...(theaterId ? { theaterId } : {}), requestId: ports.requestId() };
   if (ports.showTarget({ ...target, params })) return { ok: true };
   const mount = target.mount ?? descriptor?.mounts[0] ?? "rail";

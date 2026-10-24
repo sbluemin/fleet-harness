@@ -11,6 +11,7 @@ import { isObjectiveGroupColor } from "../../../workspace/shared/identity-tones.
 export type { ObjectiveGeometry, ObjectiveTimestamps } from "../../shared/records/types.js";
 
 export interface ObjectiveGroup {
+  readonly commodoreId: string;
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -20,6 +21,7 @@ export interface ObjectiveGroup {
 }
 
 export interface ObjectiveGroupCreateInput {
+  readonly commodoreId: string;
   readonly id?: string;
   readonly name: string;
   readonly color: string;
@@ -101,7 +103,7 @@ const FIXED_SENSITIVE_OBJECTIVE_FIELDS = new Set([
 ]);
 
 export function createSanitizedOpDto(node: ObjectiveRecord, options: ObjectiveSanitizeOptions = {}): ObjectiveRecord {
-  const keys = ["id", "theaterId", "title", "groupId", "order", "accent", "parentObjectiveId", "ts", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
+  const keys = ["id", "commodoreId", "theaterId", "title", "groupId", "order", "accent", "parentObjectiveId", "ts", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
   const fields = Object.fromEntries(keys.filter((key) => node[key] !== undefined).map((key) => [key, node[key]]));
   const sensitive = new Set([...FIXED_SENSITIVE_OBJECTIVE_FIELDS, ...(options.sensitiveFields ?? [])]);
   return { ...sanitizeChildPayload(fields, sensitive, options),
@@ -155,6 +157,7 @@ import crypto from "node:crypto";
 
 export interface ObjectiveRecordsStoreDeps {
   readonly now?: () => number;
+  readonly resolveCreation?: (input: ObjectiveRecordCreateInput) => { readonly commodoreId: string; readonly cwd: string };
   readonly isReserved?: (id: string) => boolean;
   readonly assertRelationMutable?: (id: string) => void;
   /**
@@ -171,7 +174,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   const grouped = (before: ObjectiveRecord, after: ObjectiveRecord): void => {
     const previousGroupId = before.groupId ?? null;
     const groupId = after.groupId ?? null;
-    if (previousGroupId !== groupId) deps.onGroupChanged?.({ objectiveId: after.id, theaterId: after.theaterId, groupId, previousGroupId });
+    if (previousGroupId !== groupId) deps.onGroupChanged?.({ objectiveId: after.id, commodoreId: after.commodoreId, theaterId: after.theaterId, groupId, previousGroupId });
   };
   const nodes = new Map<string, ObjectiveRecord>();
   const groups = new Map<string, ObjectiveGroup>();
@@ -200,7 +203,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function projectChild(parent: ObjectiveRecord, child: ChildSession): ObjectiveRecord {
     const session = child.session;
     const name = session && typeof session === "object" && !Array.isArray(session) ? (session as Record<string, unknown>).sessionName : undefined;
-    return { ...child, id: child.id, theaterId: parent.theaterId,
+    return { ...child, id: child.id, commodoreId: parent.commodoreId, cwd: parent.cwd, theaterId: parent.theaterId,
       title: typeof name === "string" && name.length > 0 ? name : child.id.slice(0, 8),
       parentObjectiveId: parent.id, ts: child.ts };
 
@@ -251,7 +254,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function create(input: ObjectiveRecordCreateInput): ObjectiveRecord {
     const id = input.id ?? crypto.randomUUID();
     if (nodes.has(id) || getChild(id) || deps.isReserved?.(id)) throw new Error("objectiveRecord_exists");
-    const node = normalizeCreateInput(input, id, now());
+    const node = normalizeCreateInput({ ...input, ...deps.resolveCreation?.(input) }, id, now());
     nodes.set(node.id, node);
     return node;
   }
@@ -334,11 +337,13 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function createGroup(input: ObjectiveGroupCreateInput): ObjectiveGroup {
+    deps.resolveCreation?.({ commodoreId: input.commodoreId, theaterId: input.theaterId, title: input.name });
     const id = input.id ?? crypto.randomUUID();
     if (groups.has(id)) throw new Error("group_exists");
     const order = input.order ?? groups.size;
     const group: ObjectiveGroup = {
       id,
+      commodoreId: input.commodoreId,
       theaterId: input.theaterId,
       name: input.name.trim().slice(0, MAX_GROUP_NAME_LENGTH) || "Group",
       color: input.color,
@@ -374,7 +379,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
       ungrouped.push([node, next]);
     }
     for (const [before, after] of ungrouped) grouped(before, after);
-    deps.onGroupRemoved?.({ groupId: id, theaterId: removed.theaterId });
+    deps.onGroupRemoved?.({ groupId: id, commodoreId: removed.commodoreId, theaterId: removed.theaterId });
     return true;
   }
 
@@ -409,7 +414,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
 }
 
 function normalizeCreateInput(input: ObjectiveRecordCreateInput, id: string, timestamp: number): ObjectiveRecord {
-  const { createdAt, ...fields } = input;
+  const { createdAt, sourceObjectiveId: _source, ...fields } = input;
   return { ...fields, id, title: input.title.trim() || "Untitled Objective", ts: { createdAt: createdAt ?? timestamp, updatedAt: timestamp } };
 }
 function patchedFields<T extends { readonly id: string }>(existing: T, input: Record<string, unknown>): T & Record<string, unknown> {
@@ -420,7 +425,7 @@ function patchedFields<T extends { readonly id: string }>(existing: T, input: Re
 function normalizePatch(existing: ObjectiveRecord, input: ObjectiveRecordPatchInput, timestamp: number): ObjectiveRecord {
   const title = input.title?.trim();
   return { ...patchedFields(existing, input),
-    id: existing.id, theaterId: existing.theaterId,
+    id: existing.id, commodoreId: existing.commodoreId, cwd: existing.cwd, theaterId: existing.theaterId,
     ...(title !== undefined ? { title: title || existing.title } : {}),
     accent: input.accent === null ? undefined : input.accent ?? existing.accent,
     ts: { ...existing.ts, updatedAt: timestamp },
@@ -589,7 +594,7 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
     return;
   }
   const body = await deps.readJsonBody<CreateObjectiveBody>(req);
-  if (!body || typeof body.theaterId !== "string" || typeof body.title !== "string") {
+  if (!body || typeof body.commodoreId !== "string" || typeof body.theaterId !== "string" || typeof body.title !== "string") {
     deps.writeJson(res, 400, { error: "invalid_objectiveRecord" });
     return;
   }
@@ -604,6 +609,7 @@ async function handleCollection(req: http.IncomingMessage, res: http.ServerRespo
   try {
     const node = deps.store.create({
       id: typeof body.id === "string" ? body.id : undefined,
+      commodoreId: body.commodoreId as string,
       theaterId: body.theaterId,
       title: body.title,
       ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
@@ -713,7 +719,7 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
     return;
   }
   const body = await deps.readJsonBody<CreateGroupBody>(req);
-  if (!body || typeof body.theaterId !== "string" || typeof body.name !== "string") {
+  if (!body || typeof body.commodoreId !== "string" || typeof body.theaterId !== "string" || typeof body.name !== "string") {
     deps.writeJson(res, 400, { error: "invalid_group" });
     return;
   }
@@ -723,6 +729,7 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
   }
   try {
     const group = deps.store.createGroup({
+      commodoreId: body.commodoreId as string,
       theaterId: body.theaterId,
       name: body.name,
       color: body.color,

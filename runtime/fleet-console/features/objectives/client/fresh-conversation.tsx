@@ -1,11 +1,11 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { objectiveRecordAvatarKey } from "../../workspace/shared/avatars.js";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 
 import type { Objective } from "../shared/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, openObjectiveFromCluster, patchObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, loadObjective, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, openObjectiveFromCluster, patchOwnerView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Objective 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -31,15 +31,9 @@ export function connectFreshConversation(next: ClientConversationCapability | un
  */
 export function openFreshConversation(objectiveId: string, theaterId?: string): boolean {
   if (!port || !port.isActive()) return false;
-  if (theaterId) refreshFinishedFor(objectiveId, theaterId);
+  void loadObjective(objectiveId).catch(() => {});
   const target = theaterId ?? findObjective(objectiveId)?.theaterId;
   return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}) });
-}
-
-/** 살아 있는 목록에도 읽어 둔 끝난 목표에도 없으면 그 Theater 의 끝난 목표를 다시 읽는다 — 끝난 목표 캐시는 완료로 보관되기 전에 읽혔을 수 있다. */
-function refreshFinishedFor(objectiveId: string, theaterId: string): void {
-  if (findAnyObjective(objectiveId) === null) loadFinishedObjectives(theaterId);
-  else ensureFinishedObjectives(theaterId);
 }
 
 /**
@@ -59,7 +53,7 @@ export function openObjectiveConversation(objectiveId: string, theaterId: string
  */
 export function goToObjective(objectiveId: string, theaterId: string, done: boolean): void {
   const shown = openObjectiveConversation(objectiveId, theaterId);
-  if (done && shown) patchObjectiveView(theaterId, () => ({ selected: objectiveId, externalSelectionId: null }));
+  if (done && shown) patchOwnerView(findAnyObjective(objectiveId)?.commodoreId ?? null, () => ({ selected: objectiveId, externalSelectionId: null }));
   else revealObjective({ objectiveId });
   if (shown) openObjectiveFromCluster();
   else openObjectiveFromCluster(theaterId, objectiveId);
@@ -107,12 +101,18 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   const t = getT(language);
   const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
   const live = useSyncExternalStore(subscribeObjective, () => commanderLive(objectiveId), () => commanderLive(objectiveId));
-  // 보관된 완료 목표는 그 Theater 의 끝난 목표를 (다시) 읽은 뒤에야 찾는다 — 읽는 동안에는 칸을 걷지 않고, 읽기가 실패하면 오류와 다시 시도를 보인다.
-  const failedNow = () => theaterId !== null && finishedObjectivesFailed(theaterId);
-  const waiting = () => theaterId !== null && (finishedObjectivesLoading(theaterId) || (!finishedObjectivesLoaded(theaterId) && !failedNow()));
-  const pending = useSyncExternalStore(subscribeObjectiveOrFinished, waiting, () => false);
-  const failed = useSyncExternalStore(subscribeObjectiveOrFinished, failedNow, () => false);
-  useEffect(() => { if (theaterId) refreshFinishedFor(objectiveId, theaterId); }, [objectiveId, theaterId]);
+  const [loadState, setLoadState] = useState({ objectiveId, pending: true, failed: false });
+  const [attempt, retry] = useState(0);
+  const pending = loadState.objectiveId !== objectiveId || loadState.pending;
+  const failed = loadState.objectiveId === objectiveId && loadState.failed;
+  const waiting = () => pending;
+  const failedNow = () => failed;
+  useEffect(() => {
+    let live = true;
+    setLoadState({ objectiveId, pending: true, failed: false });
+    void loadObjective(objectiveId).then(() => { if (live) setLoadState({ objectiveId, pending: false, failed: false }); }, () => { if (live) setLoadState({ objectiveId, pending: false, failed: true }); });
+    return () => { live = false; };
+  }, [objectiveId, attempt]);
   // 개시·범위 넓히기·완료 뒤 메시지로 지휘관 Objective 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   // 읽는 중인지는 렌더 값이 아니라 지금 값으로 본다 — 바로 위 효과가 같은 커밋에서 다시 읽기를 시작했을 수 있다.
   useEffect(() => {
@@ -125,7 +125,7 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
       <div className="objectives-fresh-conversation">
         <div className="objectives-fresh-start">
           <p className="objectives-fresh-brief is-empty" role="alert">{t("objectives.fresh.loadFailed")}</p>
-          <button type="button" className="objectives-btn is-small" onClick={() => loadFinishedObjectives(theaterId)}>{t("objectives.followup.retry")}</button>
+          <button type="button" className="objectives-btn is-small" onClick={() => retry((value) => value + 1)}>{t("objectives.followup.retry")}</button>
         </div>
       </div>
     );

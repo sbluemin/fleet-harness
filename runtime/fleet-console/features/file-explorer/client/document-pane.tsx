@@ -75,11 +75,12 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
+  const objectiveId = ctx.params.objectiveId ?? ctx.conversation?.objectiveId;
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
   const conversationKey = ctx.conversation?.key ?? null;
   useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
   const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError, discardedTabs } = useFileExplorerViewState(contextScope);
-  const shellAction = useShellAction(ctx.shell, theaterId, activePath);
+  const shellAction = useShellAction(ctx.shell, theaterId, activePath, objectiveId);
   const consumedRequestRef = useRef<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const tabsMoreRef = useRef<HTMLButtonElement>(null);
@@ -130,7 +131,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
       });
     };
     if (params.pathKind === "absolute") {
-      void resolveFilePath(contextScope, addressed, "absolute", signal).then((resolved) => {
+      void resolveFilePath(contextScope, addressed, "absolute", signal, objectiveId).then((resolved) => {
         if (resolved.kind === "file" && active && !signal.aborted) {
           apply(resolved.path);
           panes.replaceParams({ ...params, path: resolved.path, pathKind: "theater-relative" });
@@ -139,13 +140,13 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         if (!active || signal.aborted) return;
         showFileNavigationError(error instanceof FileNavigationError ? error.reason : "not_found");
         const fallback = getFileExplorerSnapshot(contextScope).activePath;
-        if (fallback) panes.replaceParams({ path: fallback, theaterId: contextScope, pathKind: "theater-relative" });
+        if (fallback) panes.replaceParams({ path: fallback, theaterId: contextScope, pathKind: "theater-relative", ...(objectiveId ? { objectiveId } : {}) });
       });
     } else {
       apply(addressed);
     }
     return () => { active = false; };
-  }, [activePath, addressed, contextScope, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, params.preview, params.keepFilter, signal]);
+  }, [activePath, addressed, contextScope, objectiveId, ctx.visible, params.requestId, params.pathKind, params.line, params.column, params.anchor, params.ranges, params.preview, params.keepFilter, signal]);
 
   // 처음 여는 문서만 읽는다. 캐시 본문은 디스크 상태만 확인하고 명시적 다시 읽기까지 보존한다.
   // 주차된 사본(확대 중의 레일 인스턴스)은 읽지 않는다 — 같은 문서를 두 번 가져올 뿐이다.
@@ -161,6 +162,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
       silent: false,
       language,
       signal,
+      ...(objectiveId ? { objectiveId } : {}),
     });
   }, [activePath, ctx.visible, language, signal, theaterId]);
 
@@ -168,8 +170,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   useEffect(() => {
     if (!theaterId || !activePath || !ctx.visible) return;
     const controller = new AbortController();
-    const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal).catch(() => undefined); };
-    const source = new EventSource(`/api/v1/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
+    const refresh = () => { void refreshDocumentDiskStatus(theaterId, [activePath], controller.signal, objectiveId).catch(() => undefined); };
+    const source = new EventSource(`/api/v1/file-explorer/files/watch?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&directory=${encodeURIComponent(parentDirOf(activePath))}`);
     source.addEventListener("change", (event) => {
       try {
         const directory: unknown = JSON.parse((event as MessageEvent).data as string);
@@ -186,14 +188,14 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     if (!activePath || (addressed && params.pathKind === "absolute") || getFileExplorerSnapshot(contextScope).activePath !== activePath) return;
     if (params.path === activePath && params.theaterId === contextScope) return;
     const location = revealTarget?.relativePath === activePath ? revealTarget : null;
-    panes.replaceParams({ path: activePath, theaterId: contextScope, pathKind: "theater-relative", preview: String(openDocs.find((doc) => doc.relativePath === activePath)?.preview === true),
+    panes.replaceParams({ path: activePath, theaterId: contextScope, ...(objectiveId ? { objectiveId } : {}), pathKind: "theater-relative", preview: String(openDocs.find((doc) => doc.relativePath === activePath)?.preview === true),
       ...(location?.keepFilter ? { keepFilter: "true" } : {}),
       ...(location ? { requestId: location.requestId } : {}),
       ...(location?.lineNumber ? { line: String(location.lineNumber) } : {}),
       ...(location?.column ? { column: String(location.column) } : {}),
       ...(location?.anchor ? { anchor: location.anchor } : {}),
     });
-  }, [activePath, contextScope, openDocs, panes, params.path, params.theaterId, revealTarget]);
+  }, [activePath, contextScope, objectiveId, openDocs, panes, params.path, params.theaterId, revealTarget]);
 
   // 마지막 문서가 닫히면 열도 함께 사라진다. 빈 창을 남겨 두면 사용자는 닫을 것이 하나
   // 더 생긴 것으로 읽는다. 주차된 사본은 이미 닫혀 있으므로 자기를 또 닫지 않는다.
@@ -228,19 +230,19 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   }, [contextScope]);
 
   const reloadDoc = useCallback((relativePath: string) => {
-    void loadDocument(theaterId, relativePath, { silent: true, language, signal });
-  }, [language, signal, theaterId]);
+    void loadDocument(theaterId, relativePath, { silent: true, language, signal, ...(objectiveId ? { objectiveId } : {}) });
+  }, [language, objectiveId, signal, theaterId]);
 
   const readWindow = useCallback((request: FileReadRequest) => {
     if (!theaterId || !activePath) return;
     const id = ++windowRequestRef.current;
     setReadingWindow(true);
     setFileRevealTarget(theaterId, { theaterId, relativePath: activePath, requestId: crypto.randomUUID() });
-    panes.replaceParams({ path: activePath, theaterId, pathKind: "theater-relative" });
-    void loadDocument(theaterId, activePath, { silent: true, language, signal, window: request }).finally(() => {
+    panes.replaceParams({ path: activePath, theaterId, ...(objectiveId ? { objectiveId } : {}), pathKind: "theater-relative" });
+    void loadDocument(theaterId, activePath, { silent: true, language, signal, window: request, ...(objectiveId ? { objectiveId } : {}) }).finally(() => {
       if (id === windowRequestRef.current) setReadingWindow(false);
     });
-  }, [activePath, language, panes, signal, theaterId]);
+  }, [activePath, language, objectiveId, panes, signal, theaterId]);
 
   // 탭 선택은 탐색일 뿐이다. 낡은 본문은 배너의 다시 읽기를 눌렀을 때만 바뀐다.
   const selectDocumentTab = useCallback((doc: OpenDocument) => {
@@ -257,7 +259,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const handleCopyPath = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     if (!activePath) return;
     const action: FileContextAction = event.altKey ? "copyPath" : "copyRelativePath";
-    void performFileContextAction(action, contextScope, activePath)
+    void performFileContextAction(action, contextScope, activePath, {}, objectiveId)
       .then(() => setCopied(true))
       .catch(() => {
         // 복사 실패는 조용히 지나간다 — 알림 토스트는 트리 페인이 소유한다.
@@ -270,7 +272,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     const requestId = ++externalRequestRef.current;
     setExternalOpening(true);
     setExternalFailed(false);
-    void performFileContextAction("openExternal", theaterId, activePath)
+    void performFileContextAction("openExternal", theaterId, activePath, {}, objectiveId)
       .catch(() => {
         if (externalRequestRef.current === requestId) setExternalFailed(true);
       })
@@ -634,6 +636,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             target={revealTarget?.relativePath === activePath ? revealTarget : undefined}
             relativePath={viewState.relativePath}
             theaterId={theaterId}
+            objectiveId={objectiveId}
             truncated={viewState.truncated}
             language={language}
           />
@@ -839,7 +842,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...((ctx.params.objectiveId ?? ctx.conversation?.objectiveId) ? { objectiveId: ctx.params.objectiveId ?? ctx.conversation?.objectiveId } : {}) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

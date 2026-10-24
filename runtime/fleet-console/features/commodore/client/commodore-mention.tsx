@@ -5,14 +5,14 @@ import { CommodoreAvatar } from "./commodore-avatar.js";
 import { attachQuoteToCommodoreComposer } from "./commodore-inbox-section.js";
 import { isCommodoreConversationOpen, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { commodoreMongleState } from "./commodore-header.js";
-import { commodoreAlias, commodoreTheaterIds, readCommodore, commodoreLanguage, commodoreTheaterLabel, messageCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { commodoreAlias, commodoreTheaterIds, readCommodore, commodoreLanguage, commodoreTheaterLabel, messageCommodore, ownerOfContext, resolveContext, subscribeCommodore, useCommodore, useCommodoreOwner } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./board.js";
 
 const TARGET_PREFIX = "commodore:";
 
 const acceptsMessage = (theaterId: string) => {
-  const view = readCommodore(theaterId).view;
+  const view = readCommodore(ownerOfContext(theaterId)).view;
   return view?.enabled === true && view.boardReady;
 };
 
@@ -48,8 +48,9 @@ export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
  * 무관하게 흐리지 않는다. 호스트 표식 칸(17–20px)이 svg 를 칸에 맞추므로 크기는 그 상한으로 둔다.
  */
 function CommodoreMentionMark({ theaterId }: { readonly theaterId: string }) {
-  const { view } = useCommodore(theaterId);
-  const { objectives } = useObjectiveTheater(theaterId);
+  const commodoreId = useCommodoreOwner(theaterId);
+  const { view } = useCommodore(commodoreId);
+  const { objectives } = useObjectiveTheater(commodoreId);
   return <CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, objectives)} size={20} label="" decorative />;
 }
 
@@ -58,7 +59,9 @@ export async function messageCommodoreMention(targetId: string, text: string): P
   const theaterId = targetId.startsWith(TARGET_PREFIX) ? targetId.slice(TARGET_PREFIX.length) : "";
   // 덱을 연 뒤 보드가 내려갔을 수 있다 — 아는 만큼 먼저 거절한다. 권위는 서버의 거절이다.
   if (!theaterId || !acceptsMessage(theaterId)) throw new Error("mention_target_gone");
-  await messageCommodore(theaterId, text);
+  const commodoreId = await resolveContext(theaterId);
+  if (!commodoreId) throw new Error("mention_target_gone");
+  await messageCommodore(commodoreId, text);
 }
 
 /**

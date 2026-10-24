@@ -52,7 +52,6 @@ import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/c
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
-import { useAgentState } from "../../../execution/client/agent/store.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import "./conversation.css";
 
@@ -776,17 +775,16 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 도구가 놓인 대화와 그 작업 위치 — 사령관은 Theater 루트, 지휘관은 그 세션의 작업 폴더(호스트가 Theater 상대로 접어 준다).
   // 도구 캡슐(Shell 열기)과 도구 칸이 모두 이 범위를 받는다. 사람은 다시 고르지 않는다.
   const theaterLabelOf = (id: string | null) => (id === null ? "" : state.theaters.find((theater) => theater.id === id)?.label ?? "");
+  const scopeObjectiveId = !surfaceDescriptor ? stageSubject?.id : surfaceDescriptor.id === "objective-fresh" && typeof surface?.params.objectiveId === "string" ? surface.params.objectiveId : undefined;
   const scopeTheaterId = surfaceDescriptor ? surfaceTheaterId ?? toolContext.theaterId : stageSubject?.theaterId ?? null;
-  // 에이전트 세션이 알린 「지금 어디」(실험 기능이 켜진 동안만 실린다) — 세션이 옮겨 가면 작업 위치도 따라간다.
-  const agentWorkspace = useAgentState().sessions[stageSubject?.id ?? ""]?.workspace ?? null;
   const workLocation = useConversationWorkLocation(
     conversationKey === null || scopeTheaterId === null ? { kind: "none" }
-      : !surfaceDescriptor && stageSubject ? { kind: "objectiveRecord", objectiveId: stageSubject.id, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject.ts.updatedAt, folder: agentWorkspace?.outside === false ? agentWorkspace.folder ?? "" : null }
+      : scopeObjectiveId ? { kind: "objectiveRecord", objectiveId: scopeObjectiveId, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject?.ts.updatedAt ?? 0 }
         : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
   );
   const scopedToolContext = useMemo<RailToolContext>(
-    () => (conversationKey !== null && workLocation !== null ? { ...toolContext, conversation: { key: conversationKey, location: workLocation } } : toolContext),
-    [conversationKey, toolContext, workLocation],
+    () => (conversationKey !== null && workLocation !== null ? { ...toolContext, conversation: { key: conversationKey, location: workLocation, ...(scopeObjectiveId ? { objectiveId: scopeObjectiveId } : {}) } } : toolContext),
+    [conversationKey, toolContext, workLocation, scopeObjectiveId],
   );
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
   // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 Shell·문서로 착각한다.

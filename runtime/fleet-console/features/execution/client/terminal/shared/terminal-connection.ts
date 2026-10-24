@@ -17,8 +17,8 @@ export interface TerminalConnectionOptions {
   readonly terminal: TerminalLike;
   readonly ticketPath: string;
   /**
-   * 티켓 요청 본문에 얹을 추가 필드. 전역 Shell이 첫 기동에서 cwd를 못 박을 Theater를
-   * 알리는 통로다 — 세션 식별자가 아니므로 소켓 URL에는 실리지 않는다.
+   * 표면별 티켓 식별자와 위치. 생략하면 Agent의 { objectiveId }를 쓴다.
+   * Shell은 { shell, cwd? }를 보내므로 표면 id를 Objective 위치 selector로 섞지 않는다.
    */
   readonly ticketFields?: Readonly<Record<string, unknown>>;
   readonly wsPath: string;
@@ -354,7 +354,7 @@ async function requestTerminalTicket(ticketPath: string, objectiveId: string, si
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // control은 서버 기본값이라 싣지 않는다 — 옛 서버에 붙어도 같은 요청이 된다.
-    body: JSON.stringify({ objectiveId, ...(ticketFields ?? {}), ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
+    body: JSON.stringify({ ...(ticketFields ?? { objectiveId }), ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
   if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);

@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import path from "node:path";
 import type http from "node:http";
 
@@ -56,7 +57,7 @@ export async function handleRepositoryTree(
     readonly dirPath?: unknown;
     readonly subPath?: unknown;
   }>(req);
-  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string") {
+  if (!isPlainObject(body) || "subPath" in body) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
@@ -65,8 +66,8 @@ export async function handleRepositoryTree(
   const dirPath = body.dirPath === undefined ? "" : body.dirPath;
   if (typeof dirPath !== "string" || !isSafeTreeDirPath(dirPath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let gitCwd: string;
   try { ({ gitCwd } = await resolveGitCwd(theaterPath, body.repoRel)); }

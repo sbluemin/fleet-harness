@@ -21,6 +21,8 @@ export interface ChildSession {
 
 /** 자식은 부모 레코드에만 저장된다. 이 필드는 Objective 자신의 메타데이터가 아니다. */
 export interface ObjectiveRecord {
+  readonly commodoreId: string;
+  readonly cwd?: string;
   [key: string]: unknown;
   readonly sessions?: readonly ChildSession[];
   readonly id: string;
@@ -153,6 +155,8 @@ export function withObjectiveChatSurface(payload: Record<string, unknown>): Reco
 }
 
 export interface ObjectiveRecordCreateInput {
+  readonly commodoreId: string;
+  readonly cwd?: string;
   [key: string]: unknown;
   readonly id?: string;
   readonly theaterId: string;
@@ -176,6 +180,7 @@ export interface ObjectiveRecordPatchInput {
 export const OBJECTIVE_GROUPED_EVENT_CHANNEL = "objective:grouped";
 
 export interface ObjectiveGroupedEvent {
+  readonly commodoreId: string;
   readonly objectiveId: string;
   readonly theaterId: string;
   readonly groupId: string | null;
@@ -189,6 +194,7 @@ export interface ObjectiveGroupedEvent {
 export const OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL = "objective:group-removed";
 
 export interface ObjectiveGroupRemovedEvent {
+  readonly commodoreId: string;
   readonly groupId: string;
   readonly theaterId: string;
 }

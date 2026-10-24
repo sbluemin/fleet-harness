@@ -225,7 +225,7 @@ export function connectObjectiveRecordsSse(): void {
     try {
       const data = JSON.parse((e as MessageEvent<string>).data) as { readonly group?: unknown };
       const group = data.group as Record<string, unknown> | undefined;
-      if (isRecord(group) && typeof group.id === "string" && typeof group.name === "string" && typeof group.color === "string" && typeof group.theaterId === "string" && typeof group.order === "number") applyGroupUpdate({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order, createdAt: typeof group.createdAt === "number" ? group.createdAt : Date.now() });
+      if (isRecord(group) && typeof group.id === "string" && typeof group.name === "string" && typeof group.color === "string" && typeof group.commodoreId === "string" && typeof group.theaterId === "string" && typeof group.order === "number") applyGroupUpdate({ id: group.id, commodoreId: group.commodoreId, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order, createdAt: typeof group.createdAt === "number" ? group.createdAt : Date.now() });
     } catch {
       // ignore malformed SSE event
     }

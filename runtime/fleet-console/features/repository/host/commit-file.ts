@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import path from "node:path";
 import type http from "node:http";
 
@@ -26,14 +27,14 @@ export async function handleRepositoryCommitFile(req: http.IncomingMessage, res:
   if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return; }
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown; readonly ref?: unknown; readonly filePath?: unknown; readonly oldPath?: unknown }>(req);
-  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string" || typeof body.ref !== "string" || typeof body.filePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (!isPlainObject(body) || "subPath" in body || typeof body.ref !== "string" || typeof body.filePath !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   if (!REF_RE.test(body.ref)) { ctx.host.http.writeJson(res, 400, { error: "invalid_ref" }); return; }
   // 옵션 주입은 아래 git 호출의 `--` 구분자 + `:(literal)` pathspec으로 이미 차단되므로,
   // `-`로 시작하는 정당한 파일명(예: `-dash.txt`)까지 막지 않도록 leading-dash는 거부하지 않는다.
   if (!body.filePath) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
   if (body.oldPath !== undefined && (typeof body.oldPath !== "string" || !body.oldPath)) { ctx.host.http.writeJson(res, 400, { error: "invalid_file_path" }); return; }
-  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
   catch (error) {

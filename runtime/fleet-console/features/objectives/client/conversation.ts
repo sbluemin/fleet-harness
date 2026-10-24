@@ -6,7 +6,7 @@ import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { openObjectiveFromCluster, patchObjectiveView, returnPersonHold, revealObjective } from "./objectives-state.js";
+import { openObjectiveFromCluster, patchOwnerView, returnPersonHold, revealObjective } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
 import { followupHoldRoute, openFollowups, setFollowupOpen } from "./followups.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
@@ -96,7 +96,7 @@ function conversationHolds(objective: Objective): readonly ConversationHold[] {
     const reveal = target === "criteria"
       ? { label: localized((t) => t("objectives.composer.reveal")), run: () => {
           // 구성원·결과물 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
-          patchObjectiveView(objective.theaterId, () => ({ detailTab: "goal" }));
+          patchOwnerView(objective.commodoreId, () => ({ detailTab: "goal" }));
           revealObjective({ objectiveId: objective.id });
           openObjectiveFromCluster(objective.theaterId);
         } }

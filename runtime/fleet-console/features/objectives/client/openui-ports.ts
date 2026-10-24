@@ -1,11 +1,12 @@
 import type { OpenUIOpenPort, OpenUIOpenTarget } from "../../execution/shared/chat-renderer.js";
 import type { Objective } from "../shared/types.js";
 import { goToObjective } from "./fresh-conversation.js";
-import { findAnyObjective, findFinishedObjective, openObjectiveFromCluster, readTheater, revealObjective } from "./objectives-state.js";
+import { ownerOfContext } from "./board-commodore.js";
+import { findAnyObjective, findFinishedObjective, openObjectiveFromCluster, readBoard, revealObjective } from "./objectives-state.js";
 
 /** 기록 토큰과 같은 착지 — 완료로 보관된 목표는 읽어 둔 끝난 목표에서 완료를 읽는다. */
 function openListedObjective(theaterId: string, objectiveId: string): void {
-  const live = readTheater(theaterId).objectives.find((candidate) => candidate.id === objectiveId);
+  const live = findAnyObjective(objectiveId);
   goToObjective(objectiveId, theaterId, !!(live ?? findFinishedObjective(objectiveId))?.done);
 }
 
@@ -13,7 +14,7 @@ function openListedObjective(theaterId: string, objectiveId: string): void {
 export function objectiveOpenUIPort(theaterId: string, objective?: Objective, openObjective?: (id: string) => void): OpenUIOpenPort {
   const mission = (number: number) => (objective ? findAnyObjective(objective.id) ?? objective : undefined)?.missions[number - 1];
   const accepts = (target: OpenUIOpenTarget) => target.kind === "objective"
-    ? findAnyObjective(target.id)?.theaterId === theaterId || readTheater(theaterId).objectives.some((candidate) => candidate.id === target.id)
+    ? findAnyObjective(target.id)?.commodoreId === (objective?.commodoreId ?? ownerOfContext(theaterId))
     : target.kind === "mission" && !!mission(target.number);
   return {
     accepts,

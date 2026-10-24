@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
@@ -159,7 +160,9 @@ export function RepositoryPanel({ ctx }: RepositoryPanelProps) {
 /** 이 화면이 놓인 대화의 작업 위치(Theater 상대) — 같은 Theater 의 대화일 때만. 없으면 null(저장된 선택을 쓴다). */
 function conversationRelOf(ctx: RepositoryContext): string | null {
   const location = ctx.conversation?.location;
-  return location && location.theaterId === ctx.theaterId ? location.relative : null;
+  if (!location) return null;
+  if (ctx.conversation?.objectiveId) return location.relative;
+  return location.theaterId === ctx.theaterId ? location.relative : null;
 }
 
 export type Source = "changes" | "history";
@@ -462,7 +465,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     setReposError(false);
     setReposLoaded(false);
-    ctx.api.fetch("repository/repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, maxDepth: scanDepth }) })
+    ctx.api.fetch("repository/repos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), maxDepth: scanDepth }) })
       .then((response) => response.json() as Promise<ReposResult>)
       .then((value) => { if (!cancelled) { setRepos(value.repos); setReposTruncated(value.truncated === true); setReposLoaded(true); } })
       .catch(() => { if (!cancelled) setReposError(true); });
@@ -478,7 +481,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setWorktreesError(false);
     setWorktreesForRepoRel(null);
     setWorktreesPending(true);
-    ctx.api.fetch("repository/worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel: requestedRepoRel }) })
+    ctx.api.fetch("repository/worktrees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel: requestedRepoRel }) })
       .then((response) => response.json() as Promise<WorktreesResult>)
       .then((value) => {
         if (!cancelled) {
@@ -522,7 +525,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     setRefsError(false);
     setRefsPending(true);
-    ctx.api.fetch("repository/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+    ctx.api.fetch("repository/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel }) })
       .then((r) => r.ok ? r.json() as Promise<Refs> : Promise.reject())
       .then((value) => { if (!cancelled) setRefs(value); })
       .catch(() => { if (!cancelled) setRefsError(true); })
@@ -541,7 +544,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setChangedFilesPending(true);
     // api.fetch(assertSafeResponse)는 non-2xx에서 payload를 버리고 throw하므로,
     // no_git_repo/git_unavailable 안내 매핑을 위해 원래의 raw fetch 경로를 유지한다
-    fetch("/api/v1/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) }).then(async (response) => {
+    fetch("/api/v1/repository/changed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel }) }).then(async (response) => {
       if (!response.ok) {
         const payload = await response.json() as { readonly error?: string };
         const code = payload.error ?? "git_failed";
@@ -563,7 +566,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   useEffect(() => {
     if (!ctx.theaterId) { setWorkstate(null); return; }
     let cancelled = false;
-    ctx.api.fetch("repository/workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+    ctx.api.fetch("repository/workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel }) })
       .then((response) => response.ok ? response.json() as Promise<WorkstateResult> : Promise.reject(new Error("workstate_failed")))
       .then((value) => { if (!cancelled) { setWorkstate(value); setWorkstateFailed(false); } })
       // 실패를 null로 접으면 병합·리베이스·index lock 경고와 ahead/behind가 함께 사라지고 쓰기 verb가
@@ -650,7 +653,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       const response = await fetch(`/api/v1/repository/${route}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...body }),
+        body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ...body }),
       });
       const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (!response.ok) {
@@ -772,7 +775,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       response = await fetch("/api/v1/repository/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...(mode ? { mode } : {}) }),
+        body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, ...(mode ? { mode } : {}) }),
       });
     } catch {
       if (requestId !== syncRequestIdRef.current) return;

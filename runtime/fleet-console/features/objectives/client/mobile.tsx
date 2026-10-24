@@ -11,7 +11,7 @@ import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
+import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard, ownerOfContext } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -25,7 +25,7 @@ import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
+import { viewedTheaterId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -117,8 +117,8 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
  * 사령관이 사람에게 직접 물은 질문(`openAsks`). 표면이 닫혀 있어도 활성 Theater 는 미리 읽혀 있다(installObjectiveState).
  */
 export function personTurnCount(theaterId: string | null): number {
-  const active = theaterId !== null && commodoreBoardOf(theaterId).active;
-  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(theaterId).length;
+  const active = theaterId !== null && commodoreBoardOf(ownerOfContext(theaterId) ?? "").active;
+  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(ownerOfContext(theaterId)).length;
 }
 
 /**
@@ -128,14 +128,14 @@ export function personTurnCount(theaterId: string | null): number {
 export function decisionAttentionItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
   const source = readTheater(theaterId).objectives;
   const key = theaterId ?? "";
-  const answering = theaterId !== null && commodoreBoardOf(theaterId).active;
-  const asks = openAsks(theaterId);
+  const answering = theaterId !== null && commodoreBoardOf(ownerOfContext(theaterId) ?? "").active;
+  const asks = openAsks(ownerOfContext(theaterId));
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.asks === asks && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale, true);
   const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
   const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
-    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", theaterId) })),
+    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", ownerOfContext(theaterId)) })),
     ...pending.map((objective) => ({
       id: objective.id,
       clusterId: objective.id,
@@ -162,7 +162,7 @@ function followFinished(): void {
   const roster = `${theaterId}|${state.objectives.map((objective) => objective.id).join(",")}`;
   if (roster === finishedRoster) return;
   finishedRoster = roster;
-  loadFinishedObjectives(theaterId);
+  loadFinishedObjectives(ownerOfContext(theaterId) ?? "");
 }
 
 /** 「완료 N」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
@@ -181,7 +181,7 @@ export function finishedObjectiveItems(theaterId: string | null, locale: Console
   if (theaterId === null) return [];
   const t = getT(locale, true);
   const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
-  return finishedObjectives(theaterId)
+  return finishedObjectives(ownerOfContext(theaterId) ?? "")
     .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
     .map((objective) => {
       // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
@@ -221,7 +221,7 @@ export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   }, [ctx.params.objectiveId, ctx.params.objectiveId, panes]);
   // 보관된 끝난 목표로 착지했다면(「완료 N」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
   const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
-  useEffect(() => { if (objectiveId && !known) ensureFinishedObjectives(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
+  useEffect(() => { if (objectiveId && !known) void loadObjective(objectiveId).catch(() => {}); }, [objectiveId, known, ctx.theaterId]);
   // 시작 화면에서 개시해 지휘관 Objective 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Objective 이 있는 목표로 착지했으면 그대로 둔다).
   const hasCommander = useObjectiveSummaries().some((objectiveRecord) => objectiveRecord.id === objectiveId);
   const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);
@@ -485,7 +485,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
 
   // 탭 — 데스크톱 상세와 같은 세 낱말이고, 고른 탭도 같은 Theater 보기 상태에 남는다.
   const theaterId = objective?.theaterId ?? null;
-  const tab = detailTabOf(useObjectiveView(theaterId).detailTab);
+  const tab = detailTabOf(useOwnerView(objective?.commodoreId ?? null).detailTab);
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const dueButton = useRef<HTMLButtonElement | null>(null);
   // 좁은 폭에서 탭 바가 넘치면 고른 탭이 보이게 가로로만 당긴다.
@@ -502,7 +502,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
-  const pickTab = (next: DetailTab) => patchObjectiveView(theaterId, () => ({ detailTab: next }));
+  const pickTab = (next: DetailTab) => patchOwnerView(objective?.commodoreId ?? null, () => ({ detailTab: next }));
   // 대화 정보 화면은 호스트의 한 줄 탭을 쓴다. Objective 없는 단독 목표 화면만 자기 탭을 가진다.
   const tabBar = !embedded ? (
     <div className="objectives-m-tabbar">
@@ -1170,7 +1170,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
   const [, setSentTick] = useState(0);
   // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(`decisionTurn`). 폰에는 툴팁이 없어 설명을 줄로 보인다.
   // 사람이 운영하는 목표의 요청과 사령관이 사람에게 넘긴 요청으로는 사령관이 답하지 않는다.
-  const commodore = useCommodoreBoard(objective.theaterId);
+  const commodore = useCommodoreBoard(objective.commodoreId);
   const answering = decisionTurn(objective, commodore.active) === "commodore";
   const handed = request ? livePersonHold(objective, "decision") : null;
   const [givingBack, setGivingBack] = useState(false);

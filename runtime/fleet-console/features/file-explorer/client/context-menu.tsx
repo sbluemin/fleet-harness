@@ -143,6 +143,7 @@ export async function performFileContextAction(
   theaterId: string,
   relativePath: string,
   dependencies: Partial<FileContextActionDependencies> = {},
+  objectiveId?: string,
 ): Promise<"fileExplorer.menu.pathCopied" | "fileExplorer.menu.relativePathCopied" | null> {
   if (action === "copyRelativePath") {
     const clipboard = dependencies.clipboard
@@ -157,9 +158,10 @@ export async function performFileContextAction(
   const endpoint = action === "copyPath"
     ? "/api/v1/file-explorer/files/clipboard"
     : "/api/v1/file-explorer/files/reveal";
+  const selector = objectiveId ? { objectiveId } : { theaterId };
   const body = action === "copyPath"
-    ? { theaterId, relativePath }
-    : { theaterId, relativePath, mode: action === "reveal" ? "reveal" : "open" };
+    ? { ...selector, relativePath }
+    : { ...selector, relativePath, mode: action === "reveal" ? "reveal" : "open" };
   const response = await fetchImpl(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

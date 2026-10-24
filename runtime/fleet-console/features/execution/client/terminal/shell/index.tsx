@@ -115,6 +115,8 @@ function disposeShellHost(key: string): void {
 /** 이 칸이 처음 Shell 을 세울 자리 — 대화의 작업 위치, 대화가 없으면 표면 params·마지막으로 본 Theater 의 루트. */
 function launchHintOf(context: ExpandedSurfaceContext): ShellCwdHint | undefined {
   const location = context.conversation?.location;
+  const objectiveId = context.conversation?.objectiveId;
+  if (location && objectiveId) return location.relative === "" ? { objectiveId } : { objectiveId, path: location.relative };
   if (location) return location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
   const theaterId = context.params.cwdTheaterId ?? lastViewedTheaterId;
   return theaterId ? { theaterId } : undefined;
@@ -250,7 +252,10 @@ function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) 
   const location = ctx.conversation?.location ?? null;
   if (location === null || mount === null || mount.launchedAt === null || !session?.open) return null;
   if (mount.launchedAt === location.relative) return null;
-  const target = location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
+  const objectiveId = ctx.conversation?.objectiveId;
+  const target = objectiveId
+    ? (location.relative === "" ? { objectiveId } : { objectiveId, path: location.relative })
+    : (location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative });
   const settle = () => {
     const current = shellMounts.get(key);
     if (current) publishShellMount(key, { ...current, launchedAt: location.relative, cwdHint: target });
@@ -401,9 +406,9 @@ function shellFileLinks(context: ExpandedSurfaceContext, key: string): TerminalF
       const session = getShellSessionSnapshot(key);
       const theaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
       if (!theaterId) return null;
-      const cwdRelative = session?.cwdTracked ? session.cwd?.relative ?? null : null;
+      const cwdRelative = context.conversation?.objectiveId ? "" : session?.cwdTracked ? session.cwd?.relative ?? null : null;
       return { theaterId, cwdRelative };
     },
-    open: (target) => context.navigate.openFile({ ...target, source: "shell" }),
+    open: (target) => context.navigate.openFile({ ...target, ...(context.conversation?.objectiveId ? { objectiveId: context.conversation.objectiveId } : {}), source: "shell" }),
   };
 }

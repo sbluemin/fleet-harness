@@ -1,3 +1,4 @@
+import { takeRepositoryRoot } from "./surface-root.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type http from "node:http";
@@ -125,11 +126,8 @@ export async function handleRepositoryChanged(
   // subPath는 저장소 내부 스코핑이라 계속 금지한다. repoRel은 검증된 저장소 루트 선택만 담당한다.
   if (!isPlainObject(body) || "subPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const theaterId = body.theaterId;
-  if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }
@@ -210,11 +208,8 @@ export async function handleRepositoryFile(
     return;
   }
 
-  const theaterId = body.theaterId;
-  if (typeof theaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
-
-  const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
+  const theaterPath = takeRepositoryRoot(res, ctx, body);
+  if (!theaterPath) return;
 
   let cwdResult: { gitCwd: string };
   try { cwdResult = await resolveGitCwd(theaterPath, body.repoRel); }

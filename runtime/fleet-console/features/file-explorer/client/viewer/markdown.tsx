@@ -20,6 +20,7 @@ interface MarkdownViewerProps {
   readonly resolveWikiLink: RenderMarkdownOptions["resolveWikiLink"];
   readonly relativePath: string;
   readonly theaterId: string | null;
+  readonly objectiveId?: string;
   readonly truncated?: boolean;
   readonly language: ConsoleLocale | undefined;
   readonly target?: { readonly anchor?: string; readonly requestId: string; readonly relativePath: string };
@@ -29,10 +30,11 @@ interface NeutralizeOptions {
   readonly allowLocalImageMarkers: boolean;
   readonly currentRelativePath: string;
   readonly theaterId: string | null;
+  readonly objectiveId?: string;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, truncated, language, target }: MarkdownViewerProps) {
+export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, objectiveId, truncated, language, target }: MarkdownViewerProps) {
   const t = getT(language);
   const html = useMemo(() => {
     const rendered = renderMarkdown(content, {
@@ -53,7 +55,7 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
       },
     }).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, t });
+    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, objectiveId, t });
     return doc.body.innerHTML;
   }, [content, relativePath, resolveWikiLink, theaterId, t]);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -62,7 +64,7 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     const root = rootRef.current;
     if (!root) return;
     installDiagramHydrator(root, diagramHydratorLabels(t));
-    const neutralize = () => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, t });
+    const neutralize = () => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, objectiveId, t });
     neutralize();
     const observer = new MutationObserver(neutralize);
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
@@ -151,7 +153,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
   for (const element of root.querySelectorAll("img[src], img[srcset], source[src], source[srcset]")) {
     const src = element.getAttribute("src") ?? "";
     const localImagePath = element.getAttribute("data-fexp-local-image-path");
-    if (element.tagName === "IMG" && options.allowLocalImageMarkers && options.theaterId && localImagePath && src === buildFileExplorerImageSrc(options.theaterId, localImagePath)) {
+    if (element.tagName === "IMG" && options.allowLocalImageMarkers && options.theaterId && localImagePath && src === buildFileExplorerImageSrc(options.theaterId, localImagePath, options.objectiveId)) {
       element.removeAttribute("srcset");
       continue;
     }
@@ -164,7 +166,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
     const local = resolveMarkdownFileRef(src, options.currentRelativePath);
     element.removeAttribute("srcset");
     if (element.tagName === "IMG" && options.theaterId && local && isSupportedMarkdownImagePath(local.path)) {
-      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, local.path));
+      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, local.path, options.objectiveId));
       element.setAttribute("data-fexp-local-image-path", local.path);
       element.removeAttribute("aria-hidden");
       continue;

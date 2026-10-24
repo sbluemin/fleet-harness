@@ -1,3 +1,4 @@
+import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { RepositoryContext } from "./repository-context.js";
@@ -21,6 +22,7 @@ interface HunkViewProps {
 export interface CommitSelection {
   readonly fullHash: string;
   readonly theaterId: string;
+  readonly objectiveId?: string;
   readonly repoRel: string;
   readonly oldPath?: string;
 }
@@ -29,6 +31,7 @@ export interface CompareSelection {
   readonly base: string;
   readonly head: string;
   readonly theaterId: string;
+  readonly objectiveId?: string;
   readonly repoRel: string;
 }
 
@@ -71,7 +74,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
       ctx.api.fetch("repository/compare-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: compare.theaterId, repoRel: compare.repoRel, base: compare.base, head: compare.head, filePath: file.path, ...(file.oldPath ? { oldPath: file.oldPath } : {}) }),
+        body: JSON.stringify({ ...(surfaceSelector(compare) ?? {}), repoRel: compare.repoRel, base: compare.base, head: compare.head, filePath: file.path, ...(file.oldPath ? { oldPath: file.oldPath } : {}) }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
@@ -83,7 +86,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
       ctx.api.fetch("repository/commit-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: commit.theaterId, repoRel: commit.repoRel, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}) }),
+        body: JSON.stringify({ ...(surfaceSelector(commit) ?? {}), repoRel: commit.repoRel, ref: commit.fullHash, filePath: file.path, ...(file.oldPath ?? commit.oldPath ? { oldPath: file.oldPath ?? commit.oldPath } : {}) }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;
@@ -95,7 +98,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
       ctx.api.fetch("repository/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, filePath: file.path, mode }),
+        body: JSON.stringify({ ...(surfaceSelector(ctx) ?? {}), repoRel, filePath: file.path, mode }),
       }).then(async (res) => {
         if (!res.ok) throw new Error((await res.json() as { readonly error?: string }).error ?? "git_failed");
         const result = await res.json() as DiffHunkResult;

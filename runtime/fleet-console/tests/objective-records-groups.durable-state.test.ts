@@ -4,6 +4,7 @@ import { sanitizeDurableConsoleState } from "../features/workspace/host/durable-
 
 const BASE_NODE = {
   id: "op-1",
+  commodoreId: "commodore-1",
   theaterId: "theater-1",
   type: "agent",
   pluginId: "terminal",
@@ -16,6 +17,7 @@ const BASE_NODE = {
 
 const BASE_GROUP = {
   id: "grp-1",
+  commodoreId: "commodore-1",
   theaterId: "theater-1",
   name: "Alpha",
   color: "blue",

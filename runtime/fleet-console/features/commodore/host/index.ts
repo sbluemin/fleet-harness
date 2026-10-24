@@ -65,8 +65,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       if (restored) supervisor.sync("restart");
       return () => { if (board === adapter) { board = null; supervisor.sync(); } };
     },
-    commander(theaterId) {
-      const id = entities.resolve(theaterId);
+    commander(id) {
       const state = id ? store.read(id) : null;
       return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) } : null;
     },
@@ -78,8 +77,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,
     objective: (id) => {
-      for (const theaterId of deps.paths.listTheaterIds?.() ?? []) {
-        const found = board?.objective(theaterId, id);
+      for (const commodoreId of entities.ids()) {
+        const found = board?.objective(commodoreId, id);
         if (found) return found;
       }
       return null;
