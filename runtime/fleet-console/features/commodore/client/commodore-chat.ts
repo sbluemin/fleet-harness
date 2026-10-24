@@ -158,8 +158,8 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
  * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
-export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null): readonly AgentConversationEntry[] {
-  const commodore: ConversationSpeaker = { kind: "commodore", name: t("commodore.name") };
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null, name = t("commodore.name")): readonly AgentConversationEntry[] {
+  const commodore: ConversationSpeaker = { kind: "commodore", name };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
@@ -231,14 +231,14 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  return commodoreConversationLiveEntries(t, entries, live, out);
+  return commodoreConversationLiveEntries(t, entries, live, out, name);
 }
 
 /** 확정 투영은 그대로 두고 흐르는 말 하나만 붙인다 — 델타마다 지난 말풍선 객체를 다시 만들지 않는다. */
-export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[]): readonly AgentConversationEntry[] {
+export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[], name = t("commodore.name")): readonly AgentConversationEntry[] {
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, objectiveId: "", speaker: { kind: "commodore", name: t("commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, objectiveId: "", speaker: { kind: "commodore", name }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */

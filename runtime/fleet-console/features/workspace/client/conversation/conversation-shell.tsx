@@ -1137,14 +1137,18 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 대화가 Theater 의 Inbox 섹션을 대신하면(사령관) 그 탭에 섹션 꼬리표를 단다 — Theater 를 연 동안 패널 머리가 「사령관 | Theater 설정」
   // 섹션 줄로 묶는다.
   const { theaterInboxSections } = useFeatureRegistry();
-  const section = useMemo<ConversationTabSection | null>(() => {
-    let info: { readonly theaterId: string; readonly inboxSection: string } | null = null;
-    try { info = descriptor.theater?.(context) ?? null; } catch { info = null; }
-    if (!info) return null;
-    const id = conversationSurfaceInboxSectionId(descriptor, info.inboxSection);
-    const inboxSection = theaterInboxSections.find((candidate) => candidate.id === id);
-    return { id, title: inboxSection?.title(language) ?? descriptor.title(context), theaterId: info.theaterId };
-  }, [context, descriptor, language, theaterInboxSections]);
+  let sectionInfo: { readonly theaterId: string; readonly inboxSection: string } | null = null;
+  try { sectionInfo = descriptor.theater?.(context) ?? null; } catch { sectionInfo = null; }
+  const sectionId = sectionInfo ? conversationSurfaceInboxSectionId(descriptor, sectionInfo.inboxSection) : null;
+  const sectionTheaterId = sectionInfo?.theaterId ?? null;
+  const sectionTitle = sectionId && sectionTheaterId
+    ? theaterInboxSections.find((candidate) => candidate.id === sectionId)?.title(language, sectionTheaterId) ?? descriptor.title(context)
+    : null;
+  const section = useMemo<ConversationTabSection | null>(() => (
+    sectionId !== null && sectionTheaterId !== null && sectionTitle !== null
+      ? { id: sectionId, title: sectionTitle, theaterId: sectionTheaterId }
+      : null
+  ), [sectionId, sectionTheaterId, sectionTitle]);
   // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 맥락(같은 대화의 새 요청·언어·테마)이 바뀌어 탭을 다시 세울
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);

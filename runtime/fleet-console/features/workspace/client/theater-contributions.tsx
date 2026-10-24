@@ -136,6 +136,17 @@ export function useTheaterHeaderLive(theaterId: string): boolean {
   return useSyncExternalStore(subscribe, read, read);
 }
 
+/** 이 Theater 머리가 가리키는 운영자의 대화가 선택되었는가 — Theater 자체의 활성과는 구별한다. */
+export function useTheaterHeaderSelected(theaterId: string): boolean {
+  const { theaterContributions } = useFeatureRegistry();
+  const selections = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.selected), [theaterContributions]);
+  const subscribe = useHeaderSubscription(selections);
+  const read = useCallback(() => selections.some((contribution) => {
+    try { return contribution.header?.selected?.(theaterId) === true; } catch { return false; }
+  }), [selections, theaterId]);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
 /**
  * 머리가 여는 Theater Inbox 칸 — 기여가 정한 칸(정준 id)이 먼저이고, 아무도 정하지 않으면 null(호스트의 시스템 프롬프트 칸).
  * 누르는 순간에 한 번 읽는다.

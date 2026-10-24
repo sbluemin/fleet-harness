@@ -1,3 +1,4 @@
+import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -16,7 +17,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 
@@ -69,6 +70,12 @@ export function isCommodoreConversationActive(): boolean {
 /** 대화 배치 여부가 바뀌면 깨운다 — 능력이 없는 호스트에서는 아무것도 하지 않는다. */
 export function subscribeCommodoreConversationActive(listener: () => void): () => void {
   return port?.subscribe(listener) ?? (() => {});
+}
+
+/** 가운데 칸의 사령관 대화가 이 Theater 를 가리키는가 — 읽기 전용 기록도 같은 사령관 행을 강조한다. */
+export function isCommodoreConversationSelected(theaterId: string): boolean {
+  const surface = port?.current();
+  return surface?.surfaceId === COMMODORE_SURFACE_ID && readParams(surface.params)?.theaterId === theaterId;
 }
 
 /**
@@ -223,11 +230,12 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
   const index = useCommodoreObjectiveIndex(theaterId);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, index.finished), [t, theaterId, entries, board.objectives, view?.state.asks, index.finished]);
-  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed), [t, entries, live, confirmed]);
+  const name = useCommodoreName(theaterId, t);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, theaterId, entries, board.objectives, view?.state.asks, index.finished, name]);
+  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
 
@@ -411,15 +419,13 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   id: COMMODORE_SURFACE_ID,
   title: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId ?? "";
-    const label = commodoreTheaterLabel(theaterId);
-    const name = getT(ctx.language)("commodore.name");
-    return label ? `${name} · ${label}` : name;
+    return commodoreName(theaterId, getT(ctx.language));
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("commodore.name"), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
+    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: commodoreName(theaterId, getT(ctx.language)), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);

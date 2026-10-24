@@ -1,3 +1,4 @@
+import { useCommodoreName } from "./commodore-name.js";
 import { useEffect, useState, type MouseEvent } from "react";
 
 import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
@@ -17,7 +18,7 @@ import {
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { isCommodoreConversationActive } from "./commodore-conversation.js";
+import { isCommodoreConversationActive, isCommodoreConversationSelected, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -32,7 +33,8 @@ function autonomyOn(theaterId: string): boolean {
 function subscribeCommodoreFace(listener: () => void): () => void {
   const offCommodore = subscribeCommodore(listener);
   const offObjectives = subscribeObjective(listener);
-  return () => { offCommodore(); offObjectives(); };
+  const offConversation = subscribeCommodoreConversationActive(listener);
+  return () => { offCommodore(); offObjectives(); offConversation(); };
 }
 
 /**
@@ -52,6 +54,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
       // 꺼짐은 머리 표식이 회색을 정하는 조건(commodoreSummary 의 on 이 아님)과 같다.
       return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.active !== true };
     },
+    selected: isCommodoreConversationSelected,
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
     // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
     landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
@@ -112,10 +115,11 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
   const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
-  const status = [`${t("commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
+  const name = useCommodoreName(theater.id, t);
+  const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
   // 꺼짐 회색은 다른 표면의 Theater 아바타와 같은 규칙이다 — `header.face` 의 off 와 같은 조건(자율 운영 꺼짐)이다.
-  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
+  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={name} decorative off={!on} className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(theater.id).length;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;

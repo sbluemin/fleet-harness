@@ -1,3 +1,4 @@
+import { useCommodoreName } from "./commodore-name.js";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
@@ -38,7 +39,8 @@ export function CommodoreAskCards({ theaterId, t, language, phone = false, onEnd
   // 답이 받아들여진 질문은 상태가 다시 읽히기 전에도 내린다 — 그룹 대화의 결정 카드와 같은 규칙.
   const [answered, setAnswered] = useState<readonly string[]>([]);
   useEffect(() => setAnswered([]), [theaterId]);
-  const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("commodore.name") }), [t]);
+  const name = useCommodoreName(theaterId, t);
+  const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
   if (!Card || shown.length === 0) return null;

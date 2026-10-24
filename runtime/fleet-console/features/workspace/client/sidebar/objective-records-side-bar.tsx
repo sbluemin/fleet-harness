@@ -22,7 +22,7 @@ import { objectiveRecordAccentFromNode, resolveAccentColor } from "../objective-
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeSideBarAddTheater, openOnboarding, objectiveRecordOrderFromNodes, selectObjective, setObjectiveOrder, sortObjectiveRecordsByOrder } from "../../../../core/client/src/integration/store.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterHeaderSelected } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { resolveObjectiveActivity, resolveObjectiveDisplayActivity, resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
@@ -1477,6 +1477,7 @@ function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
   const mark = useTheaterContributionMark(contributionSummary);
   const live = useTheaterHeaderLive(theater.id);
+  const selected = useTheaterHeaderSelected(theater.id);
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
   const keyFinishRef = useRef(false);
@@ -1498,6 +1499,7 @@ function TheaterSectionHeader({
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
+    selected ? "is-current" : "",
     "is-card",
     menuTarget ? "is-menu-target" : "",
     dragging ? "side-bar-theater-header--dragging" : "",
@@ -1609,7 +1611,7 @@ function TheaterSectionHeader({
           aria-haspopup="dialog"
           onClick={select}
           onKeyDown={handleKeyDown}
-          aria-current={active ? "true" : undefined}
+          aria-current={selected ? "true" : undefined}
           title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : `${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
         >
           {mark === null ? avatarAnchor(true) : null}

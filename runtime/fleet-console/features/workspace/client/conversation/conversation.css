@@ -1332,7 +1332,7 @@
 
 /* 열린 행은 면 하나로 말한다 — 테두리·왼쪽 띠를 두지 않는다. 면은 --surface-row-selected 다: 기본은 brass 위치 채널의 워시이고,
    대화 다크는 사람이 고른 레퍼런스대로 중립 회색 면(#202020)이다. 이름 잉크는 위의 대화 행 규칙이 지킨다. */
-.console-shell.is-objective-records-view :is(.side-bar-cluster-row--active, .side-bar-chip--active) {
+.console-shell.is-objective-records-view :is(.side-bar-cluster-row--active, .side-bar-chip--active, .side-bar-theater-header.is-current) {
   border-color: transparent;
   background: var(--surface-row-selected);
 }
