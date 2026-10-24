@@ -681,7 +681,7 @@ export function useQuotaData(api: ClientApiCapability) {
   const [shared] = useState(() => getQuotaSummarySnapshot());
   const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? shared.data);
   const [checkedAt, setCheckedAt] = useState(restored?.checkedAt ?? shared.checkedAt);
-  const [requestError, setRequestError] = useState(false);
+  const [requestError, setRequestError] = useState<"quota.error.summary" | "quota.error.migration" | null>(null);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
   /** 다음 요청의 강제 범위 — 모두(true), 한 공급자(id), 또는 캐시 허용(false). */
@@ -696,27 +696,29 @@ export function useQuotaData(api: ClientApiCapability) {
   /** 설정을 바꾸는 POST — 응답에 실린 요약을 곧바로 그린다(연결·로그아웃). */
   const postForSummary = useCallback((path: string, body: Readonly<Record<string, unknown>>) => {
     const generation = beginRequestGeneration(requestGenerationRef);
-    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(null);
     api.fetch(`quota/${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then((response) => {
-        if (!response.ok) throw new Error(`${path}_failed`);
-        return response.json() as Promise<SummaryResponse>;
-      })
+      .then((response) => response.json() as Promise<SummaryResponse>)
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
-          setRequestError(false);
+          setRequestError(null);
           const adoptedAt = Date.now();
           setNow(adoptedAt);
           setCheckedAt(adoptedAt);
         }
       })
-      .catch(() => {
-        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
+      .catch((error: unknown) => {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+          // 호스트 포트는 비정상 응답을 ApiError로 거절한다. core 클래스에 의존하지 않고 공개된 오류 모양만 읽는다.
+          const failure = error as { name?: unknown; status?: unknown; body?: { error?: unknown } } | null;
+          const migrationPending = failure?.name === "ApiError" && failure.status === 409 && failure.body?.error === "quota_migration_pending";
+          setRequestError(migrationPending ? "quota.error.migration" : "quota.error.summary");
+        }
       });
   }, [api]);
 
@@ -731,7 +733,7 @@ export function useQuotaData(api: ClientApiCapability) {
 
   useEffect(() => {
     const generation = beginRequestGeneration(requestGenerationRef);
-    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(null);
     const force = forceRef.current;
     forceRef.current = false;
     // 그릴 것이 하나도 없을 때만 만료된 캐시라도 먼저 받는다. 이미 그린 화면이 있으면
@@ -749,7 +751,7 @@ export function useQuotaData(api: ClientApiCapability) {
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
-          setRequestError(false);
+          setRequestError(null);
           const adoptedAt = Date.now();
           setNow(adoptedAt);
           if (result.revalidating !== true) setCheckedAt(adoptedAt);
@@ -759,7 +761,7 @@ export function useQuotaData(api: ClientApiCapability) {
         }
       })
       .catch(() => {
-        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError("quota.error.summary");
       });
     return () => {
       if (isLatestRequestGeneration(requestGenerationRef, generation)) {
@@ -844,7 +846,7 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
         <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
       </header>
       <div className="quota-body">
-        {requestError ? <div className="quota-error">{t("quota.error.summary")}</div> : null}
+        {requestError ? <div className="quota-error">{t(requestError)}</div> : null}
         {!data && !requestError ? (
           <div className="quota-state" role="status">
             <span className="quota-state__mark" aria-hidden="true" />

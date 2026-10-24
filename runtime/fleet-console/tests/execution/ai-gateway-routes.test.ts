@@ -10,15 +10,14 @@ describe("AI gateway Console route adapter", () => {
   it("registers the route and lifecycle cleanup", async () => {
     const registerRouter = vi.fn<(path: string, handler: RouteHandler) => void>();
     let cleanup: (() => void | Promise<void>) | undefined;
-    const pluginDataDir = "/tmp/fleet-console-test/api/v1";
+    const dataDir = "/tmp/fleet-console-test/api/v1";
 
     const runtime = registerAiGatewayRoutes({
-      dataDir: pluginDataDir,
-      legacyDataDir: pluginDataDir,
+      dataDir: dataDir,
       basePath: "/api/v1",
       registerRouter,
       host: {
-        paths: { pluginDataDir: () => pluginDataDir },
+        paths: { consoleDataDir: dataDir, fleetDataDir: dataDir },
         theaterFlags: { register: () => () => undefined },
         lifecycle: {
           registerCleanup: (candidate: () => void | Promise<void>) => {

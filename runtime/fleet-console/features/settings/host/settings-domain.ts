@@ -185,7 +185,8 @@ export interface ConsoleSettingsData {
    * 자리만 제공한다 — 같은 설정 화면이 고르는 값이 두 축으로 갈리지 않도록 여기 함께 산다.
    */
   readonly agent?: AgentOptionsData;
-  readonly plugins?: Record<string, Record<string, unknown>>;
+  readonly quota?: Record<string, unknown>;
+  readonly scuttlebutt?: Record<string, unknown>;
 }
 
 export interface CreateConsoleSettingsStoreDeps {
@@ -196,7 +197,6 @@ export interface CreateConsoleSettingsStoreDeps {
   readonly now?: () => number;
 }
 
-export const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 export const UI_FONT_SIZE_RANGE = { min: 12, max: 18, step: 1 } as const;
 const DEFAULT_UI_FONT_SETTINGS: UiFontSettings = { source: "builtin", id: "manrope", size: 14 };
 
@@ -232,7 +232,7 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     const legacy = readLegacyRemoteAccess(raw, paths.dir, readFile, randomInt);
     const remoteAccess = current.general?.remoteAccess ?? legacy ?? createDefaultRemoteAccess(randomInt);
     const next = { ...current, general: { ...current.general, remoteAccess } };
-    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw) || (isRecord(raw) && isRecord(raw.plugins) && isRecord(raw.plugins.terminal))) base.save(next);
+    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw) || (isRecord(raw) && "plugins" in raw)) base.save(next);
     return next;
   }
   return {
@@ -254,15 +254,20 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   if (!isRecord(value)) return emptyConsoleSettingsData();
   if (value.version !== SETTINGS_VERSION) return emptyConsoleSettingsData();
   const general = readConsoleGeneralSettings(value.general);
-  const plugins = readConsolePluginSettings(value.plugins);
-  const execution = isRecord(value.execution) ? value.execution : plugins?.terminal;
-  if (plugins) delete plugins.terminal;
+  // 각 문서의 바로 앞 키에서만 승계한다. 현재 최상위 문서가 있으면 항상 우선한다.
+  const previous = isRecord(value.plugins) ? value.plugins : {};
+  const document = (key: "execution" | "quota" | "scuttlebutt", oldKey: string = key): Record<string, unknown> | undefined =>
+    isRecord(value[key]) ? value[key] : isRecord(previous[oldKey]) ? previous[oldKey] : undefined;
+  const execution = document("execution", "terminal");
+  const quota = document("quota");
+  const scuttlebutt = document("scuttlebutt");
   const agent = sanitizeAgentOptionsData(value.agent).data;
   const browser = sanitizeConsoleBrowserSettings(value.browser);
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
-    plugins: plugins ?? {},
+    ...(quota ? { quota } : {}),
+    ...(scuttlebutt ? { scuttlebutt } : {}),
     ...(execution ? { execution } : {}),
     ...(Object.keys(agent).length > 0 ? { agent } : {}),
     ...(browser ? { browser } : {}),
@@ -279,7 +284,7 @@ function sanitizeConsoleBrowserSettings(value: unknown): ConsoleBrowserSettings 
 }
 
 export function emptyConsoleSettingsData(): ConsoleSettingsData {
-  return { version: 1, general: {}, plugins: {} };
+  return { version: 1, general: {} };
 }
 
 function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefined {
@@ -354,17 +359,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(shortcuts !== undefined ? { shortcuts } : {}),
     ...(archiveRetentionDays !== undefined ? { archiveRetentionDays } : {}),
   };
-}
-
-function readConsolePluginSettings(value: unknown): Record<string, Record<string, unknown>> | null {
-  if (!isRecord(value)) return null;
-  const result: Record<string, Record<string, unknown>> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (!PLUGIN_ID_PATTERN.test(key)) continue;
-    if (!isRecord(entry)) continue;
-    result[key] = entry;
-  }
-  return result;
 }
 
 /**
@@ -693,7 +687,6 @@ async function mutateGlobalSettings(
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
       ...(body.archiveRetentionDays === null || body.archiveRetentionDays === 7 || body.archiveRetentionDays === 30 || body.archiveRetentionDays === 90 ? { archiveRetentionDays: body.archiveRetentionDays } : {}),
     },
-    plugins: current.plugins,
   }));
   if (theme !== undefined || body.fonts !== undefined) deps.onThemeChanged?.(updated.general?.theme ?? "dark");
   if (body.experiments !== undefined) await deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
@@ -846,7 +839,7 @@ export function createSettingsDocumentRouter(deps: ExecutionSettingsRouteDeps): 
     if (key === null) return false;
     if (req.method === "GET") {
       const data = deps.consoleSettingsStore.load();
-      const value = (key === "execution" ? data.execution : data.plugins?.[key]) ?? null;
+      const value = data[key] ?? null;
       deps.writeJson(res, 200, { value });
       return true;
     }
@@ -871,9 +864,9 @@ export function createSettingsDocumentRouter(deps: ExecutionSettingsRouteDeps): 
       const updated = deps.consoleSettingsStore.update((current) => ({
         ...current,
         version: 1,
-        ...(key === "execution" ? { execution: preserveLegacyTerminalFont(current, body) } : { plugins: { ...current.plugins, [key]: body as Record<string, unknown> } }),
+        [key]: key === "execution" ? preserveLegacyTerminalFont(current, body) : body,
       }));
-      deps.writeJson(res, 200, { value: (key === "execution" ? updated.execution : updated.plugins?.[key]) ?? null });
+      deps.writeJson(res, 200, { value: updated[key] ?? null });
       return true;
     }
     deps.writeJson(res, 405, { error: "Method not allowed" });

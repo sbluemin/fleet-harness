@@ -28,10 +28,11 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
   const t = getT(locale, true);
   const { data, now, requestError, connect, logout } = useQuotaData(api);
-  if (requestError && data === null) return <p className="quota-m-note">{t("quota.error.summary")}</p>;
+  if (requestError && data === null) return <p className="quota-m-note">{t(requestError)}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
   return (
     <div className="quota-m">
+      {requestError ? <p className="quota-m-note" role="alert">{t(requestError)}</p> : null}
       {PROVIDER_ORDER_DEFAULT.map((id) => {
         const provider = data.providers[id] ?? UNREPORTED_PROVIDER;
         const name = providerName(id, true);

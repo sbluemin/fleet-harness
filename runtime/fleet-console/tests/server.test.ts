@@ -15,6 +15,9 @@ import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shel
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
 import { deriveObjectiveLabel } from "../features/execution/host/agent/auto-name.js";
 import { createConsoleObservabilityStore } from "../features/execution/host/agent/observability-store.js";
+import { retireConsoleData } from "../core/host/bootstrap/retired-data.js";
+import { createQuotaSettingsStore } from "../features/quota/host/storage.js";
+import { createAgentCliPathStore } from "../features/execution/host/agent/agent-cli-paths.js";
 import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecycle.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
 import type { AgentCliDetector } from "../features/execution/host/agent/agent-cli-detect.js";
@@ -193,15 +196,24 @@ describe("console terminal observability", () => {
     const release = createDeferred<void>();
     fleetAdmiralMock.startupGate = async () => { entered.resolve(); await release.promise; };
     const deps = { port: 0, dataDir: fleetDataDir, release: { channel: "local" as const, version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } };
-    // 폐기한 Skills 플러그인의 데이터만 걷힌다. 다른 플러그인의 데이터와 사용자 Claude 스킬은 남는다.
-    const retiredData = path.join(consoleDir, "plugins", "skills");
-    const retiredFile = path.join(retiredData, "cli", "node_modules", "skills", "package.json");
+    // 바로 앞 위치의 사용자 설정을 먼저 옮기고 옛 트리 전체를 걷는다. 사용자 스킬은 경계 밖이다.
+    const retiredData = path.join(consoleDir, "plugins");
+    const retiredFile = path.join(retiredData, "skills", "cli", "node_modules", "skills", "package.json");
     const siblingFile = path.join(consoleDir, "plugins", "scuttlebutt", "workspace", "keep.txt");
     const userSkill = path.join(dir, ".claude", "skills", "mine", "SKILL.md");
     for (const file of [retiredFile, siblingFile, userSkill]) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, "keep");
     }
+    const quotaSource = path.join(retiredData, "quota", "settings.json");
+    const cliSource = path.join(retiredData, "terminal", "agent-cli-paths.json");
+    for (const file of [quotaSource, cliSource]) fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(quotaSource, JSON.stringify({ claudeConnected: true, cursorConnected: true, providerOrder: ["cursor"] }));
+    const cliPaths = { version: 1, paths: { claude: path.join(dir, "custom-claude") } };
+    fs.writeFileSync(cliSource, JSON.stringify(cliPaths));
+    fs.writeFileSync(path.join(consoleDir, "settings.json"), JSON.stringify({ version: 1, plugins: {
+      quota: { toolbarProviders: ["claude"] }, scuttlebutt: { tori: true, grants: { tori: { consoleUse: true } } }, terminal: { chatReadingWidth: "wide" },
+    } }));
     const winner = createConsoleServer(deps);
     servers.push(winner);
     const starting = winner.start({ dir, lockFile });
@@ -209,7 +221,12 @@ describe("console terminal observability", () => {
     try {
       await entered.promise;
       expect(fs.existsSync(retiredData)).toBe(false);
-      expect(fs.readFileSync(siblingFile, "utf8")).toBe("keep");
+      expect(fs.existsSync(siblingFile)).toBe(false);
+      await expect(createQuotaSettingsStore(consoleDir).read()).resolves.toEqual({ claudeConnected: true });
+      await expect(createAgentCliPathStore(consoleDir).read()).resolves.toEqual(cliPaths);
+      const migratedSettings = JSON.parse(fs.readFileSync(path.join(consoleDir, "settings.json"), "utf8"));
+      expect(migratedSettings).toMatchObject({ quota: { toolbarProviders: ["claude"] }, scuttlebutt: { tori: true, grants: { tori: { consoleUse: true } } }, execution: { chatReadingWidth: "wide" } });
+      expect(migratedSettings).not.toHaveProperty("plugins");
       expect(fs.readFileSync(userSkill, "utf8")).toBe("keep");
       const owner = readConsoleLockFile(lockFile)!;
       const lockBefore = fs.readFileSync(lockFile, "utf8");
@@ -253,6 +270,66 @@ describe("console terminal observability", () => {
       await starting.catch(() => {});
       fleetAdmiralMock.startupGate = null;
     }
+  });
+
+  it("migrates independent sources while retaining a failed source for retry", async () => {
+    // 회수 전에 읽지 못한 값은 기본값 저장으로도 고아가 되면 안 된다.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-retire-retry-"));
+    tempDirs.push(dir);
+    const old = path.join(dir, "plugins");
+    const quota = path.join(old, "quota", "settings.json");
+    const cli = path.join(old, "terminal", "agent-cli-paths.json");
+    fs.mkdirSync(path.dirname(quota), { recursive: true });
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.writeFileSync(quota, "{broken");
+    fs.writeFileSync(cli, JSON.stringify({ version: 1, paths: { claude: "/previous/claude" } }));
+    const warn = vi.fn();
+    let ready = retireConsoleData(dir, warn);
+    const store = createQuotaSettingsStore(dir, () => ready);
+    expect(ready).toBe(false);
+    expect(warn).toHaveBeenCalled();
+    expect(fs.readFileSync(quota, "utf8")).toBe("{broken");
+    await expect(createAgentCliPathStore(dir).read()).resolves.toEqual({ version: 1, paths: { claude: "/previous/claude" } });
+    expect(fs.existsSync(cli)).toBe(true);
+    await expect(store.write({ claudeConnected: false })).rejects.toThrow("quota_migration_pending");
+    expect(fs.existsSync(path.join(dir, "quota.json"))).toBe(false);
+    fs.writeFileSync(quota, JSON.stringify({ claudeConnected: true }));
+    // 목적지가 파일이 아니어서 저장할 수 없어도 같은 원본 보존 경계다.
+    fs.mkdirSync(path.join(dir, "quota.json"));
+    expect(retireConsoleData(dir, warn)).toBe(false);
+    fs.rmdirSync(path.join(dir, "quota.json"));
+    expect(fs.existsSync(cli)).toBe(true);
+    fs.writeFileSync(path.join(dir, "quota.json"), JSON.stringify({ claudeConnected: false }));
+    ready = retireConsoleData(dir, warn);
+    expect(ready).toBe(true);
+    await expect(store.read()).resolves.toEqual({ claudeConnected: false });
+    await expect(createAgentCliPathStore(dir).read()).resolves.toEqual({ version: 1, paths: { claude: "/previous/claude" } });
+    expect(fs.existsSync(old)).toBe(false);
+    expect(retireConsoleData(dir, warn)).toBe(true);
+  });
+
+  it("never follows retired-data symlinks during carry-over or reclamation", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-retire-links-"));
+    tempDirs.push(dir);
+    const outside = path.join(dir, "outside");
+    const data = path.join(dir, "console");
+    const old = path.join(data, "plugins");
+    fs.mkdirSync(outside);
+    fs.mkdirSync(data);
+    fs.writeFileSync(path.join(outside, "settings.json"), JSON.stringify({ claudeConnected: true }));
+    fs.symlinkSync(outside, old, "dir");
+    expect(retireConsoleData(data)).toBe(true);
+    expect(fs.lstatSync(old).isSymbolicLink()).toBe(true);
+    fs.unlinkSync(old);
+    fs.mkdirSync(old);
+    fs.symlinkSync(outside, path.join(old, "quota"), "dir");
+    expect(retireConsoleData(data, () => {})).toBe(false);
+    expect(fs.existsSync(path.join(data, "quota.json"))).toBe(false);
+    fs.unlinkSync(path.join(old, "quota"));
+    fs.symlinkSync(outside, path.join(old, "retired"), "dir");
+    expect(retireConsoleData(data)).toBe(true);
+    expect(fs.existsSync(old)).toBe(false);
+    expect(fs.readFileSync(path.join(outside, "settings.json"), "utf8")).toContain("claudeConnected");
   });
 
   it("starts on a fresh dynamic port when the update resume port is already taken", async () => {

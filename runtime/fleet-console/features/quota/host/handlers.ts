@@ -25,7 +25,7 @@ interface StoredSettings {
 }
 
 async function readStoredSettings(ctx: QuotaRouteContext): Promise<StoredSettings> {
-  const stored = await ctx.host.storage.readJson("quota", "settings");
+  const stored = await ctx.host.storage.read();
   return stored !== null && typeof stored === "object" && !Array.isArray(stored)
     ? stored as StoredSettings
     : {};
@@ -113,13 +113,20 @@ export async function handleConnect(
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
     return;
   }
-  await serializeSettings(async () => {
-    const next = {
-      ...retainedSettings(await readStoredSettings(ctx)),
-      claudeConnected: body.connected,
-    };
-    await ctx.host.storage.writeJson("quota", "settings", next);
-  });
+  const connected = body.connected;
+  try {
+    await serializeSettings(async () => {
+      const next = {
+        ...retainedSettings(await readStoredSettings(ctx)),
+        claudeConnected: connected,
+      };
+      await ctx.host.storage.write(next);
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "quota_migration_pending") throw error;
+    ctx.host.http.writeJson(res, 409, { error: "quota_migration_pending" });
+    return;
+  }
   const summary = await service.getSummary({ forceProvider: body.provider });
   ctx.host.http.writeJson(res, 200, summary);
 }

@@ -3,7 +3,7 @@ import type { ClientSettingsCapability } from "../../settings/shared/client-port
 import { PROVIDER_ORDER_DEFAULT, sanitizeProviderSet, toggledProviderSet, type ProviderId } from "../shared/provider-order.js";
 
 /**
- * 「도구모음 요약」에 세울 공급자. 값은 Console 설정의 플러그인 문서(plugins.quota)에 살고, 팝업 바닥의
+ * 「도구모음 요약」에 세울 공급자. 값은 Console 설정의 quota 문서에 살고, 팝업 바닥의
  * 글리프 줄이 읽고 쓴다.
  *
  * 저장값이 없거나(키 없음·배열 아님) 아직 읽지 못했으면 지원하는 공급자 전부다 — 첫 사용자도 요약을

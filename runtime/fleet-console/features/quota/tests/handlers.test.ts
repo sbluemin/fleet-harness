@@ -28,7 +28,7 @@ function harness(
   const ctx = {
     host: {
       security: { isTerminalAuthorized: () => true },
-      storage: { readJson, writeJson },
+      storage: { read: readJson, write: writeJson },
       http: {
         readJsonBody: async () => body,
         writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }),
@@ -84,6 +84,12 @@ describe("quota route handlers", () => {
     await handleConnect(unauthorized.req, unauthorized.res, unauthorized.ctx, unauthorized.service, unauthorized.serializeSettings);
     expect(unauthorized.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
     expect(unauthorized.writeJson).not.toHaveBeenCalled();
+
+    const pending = harness("POST", "/api/v1/quota/connect", request);
+    pending.writeJson.mockRejectedValue(new Error("quota_migration_pending"));
+    await handleConnect(pending.req, pending.res, pending.ctx, pending.service, pending.serializeSettings);
+    expect(pending.writes).toEqual([{ status: 409, payload: { error: "quota_migration_pending" } }]);
+    expect(pending.service.getSummary).not.toHaveBeenCalled();
   });
 
   it("forwards provider sign-in calls to Console only for authorized callers", async () => {

@@ -102,9 +102,8 @@ credential rules, and launch it by [the real-login route](setup.md#when-the-clai
 told to expose, and that list is **isolated per Console slot**: it lives at
 `<console-slot>/ai-gateway.json`, so `FLEET_CONSOLE_DATA_DIR=<e2e-dir>` puts it at
 `<e2e-dir>/ai-gateway.json` and a plain `FLEET_DATA_DIR=<root>` puts it at
-`<root>/console/ai-gateway.json`. (The store also takes `legacyDirs` pointing at the places
-this file used to live — the Fleet root, then the plugin data directory — but those are
-one-time carry-over sources, never where current settings are written.) A fresh slot has no such file, so the picker
+`<root>/console/ai-gateway.json`. (The store takes `legacyDirs` containing only the immediately previous
+Fleet root as a one-time carry-over source, never as the current write destination.) A fresh slot has no such file, so the picker
 shows only the Claude entries and it reads as though gateway models were unsupported. They
 are not. Add one first:
 

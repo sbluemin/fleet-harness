@@ -71,13 +71,6 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     const unreadable = seed("not-a-state-file", theater("unreadable"));
     fs.unlinkSync(path.join(unreadable.dir, "state.json"));
     fs.mkdirSync(path.join(unreadable.dir, "state.json"));
-    const cli = path.join(data, "plugins", "objectives", "agent-sessions");
-    write(path.join(cli, "hash", "claude", "projects", "history.jsonl"), "old CLI only");
-    write(path.join(cli, "peer-sessions", "peer.json"), "old peer registry");
-    const otherPlugin = path.join(data, "plugins", "other", "agent-sessions", "keep");
-    write(otherPlugin, "other plugin unchanged");
-    const pluginSettings = path.join(data, "plugins", "objectives", "settings.json");
-    write(pluginSettings, "preserve plugin settings");
     write(path.join(entities, `.copy-${stoppedId}`, "partial"), "incomplete copy");
     write(path.join(entities, `.new-${randomUUID()}`, "state.json"), "uncommitted entity");
 
@@ -96,7 +89,6 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     let first: ReturnType<typeof migrateCommodoreData>;
     try { first = migrateCommodoreData(data); } finally { rename.mockRestore(); copy.mockRestore(); }
     expect(first!.unresolved).toBeGreaterThan(0);
-    expect(first!.cleanedSessions).toBe(false);
     expect(first!.blockedPaths.has(stopped.root)).toBe(true);
     expect(first!.blockedPaths.has(unknown.root)).toBe(false);
     expect(first!.blockedWorkspaceNames.has(path.basename(unknown.workspace))).toBe(true);
@@ -105,7 +97,6 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(fs.readFileSync(path.join(failedCopy.dir, "state.json"), "utf8")).toBe(state(failedCopy.text));
     const failedCopyId = JSON.parse(fs.readFileSync(path.join(failedCopy.dir, ".migration.json"), "utf8")).commodoreId;
     expect(fs.existsSync(path.join(entities, failedCopyId))).toBe(false);
-    expect(fs.existsSync(cli)).toBe(true);
     expect(JSON.parse(fs.readFileSync(path.join(stopped.dir, "state.json"), "utf8"))).not.toHaveProperty("theaters");
     expect(JSON.parse(fs.readFileSync(path.join(stopped.dir, ".migration.json"), "utf8")).commodoreId).toBe(stoppedId);
     expect(fs.existsSync(after.dir)).toBe(false);
@@ -163,7 +154,6 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(await call("commodore/create", { theaterId: workspaceHash(lateUnknown.root) }, 409)).toEqual({ error: "commodore_migration_pending" });
     expect(fs.readFileSync(path.join(unknown.dir, "state.json"), "utf8")).toBe(state(unknown.text));
     expect(fs.readFileSync(path.join(lateUnknown.dir, "state.json"), "utf8")).toBe(state(lateUnknown.text));
-    expect(fs.existsSync(cli)).toBe(true);
     write(path.join(unknown.workspace, "cwd.json"), JSON.stringify({ cwd: unknown.root }));
     write(path.join(lateUnknown.workspace, "cwd.json"), JSON.stringify({ cwd: lateUnknown.root }));
     await feature.dispose();
@@ -190,18 +180,12 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     const brokenId = finalStates.find((entry) => entry.value.theaters[0].path === broken.root)!.id;
     const backup = fs.readdirSync(path.join(entities, brokenId)).find((name) => name.startsWith("state.json.broken-"))!;
     expect(fs.readFileSync(path.join(entities, brokenId, backup), "utf8")).toBe("{broken legacy state");
-    expect(fs.existsSync(cli)).toBe(false);
-    expect(fs.readFileSync(pluginSettings, "utf8")).toBe("preserve plugin settings");
-    expect(fs.existsSync(path.dirname(cli))).toBe(true); // 비지 않은 objectives 플러그인 자리는 보존한다.
-    fs.unlinkSync(pluginSettings); // 테스트 소유 설정을 거둔 뒤에만 빈 디렉터리 정리를 확인한다.
-    expect(migrateCommodoreData(data)).toMatchObject({ unresolved: 0, cleanedSessions: true });
-    expect(fs.existsSync(path.dirname(cli))).toBe(false);
+    expect(migrateCommodoreData(data)).toMatchObject({ unresolved: 0 });
     expect(fs.readFileSync(path.join(a.workspace, "objectives", "board.json"), "utf8")).toBe("keep board and evidence");
-    expect(fs.readFileSync(otherPlugin, "utf8")).toBe("other plugin unchanged");
     expect(fs.readFileSync(path.join(temp, "preserved-conflict", "state.json"), "utf8")).toBe(state(conflict.text));
     await feature.dispose(); feature = undefined;
     const filesBefore = fs.readdirSync(entities).sort();
-    expect(migrateCommodoreData(data)).toMatchObject({ moved: 0, resumed: 0, unresolved: 0, cleanedSessions: true });
+    expect(migrateCommodoreData(data)).toMatchObject({ moved: 0, resumed: 0, unresolved: 0 });
     feature = createCommodoreFeature(deps);
     expect(fs.readdirSync(entities).sort()).toEqual(filesBefore);
     expect((await call("commodore/resolve", { theaterId: workspaceHash(a.root) })).commodoreId).toBe(resolved.commodoreId);

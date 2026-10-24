@@ -199,7 +199,6 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
   const ctx = {
     dataDir: fleetDataDir,
-    legacyDataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
     agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
     spawnAgentProcess: () => { throw new Error("unexpected agent CLI spawn"); },

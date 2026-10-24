@@ -20,7 +20,6 @@ export interface CommodoreMigrationResult {
   readonly moved: number;
   readonly resumed: number;
   readonly unresolved: number;
-  readonly cleanedSessions: boolean;
   /** 알려진 실패 경로에는 빈 엔티티가 먼저 생기지 않아야 다음 기동이 이동을 재시도할 수 있다. */
   readonly blockedPaths: ReadonlySet<string>;
   /** cwd를 읽지 못한 원본 workspace. 전역 보류 대신 이름 후보가 겹치는 Theater만 보호한다. */
@@ -34,14 +33,13 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
   const issues = new Set<string>();
   let moved = 0;
   let resumed = 0;
-  let cleanedSessions = false;
   const problem = (location: string, code: string, theater?: string) => {
     const key = `${location}:${code}`;
     if (!issues.has(key)) console.warn(`[commodore] migration ${location}: ${code}; data preserved`);
     issues.add(key);
     if (theater) blockedPaths.add(theater);
   };
-  const result = (): CommodoreMigrationResult => ({ moved, resumed, unresolved: issues.size, cleanedSessions, blockedPaths, blockedWorkspaceNames });
+  const result = (): CommodoreMigrationResult => ({ moved, resumed, unresolved: issues.size, blockedPaths, blockedWorkspaceNames });
   try {
     const root = fs.realpathSync.native(dataDir);
     const stat = (file: string): fs.Stats | null => {
@@ -246,21 +244,6 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
       }
     }
 
-    // 삭제 권한은 이 한 경로뿐이다. 부모 링크를 따라 다른 플러그인·보드·증거로 넓히지 않는다.
-    if (!issues.size) {
-      const plugins = path.join(root, "plugins");
-      const objectives = path.join(plugins, "objectives");
-      if (stat(plugins)) {
-        directory(plugins);
-        if (stat(objectives)) {
-          directory(objectives);
-          const sessions = path.join(objectives, "agent-sessions");
-          if (stat(sessions)) { directory(sessions); fs.rmSync(sessions, { recursive: true, force: true }); }
-          if (!fs.readdirSync(objectives).length) fs.rmdirSync(objectives);
-        }
-      }
-      cleanedSessions = true;
-    }
   } catch { problem("console-data", "migration_io_failed"); }
   return result();
 }

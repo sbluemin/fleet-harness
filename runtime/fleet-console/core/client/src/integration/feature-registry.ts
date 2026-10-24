@@ -201,7 +201,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
 }
 /**
  * Bridge 순서: 부관은 늘 끝이고, 나머지(사용 한도 요약 등)는 합성 순서대로 그 앞에 선다. SDK에 순서 필드를
- * 두지 않고 호스트가 한 자리만 고정한다(레일의 codex 앞세우기와 같은 방식) — 외부 플러그인이 붙어도 부관 앞이다.
+ * 두지 않고 호스트가 한 자리만 고정한다(레일의 codex 앞세우기와 같은 방식) — 다른 기능을 추가해도 부관 앞이다.
  */
 function deputyLast(entries: readonly CommandBandEntryDescriptor[]): readonly CommandBandEntryDescriptor[] {
   return [...entries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID), ...entries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID)];

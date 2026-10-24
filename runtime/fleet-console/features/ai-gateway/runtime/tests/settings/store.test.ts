@@ -33,7 +33,7 @@ function createDataDir(): string {
 
 /** 이 설정이 예전에 살던 호스트 디렉터리를 흉내낸다. 그 시절 파일은 compact JSON이었다. */
 function seedLegacySettings(root: string, value: unknown): string {
-  const legacyDir = path.join(root, "console", "plugins", "terminal");
+  const legacyDir = path.join(root, "previous-fleet");
   mkdirSync(legacyDir, { recursive: true });
   writeFileSync(path.join(legacyDir, "ai-gateway.json"), JSON.stringify(value), "utf-8");
   return legacyDir;
@@ -300,7 +300,7 @@ describe("ai-gateway settings store", () => {
   it("stays unconfigured when the host directory holds nothing usable", () => {
     for (const seeded of [undefined, "{ not json", { version: 1 }, { version: 9, models: [{ id: "codex--gpt-6-sol" }] }]) {
       const dataDir = createDataDir();
-      const legacyDir = path.join(dataDir, "console", "plugins", "terminal");
+      const legacyDir = path.join(dataDir, "previous-fleet");
       if (seeded !== undefined) {
         mkdirSync(legacyDir, { recursive: true });
         writeFileSync(
@@ -391,7 +391,7 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     // 그 자리에 디렉터리가 있으면 다시 읽어도 결과가 같다. 승계를 기다리며 저장을 영구히
     // 막는 것은 원래 막으려던 손실보다 나쁘므로, 결론(`nothing`)으로 접고 진행해야 한다.
-    const legacyDir = path.join(dataDir, "console", "plugins", "terminal");
+    const legacyDir = path.join(dataDir, "previous-fleet");
     mkdirSync(path.join(legacyDir, "ai-gateway.json"), { recursive: true });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
 
