@@ -18,7 +18,7 @@ import {
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { isCommodoreConversationActive } from "./commodore-conversation.js";
+import { isCommodoreConversationActive, isCommodoreConversationSelected, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -33,7 +33,8 @@ function autonomyOn(theaterId: string): boolean {
 function subscribeCommodoreFace(listener: () => void): () => void {
   const offCommodore = subscribeCommodore(listener);
   const offObjectives = subscribeObjective(listener);
-  return () => { offCommodore(); offObjectives(); };
+  const offConversation = subscribeCommodoreConversationActive(listener);
+  return () => { offCommodore(); offObjectives(); offConversation(); };
 }
 
 /**
@@ -53,6 +54,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
       // 꺼짐은 머리 표식이 회색을 정하는 조건(commodoreSummary 의 on 이 아님)과 같다.
       return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.active !== true };
     },
+    selected: isCommodoreConversationSelected,
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
     // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
     landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),

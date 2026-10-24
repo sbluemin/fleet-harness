@@ -458,11 +458,10 @@ function isConversationTab(entry: RailEntryDescriptor): boolean {
 }
 
 /** 플러그인 대화의 머리 값(아바타 얼굴 등)은 플러그인 저장소에 산다 — 그 대화가 알리면 머리를 다시 그린다. */
-function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): number {
-  const [revision, refresh] = useReducer((count: number) => count + 1, 0);
+function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): void {
+  const [, refresh] = useReducer((count: number) => count + 1, 0);
   const subscribe = descriptor?.subscribe;
   useEffect(() => (subscribe ? subscribe(refresh) : undefined), [subscribe]);
-  return revision;
 }
 
 /**
@@ -1124,7 +1123,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly browserSplitOpen: boolean;
 }) {
   const t = useT();
-  const headRevision = useConversationSurfaceHead(descriptor);
+  useConversationSurfaceHead(descriptor);
   // 대신하는 Objective 이 있으면 그 입력창을 문맥에 싣는다 — 플러그인은 자리만 고르고, 입력창은 호스트의 그룹 입력창이다.
   const standInId = useConversationStandIn();
   const standInComposer = useConversationStandInComposer();
@@ -1138,14 +1137,18 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 대화가 Theater 의 Inbox 섹션을 대신하면(사령관) 그 탭에 섹션 꼬리표를 단다 — Theater 를 연 동안 패널 머리가 「사령관 | Theater 설정」
   // 섹션 줄로 묶는다.
   const { theaterInboxSections } = useFeatureRegistry();
-  const section = useMemo<ConversationTabSection | null>(() => {
-    let info: { readonly theaterId: string; readonly inboxSection: string } | null = null;
-    try { info = descriptor.theater?.(context) ?? null; } catch { info = null; }
-    if (!info) return null;
-    const id = conversationSurfaceInboxSectionId(descriptor, info.inboxSection);
-    const inboxSection = theaterInboxSections.find((candidate) => candidate.id === id);
-    return { id, title: inboxSection?.title(language, info.theaterId) ?? descriptor.title(context), theaterId: info.theaterId };
-  }, [context, descriptor, language, theaterInboxSections, headRevision]);
+  let sectionInfo: { readonly theaterId: string; readonly inboxSection: string } | null = null;
+  try { sectionInfo = descriptor.theater?.(context) ?? null; } catch { sectionInfo = null; }
+  const sectionId = sectionInfo ? conversationSurfaceInboxSectionId(descriptor, sectionInfo.inboxSection) : null;
+  const sectionTheaterId = sectionInfo?.theaterId ?? null;
+  const sectionTitle = sectionId && sectionTheaterId
+    ? theaterInboxSections.find((candidate) => candidate.id === sectionId)?.title(language, sectionTheaterId) ?? descriptor.title(context)
+    : null;
+  const section = useMemo<ConversationTabSection | null>(() => (
+    sectionId !== null && sectionTheaterId !== null && sectionTitle !== null
+      ? { id: sectionId, title: sectionTitle, theaterId: sectionTheaterId }
+      : null
+  ), [sectionId, sectionTheaterId, sectionTitle]);
   // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 맥락(같은 대화의 새 요청·언어·테마)이 바뀌어 탭을 다시 세울
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);

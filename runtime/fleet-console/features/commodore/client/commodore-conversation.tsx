@@ -72,6 +72,12 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
   return port?.subscribe(listener) ?? (() => {});
 }
 
+/** 가운데 칸의 사령관 대화가 이 Theater 를 가리키는가 — 읽기 전용 기록도 같은 사령관 행을 강조한다. */
+export function isCommodoreConversationSelected(theaterId: string): boolean {
+  const surface = port?.current();
+  return surface?.surfaceId === COMMODORE_SURFACE_ID && readParams(surface.params)?.theaterId === theaterId;
+}
+
 /**
  * 가운데 칸에 그 Theater 의 사령관 대화(입력창이 있는 것)가 지금 서 있는가. 읽기 전용 기록은 입력창이 없어 치지 않는다.
  * 호스트의 「붙일 곳」 판정(`ComposerQuoteReceiver.targets` 의 `current`)이 읽는다. 바뀜은 `subscribeCommodoreConversationActive` 가 깨운다.

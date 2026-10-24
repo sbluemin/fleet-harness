@@ -332,7 +332,7 @@ export function buildTheaterSectionSearchEntries(
           titles,
           caption: status.scope,
           // 표시 언어와 무관하게 두 언어 제목·별칭·원래 이름 어느 것으로도 찾아진다.
-          searchText: [titles.ko, titles.en, theater.alias, theater.label].filter(Boolean).join(" "),
+          searchText: [titles.ko, titles.en, section.title("ko"), section.title("en"), theater.alias, theater.label].filter(Boolean).join(" "),
           icon: section.icon({ theater: summary }),
         });
       } catch {

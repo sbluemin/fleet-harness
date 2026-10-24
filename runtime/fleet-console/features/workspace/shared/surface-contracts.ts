@@ -147,10 +147,12 @@ export interface TheaterFace {
 
 /** The Theater facts a contribution lends the sidebar header. Reads do no I/O. */
 export interface TheaterHeaderContribution {
-  /** Wakes the header when `mark`, `live`, `landing` or `face` may answer differently. */
+  /** Wakes the header when `mark`, `live`, `selected`, `landing` or `face` may answer differently. */
   readonly subscribe: (listener: () => void) => () => void;
   /** True while this Theater's operator is working — the host runs its live sweep over the Theater name. */
   readonly live?: (theaterId: string) => boolean;
+  /** True when this header's operator conversation is selected, not merely its Theater. */
+  readonly selected?: (theaterId: string) => boolean;
   /**
    * The face of the Theater's commodore avatar while this contribution operates it — the same state and the same
    * muted look its `mark` shows. The host draws the Theater's avatar with it on surfaces away from the sidebar header
