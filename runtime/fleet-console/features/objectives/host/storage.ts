@@ -428,11 +428,13 @@ export function createObjectiveStorage(deps: {
   return { load, save, assertReady, entries, events, acknowledgeEvents, board, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
 }
 
-/** 원본은 rename 커밋 전까지 보존한다. 링크는 거절하고 복사한 바이트도 대조한다. */
+/** 원본은 rename 커밋 전까지 보존한다. 링크는 따라가지 않고 링크 값과 복사한 바이트를 대조한다. */
 function copyVerified(source: string, target: string): void {
   const stat = fs.lstatSync(source);
-  if (stat.isSymbolicLink()) throw failure();
-  if (stat.isDirectory()) {
+  if (stat.isSymbolicLink()) {
+    fs.symlinkSync(fs.readlinkSync(source, { encoding: "buffer" }), target);
+    if (!fs.readlinkSync(source, { encoding: "buffer" }).equals(fs.readlinkSync(target, { encoding: "buffer" }))) throw failure();
+  } else if (stat.isDirectory()) {
     safeDir(target);
     for (const name of fs.readdirSync(source)) copyVerified(path.join(source, name), path.join(target, name));
   } else if (stat.isFile()) {
@@ -447,5 +449,5 @@ function migrateBoardKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(migrateBoardKeys);
   if (!object(value)) return value;
   const board = "rank" in value && ("missions" in value || "note" in value);
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === "operationId" ? board ? "id" : "objectiveId" : key === "operationIntent" ? "lifecycleIntent" : key === "parentOperationId" ? "parentObjectiveId" : key, key === "kind" && item === "operation" ? "objectiveRecord" : migrateBoardKeys(item)]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === "operationId" ? board ? "id" : "objectiveId" : key === "operationIntent" ? "lifecycleIntent" : key === "parentOperationId" ? "parentObjectiveId" : key === "ownerOperationId" ? "ownerObjectiveId" : key, key === "kind" && item === "operation" ? "objectiveRecord" : migrateBoardKeys(item)]));
 }
