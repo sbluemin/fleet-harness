@@ -5,6 +5,7 @@ import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
 import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
+import { findAgentObjectiveKind } from "../../../execution/shared/objective-kind.js";
 import type { RailEntryDescriptor } from "../../shared/rail.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
@@ -1252,8 +1253,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const chosen = state.nestedBodySelection[objectiveRecord.id];
   const bodyOwner = (chosen ? nested.find((candidate) => candidate.id === chosen) : undefined) ?? objectiveRecord;
   const runtimeState = pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, bodyOwner.id);
-  const descriptor = objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent")
-    ?? objectiveRecordKinds.find((kind) => kind.pluginId === "terminal" && kind.type === "agent");
+  const descriptor = findAgentObjectiveKind(objectiveRecordKinds);
 
   // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 이 값은 어디에도 저장하지 않는다.
   const [geometry, setGeometry] = useState<ObjectiveGeometry>({ x: 0, y: 0, width: 720, height: 640, zIndex: 0 });
