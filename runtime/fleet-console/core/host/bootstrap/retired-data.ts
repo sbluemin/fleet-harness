@@ -6,7 +6,8 @@ import { normalizeQuotaSettings } from "../../../features/quota/host/storage.js"
 
 /**
  * durable writer만 호출한다. 바로 앞 자리의 동의·CLI 경로를 먼저 승계한 뒤 옛 트리를 회수한다.
- * 읽기·저장에 실패하면 원본 전체를 남겨 다음 기동에 재시도한다. 링크는 승계에도 따라가지 않는다.
+ * 각 원천은 독립적으로 승계하고 하나라도 실패하면 트리 전체를 남긴다. 링크는 따라가지 않는다.
+ * 반환값은 quota 쓰기 허용 여부다. CLI 승계 실패가 이미 옮긴 연결 동의의 사용을 막지 않는다.
  */
 export function retireConsoleData(dataDir: string, warn: (message: string) => void = console.warn): boolean {
   const root = path.join(dataDir, "plugins");
@@ -15,8 +16,9 @@ export function retireConsoleData(dataDir: string, warn: (message: string) => vo
     if (!rootStat) return true;
     // 루트 링크는 소유한 승계 원천으로 취급하지 않는다. 새 슬롯의 설정 사용은 막지 않는다.
     if (!rootStat.isDirectory()) return true;
-    adopt("quota", "settings.json", "quota.json", normalizeQuotaSettings);
-    adopt("terminal", "agent-cli-paths.json", "agent-cli-paths.json", normalizeAgentCliPaths);
+    const quotaReady = attempt(() => adopt("quota", "settings.json", "quota.json", normalizeQuotaSettings));
+    const cliReady = attempt(() => adopt("terminal", "agent-cli-paths.json", "agent-cli-paths.json", normalizeAgentCliPaths));
+    if (!quotaReady || !cliReady) return quotaReady;
     // rm은 내부 링크를 따라가지 않는다. 다른 사용자 디렉터리를 가리키는 링크도 링크만 걷힌다.
     try { fs.rmSync(root, { recursive: true, force: true }); }
     catch (error) { warn(`[fleet-console] Retired tree not removed: ${error instanceof Error ? error.message : String(error)}`); }
@@ -24,6 +26,14 @@ export function retireConsoleData(dataDir: string, warn: (message: string) => vo
   } catch (error) {
     warn(`[fleet-console] Retired data retained: ${error instanceof Error ? error.message : String(error)}`);
     return false;
+  }
+
+  function attempt(migrate: () => void): boolean {
+    try { migrate(); return true; }
+    catch (error) {
+      warn(`[fleet-console] Retired data retained: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   }
 
   function adopt<T>(owner: string, name: string, destinationName: string, sanitize: (value: unknown) => T): void {

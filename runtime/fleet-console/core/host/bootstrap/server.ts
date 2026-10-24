@@ -546,8 +546,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let purgeCoreObjective: ((objectiveRecord: ObjectiveRecord) => void) | null = null;
   let resumeArchivedObjective: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
-  let retiredDataSettled = false;
-  const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => retiredDataSettled);
+  let quotaMigrationReady = false;
+  const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => quotaMigrationReady);
   const avatarStore = createAvatarStore(durablePaths.dir);
   const conversationWorkbenchStore = createConversationWorkbenchStore(durablePaths.dir);
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
@@ -2610,7 +2610,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 워크스페이스 승계·옛 렌더 트리 회수·설정 기본값 확정도 durable writer의 일이다.
       adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
       reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
-      retiredDataSettled = retireConsoleData(durablePaths.dir);
+      quotaMigrationReady = retireConsoleData(durablePaths.dir);
       consoleSettingsStore.load();
       await rehydrateDurableState();
       // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와

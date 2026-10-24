@@ -272,7 +272,7 @@ describe("console terminal observability", () => {
     }
   });
 
-  it("retains unreadable carry-over sources and retries without overwriting current settings", async () => {
+  it("migrates independent sources while retaining a failed source for retry", async () => {
     // 회수 전에 읽지 못한 값은 기본값 저장으로도 고아가 되면 안 된다.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-retire-retry-"));
     tempDirs.push(dir);
@@ -289,6 +289,8 @@ describe("console terminal observability", () => {
     expect(ready).toBe(false);
     expect(warn).toHaveBeenCalled();
     expect(fs.readFileSync(quota, "utf8")).toBe("{broken");
+    await expect(createAgentCliPathStore(dir).read()).resolves.toEqual({ version: 1, paths: { claude: "/previous/claude" } });
+    expect(fs.existsSync(cli)).toBe(true);
     await expect(store.write({ claudeConnected: false })).rejects.toThrow("quota_migration_pending");
     expect(fs.existsSync(path.join(dir, "quota.json"))).toBe(false);
     fs.writeFileSync(quota, JSON.stringify({ claudeConnected: true }));

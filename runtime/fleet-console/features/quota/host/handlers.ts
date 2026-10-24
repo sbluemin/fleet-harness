@@ -114,13 +114,19 @@ export async function handleConnect(
     return;
   }
   const connected = body.connected;
-  await serializeSettings(async () => {
-    const next = {
-      ...retainedSettings(await readStoredSettings(ctx)),
-      claudeConnected: connected,
-    };
-    await ctx.host.storage.write(next);
-  });
+  try {
+    await serializeSettings(async () => {
+      const next = {
+        ...retainedSettings(await readStoredSettings(ctx)),
+        claudeConnected: connected,
+      };
+      await ctx.host.storage.write(next);
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "quota_migration_pending") throw error;
+    ctx.host.http.writeJson(res, 409, { error: "quota_migration_pending" });
+    return;
+  }
   const summary = await service.getSummary({ forceProvider: body.provider });
   ctx.host.http.writeJson(res, 200, summary);
 }
