@@ -27,6 +27,7 @@ interface Deletion {
   archived?: DurableDeletionTombstone["archived"];
 }
 type EventIndex = Pick<ArchiveLifecycleEvent, "eventId" | "channel" | "objectiveId" | "sessionIds">;
+interface Quarantine { id: string | null; sourceHash: string; location: string; reason: string }
 interface Archive {
   revision: number;
   entries: readonly { archiveId: string; archivedAt: number; objectiveId: string }[];
@@ -34,6 +35,7 @@ interface Archive {
   events: readonly EventIndex[];
   /** 충돌 원문은 migration backup에 남긴다. 이 ID는 읽기·쓰기·재발급에서 제외한다. */
   unavailable?: readonly string[];
+  quarantine?: readonly Quarantine[];
   transaction?: string;
 }
 interface Transaction {
@@ -106,7 +108,12 @@ function readArchive(value: unknown): Archive {
     if (typeof row.eventId !== "string" || !channels.has(String(row.channel)) || "objective" in row) throw failure();
     return { eventId: row.eventId, channel: row.channel as EventIndex["channel"], objectiveId: segment(row.objectiveId), sessionIds: ids(row.sessionIds) };
   });
+  const quarantine = value.quarantine === undefined ? [] : value.quarantine;
+  if (!Array.isArray(quarantine) || quarantine.some((row) => !object(row) || (row.id !== null && typeof row.id !== "string")
+    || typeof row.sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(row.sourceHash) || typeof row.location !== "string" || typeof row.reason !== "string"
+    || Object.keys(row).some((key) => !["id", "sourceHash", "location", "reason"].includes(key)))) throw failure();
   const archive: Archive = { revision: Number(value.revision), entries, deletions, events,
+    ...(quarantine.length ? { quarantine: quarantine as Quarantine[] } : {}),
     ...(value.unavailable !== undefined ? { unavailable: ids(value.unavailable) } : {}),
     ...(value.transaction !== undefined ? { transaction: segment(value.transaction) } : {}),
   };
@@ -203,8 +210,10 @@ export function createObjectiveStorage(deps: {
       || tx.purgeIds.some((purgeId) => documentIds.has(purgeId) || referenced.includes(purgeId) || archive.unavailable?.includes(purgeId))) throw failure();
     // state의 저장 모양은 등록만이다. readRegistrations가 만든 본문 뷰를 다시 쓰지 않는다.
     deps.stateStore.save(value.state as DurableConsoleState);
-    apply(scope, tx, id);
+    // 본문 적용이 뒤에서 보류되어도 이미 확정한 등록 after-image를 옛 명부로 덮지 않는다.
+    previousRaw = value.state as Record<string, unknown>;
     state = tx.state;
+    apply(scope, tx, id);
   }
   function readDocuments(scope: Scope): void {
     for (const entry of fs.readdirSync(scope.owner.directory, { withFileTypes: true })) {
@@ -222,44 +231,65 @@ export function createObjectiveStorage(deps: {
       }
     }
   }
-  /** 직전 인라인 형식만 읽는다. 첨부·증거 트리는 살피거나 복사하지 않는다. */
-  function migrateInline(scope: Scope, raw: unknown, source: Buffer): void {
-    archiveShape(raw);
-    const oldTx = raw.transaction;
-    if (oldTx !== undefined && (!object(oldTx) || !Array.isArray(oldTx.documents) || !Array.isArray(oldTx.groups) || !object(oldTx.state))) throw failure();
-    const target = oldTx === undefined ? raw : (oldTx as Record<string, unknown>).archive;
-    archiveShape(target);
-    const candidates = new Map<string, ObjectiveDocument>();
-    const conflicted = new Set<string>();
-    const collect = (value: unknown): string => {
-      if (!object(value)) throw failure();
-      const id = segment(value.id);
-      try {
-        const doc = readDocument(value), earlier = candidates.get(id);
-        if (earlier && !isDeepStrictEqual(earlier, doc)) conflicted.add(id);
-        candidates.set(id, doc);
-      } catch { conflicted.add(id); }
-      return id;
-    };
-    const entries = target.entries.map((row) => ({ archiveId: row.archiveId, archivedAt: row.archivedAt, objectiveId: collect(row.objective) }));
-    const deletions = target.deletions.map((row) => {
-      const { objective, objectives, ...rest } = row;
-      const objectiveIds = [ ...(objective === undefined ? [] : [collect(objective)]), ...(Array.isArray(objectives) ? objectives.map(collect) : []) ];
-      return { ...rest, objectiveIds };
-    });
-    const events = target.events.map((row) => {
-      const doc = readDocument(row.objective);
-      return { eventId: row.eventId, channel: row.channel, objectiveId: doc.id, sessionIds: (Array.isArray(doc.sessions) ? doc.sessions : []).map((child) => segment((child as { id: unknown }).id)) };
-    });
-    let archive = readArchive({ revision: target.revision, entries, deletions, events });
-    // 원본 바이트를 먼저 봉인한다. 충돌한 사본·과거 사건도 이 파일에서 되찾을 수 있다.
-    const backup = path.join(scope.owner.directory, ".archive-migration", `${createHash("sha256").update(source).digest("hex")}.json`);
+  function preserveSource(owner: ObjectiveOwner, source: Buffer): string {
+    const sourceHash = createHash("sha256").update(source).digest("hex");
+    const backup = path.join(owner.directory, ".archive-migration", `${sourceHash}.json`);
     safeDir(path.dirname(backup));
     if (!exists(backup)) {
       const fd = fs.openSync(backup, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | NOFOLLOW_FLAG, 0o600);
       try { fs.writeFileSync(fd, source); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     }
     if (!readBytes(backup).equals(source)) throw failure();
+    return sourceHash;
+  }
+  /** 직전 인라인 형식만 읽는다. 첨부·증거 트리는 살피거나 복사하지 않는다. */
+  function migrateInline(scope: Scope, raw: unknown, source: Buffer): void {
+    // 파싱·행 검증보다 원문 보존이 먼저다. 실패 기록에는 본문을 복제하지 않는다.
+    const sourceHash = preserveSource(scope.owner, source);
+    if (!object(raw)) throw failure();
+    const oldTx = raw.transaction;
+    if (oldTx !== undefined && (!object(oldTx) || !Array.isArray(oldTx.documents) || !Array.isArray(oldTx.groups) || !object(oldTx.state))) throw failure();
+    const target = oldTx === undefined ? raw : (oldTx as Record<string, unknown>).archive;
+    if (!object(target) || !Number.isSafeInteger(target.revision) || Number(target.revision) < 0
+      || !Array.isArray(target.entries) || !Array.isArray(target.deletions) || !Array.isArray(target.events)) throw failure();
+    const candidates = new Map<string, ObjectiveDocument>();
+    const conflicted = new Set<string>();
+    const quarantine: Quarantine[] = [];
+    const knownIds = (row: unknown): string[] => {
+      if (!object(row)) return [];
+      const docs = [row.objective, ...(Array.isArray(row.objectives) ? row.objectives : [])];
+      return [...new Set([row.objectiveId, ...(row.kind === "objective" ? [row.targetId] : []), ...docs.flatMap((doc) => object(doc)
+        ? [doc.id, ...(Array.isArray(doc.sessions) ? doc.sessions.flatMap((child) => object(child) ? [child.id] : []) : [])] : [])].filter((id): id is string => typeof id === "string"))];
+    };
+    const reject = (row: unknown, location: string, reason: string): void => {
+      const failedIds = knownIds(row);
+      for (const id of failedIds) { try { conflicted.add(segment(id)); } catch { /* 경로로 사용할 수 없는 ID는 기록에만 남긴다. */ } }
+      for (const id of failedIds.length ? failedIds : [null]) quarantine.push({ id, sourceHash, location, reason });
+    };
+    const prefix = oldTx ? "transaction.archive." : "";
+    const located = new Set<string>();
+    const entries: Archive["entries"][number][] = [], deletions: Deletion[] = [], events: EventIndex[] = [];
+    for (const [kind, rows] of [["entries", target.entries], ["deletions", target.deletions], ["events", target.events]] as const) {
+      rows.forEach((row: unknown, index: number) => {
+        const location = `${prefix}${kind}[${index}]`;
+        try {
+          if (!object(row)) throw failure();
+          const bodies = kind === "deletions" ? [ ...(row.objective === undefined ? [] : [row.objective]), ...(Array.isArray(row.objectives) ? row.objectives : []) ] : [row.objective];
+          const docs = bodies.map(readDocument);
+          const encoded = kind === "entries" ? { archiveId: row.archiveId, archivedAt: row.archivedAt, objectiveId: docs[0]!.id }
+            : kind === "events" ? { eventId: row.eventId, channel: row.channel, objectiveId: docs[0]!.id, sessionIds: ids(Array.isArray(docs[0]!.sessions) ? docs[0]!.sessions.map((child) => object(child) ? child.id : undefined) : []) }
+              : { deletionId: row.deletionId, kind: row.kind, targetId: row.targetId, deletedAt: row.deletedAt, expiresAt: row.expiresAt, objectiveIds: docs.map((doc) => doc.id), ...(row.groups !== undefined ? { groups: row.groups } : {}), ...(row.archived !== undefined ? { archived: row.archived } : {}) };
+          const checked = readArchive({ ...emptyArchive(), [kind]: [encoded] });
+          if (kind !== "events" && docs.some((doc) => located.has(doc.id))) throw failure();
+          entries.push(...checked.entries); deletions.push(...checked.deletions); events.push(...checked.events);
+          if (kind !== "events") for (const doc of docs) { located.add(doc.id); candidates.set(doc.id, doc); }
+        } catch { reject(row, location, "invalid_inline_row"); }
+      });
+    }
+    if (quarantine.length) writeJson(path.join(scope.owner.directory, ".archive-migration", `${sourceHash}.quarantine.json`), quarantine);
+    let archive = readArchive({ revision: target.revision, entries, deletions, events,
+      ...(quarantine.length ? { quarantine } : {}), ...(conflicted.size ? { unavailable: [...conflicted] } : {}),
+    });
     scope.archive = archive;
     readDocuments(scope);
     for (const id of scope.archive.unavailable ?? []) conflicted.add(id);
@@ -274,7 +304,7 @@ export function createObjectiveStorage(deps: {
     for (const doc of [...scope.documents.values(), ...candidates.values()]) if (conflicted.has(doc.id) && Array.isArray(doc.sessions)) {
       for (const child of doc.sessions) if (object(child) && typeof child.id === "string") conflicted.add(segment(child.id));
     }
-    if (oldTx && conflicted.size) throw failure(); // 준비 연산의 원자성을 임의로 쪼개지 않는다.
+    if (oldTx && (conflicted.size || quarantine.length)) throw failure(); // 준비 연산의 원자성을 임의로 쪼개지 않는다.
     archive = { ...archive, ...(conflicted.size ? { unavailable: [...conflicted] } : {}) };
     for (const [id, doc] of candidates) if (!conflicted.has(id)) scope.documents.set(id, doc);
     for (const id of conflicted) scope.documents.delete(id);
@@ -310,11 +340,20 @@ export function createObjectiveStorage(deps: {
     assertMinimal(groups);
     const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive() };
     if (exists(archiveFile)) {
-      const source = readBytes(archiveFile), raw: unknown = JSON.parse(source.toString("utf8"));
-      archiveShape(raw);
-      const inline = object(raw.transaction) || [...raw.entries, ...raw.deletions, ...raw.events].some((row) => "objective" in row || "objectives" in row);
-      if (inline) migrateInline(scope, raw, source);
-      else scope.archive = readArchive(raw);
+      const source = readBytes(archiveFile);
+      try {
+        const raw: unknown = JSON.parse(source.toString("utf8"));
+        const inline = object(raw) && (object(raw.transaction) || [raw.entries, raw.deletions, raw.events].some((rows) => Array.isArray(rows) && rows.some((row) => object(row) && ("objective" in row || "objectives" in row))));
+        if (inline) migrateInline(scope, raw, source);
+        else scope.archive = readArchive(raw);
+      } catch (error) {
+        const sourceHash = preserveSource(owner, source);
+        const quarantineFile = path.join(owner.directory, ".archive-migration", `${sourceHash}.quarantine.json`);
+        if (!exists(quarantineFile)) writeJson(quarantineFile, [
+          { id: null, sourceHash, location: "archive.json", reason: "owner_recovery_required" },
+        ]);
+        throw error;
+      }
     }
     recover(scope);
     const purgeIds = scope.archive.events.filter((row) => row.channel === "objective:purged" && !unavailable(scope, row.objectiveId)).map((row) => row.objectiveId);
@@ -361,9 +400,23 @@ export function createObjectiveStorage(deps: {
     if (!registration || registration.kind !== "theater") throw failure();
     return { ...base, kind: "theater", theater: registration.theater, objectiveRecords: objectiveIds.map(decode), groups: (groups ?? []).map((group) => ({ ...group, theaterId: scope.owner.theaterId })) };
   }
+  function retainHeldAliases(source: Record<string, unknown>, normalized: Record<string, unknown>): Record<string, unknown> {
+    if (!deps.migrateRegistrationAliases || !unavailableOwners.size) return normalized;
+    // 보류한 owner의 저널이 더 최신 이름/해제를 담을 수 있다. 그 명부는 이관 원본으로 먼저 소비하지 않는다.
+    const heldSource = { ...source,
+      theaters: Array.isArray(source.theaters) ? source.theaters.filter((row) => object(row) && unavailableOwners.has(String(row.id))) : [],
+      deletionTombstones: Array.isArray(source.deletionTombstones) ? source.deletionTombstones.filter((row) => object(row) && unavailableOwners.has(String(row.targetId))) : [],
+    };
+    return retainRegistrationAliases(heldSource, normalized);
+  }
+  function cleanMigratedAliases(source: Record<string, unknown>): Record<string, unknown> {
+    const cleaned = retainHeldAliases(source, withoutTheaterAliases(source));
+    return isDeepStrictEqual(source, cleaned) ? source : cleaned;
+  }
   function registrationState(next: DurableConsoleState): DurableConsoleState {
     // 더 오래된 원본과 격리된 Theater의 등록은 승계하거나 정리하지 않고 그대로 남긴다.
-    const held = new Set([...unavailableOwners, ...[...scopes.values()].filter((scope) => scope.archive.deletions.some((row) => row.kind === "theater" && row.objectiveIds.some((id) => unavailable(scope, id)))).map((scope) => scope.owner.theaterId)]);
+    const held = new Set([...unavailableOwners, ...[...scopes.values()].filter((scope) => scope.archive.quarantine?.some((row) => row.location.includes("deletions["))
+      || scope.archive.deletions.some((row) => row.kind === "theater" && row.objectiveIds.some((id) => unavailable(scope, id)))).map((scope) => scope.owner.theaterId)]);
     const untouched = Array.isArray(previousRaw.deletionTombstones) ? previousRaw.deletionTombstones.filter((row) => {
       if (!object(row)) return true;
       const node = row.objectiveRecord ?? row.operation;
@@ -374,7 +427,7 @@ export function createObjectiveStorage(deps: {
       const { objectiveRecords: _records, groups: _groups, ...registration } = row as Extract<DurableDeletionTombstone, { kind: "theater" }>; return registration;
     }), ...untouched];
     const { deletionTombstones: _deletions, theaters: _theaters, ...original } = previousRaw;
-    return { ...original, version: STATE_VERSION, theaters: next.theaters, ...(deletions.length ? { deletionTombstones: deletions } : {}) } as DurableConsoleState;
+    return retainHeldAliases(previousRaw, { ...original, version: STATE_VERSION, theaters: next.theaters, ...(deletions.length ? { deletionTombstones: deletions } : {}) }) as unknown as DurableConsoleState;
   }
   function snapshot(): DurableConsoleState {
     const objectiveRecords: ObjectiveRecord[] = [], groups: DurableObjectiveGroup[] = [], deletions: DurableDeletionTombstone[] = [];
@@ -422,6 +475,7 @@ export function createObjectiveStorage(deps: {
         deletions: [...scope.archive.deletions.filter((row) => row.objectiveIds.some((id) => unavailable(scope, id))), ...deletions.map(encodeDeletion)],
         events: [...scope.archive.events, ...eventRows.filter((row) => row.theaterId === theaterId).map(eventIndex)],
         ...(scope.archive.unavailable?.length ? { unavailable: scope.archive.unavailable } : {}),
+        ...(scope.archive.quarantine?.length ? { quarantine: scope.archive.quarantine } : {}),
       });
       const transaction: Transaction = { documents: [...documents.values()], groups: (next.groups ?? []).filter((group) => group.theaterId === theaterId).map(withoutOwner), archive, state: registration,
         purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id)) };
@@ -462,7 +516,9 @@ export function createObjectiveStorage(deps: {
     },
   };
   function olderSource(owner: ObjectiveOwner): boolean {
-    // 옛 위치를 이주하거나 순회하지 않는다. 남아 있는 원본 위에 빈 owner 저장소도 발급하지 않는다.
+    // 현재 owner가 직전 위치의 권위다. 옛 정리가 미뤄졌더라도 그 원본은 읽거나 지우지 않는다.
+    if (exists(owner.directory)) return false;
+    // 옛 위치만 남아 있으면 이주하거나 순회하지 않고 빈 owner 발급도 막는다.
     if (exists(path.join(resolveWorkspaceDirectory(deps.directory, owner.workspacePath).path, "objectives"))) return true;
     const oldRows = [previousRaw.operations, previousRaw.objectiveRecords, previousRaw.groups].flatMap((rows) => Array.isArray(rows) ? rows : rows === undefined ? [] : [rows]);
     if (oldRows.some((row) => !object(row) || typeof row.theaterId !== "string" || row.theaterId === owner.theaterId)
@@ -492,20 +548,25 @@ export function createObjectiveStorage(deps: {
       previousRaw = raw; state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
       deps.initializeOwners?.(readRegistrations(state));
       for (const owner of deps.owners()) {
-        if (olderSource(owner)) { unavailableOwners.add(owner.theaterId); console.warn(`[objectives] owner ${owner.theaterId}: older source requires recovery`); continue; }
-        const scope = readScope(owner); scopes.set(owner.theaterId, scope);
+        try {
+          if (olderSource(owner)) throw new ObjectiveArchiveError(503, "older_source_requires_recovery");
+          const scope = readScope(owner); scopes.set(owner.theaterId, scope);
+        } catch {
+          unavailableOwners.add(owner.theaterId);
+          console.warn(`[objectives] owner ${owner.theaterId}: recovery required; original preserved`);
+        }
       }
       // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
       // 별칭 이주는 별개다. owner 저널에서 복구한 새 이름·해제를 대상에 커밋한 뒤 명부에서 거둔다.
       if (deps.migrateRegistrationAliases) {
-        deps.migrateRegistrationAliases(legacyTheaterAliases(state as unknown as Record<string, unknown>));
+        deps.migrateRegistrationAliases(legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => !unavailableOwners.has(entry.theaterId)));
         if (exists(deps.stateStore.path)) {
           const current = readJson(deps.stateStore.path);
           if (!object(current)) throw failure();
-          const cleaned = withoutTheaterAliases(current);
+          const cleaned = cleanMigratedAliases(current);
           if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
         }
-        previousRaw = withoutTheaterAliases(previousRaw);
+        previousRaw = cleanMigratedAliases(previousRaw);
         state = readRegistrations(state);
       }
       ready = true; blocked = false;

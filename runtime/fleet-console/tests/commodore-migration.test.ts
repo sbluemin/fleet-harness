@@ -260,10 +260,18 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
     let ownership: ReturnType<typeof createCommodoreOwnership>;
     let includeObjectives = false;
+    let failOwnerApply = false;
     const open = () => createObjectiveStorage({ directory, stateStore,
       initializeOwners: () => { ownership = createCommodoreOwnership(paths); },
       owners: () => includeObjectives ? ownership.objectives() : [],
       migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership),
+      createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
+        const store = createDurableJsonStore(deps);
+        return { ...store, save: (value: unknown) => {
+          if (failOwnerApply && deps.filePath === path.join(directory, "commodore", ownerId, "objectives", "groups.json")) throw new Error("owner_apply_interrupted");
+          store.save(value);
+        } };
+      }) as typeof createDurableJsonStore,
     });
     // 대상 커밋 실패는 원본 별칭을 그대로 두고 기동을 중단한다.
     const nativeRename = fs.renameSync.bind(fs);
@@ -359,6 +367,29 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     open().load();
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Recovered external name");
     expect(fs.existsSync(journalFile)).toBe(false);
+    expect(JSON.stringify(open().load())).not.toContain('"alias"');
+
+    // owner 복구를 보류해도 Console은 뜬다. 그때 오래된 raw 이름을 먼저 이관하거나 지우면 안 된다.
+    fs.writeFileSync(ownerFile, JSON.stringify(before));
+    fs.writeFileSync(stateFile, JSON.stringify(journalSource));
+    const pending = { ...ownerArchive, transaction: { documents: [], groups: [], archive: ownerArchive,
+      state: { version: 6, theaters: [{ ...registration(project), alias: "Deferred journal name" }] },
+    } };
+    fs.writeFileSync(ownerArchiveFile, JSON.stringify(pending));
+    failOwnerApply = true;
+    const deferred = open(); const deferredState = deferred.load();
+    expect(deferred.blocked()).toBe(false);
+    expect(deferred.board.directory(workspaceHash(project))).toBeNull();
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).not.toHaveProperty("alias");
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
+    const prepared = fs.readFileSync(ownerArchiveFile, "utf8");
+    expect(typeof JSON.parse(prepared).transaction).toBe("string");
+    deferred.save(deferredState);
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
+    expect(fs.readFileSync(ownerArchiveFile, "utf8")).toBe(prepared);
+    failOwnerApply = false;
+    open().load();
+    expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Deferred journal name");
     expect(JSON.stringify(open().load())).not.toContain('"alias"');
   } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });

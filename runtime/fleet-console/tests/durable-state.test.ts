@@ -43,6 +43,12 @@ describe("durable console state", () => {
   // 직전 인라인 형식을 실제 저장소·보드·봉인 증거 경계로 올린다. 더 오래된 위치 이동 시험을 대체한다.
   it("extracts inline bodies without losing source bytes, skips conflicts, and never revives inactive files", async () => {
     const h = fixture();
+    // 이전 위치 정리가 미뤄져도 현재 owner가 권위다. 옛 본문은 읽거나 지우지 않는다.
+    const leftoverBoard = path.join(ensureWorkspaceDirectory(h.directory, h.directory).path, "objectives");
+    fs.mkdirSync(leftoverBoard); fs.writeFileSync(path.join(leftoverBoard, "untouched"), "older board");
+    const leftoverArchive = path.join(h.directory, "operations-archive.json");
+    const leftoverBytes = JSON.stringify({ entries: [{ operation: { theaterId: "t1", id: "older" } }] });
+    fs.writeFileSync(leftoverArchive, leftoverBytes);
     const bytes = Buffer.from("sealed proof");
     const evidence = { evidenceId: "d7f24ad7-6854-4b2a-8802-e4f242b30629", name: "proof.txt", mediaType: "text/plain", bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), capturedAt: 1 };
     const result = { ...evidence, kind: "evidence", id: "e9d2bf4c-a424-45aa-92aa-d87b4fd78bcc", createdAt: 1, updatedAt: 2 };
@@ -71,7 +77,10 @@ describe("durable console state", () => {
         return { ...store, save: (value: unknown) => { if (deps.filePath === h.file("absent-directory")) throw new Error("commit_interrupted"); store.save(value); } };
       }) as typeof createDurableJsonStore,
     });
-    expect(() => interrupted.load()).toThrow("commit_interrupted");
+    expect(interrupted.load().objectiveRecords).toEqual([]);
+    expect(interrupted.blocked()).toBe(false);
+    expect(interrupted.board.directory("t1")).toBeNull();
+    expect(() => interrupted.board.save("t1", { ...h.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
     expect(fs.readFileSync(h.archiveFile, "utf8")).toBe(source);
     const moved = h.open(); const state = moved.load();
     expect(state.objectiveRecords.map((node) => node.id)).toEqual(["active"]);
@@ -116,6 +125,62 @@ describe("durable console state", () => {
     const boards = createObjectiveStore({ storage: boot.board, dirOf: boot.board.directory, theaterIds: () => ["t1"], objectiveRecords: records, emit: () => {} });
     expect(boards.find("archived")?.note).toBe("Edited archive");
     expect((await boards.evidenceRead("archived", result.id)).data).toEqual(bytes);
+    expect(boot.board.directory("t1")).toBe(h.destination);
+    expect(fs.readFileSync(leftoverArchive, "utf8")).toBe(leftoverBytes);
+    expect(fs.readFileSync(path.join(leftoverBoard, "untouched"), "utf8")).toBe("older board");
+
+    // 손상 행은 같은 owner의 정상 행과 다른 owner를 막지 않는다. 파싱 불능은 해당 owner만 멈춘다.
+    const damaged = fixture();
+    const healthy = { ...damaged.owner, theaterId: "healthy", directory: path.join(damaged.directory, "commodore/healthy/objectives") };
+    const broken = { ...damaged.owner, theaterId: "broken", directory: path.join(damaged.directory, "commodore/broken/objectives") };
+    const empty = { revision: 0, entries: [], deletions: [], events: [] };
+    for (const owner of [healthy, broken]) {
+      fs.mkdirSync(owner.directory, { recursive: true });
+      fs.writeFileSync(path.join(owner.directory, "groups.json"), JSON.stringify({ groups: [] }));
+    }
+    fs.mkdirSync(path.join(healthy.directory, "live"));
+    fs.writeFileSync(path.join(healthy.directory, "live/objective.json"), JSON.stringify(damaged.doc("live")));
+    fs.writeFileSync(path.join(healthy.directory, "archive.json"), JSON.stringify({ ...empty, entries: [{ archiveId: "healthy-archive", archivedAt: 1, objective: damaged.doc("healthy-archived") }] }));
+    fs.writeFileSync(path.join(broken.directory, "archive.json"), "{broken archive");
+    fs.writeFileSync(damaged.stateFile, JSON.stringify({ ...damaged.source, theaters: [damaged.registration, ...[healthy, broken].map((owner) => ({ ...damaged.registration, id: owner.theaterId }))] }));
+    for (const id of ["bad-event", "bad-deletion", "unrelated-active"]) damaged.put(id, damaged.doc(id));
+    const damagedSource = JSON.stringify({ ...empty,
+      entries: [{ archiveId: "good", archivedAt: 1, objective: damaged.doc("good") },
+        { archiveId: "bad-id", archivedAt: 1, objective: damaged.doc("../unsafe") },
+        { archiveId: "bad-body", archivedAt: 1, objective: "not an object" }],
+      deletions: [{ deletionId: "bad-deletion-receipt", kind: "objective", targetId: "bad-deletion", deletedAt: 1, expiresAt: 999999, objective: 7 }],
+      events: [{ eventId: "bad-event-id", channel: "objective:purged", objective: { id: "bad-event" } }],
+    });
+    fs.writeFileSync(damaged.archiveFile, damagedSource);
+    const openAll = () => createObjectiveStorage({ directory: damaged.directory, stateStore: damaged.stateStore, owners: () => [damaged.owner, broken, healthy] });
+    const partial = openAll(), partialState = partial.load();
+    expect(partial.blocked()).toBe(false);
+    expect(partialState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
+    expect(partial.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
+    expect(partial.board.directory("t1")).toBe(damaged.destination);
+    expect(partial.board.directory("broken")).toBeNull();
+    expect(partial.board.directory("healthy")).toBe(healthy.directory);
+    for (const id of ["bad-event", "bad-deletion"]) {
+      expect(partial.isReserved(id)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(damaged.file(id), "utf8"))).toEqual(damaged.doc(id));
+    }
+    const sourceHash = createHash("sha256").update(damagedSource).digest("hex");
+    const isolated = JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8"));
+    expect(isolated.quarantine).toEqual([
+      { id: "../unsafe", sourceHash, location: "entries[1]", reason: "invalid_inline_row" },
+      { id: null, sourceHash, location: "entries[2]", reason: "invalid_inline_row" },
+      { id: "bad-deletion", sourceHash, location: "deletions[0]", reason: "invalid_inline_row" },
+      { id: "bad-event", sourceHash, location: "events[0]", reason: "invalid_inline_row" },
+    ]);
+    expect(fs.readFileSync(path.join(damaged.destination, ".archive-migration", `${sourceHash}.json`), "utf8")).toBe(damagedSource);
+    const brokenHash = createHash("sha256").update("{broken archive").digest("hex");
+    expect(fs.readFileSync(path.join(broken.directory, ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken archive");
+    expect(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).toBe("{broken archive");
+    partial.save(partialState);
+    const retry = openAll();
+    expect(retry.load().objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
+    expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
+    expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolated.quarantine);
   });
 
   // 준비된 직전 transaction과 금지된 옛 위치는 서로 다른 복구 경계다.
