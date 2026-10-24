@@ -1,4 +1,3 @@
-import { realpathSync, statSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
@@ -26,38 +25,6 @@ export const CONVERSATION_WORKBENCH_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "PUT", path: CONVERSATION_WORKBENCH_API_PATH, summary: "Save or clear one conversation's tool split layout.", category: "Workspace", gate: "origin-write", transport: "http" },
   { method: "GET", path: `${CONVERSATION_WORKBENCH_API_PATH}/location`, summary: "Resolve an Objective conversation's fixed work location without exposing an absolute path.", category: "Workspace", gate: "loopback", transport: "http" },
 ];
-
-/**
- * 대화의 작업 위치 — 그 Objective 의 작업 폴더를 Theater 루트 기준 상대 좌표로 접는다. 절대 경로는 밖으로 나가지 않는다.
- * 작업 폴더가 없거나, 사라졌거나, Theater 밖이면 null이다. Theater 루트로 바꾸지 않는다.
- */
-export function resolveConversationWorkLocation(input: {
-  readonly theaterId: string;
-  readonly theaterRoot: string;
-  readonly theaterLabel: string;
-  readonly cwd: string | null;
-}): ConversationWorkLocation | null {
-  if (input.cwd === null || input.cwd === "" || !path.isAbsolute(input.cwd)) return null;
-  let realRoot: string;
-  let real: string;
-  try {
-    realRoot = realpathSync.native(input.theaterRoot);
-    real = realpathSync.native(input.cwd);
-  } catch {
-    return null;
-  }
-  const relative = path.relative(realRoot, real);
-  if (relative === "") return { theaterId: input.theaterId, relative: "", kind: "root", label: input.theaterLabel };
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
-  let kind: ConversationWorkLocation["kind"] = "directory";
-  try {
-    // git 워크트리의 루트에는 `.git` 이 디렉터리가 아니라 파일(gitdir 포인터)로 있다.
-    if (statSync(path.join(real, ".git")).isFile()) kind = "worktree";
-  } catch {
-    kind = "directory";
-  }
-  return { theaterId: input.theaterId, relative: relative.split(path.sep).join("/"), kind, label: path.basename(real) };
-}
 
 export function createConversationWorkbenchStore(dataDir: string): DurableJsonStore<WorkbenchStoreData> {
   const filePath = path.join(dataDir, "conversation-workbench.json");

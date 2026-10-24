@@ -1,3 +1,4 @@
+import { openOwnedObjectiveOnPhone } from "./board.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
@@ -425,7 +426,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const asks = view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
   const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
-  const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
+  const openReference = useCallback((objectiveId: string) => openOwnedObjectiveOnPhone(theaterId, objectiveId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.

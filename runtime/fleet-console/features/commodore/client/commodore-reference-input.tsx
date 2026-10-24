@@ -714,7 +714,7 @@ export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theat
 export function openReferencedObjective(commodoreId: string, objectiveId: string): void {
   const live = readTheater(commodoreId).objectives.find((objective) => objective.id === objectiveId);
   const finished = findFinishedObjective(objectiveId);
-  const screen = live?.theaterId || finished?.theaterId || commodoreId;
+  const screen = live?.theaterId || finished?.theaterId || "";
   goToObjective(objectiveId, screen, !!(live ?? finished)?.done);
 }
 

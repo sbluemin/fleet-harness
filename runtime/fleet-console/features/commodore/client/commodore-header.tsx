@@ -51,7 +51,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
       return { state: commodoreMongleState(view, readTheater(commodoreId).objectives), off: false };
     },
     selected: isCommodoreConversationSelected,
-    live: (theaterId) => readCommodore(theaterId).view?.run.phase === "turn",
+    live: (theaterId) => readCommodore(ownerOfContext(theaterId)).view?.run.phase === "turn",
     landing: () => ({ sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }),
   },
 };

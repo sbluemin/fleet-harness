@@ -203,18 +203,18 @@ function FileExplorerTreePane(ctx: PaneContext) {
     hydrateStoredSession(contextScope || null);
     const restored = getFileExplorerSnapshot(contextScope);
     if (restored.documentPaneOpen && restored.activePath) {
-      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope }, focus: false });
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: restored.activePath, theaterId: contextScope, ...(objectiveId ? { objectiveId } : {}) }, focus: false });
     } else if (panes.isOpen(DOCUMENT_PANE_ID)) {
-      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: "", theaterId: contextScope }, focus: false });
+      panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: "", theaterId: contextScope, ...(objectiveId ? { objectiveId } : {}) }, focus: false });
       panes.close(DOCUMENT_PANE_ID);
     }
-  }, [contextScope, panes]);
+  }, [contextScope, panes, objectiveId]);
 
   const openFilePath = useCallback((relativePath: string, displayName?: string, mode: "preview" | "pinned" = "preview") => {
     if (!theaterId) return;
     activateStoredDocument(contextScope, { relativePath, name: displayName ?? nameOfPath(relativePath), preview: mode === "preview" });
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: relativePath, theaterId: contextScope } });
-  }, [contextScope, panes, theaterId]);
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: relativePath, theaterId: contextScope, ...(objectiveId ? { objectiveId } : {}) } });
+  }, [contextScope, panes, theaterId, objectiveId]);
 
   const handleSearchSelect = useCallback((item: FileSearchItem, mode: "preview" | "pinned") => {
     if (!theaterId) return;

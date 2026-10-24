@@ -990,6 +990,7 @@ export function openNewObjective(): void {
  * 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
  */
 export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
+  if (objectiveId) selectObjectiveObjective(objectiveId, () => true);
   const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
   if (installed && theaterId && viewed !== theaterId) {
     if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {

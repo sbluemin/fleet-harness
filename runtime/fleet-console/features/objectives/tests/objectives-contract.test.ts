@@ -1796,8 +1796,8 @@ describe("Objectives contract", () => {
   });
 
   it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {
-    const { store, add, events } = harness();
-    add("pr-owner"); add("also-owner");
+    const { store, add, events, objectiveRecords } = harness();
+    add("pr-owner", { cwd: "/isolated/repository" }); add("also-owner", { cwd: "/isolated/repository" });
     const url = "https://github.com/example/project/pull/7";
     const mission = store.missionAdd("pr-owner", { text: "Ready" }).missions[0]!;
     const first = store.missionDone("pr-owner", mission.id, ["Done"], [{ kind: "pr", url }]).results[0]!;
@@ -1819,11 +1819,12 @@ describe("Objectives contract", () => {
       return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ title: "Review\u0000\nresult", number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
     });
     vi.useFakeTimers();
-    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ".", execute }) });
+    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: (objectiveId) => objectiveRecords.get(objectiveId)?.cwd ?? null, execute }) });
     const observed = () => store.find("pr-owner")!.results.find((entry) => entry.id === first.id) as Extract<ObjectiveResult, { kind: "pr" }>;
     try {
       await vi.advanceTimersByTimeAsync(250);
       expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith(expect.any(Array), expect.any(AbortSignal), { cwd: "/isolated/repository" });
       expect(observed().observation).toMatchObject({ state: "open", stale: false, title: "Review result" });
       expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "open");
       mode = "auth";

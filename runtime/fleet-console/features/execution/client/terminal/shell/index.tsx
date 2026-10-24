@@ -406,9 +406,9 @@ function shellFileLinks(context: ExpandedSurfaceContext, key: string): TerminalF
       const session = getShellSessionSnapshot(key);
       const theaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
       if (!theaterId) return null;
-      const cwdRelative = session?.cwdTracked ? session.cwd?.relative ?? null : null;
+      const cwdRelative = context.conversation?.objectiveId ? "" : session?.cwdTracked ? session.cwd?.relative ?? null : null;
       return { theaterId, cwdRelative };
     },
-    open: (target) => context.navigate.openFile({ ...target, source: "shell" }),
+    open: (target) => context.navigate.openFile({ ...target, ...(context.conversation?.objectiveId ? { objectiveId: context.conversation.objectiveId } : {}), source: "shell" }),
   };
 }

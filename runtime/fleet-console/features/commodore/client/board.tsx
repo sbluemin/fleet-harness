@@ -33,3 +33,9 @@ export const revealObjective = (input: { readonly objectiveId: string }) => boar
 export const renderObjectiveAvatar = (commodoreId: string, objectiveId: string, size: number) => board?.renderObjectiveAvatar(commodoreId, objectiveId, size) ?? null;
 export const isRunningObjective = (objective: CommodoreBoardObjective) => objective.running;
 export const isCommodoreWaiting = (objective: CommodoreBoardObjective) => objective.waiting;
+
+/** 목표 자체의 장소를 표시 문맥으로 쓰되, 소유 UUID를 Theater 자리로 넘기지 않는다. */
+export function openOwnedObjectiveOnPhone(commodoreId: string, objectiveId: string): void {
+  const objective = board?.read(commodoreId).objectives.find((row) => row.id === objectiveId) ?? board?.findFinished(objectiveId);
+  board?.openObjectiveOnPhone(objectiveId, objective?.theaterId);
+}

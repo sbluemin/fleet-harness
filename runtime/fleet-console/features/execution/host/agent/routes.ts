@@ -941,6 +941,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const objectiveNode = objectiveId ? ctx.host.objectiveRecords.get(objectiveId) : undefined;
     const objectiveContext = objectiveId ? ctx.host.objectiveRecords.context?.(objectiveId) ?? objectiveNode : null;
+    if (objectiveContext && body?.commodoreId !== undefined && body.commodoreId !== objectiveContext.commodoreId) {
+      ctx.host.http.writeJson(res, 409, { error: "objective_owner_mismatch" }); return true;
+    }
     const recordTheaterId = theaterId ?? objectiveContext?.theaterId ?? null;
     const cwd = objectiveId
       ? confirmedObjectiveCwd(objectiveId, objectiveNode)

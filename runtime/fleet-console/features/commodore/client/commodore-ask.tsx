@@ -26,7 +26,7 @@ export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "a
  *
  * `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로.
  */
-export function CommodoreAskCards({ theaterId, contextTheaterId = theaterId, t, language, phone = false, onEnded }: {
+export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, language, phone = false, onEnded }: {
   readonly theaterId: string;
   /** 목표를 여는 화면 문맥. 생략하면 theaterId와 같다. */
   readonly contextTheaterId?: string;
@@ -52,7 +52,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = theaterId, t, 
       {shown.map((ask) => (
         <Card
           key={ask.id}
-          decision={askDecision(ask, { theaterId, contextTheaterId, t, phone, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
+          decision={askDecision(ask, { theaterId, contextTheaterId: board.objectives.find((row) => row.id === ask.objectiveId)?.theaterId ?? contextTheaterId, t, phone, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
           asker={asker}
           language={language}
           theaterId={theaterId}

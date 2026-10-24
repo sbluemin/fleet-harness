@@ -15,7 +15,7 @@ import { CONVERSATION_WORKBENCH_API_PATH } from "../../../shared/conversation-wo
  */
 
 export type WorkLocationTarget =
-  | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly theaterId: string; readonly theaterLabel: string; readonly revision: number; readonly folder?: string | null }
+  | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly theaterId: string; readonly theaterLabel: string; readonly revision: number }
   | { readonly kind: "theater"; readonly theaterId: string; readonly theaterLabel: string }
   | { readonly kind: "none" };
 
@@ -25,12 +25,7 @@ const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 // (Objective, 폴더) 한 쌍의 값만 담는다 — 다른 폴더(같은 세션의 옛 폴더 포함)의 값으로 대신하지 않는다.
 const cache = new Map<string, { readonly location: ConversationWorkLocation; readonly at: number }>();
 
-/** 쌍의 키 — 폴더 없음(세션의 실행 작업 폴더)과 빈 폴더(Theater 루트로 옮김)는 다른 자리다. */
-function pairKey(objectiveId: string, folder: string | null): string {
-  return JSON.stringify([objectiveId, folder]);
-}
-
-async function fetchLocation(objectiveId: string, folder: string | null): Promise<ConversationWorkLocation | null> {
+async function fetchLocation(objectiveId: string): Promise<ConversationWorkLocation | null> {
   try {
     const query = new URLSearchParams({ objectiveId });
     const response = await fetch(`${CONVERSATION_WORKBENCH_API_PATH}/location?${query}`, { headers: { Accept: "application/json" } });
@@ -66,11 +61,9 @@ function rootOf(theaterId: string, label: string): ConversationWorkLocation {
 export function useConversationWorkLocation(target: WorkLocationTarget): ConversationWorkLocation | null {
   const objectiveId = target.kind === "objectiveRecord" ? target.objectiveId : null;
   const revision = target.kind === "objectiveRecord" ? target.revision : 0;
-  // 세션이 옮겨 간 폴더(「지금 어디」 투영, Theater 상대) — 있으면 그 자리가 작업 위치다. 없으면 세션의 실행 작업 폴더.
-  const folder = null;
   const theaterId = target.kind === "none" ? null : target.theaterId;
   const theaterLabel = target.kind === "none" ? "" : target.theaterLabel;
-  const key = objectiveId === null ? null : pairKey(objectiveId, folder);
+  const key = objectiveId;
   const [fetched, setFetched] = useState<{ readonly key: string; readonly location: ConversationWorkLocation } | null>(null);
 
   useEffect(() => {
@@ -79,7 +72,7 @@ export function useConversationWorkLocation(target: WorkLocationTarget): Convers
     let timer: ReturnType<typeof setTimeout> | undefined;
     const cached = cache.get(key) ?? null;
     const attempt = (failures: number) => {
-      void fetchLocation(objectiveId, folder).then((result) => {
+      void fetchLocation(objectiveId).then((result) => {
         if (result === null) {
           // 읽지 못한 동안은 모른다 — 옛 위치나 Theater 루트로 대신하면 도구 칸이 엉뚱한 자리에 선다(같은 쌍의 캐시는 그대로 쓴다).
           const delay = RETRY_DELAYS_MS[failures];
@@ -92,7 +85,7 @@ export function useConversationWorkLocation(target: WorkLocationTarget): Convers
     };
     timer = setTimeout(() => attempt(0), cached === null ? 0 : Math.max(0, REFRESH_MIN_INTERVAL_MS - (Date.now() - cached.at)));
     return () => { live = false; clearTimeout(timer); };
-  }, [folder, key, objectiveId, revision]);
+  }, [key, objectiveId, revision]);
 
   if (objectiveId === null) return theaterId === null ? null : stableRoot(theaterId, theaterLabel);
   // 지금 (Objective, 폴더) 쌍의 값만 — 막 읽은 값, 없으면 이 화면이 전에 그 쌍으로 읽어 둔 값. 둘 다 없으면 아직 모른다(null).

@@ -842,7 +842,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}) });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...((ctx.params.objectiveId ?? ctx.conversation?.objectiveId) ? { objectiveId: ctx.params.objectiveId ?? ctx.conversation?.objectiveId } : {}) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
