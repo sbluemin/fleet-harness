@@ -199,16 +199,22 @@ export async function addTheater(folderGrantId: string, claudeTrustConsent = fal
   return assertTheaterInfo(payload, response.status);
 }
 
-/** 사령관 별칭을 지정한다. `null`이나 빈 문자열은 해제다. 서버가 trim·길이 검증을 하고 거부하면 ApiError(400)다. */
-export async function patchTheaterAlias(theaterId: string, alias: string | null, signal?: AbortSignal): Promise<TheaterInfo> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ alias }),
-    signal,
+/** 별칭은 사령관 UUID로 쓴다. 자율 운영 상태와 무관하다. */
+export async function setCommodoreAlias(commodoreId: string, alias: string | null, signal?: AbortSignal): Promise<void> {
+  const response = await fetch("/api/v1/commodore/alias", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, alias }), signal,
   });
   await assertOk(response);
-  return assertTheaterInfo(await response.json(), response.status);
+}
+
+export async function createCommodoreForTheater(theaterId: string): Promise<string> {
+  const response = await fetch("/api/v1/commodore/create", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, forAlias: true }),
+  });
+  await assertOk(response);
+  const payload = await response.json() as { commodoreId?: unknown };
+  if (typeof payload.commodoreId !== "string" || !payload.commodoreId) throw new ApiError(response.status, "invalid_commodore");
+  return payload.commodoreId;
 }
 
 export async function patchTheaterOrder(theaterId: string, order: number, signal?: AbortSignal): Promise<TheaterInfo> {
@@ -453,7 +459,7 @@ function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
     createdAt: payload.createdAt,
     lastOpenedAt: payload.lastOpenedAt,
     ...(typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? { order: payload.order } : {}),
-    ...(typeof payload.alias === "string" && payload.alias.length > 0 ? { alias: payload.alias } : {}),
+    ...(payload.commodore && typeof payload.commodore === "object" && typeof payload.commodore.id === "string" ? { commodore: { id: payload.commodore.id, ...(typeof payload.commodore.alias === "string" && payload.commodore.alias ? { alias: payload.commodore.alias } : {}) } } : {}),
     hasWiki: payload.hasWiki,
     activeAdmiralCount: payload.activeAdmiralCount,
   };

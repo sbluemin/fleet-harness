@@ -11,7 +11,7 @@ import { DEFAULT_OBJECTIVE_GROUP_COLOR, isObjectiveGroupColor } from "../shared/
 
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
 import { MAX_GROUP_NAME_LENGTH, type ObjectiveRecord } from "../../objectives/host/records/objective-records-domain.js";
-import { normalizeTheaterAlias, type TheaterRegistration } from "./theaters/theater-domain.js";
+import { type TheaterRegistration } from "./theaters/theater-domain.js";
 
 export interface DurableObjectiveGroup {
   readonly id: string;
@@ -150,7 +150,6 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   const lastOpenedAt = readNonEmptyString(value.lastOpenedAt);
   if (!id || !theaterPath || !realpath || !label || !registeredAt || !lastOpenedAt) return null;
   const order = readNonNegativeInteger(value.order);
-  const alias = normalizeTheaterAlias(value.alias);
   return {
     id,
     path: theaterPath,
@@ -159,7 +158,6 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
     registeredAt,
     lastOpenedAt,
     ...(order !== null ? { order } : {}),
-    ...(typeof alias === "string" ? { alias } : {}),
   };
 }
 

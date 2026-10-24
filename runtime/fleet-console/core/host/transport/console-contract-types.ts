@@ -61,8 +61,8 @@ export interface ConsoleTheaterInfo {
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
-  /** 사령관 별칭. 있으면 사이드바 제목이 되고 `label`(원래 Theater 이름)은 보조 줄로 남는다. */
-  readonly alias?: string;
+  /** 연결된 사령관의 읽기 전용 정체성. 별칭이 있으면 `label`(원래 Theater 이름)은 보조 줄로 남는다. */
+  readonly commodore?: { readonly id: string; readonly alias?: string };
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
   /** 자동 운영 여부 — 순찰 안 함의 사람 메시지 턴은 이 플래그를 켜지 않는다. */

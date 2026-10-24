@@ -46,7 +46,12 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     },
     legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).map((link) => link.path)),
   };
-  return { entities, create, ensureRegistered, knowledge,
+  const issueForAlias = (theaterId: string) => {
+    const root = paths.resolveTheaterPath(theaterId);
+    if (!root) throw new CommodoreStoreError("theater_unavailable");
+    return entities.resolve(theaterId) ?? entities.create(root);
+  };
+  return { entities, create, issueForAlias, ensureRegistered, knowledge,
     objectives: () => entities.ids().flatMap((id) => {
       const directory = entities.dirOf(id);
       const root = entities.theatersOf(id)[0]?.path;

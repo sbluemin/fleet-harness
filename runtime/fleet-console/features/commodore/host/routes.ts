@@ -16,6 +16,7 @@ export interface CommodoreRouteContext {
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModelId, type ExperimentAideSelection } from "../../settings/shared/experiments.js";
 import { z } from "zod";
+import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
@@ -44,6 +45,7 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 export interface CommodoreRouteHooks {
   readonly resolve?: (theaterId: string) => string | null;
   readonly create?: (theaterId: string) => string;
+  readonly createForAlias?: (theaterId: string) => string;
   readonly theaterIds?: (commodoreId: string) => readonly string[];
   /** 순찰이 안 함이어도 사람 메시지 한 턴을 받을 수 있는가. */
   readonly acceptsMessage?: (commodoreId: string) => boolean;
@@ -118,10 +120,12 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
 
   return [
+    { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
     { name: "commodore/resolve", method: "POST", summary: "Resolve a registered Theater to its Commodore UUID.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => ({ commodoreId: hooks.resolve?.(theaterId) ?? null })) },
-    { name: "commodore/create", method: "POST", summary: "Idempotently create a Commodore for a registered Theater.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => {
-      if (!hooks.create) throw new CommodoreStoreError("theater_unavailable");
-      return { commodoreId: hooks.create(theaterId) };
+    { name: "commodore/create", method: "POST", summary: "Idempotently create a Commodore for a registered Theater.", handler: json(z.object({ theaterId: ids, forAlias: z.literal(true).optional() }).strict(), ({ theaterId, forAlias }) => {
+      const create = forAlias ? hooks.createForAlias : hooks.create;
+      if (!create) throw new CommodoreStoreError("theater_unavailable");
+      return { commodoreId: create(theaterId) };
     }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },

@@ -48,6 +48,7 @@ export interface CommodoreTranscriptPage {
 export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(commodoreId: string): CommodoreState | null;
+  setAlias(commodoreId: string, alias: string | null): CommodoreState;
   /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
   setStopAt(commodoreId: string, stopAt: number | null): CommodoreState;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
@@ -216,6 +217,12 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
         if (error instanceof CommodoreStoreError && error.code === "theater_unavailable") return null;
         throw error;
       }
+    },
+    setAlias(commodoreId, alias) {
+      const current = load(commodoreId);
+      if ((current.alias ?? null) === alias) return current;
+      const { alias: _alias, ...rest } = current;
+      return commit(commodoreId, alias === null ? rest : { ...rest, alias }, "alias");
     },
     setStopAt(commodoreId, stopAt) {
       const current = load(commodoreId);

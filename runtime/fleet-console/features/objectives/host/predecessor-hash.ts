@@ -7,6 +7,13 @@ const bag = (value: unknown): Record<string, unknown> => record(value) ? value :
 export function predecessorStateHash(value: unknown): string {
   const raw = bag(value);
   const normalized = sanitizeDurableConsoleState(raw);
+  // 구 저널 체크섬에만 쓰는 v6 표현이다. 현 명부 reader/새 쓰기에 alias를 되살리지 않는다.
+  const previousTheater = (value: object, source: unknown) => {
+    const alias = bag(source).alias;
+    const trimmed = typeof alias === "string" ? alias.trim() : "";
+    // eslint-disable-next-line no-control-regex
+    return trimmed && [...trimmed].length <= 40 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(trimmed) ? { ...value, alias: trimmed } : value;
+  };
   function previousNode(value: unknown): Record<string, unknown> | null {
     const raw = bag(value), node = sanitizeObjectiveRecord(raw);
     if (!node) return null;
@@ -26,12 +33,12 @@ export function predecessorStateHash(value: unknown): string {
     };
   }
   const rows = (value: unknown) => Array.isArray(value) ? value.map(previousNode).filter((row) => row !== null) : [];
-  const previous = { version: 6, ...(normalized.revision !== undefined ? { revision: normalized.revision } : {}), theaters: normalized.theaters,
+  const previous = { version: 6, ...(normalized.revision !== undefined ? { revision: normalized.revision } : {}), theaters: normalized.theaters.map((theater) => previousTheater(theater, Array.isArray(raw.theaters) ? raw.theaters.find((row) => bag(row).id === theater.id) : null)),
     operations: rows(raw.operations), groups: normalized.groups ?? [],
     deletionTombstones: (normalized.deletionTombstones ?? []).map((entry) => {
       const source = Array.isArray(raw.deletionTombstones) ? bag(raw.deletionTombstones.find((value) => bag(value).deletionId === entry.deletionId)) : {};
       const base = { deletionId: entry.deletionId, targetId: entry.targetId, deletedAt: entry.deletedAt, expiresAt: entry.expiresAt, ...(entry.archived ? { archived: entry.archived } : {}) };
-      return entry.kind === "theater" ? { ...base, kind: "theater", theater: entry.theater, operations: rows(source.operations), groups: entry.groups }
+      return entry.kind === "theater" ? { ...base, kind: "theater", theater: previousTheater(entry.theater, source.theater), operations: rows(source.operations), groups: entry.groups }
         : { ...base, kind: "operation", operation: previousNode(source.operation), ...(entry.descendants?.length ? { descendants: rows(source.descendants) } : {}) };
     }),
   };

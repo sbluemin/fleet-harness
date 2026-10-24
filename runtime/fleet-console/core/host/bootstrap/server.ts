@@ -7,7 +7,7 @@ import { createRepositoryFeature } from "../../../features/repository/host/index
 import { createCodexFeature } from "../../../features/codex/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { createScuttlebuttFeature } from "../../../features/scuttlebutt/host/index.js";
-import { createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
+import { migrateCommodoreAliases, createCommodoreOwnership, createCommodoreFeature, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
@@ -541,6 +541,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
     owners: () => ownership?.objectives() ?? [],
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
+    migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership!),
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveRecord: ObjectiveRecord) => void) | null = null;
@@ -1988,13 +1989,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
+    const identity = commodore?.identity(theater.id);
     return {
       id: theater.id,
       label: theater.label,
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
-      ...(theater.alias !== undefined ? { alias: theater.alias } : {}),
+      ...(identity ? { commodore: identity } : {}),
       commodoreActive: commodore?.active(theater.id) ?? false,
       hasWiki,
       activeAdmiralCount: objectiveRecords.listByTheater(theater.id).length,
@@ -2648,6 +2650,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
         ownership,
+        identityChanged: (ids) => { for (const id of ids) publishTheaterLifecycle("updated", id); },
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),

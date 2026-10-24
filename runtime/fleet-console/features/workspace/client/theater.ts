@@ -8,7 +8,6 @@ import {
   fetchTheaters,
   forgetTheater,
   issueTheaterFolderGrant,
-  patchTheaterAlias,
   type DeferredDeletionReceipt,
 } from "../../../core/client/src/integration/api.js";
 import {
@@ -78,22 +77,9 @@ function dropForgottenTheater(theaterId: string): void {
   removeTheater(theaterId);
 }
 
-// ─── alias and groups ──────────────────────────────────────────────────────────
+// ─── groups ───────────────────────────────────────────────────────────────────
 
-/** 별칭 길이 상한 — 서버 검증과 같은 코드포인트 수다(UTF-16 단위인 maxLength 로는 이모지 별칭이 절반에서 막힌다). */
-export const THEATER_ALIAS_MAX_CODEPOINTS = 40;
-export function clampTheaterAlias(value: string): string {
-  const points = [...value];
-  return points.length > THEATER_ALIAS_MAX_CODEPOINTS ? points.slice(0, THEATER_ALIAS_MAX_CODEPOINTS).join("") : value;
-}
-
-// 폰 Theater 동작 시트의 별칭·새 그룹. 데스크톱 사이드바는 다시 시도 띠를 가진 자기 mutation 경로를 쓰고, 폰은 시트가 실패를 받는다.
-// 요청이 성공한 뒤의 재수화 실패는 삼킨다 — 시트가 다시 저장하게 두면 그룹이 두 번 만들어진다. 서버 사건도 곧 다시 맞춘다.
-export async function saveTheaterAlias(theaterId: string, alias: string | null): Promise<void> {
-  await patchTheaterAlias(theaterId, alias);
-  await fetchTheaters(null).then(hydrateTheaters).catch(() => {});
-}
-
+// 저장 성공 뒤 재수화 실패로 중복 생성을 유도하지 않는다. 서버 사건도 상태를 맞춘다.
 export async function createTheaterGroup(theaterId: string, name: string): Promise<void> {
   await createGroup({ theaterId, name, color: "blue" });
   await fetchGroups(null).then(hydrateGroups).catch(() => {});

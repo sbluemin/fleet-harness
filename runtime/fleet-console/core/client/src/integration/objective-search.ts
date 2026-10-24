@@ -313,7 +313,7 @@ export function buildTheaterSectionSearchEntries(
 ): readonly TheaterSectionSearchEntry[] {
   const rows: TheaterSectionSearchEntry[] = [];
   for (const theater of theaters) {
-    const summary = { id: theater.id, label: theater.label, ...(theater.alias ? { alias: theater.alias } : {}) };
+    const summary = { id: theater.id, label: theater.label, ...(theater.commodore ? { commodore: theater.commodore } : {}) };
     for (const section of sections) {
       try {
         const page = section.pages[0];
@@ -325,14 +325,14 @@ export function buildTheaterSectionSearchEntries(
           key: `${section.id}@${theater.id}`,
           theaterId: theater.id,
           theaterLabel: theater.label,
-          ...(theater.alias ? { theaterAlias: theater.alias } : {}),
+          ...(theater.commodore?.alias ? { theaterAlias: theater.commodore?.alias } : {}),
           sectionId: section.id,
           pageId: page.id,
           title: section.title(language, theater.id),
           titles,
           caption: status.scope,
           // 표시 언어와 무관하게 두 언어 제목·별칭·원래 이름 어느 것으로도 찾아진다.
-          searchText: [titles.ko, titles.en, section.title("ko"), section.title("en"), theater.alias, theater.label].filter(Boolean).join(" "),
+          searchText: [titles.ko, titles.en, section.title("ko"), section.title("en"), theater.commodore?.alias, theater.label].filter(Boolean).join(" "),
           icon: section.icon({ theater: summary }),
         });
       } catch {
@@ -372,7 +372,7 @@ function toObjectiveSearchEntry(
     objectiveId: objectiveRecord.id,
     theaterId: objectiveRecord.theaterId,
     theaterLabel: theater?.label ?? objectiveRecord.theaterId,
-    ...(theater?.alias ? { theaterAlias: theater.alias } : {}),
+    ...(theater?.commodore?.alias ? { theaterAlias: theater.commodore?.alias } : {}),
     type: "agent",
     objectiveRecordName: objectiveRecord.title,
     pluginId: "terminal",
