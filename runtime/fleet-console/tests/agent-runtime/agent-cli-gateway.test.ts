@@ -87,6 +87,7 @@ describe("claude-gateway argument composition", () => {
     const root = createTempRoot("fleet-admiral-gateway-agent-optout-");
     const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      additionalDirectories: [path.join(root, "project a"), path.join(root, "project-b")],
       claudeCodeDisabledAgents: ["Explore", "Plan", "Explore"],
       claudeCodeDisabledTools: ["AskUserQuestion"],
     }));
@@ -98,6 +99,8 @@ describe("claude-gateway argument composition", () => {
         readonly skillOverrides?: Record<string, string>;
       };
       expect(settings.permissions?.deny).toEqual(["Agent(Explore)", "Agent(Plan)", "AskUserQuestion"]);
+      const added = injected.args.flatMap((arg, index) => arg === "--add-dir" ? [injected.args[index + 1]] : []);
+      expect(added).toEqual([path.join(root, "project a"), path.join(root, "project-b")]);
       expect(settings.skillOverrides).toBeDefined();
     } finally {
       injected.cleanup?.();
@@ -255,6 +258,7 @@ function baseInjectOptions(
     readonly captureSessionHookExec?: FleetHookExec;
     readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
     readonly claudeCodeCustomSystemPrompt?: string;
+    readonly additionalDirectories?: readonly string[];
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly claudeCodeDisabledTools?: readonly string[];
   } = {},
@@ -265,6 +269,7 @@ function baseInjectOptions(
     ...(overrides.claudeCodeCustomSystemPrompt
       ? { claudeCodeCustomSystemPrompt: overrides.claudeCodeCustomSystemPrompt }
       : {}),
+    ...(overrides.additionalDirectories ? { additionalDirectories: overrides.additionalDirectories } : {}),
     ...(overrides.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: overrides.claudeCodeDisabledAgents } : {}),
     ...(overrides.claudeCodeDisabledTools ? { claudeCodeDisabledTools: overrides.claudeCodeDisabledTools } : {}),
     dedicatedMcpSession: {

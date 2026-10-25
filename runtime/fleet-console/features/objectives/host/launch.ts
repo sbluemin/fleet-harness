@@ -545,7 +545,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       try {
         const created = ctx.objectiveRecords.create({ id, commodoreId: config.commodoreId, cwd: config.cwd, theaterId: config.theaterId,
           title: config.title, createdAt: config.createdAt,
-          ...({ dormantBorn: true, restoredDormant: true,
+          ...({ launchedBy: { kind: "feature", featureId: "objectives" }, dormantBorn: true, restoredDormant: true,
             chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } }) });
@@ -1280,7 +1280,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const location = (() => { try { return input.cwd ? { cwd: input.cwd } : ctx.resolveCreation(input.commodoreId, input.theaterId); } catch (error) { return asStoreError(error); } })();
       return store.adopt(id, { ...init, by: actor }, {
         commodoreId: input.commodoreId,
-        theaterId: input.theaterId,
+        theaterId: ctx.paths.workspaceHash(input.cwd ?? location.cwd),
         cwd: input.cwd ?? location.cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });

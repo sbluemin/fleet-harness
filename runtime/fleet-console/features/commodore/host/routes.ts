@@ -1,3 +1,4 @@
+import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { AttachmentHost } from "../../execution/shared/agent.js";
@@ -44,7 +45,11 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {
   readonly resolve?: (theaterId: string) => string | null;
-  readonly create?: (theaterId: string) => string;
+  readonly create?: (alias: string) => string;
+  readonly resolveAll?: (theaterId: string) => readonly string[];
+  readonly list?: () => readonly ConsoleCommodoreSummary[];
+  readonly summary?: (id: string) => ConsoleCommodoreSummary;
+  readonly changeTheater?: (id: string, theaterId: string, add: boolean) => void;
   readonly createForAlias?: (theaterId: string) => string;
   readonly theaterIds?: (commodoreId: string) => readonly string[];
   /** 순찰이 안 함이어도 사람 메시지 한 턴을 받을 수 있는가. */
@@ -121,12 +126,19 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
 
   return [
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
-    { name: "commodore/resolve", method: "POST", summary: "Resolve a registered Theater to its Commodore UUID.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => ({ commodoreId: hooks.resolve?.(theaterId) ?? null })) },
-    { name: "commodore/create", method: "POST", summary: "Idempotently create a Commodore for a registered Theater.", handler: json(z.object({ theaterId: ids, forAlias: z.literal(true).optional() }).strict(), ({ theaterId, forAlias }) => {
-      const create = forAlias ? hooks.createForAlias : hooks.create;
-      if (!create) throw new CommodoreStoreError("theater_unavailable");
-      return { commodoreId: create(theaterId) };
+    { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [] })) },
+    { name: "commodore/resolve", method: "POST", summary: "Resolve all Commodores using a Theater, without choosing an ambiguous owner.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => { const commodoreIds = hooks.resolveAll?.(theaterId) ?? (hooks.resolve?.(theaterId) ? [hooks.resolve(theaterId)!] : []); return { commodoreIds, commodoreId: commodoreIds.length === 1 ? commodoreIds[0] : null }; }) },
+    { name: "commodore/create", method: "POST", summary: "Create a Commodore with no Theaters.", handler: json(z.object({ alias: z.string().transform(normalizeCommodoreAlias).pipe(z.string().min(1)) }).strict(), ({ alias }) => {
+      if (!hooks.create || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
+      const commodoreId = hooks.create(alias);
+      return { commodoreId, commodore: hooks.summary(commodoreId) };
     }) },
+    ...(["add", "remove"] as const).map((action): CommodoreRoute => ({ name: `commodore/theaters/${action}`, method: "POST", summary: `${action} a Theater without changing objectives or registration.`, handler: json(commodoreRef.extend({ theaterId: ids }).strict(), ({ commodoreId, theaterId }) => {
+      read(commodoreId);
+      if (!hooks.changeTheater || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
+      hooks.changeTheater(commodoreId, theaterId, action === "add");
+      return { commodore: hooks.summary(commodoreId) };
+    }) })),
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDirective(commodoreId, text)); }) },

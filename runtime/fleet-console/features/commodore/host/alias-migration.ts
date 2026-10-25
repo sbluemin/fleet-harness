@@ -17,6 +17,7 @@ export function migrateCommodoreAliases(entries: readonly { readonly theaterId: 
         committed.push(entry.theaterId);
         continue;
       }
+      if (owners.entities.resolveAll(entry.theaterId).length > 1) throw new Error("commodore_alias_migration_ambiguous");
       const id = owners.entities.resolve(entry.theaterId) ?? (entry.registered ? owners.issueForAlias(entry.theaterId) : null);
       if (!id) {
         console.warn(`[commodore] alias migration ${entry.theaterId}: orphan_tombstone; discarded`);

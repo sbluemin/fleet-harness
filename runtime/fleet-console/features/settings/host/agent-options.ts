@@ -11,75 +11,73 @@ import {
 
 import type { ConsoleSettingsData } from "./settings-domain.js";
 
-/** Host-side Theater admission keeps the shared infra schema independent of workspace registration. */
-export interface TheaterSystemPromptService {
-  readonly exists: (theaterId: string) => boolean;
-  readonly read: (theaterId: string | undefined) => ClaudeCodeTheaterSystemPrompt | null;
-  readonly save: (theaterId: string, prompt: ClaudeCodeTheaterSystemPrompt | null) => ClaudeCodeTheaterSystemPrompt | null;
-  /**
-   * Whether this Theater's Claude Code sessions keep their subagents. False (the default) means a
-   * subagent call is answered in place of running, by whatever the host registered for that.
-   */
-  readonly subagentsKept: (theaterId: string | undefined) => boolean;
-  readonly keepSubagents: (theaterId: string, kept: boolean) => boolean;
-  /** Called only when a forgotten Theater's grace period expires. Idempotent for purge retries. */
+/** Host-side UUID admission keeps the schema independent of the Commodore feature. */
+export interface CommodoreSystemPromptService {
+  readonly exists: (commodoreId: string) => boolean;
+  readonly read: (commodoreId: string | undefined) => ClaudeCodeTheaterSystemPrompt | null;
+  readonly save: (commodoreId: string, prompt: ClaudeCodeTheaterSystemPrompt | null) => ClaudeCodeTheaterSystemPrompt | null;
+  readonly subagentsKept: (commodoreId: string | undefined) => boolean;
+  readonly keepSubagents: (commodoreId: string, kept: boolean) => boolean;
   readonly purge: (theaterId: string) => void;
+  readonly migrate: (owners: readonly { readonly commodoreId: string; readonly theaterIds: readonly string[] }[]) => void;
 }
 
-export function createTheaterSystemPromptService(
-  options: AgentOptionsService,
-  isRegistered: (theaterId: string) => boolean,
-): TheaterSystemPromptService {
+export function createCommodoreSystemPromptService(options: AgentOptionsService, exists: (id: string) => boolean): CommodoreSystemPromptService {
+  const mark = (current: AgentOptionsData, id: string): AgentOptionsData => ({ ...current, commodoreSettingsMigrated: { ...current.commodoreSettingsMigrated, [id]: true } });
   return {
-    exists: isRegistered,
-    read(theaterId) {
-      return theaterId && isRegistered(theaterId)
-        ? options.load().claudeCodeTheaterSystemPrompts?.[theaterId] ?? null
-        : null;
-    },
-    save(theaterId, prompt) {
-      if (!isRegistered(theaterId)) throw new Error("theater_not_found");
-      // Default mode with no user instructions is absence, not a redundant override.
-      const value = prompt?.mode === "on" && prompt.body.trim().length === 0 ? null : prompt;
+    exists,
+    read: (id) => id && exists(id) ? options.load().claudeCodeCommodoreSystemPrompts?.[id] ?? null : null,
+    subagentsKept: (id) => !!id && exists(id) && options.load().claudeCodeCommodoreSubagents?.[id] === true,
+    save(id, prompt) {
+      if (!exists(id)) throw new Error("commodore_not_found");
+      const value = prompt?.mode === "on" && !prompt.body.trim() ? null : prompt;
       const updated = options.update((current) => {
-        const prompts = { ...current.claudeCodeTheaterSystemPrompts };
-        if (value === null) delete prompts[theaterId];
-        else prompts[theaterId] = value;
-        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = current;
-        return Object.keys(prompts).length ? { ...rest, claudeCodeTheaterSystemPrompts: prompts } : rest;
+        const prompts = { ...current.claudeCodeCommodoreSystemPrompts };
+        if (value === null) delete prompts[id]; else prompts[id] = value;
+        const { claudeCodeCommodoreSystemPrompts: _previous, ...rest } = mark(current, id);
+        return Object.keys(prompts).length ? { ...rest, claudeCodeCommodoreSystemPrompts: prompts } : rest;
       });
-      return updated.claudeCodeTheaterSystemPrompts?.[theaterId] ?? null;
+      return updated.claudeCodeCommodoreSystemPrompts?.[id] ?? null;
     },
-    subagentsKept(theaterId) {
-      return !!theaterId && isRegistered(theaterId) && options.load().claudeCodeTheaterSubagents?.[theaterId] === true;
+    keepSubagents(id, kept) {
+      if (!exists(id)) throw new Error("commodore_not_found");
+      options.update((current) => {
+        const values: Record<string, true> = { ...current.claudeCodeCommodoreSubagents };
+        if (kept) values[id] = true; else delete values[id];
+        const { claudeCodeCommodoreSubagents: _previous, ...rest } = mark(current, id);
+        return Object.keys(values).length ? { ...rest, claudeCodeCommodoreSubagents: values } : rest;
+      });
+      return kept;
     },
-    keepSubagents(theaterId, kept) {
-      if (!isRegistered(theaterId)) throw new Error("theater_not_found");
-      const updated = options.update((current) => withTheaterSubagents(current, theaterId, kept));
-      return updated.claudeCodeTheaterSubagents?.[theaterId] === true;
+    migrate(owners) {
+      if (!owners.some((owner) => !options.load().commodoreSettingsMigrated?.[owner.commodoreId])) return;
+      options.update((current) => {
+        let next = current;
+        for (const { commodoreId: id, theaterIds } of owners) {
+          if (next.commodoreSettingsMigrated?.[id]) continue;
+          const hasSettings = next.claudeCodeCommodoreSystemPrompts?.[id] !== undefined || next.claudeCodeCommodoreSubagents?.[id] !== undefined;
+          if (!hasSettings && theaterIds.length === 1) {
+            const theater = theaterIds[0]!;
+            const prompt = current.claudeCodeTheaterSystemPrompts?.[theater];
+            if (prompt) next = { ...next, claudeCodeCommodoreSystemPrompts: { ...next.claudeCodeCommodoreSystemPrompts, [id]: prompt } };
+            if (current.claudeCodeTheaterSubagents?.[theater]) next = { ...next, claudeCodeCommodoreSubagents: { ...next.claudeCodeCommodoreSubagents, [id]: true } };
+          } else if (!hasSettings) console.warn(`[commodore] settings migration ${id}: ambiguous_theaters; default retained`);
+          next = mark(next, id);
+        }
+        return next;
+      });
     },
     purge(theaterId) {
-      // The registry no longer contains the Theater, so only its stored id is needed here.
+      // Only retired source settings are purged with a forgotten Theater. UUID settings are independent.
       options.update((current) => {
-        const released = withTheaterSubagents(current, theaterId, false);
-        if (!released.claudeCodeTheaterSystemPrompts?.[theaterId]) return released;
-        const prompts = { ...released.claudeCodeTheaterSystemPrompts };
-        delete prompts[theaterId];
-        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = released;
-        return Object.keys(prompts).length ? { ...rest, claudeCodeTheaterSystemPrompts: prompts } : rest;
+        const prompts = { ...current.claudeCodeTheaterSystemPrompts };
+        const agents = { ...current.claudeCodeTheaterSubagents };
+        delete prompts[theaterId]; delete agents[theaterId];
+        const { claudeCodeTheaterSystemPrompts: _prompts, claudeCodeTheaterSubagents: _agents, ...rest } = current;
+        return { ...rest, ...(Object.keys(prompts).length ? { claudeCodeTheaterSystemPrompts: prompts } : {}), ...(Object.keys(agents).length ? { claudeCodeTheaterSubagents: agents } : {}) };
       });
     },
   };
-}
-
-/** 기본값(대체)은 키가 없는 것이다 — 켜 둔 Theater만 남긴다. 바뀔 것이 없으면 같은 객체를 돌려준다. */
-function withTheaterSubagents(current: AgentOptionsData, theaterId: string, kept: boolean): AgentOptionsData {
-  if ((current.claudeCodeTheaterSubagents?.[theaterId] === true) === kept) return current;
-  const theaters: Record<string, true> = { ...current.claudeCodeTheaterSubagents };
-  if (kept) theaters[theaterId] = true;
-  else delete theaters[theaterId];
-  const { claudeCodeTheaterSubagents: _previous, ...rest } = current;
-  return Object.keys(theaters).length ? { ...rest, claudeCodeTheaterSubagents: theaters } : rest;
 }
 
 /** 옛 자리의 파일 이름. Console 설정 파일과 이름이 같아 디렉터리만으로 구분된다. */

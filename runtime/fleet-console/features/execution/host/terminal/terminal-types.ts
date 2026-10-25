@@ -15,6 +15,8 @@ export interface TerminalLaunchSpec {
 }
 
 export interface TerminalLaunchContext {
+  readonly commodoreId?: string;
+  readonly additionalDirectories?: readonly string[];
   readonly sessionId?: string;
   readonly objectiveId?: string;
   readonly objectiveRecordType?: string;

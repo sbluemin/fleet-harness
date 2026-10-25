@@ -304,6 +304,7 @@ export interface ClaudeGatewayTurn {
   readonly model: string;
   readonly effort?: ClaudeGatewayEffort;
   readonly cwd?: string;
+  readonly additionalDirectories?: readonly string[];
   readonly resume?: string;
   /**
    * 자식이 스스로 만드는 대신 호출자가 못박는 세션 id. 유효한 UUID여야 한다.
@@ -376,6 +377,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "model",
   "effort",
   "cwd",
+  "additionalDirectories",
   "resume",
   "sessionId",
   "forkSession",
@@ -593,6 +595,7 @@ export interface ClaudeProcessSpawnRequest {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd?: string;
+  readonly additionalDirectories?: readonly string[];
   readonly env: Readonly<Record<string, string | undefined>>;
   /**
    * SDK의 강제 종료 신호. SDK가 stdin을 닫고 유예(약 2초)를 준 **뒤에만** abort된다 — 그대로 spawn에

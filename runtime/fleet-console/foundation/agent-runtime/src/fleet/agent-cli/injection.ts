@@ -29,6 +29,7 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
+  readonly additionalDirectories?: readonly string[];
   /** 호스트가 기동에 한 번 묶어 둔 플러그인. 런치는 그 주소만 싣는다. */
   readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
@@ -187,6 +188,7 @@ export async function injectAgentCliProfile(
     });
     options.onCleanup?.(cleanup);
     const context: AgentCliInjectionContext = {
+      ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
       cliId: profile.id,
       mcpServers,
       pluginUrl: session.pluginUrl,

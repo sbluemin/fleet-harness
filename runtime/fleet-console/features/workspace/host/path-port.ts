@@ -21,6 +21,8 @@ export interface WorkspacePaths {
   readonly consoleDataDir: string;
   resolveTheaterPath(theaterId: string): string | null;
   resolveObjectivePath?(objectiveId: string): string | null;
+  /** 목표 세션에만 붙는 launch 시점 작업 범위. 일반 세션은 undefined다. */
+  resolveObjectiveAdditionalDirectories?(objectiveId: string): readonly string[] | undefined;
   /** Objective 이 아직 없는 Theater 의 기능 레코드도 다시 찾는다. */
   listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;

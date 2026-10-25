@@ -20,7 +20,7 @@ export interface KnowledgeHost {
   /** 존재하는 사령관 id 전부. 기동 이주가 순회한다. */
   ids(): readonly string[];
   /**
-   * 사람이 지금 보는 화면 맥락(그 화면이 고른 맥락 id)의 사령관. 사령관이 아직 없으면 호스트가 발급해 연결한다.
+   * 사람이 고른 사령관 UUID를 해석한다. 옛 Theater 맥락은 사령관이 유일할 때만 받아들이며 발급하지 않는다.
    * 맥락과 사령관의 대응은 호스트만 안다 — 플러그인은 맥락 id를 해석하지 않는다.
    */
   commodoreForContext(contextId: string): KnowledgeOwnerResult;

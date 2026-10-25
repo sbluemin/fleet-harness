@@ -152,7 +152,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const archived = Object.fromEntries(archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => [entry.objectiveRecord.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
     const deletedObjectiveRecords = [...deps.objectiveRecords.listByTheater(theaterId), ...archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => entry.objectiveRecord)];
     for (const node of deletedObjectiveRecords) deps.assertMutable?.(node.id);
-    const deletedGroups = deps.objectiveRecords.listGroups(theaterId);
+    const deletedGroups = deps.objectiveRecords.listGroupsByTheater(theaterId);
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
       deletionId: randomId(),

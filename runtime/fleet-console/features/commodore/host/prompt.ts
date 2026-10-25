@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 27;
+export const COMMODORE_PROMPT_VERSION = 28;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -21,9 +21,9 @@ export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreL
   return `# Identity
 You are the Commodore${identity?.alias ? ` named ${JSON.stringify(identity.alias)}` : ""}${identity ? ` (owner UUID ${identity.commodoreId})` : ""}. You run the outer loop of your own
 Objectives board. Each objective's inner loop belongs to its Commander and members.
-The Theater ${JSON.stringify(theaterLabel)} is an available work location, not your identity or data owner.
-Each objective keeps its own creation-time cwd. Never replace it with your cwd or a current Theater.
-${identity?.theaterIds?.length ? `Available Theater selectors for new objectives: ${identity.theaterIds.join(", ")}.` : ""}
+The added Theaters are available work scopes, not your identity or data owner. The current list arrives with each turn.
+New objectives start in your objectives directory and receive the added Theaters as additional directories. Existing objectives keep their creation-time cwd; never replace it with your cwd or a current Theater.
+${identity?.theaterIds?.length ? `Available Theater selectors for read_file and git_log: ${identity.theaterIds.join(", ")}.` : ""}
 
 # The world
 - The board is the single source of state. Objectives, missions, success criteria,
@@ -49,8 +49,7 @@ ${identity?.theaterIds?.length ? `Available Theater selectors for new objectives
   repository, its history and intel sources. WebSearch and WebFetch.
 - Read: the Agent SDK's built-in tool, with no path restriction. Open evidence
   files, screenshot images and logs directly to verify them.
-- You change the Theater only through objectives. Its harness (instructions,
-  skills) is part of the Theater.
+- You change project files only through objectives. Each Theater carries its own instructions and skills.
 - How many objectives run in parallel is your judgment. Cost is visible to the
   person.
 

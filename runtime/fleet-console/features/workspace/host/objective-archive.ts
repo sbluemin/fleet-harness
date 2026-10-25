@@ -125,7 +125,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   });
   function dormant(root: ObjectiveRecord): ObjectiveRecord {
     if (!deps.theaterExists(root.theaterId)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
-    const groups = new Set(deps.objectiveRecords.listGroups(root.theaterId).map((group) => group.id));
+    const groups = new Set(deps.objectiveRecords.listGroups(root.commodoreId).map((group) => group.id));
     return {
       ...root,
       ...(root.groupId && !groups.has(root.groupId) ? { groupId: null } : {}),

@@ -90,7 +90,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
 }
 
 describe("commodore theater state", () => {
-  it("persists UUID entities with canonical single-Theater links and isolated patrol, directive and intel", async () => {
+  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated patrol, directive and intel", async () => {
     const h = harness();
     // 엔티티 저장 무결성: id는 폴더에만, 연결은 path 하나만 남기고 색인은 재구성한다.
     const root = path.join(h.objectivesDir, "entities");
@@ -107,7 +107,7 @@ describe("commodore theater state", () => {
     expect(disk).not.toHaveProperty("id");
     expect(entities.resolve(workspaceHash(canonical))).toBe(id);
     const entityEvents: CommodoreEvent[] = [];
-    const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: (event) => entityEvents.push(event) });
+    const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit: (event) => entityEvents.push(event) });
     entityStore.setDirective(id, "Keep entity links intact.");
     // UUID 이름은 경로 연결·실행 설정과 독립적으로 보존된다.
     entityStore.setAlias(id, "Flagship");
@@ -122,7 +122,17 @@ describe("commodore theater state", () => {
     const secondTheater = path.join(h.objectivesDir, "second");
     fs.mkdirSync(secondTheater);
     const secondId = entities.create(secondTheater);
-    expect(() => entities.link(secondId, theater)).toThrow("theater_already_linked");
+    entityStore.setTheaters(secondId, [...entities.theatersOf(secondId), { path: canonical }]);
+    expect(entities.resolve(workspaceHash(canonical))).toBeNull();
+    expect(entities.resolveAll(workspaceHash(canonical))).toEqual([id, secondId].sort());
+    const emptyId = entities.create();
+    expect(entities.theatersOf(emptyId)).toEqual([]);
+    const beforeFailedWrite = fs.readFileSync(path.join(root, secondId, "state.json"), "utf8");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("write_failed"); });
+    expect(() => entityStore.setTheaters(secondId, [])).toThrow("write_failed");
+    rename.mockRestore();
+    expect(fs.readFileSync(path.join(root, secondId, "state.json"), "utf8")).toBe(beforeFailedWrite);
+    expect(entities.resolveAll(workspaceHash(canonical))).toContain(secondId);
     // 손편집 중복과 링크·손상은 원본을 건드리지 않고 경고와 함께 제외한다.
     const loser = "ffffffff-ffff-ffff-ffff-ffffffffffff";
     fs.mkdirSync(path.join(root, loser));
@@ -134,12 +144,12 @@ describe("commodore theater state", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       const restored = createCommodoreEntities(root, workspaceHash);
-      expect(restored.resolve(workspaceHash(canonical))).toBe(id);
-      expect(restored.ids()).toEqual([id]);
+      expect(restored.resolveAll(workspaceHash(canonical))).toEqual([id, loser].sort());
+      expect(restored.ids().sort()).toEqual([id, loser, emptyId].sort());
       expect(fs.readFileSync(path.join(root, loser, "state.json"), "utf8")).toBe(preserved);
       expect(warn).toHaveBeenCalled();
       fs.rmSync(theater, { recursive: true });
-      expect(createCommodoreEntities(root, workspaceHash).resolve(workspaceHash(canonical))).toBe(id);
+      expect(createCommodoreEntities(root, workspaceHash).resolveAll(workspaceHash(canonical))).toEqual([id, loser].sort());
     } finally { warn.mockRestore(); }
     const stateFile = path.join(h.objectivesDir, "state.json");
 
@@ -451,7 +461,7 @@ describe("commodore session", () => {
 
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
     const options = stub.created[0]!;
-    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation", sessionName: "commodore-fleet-harness-t1" });
+    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation" });
     expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
@@ -459,7 +469,7 @@ describe("commodore session", () => {
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
-    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.$/);
+    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\]$/);
     expect(stub.sent[0]).not.toContain("newest");
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.

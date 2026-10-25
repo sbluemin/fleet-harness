@@ -1,3 +1,4 @@
+import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
@@ -19,6 +20,7 @@ export interface CommodoreSessionCoordinates {
 }
 
 export interface CommodoreSessionOptions {
+  readonly theaters?: () => readonly CommodoreToolTheater[];
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterLabel: string;
@@ -183,11 +185,11 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
 
   const open = async () => {
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, ...(options.theaters ? { theaters: options.theaters } : {}), store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
-      sessionName: `commodore-${options.theaterLabel.normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
+      sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
       systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias, theaterIds: options.theaterIds }),
       continuation: "conversation",
@@ -238,6 +240,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
         memoryNote(readMemoryIndex()),
+        `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, available: root !== null })) ?? [])}`,
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [

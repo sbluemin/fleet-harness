@@ -31,7 +31,8 @@ export interface ObjectivePatchClientInput {
 }
 
 export interface ObjectiveGroupCreateInput {
-  readonly theaterId: string;
+  readonly commodoreId?: string;
+  readonly theaterId?: string;
   readonly name: string;
   readonly color: string;
 }
@@ -296,8 +297,8 @@ export async function putObjectiveOrder(theaterId: string, objectiveIds: readonl
   return payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status));
 }
 
-export async function fetchGroups(theaterId?: string | null, signal?: AbortSignal): Promise<readonly ObjectiveGroup[]> {
-  const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
+export async function fetchGroups(commodoreId?: string | null, signal?: AbortSignal): Promise<readonly ObjectiveGroup[]> {
+  const suffix = commodoreId ? `?commodoreId=${encodeURIComponent(commodoreId)}` : "";
   const response = await fetch(`/api/v1/objectives/records/groups${suffix}`, { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly groups?: unknown };
@@ -306,7 +307,8 @@ export async function fetchGroups(theaterId?: string | null, signal?: AbortSigna
 }
 
 export async function createGroup(input: ObjectiveGroupCreateInput, signal?: AbortSignal): Promise<ObjectiveGroup> {
-  const commodoreId = await resolveOwnerForContext(input.theaterId, signal);
+  const commodoreId = input.commodoreId ?? (input.theaterId ? await resolveOwnerForContext(input.theaterId, signal) : null);
+  if (!commodoreId) throw new Error("commodore_required");
   const response = await fetch("/api/v1/objectives/records/groups", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -352,6 +354,7 @@ export async function patchObjective(objectiveId: string, input: ObjectivePatchC
 }
 
 export async function createObjective(input: {
+  readonly commodoreId?: string;
   readonly id?: string;
   readonly theaterId: string;
   readonly type: string;
@@ -360,7 +363,8 @@ export async function createObjective(input: {
   readonly payload?: Record<string, unknown>;
   readonly geometry?: ObjectiveRecord["geometry"];
 }, signal?: AbortSignal): Promise<ObjectiveRecord> {
-  const commodoreId = await resolveOwnerForContext(input.theaterId, signal);
+  const commodoreId = input.commodoreId ?? (input.theaterId ? await resolveOwnerForContext(input.theaterId, signal) : null);
+  if (!commodoreId) throw new Error("commodore_required");
   const response = await fetch("/api/v1/objectives/records", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

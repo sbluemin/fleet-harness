@@ -121,6 +121,7 @@ export async function createClaudeGatewaySdk(
     ...vendorFlagSettings(options),
     ...(request.effort === undefined ? {} : { effort: request.effort }),
     ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+    ...(request.additionalDirectories === undefined ? {} : { additionalDirectories: [...request.additionalDirectories] }),
     ...(request.resume === undefined ? {} : { resume: request.resume }),
     ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
     ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),

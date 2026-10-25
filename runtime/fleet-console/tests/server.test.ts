@@ -839,10 +839,10 @@ describe("console static and terminal ticket boundary", () => {
     });
     expect(createdResponse.status).toBe(200);
     const created = await createdResponse.json() as { objective: { id: string; commodoreId: string; theaterId: string } };
-    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId });
+    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId: workspaceHash(fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives"))) });
     expect(created.objective).not.toHaveProperty("cwd");
     const pending = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8"));
-    expect(pending).toMatchObject({ pending: true, cwd: realpath });
+    expect(pending).toMatchObject({ pending: true, cwd: fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives")) });
     const deniedOwner = await fetch(`${origin}/api/v1/objectives/objective/create`, {
       method: "POST", headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ commodoreId: "00000000-0000-4000-8000-000000000000", theaterId, title: "Not this owner" }),
@@ -850,6 +850,39 @@ describe("console static and terminal ticket boundary", () => {
     expect(deniedOwner.status).toBe(409);
     expect(await deniedOwner.json()).toEqual({ error: "objective_owner_unavailable" });
 
+    // 사령관 생성·그룹·다중 작업 범위는 같은 서버 writer를 지나며 기존 목표 위치와 파일을 건드리지 않는다.
+    const post = async (route: string, body: unknown) => {
+      const response = await fetch(`${origin}/api/v1/${route}`, { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) });
+      expect(response.ok).toBe(true);
+      return await response.json();
+    };
+    const fresh = await post("commodore/create", { alias: "Fresh" });
+    expect(fresh.commodore.theaters).toEqual([]);
+    const freshId = fresh.commodoreId as string;
+    const group = await post("objectives/records/groups", { commodoreId: freshId, name: "Independent", color: "blue" });
+    expect(group.group.commodoreId).toBe(freshId);
+    const groups = await getJson(`${origin}/api/v1/objectives/records/groups?commodoreId=${freshId}`) as { groups: unknown[] };
+    expect(groups.groups).toEqual([group.group]);
+    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
+    const two = await post("commodore/theaters/add", { commodoreId: freshId, theaterId: workspaceHash(registered) });
+    expect(two.commodore.theaters).toHaveLength(2);
+    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
+    expect((await post("commodore/resolve", { theaterId })).commodoreIds.sort()).toEqual([ownerId, freshId].sort());
+    expect((await post("commodore/resolve", { theaterId })).commodoreId).toBeNull();
+    const record = await post("objectives/records", { commodoreId: freshId, theaterId: workspaceHash(registered), title: "General session" });
+    const recordFile = path.join(ownerRoot, freshId, "objectives", record.objectiveRecord.id, "objective.json");
+    const recordBefore = fs.readFileSync(recordFile, "utf8");
+    expect(JSON.parse(recordBefore).cwd).toBe(registered);
+    const pendingBefore = fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8");
+    await post("commodore/theaters/remove", { commodoreId: freshId, theaterId });
+    const removed = await post("commodore/theaters/remove", { commodoreId: freshId, theaterId: workspaceHash(registered) });
+    expect(removed.commodore.theaters).toEqual([]);
+    expect(fs.readFileSync(recordFile, "utf8")).toBe(recordBefore);
+    expect(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8")).toBe(pendingBefore);
+    expect(fs.existsSync(registered)).toBe(true);
+    const listing = await post("commodore/list", {});
+    expect(listing.commodores).toEqual(expect.arrayContaining([expect.objectContaining({ commodoreId: freshId, theaters: [] })]));
+    expect(JSON.stringify(listing)).not.toContain(realpath);
     expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("objectiveRecords");
   });
 

@@ -7,6 +7,7 @@ import { canonicalModelId } from "../../ai-gateway/shared/models.js";
 import { createCommodoreImages } from "./images.js";
 import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
+import { commodoreTheatersSchema } from "./entities.js";
 import { CommodoreStoreError } from "./errors.js";
 import { migrateCommodorePatrolState } from "./state-migration.js";
 import { patrolIntervalMs } from "../shared/contracts/types.js";
@@ -31,6 +32,7 @@ export interface CommodoreStoreOptions {
   readonly dirOf: (commodoreId: string) => string | null;
   readonly commodoreIds?: () => readonly string[];
   readonly theatersOf: (commodoreId: string) => readonly { readonly path: string }[];
+  readonly replaceTheatersInIndex?: (id: string, rows: readonly { readonly path: string }[]) => void;
   readonly theaterIdsOf: (commodoreId: string) => readonly string[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
@@ -48,6 +50,8 @@ export interface CommodoreTranscriptPage {
 export interface CommodoreStore {
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(commodoreId: string): CommodoreState | null;
+  setTheaters(commodoreId: string, rows: readonly { readonly path: string }[]): CommodoreState;
+  announceCreated(commodoreId: string): void;
   setAlias(commodoreId: string, alias: string | null): CommodoreState;
   /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
   setStopAt(commodoreId: string, stopAt: number | null): CommodoreState;
@@ -169,12 +173,14 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   };
 
   /** 상태 한 건을 검증해 쓰고, 성공한 뒤에만 캐시를 갈고 방송한다. */
-  const commit = (commodoreId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">): CommodoreState => {
+  const commit = (commodoreId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">, nextTheaters?: readonly { readonly path: string }[]): CommodoreState => {
     const parsed = commodoreStateSchema.safeParse(next);
     if (!parsed.success) throw new CommodoreStoreError("invalid_request");
     const file = stateFile(commodoreId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    writeFileAtomic(file, JSON.stringify({ ...parsed.data, theaters: options.theatersOf(commodoreId) }));
+    const theaters = commodoreTheatersSchema.parse(nextTheaters ?? options.theatersOf(commodoreId));
+    writeFileAtomic(file, JSON.stringify({ ...parsed.data, theaters }));
+    if (nextTheaters) options.replaceTheatersInIndex?.(commodoreId, theaters);
     states.set(commodoreId, parsed.data);
     broadcast({ op: "state", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), state: parsed.data, change, ...(intelId ? { intelId } : {}), ...(removedIntel ? { removedIntel } : {}) });
     return parsed.data;
@@ -218,6 +224,13 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
         throw error;
       }
     },
+    setTheaters(commodoreId, rows) {
+      if (!options.replaceTheatersInIndex) throw new CommodoreStoreError("commodore_unavailable");
+      const current = load(commodoreId);
+      if (isDeepStrictEqual(options.theatersOf(commodoreId), rows)) return current;
+      return commit(commodoreId, current, "theaters", undefined, undefined, rows);
+    },
+    announceCreated(commodoreId) { broadcast({ op: "state", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), state: load(commodoreId), change: "created" }); },
     setAlias(commodoreId, alias) {
       const current = load(commodoreId);
       if ((current.alias ?? null) === alias) return current;

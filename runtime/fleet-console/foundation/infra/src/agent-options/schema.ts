@@ -17,7 +17,7 @@
  * - `off` — no base prompt. The user's instructions become the whole system prompt, and
  *   when there are none the session runs without one.
  *
- * The mode and user-authored body form one Theater-scoped setting.
+ * The mode and user-authored body form one Commodore-scoped setting; legacy Theater keys remain migration sources.
  */
 export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
 
@@ -34,6 +34,10 @@ export interface ClaudeCodeTheaterSystemPrompt {
 }
 
 export interface AgentOptionsData {
+  readonly claudeCodeCommodoreSystemPrompts?: Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>>;
+  readonly claudeCodeCommodoreSubagents?: Readonly<Record<string, true>>;
+  /** A completed migration includes an intentional default, so clearing a setting cannot resurrect it. */
+  readonly commodoreSettingsMigrated?: Readonly<Record<string, true>>;
   /** Registered Theater IDs are validated by the Console host, not this storage schema. */
   readonly claudeCodeTheaterSystemPrompts?: Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>>;
   /**
@@ -61,21 +65,16 @@ export interface AgentOptionsValidationResult {
 export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidationResult {
   if (!isRecord(value)) return { data: {}, changed: true };
 
-  const claudeCodeTheaterSystemPrompts = sanitizeTheaterSystemPrompts(value.claudeCodeTheaterSystemPrompts);
-  const claudeCodeTheaterSubagents = sanitizeTheaterSubagents(value.claudeCodeTheaterSubagents);
-  const data: AgentOptionsData = {
-    ...(claudeCodeTheaterSystemPrompts !== undefined ? { claudeCodeTheaterSystemPrompts } : {}),
-    ...(claudeCodeTheaterSubagents !== undefined ? { claudeCodeTheaterSubagents } : {}),
+  const fields = {
+    claudeCodeTheaterSystemPrompts: sanitizeTheaterSystemPrompts(value.claudeCodeTheaterSystemPrompts),
+    claudeCodeTheaterSubagents: sanitizeTheaterSubagents(value.claudeCodeTheaterSubagents),
+    claudeCodeCommodoreSystemPrompts: sanitizeTheaterSystemPrompts(value.claudeCodeCommodoreSystemPrompts),
+    claudeCodeCommodoreSubagents: sanitizeTheaterSubagents(value.claudeCodeCommodoreSubagents),
+    commodoreSettingsMigrated: sanitizeTheaterSubagents(value.commodoreSettingsMigrated),
   };
-  // A retired key (the global built-in subagent opt-out list) is unknown here, so it is dropped
-  // and reported as a change: the next write leaves it behind.
-  const allowedKeys = new Set([
-    "claudeCodeTheaterSystemPrompts",
-    "claudeCodeTheaterSubagents",
-  ]);
-  const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("claudeCodeTheaterSystemPrompts" in value && JSON.stringify(value.claudeCodeTheaterSystemPrompts) !== JSON.stringify(claudeCodeTheaterSystemPrompts)) ||
-    ("claudeCodeTheaterSubagents" in value && JSON.stringify(value.claudeCodeTheaterSubagents) !== JSON.stringify(claudeCodeTheaterSubagents));
+  const data: AgentOptionsData = Object.fromEntries(Object.entries(fields).filter(([, entry]) => entry !== undefined));
+  const changed = Object.keys(value).some((key) => !(key in fields)) ||
+    Object.entries(fields).some(([key, entry]) => key in value && JSON.stringify(value[key]) !== JSON.stringify(entry));
 
   return { data, changed };
 }

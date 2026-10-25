@@ -282,7 +282,7 @@ title: input.title});
         return { ok: true, applied: "now" };
       },
     },
-    paths: { resolveTheaterPath: () => theaterPath, resolveObjectivePath: () => theaterPath },
+    paths: { workspaceHash: () => "t1", resolveTheaterPath: () => theaterPath, resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
   launchServices.push(launch);

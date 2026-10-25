@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
@@ -5,112 +6,104 @@ import { createCommodoreEntities } from "./entities.js";
 import { migrateCommodoreData } from "./migrate.js";
 import { CommodoreStoreError } from "./errors.js";
 import { hasLegacyKnowledge, legacyKnowledgeSources } from "./knowledge-sources.js";
+import type { CommodoreTheaterSummary } from "../shared/contracts/theaters.js";
 
-/** 실행 복원보다 먼저 소유 색인을 준비한다. 상주 에이전트는 아직 만들지 않는다. */
+/** 실행 복원보다 먼저 UUID 소유와 현재 작업 범위를 분리해 준비한다. */
 export function createCommodoreOwnership(paths: WorkspacePaths) {
   const migration = migrateCommodoreData(paths.consoleDataDir);
   const entities = createCommodoreEntities(path.join(paths.consoleDataDir, "commodore"), paths.workspaceHash);
-  // 등록 id는 옛 경로 문자열의 해시일 수 있다. 링크 해시가 달라도 지금 실경로가 같으면 그 사령관을 쓴다.
-  // 실경로 조회는 기동 때와 등록 목록이 바뀔 때만 한다. 끊긴 드라이브를 매 호출마다 다시 열지 않는다.
-  let registeredKey = "";
-  const resolved = new Map<string, string | null>();
-  const remember = (theaterId: string, commodoreId: string) => {
-    entities.bind(theaterId, commodoreId);
-    resolved.set(theaterId, commodoreId);
-  };
-  const resolveOwner = (theaterId: string): string | null => {
-    const direct = entities.resolve(theaterId);
-    if (direct) return direct;
-    const ids = paths.listTheaterIds?.() ?? [];
-    const key = ids.join("\0");
-    if (key !== registeredKey) {
-      registeredKey = key;
-      for (const id of [...resolved.keys()]) if (!ids.includes(id)) resolved.delete(id);
-    }
-    if (resolved.has(theaterId)) return resolved.get(theaterId) ?? null;
+  const resolveAll = (theaterId: string): readonly string[] => {
     const root = paths.resolveTheaterPath(theaterId);
-    if (!root) { resolved.set(theaterId, null); return null; }
-    const found = entities.locate(root);
-    if (found) remember(theaterId, found);
-    else resolved.set(theaterId, null);
-    return found;
+    return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
   };
-  const theaterIdsOf = (commodoreId: string): readonly string[] => {
-    const hashed = entities.theaterIds(commodoreId);
-    const registered = (paths.listTheaterIds?.() ?? []).filter((id) => resolveOwner(id) === commodoreId);
-    return [...new Set([...registered, ...hashed])];
-  };
-  const create = (theaterId: string) => {
+  const resolve = (theaterId: string): string | null => { const ids = resolveAll(theaterId); return ids.length === 1 ? ids[0]! : null; };
+  const registeredFor = (root: string): readonly string[] => (paths.listTheaterIds?.() ?? []).filter((id) => {
+    const registered = paths.resolveTheaterPath(id);
+    if (registered === root) return true;
+    try { return registered !== null && fs.realpathSync.native(registered) === root; } catch { return false; }
+  });
+  const theaterIds = (id: string): readonly string[] => entities.theatersOf(id).map((row) => registeredFor(row.path)[0] ?? paths.workspaceHash(row.path));
+  const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
+  const issueIfReady = (theaterId: string): string => {
     const root = paths.resolveTheaterPath(theaterId);
     if (!root) throw new CommodoreStoreError("theater_unavailable");
-    const existing = resolveOwner(theaterId);
-    if (existing) return existing;
-    const unresolved = workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
-    if (migration.blockedPaths.has(root) || unresolved) throw new CommodoreStoreError("commodore_migration_pending");
-    const issued = entities.create(root);
-    remember(theaterId, issued);
-    return issued;
+    const ids = resolveAll(theaterId);
+    if (ids.length > 1) throw new CommodoreStoreError("commodore_required");
+    if (ids.length === 1) return ids[0]!;
+    if (blocked(root)) throw new CommodoreStoreError("commodore_migration_pending");
+    return entities.create(root);
   };
-  const ensureRegistered = () => {
+  // 실제 옛 Wiki가 있는 경우에만 발급한다. 등록이나 읽기로 빈 사령관을 만들지 않는다.
+  const recoverKnowledge = () => {
     for (const theaterId of paths.listTheaterIds?.() ?? []) {
-      try { create(theaterId); }
-      catch { console.warn(`[commodore] registered theater ${theaterId}: entity unavailable`); }
+      const root = paths.resolveTheaterPath(theaterId);
+      if (!root || resolveAll(theaterId).length || !hasLegacyKnowledge(paths.consoleDataDir, root)) continue;
+      try { issueIfReady(theaterId); }
+      catch { console.warn(`[commodore] registered theater ${theaterId}: knowledge migration held`); }
     }
   };
-  ensureRegistered();
-  // 위키의 명시적인 발급 정책은 목표 이주와 다르다. 목표는 이 보류 목록을 계속 확인한다.
-  const issueForKnowledge = (root: string) => entities.create(root);
-  for (const theaterId of paths.listTheaterIds?.() ?? []) {
-    const root = paths.resolveTheaterPath(theaterId);
-    if (!root || resolveOwner(theaterId) || !hasLegacyKnowledge(paths.consoleDataDir, root)) continue;
-    try { issueForKnowledge(root); console.warn(`[commodore] registered theater ${theaterId}: entity issued for knowledge; pending records preserved`); }
-    catch { console.warn(`[commodore] registered theater ${theaterId}: knowledge entity unavailable`); }
-  }
+  recoverKnowledge();
   const knowledge = {
     directory: entities.dirOf,
     root: (id: string) => { const dir = entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
     ids: () => entities.ids().filter((id) => entities.dirOf(id) !== null),
-    forContext(theaterId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
-      const root = paths.resolveTheaterPath(theaterId);
-      if (!root) return { ok: false, reason: "unknown_context" };
-      try {
-        const existing = resolveOwner(theaterId);
-        if (existing) return { ok: true, commodoreId: existing };
-        const issued = issueForKnowledge(root);
-        remember(theaterId, issued);
-        return { ok: true, commodoreId: issued };
-      }
-      catch { return { ok: false, reason: "unavailable" }; }
+    forContext(contextId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
+      if (entities.dirOf(contextId)) return { ok: true, commodoreId: contextId };
+      if (!paths.resolveTheaterPath(contextId)) return { ok: false, reason: "unknown_context" };
+      const id = resolve(contextId);
+      return id ? { ok: true, commodoreId: id } : { ok: false, reason: "unavailable" };
     },
-    legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).map((link) => link.path)),
+    legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).filter((row) => {
+      if (entities.locateAll(row.path).length === 1) return true;
+      if (hasLegacyKnowledge(paths.consoleDataDir, row.path)) console.warn(`[commodore] wiki migration ${id}: ambiguous_source; original preserved`);
+      return false;
+    }).map((row) => row.path)),
   };
-  const issueForAlias = (theaterId: string) => {
-    const root = paths.resolveTheaterPath(theaterId);
-    if (!root) throw new CommodoreStoreError("theater_unavailable");
-    const existing = resolveOwner(theaterId);
-    if (existing) return existing;
-    const issued = entities.create(root);
-    remember(theaterId, issued);
-    return issued;
+  const objectiveDirectory = (id: string): string => {
+    const dir = entities.dirOf(id);
+    if (!dir) throw new CommodoreStoreError("commodore_unavailable");
+    const cwd = path.join(dir, "objectives");
+    fs.mkdirSync(cwd, { recursive: true, mode: 0o700 });
+    if (fs.lstatSync(cwd).isSymbolicLink() || fs.realpathSync.native(cwd) !== cwd) throw new Error("objective_location_unavailable");
+    return cwd;
   };
-  // 자동 별칭 이주만 보류 가드를 탄다. 명시적 forAlias 발급은 원본 이동을 대신하지 않는다.
-  const issueIfReady = (theaterId: string) => create(theaterId);
-  return { entities, create, resolve: resolveOwner, theaterIds: theaterIdsOf, issueForAlias, issueIfReady, ensureRegistered, knowledge,
-    creation(commodoreId: string, theaterId: string) {
-      if (!entities.dirOf(commodoreId) || !theaterIdsOf(commodoreId).includes(theaterId)) throw new Error("objective_owner_unavailable");
+  return {
+    entities, resolve, resolveAll, theaterIds, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
+    create: () => entities.create(),
+    objectiveDirectory,
+    theaterSummaries(id: string): readonly CommodoreTheaterSummary[] {
+      return entities.theatersOf(id).map((row) => {
+        const registered = registeredFor(row.path);
+        let available = false;
+        try { available = fs.realpathSync.native(row.path) === row.path && fs.statSync(row.path).isDirectory(); } catch { /* 사라진 범위도 표시한다. */ }
+        return { theaterId: registered[0] ?? paths.workspaceHash(row.path), label: path.basename(row.path), status: !registered.length ? "unregistered" : available ? "available" : "missing" };
+      });
+    },
+    additionalDirectories(id: string): readonly string[] {
+      return entities.theatersOf(id).map((row) => {
+        try {
+          if (!registeredFor(row.path).length || fs.realpathSync.native(row.path) !== row.path || !fs.statSync(row.path).isDirectory()) throw new Error();
+          return row.path;
+        } catch { throw new CommodoreStoreError("theater_unavailable"); }
+      });
+    },
+    creation(commodoreId: string, _theaterId?: string) {
+      if (!entities.dirOf(commodoreId)) throw new Error("objective_owner_unavailable");
+      return { commodoreId, cwd: objectiveDirectory(commodoreId) };
+    },
+    sessionCreation(commodoreId: string, theaterId: string) {
+      if (!entities.dirOf(commodoreId)) throw new Error("objective_owner_unavailable");
       const cwd = paths.resolveTheaterPath(theaterId);
       if (!cwd) throw new Error("objective_location_unavailable");
       return { commodoreId, cwd };
     },
     objectives: () => entities.ids().flatMap((id) => {
       const directory = entities.dirOf(id);
-      // 단일 링크였던 옛 파일의 위치 복구에만 쓴다. 소유 키는 위 디렉터리의 UUID다.
-      const [legacyLink] = entities.theatersOf(id);
-      const root = legacyLink?.path;
-      if (!directory || !root || entities.theaterIds(id).some((theaterId) => entities.conflicts().includes(theaterId)) || migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name))) return [];
-      const linkId = paths.workspaceHash(root);
-      const registered = (paths.listTheaterIds?.() ?? []).filter((theaterId) => resolveOwner(theaterId) === id);
-      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: [...new Set([linkId, ...registered])], legacyCwd: root, theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
+      if (!directory) return [];
+      const rows = entities.theatersOf(id);
+      const root = rows.length === 1 ? rows[0]!.path : undefined;
+      const linkId = root ? paths.workspaceHash(root) : "";
+      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: root ? [...new Set([linkId, ...registeredFor(root)])] : [], legacyCwd: root ?? "", theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
     }),
   };
 }

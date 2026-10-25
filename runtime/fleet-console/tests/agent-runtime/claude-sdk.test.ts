@@ -78,10 +78,12 @@ describe("turn assembly", () => {
     await drain(await sdk.startTurn({
       prompt: "hi",
       model: LUNA,
+      additionalDirectories: [path.resolve("project-a"), path.resolve("project-b")],
       canUseTool: async () => { throw new Error("host blew up"); },
     }));
     const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
     expect(options.pathToClaudeCodeExecutable).toBe(executablePath);
+    expect(options.additionalDirectories).toEqual([path.resolve("project-a"), path.resolve("project-b")]);
     const vendorCallback = options.canUseTool as (
       name: string,
       input: Record<string, unknown>,

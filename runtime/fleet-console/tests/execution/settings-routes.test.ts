@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { registerTerminalSettingsRoutes } from "../../features/settings/host/execution-settings-routes.js";
-import { createTheaterSystemPromptService } from "../../features/settings/host/agent-options.js";
+import { createCommodoreSystemPromptService } from "../../features/settings/host/agent-options.js";
 
 interface WriteJsonCall {
   readonly status: number;
@@ -40,31 +40,31 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
 
-  it("keeps Theater prompts scoped, validates writes, and clears the pair together", async () => {
-    const theaterUrl = "/api/v1/agent/theater-system-prompt?theaterId=theater-1";
+  it("keeps Commodore prompts scoped, validates writes, and clears the pair together", async () => {
+    const theaterUrl = "/api/v1/agent/commodore-system-prompt?commodoreId=theater-1";
     const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } } });
     await harness.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
-    expect(harness.writes.pop()).toEqual({ status: 200, body: { theaterId: "theater-1", prompt: { mode: "append", body: "  My rules\n" } } });
-    expect(harness.currentData()).toEqual({ claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
+    expect(harness.writes.pop()).toEqual({ status: 200, body: { commodoreId: "theater-1", prompt: { mode: "append", body: "  My rules\n" } } });
+    expect(harness.currentData()).toEqual({ claudeCodeCommodoreSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } }, commodoreSettingsMigrated: { "theater-1": true } });
     await harness.handleTheaterPrompt({ req: req("GET", undefined, theaterUrl), res: res(), pathname: theaterUrl });
     expect(harness.writes.pop()?.body).toMatchObject({ prompt: { mode: "append" } });
     const cleared = createRouteHarness({ body: { prompt: null }, data: harness.currentData() });
     await cleared.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
-    expect(cleared.writes.pop()?.body).toEqual({ theaterId: "theater-1", prompt: null });
-    expect(cleared.currentData()).toEqual({});
-    expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "" })).toBeNull();
-    expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "saved for later" })).toEqual({ mode: "on", body: "saved for later" });
-    // 서브에이전트는 Theater마다 켜 둘 수 있고(기본은 대체), 잊힌 Theater를 지울 때 프롬프트와 함께 사라진다.
-    const subagentsUrl = "/api/v1/agent/theater-subagents?theaterId=theater-1";
+    expect(cleared.writes.pop()?.body).toEqual({ commodoreId: "theater-1", prompt: null });
+    expect(cleared.currentData()).toEqual({ commodoreSettingsMigrated: { "theater-1": true } });
+    expect(cleared.commodoreSystemPrompts.save("theater-1", { mode: "on", body: "" })).toBeNull();
+    expect(cleared.commodoreSystemPrompts.save("theater-1", { mode: "on", body: "saved for later" })).toEqual({ mode: "on", body: "saved for later" });
+    // 사령관 설정은 Theater 잊기의 원본 정리와 독립적이다.
+    const subagentsUrl = "/api/v1/agent/commodore-subagents?commodoreId=theater-1";
     const kept = createRouteHarness({ body: { subagentsKept: true }, data: harness.currentData() });
     await kept.handleTheaterSubagents({ req: req("PUT", "application/json", subagentsUrl), res: res(), pathname: subagentsUrl });
-    expect(kept.writes.pop()?.body).toEqual({ theaterId: "theater-1", subagentsKept: true });
-    expect(kept.theaterSystemPrompts.subagentsKept("theater-1")).toBe(true);
-    kept.theaterSystemPrompts.purge("theater-1");
-    expect(kept.currentData()).toEqual({});
+    expect(kept.writes.pop()?.body).toEqual({ commodoreId: "theater-1", subagentsKept: true });
+    expect(kept.commodoreSystemPrompts.subagentsKept("theater-1")).toBe(true);
+    kept.commodoreSystemPrompts.purge("theater-1");
+    expect(kept.commodoreSystemPrompts.subagentsKept("theater-1")).toBe(true);
 
     const unknown = createRouteHarness({ body: { prompt: { mode: "off", body: "secret" } } });
-    await unknown.handleTheaterPrompt({ req: req("PUT", "application/json", "/api/v1/agent/theater-system-prompt?theaterId=unknown"), res: res(), pathname: "" });
+    await unknown.handleTheaterPrompt({ req: req("PUT", "application/json", "/api/v1/agent/commodore-system-prompt?commodoreId=unknown"), res: res(), pathname: "" });
     expect(unknown.writes.pop()?.status).toBe(404);
     const denied = createRouteHarness({ terminalAuthorized: false, body: { prompt: null } });
     await denied.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
@@ -73,6 +73,22 @@ describe("terminal settings routes", () => {
     await invalid.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
     expect(invalid.writes.pop()?.status).toBe(400);
     expect(invalid.updateCalls).toBe(0);
+  });
+
+  it("migrates one Theater once and never resurrects a cleared Commodore setting", () => {
+    const original = { mode: "off" as const, body: "legacy rules" };
+    let data: AgentOptionsData = { claudeCodeTheaterSystemPrompts: { t1: original }, claudeCodeTheaterSubagents: { t1: true } };
+    const service = createCommodoreSystemPromptService({ load: () => data, update: (mutate) => (data = sanitizeAgentOptionsData(mutate(data)).data) }, () => true);
+    const owners = [{ commodoreId: "c1", theaterIds: ["t1"] }, { commodoreId: "c2", theaterIds: [] }, { commodoreId: "c3", theaterIds: ["t1", "t2"] }];
+    service.migrate(owners);
+    expect(service.read("c1")).toEqual(original);
+    expect(service.subagentsKept("c1")).toBe(true);
+    expect(service.read("c2")).toBeNull(); expect(service.read("c3")).toBeNull();
+    const first = JSON.stringify(data); service.migrate(owners); expect(JSON.stringify(data)).toBe(first);
+    service.save("c1", null); service.keepSubagents("c1", false);
+    const cleared = JSON.stringify(data); service.migrate(owners); expect(JSON.stringify(data)).toBe(cleared);
+    expect(data.claudeCodeTheaterSystemPrompts?.t1).toEqual(original);
+    expect(service.read("c1")).toBeNull(); expect(service.subagentsKept("c1")).toBe(false);
   });
 
   it("drops retired global prompt and subagent keys without migrating them into Theater settings", () => {
@@ -167,9 +183,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
     update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => { updateCalls += 1; data = mutate(data); return data; },
   };
   const isRegisteredTheater = (id: string) => id === "theater-1";
-  const theaterSystemPrompts = createTheaterSystemPromptService(agentOptionsService, isRegisteredTheater);
+  const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptionsService, isRegisteredTheater);
   registerTerminalSettingsRoutes(ctx, {
-    theaterSystemPrompts,
+    commodoreSystemPrompts,
     aiGatewayStore: {
       path: "/test/ai-gateway.json",
       read: () => aiGateway,
@@ -279,9 +295,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
   if (!handle) throw new Error("settings router was not registered");
   return {
     handle,
-    handleTheaterPrompt: routers.get("agent/theater-system-prompt")!,
-    handleTheaterSubagents: routers.get("agent/theater-subagents")!,
-    theaterSystemPrompts,
+    handleTheaterPrompt: routers.get("agent/commodore-system-prompt")!,
+    handleTheaterSubagents: routers.get("agent/commodore-subagents")!,
+    commodoreSystemPrompts,
     writes,
     currentData: () => data,
     currentAiGateway: () => aiGateway,

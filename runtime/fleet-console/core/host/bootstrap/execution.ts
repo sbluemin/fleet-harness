@@ -16,12 +16,12 @@ import { registerShellRoutes } from "../../../features/execution/host/terminal/s
 import { registerTerminalCwdRoute } from "../../../features/execution/host/terminal/terminal-cwd.js";
 import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
-import type { TheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
+import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, theaterSystemPrompts: TheaterSystemPromptService) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -38,7 +38,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const models = createModelRosterHost({ readSettings: aiGatewayStore.read });
   const modelRoster = registerModelRosterRoutes(ctx, models);
   registerTerminalSettingsRoutes(ctx, {
-    theaterSystemPrompts,
+    commodoreSystemPrompts,
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
@@ -73,7 +73,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
     agentOptionsService: ctx.agentOptions,
-    theaterSystemPrompts,
+    commodoreSystemPrompts,
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {

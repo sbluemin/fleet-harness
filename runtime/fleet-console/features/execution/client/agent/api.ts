@@ -64,6 +64,7 @@ export async function createAgentSession(
   theaterId: string,
   cliId: string,
   options?: {
+    readonly commodoreId?: string;
     readonly model?: string;
     readonly effort?: string;
     readonly prompt?: string;
@@ -74,7 +75,7 @@ export async function createAgentSession(
   },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
-  const commodoreId = await resolveOwnerForContext(theaterId, signal);
+  const commodoreId = options?.commodoreId ?? await resolveOwnerForContext(theaterId, signal);
   const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
   const effort = typeof options?.effort === "string" && options.effort.length > 0 ? options.effort : undefined;
   // 요청 body에는 prompt를 실을 수 있지만, 응답 DTO에는 절대 오면 안 된다 — FORBIDDEN_BROWSER_PAYLOAD_KEYS의 "prompt"는 응답 가드이므로 지우지 않는다.
