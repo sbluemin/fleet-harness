@@ -5,9 +5,11 @@ import { createDurableJsonStore } from "@fleet-console/infra";
 import { ensureWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { DurableConsoleState } from "../features/workspace/host/durable-state.js";
 import { createDeferredDeletionCoordinator } from "../features/workspace/host/deferred-deletion.js";
-import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
+import { TheaterRegistry, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
+import { createCommodoreOwnership } from "../features/commodore/host/index.js";
+import { EMPTY_COMMODORE_STATE } from "../features/commodore/shared/contracts/types.js";
 import fs from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -412,6 +414,39 @@ describe("durable console state", () => {
     const heldAgain = held.open(); heldAgain.load();
     expect(heldAgain.board.list("c1").map((row) => row.id)).not.toContain("gone");
     expect(JSON.parse(fs.readFileSync(path.join(held.destination, "archive.json"), "utf8")).quarantine).toContainEqual(expect.objectContaining({ id: "gone", reason: "missing_theater_registration" }));
+    // 아직 수입하지 않은 데이터는 같은 위치의 옛 등록 해시도 귀속한다. 이미 수입된 id를 다시 고치지는 않는다.
+    const spelledRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(".fleet/isolated/durable-tests", "spell-")));
+    tempDirs.push(spelledRoot);
+    const project = path.join(spelledRoot, "Project");
+    fs.mkdirSync(project);
+    const native = fs.realpathSync.native(project);
+    const slash = native.lastIndexOf("/");
+    const flipped = [...native.slice(slash + 1)].map((ch, index) => index % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase()).join("");
+    const altered = `${native.slice(0, slash + 1)}${flipped}`;
+    let spelled = `${native}/.`;
+    try { if (altered !== native && fs.realpathSync.native(altered) === native) spelled = altered; } catch { /* 대소문자를 구분한다 */ }
+    const oldId = workspaceHash(spelled);
+    const commodoreId = randomUUID();
+    const data = path.join(spelledRoot, "console");
+    const entity = path.join(data, "commodore", commodoreId);
+    fs.mkdirSync(entity, { recursive: true });
+    fs.writeFileSync(path.join(entity, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters: [{ path: native }] }));
+    const ownership = createCommodoreOwnership({ consoleDataDir: data, workspaceHash, listTheaterIds: () => [oldId], resolveTheaterPath: (id: string) => id === oldId ? spelled : null } as unknown as Parameters<typeof createCommodoreOwnership>[0]);
+    const owner = ownership.objectives()[0]!;
+    fs.mkdirSync(owner.directory, { recursive: true });
+    fs.writeFileSync(path.join(owner.directory, "groups.json"), JSON.stringify({ groups: [] }));
+    const freshOperation = { id: "fresh", theaterId: oldId, title: "Fresh", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    const stateFile = path.join(data, "state.json");
+    fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ id: oldId, path: native, realpath: native, label: "Project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" }], operations: [freshOperation], groups: [{ id: "g-old", theaterId: oldId, name: "Old", color: "blue", order: 0, createdAt: 1 }] }));
+    fs.writeFileSync(path.join(data, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "arc-old", archivedAt: 4, operation: freshOperation }], deletions: [], events: [] }));
+    const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
+    const spelledImport = createObjectiveStorage({ directory: data, stateStore, owners: () => ownership.objectives() });
+    const spelledState = spelledImport.load();
+    expect({
+      oldIdIncluded: owner.legacyTheaterIds?.includes(oldId) && !owner.legacyTheaterIds?.every((id) => id === owner.legacyTheaterId),
+      archived: spelledImport.entries().some((entry) => entry.objectiveRecord.id === "fresh"),
+      group: spelledState.groups?.some((group) => group.id === "g-old"),
+    }).toEqual({ oldIdIncluded: true, archived: true, group: true });
   });
 
   it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {

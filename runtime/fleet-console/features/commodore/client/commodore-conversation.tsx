@@ -17,7 +17,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import { contextsOf, ownerOfContext } from "./commodore-state.js";
@@ -101,14 +101,15 @@ export function useCommodoreConversationActive(): boolean {
   );
 }
 
-/** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. */
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. Theater id는 UUID가 아니라 여기서 거절한다. */
 export function openCommodoreConversation(commodoreId: string, options: CommodoreConversationOptions = {}): boolean {
-  if (!port || !port.isActive() || !commodoreId) return false;
+  if (!port || !port.isActive() || !COMMODORE_UUID.test(commodoreId)) return false;
   const theaterId = contextsOf(commodoreId)[0];
   const opened = port.open(COMMODORE_SURFACE_ID, { commodoreId, ...(theaterId ? { theaterId } : {}), ...options });
   if (!opened) return false;
   void loadCommodore(commodoreId);
-  if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   if (options.revealAt !== undefined) revealCommodoreTurn(commodoreId, options.revealAt);
   return true;
 }
@@ -221,14 +222,14 @@ const REVEAL_PAGE_LIMIT = 10;
 function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const board = useObjectiveTheater(commodoreId);
   const reveal = useCommodoreReveal(commodoreId);
-  const failure = useConversationFailure(commodoreId);
+  const failure = useConversationFailure(commodoreId) ?? (transcriptError ? failureWord(t, new Error(transcriptError)) : null);
   const setFailure = (next: string | null) => setConversationFailure(commodoreId, next);
   useEffect(() => {
     void loadCommodore(commodoreId);
-    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+    if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;

@@ -7,6 +7,23 @@ import { CommodoreStoreError } from "./errors.js";
 import { migrateCommodorePatrolState } from "./state-migration.js";
 
 export const COMMODORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** win32는 대소문자·구분자·`\\?\` 접두만 다른 같은 위치다. POSIX 경로는 문자열로 접지 않는다. */
+function samePlace(left: string, right: string): boolean {
+  if (left === right) return true;
+  // 접기는 Windows 경로에서만 한다. path.win32.isAbsolute는 "/tmp/x"도 참이라 POSIX 경로를 섞으면 대소문자 구분 파일시스템의 다른 폴더가 묶인다.
+  if (!(isWindowsPath(left) && isWindowsPath(right))) return false;
+  return win32Comparable(left) === win32Comparable(right);
+}
+/** 드라이브 문자(`X:\` 또는 `X:/`)나 UNC·`\\?\` 접두가 있는 절대 경로만 Windows 경로로 본다. */
+function isWindowsPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
+}
+function win32Comparable(value: string): string {
+  let text = value;
+  if (/^\\\\\?\\unc\\/i.test(text)) text = `\\\\${text.slice(8)}`;
+  else if (text.startsWith("\\\\?\\")) text = text.slice(4);
+  return text.replace(/[\\/]+/g, "/").replace(/\/+$/, "").toLowerCase();
+}
 export const commodoreTheatersSchema = z.array(z.object({ path: z.string().min(1).max(4096).refine(path.isAbsolute) }).strict()).length(1);
 export const commodoreEntitySchema = z.preprocess(migrateCommodorePatrolState, commodoreStateSchema.extend({ theaters: commodoreTheatersSchema }));
 export type CommodoreTheaterLink = { readonly path: string };
@@ -56,18 +73,42 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
     } catch { warn(entry.name, "unreadable_state"); }
   }
   const canonical = (theater: string) => fs.realpathSync.native(theater);
+  const nativeOf = (theater: string): string | null => { try { return fs.realpathSync.native(theater); } catch { return null; } };
+  // 해시가 어긋나도 같은 위치의 기존 사령관을 찾는다. 둘 이상이면 새 UUID를 만들지 않게 먼저 읽힌 연결을 유지한다.
+  const locate = (candidate: string): string | null => {
+    const native = nativeOf(candidate);
+    const hashed = reverse.get(theaterIdOf(native ?? candidate));
+    if (hashed) return hashed;
+    const matches: string[] = [];
+    for (const [id, rows] of links) {
+      const link = rows[0]?.path;
+      if (!link) continue;
+      if (link === candidate || (native !== null && link === native) || samePlace(link, candidate) || (native !== null && samePlace(link, native))) matches.push(id);
+    }
+    if (matches.length === 0) return null;
+    if (matches.length > 1) warn(matches[0]!, "ambiguous_path");
+    return matches[0]!;
+  };
+  const bind = (theaterId: string, commodoreId: string): void => {
+    if (!links.has(commodoreId)) return;
+    const owner = reverse.get(theaterId);
+    if (owner && owner !== commodoreId) return;
+    reverse.set(theaterId, commodoreId);
+  };
   return {
     dirOf,
     conflicts: () => [...conflicts],
     ids: () => [...links.keys()],
+    locate,
+    bind,
     resolve: (theaterId: string) => reverse.get(theaterId) ?? null,
     theatersOf: (id: string) => links.get(id) ?? [],
     theaterIds: (id: string) => (links.get(id) ?? []).map((link) => theaterIdOf(link.path)),
     create(theater: string): string {
       const realpath = canonical(theater);
       const theaterId = theaterIdOf(realpath);
-      const existing = reverse.get(theaterId);
-      if (existing) return existing;
+      const existing = reverse.get(theaterId) ?? locate(realpath);
+      if (existing) { bind(theaterId, existing); return existing; }
       const id = randomUUID();
       const staging = path.join(base, `.new-${id}`);
       const theaters = [{ path: realpath }];

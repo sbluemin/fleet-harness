@@ -147,6 +147,24 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     const resolved = await call("commodore/resolve", { theaterId: workspaceHash(a.root) });
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
     expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { patrolMinutes: 60, directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
+    // 등록 경로와 사령관 링크가 표기만 달라도 같은 사령관으로 풀리고 저장된다. 대소문자를 무시하는 파일 시스템은 등록 대소문자를 뒤집고, 구분하는 파일 시스템은 `/.`를 쓴다.
+    const notationOf = (root: string): string => {
+      const slash = root.lastIndexOf("/");
+      const flipped = [...root.slice(slash + 1)].map((ch, index) => index % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase()).join("");
+      const altered = `${root.slice(0, slash + 1)}${flipped}`;
+      try { if (altered !== root && fs.realpathSync.native(altered) === root) return altered; } catch { /* 대소문자를 구분한다 */ }
+      const dotted = `${root}/.`;
+      if (fs.realpathSync.native(dotted) !== root) throw new Error("notation variant did not canonicalize");
+      return dotted;
+    };
+    const spelled = notationOf(a.root);
+    const spelledId = workspaceHash(spelled);
+    roots.set(spelledId, spelled);
+    const same = await call("commodore/resolve", { theaterId: spelledId });
+    const saved = await call("commodore/alias", { commodoreId: same.commodoreId, alias: "Kept" });
+    const created = await call("commodore/create", { theaterId: spelledId });
+    const reread = await call("commodore/state", { commodoreId: same.commodoreId });
+    expect({ distinct: spelledId !== workspaceHash(a.root), resolved: same.commodoreId, saved: saved.commodoreId, alias: (saved.state as { alias?: string }).alias, created: created.commodoreId, state: reread.commodoreId }).toEqual({ distinct: true, resolved: resolved.commodoreId, saved: resolved.commodoreId, alias: "Kept", created: resolved.commodoreId, state: resolved.commodoreId });
     expect(JSON.stringify(view)).not.toContain(a.root);
     expect(view.state).not.toHaveProperty("autonomy");
     expect((await call("commodore/resolve", { theaterId: workspaceHash(stopped.root) })).commodoreId).toBe(stoppedId);

@@ -32,14 +32,16 @@ interface TheaterCommodore {
   readonly view: CommodoreStateView | null;
   readonly entries: readonly CommodoreTranscriptEntry[];
   readonly hasMore: boolean;
-  /** 기록을 한 번이라도 읽었는가 — 서랍이 처음 열릴 때만 읽는다. */
+  /** 기록을 한 번이라도 읽었는가 — 서랍이 처음 열릴 때만 읽는다. 실패해도 true가 되어 로딩을 끝낸다. */
   readonly transcriptLoaded: boolean;
+  /** 기록 읽기 실패 코드. 없으면 null. */
+  readonly transcriptError: string | null;
   readonly clearedThrough: number;
   /** 마지막 확정 줄 뒤의 라이브 사건(글자 흐름·진행 중 도구) — 저장되지 않고, 확정 줄이 오면 그 몫을 걷는다. */
   readonly live: readonly CommodoreLiveEvent[];
 }
 
-const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, clearedThrough: 0, live: [] };
+const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, transcriptError: null, clearedThrough: 0, live: [] };
 /** 라이브 글자는 한 덩어리로 잇는다 — 확정 줄이 늦어도 사건 배열이 델타 수만큼 자라지 않게. */
 const MAX_LIVE_TEXT = 60_000;
 
@@ -357,18 +359,24 @@ export async function loadTranscript(commodoreId: string, options: { readonly ol
   if (!client || !commodoreId) return;
   const current = theaters.get(commodoreId) ?? EMPTY;
   const before = options.older && !options.reset ? current.entries[0]?.seq : undefined;
-  const page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number }>(client, "/commodore/transcript", withLanguage({ commodoreId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) })).catch(() => null);
-  if (!page) return;
+  let page: { readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number };
+  try {
+    page = await post<{ readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number }>(client, "/commodore/transcript", withLanguage({ commodoreId, limit: TRANSCRIPT_PAGE, ...(before !== undefined ? { before } : {}) }));
+  } catch (error) {
+    const code = error instanceof Error && /^[a-z0-9_]{1,64}$/.test(error.message) ? error.message : "failed";
+    setTheater(commodoreId, { transcriptLoaded: true, transcriptError: code });
+    return;
+  }
   if (page.clearedThrough < (theaters.get(commodoreId)?.clearedThrough ?? 0)) return;
   setTheater(commodoreId, { clearedThrough: page.clearedThrough });
   const latest = theaters.get(commodoreId) ?? EMPTY;
   if (options.older && !options.reset) {
     const known = new Set(latest.entries.map((entry) => entry.seq));
-    setTheater(commodoreId, { entries: [...page.entries.filter((entry) => !known.has(entry.seq)), ...latest.entries], hasMore: page.hasMore, transcriptLoaded: true });
+    setTheater(commodoreId, { entries: [...page.entries.filter((entry) => !known.has(entry.seq)), ...latest.entries], hasMore: page.hasMore, transcriptLoaded: true, transcriptError: null });
     return;
   }
   const tail = latest.transcriptLoaded ? latest.entries.filter((entry) => entry.seq > (page.entries.at(-1)?.seq ?? -1)) : [];
-  setTheater(commodoreId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, ...(options.reset ? { live: [] } : {}) });
+  setTheater(commodoreId, { entries: [...page.entries, ...tail], hasMore: page.hasMore, transcriptLoaded: true, transcriptError: null, ...(options.reset ? { live: [] } : {}) });
 }
 
 /** 호스트의 채팅 턴 렌더러 — Objective 채팅과 같은 컴포넌트다. 설치 전이면 null. */
@@ -400,6 +408,12 @@ const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
 
 export function readCommodore(commodoreId: string | null): TheaterCommodore {
   return commodoreId ? theaters.get(commodoreId) ?? EMPTY_VIEW_SNAPSHOT : EMPTY_VIEW_SNAPSHOT;
+}
+
+/** 기록을 아직 못 받았거나 지난 시도가 실패했으면 다시 불러온다. 실패는 로딩을 끝내되 다음 열기에서 재시도한다. */
+export function transcriptNeeded(commodoreId: string): boolean {
+  const current = readCommodore(commodoreId);
+  return !current.transcriptLoaded || current.transcriptError !== null;
 }
 
 export function useCommodore(commodoreId: string | null): TheaterCommodore {

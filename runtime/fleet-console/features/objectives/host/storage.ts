@@ -458,6 +458,7 @@ export function createObjectiveStorage(deps: {
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_index_unreadable"}; original preserved`);
       for (const row of deletions) for (const id of row.objectiveIds) scope.unreadable.add(id);
+      return { touched: imported.touched, groupIds: imported.groupIds };
     }
     return { touched: imported.touched, groupIds: imported.groupIds };
   }
@@ -630,11 +631,14 @@ export function createObjectiveStorage(deps: {
     }) : source.deletionTombstones;
     return changed ? { ...source, ...(Array.isArray(theaters) ? { theaters } : {}), ...(Array.isArray(deletionTombstones) ? { deletionTombstones } : {}) } : source;
   }
+  function ownerTheaterIds(owner: ObjectiveOwner): readonly string[] {
+    return [owner.legacyTheaterId, ...(owner.legacyTheaterIds ?? [])];
+  }
   function ownerOfTheater(theaterId: string): string | undefined {
-    return deps.owners().find((owner) => owner.legacyTheaterId === theaterId)?.commodoreId;
+    return deps.owners().find((owner) => ownerTheaterIds(owner).includes(theaterId))?.commodoreId;
   }
   function heldTheaters(): Set<string> {
-    const held = new Set(deps.owners().filter((owner) => unavailableOwners.has(owner.commodoreId)).map((owner) => owner.legacyTheaterId));
+    const held = new Set(deps.owners().filter((owner) => unavailableOwners.has(owner.commodoreId)).flatMap((owner) => ownerTheaterIds(owner)));
     for (const scope of scopes.values()) {
       for (const row of scope.archive.quarantine ?? []) if (row.location.includes("deletions[")) {
         if (row.theaterId) held.add(row.theaterId);

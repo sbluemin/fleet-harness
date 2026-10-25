@@ -32,6 +32,7 @@ import {
   loadTranscript,
   noteCommodoreLanguage,
   readCommodore,
+  transcriptNeeded,
   removeCommodoreIntel,
   retryCommodore,
   saveCommodoreDirective,
@@ -159,7 +160,7 @@ function commodorePillStatus(t: T, view: CommodoreView | null): string {
  * — 맨 위 사령관 상태 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
  */
 function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly commodoreId: string | null; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const board = useObjectiveTheater(commodoreId);
@@ -171,6 +172,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const trimMemory = useCallback((length: number) => setMemoryTrail((trail) => trail.slice(0, length)), []);
   useEffect(() => { if (!panel || tab !== "memory") setMemoryTrail([]); }, [panel, tab]);
   const [failure, setFailure] = useState<string | null>(null);
+  const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
   const pillStatus = commodorePillStatus(t, view);
   useEffect(() => {
@@ -188,7 +190,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
     if (!enabled) return;
     if (!commodoreId) return;
     void loadCommodore(commodoreId);
-    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+    if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId, enabled]);
   useEffect(() => { setFailure(null); }, [tab, panel]);
 
@@ -229,7 +231,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
             <CommodoreStatusRow t={t} theaterId={theaterId} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
-          {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
@@ -247,7 +249,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
           hasMore={hasMore}
           loaded={transcriptLoaded}
           online={online}
-          failure={failure}
+          failure={shownFailure}
           onFail={fail}
           onClear={clear}
           onOpenLog={openLog}

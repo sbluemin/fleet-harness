@@ -88,6 +88,8 @@ const channels: Record<string, LegacyImportResult["events"][number]["channel"]> 
   "operation:archived": "objective:archived", "operation:restored": "objective:restored", "operation:deleted": "objective:deleted", "operation:purged": "objective:purged",
   "objective:archived": "objective:archived", "objective:restored": "objective:restored", "objective:deleted": "objective:deleted", "objective:purged": "objective:purged",
 };
+/** 드라이브 문자나 UNC 접두가 있는 경로만 Windows 경로다. path.win32.isAbsolute는 POSIX "/x"도 참이다. */
+const isWindowsPath = (value: string) => /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
 const segment = (id: string) => /^[a-zA-Z0-9_-]{1,200}$/.test(id);
 
 function sameCwd(left: string, right: string): boolean {
@@ -95,7 +97,7 @@ function sameCwd(left: string, right: string): boolean {
   const a = slash(left);
   const b = slash(right);
   // win32 경로는 드라이브 문자만이 아니라 전체 대소문자를 접는다. POSIX 경로는 구분한다.
-  if (path.win32.isAbsolute(left) || path.win32.isAbsolute(right)) return a.toLowerCase() === b.toLowerCase();
+  if (isWindowsPath(left) && isWindowsPath(right)) return a.toLowerCase() === b.toLowerCase();
   return a === b;
 }
 function legacyNames(cwd: string): readonly string[] {
@@ -178,12 +180,12 @@ function copyTree(source: string, target: string): void {
 
 interface RecordHit { node: ReturnType<typeof sanitizeObjectiveRecord>; archived?: { archiveId: string; archivedAt: number }; deleted?: { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; groups?: readonly object[] }; purged?: { eventId: string; sessionIds: readonly string[] } }
 
-function collect(previousRaw: Record<string, unknown>, archive: unknown, theaterId: string): Map<string, RecordHit> {
+function collect(previousRaw: Record<string, unknown>, archive: unknown, theaterIds: ReadonlySet<string>): Map<string, RecordHit> {
   const hits = new Map<string, RecordHit>();
   const take = (value: unknown, extra?: Partial<RecordHit>) => {
     const renamed = renameKeys(value);
     const node = sanitizeObjectiveRecord(object(renamed) ? { ...renamed, id: renamed.id ?? renamed.operationId } : renamed);
-    if (!node || node.theaterId !== theaterId || !segment(node.id)) return;
+    if (!node || !theaterIds.has(node.theaterId) || !segment(node.id)) return;
     const prior = hits.get(node.id);
     hits.set(node.id, { node, ...prior, ...extra });
   };
@@ -229,10 +231,11 @@ export function importMissingObjectives(deps: {
   accept: (value: unknown) => ObjectiveDocument;
   warn: (message: string) => void;
 }): LegacyImportResult {
+  const empty = { documents: [], groups: [], entries: [], deletions: [], events: [], quarantine: [], touched: [], groupIds: [] };
   const ledger = readLedger(deps.owner.directory);
   if (!ledger.ok) {
     deps.warn(`[objectives] owner ${deps.owner.commodoreId}: imported.json unreadable; import skipped`);
-    return { documents: [], groups: [], entries: [], deletions: [], events: [], quarantine: [], touched: [], groupIds: [] };
+    return empty;
   }
   const pending = readPendingIndex(deps.owner.directory);
   const touched = new Set<string>(ledger.ids);
@@ -257,7 +260,8 @@ export function importMissingObjectives(deps: {
     try { archive = JSON.parse(fs.readFileSync(archiveFile, "utf8")); }
     catch { warnOnce(archiveFile, `[objectives] operations-archive.json: unreadable; original preserved`); }
   }
-  const records = collect(deps.previousRaw, archive, deps.owner.legacyTheaterId);
+  const theaterIds = new Set([deps.owner.legacyTheaterId, ...(deps.owner.legacyTheaterIds ?? [])].filter((id) => id.length > 0));
+  const records = collect(deps.previousRaw, archive, theaterIds);
   const names = new Set<string>(legacyNames(deps.owner.legacyCwd));
   try { for (const name of workspaceDirectoryNames(deps.owner.legacyCwd)) names.add(name); } catch { /* 경로를 정규화하지 못한 cwd도 옛 이름으로 찾는다. */ }
   const trees: { dir: string; whole: boolean; name: string }[] = [];
@@ -310,7 +314,7 @@ export function importMissingObjectives(deps: {
         } catch { /* 본문 판정 실패는 복사 단계에서 격리한다. */ }
       }
       const hit = records.get(id);
-      const owned = tree.whole || bodyTheater === deps.owner.legacyTheaterId || hit?.node?.theaterId === deps.owner.legacyTheaterId;
+      const owned = tree.whole || (bodyTheater !== undefined && theaterIds.has(bodyTheater)) || (hit?.node != null && theaterIds.has(hit.node.theaterId));
       if (!owned) {
         const bytes = exists(file) ? fs.readFileSync(file) : Buffer.from(id);
         quarantine.push({ id, sourceHash: hashOf(bytes), location: file, reason: "legacy_unattributed" });
@@ -369,7 +373,7 @@ export function importMissingObjectives(deps: {
     }
   }
   const attributedGroups = Array.isArray(deps.previousRaw.groups) ? deps.previousRaw.groups.flatMap((row) => {
-    if (!object(row) || row.theaterId !== deps.owner.legacyTheaterId || typeof row.id !== "string" || !segment(row.id)) return [];
+    if (!object(row) || typeof row.theaterId !== "string" || !theaterIds.has(row.theaterId) || typeof row.id !== "string" || !segment(row.id)) return [];
     const { commodoreId: _owner, ...group } = row;
     return [group as Omit<DurableObjectiveGroup, "commodoreId">];
   }) : [];
