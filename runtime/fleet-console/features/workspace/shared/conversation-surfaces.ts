@@ -78,6 +78,8 @@ export interface ConversationSurfaceDescriptor {
    * 묶음 대화(`ObjectiveCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
    */
   readonly standInObjectiveId?: (ctx: ConversationSurfaceContext) => string | null;
+  /** 목표 대화를 대신하는 표면의 소유 사령관. 도구 작업대는 그 사령관과 공유한다. */
+  readonly commodoreId?: (ctx: ConversationSurfaceContext) => string | null;
   /**
    * 이 대화의 에이전트 세션이 쓰는 플릿 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
    * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Objective 대화와 같은 지구본을 세우고, 누르면 이 플러그인 id 와

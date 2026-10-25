@@ -813,14 +813,12 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
-    // 소유 Theater A와 무관하게 등록된 B는 열되 미등록 C·심볼릭 링크 탈출은 닫힌다.
-    const location = await fetch(`${origin}/api/v1/conversation-workbench/location?objectiveId=fixed-b`);
-    expect(location.status).toBe(200);
-    expect(await location.json()).toMatchObject({ location: { theaterId: workspaceHash(registered), label: "B" } });
+    // 명시적인 목표 파일 요청은 등록된 B를 열되 미등록 C·심볼릭 링크 탈출은 닫힌다.
+    const filesInB = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
+      method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId: "fixed-b", relativePath: "" }),
+    });
+    expect(filesInB.status).toBe(200);
     for (const objectiveId of ["outside-c", "escaped"]) {
-      const unavailable = await fetch(`${origin}/api/v1/conversation-workbench/location?objectiveId=${objectiveId}`);
-      expect(unavailable.status).toBe(404);
-      expect(await unavailable.json()).toEqual({ error: "unavailable" });
       const files = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
         method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId, relativePath: "" }),
       });

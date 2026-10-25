@@ -167,6 +167,7 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
   subscribe: (listener) => subscribeObjectiveOrFinished(listener),
   // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 오른쪽 패널은 진행 중 Objective 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
   standInObjectiveId: (ctx) => objectiveIdOf(ctx.params),
+  commodoreId: (ctx) => findObjective(objectiveIdOf(ctx.params))?.commodoreId ?? null,
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
     return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} theaterId={theaterIdOf(ctx.params)} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;

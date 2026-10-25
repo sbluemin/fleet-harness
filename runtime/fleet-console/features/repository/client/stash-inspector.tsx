@@ -130,7 +130,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
       </div>
       </div>} main={<div className="repository-stash-diff">
         {selectedFile ? <><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div>
-          {ctx.theaterId || ctx.conversation?.objectiveId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId ?? "", ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}), repoRel, fullHash: stash.sha }} emptyDiffMessage={t("repository.stash.untrackedPreview")} /> : null}
+          {ctx.theaterId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId, repoRel, fullHash: stash.sha }} emptyDiffMessage={t("repository.stash.untrackedPreview")} /> : null}
         </> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
       </div>} />
       {onAction && <div className="repository-stash-inspector-actions">

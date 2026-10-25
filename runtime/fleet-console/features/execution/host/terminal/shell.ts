@@ -53,11 +53,11 @@ export interface ShellSessionState {
 export const SHELL_SESSION_EVENT_CHANNEL = "terminal:shell-session";
 
 /**
- * Shell은 Objective이 아니다 — 대화(사령관·지휘관·일반 Objective)마다 하나씩 붙는 Console 표면이다.
+ * Shell은 Objective이 아니다 — 사령관과 그 목표·구성원 화면이 하나를 공유하는 Console 표면이다.
  *
  * 세션 키는 Objective id가 아니라 대화 키에서 지은 이름이다. 기본 키(`console`)는 옛 전역 Shell 과 같은 상수 세션을
  * 쓰므로 폰 배치와 키 없는 옛 호출은 그대로 한 Shell 을 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도
- * 죽고, 복원할 휴면 상태라는 것 자체가 없다 — 다시 열면 그 대화의 작업 위치에서 새로 선다.
+ * 죽고, 복원할 휴면 상태라는 것 자체가 없다 — 다시 열면 사령관의 Theater 루트에서 새로 선다.
  */
 const GLOBAL_SHELL_SESSION_ID = "console-shell";
 const DEFAULT_SHELL_KEY = "console";
@@ -65,7 +65,7 @@ const GLOBAL_SHELL_OBJECTIVE_TYPE = "shell";
 const SHELL_INTEGRATION_DIR = "shell-integration";
 /** 재시작이 옛 PTY 자식의 실제 종료를 기다리는 상한. 넘겨도 새 PTY는 세션 매니저의 옛-필자 관문이 막는다. */
 const SHELL_RESTART_EXIT_WAIT_MS = 5_000;
-/** 동시에 둘 수 있는 Shell 수 — 대화마다 하나지만 끝없이 늘지는 않게. */
+/** 동시에 둘 수 있는 Shell 수 — 도구 키마다 하나지만 끝없이 늘지는 않게. */
 const MAX_SHELLS = 24;
 const SHELL_KEY_MAX_LENGTH = 320;
 
@@ -458,6 +458,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
 
   /**
    * 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다.
+   * objectiveId는 목표 파일 링크에서 명시적으로 「Shell에서 열기」를 누르는 경로에 남는다. 대화 도구의 자동 위치는 Theater 루트다.
    * 이미 핀된 Shell은 호출자가 다시 열어도 여기로 오지 않는다 — 살아 있는 Shell을 옮기지 않는다.
    */
   function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {

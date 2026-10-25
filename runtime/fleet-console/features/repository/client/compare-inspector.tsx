@@ -82,7 +82,7 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
   const additions = state.kind === "ok" ? state.files.reduce((sum, file) => sum + file.additions, 0) : 0;
   const deletions = state.kind === "ok" ? state.files.reduce((sum, file) => sum + file.deletions, 0) : 0;
   const loadedPair = state.kind === "ok" ? state.pair : pair;
-  const compareSelection = useMemo(() => ctx.theaterId || ctx.conversation?.objectiveId ? { base: loadedPair.base, head: loadedPair.head, theaterId: ctx.theaterId ?? "", ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}), repoRel } : null, [ctx.conversation?.objectiveId, ctx.theaterId, loadedPair.base, loadedPair.head, repoRel]);
+  const compareSelection = useMemo(() => ctx.theaterId ? { base: loadedPair.base, head: loadedPair.head, theaterId: ctx.theaterId, repoRel } : null, [ctx.theaterId, loadedPair.base, loadedPair.head, repoRel]);
   const empty = state.kind === "loading"
     ? t("repository.compare.comparing")
     : state.kind === "notice"

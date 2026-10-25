@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 
 /**
  * 서버가 말하는 Shell 상태(`GET /api/v1/shell/session?shell=<key>`과 같은 모양). 절대 경로는 없다 — cwd는
- * 그것을 품은 등록 Theater와 그 안의 상대 경로로만 온다. Shell 은 대화마다 하나이고 `key`가 그 대화다.
+ * 그것을 품은 등록 Theater와 그 안의 상대 경로로만 온다. `key`는 사령관과 그 목표·구성원 화면이 공유하는 도구 키다.
  */
 export interface ShellSessionState {
   readonly key: string;

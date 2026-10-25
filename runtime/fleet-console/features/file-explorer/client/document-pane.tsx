@@ -75,7 +75,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
-  const objectiveId = ctx.params.objectiveId ?? ctx.conversation?.objectiveId;
+  const objectiveId = ctx.params.objectiveId;
   // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
   const conversationKey = ctx.conversation?.key ?? null;
   useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
@@ -842,7 +842,7 @@ export function FileExplorerDocumentCaptionActions(ctx: PaneContext) {
           busy
           onClick={() => {
             if (!activePath) return;
-            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...((ctx.params.objectiveId ?? ctx.conversation?.objectiveId) ? { objectiveId: ctx.params.objectiveId ?? ctx.conversation?.objectiveId } : {}) });
+            void loadDocument(ctx.theaterId, activePath, { silent: true, language: ctx.language, signal: ctx.signal, ...(ctx.params.objectiveId ? { objectiveId: ctx.params.objectiveId } : {}) });
           }}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">

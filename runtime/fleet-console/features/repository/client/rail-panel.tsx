@@ -153,7 +153,7 @@ function mapSharedVerbError(code: string, t: T): string | null {
 }
 
 export function RepositoryPanel({ ctx }: RepositoryPanelProps) {
-  // 대화의 작업 위치가 바뀌면 그 위치의 작업 트리로 다시 선다(대화마다 선택이 따로다).
+  // 사령관의 작업 위치가 바뀌면 그 위치의 작업 트리로 다시 선다. 목표·구성원 화면에서는 그대로 유지한다.
   return <RepositoryPanelBody key={`${ctx.theaterId}|${conversationRelOf(ctx) ?? ""}`} ctx={ctx} />;
 }
 
@@ -161,7 +161,6 @@ export function RepositoryPanel({ ctx }: RepositoryPanelProps) {
 function conversationRelOf(ctx: RepositoryContext): string | null {
   const location = ctx.conversation?.location;
   if (!location) return null;
-  if (ctx.conversation?.objectiveId) return location.relative;
   return location.theaterId === ctx.theaterId ? location.relative : null;
 }
 
