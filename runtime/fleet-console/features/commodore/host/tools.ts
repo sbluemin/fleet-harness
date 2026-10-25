@@ -250,7 +250,8 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const walked = await walkFiles(dir, context.signal, async (file, size) => {
         if (!matcher(path.relative(dir, file).split(path.sep).join("/"))) return true;
         if (size > MAX_SEARCH_FILE_BYTES) { skipped += 1; return true; }
-        const buffer = await fs.promises.readFile(file).catch(() => null);
+        const buffer = await fs.promises.readFile(file, { signal: context.signal }).catch(() => null);
+        if (context.signal?.aborted) throw new Error("timeout");
         if (!buffer || buffer.includes(0)) { skipped += 1; return true; }
         const lines = buffer.toString("utf8").split(/\r?\n/);
         for (let index = 0; index < lines.length; index += 1) {
@@ -325,7 +326,7 @@ const relativePath = (realRoot: string, file: string) => path.relative(realRoot,
 
 /**
  * 폴더 아래 일반 파일을 이름 순으로 훑는다 — 심볼릭 링크는 파일이든 폴더든 따라가지 않으므로 Theater 밖으로 나가지 않는다.
- * visit 가 false 를 돌려주면 멈춘다(stopped). 살펴본 항목이 상한에 닿으면 멈춘다(limited).
+ * visit 가 false 를 돌려주면 멈춘다(stopped). 살펴본 항목이 상한에 닿으면 멈춘다(limited). 턴이 취소되면 항목마다 확인해 곧바로 멈춘다.
  */
 async function walkFiles(dir: string, signal: AbortSignal | undefined, visit: (file: string, size: number) => boolean | Promise<boolean>): Promise<{ readonly stopped: boolean; readonly limited: boolean }> {
   let seen = 0;
@@ -337,6 +338,7 @@ async function walkFiles(dir: string, signal: AbortSignal | undefined, visit: (f
     dirents.sort((a, b) => a.name.localeCompare(b.name));
     const children: string[] = [];
     for (const entry of dirents) {
+      if (signal?.aborted) throw new Error("timeout");
       if (++seen > MAX_WALK_ENTRIES) return { stopped: false, limited: true };
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) { if (!WALK_SKIP_DIRS.has(entry.name)) children.push(full); continue; }
