@@ -49,7 +49,7 @@ interface Transaction {
   documents: readonly ObjectiveDocument[]; groups: readonly Group[]; archive: Archive;
   state: DurableConsoleState; purgeIds: readonly string[];
 }
-interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string>; journalDeferred?: boolean; indexUnread?: boolean }
+interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string>; journalDeferred?: boolean; indexUnread?: boolean; unmerged?: boolean }
 const emptyArchive = (): Archive => ({ revision: 0, entries: [], deletions: [], events: [] });
 const failure = () => new ObjectiveArchiveError(503, "archive_recovery_required");
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
@@ -548,7 +548,8 @@ export function createObjectiveStorage(deps: {
   function assertReady(): void { if (!ready || blocked) throw failure(); }
   const retryNotBefore = new Map<string, number>();
   const retryAfterMs = 30_000;
-  function held(scope: Scope): boolean { return scope.indexUnread === true || scope.journalDeferred === true; }
+  const failedAtLoad = new Set<string>();
+  function held(scope: Scope): boolean { return scope.indexUnread === true || scope.journalDeferred === true || scope.unmerged === true; }
   function scopeOf(commodoreId: string): Scope {
     assertReady();
     if (unavailableOwners.has(commodoreId)) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
@@ -559,6 +560,8 @@ export function createObjectiveStorage(deps: {
     if (existing && !(existing.indexUnread && Date.now() >= (retryNotBefore.get(commodoreId) ?? 0))) return existing;
     try {
       const scope = readScope(owner);
+      // 기동 스냅샷에 없던 owner를 저장 계획에 넣으면 레지스트리가 모르는 활성 목표가 purge된다. 재시작 전까지 읽기만 한다.
+      if (failedAtLoad.has(commodoreId)) scope.unmerged = true;
       scopes.set(commodoreId, scope);
       retryNotBefore.delete(commodoreId);
       return scope;
@@ -712,8 +715,18 @@ export function createObjectiveStorage(deps: {
         ...(scope.archive.unavailable?.length ? { unavailable: scope.archive.unavailable } : {}),
         ...(scope.archive.quarantine?.length ? { quarantine: scope.archive.quarantine } : {}),
       });
-      const transaction: Transaction = { documents: [...documents.values()], groups: (next.groups ?? []).filter((group) => group.commodoreId === commodoreId).map(withoutOwner), archive, state: registration,
-        purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id)) };
+      const knownIds = new Set([
+        ...state.objectiveRecords.filter((node) => node.commodoreId === commodoreId).map((node) => node.id),
+        ...(state.deletionTombstones ?? []).flatMap((row) => deletionObjectiveRecords(row).filter((node) => node.commodoreId === commodoreId).map((node) => node.id)),
+        ...scope.archive.entries.map((row) => row.objectiveId),
+        ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
+      ]);
+      const knownGroupIds = new Set((state.groups ?? []).filter((group) => group.commodoreId === commodoreId).map((group) => group.id));
+      const nextGroups = (next.groups ?? []).filter((group) => group.commodoreId === commodoreId).map(withoutOwner);
+      const transaction: Transaction = { documents: [...documents.values()],
+        groups: [...nextGroups, ...scope.groups.filter((group) => !knownGroupIds.has(group.id) && !nextGroups.some((nextGroup) => nextGroup.id === group.id))],
+        archive, state: registration,
+        purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id) && knownIds.has(id)) };
       return { scope, transaction, id: "" };
     }).filter(({ scope, transaction }) => {
       // 읽기에서 복구한 cwd·행위자는 메모리 뷰다. 다른 owner의 저장이 원문 확정 쓰기가 되면 안 된다.
@@ -737,7 +750,7 @@ export function createObjectiveStorage(deps: {
     assertReady(); const consumed = new Set(ids);
     try {
       for (const scope of scopes.values()) {
-        if (scope.journalDeferred || scope.indexUnread) continue;
+        if (held(scope)) continue;
         const archive = { ...scope.archive, events: scope.archive.events.filter((event) => !consumed.has(event.eventId)) };
         if (isDeepStrictEqual(scope.archive, archive)) continue;
         archiveStore(scope).save(archive); scope.archive = archive;
@@ -769,6 +782,7 @@ export function createObjectiveStorage(deps: {
     try {
       const raw = exists(deps.stateStore.path) ? readJson(deps.stateStore.path) : { version: STATE_VERSION, theaters: [] };
       if (!object(raw)) throw failure();
+      failedAtLoad.clear();
       previousRaw = raw; state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
       deps.initializeOwners?.(readRegistrations(state));
       const failedOwners = new Set<string>();
@@ -776,6 +790,7 @@ export function createObjectiveStorage(deps: {
         try { const scope = readScope(owner); scopes.set(owner.commodoreId, scope); }
         catch (error) {
           failedOwners.add(owner.commodoreId);
+          failedAtLoad.add(owner.commodoreId);
           console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
         }
       }

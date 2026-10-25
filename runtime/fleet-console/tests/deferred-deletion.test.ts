@@ -366,6 +366,22 @@ describe("Objective archive persistence and deletion", () => {
         expect(fs.readFileSync(archiveFile, "utf8")).toBe(beforeHeld);
         expect(JSON.parse(fs.readFileSync(path.join(otherDir, "kept", "objective.json"), "utf8")).title).toBe("saved while neighbor held");
       } finally { blockHeld.mockRestore(); }
+      const lateFile = path.join(path.dirname(archiveFile), "added", "objective.json");
+      const lateBytes = fs.readFileSync(lateFile);
+      const late = createObjectiveStorage({ directory, stateStore: pairedStore, owners: () => [
+        { directory: path.dirname(archiveFile), commodoreId: "c1", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id },
+        { directory: otherDir, commodoreId: "c2", legacyTheaterId: "t2", legacyCwd: directory, theaterIdOf: () => THEATER.id },
+      ] });
+      const failLate = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return openHeld(...args);
+      });
+      let lateLoaded: DurableConsoleState;
+      try { lateLoaded = late.load(); } finally { failLate.mockRestore(); }
+      expect(late.board.list("c1").map((row) => row.id)).toContain("added");
+      expect(() => late.board.save("c1", { id: "during-late", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
+      late.save({ ...lateLoaded, objectiveRecords: lateLoaded.objectiveRecords.filter((node) => node.commodoreId !== "c1").map((node) => node.id === "kept" ? { ...node, title: "saved after neighbor recovered" } : node) });
+      expect(fs.readFileSync(lateFile)).toEqual(lateBytes);
     });
   });
 
