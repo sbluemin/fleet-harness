@@ -13,6 +13,10 @@ import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommo
 import { CommodoreTheaterTab } from "../../../../../features/commodore/client/commodore-theater-tab.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
+import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
+import { commodoreAvatarKey, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
+import { setMongleLook, useMongleLook } from "../../../../../features/workspace/client/avatar-events.js";
+import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
@@ -196,24 +200,35 @@ function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly 
 
 function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
   const t = useT();
+  const locale = useConsoleLocale() === "ko" ? "ko" : "en";
+  const look = useMongleLook(commodoreAvatarKey(commodoreId));
   const [value, setValue] = useState(alias);
+  const [base, setBase] = useState(look.base);
+  const [tone, setTone] = useState<IdentityTone | null>(look.tone);
+  const [preview, setPreview] = useState<MongleAvatarPreviewState>("idle");
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
+  const lookChanged = base !== look.base || tone !== look.tone;
   const save = () => {
     if (saving) return;
     const next = commodoreAliasEditor.clamp(value).trim();
     const saved = next.length > 0 ? next : null;
-    if (saved === (alias || null)) { onClose(); return; }
+    const nameChanged = saved !== (alias || null);
+    if (!nameChanged && !lookChanged) { onClose(); return; }
     setSaving(true);
-    void commodoreAliasEditor.save(commodoreId, saved)
-      .then(() => { void refreshCommodoreList(); closeMobileSheets(); showMobileToast(t(saved === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
-      .catch(() => setSaving(false));
+    void (async () => {
+      if (nameChanged) await commodoreAliasEditor.save(commodoreId, saved);
+      if (lookChanged) {
+        const wrote = await setMongleLook(commodoreAvatarKey(commodoreId), base, tone);
+        if (!wrote) throw new Error("avatar");
+      }
+      void refreshCommodoreList();
+      closeMobileSheets();
+      showMobileToast(t(saved === null && nameChanged ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved"));
+    })().catch(() => setSaving(false));
   };
   return (
-    <MobileSheet title={t("sidebar.commodore.appearance")} onClose={onClose} footer={<>
-      <button type="button" className="mobile-pill-secondary" onClick={onClose}>{t("mobile.sheet.cancel")}</button>
-      <button type="button" className="mobile-pill-secondary is-inverse" onClick={save} disabled={saving}>{t("mobile.sheet.save")}</button>
-    </>}>
+    <MobileSheet title={t("sidebar.commodore.appearance")} onClose={onClose}>
       <input
         className="mobile-field"
         value={value}
@@ -224,6 +239,34 @@ function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly 
         onCompositionEnd={(event) => { composingRef.current = false; setValue(commodoreAliasEditor.clamp(event.currentTarget.value)); }}
         onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
         autoFocus
+      />
+      <MongleAvatarPicker
+        role="commodore"
+        base={base}
+        tone={tone}
+        previewState={preview}
+        locale={locale}
+        dirty={value.trim() !== alias.trim() || lookChanged}
+        busy={saving}
+        labels={{
+          heading: t("sidebar.commodore.shape"),
+          reroll: t("avatar.editor.reroll"),
+          reset: t("avatar.editor.reset"),
+          preview: t("avatar.editor.preview"),
+          cancel: t("mobile.sheet.cancel"),
+          apply: t("mobile.sheet.save"),
+          toneGroup: t("avatar.editor.toneGroup"),
+          baseGroup: t("avatar.editor.baseGroup"),
+          states: { running: t("avatar.state.running"), awaiting: t("avatar.state.awaiting"), unseen: t("avatar.state.unseen"), idle: t("avatar.state.idle"), ended: t("avatar.state.ended") },
+          tones: { cerulean: t("avatar.tone.cerulean"), teal: t("avatar.tone.teal"), amber: t("avatar.tone.amber"), plum: t("avatar.tone.plum"), rose: t("avatar.tone.rose"), moss: t("avatar.tone.moss"), indigo: t("avatar.tone.indigo"), crimson: t("avatar.tone.crimson") },
+        }}
+        onBase={setBase}
+        onTone={setTone}
+        onPreviewState={setPreview}
+        onReroll={() => setBase(pickMongleBase(new Set([base])))}
+        onReset={() => { setBase(look.origin); setTone(null); }}
+        onCancel={onClose}
+        onApply={save}
       />
     </MobileSheet>
   );

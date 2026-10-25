@@ -66,7 +66,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     ownerOfContext,
     open(commodoreId, options) {
       const theaterId = contextsOf(commodoreId)[0] ?? null;
-      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", theaterId); return true; }
+      // 폰 화면의 문맥은 기억된 Theater가 아니라 사령관 UUID다. 빠진 Theater 이름이 부제로 남지 않는다.
+      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", commodoreId); return true; }
       if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(commodoreId, options);
       openCommodoreLog(commodoreId, theaterId); return true;
     },

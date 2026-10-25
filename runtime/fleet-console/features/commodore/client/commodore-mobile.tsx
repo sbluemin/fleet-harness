@@ -22,6 +22,7 @@ import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
 import { CommodoreComposer, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
@@ -115,11 +116,19 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const enabled = useCommodoreEnabled();
   const known = useCommodoreExperimentKnown();
   const theaterId = ctx.theaterId ?? "";
-  const commodoreId = useCommodoreOwner(theaterId || null);
+  // 칩에서 고른 사령관이 화면의 주인이다. 목적지 theaterId는 예전 문맥(빠진 Theater)일 수 있다.
+  const selectedCommodoreId = useMobileCommodoreSelection();
+  const contextOwner = useCommodoreOwner(theaterId || null);
+  const commodoreId = selectedCommodoreId ?? contextOwner;
   const { mobileBar, visible } = ctx;
   if (ctx.language) noteCommodoreLanguage(ctx.language);
-  const title = useCommodoreName(theaterId, t);
-  const theaterLabel = useCommodoreTheaterLabel(theaterId);
+  const ownerTitle = useCommodoreOwnerName(commodoreId ?? "", t);
+  const contextTitle = useCommodoreName(theaterId, t);
+  const title = commodoreId ? ownerTitle : contextTitle;
+  const listed = useCommodoreList();
+  const ownedTheaterLabel = commodoreId ? listed.find((row) => row.commodoreId === commodoreId)?.theaters.find((theater) => theater.label)?.label ?? "" : "";
+  const contextLabel = useCommodoreTheaterLabel(theaterId);
+  const theaterLabel = ownedTheaterLabel || (commodoreId ? "" : contextLabel);
 
   // 사령관 화면이 서면 막대는 그 화면이 올린다(대화 pill · 칩 화면 제목). 그 밖(꺼짐·Theater 없음)은 제목과 지금 Theater 이름뿐이다.
   const screen = !(known && !enabled) && theaterId !== "";
