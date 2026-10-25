@@ -142,6 +142,8 @@ export interface TheaterContribution {
 export interface TheaterFace {
   readonly state: MongleState;
   readonly off: boolean;
+  /** 저장된 몽글 키. 없으면 호스트가 Theater id 키를 쓴다. */
+  readonly avatarKey?: string;
 }
 
 

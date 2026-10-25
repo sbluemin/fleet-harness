@@ -134,7 +134,7 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
           const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
           return (
             <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
-              <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); closeMobileSheets(); }}>
+              <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; if (home) setMobileListTheaterId(home); closeMobileSheets(); }}>
                 <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
               </button>
               <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>

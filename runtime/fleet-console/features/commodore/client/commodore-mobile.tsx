@@ -1,5 +1,5 @@
 import { openOwnedObjectiveOnPhone } from "./board.js";
-import { useCommodoreName, useCommodoreOwnerName } from "./commodore-name.js";
+import { useCommodoreOwnerName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -43,7 +43,6 @@ import {
   setCommodorePatrol,
   subscribeCommodore,
   useCommodore,
-  useCommodoreOwner,
   ownerOfContext,
   useCommodoreEnabled,
   useCommodoreExperimentKnown,
@@ -52,7 +51,6 @@ import {
   useCommodoreMobileTab,
   useCommodoreMobilePanelRequest,
   useCommodoreOnline,
-  useCommodoreTheaterLabel,
   type CommodoreMobileTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -115,30 +113,31 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const enabled = useCommodoreEnabled();
   const known = useCommodoreExperimentKnown();
-  const theaterId = ctx.theaterId ?? "";
-  // 칩에서 고른 사령관이 화면의 주인이다. 목적지 theaterId는 예전 문맥(빠진 Theater)일 수 있다.
+  const addressedTheaterId = ctx.theaterId ?? "";
+  // 화면의 주인은 칩에서 고른 사령관이다. 최근에 연 Theater(미소속 포함)는 문맥이 아니다.
   const selectedCommodoreId = useMobileCommodoreSelection();
-  const contextOwner = useCommodoreOwner(theaterId || null);
-  const commodoreId = selectedCommodoreId ?? contextOwner;
+  const listed = useCommodoreList();
+  const ownerOfAddress = listed.find((row) => row.theaters.some((theater) => theater.theaterId === addressedTheaterId))?.commodoreId ?? null;
+  const commodoreId = selectedCommodoreId ?? ownerOfAddress;
   const { mobileBar, visible } = ctx;
   if (ctx.language) noteCommodoreLanguage(ctx.language);
-  const ownerTitle = useCommodoreOwnerName(commodoreId ?? "", t);
-  const contextTitle = useCommodoreName(theaterId, t);
-  const title = commodoreId ? ownerTitle : contextTitle;
-  const listed = useCommodoreList();
-  const ownedTheaterLabel = commodoreId ? listed.find((row) => row.commodoreId === commodoreId)?.theaters.find((theater) => theater.label)?.label ?? "" : "";
-  const contextLabel = useCommodoreTheaterLabel(theaterId);
-  const theaterLabel = ownedTheaterLabel || (commodoreId ? "" : contextLabel);
+  const row = commodoreId ? listed.find((item) => item.commodoreId === commodoreId) ?? null : null;
+  const firstTheaterLabel = row?.theaters.find((theater) => theater.label)?.label ?? "";
+  const fallbackName = t("commodore.name");
+  const title = useCommodoreOwnerName(commodoreId ?? "", t);
+  const named = title !== fallbackName || !commodoreId ? title : (firstTheaterLabel || fallbackName);
+  const theaterLabel = firstTheaterLabel && firstTheaterLabel !== named ? firstTheaterLabel : (!firstTheaterLabel && named !== fallbackName ? fallbackName : "");
 
   // 사령관 화면이 서면 막대는 그 화면이 올린다(대화 pill · 칩 화면 제목). 그 밖(꺼짐·Theater 없음)은 제목과 지금 Theater 이름뿐이다.
-  const screen = !(known && !enabled) && theaterId !== "";
+  const screen = !(known && !enabled) && commodoreId !== null;
   useEffect(() => {
-    if (visible && !screen) mobileBar?.set({ title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), depth: 0 });
-  }, [mobileBar, visible, screen, title, theaterLabel]);
+    if (visible && !screen) mobileBar?.set({ title: named, ...(theaterLabel ? { subtitle: theaterLabel } : {}), depth: 0 });
+  }, [mobileBar, visible, screen, named, theaterLabel]);
 
   if (known && !enabled) return <CommodoreDisabled t={t} />;
-  if (!theaterId) return <div className="objectives-cm" />;
-  return <CommodoreScreen key={commodoreId ?? theaterId} t={t} theaterId={theaterId} commodoreId={commodoreId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={title} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
+  if (!commodoreId) return <div className="objectives-cm" />;
+  const scopeTheaterId = row?.theaters[0]?.theaterId ?? "";
+  return <CommodoreScreen key={commodoreId} t={t} theaterId={scopeTheaterId} commodoreId={commodoreId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={named} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
 }
 
 /** 실험 기능이 꺼진 채 들어온 화면 — 보던 중 꺼지면 호스트가 홈으로 돌려보내므로, 옛 주소로 들어온 순간에만 잠깐 선다. */
@@ -237,7 +236,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
       {panel ? (
         <>
           <div ref={headRef} className="objectives-cm-chrome">
-            <CommodoreStatusRow t={t} theaterId={theaterId} view={view} />
+            <CommodoreStatusRow t={t} commodoreId={commodoreId ?? ""} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
           {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
@@ -308,15 +307,15 @@ function CommodoreMobileTabs({ t, tabs, selected, onSelect }: {
 
 /* ── 사령관 상태 행 ─────────────────────────────────────────────────── */
 
-function CommodoreStatusRow({ t, theaterId, view }: { readonly t: T; readonly theaterId: string; readonly view: CommodoreView | null }) {
-  const board = useObjectiveTheater(useCommodoreOwner(theaterId));
-  const name = useCommodoreName(theaterId, t);
+function CommodoreStatusRow({ t, commodoreId, view }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView | null }) {
+  const board = useObjectiveTheater(commodoreId);
+  const name = useCommodoreOwnerName(commodoreId, t);
   const { meta, patrol } = commodoreSummary(t, view, board.objectives);
   const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : [...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ");
   return (
     <div className="objectives-cm-top">
       <div className="objectives-cm-trow">
-        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
+        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={commodoreId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
         <span className="objectives-cm-trow-tx">
           <b>{name}</b>
           <span className="objectives-cm-trow-ds">{status}</span>

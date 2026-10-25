@@ -1,7 +1,7 @@
 import { useCommodoreName } from "./commodore-name.js";
 import { useEffect } from "react";
 
-import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
 import type { TheaterContribution, TheaterContributionContext } from "../../workspace/shared/surface-contracts.js";
 
 import {
@@ -48,7 +48,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
       const commodoreId = ownerOfContext(theaterId);
       if (!commodoreId) return null;
       const view = readCommodore(commodoreId).view;
-      return { state: commodoreMongleState(view, readTheater(commodoreId).objectives), off: false };
+      return { state: commodoreMongleState(view, readTheater(commodoreId).objectives), off: false, avatarKey: commodoreAvatarKey(commodoreId) };
     },
     selected: isCommodoreConversationSelected,
     live: (theaterId) => readCommodore(ownerOfContext(theaterId)).view?.run.phase === "turn",

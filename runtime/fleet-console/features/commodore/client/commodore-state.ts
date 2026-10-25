@@ -232,7 +232,9 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
   const loadRegistered = () => {
-    for (const theaterId of commodoreTheaterIds()) void resolveContext(theaterId).then((commodoreId) => { if (commodoreId) void loadCommodore(commodoreId); });
+    const owners = new Set<string>();
+    for (const theater of installed?.consoleState.getTheaters() ?? []) if (theater.commodore?.id) owners.add(theater.commodore.id);
+    for (const commodoreId of owners) void loadCommodore(commodoreId);
   };
   let registered = commodoreTheaterIds().join("\0");
   // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 등록 목록이 바뀔 때만 새로 한다.
