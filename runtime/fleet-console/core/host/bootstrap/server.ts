@@ -1528,27 +1528,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
-    locate: (objectiveId) => {
-      const node = consoleFeaturePorts.objectiveRecords.context?.(objectiveId);
-      if (!node) return null;
-      // 폴더 override는 쓰지 않는다. 좌표는 목표 cwd 자신이다(상대 경로는 빈 문자열). 없거나 사라졌으면 unavailable.
-      const cwd = workspacePaths.resolveObjectivePath?.(objectiveId) ?? null;
-      if (!cwd) return "unavailable";
-      let real: string;
-      try {
-        real = fs.realpathSync.native(cwd);
-        if (!fs.statSync(real).isDirectory()) return "unavailable";
-      } catch {
-        return "unavailable";
-      }
-      let kind: "root" | "worktree" | "directory" = "directory";
-      try {
-        kind = fs.statSync(path.join(real, ".git")).isFile() ? "worktree" : "root";
-      } catch {
-        kind = "directory";
-      }
-      return { theaterId: node.theaterId, relative: "", kind, label: path.basename(real) };
-    },
   }));
   routeRegistry.register("/api/v1/theaters", async (context) => {
     return false;

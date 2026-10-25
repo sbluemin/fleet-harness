@@ -356,7 +356,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
   const changesWidth = useSeamContainerSize(changesRef, "width", tab === "changes" || tab === "tree");
   // 남겨 둔 본문이 옛 커밋의 것이면 파일 diff·트리·blob도 옛 커밋을 향한다 — 새 해시로 옛 경로를 조회하면 빈 diff가 잠깐 그려진다.
   const loadedHash = state.kind === "ok" ? state.fullHash : target.fullHash;
-  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", ...(ctx.conversation?.objectiveId ? { objectiveId: ctx.conversation.objectiveId } : {}), repoRel }), [loadedHash, ctx.theaterId, ctx.conversation?.objectiveId, repoRel]);
+  const commit = useMemo(() => ({ fullHash: loadedHash, theaterId: ctx.theaterId ?? "", repoRel }), [loadedHash, ctx.theaterId, repoRel]);
   useEffect(() => {
     let cancelled = false;
     // 커밋 사이를 옮길 때 본문을 "불러오는 중"으로 갈아 끼우지 않는다 — 독이 비었다 다시 차며 깜빡인다. 첫 조회만 로딩 문면.

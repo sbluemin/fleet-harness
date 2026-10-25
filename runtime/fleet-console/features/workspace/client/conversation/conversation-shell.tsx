@@ -712,9 +712,17 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const toggleDetails = useToggleDetails(objectiveRecordConversation);
   usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
 
-  // ── 도구 분할 — 이 대화의 도구 칸(작업대)이 대화 오른쪽과 아래에 선다 ──
-  // 배치는 대화마다 하나다(서버 저장). 대화 키는 그 대화를 가리키는 가장 오래가는 이름이다: Objective, 아직 서지 않은 Objective 을 대신하는
-  // 플러그인 대화는 그 Objective, 세션 브라우저를 가진 플러그인 대화(사령관)는 그 세션, 그 밖은 Theater 또는 표면 주소.
+  // ── 도구 분할 — 목표·구성원도 소유 사령관의 배치·문서·Shell을 그대로 쓴다 ──
+  // 브라우저만 지금 대화의 세션을 따른다. 기존 사령관 키를 유지하므로 배치를 옮길 필요는 없다.
+  useConversationSurfaceHead(standInId === null ? null : surfaceDescriptor);
+  let toolCommodoreId: string | null = surfaceDescriptor ? null : stageSubject?.commodoreId ?? null;
+  if (surfaceDescriptor?.commodoreId && surface) {
+    try {
+      toolCommodoreId = surfaceDescriptor.commodoreId({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
+    } catch {
+      toolCommodoreId = null;
+    }
+  }
   let surfaceTheaterId: string | null = null;
   if (surfaceDescriptor?.theater && surface) {
     try {
@@ -724,12 +732,12 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     }
   }
   const conversationKey = newSession ? null
-    : surfaceDescriptor && surface
-      ? standInId !== null ? `objectiveRecord:${standInId}`
-        : sessionSubjectKey !== null ? `session:${sessionSubjectKey}`
+    : toolCommodoreId !== null ? `session:commodore:commodore:${toolCommodoreId}`
+      : surfaceDescriptor && surface && standInId === null
+        ? sessionSubjectKey !== null ? `session:${sessionSubjectKey}`
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
-      : subject ? `objectiveRecord:${subject.id}` : null;
+        : null;
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(
     () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
@@ -772,19 +780,18 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     return stageSubject ? { kind: "objectiveRecord", objectiveRecord: stageSubject } : { kind: "none" };
   }, [sessionAttach, sessionPluginId, sessionScopeId, sessionSubjectKey, stageSubject, surfaceDescriptor]);
 
-  // 도구가 놓인 대화와 그 작업 위치 — 사령관은 Theater 루트, 지휘관은 그 세션의 작업 폴더(호스트가 Theater 상대로 접어 준다).
-  // 도구 캡슐(Shell 열기)과 도구 칸이 모두 이 범위를 받는다. 사람은 다시 고르지 않는다.
+  // 목표 에이전트의 cwd와 무관하게 도구 캡슐·도구 칸은 소유 사령관의 Theater 루트에서 선다.
   const theaterLabelOf = (id: string | null) => (id === null ? "" : state.theaters.find((theater) => theater.id === id)?.label ?? "");
-  const scopeObjectiveId = !surfaceDescriptor ? stageSubject?.id : surfaceDescriptor.id === "objective-fresh" && typeof surface?.params.objectiveId === "string" ? surface.params.objectiveId : undefined;
-  const scopeTheaterId = surfaceDescriptor ? surfaceTheaterId ?? toolContext.theaterId : stageSubject?.theaterId ?? null;
+  const scopeTheaterId = toolCommodoreId !== null
+    ? state.theaters.find((theater) => theater.commodore?.id === toolCommodoreId)?.id ?? null
+    : standInId !== null ? null : surfaceTheaterId ?? toolContext.theaterId;
   const workLocation = useConversationWorkLocation(
     conversationKey === null || scopeTheaterId === null ? { kind: "none" }
-      : scopeObjectiveId ? { kind: "objectiveRecord", objectiveId: scopeObjectiveId, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject?.ts.updatedAt ?? 0 }
-        : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
+      : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
   );
   const scopedToolContext = useMemo<RailToolContext>(
-    () => (conversationKey !== null && workLocation !== null ? { ...toolContext, conversation: { key: conversationKey, location: workLocation, ...(scopeObjectiveId ? { objectiveId: scopeObjectiveId } : {}) } } : toolContext),
-    [conversationKey, toolContext, workLocation, scopeObjectiveId],
+    () => ({ ...toolContext, theaterId: scopeTheaterId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
+    [conversationKey, toolContext, workLocation, scopeTheaterId],
   );
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
   // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 Shell·문서로 착각한다.
@@ -860,7 +867,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       state={state}
       language={language}
       objectiveRecordKinds={objectiveRecordKinds}
-      suspended={conversationKey !== null && workLocation === null}
+      suspended={(conversationKey !== null || standInId !== null) && workLocation === null}
     />
     </>
   );

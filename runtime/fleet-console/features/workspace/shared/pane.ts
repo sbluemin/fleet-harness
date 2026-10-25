@@ -167,20 +167,16 @@ export interface PaneCloseContext {
 export type PaneMount = "rail" | "expanded";
 
 /**
- * 도구가 놓인 대화 — 데스크톱 대화 화면의 도구 칸이 그 대화에서 파생해 싣는다. 사람은 다시 고르지 않는다.
+ * 도구가 놓인 사령관 컨텍스트 — 목표·구성원 화면도 소유 사령관의 범위를 그대로 싣는다.
  *
- * - `key`: 그 대화를 가리키는 불투명한 이름. 대화마다 따로 두는 상태(Shell 인스턴스, 열어 둔 문서)의 열쇠로만 쓴다 —
- *   뜻을 해석하지 않는다.
- * - `location`: 그 대화의 작업 위치. Theater 루트 기준 상대 경로(POSIX, 빈 문자열이 루트)다 — 절대 경로는 싣지 않는다.
- *   사령관은 Theater 루트, 지휘관은 그 에이전트 세션의 작업 폴더(워크트리면 그 워크트리)다.
+ * - `key`: 도구 상태(Shell 인스턴스, 열어 둔 문서)를 공유하는 불투명한 이름. 도구는 뜻을 해석하지 않는다.
+ * - `location`: 사령관의 Theater 루트. 목표 에이전트의 실행 cwd와는 별개이며 절대 경로는 싣지 않는다.
  *
  * 대화가 없는 자리(폰 배치·오른쪽 사이드바·대화 밖 화면)에는 싣지 않는다 — 없으면 Theater 루트에서 일한다.
  */
 export interface ConversationToolScope {
   readonly key: string;
   readonly location: ConversationWorkLocation;
-  /** 이 대화가 목표면 그 id. 도구 요청은 theaterId 대신 이것을 보낸다. */
-  readonly objectiveId?: string;
 }
 
 export interface ConversationWorkLocation {

@@ -12,9 +12,9 @@ import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/exe
 import type { TerminalLaunchResolver, TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
- * Shell은 Objective이 아니라 대화마다 하나씩 붙는 Console 표면이다. 이 파일이 지키는 것은 세 가지다 —
- * 세션 키가 Objective id가 아니라 대화 키(없으면 기본 상수)라는 것, 대화마다 PTY가 따로라 한 대화의 닫기가
- * 다른 대화의 Shell을 끝내지 않는다는 것, 그리고 cwd가 첫 기동에 못 박혀 사용자가 끝낼 때까지 움직이지 않는다는 것.
+ * Shell은 Objective이 아니라 도구 키로 공유하는 Console 표면이다. 이 파일이 지키는 것은 세 가지다 —
+ * 세션 키가 Objective id가 아니라 도구 키(없으면 기본 상수)라는 것, 다른 사령관의 키는 PTY가 따로라 하나를 닫아도
+ * 다른 Shell을 끝내지 않는다는 것, 그리고 cwd가 첫 기동에 못 박혀 사용자가 끝낼 때까지 움직이지 않는다는 것.
  */
 describe("conversation Shell sessions", () => {
   it("keys the PTY on a console-wide constant rather than an Objective id", async () => {
@@ -26,21 +26,21 @@ describe("conversation Shell sessions", () => {
     expect(issued[0]!.objectiveRecordType).toBe("shell");
   });
 
-  it("keeps one PTY per conversation and ends only the closed conversation's Shell", async () => {
+  it("shares a PTY by tool key and ends only the closed commodore's Shell", async () => {
     const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
     const { call, issued, del, terminated } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
 
-    await call({ shell: "objective:a", cwd: { theaterId: "theater-a" } });
-    await call({ shell: "objective:b", cwd: { theaterId: "theater-b" } });
+    await call({ shell: "session:commodore:commodore:a", cwd: { theaterId: "theater-a" } });
+    await call({ shell: "session:commodore:commodore:b", cwd: { theaterId: "theater-b" } });
     // 다른 대화에 다녀와 같은 대화의 Shell을 다시 붙여도 같은 PTY·같은 발밑이다.
-    await call({ shell: "objective:a", cwd: { theaterId: "theater-b" } });
+    await call({ shell: "session:commodore:commodore:a", cwd: { theaterId: "theater-b" } });
 
     const [a, b, again] = issued;
     expect(a!.sessionId).not.toBe(b!.sessionId);
     expect(again!.sessionId).toBe(a!.sessionId);
     expect([a!.cwd, b!.cwd, again!.cwd]).toEqual([realpathSync(process.cwd()), realpathSync(os.homedir()), realpathSync(process.cwd())]);
 
-    await del("objective:a");
+    await del("session:commodore:commodore:a");
     expect(terminated).toEqual([a!.sessionId]);
   });
 

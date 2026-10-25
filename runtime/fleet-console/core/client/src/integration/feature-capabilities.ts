@@ -290,7 +290,7 @@ export function createHostCapabilities(
       },
     },
     shell: {
-      // 옮기는 것은 지금 보이는 대화의 Shell 이다(대화마다 하나) — 대화 칸이 알린 키를 싣는다.
+      // 지금 대화가 속한 사령관의 Shell을 옮긴다 — 목표·구성원도 같은 도구 키를 싣는다.
       openAt: async (request) => revealShellOnSuccess(await requestShellOpenAt(request, { shell: getActiveShellKey() })),
       restartAt: async (request) => revealShellOnSuccess(await requestShellRestartAt(request, { shell: getActiveShellKey() })),
     },

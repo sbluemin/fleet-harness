@@ -65,8 +65,8 @@ const TOOL_HOST: RailToolHost = {
 };
 
 /**
- * 대화마다 열어 둔 문서(파일·Codex 의 문서 칸 같은 페인 인스턴스) — 페인 상태는 한 벌이라, 대화를 떠날 때 보이던 페인을
- * 적어 두고 돌아올 때 다시 세운다. 떠나는 칸이 자기 문서를 닫는 정리(레일 표면의 departing sweep)가 끝난 뒤에 세운다.
+ * 사령관마다 열어 둔 문서(파일·Codex 문서 칸의 페인 인스턴스) — 같은 사령관의 목표·구성원 화면은 같은 키를 쓴다.
+ * 키를 떠날 때 보이던 페인을 적어 두고 돌아올 때 다시 세운다. 떠나는 칸의 정리(레일 표면의 departing sweep)가 끝난 뒤에 세운다.
  * 화면 수명 동안만 기억한다.
  */
 const panesByConversation = new Map<string, readonly { readonly paneId: string; readonly params: Readonly<Record<string, string>> }[]>();

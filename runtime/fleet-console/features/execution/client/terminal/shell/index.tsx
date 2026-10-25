@@ -17,10 +17,10 @@ import { requestShellOpenAt, requestShellRestartAt } from "../../../../workspace
 import "./shell.css";
 
 /**
- * Shell은 Objective이 아니라 대화마다 하나씩 붙는 Console 표면이다.
+ * Shell은 Objective이 아니라 사령관과 그 목표·구성원 화면이 공유하는 Console 표면이다.
  *
- * 그래서 durable state에 남지 않고 캡션도 없다 — 칸 머리가 이름을 말하고 닫기를 준다. 어느 Shell 인지는 칸이 놓인
- * 대화(`ctx.conversation.key`)가 정하고, 대화가 없는 자리(폰 배치)는 Console 기본 Shell 을 쓴다. PTY 세션 키는 서버가
+ * 그래서 durable state에 남지 않고 캡션도 없다 — 칸 머리가 이름을 말하고 닫기를 준다. 어느 Shell 인지는 칸이 받은
+ * 도구 키(`ctx.conversation.key`)가 정하고, 대화가 없는 자리(폰 배치)는 Console 기본 Shell 을 쓴다. PTY 세션 키는 서버가
  * 그 키에서 짓는다 — 클라이언트는 식별자를 지어내지 않는다.
  */
 const SHELL_SURFACE_ID = "shell";
@@ -115,8 +115,6 @@ function disposeShellHost(key: string): void {
 /** 이 칸이 처음 Shell 을 세울 자리 — 대화의 작업 위치, 대화가 없으면 표면 params·마지막으로 본 Theater 의 루트. */
 function launchHintOf(context: ExpandedSurfaceContext): ShellCwdHint | undefined {
   const location = context.conversation?.location;
-  const objectiveId = context.conversation?.objectiveId;
-  if (location && objectiveId) return location.relative === "" ? { objectiveId } : { objectiveId, path: location.relative };
   if (location) return location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
   const theaterId = context.params.cwdTheaterId ?? lastViewedTheaterId;
   return theaterId ? { theaterId } : undefined;
@@ -252,10 +250,7 @@ function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) 
   const location = ctx.conversation?.location ?? null;
   if (location === null || mount === null || mount.launchedAt === null || !session?.open) return null;
   if (mount.launchedAt === location.relative) return null;
-  const objectiveId = ctx.conversation?.objectiveId;
-  const target = objectiveId
-    ? (location.relative === "" ? { objectiveId } : { objectiveId, path: location.relative })
-    : (location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative });
+  const target = location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
   const settle = () => {
     const current = shellMounts.get(key);
     if (current) publishShellMount(key, { ...current, launchedAt: location.relative, cwdHint: target });
@@ -286,7 +281,7 @@ function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) 
 
 /**
  * 콘솔 수명에 붙는 Shell 소유자. 한 Shell 이 처음 열리기 전에는 터미널을 만들지 않고, 한 번 열린 뒤에는 칸이 사라져도
- * (다른 대화로 옮겨 가도) 같은 portal과 TerminalSurface를 주차해 WebSocket·xterm 상태를 보존한다. 대화마다 하나다.
+ * (다른 사령관으로 옮겨 가도) 같은 portal과 TerminalSurface를 주차해 WebSocket·xterm 상태를 보존한다. 도구 키마다 하나다.
  */
 export function PersistentShellHost({ language, theme }: PersistentComponentContext) {
   const mounts = React.useSyncExternalStore(subscribeShellMount, () => shellMounts, () => shellMounts);
@@ -406,9 +401,9 @@ function shellFileLinks(context: ExpandedSurfaceContext, key: string): TerminalF
       const session = getShellSessionSnapshot(key);
       const theaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
       if (!theaterId) return null;
-      const cwdRelative = context.conversation?.objectiveId ? "" : session?.cwdTracked ? session.cwd?.relative ?? null : null;
+      const cwdRelative = session?.cwdTracked ? session.cwd?.relative ?? null : null;
       return { theaterId, cwdRelative };
     },
-    open: (target) => context.navigate.openFile({ ...target, ...(context.conversation?.objectiveId ? { objectiveId: context.conversation.objectiveId } : {}), source: "shell" }),
+    open: (target) => context.navigate.openFile({ ...target, source: "shell" }),
   };
 }

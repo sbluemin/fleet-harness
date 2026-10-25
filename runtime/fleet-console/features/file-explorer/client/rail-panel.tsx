@@ -168,10 +168,10 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const { theaterId, panes } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
-  const objectiveId = ctx.params.objectiveId ?? ctx.conversation?.objectiveId;
+  const objectiveId = ctx.params.objectiveId;
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
-  // 트리의 루트 = 목표 cwd(상대 경로는 그 기준) 또는 대화 밖이면 Theater 루트.
-  const location = objectiveId ? ctx.conversation?.location ?? null : ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
+  // 명시적으로 연 목표 파일 주소는 그 목표 기준, 도구 작업대는 사령관 Theater 기준이다.
+  const location = !objectiveId && ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
   const rootPath = location?.relative ?? "";
   const shellAction = useShellAction(ctx.shell, theaterId, selectedPath, objectiveId);
   const rootRef = useRef<HTMLDivElement>(null);
