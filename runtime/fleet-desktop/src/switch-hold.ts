@@ -136,8 +136,8 @@ const COPY: Record<EntryLanguage, {
     otherConsole: "이 컴퓨터의 다른 콘솔",
     connecting: (label) => `${label}에 연결하는 중`,
     returning: "이 컴퓨터로 돌아가는 중",
-    failed: (label) => `${label}에 연결하지 못했습니다`,
-    failedReturning: (label) => `${label}에 연결하지 못했습니다 · 이 컴퓨터로 돌아갑니다`,
+    failed: (label) => `${label}에 연결하지 못했어요`,
+    failedReturning: (label) => `${label}에 연결하지 못해서 이 컴퓨터로 돌아가요`,
   },
   en: {
     thisComputer: "this computer",
