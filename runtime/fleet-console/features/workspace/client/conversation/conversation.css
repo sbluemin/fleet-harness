@@ -1316,6 +1316,32 @@
   padding-top: var(--space-1);
 }
 
+/* 카드 사이는 섹션의 위아래 2px만 남긴다. 빈 목록은 flex 간격을 만들지 않으며,
+   펼친 목록 앞의 머리 여백과 섹션 내부 간격은 유지한다. compact 배치는 건드리지 않는다. */
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-section + .side-bar-theater-section {
+  margin-top: -2px;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-header.is-card {
+  margin-block: 0;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-header.is-card:has(
+  ~ .side-bar-theater-contributions,
+  ~ .side-bar-theater-groups > :not(.side-bar-ungrouped-section),
+  ~ .side-bar-theater-groups > .side-bar-ungrouped-section > :not(.side-bar-group-chips:empty)
+) {
+  margin-bottom: 2px;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-groups:is(:empty, :has(> .side-bar-ungrouped-section:only-child > .side-bar-group-chips:only-child:empty)) {
+  display: none;
+}
+/* 재정렬 선은 줄어든 카드 사이의 중앙인 섹션 경계에 둔다. */
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-section--drop-before::before {
+  top: -1px;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-section--drop-after::after {
+  bottom: -1px;
+}
+
 
 .console-shell.is-objective-records-view .side-bar-top-strip .side-bar-view-menu-button {
   background: color-mix(in oklch, var(--conversation-side) 80%, transparent);
