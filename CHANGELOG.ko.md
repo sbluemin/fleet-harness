@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.3] - 2026-10-25
+
+### fleet-console
+
+#### Fixed
+- `fleet update`가 처음 띄운 Console에서 앱 안 업데이트를 실행해도 더 이상 Console이 멈춘 채로 남지 않고, 업데이트된 Console이 스스로 다시 올라옵니다.
+
 ## [1.255.2] - 2026-10-25
 
 ### fleet-console

@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.3] - 2026-10-25
+
+### fleet-console
+
+#### Fixed
+- Updating from inside Console no longer leaves it stopped when Console was first started by `fleet update`; the updated Console now comes back on its own.
+
 ## [1.255.2] - 2026-10-25
 
 ### fleet-console
