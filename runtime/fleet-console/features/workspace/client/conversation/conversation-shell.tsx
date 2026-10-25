@@ -40,7 +40,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -1247,7 +1247,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
-  const captionRenderer = useConversationCaptionRenderer();
   // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 내용 교체와 폭 전환은 pill-takeover 가 진다.
   const pillRef = useRef<HTMLDivElement | null>(null);
   const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(objectiveRecord.id));
@@ -1352,7 +1351,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     companionPanelIds: CONVERSATION_COMPANION_PANEL_IDS,
     bodyLive: true as const,
   };
-  const captionView = captionRenderer?.({ objectiveRecord, bodyObjective: bodyOwner, nestedObjectiveRecords: nested, language }) ?? null;
   const viewSwitch = descriptor?.captionViewSwitch === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionViewSwitch} />
@@ -1369,7 +1367,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionActions} />
     </FeatureErrorBoundary>
   );
-  const hasPillControls = captionView !== null || viewSwitch !== null;
   // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Objective 의 합집합, 지휘관 제외.
   // 묶음의 노드(임무 칸·살아 있는 구성원)는 명부가 아니다. 명부는 구조 없는 묶음(임무·떠 있는 구성원 없이 세션 없는 구성원만 있는
   // 목표)에도 서므로 rootOf 가 아니라 묶음 전체에서 찾는다 — 「구성원」 탭과 같은 길이다.
@@ -1396,7 +1393,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
           </button>
-          {hasPillControls ? <span className="conversation-pill-controls" inert={pillTaken || undefined}>{captionView}{viewSwitch}</span> : null}
+          {viewSwitch !== null ? <span className="conversation-pill-controls" inert={pillTaken || undefined}>{viewSwitch}</span> : null}
           <PillTakeoverLayer {...pillTakeover} />
         </div>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}

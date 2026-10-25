@@ -52,9 +52,9 @@ A link is single-use. Run it again for every launch attempt. Each run overwrites
 The access link only pairs the phone. What stands on the screen is Console state. Both of the following are absent until a throwaway Theater is registered ([Isolate the Console](setup.md#isolate-the-console)).
 
 - No Theater: the phone home is the empty first-run, not a conversation (`MobileEmptyHome` in `runtime/fleet-console/core/client/src/chrome/mobile/mobile-shell.tsx`). The Commodore screen stays an empty pane until it resolves that Theater's commodore UUID (`commodore-mobile.tsx`). Its no-cost host uses [No-cost fake Commodore](setup.md#no-cost-fake-commodore): keep the SDK path and select the fake executable through `CLAUDE_BIN`; do not launch the real CLI or a provider turn.
-- The group composer (`.group-composer` / `.fc-composer-capsule`) is not the 1:1 composer (`.agent-chat-composer`). `showsMobileGroupConversation` in `runtime/fleet-console/features/execution/client/agent/chat/group-timeline-store.ts` requires all of: the phone objective surface, fold-turns on, a live chat (`chatMode` and `chatActive`), and a group root. The fold-turns switch defaults off. In a browser it is the page's `localStorage` key `fleet-console.groupConversation.foldTurns` (`on`). The phone WebView keeps no such file in the app container, so writing that key on the host does not turn the switch on in the app. On the phone, turn it on from the conversation info screen ([Fold turns on the phone](#fold-turns-on-the-phone)). A fresh simulator is off, so a commander still shows the 1:1 composer. A restored chat commander qualifies without resume because its chat adapter stays live; the [child-session fixture](setup.md#objective-member-child-session-fixture) must use `chatMode: true`. A restored terminal fixture is still dormant and does not qualify. The root is an objective commander (`isGroupConversationRoot`) or a chat that already has nested members.
+- The group composer (`.group-composer` / `.fc-composer-capsule`) is not the 1:1 composer (`.agent-chat-composer`). The phone objective surface uses `showsMobileGroupConversation` in `runtime/fleet-console/features/execution/client/agent/chat/group-timeline-store.ts`: it requires a live chat (`chatMode` and `chatActive`) and a group root. Group conversations always fold member turns, independent of browser storage or any previous preference; no switch or storage setup is needed on a fresh simulator. A restored chat commander qualifies without resume because its chat adapter stays live; the [child-session fixture](setup.md#objective-member-child-session-fixture) must use `chatMode: true`. A restored terminal fixture is still dormant and does not qualify. The root is an objective commander (`isGroupConversationRoot`) or a chat that already has nested members.
 
-In the browser lane the group composer is up when the page shows `.group-composer` inside the objective. The first-run home and `.agent-chat-composer` are not that screen. The phone WebView does not expose those classes; judge it by the labels in [Fold turns on the phone](#fold-turns-on-the-phone).
+In the browser lane the group composer is up when the page shows `.group-composer` inside the objective. The first-run home and `.agent-chat-composer` are not that screen. The phone WebView does not expose those classes; judge it by the labels in [Group conversation on the phone](#group-conversation-on-the-phone).
 
 `POST /api/v1/agent/sessions` with `parentObjectiveId` does not create that nested member. `childSessionId` is accepted only when the caller is a plugin (`features/execution/host/agent/routes.ts`), so the same POST from the page creates a second top-level objective. Use the stopped-state edit in the [child-session fixture](setup.md#objective-member-child-session-fixture), on a chat that fake Claude already started:
 
@@ -62,9 +62,9 @@ In the browser lane the group composer is up when the page shows `.group-compose
 2. `POST /api/v1/agent/sessions` with `{ "commodoreId", "cliId": "claude", "theaterId", "viewMode": "chat" }` (the `commodoreId` from `commodore/resolve`; a session without it is refused as `commodore_required`) and the page `Origin`. Record `sessionId`. `chatActive` becomes true.
 3. Stop that Console. Follow the linked child-session fixture to add one `sessions` entry in the generated `commodore/<uuid>/objectives/<id>/objective.json`, using that objective's root `cwd`. Keep its id and other metadata unchanged; do not put it in `state.json`.
 4. Start again with the same wrapper flags. The restored chat has `status: "registered"`, `chatActive: true`, and `sessions` still present, with no SDK child until a message or explicit preparation. Do not call resume: it is terminal-only. Merely viewing the conversation may replay its journal but does not open an SDK child.
-5. Phone layout is a viewport at `max-width: 767px` (`view-mode-store.ts`), which sets `documentElement.dataset.viewMode` to `mobile`. After the origin has loaded, set `localStorage["fleet-console.groupConversation.foldTurns"]` to `on` and reload. Setting it before any page has loaded does not stick.
+5. Phone layout is a viewport at `max-width: 767px` (`view-mode-store.ts`), which sets `documentElement.dataset.viewMode` to `mobile`. Open that live group conversation; no storage write or reload is needed to enable it.
 
-Checked in a browser at 390×844, not on a phone: `viewMode` was `mobile`, `.group-composer` was present, `.agent-chat-composer` was absent, and the fold key was `on`.
+In the browser lane, check `viewMode` is `mobile`, `.group-composer` is present, and `.agent-chat-composer` is absent while the group conversation is open. This checks the mobile layout, not the native phone shell.
 
 
 ## 3. Android
@@ -148,21 +148,13 @@ node <worktree>/.claude/skills/console-e2e/scripts/accept-ios-open.mjs "$UDID" <
 `openurl` raises the system alert and does not tap it. [`accept-ios-open.mjs`](../scripts/accept-ios-open.mjs) writes a host app and a UI test under the scratch directory, outside the repository, and runs `xcodebuild test -destination id=$UDID`. The test taps the SpringBoard button named `Open`. It does not boot, install, or delete a simulator, and it does not open Simulator.app. Exit 0 is `** TEST SUCCEEDED **`. The link was consumed when `GET /api/v1/access-links` on the owner reports `devices` length 1 and that device has a `sessionHandle`. Count only. This path was run on a simulator this session created (iOS 26.5): install exit 0, terminate exit 3, openurl exit 0, the test exit 0, and `devices` length 1.
 
 
-### Fold turns on the phone
+### Group conversation on the phone
 
-After the app is paired, the conversation list is not the group composer. Fold turns is off, and the 1:1 field's label is `Message`. The phone turns it on through the info screen, not through a host-side `localStorage` file.
+After the app is paired, the conversation list is not the group composer. Open the live group conversation from the [phone conversation fixture](#phone-conversation-fixture). Member turns are always folded; the conversation info screen has no folding switch. The 1:1 field's label is `Message`, which does not establish that the group conversation is open.
 
-[`fold-ios-turns.mjs`](../scripts/fold-ios-turns.mjs) writes its own scratch project (`<scratch>/ios-fold-turns`). It does not change [`accept-ios-open.mjs`](../scripts/accept-ios-open.mjs). Pass the conversation title, the same string the info button uses (`{title} info`, `mobile.conv.infoAria`):
+`XCUIApplication(bundleIdentifier:).activate()` does not relaunch the app: a screen an earlier test left open stays open. Confirm the intended conversation is open rather than treating activation as navigation.
 
-```bash
-node <worktree>/.claude/skills/console-e2e/scripts/fold-ios-turns.mjs "$UDID" <absolute scratch dir> "<objective title>"
-```
-
-`XCUIApplication(bundleIdentifier:).activate()` does not relaunch the app. A screen an earlier test left open stays open, so a test that only looks for `Fold turns` can pass because the info screen was already showing. From the conversation list the order is the conversation row (its label contains the title), then the button `<title> info`, then `Fold turns`, then `Back`. The script takes that order, and skips ahead when `Fold turns` or `<title> info` is already on screen.
-
-Exit 0 is `** TEST SUCCEEDED **`. The group composer is up when the accessibility tree has a text view labeled `Group conversation message`, placeholder `Message the commander · @ to pick a member`, and switches `Plan` and `Commence`. A notice `Can't read <member> — there is no saved record, or the session runs in a terminal.` is expected: the fixture member has no saved transcript. It is not a failed composer.
-
-This script was not run again for this write. The labels and the `activate()` continuation are the measurement that tapped `Fold turns` then `Back` on a paired app and recorded those labels.
+The group composer's text view is labeled `Group conversation message`; its placeholder depends on the current recipient and board state (`group-composer.tsx`). A notice `Can't read <member> — there is no saved record, or the session runs in a terminal.` is expected when the fixture member has no saved transcript; it is not a failed composer. Native behavior still needs its own simulator run; a browser mobile-layout check is not that evidence.
 
 
 ### Simulator language

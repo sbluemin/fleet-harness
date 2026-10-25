@@ -11,7 +11,7 @@ export {
 } from "../../../../core/client/src/chrome/rail/objective-tabs.js";
 
 /**
- * 대화 중심 화면에 다른 기능이 끼워 넣는 자리 세 가지.
+ * 대화 중심 화면에 다른 기능이 끼워 넣는 자리.
  *
  * 1. 가운데 칸 본문 — `setConversationBodyRenderer`. 기본은 그 Objective 의 기존 본문(채팅·터미널)이다. 렌더러가
  *    `null` 을 돌려주면 기본 본문이 선다. 그룹 대화는 구성원을 가진 Objective 에서만 자기 화면을 돌려주면 된다.
@@ -19,11 +19,9 @@ export {
  *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Objective 을, `useConversationStandIn()` 으로 플러그인 대화가
  *    대신하는 아직 서지 않은 Objective 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
- * 4. 대화 머리 보기 스위치 — `setConversationCaptionRenderer`. 본문 렌더러가 세운 화면의 보기 스위치(그룹 대화의 「턴 접기」)가
- *    pill 바로 옆 보기 캡슐(전환과 한 묶음)에 선다. `null` 이면 그 칸은 서지 않는다.
- * 5. 대신하는 Objective 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Objective 을 대신하면
+ * 4. 대신하는 Objective 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Objective 을 대신하면
  *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
- * 6. 머리 pill 의 잠깐 바뀐 내용 — `publishConversationPillTakeover`. 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 그 대화의 주인
+ * 5. 머리 pill 의 잠깐 바뀐 내용 — `publishConversationPillTakeover`. 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 그 대화의 주인
  *    Objective 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)을 제 내용으로 바꾼다. pill 을 그리는 쪽은 `useConversationPillTakeover` 로
  *    읽으며 자기가 그 Objective 의 pill 을 세웠다고 알리고, 본문은 `useConversationPillHosted` 로 그 pill 이 있는지 보고 없으면 제 안에 대체 칩을 둔다.
  *
@@ -149,34 +147,6 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
   return useSyncExternalStore(
     (listener) => { bodyListeners.add(listener); return () => { bodyListeners.delete(listener); }; },
     () => bodyRenderer,
-    () => null,
-  );
-}
-
-// ── 대화 머리 보기 스위치 ──────────────────────────────────────────────────
-
-/** 머리 보기 스위치 렌더러의 맥락 — 본문 렌더러와 같은 사실이다(기본 본문은 없다). */
-export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody" | "navigate" | "openObjectiveBrowser">;
-export type ConversationCaptionRenderer = (context: ConversationCaptionContext) => ReactNode | null;
-
-let captionRenderer: ConversationCaptionRenderer | null = null;
-const captionListeners = new Set<() => void>();
-
-/** 대화 머리 보기 스위치 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
-export function setConversationCaptionRenderer(renderer: ConversationCaptionRenderer): () => void {
-  captionRenderer = renderer;
-  for (const listener of captionListeners) listener();
-  return () => {
-    if (captionRenderer !== renderer) return;
-    captionRenderer = null;
-    for (const listener of captionListeners) listener();
-  };
-}
-
-export function useConversationCaptionRenderer(): ConversationCaptionRenderer | null {
-  return useSyncExternalStore(
-    (listener) => { captionListeners.add(listener); return () => { captionListeners.delete(listener); }; },
-    () => captionRenderer,
     () => null,
   );
 }

@@ -15,7 +15,6 @@ import type { ObjectiveClusterSource } from "../../../../objectives/shared/objec
 import { clearObjectiveRuntime, getState, setObjectiveRuntime, setState } from "../../../../../core/client/src/integration/store.js";
 import { getAgentState, setAgentState } from "../store.js";
 import { GroupClusterProvider, installGroupTimeline, useGroupTimeline } from "./group-timeline-store.js";
-import { setFoldTurns } from "./group/fold-turns.js";
 import { disposeObjectiveViewState, getComposerDraft, installObjectiveViewState, readTerminalViewPosition, saveTerminalViewPosition } from "../../objective-view-state.js";
 import type { ClientConsoleStateCapability } from "../../../../workspace/shared/console-state.js";
 
@@ -445,7 +444,7 @@ it("keeps independent group journals alive across view closure, merges only conf
   expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
 });
 
-it("keeps group timeline sockets and dormant history closed until the conversation layout is active or a folded mobile group is open", async () => {
+it("keeps group timeline sockets and dormant history closed until the conversation layout is active or a live mobile group is open", async () => {
   const previous = getState();
   const previousAgent = getAgentState();
   let active = false;
@@ -479,20 +478,28 @@ it("keeps group timeline sockets and dormant history closed until the conversati
     active = false;
     act(() => { for (const listener of listeners) listener(); });
     expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
-    // 모바일: 그 그룹 대화를 열어도 「턴 접기」가 꺼져 있으면 화면은 1:1 원장이라 그룹 소켓을 열지 않는다.
+    // 모바일: 채팅 어댑터가 살아 있지 않으면 열린 그룹 루트여도 소켓을 열지 않는다.
+    act(() => { setAgentState({ sessions: { ...getAgentState().sessions, root: { ...session, chatActive: false } } }); });
     subject = "root";
     act(() => { for (const listener of listeners) listener(); });
     await act(async () => { await Promise.resolve(); });
     expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
-    // 켜면 열린 그 루트의 몫만 열고, 대화 목록(주인 없음)으로 돌아가면 닫는다.
-    act(() => { setFoldTurns(true); });
+    // 어댑터와 화면 모드가 바뀌는 도중에도 터미널 화면에는 그룹 소켓을 열지 않는다.
+    act(() => {
+      setState({ objectiveRecords: getState().objectiveRecords.map((record) => ({ ...record, chatMode: false })) });
+      setAgentState({ sessions: { ...getAgentState().sessions, root: session } });
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
+    // 살아 있는 그룹 채팅은 설정 없이 그 루트의 몫만 열고, 대화 목록(주인 없음)으로 돌아가면 닫는다.
+    act(() => { setState({ objectiveRecords: getState().objectiveRecords.map((record) => ({ ...record, chatMode: true })) }); });
     await act(async () => { await Promise.resolve(); });
     expect(FakeWebSocket.instances.filter((socket) => !socket.closed).map((socket) => socket.url.includes("ticket-for-root"))).toEqual([true]);
     subject = null;
     act(() => { for (const listener of listeners) listener(); });
     expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
   } finally {
-    act(() => { setFoldTurns(false); dispose(); root?.unmount(); root = null; });
+    act(() => { dispose(); root?.unmount(); root = null; });
     clearObjectiveRuntime("root"); clearObjectiveRuntime("archived");
     setState(previous); setAgentState(previousAgent);
   }
