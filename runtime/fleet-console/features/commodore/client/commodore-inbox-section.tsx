@@ -1025,10 +1025,52 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntrie
 
 /* ── 지시 ─────────────────────────────────────────────────────────────── */
 
+/** 지시 입력의 기본 높이(CSS min-height)와 같은 바닥. 이보다 작은 저장값은 깨진 값이다. */
+const DIRECTIVE_BOX_MIN_HEIGHT = 140;
+/** 뷰포트가 아니라 저장값의 상한. 화면이 더 좁아 보여도 이 선호를 그 실측으로 덮어쓰지 않는다. */
+const DIRECTIVE_BOX_MAX_HEIGHT = 1600;
+const DIRECTIVE_BOX_HEIGHT_KEY = "fleet-console.commodore.directiveBoxHeight";
+
+function readDirectiveBoxHeight(): number | null {
+  try {
+    const raw = localStorage.getItem(DIRECTIVE_BOX_HEIGHT_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "number" || !Number.isFinite(parsed)) return null;
+    const rounded = Math.round(parsed);
+    if (rounded < DIRECTIVE_BOX_MIN_HEIGHT || rounded > DIRECTIVE_BOX_MAX_HEIGHT) return null;
+    return rounded;
+  } catch { return null; }
+}
+
+function saveDirectiveBoxHeight(height: number): void {
+  if (!Number.isFinite(height)) return;
+  const rounded = Math.min(DIRECTIVE_BOX_MAX_HEIGHT, Math.max(DIRECTIVE_BOX_MIN_HEIGHT, Math.round(height)));
+  try { localStorage.setItem(DIRECTIVE_BOX_HEIGHT_KEY, JSON.stringify(rounded)); } catch { /* ignore */ }
+}
+
 export function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).directive ?? directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
+  // 손잡이가 남긴 inline height 는 탭이 언마운트되면 사라진다. 선호만 다시 심는다.
+  // 폭이 맞거나 뷰포트가 줄여 보인 실측(offsetHeight)은 저장하지 않는다 — inline height 가 바뀔 때만 기록한다.
+  useLayoutEffect(() => {
+    const node = fieldRef.current;
+    if (!node) return;
+    const stored = readDirectiveBoxHeight();
+    if (stored !== null) node.style.height = `${stored}px`;
+    let lastInline = node.style.height;
+    const observer = new ResizeObserver(() => {
+      const inline = node.style.height;
+      if (inline === "" || inline === lastInline) return;
+      lastInline = inline;
+      saveDirectiveBoxHeight(Number.parseFloat(inline));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   // 다른 곳(다른 창)에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다. 시트를 닫아도 더러운 초안은 남는다.
   const base = useRef(directive.text);
   useEffect(() => {
@@ -1048,6 +1090,7 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
     <div className="objectives-commodore-section">
       <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-directive">{t("commodore.directive.label")}</label>
       <textarea
+        ref={fieldRef}
         id="objectives-commodore-directive"
         className="objectives-commodore-input is-tall"
         value={draft}

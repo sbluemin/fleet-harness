@@ -15,7 +15,7 @@ export {
  *
  * 1. 가운데 칸 본문 — `setConversationBodyRenderer`. 기본은 그 Objective 의 기존 본문(채팅·터미널)이다. 렌더러가
  *    `null` 을 돌려주면 기본 본문이 선다. 그룹 대화는 구성원을 가진 Objective 에서만 자기 화면을 돌려주면 된다.
- * 2. 오른쪽 패널 앞 묶음 — `registerConversationObjectiveTab`(core 레일). 탭은 레일 패널로 서서 독점 슬롯·폭 기억을 받는다.
+ * 2. 오른쪽 패널 앞 묶음 — `registerConversationObjectiveTab`(core 레일). 탭은 레일 패널로 서서 독점 슬롯·단일 외곽 폭을 받는다.
  *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Objective 을, `useConversationStandIn()` 으로 플러그인 대화가
  *    대신하는 아직 서지 않은 Objective 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.

@@ -23,11 +23,10 @@ import { dismissRailPanel, openRailPanel, presentRailPanel, getRailStoreSnapshot
 import {
   MIN_PANEL_WIDTH,
   PANE_WIDTH_CLASS_PX,
-  clearStoredPanelWidth,
-  readStoredPanelWidths,
+  clearStoredOuterWidth,
+  readStoredOuterWidth,
   resolvePaneDefaultWidth,
-  saveStoredPanelWidth,
-  type StoredPanelWidths,
+  saveStoredOuterWidth,
 } from "./pane-width.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
@@ -45,7 +44,7 @@ interface RightRailProps {
   readonly header?: ReactNode;
   /**
    * 레일이 남겨 둘 가운데 폭(px). 생략하면 148px이다. 대화 중심 화면은 대화 칸의
-   * 최소 폭과 여백을 넘긴다. 카드 폭 상한만 바뀌고, 도구별로 기억한 폭은 그대로 보존된다.
+   * 최소 폭과 여백을 넘긴다. 카드 폭 상한만 바뀌고, 기억한 외곽 폭은 그대로 보존된다.
    */
   readonly reservedArenaWidth?: number;
 
@@ -122,22 +121,25 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);
   const maxResizeWidth = soloMaxWidth === null ? maxPanelWidth : Math.min(maxPanelWidth, soloMaxWidth + RAIL_CARD_BORDER_WIDTH);
 
-  // 폭은 카드가 아니라 도구가 기억한다. 조절한 도구만 자기 값을 갖고, 손대지 않은 도구는
-  // 계속 자기 선언값으로 열린다 — 그래야 페인이 기본값을 고쳤을 때 그 개선이 사용자에게 닿는다.
-  const [storedWidths, setStoredWidths] = useState<StoredPanelWidths>(() => readStoredPanelWidths(activePanelId));
-  const storedWidthsRef = useRef(storedWidths);
-  storedWidthsRef.current = storedWidths;
+  // 외곽 폭은 하나다. 조절값은 탭·도구를 바꿔도 유지되고, 없으면 처음 선 패널의 선언값을
+  // 세션 동안 붙잡는다 — 탭마다 선언 기본값으로 다시 덮지 않는다.
+  const [storedOuter, setStoredOuter] = useState<number | null>(() => readStoredOuterWidth(activePanelId));
+  const [latchedDefault, setLatchedDefault] = useState<number | null>(null);
+  if (storedOuter === null && latchedDefault === null && activeBinding !== null) {
+    setLatchedDefault(declaredWidthOf(activeBinding));
+  }
+  const declaredWidthRef = useRef(0);
+  declaredWidthRef.current = declaredWidthOf(activeBinding);
 
   // 저장 폭은 클램프 없이 desired로 보존한다 — init에서 클램프한 값을 desired로 심으면
   // 큰 화면에서 저장한 폭이 좁은 창 로드 한 번에 소실되어, 창을 다시 넓혀도 복원되지
   // 않는다(Codex 리뷰 확정 — 구 폭 기억 effect의 restore-on-expansion 계약 승계).
   // 분할 카드 폭에는 문서에 준 여유도 포함된다. 문서가 떠나면 목록 폭만 세우고,
-  // 분할 카드의 기억은 그대로 두어 돌아올 때 문서가 같은 자리를 되찾게 한다.
+  // 분할·solo 폭은 외곽 선호와 따로 두어 돌아올 때 문서가 같은 자리를 되찾게 한다.
+  const outerDesired = Math.max(MIN_PANEL_WIDTH, storedOuter ?? latchedDefault ?? declaredWidthOf(activeBinding));
   const desiredWidth = soloWidth !== null && !overlayDetails
     ? soloWidth + RAIL_CARD_BORDER_WIDTH
-    : activeBinding === null
-      ? declaredWidthOf(null)
-      : Math.max(MIN_PANEL_WIDTH, storedWidths[activeBinding.entry.id] ?? declaredWidthOf(activeBinding));
+    : outerDesired;
   const [cardWidth, setCardWidthState] = useState(() => Math.min(maxPanelWidth, desiredWidth));
   const cardWidthRef = useRef(cardWidth);
   const [isDragging, setIsDragging] = useState(false);
@@ -162,9 +164,9 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // 뷰포트 클램프 — 좁아지면 즉시 줄이고, 다시 넓어지면 기억한 폭으로 복귀한다(기존 계약 유지).
-  // 같은 effect가 도구 전환도 받는다: desired는 활성 도구가 정하므로 도구가 바뀌면 그 도구의
-  // 폭으로 카드가 다시 선다. 드래그 중에는 포인터가 폭의 주인이라 desired를 보지 않는다.
+  // 뷰포트 클램프 — 좁아지면 즉시 줄이고, 다시 넓어지면 기억한 외곽 폭으로 복귀한다.
+  // 탭이 바뀌어도 desired는 같은 외곽 폭이다. solo가 끼면 그 폭만 잠시 대신하고, 떠나면 외곽으로 돌아온다.
+  // 드래그 중에는 포인터가 폭의 주인이라 desired를 보지 않는다. 클램프된 표시 폭은 저장하지 않는다.
   useLayoutEffect(() => {
     const target = isDragging ? cardWidthRef.current : desiredWidth;
     const next = Math.max(MIN_PANEL_WIDTH, Math.min(maxPanelWidth, target));
@@ -248,7 +250,10 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
       document.removeEventListener("pointerup", onUp);
       setIsDragging(false);
       if (soloPane !== null) setPaneWidth(soloPane.id, cardWidthRef.current - RAIL_CARD_BORDER_WIDTH);
-      else if (dragPanelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, dragPanelId, cardWidthRef.current));
+      else if (dragPanelId !== null) {
+        const saved = saveStoredOuterWidth(cardWidthRef.current);
+        if (saved !== null) setStoredOuter(saved);
+      }
     };
 
     document.addEventListener("pointermove", onMove);
@@ -287,11 +292,14 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
     const panelId = activePaneIdRef.current;
     const soloPane = soloPaneRef.current;
     if (soloPane !== null) setPaneWidth(soloPane.id, next - RAIL_CARD_BORDER_WIDTH);
-    else if (panelId !== null) setStoredWidths(saveStoredPanelWidth(storedWidthsRef.current, panelId, next));
+    else if (panelId !== null) {
+      const saved = saveStoredOuterWidth(next);
+      if (saved !== null) setStoredOuter(saved);
+    }
   }, []);
 
-  // 가장자리 더블클릭의 "패널 폭 초기화" — 그 도구의 기억만 지운다. 폭은 그 뒤 클램프
-  // effect가 선언 기본값에서 다시 세운다(기억을 지우는 것이 곧 되돌리는 것이다).
+  // 가장자리 더블클릭의 "패널 폭 초기화" — 외곽 폭 기억을 지우고, 지금 패널의 선언값을
+  // 이후 탭의 폭으로 붙잡는다. solo 분할 폭은 외곽 선호와 따로 되돌린다.
   const handleResetCardWidth = useCallback(() => {
     const panelId = activePaneIdRef.current;
     if (panelId === null) return;
@@ -299,8 +307,11 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
     if (soloPane !== null) {
       clearPaneWidth(soloPane.id);
       resetRailPanelWidth(panelId);
+    } else {
+      clearStoredOuterWidth();
+      setStoredOuter(null);
+      setLatchedDefault(declaredWidthRef.current);
     }
-    else setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
   }, []);
 
   return (
