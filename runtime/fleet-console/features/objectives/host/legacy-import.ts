@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { writeAtomicSync } from "@fleet-console/infra/fs-store";
 import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import { sanitizeObjectiveRecord, type DurableObjectiveGroup } from "../../workspace/host/durable-state.js";
 import { documentFromBoard, documentFromObjective, object, type ObjectiveDocument, type ObjectiveDocumentContext } from "./storage-codec.js";
@@ -24,17 +25,41 @@ export interface LegacyImportResult {
   touched: readonly string[];
 }
 const ledgerFile = (dir: string) => path.join(dir, ".archive-migration", "imported.json");
-export function readImportedIds(dir: string): Set<string> {
+export function readImportedIds(dir: string): { readonly ok: true; readonly ids: Set<string> } | { readonly ok: false } {
+  const file = ledgerFile(dir);
+  if (!exists(file)) return { ok: true, ids: new Set() };
   try {
-    const raw = JSON.parse(fs.readFileSync(ledgerFile(dir), "utf8")) as { ids?: unknown };
-    return new Set(Array.isArray(raw.ids) ? raw.ids.filter((id): id is string => typeof id === "string" && segment(id)) : []);
-  } catch { return new Set(); }
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { ids?: unknown };
+    return { ok: true, ids: new Set(Array.isArray(raw.ids) ? raw.ids.filter((id): id is string => typeof id === "string" && segment(id)) : []) };
+  } catch { return { ok: false }; }
 }
 export function rememberImported(dir: string, ids: readonly string[]): void {
   const prior = readImportedIds(dir);
-  for (const id of ids) if (segment(id)) prior.add(id);
+  const next = prior.ok ? prior.ids : new Set<string>();
+  for (const id of ids) if (segment(id)) next.add(id);
   fs.mkdirSync(path.dirname(ledgerFile(dir)), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(ledgerFile(dir), JSON.stringify({ ids: [...prior].sort() }));
+  writeAtomicSync(ledgerFile(dir), JSON.stringify({ ids: [...next].sort() }));
+}
+const pendingFile = (dir: string) => path.join(dir, ".archive-migration", "pending-index.json");
+export function readPendingIndex(dir: string): Set<string> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(pendingFile(dir), "utf8")) as { ids?: unknown };
+    return new Set(Array.isArray(raw.ids) ? raw.ids.filter((id): id is string => typeof id === "string") : []);
+  } catch { return new Set(); }
+}
+export function recordPendingIndex(dir: string, id: string): void {
+  const ids = readPendingIndex(dir);
+  ids.add(id);
+  fs.mkdirSync(path.dirname(pendingFile(dir)), { recursive: true, mode: 0o700 });
+  const tmp = `${pendingFile(dir)}.${process.pid}-${randomUUID()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ ids: [...ids].sort() }), { flag: "wx", mode: 0o600 });
+  fs.renameSync(tmp, pendingFile(dir));
+}
+export function clearPendingIndex(dir: string, ids: readonly string[]): void {
+  const left = readPendingIndex(dir);
+  for (const id of ids) left.delete(id);
+  fs.mkdirSync(path.dirname(pendingFile(dir)), { recursive: true, mode: 0o700 });
+  writeAtomicSync(pendingFile(dir), JSON.stringify({ ids: [...left].sort() }));
 }
 
 const channels: Record<string, LegacyImportResult["events"][number]["channel"]> = {
@@ -182,7 +207,13 @@ export function importMissingObjectives(deps: {
   accept: (value: unknown) => ObjectiveDocument;
   warn: (message: string) => void;
 }): LegacyImportResult {
-  const touched = new Set<string>(readImportedIds(deps.owner.directory));
+  const ledger = readImportedIds(deps.owner.directory);
+  if (!ledger.ok) {
+    deps.warn(`[objectives] owner ${deps.owner.commodoreId}: imported.json unreadable; import skipped`);
+    return { documents: [], groups: [], entries: [], deletions: [], events: [], quarantine: [], touched: [] };
+  }
+  const pending = readPendingIndex(deps.owner.directory);
+  const touched = new Set<string>(ledger.ids);
   const documents: ObjectiveDocument[] = [];
   const entries: LegacyImportResult["entries"][number][] = [];
   const deletions: { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; objectiveIds: string[]; groups?: readonly object[] }[] = [];
@@ -238,7 +269,7 @@ export function importMissingObjectives(deps: {
       }
       if (touched.has(id)) continue;
       if (deps.known.has(id)) {
-        noteIndex(id, records.get(id));
+        if (pending.has(id)) noteIndex(id, records.get(id));
         touched.add(id);
         continue;
       }
@@ -269,7 +300,7 @@ export function importMissingObjectives(deps: {
   }
   for (const [id, hit] of records) {
     if (touched.has(id)) continue;
-    if (deps.known.has(id)) { noteIndex(id, hit); touched.add(id); continue; }
+    if (deps.known.has(id)) { if (pending.has(id)) noteIndex(id, hit); touched.add(id); continue; }
     if (!wanted.has(id)) wanted.set(id, { hit });
   }
 
@@ -296,6 +327,7 @@ export function importMissingObjectives(deps: {
       if (!doc.cwd) doc = { ...doc, cwd: deps.owner.legacyCwd };
       doc = deps.accept(renameKeys(doc));
       deps.writeJson(boardFile, doc);
+      recordPendingIndex(deps.owner.directory, id);
       fs.renameSync(staging, path.join(deps.owner.directory, id));
       documents.push(doc);
       touched.add(id);

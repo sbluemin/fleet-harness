@@ -1,4 +1,5 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -314,7 +315,11 @@ describe("Objective archive persistence and deletion", () => {
       expect(brokenIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
       expect(brokenIndex.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
       expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
-      expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
+      expect(fs.readFileSync(path.join(path.dirname(archiveFile), ".archive-migration", `${createHash("sha256").update("{broken").digest("hex")}.json`), "utf8")).toBe("{broken");
+      expect(() => brokenIndex.storage.board.save("c1", { id: "added", pending: true, rank: 0, note: "", missions: [] })).not.toThrow();
+      const brokenRestart = createArchiveHarness(directory);
+      expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).toContain("added");
+      expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
     });
   });
 
