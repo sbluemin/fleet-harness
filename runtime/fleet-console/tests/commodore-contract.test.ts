@@ -494,6 +494,10 @@ describe("commodore session", () => {
     const outside = path.join(h.objectivesDir, "..", "..", "..", "outside.txt");
     fs.writeFileSync(outside, "outside");
     fs.symlinkSync(outside, path.join(theaterRoot, "link.txt"));
+    const outsideDir = path.join(h.objectivesDir, "..", "..", "..", "outside-dir");
+    fs.mkdirSync(outsideDir);
+    fs.writeFileSync(path.join(outsideDir, "leak.ts"), "export const leak = 1;\n");
+    fs.symlinkSync(outsideDir, path.join(theaterRoot, "linked"));
     h.store.setDirective("t1", "Fix remote first.");
     h.store.addIntel("t1", { text: "older" });
     const newest = h.store.addIntel("t1", { text: "newest" }).item;
@@ -526,6 +530,8 @@ describe("commodore session", () => {
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
       stub.emit({ kind: "tool-start", id: "u4", name: "Read", input: { file_path: outside } });
       stub.emit({ kind: "tool-end", id: "u4", isError: false });
+      stub.emit({ kind: "tool-start", id: "u5", name: "mcp__commodore__find_files", input: { path: outside, pattern: "*" } });
+      stub.emit({ kind: "tool-end", id: "u5", isError: true });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
     const outcome = await session.turn({ reasons: ["directive changed (rev 1)", "1 new intel item"] });
@@ -539,25 +545,26 @@ describe("commodore session", () => {
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read"], browser: { scopeId: "commodore:t1" } });
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "list_dir", "find_files", "search_text", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\]$/);
     expect(stub.sent[0]).not.toContain("newest");
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.
     const log = h.store.transcriptRead("t1").entries;
-    expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "tool", "result"]);
+    expect(log.map((entry) => entry.kind)).toEqual(["wake", "tool", "thinking", "tool", "text", "tool", "tool", "tool", "tool", "result"]);
     // 거절된 보드 행위는 코드 한 낱말로 남고 행위로 세지 않는다 — 결과의 힌트는 싣지 않는다.
     expect(log[1]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o2", ok: false, error: "not_awaiting_review" });
     expect(log[2]).toMatchObject({ kind: "thinking", text: "The directive changed." });
     expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
     expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
     expect(JSON.stringify(log)).not.toContain("secret");
-    // 내장 Read의 Theater 밖 경로는 기록 요약에도 싣지 않는다.
+    // 내장 Read의 Theater 밖 경로, Theater 도구에 넘긴 절대 경로는 기록 요약에도 싣지 않는다.
     expect(log[7]).toMatchObject({ kind: "tool", name: "Read", ok: true });
     expect(log[7]).not.toHaveProperty("summary");
+    expect(log[8]).toMatchObject({ kind: "tool", name: "find_files", summary: "*", ok: false });
     expect(JSON.stringify(log)).not.toContain(outside);
-    expect(log[8]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
+    expect(log[9]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
     expect(h.store.read("t1")!.run).toEqual({ session: 0, costUsd: 0.25, actions: 1 });
 
     // 사령관 전용 도구 — 지시·정보는 저장소에서, 읽기 도구는 Theater 안에서만.
@@ -585,6 +592,13 @@ describe("commodore session", () => {
     expect((await call("read_file", { path: "../outside.txt" })).structuredContent).toMatchObject({ error: "unsafe_path" });
     expect((await call("read_file", { path: outside })).structuredContent).toMatchObject({ error: "unsafe_path" });
     expect((await call("read_file", { path: "secret.bin" })).structuredContent).toMatchObject({ error: "binary_file" });
+    // 둘러보기 도구 — 같은 담김 경계: 루트 목록은 되고, 밖으로 가는 링크는 표시만 하고 따라가지 않는다.
+    expect((await call("list_dir", {})).structuredContent).toMatchObject({ path: ".", entries: [{ name: "src", type: "dir" }, { name: "link.txt", type: "link", outside: true }, { name: "linked", type: "link", outside: true }, { name: "secret.bin", type: "file", size: 2 }], truncated: false });
+    expect((await call("list_dir", { path: "../" })).structuredContent).toMatchObject({ error: "unsafe_path" });
+    expect((await call("list_dir", { path: "linked" })).structuredContent).toMatchObject({ error: "unsafe_path" });
+    expect((await call("find_files", { pattern: "*.ts" })).structuredContent).toMatchObject({ files: ["src/a.ts"], truncated: false });
+    expect((await call("search_text", { query: "EXPORT CONST" })).structuredContent).toMatchObject({ matches: [{ path: "src/a.ts", line: 1, text: "export const a = 1;" }], skipped: 1 });
+    expect((await call("search_text", { query: "x", path: outside })).structuredContent).toMatchObject({ error: "unsafe_path" });
     expect((await call("git_log", { path: "--output=/tmp/x" })).structuredContent).toMatchObject({ error: "unsafe_path" });
     expect((await call("git_log", { limit: 5, path: "src" })).structuredContent).toMatchObject({ commits: [{ hash: "abc1234", subject: "fix: thing" }] });
     expect(commands.at(-1)).toEqual({ file: "git", args: ["log", "--no-decorate", "--date=short", "--format=%h%x1f%ad%x1f%an%x1f%s", "-n", "5", "--", "src"] });

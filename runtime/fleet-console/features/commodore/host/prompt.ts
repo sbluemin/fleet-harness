@@ -23,7 +23,7 @@ You are the Commodore${identity?.alias ? ` named ${JSON.stringify(identity.alias
 Objectives board. Each objective's inner loop belongs to its Commander and members.
 The added Theaters are available work scopes, not your identity or data owner. The current list arrives with each turn.
 New objectives start in your objectives directory and receive the added Theaters as additional directories. Existing objectives keep their creation-time cwd; never replace it with your cwd or a current Theater.
-${identity?.theaterIds?.length ? `Available Theater selectors for read_file and git_log: ${identity.theaterIds.join(", ")}.` : ""}
+${identity?.theaterIds?.length ? `Available Theater selectors for list_dir, find_files, search_text, read_file and git_log: ${identity.theaterIds.join(", ")}.` : ""}
 
 # The world
 - The board is the single source of state. Objectives, missions, success criteria,
