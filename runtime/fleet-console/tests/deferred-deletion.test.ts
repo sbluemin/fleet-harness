@@ -382,6 +382,19 @@ describe("Objective archive persistence and deletion", () => {
       expect(() => late.board.save("c1", { id: "during-late", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
       late.save({ ...lateLoaded, objectiveRecords: lateLoaded.objectiveRecords.filter((node) => node.commodoreId !== "c1").map((node) => node.id === "kept" ? { ...node, title: "saved after neighbor recovered" } : node) });
       expect(fs.readFileSync(lateFile)).toEqual(lateBytes);
+      const cutDir = path.join(directory, "commodore", "cut", "objectives");
+      fs.mkdirSync(path.join(cutDir, "doomed"), { recursive: true });
+      fs.writeFileSync(path.join(cutDir, "groups.json"), JSON.stringify({ groups: [{ id: "g-cut", name: "Cut", color: "blue", order: 0, createdAt: 1 }] }));
+      fs.writeFileSync(path.join(cutDir, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+      fs.writeFileSync(path.join(cutDir, "doomed", "objective.json"), JSON.stringify({ id: "doomed", cwd: directory, title: "Doomed", rank: 1, note: "", missions: [], ts: { createdAt: 1, updatedAt: 1 }, session: { harness: "claude-code", id: "doomed-session" } }));
+      const cutOwner = () => [{ directory: cutDir, commodoreId: "c3", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id }];
+      const cut = createObjectiveStorage({ directory, stateStore: pairedStore, owners: cutOwner });
+      const cutLoaded = cut.load();
+      cut.save({ ...cutLoaded, objectiveRecords: cutLoaded.objectiveRecords.filter((node) => node.id !== "doomed"), groups: (cutLoaded.groups ?? []).filter((group) => group.id !== "g-cut") });
+      const cutRestart = createObjectiveStorage({ directory, stateStore: pairedStore, owners: cutOwner }).load();
+      expect(cutRestart.objectiveRecords.map((node) => node.id)).not.toContain("doomed");
+      expect(fs.existsSync(path.join(cutDir, "doomed", "objective.json"))).toBe(false);
+      expect(cutRestart.groups?.some((group) => group.id === "g-cut")).toBe(false);
     });
   });
 

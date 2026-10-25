@@ -189,6 +189,7 @@ export function createObjectiveStorage(deps: {
   const createStore = deps.createStore ?? createDurableJsonStore;
   let ready = false, blocked = false;
   let state: DurableConsoleState = { version: STATE_VERSION, theaters: [], objectiveRecords: [] };
+  let baseline: DurableConsoleState = state;
   let previousRaw: Record<string, unknown> = {};
   const unavailableOwners = new Set<string>();
   const deferredAliasOwners = new Set<string>();
@@ -716,12 +717,12 @@ export function createObjectiveStorage(deps: {
         ...(scope.archive.quarantine?.length ? { quarantine: scope.archive.quarantine } : {}),
       });
       const knownIds = new Set([
-        ...state.objectiveRecords.filter((node) => node.commodoreId === commodoreId).map((node) => node.id),
-        ...(state.deletionTombstones ?? []).flatMap((row) => deletionObjectiveRecords(row).filter((node) => node.commodoreId === commodoreId).map((node) => node.id)),
+        ...baseline.objectiveRecords.filter((node) => node.commodoreId === commodoreId).map((node) => node.id),
+        ...(baseline.deletionTombstones ?? []).flatMap((row) => deletionObjectiveRecords(row).filter((node) => node.commodoreId === commodoreId).map((node) => node.id)),
         ...scope.archive.entries.map((row) => row.objectiveId),
         ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ]);
-      const knownGroupIds = new Set((state.groups ?? []).filter((group) => group.commodoreId === commodoreId).map((group) => group.id));
+      const knownGroupIds = new Set((baseline.groups ?? []).filter((group) => group.commodoreId === commodoreId).map((group) => group.id));
       const nextGroups = (next.groups ?? []).filter((group) => group.commodoreId === commodoreId).map(withoutOwner);
       const transaction: Transaction = { documents: [...documents.values()],
         groups: [...nextGroups, ...scope.groups.filter((group) => !knownGroupIds.has(group.id) && !nextGroups.some((nextGroup) => nextGroup.id === group.id))],
@@ -744,6 +745,7 @@ export function createObjectiveStorage(deps: {
       deps.stateStore.save(registration);
       for (const { scope, transaction, id } of plans) apply(scope, transaction, id);
       state = next;
+      baseline = next;
     } catch (error) { blocked = true; throw error; }
   }
   function acknowledgeEvents(ids: readonly string[]): void {
@@ -818,7 +820,8 @@ export function createObjectiveStorage(deps: {
         } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_cleanup_failed"}; aliases retained`); }
       }
       ready = true; blocked = false;
-      return snapshot();
+      baseline = snapshot();
+      return baseline;
     } catch (error) { blocked = true; throw error instanceof SyntaxError ? failure() : error; }
   }
   function isReserved(id: string): boolean {
