@@ -720,6 +720,20 @@ function daemonEnv() {
 }
 
 /**
+ * The folder the new serve starts in. It inherits the old Console's, which may have been removed since that Console
+ * started (a deleted worktree, say); a serve whose folder is gone dies at once on uv_cwd, before it can log why.
+ */
+function serveCwd() {
+  try {
+    const cwd = process.cwd();
+    if (fs.statSync(cwd).isDirectory()) return cwd;
+  } catch {
+    // Gone or unreadable: fall through to a folder that outlives every checkout.
+  }
+  return os.homedir();
+}
+
+/**
  * Starts a detached Console serve with no stdio, like every detached Console: it outlives this worker, so nothing here
  * could keep reading its output or bound it. The returned record shows the serve's exit while this worker still waits
  * on it; a serve that does not take the lock records why in the Console failure log (config.failureLogFile).
@@ -727,6 +741,7 @@ function daemonEnv() {
 function spawnServe() {
   const serve = { exited: false, code: null, signal: null };
   const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
+    cwd: serveCwd(),
     detached: true,
     env: daemonEnv(),
     stdio: "ignore",
