@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.256.0] - 2026-10-25
+
+### fleet-console
+
+#### Changed
+- Keep Codex, files, repository, Shell, and workbench state shared across a commodore and its objective and member views, using the commodore's Theater as their working location.
+- Not-started and done objectives in the sidebar now share one compact row per Theater, so they take far less room and open one list at a time.
+
 ## [1.255.4] - 2026-10-25
 
 ### fleet-console

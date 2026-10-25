@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.256.0] - 2026-10-25
+
+### fleet-console
+
+#### Changed
+- 사령관과 그 목표·구성원 화면이 Codex·파일·저장소·Shell·워크벤치 상태를 공유하고, 사령관의 Theater를 작업 위치로 사용합니다.
+- 사이드바의 시작 전·완료 목표가 Theater마다 짧은 한 줄로 합쳐져 자리를 훨씬 덜 차지하고, 목록은 한 번에 하나씩 열립니다.
+
 ## [1.255.4] - 2026-10-25
 
 ### fleet-console
