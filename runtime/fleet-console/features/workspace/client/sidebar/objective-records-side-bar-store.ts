@@ -160,7 +160,7 @@ export function subscribeStatusSectionCollapse(listener: () => void): () => void
 }
 
 // 그룹별 「시작 전 N」·「완료 N」 접기의 펼침 — 비영속 표시 상태다. 새 페이지 로드마다 모두 접힌 채 시작하고,
-// Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 접기 종류와 Theater 와 그룹(미분류는 빈 문자열)이라 두 종류의 펼침은 서로 독립이다.
+// Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 접기 종류와 Theater 와 그룹(미분류는 빈 문자열)이며, 같은 그룹에서는 한 종류만 펼친다.
 export type SideBarRowFoldKind = "fresh" | "done";
 
 const rowFoldListeners = new Set<() => void>();
@@ -185,8 +185,10 @@ export function setSideBarRowFoldExpanded(kind: SideBarRowFoldKind, theaterId: s
   const key = rowFoldKey(kind, theaterId, groupId);
   if (expandedRowFolds.has(key) === expanded) return;
   const next = new Set(expandedRowFolds);
-  if (expanded) next.add(key);
-  else next.delete(key);
+  if (expanded) {
+    next.add(key);
+    next.delete(rowFoldKey(kind === "fresh" ? "done" : "fresh", theaterId, groupId));
+  } else next.delete(key);
   expandedRowFolds = next;
   for (const listener of rowFoldListeners) listener();
 }

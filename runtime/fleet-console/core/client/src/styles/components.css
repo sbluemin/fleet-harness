@@ -4380,24 +4380,38 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   white-space: nowrap;
 }
 
-/* 「시작 전 N ›」·「완료 N ›」 — 그룹 맨 아래 글자형 한 줄. 상자·채움·왼쪽 띠 없이 줄과 같은 격자에 서고, 머무를 때만 줄 배경이 옅게 선다. */
-.side-bar-row-fold-toggle {
-  display: grid;
-  grid-template-columns: 24px auto auto 1fr;
-  gap: 8px;
+/* 「시작 전 N ›」·「완료 N ›」 — 제목 칸에 맞춘 한 줄 꼬리. 머무를 때만 버튼 배경이 옅게 선다. */
+.side-bar-row-fold-tail {
+  display: flex;
   align-items: center;
-  width: calc(100% - 2 * var(--space-1));
+  gap: 2px;
+  height: 24px;
   margin: 0 var(--space-1);
-  padding: 5px 8px;
+  padding-left: 40px;
+}
+
+.side-bar-row-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 6px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-tertiary);
   font: inherit;
   font-size: var(--t-sm);
+  line-height: 1;
+  white-space: nowrap;
   text-align: left;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-row-fold-toggle[aria-expanded="true"] {
+  color: var(--text-secondary);
 }
 
 .side-bar-row-fold-toggle:hover {
@@ -4410,32 +4424,24 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
 }
 
-.side-bar-row-fold-glyph {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
-}
-
-.side-bar-row-fold-glyph i {
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--ink-fog);
+.side-bar-row-fold-separator {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 3px;
   border-radius: 50%;
-}
-
-/* 완료 — 중성 채움 점. 체크는 6px 에서 읽히지 않아 넣지 않고, 신호 색(positive)도 쓰지 않는다. */
-.side-bar-row-fold.is-done .side-bar-row-fold-glyph i {
-  border-color: transparent;
-  background: color-mix(in oklch, var(--text-tertiary) 42%, transparent);
+  background: var(--ink-fog);
+  opacity: 0.8;
 }
 
 .side-bar-row-fold-count {
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .side-bar-row-fold-chev {
-  justify-self: end;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  margin-left: 1px;
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 
@@ -4445,7 +4451,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .side-bar-row-fold-body {
   margin: 0;
-  padding: 0 0 0 10px;
+  padding: 0;
   list-style: none;
 }
 

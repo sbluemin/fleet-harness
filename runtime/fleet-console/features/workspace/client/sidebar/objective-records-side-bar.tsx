@@ -1173,11 +1173,16 @@ export function ObjectiveRecordsSideBar({
                       />
                     );
                   })}
-                  {freshItems.length > 0 ? (
-                    <SideBarRowFold kind="fresh" theaterId={theater.id} groupId={section.groupId} items={freshItems} expanded={rowFolds.has(rowFoldKey("fresh", theater.id, section.groupId))} renderRow={(item) => renderRow(item, false)} />
-                  ) : null}
-                  {doneItems.length > 0 ? (
-                    <SideBarRowFold kind="done" theaterId={theater.id} groupId={section.groupId} items={doneItems} expanded={rowFolds.has(rowFoldKey("done", theater.id, section.groupId))} renderRow={(item) => renderRow(item, false)} />
+                  {freshItems.length + doneItems.length > 0 ? (
+                    <SideBarRowFold
+                      theaterId={theater.id}
+                      groupId={section.groupId}
+                      freshItems={freshItems}
+                      doneItems={doneItems}
+                      freshExpanded={rowFolds.has(rowFoldKey("fresh", theater.id, section.groupId))}
+                      doneExpanded={rowFolds.has(rowFoldKey("done", theater.id, section.groupId))}
+                      renderRow={(item) => renderRow(item, false)}
+                    />
                   ) : null}
                 </ol>
               ) : null}
