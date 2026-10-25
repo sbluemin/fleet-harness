@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.2] - 2026-10-25
+
+### fleet-console
+
+#### Fixed
+- 이전 버전 Console에서 바로 업데이트해도 사령관의 목표 보드가 "recovery required"에 갇히지 않습니다. 기존 목표, 증거, 그룹은 다음 기동 때 옮겨지고, 읽을 수 없는 목표나 색인이 있으면 보드 전체를 막지 않고 해당 항목만 따로 보류합니다.
+
 ## [1.255.1] - 2026-10-24
 
 ### fleet-console

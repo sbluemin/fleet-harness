@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.2] - 2026-10-25
+
+### fleet-console
+
+#### Fixed
+- Updating straight from an older Console no longer leaves a commodore's objective board stuck in "recovery required": existing objectives, evidence, and groups move over on the next start, and an unreadable objective or index now sets aside only the affected items instead of blocking the whole board.
+
 ## [1.255.1] - 2026-10-24
 
 ### fleet-console
