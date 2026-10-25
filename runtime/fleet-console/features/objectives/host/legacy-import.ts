@@ -66,6 +66,24 @@ function legacyNames(cwd: string): readonly string[] {
 function hashOf(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
+/** 직전 보드의 pending 초안은 객체다. 현행 문서는 pending: true와 펼친 제목·시각만 받는다. */
+function expandPendingDraft(raw: Record<string, unknown>): Record<string, unknown> {
+  if (!object(raw.pending)) return raw;
+  const draft = raw.pending;
+  const createdAt = Number(draft.createdAt);
+  const session = {
+    ...(typeof draft.sessionName === "string" ? { sessionName: draft.sessionName } : {}),
+    ...(typeof draft.model === "string" ? { model: draft.model } : {}),
+    ...(typeof draft.effort === "string" ? { effort: draft.effort } : {}),
+  };
+  return { ...raw, pending: true,
+    ...(typeof draft.title === "string" ? { title: draft.title } : {}),
+    ...(draft.groupId === null || typeof draft.groupId === "string" ? { groupId: draft.groupId } : {}),
+    ...(Number.isFinite(createdAt) ? { ts: { createdAt, updatedAt: createdAt } } : {}),
+    ...(Object.keys(session).length ? { session } : {}),
+    ...(draft.viewMode === "chat" ? { chatMode: true } : {}),
+  };
+}
 function renameKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(renameKeys);
   if (!object(value)) return value;
@@ -234,7 +252,8 @@ export function importMissingObjectives(deps: {
       if (exists(file) && !fs.lstatSync(file).isSymbolicLink()) {
         try {
           const raw = renameKeys(JSON.parse(fs.readFileSync(file, "utf8")));
-          bodyTheater = object(raw) && typeof raw.theaterId === "string" ? raw.theaterId : undefined;
+          const draft = object(raw) && object(raw.pending) ? raw.pending : undefined;
+          bodyTheater = object(raw) && typeof raw.theaterId === "string" ? raw.theaterId : draft && typeof draft.theaterId === "string" ? draft.theaterId : undefined;
         } catch { /* 본문 판정 실패는 복사 단계에서 격리한다. */ }
       }
       const hit = records.get(id);
@@ -268,8 +287,9 @@ export function importMissingObjectives(deps: {
       if (item.source) copyTree(item.source, staging);
       else fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
       const boardFile = path.join(staging, "objective.json");
-      const raw = exists(boardFile) ? renameKeys(JSON.parse(fs.readFileSync(boardFile, "utf8"))) : { id, rank: 0, note: "", missions: [] };
-      if (!object(raw)) throw new SyntaxError("legacy_unreadable");
+      const parsed = exists(boardFile) ? renameKeys(JSON.parse(fs.readFileSync(boardFile, "utf8"))) : { id, rank: 0, note: "", missions: [] };
+      if (!object(parsed)) throw new SyntaxError("legacy_unreadable");
+      const raw = expandPendingDraft(parsed);
       const board = { rank: 0, note: "", missions: [], ...raw, id, ...(typeof raw.cwd === "string" ? {} : { cwd: deps.owner.legacyCwd }) } as StoredObjective;
       let doc = documentFromBoard(board);
       if (item.hit?.node) doc = documentFromObjective({ ...item.hit.node, commodoreId: deps.owner.commodoreId }, doc);

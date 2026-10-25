@@ -324,6 +324,8 @@ describe("durable console state", () => {
     fs.writeFileSync(path.join(oldBoard, "active", "evidence", "d7f24ad7-6854-4b2a-8802-e4f242b30629.txt"), evidenceBytes);
     fs.mkdirSync(path.join(oldBoard, "broken"));
     fs.writeFileSync(path.join(oldBoard, "broken", "objective.json"), "{");
+    fs.mkdirSync(path.join(oldBoard, "unlaunched"));
+    fs.writeFileSync(path.join(oldBoard, "unlaunched", "objective.json"), JSON.stringify({ operationId: "unlaunched", rank: 4, enlisted: true, pending: { theaterId: "t1", title: "Before launch", groupId: null, createdAt: 5, sessionName: "objective-cmdr", model: "opus", effort: "high", viewMode: "chat" } }));
     fs.mkdirSync(path.join(oldBoard, "stray"));
     fs.writeFileSync(path.join(oldBoard, "stray", "objective.json"), JSON.stringify({ operationId: "stray", rank: 1, note: "not mine", missions: [] }));
     fs.mkdirSync(path.join(legacy.directory, "workspaces", `${slug}--${"a".repeat(64)}`));
@@ -353,7 +355,8 @@ describe("durable console state", () => {
     expect(importedState.objectiveRecords.map((node) => node.id)).toContain("active");
     expect(imported.entries().map((entry) => entry.objectiveRecord.id)).toContain("archived");
     expect(importedState.groups?.map((group) => group.id)).toContain("g1");
-    expect(imported.board.list("c1").map((row) => row.id)).toEqual(expect.arrayContaining(["active", "archived"]));
+    expect(imported.board.list("c1").map((row) => row.id)).toEqual(expect.arrayContaining(["active", "archived", "unlaunched"]));
+    expect(imported.board.list("c1").find((row) => row.id === "unlaunched")).toMatchObject({ pending: true, title: "Before launch", chatMode: true });
     expect(imported.board.list("c1").map((row) => row.id)).not.toContain("stray");
     expect(imported.board.list("c1").map((row) => row.id)).not.toContain("broken");
     expect(fs.readFileSync(path.join(legacy.destination, "active", "shared", "proof.txt"), "utf8")).toBe("bytes active");
