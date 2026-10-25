@@ -4,7 +4,7 @@ import { fetchObjectiveCatalog, OBJECTIVE_CATALOG_CHANGED_EVENT } from "../../..
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
-import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
+import type { ConsoleState, NewSessionTarget } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, openNewSession, requestLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { AttachImageIcon } from "../../../execution/client/composer-primitives/icons.js";
@@ -30,6 +30,10 @@ import { useMentionSources } from "./new-session-mention-sources.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 import { TheaterAvatar } from "../theater-avatar.js";
+import { KeyedAvatar } from "../avatars.js";
+import { commodoreAvatarKey } from "../../shared/avatars.js";
+import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { addCommodoreTheater } from "../../../commodore/client/theaters-api.js";
 import { registerTheaterFromPath } from "../theater.js";
 import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
@@ -40,16 +44,17 @@ import "./new-session.css";
  * 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 연다(승인안 ① A, v4).
  *
  * 여는 것만으로는 아무것도 만들지 않는다. 첫 메시지를 보내야 실행 의도(requestLaunch)로
- * 나가고, 실행은 ObjectiveRecords 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
- * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Objective 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
+ * 나가고, 실행은 ObjectiveRecords 화면이 맡는다 — 새 서버 계약은 없다. 아래 칩 줄 왼쪽은 「사령관 › Theater」와 시작 표면을,
+ * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 사령관은 화면을 열 때 정해져 고정이고(섹션 「+」·단축키가 싣고 온다),
+ * Theater 후보는 그 사령관이 가진 Theater 목록뿐이다 — Console 전체 목록이 아니다. 시작해 Objective 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
  *
  * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Objective·사령관·부관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
  * 같이 쓰는 SDK 덱(퀵 런치바 문법 — 묶음 머리 옆 구분선)이고 캡슐 위에 뜬다(new-session-deck). S3 「캡슐 안 목록」은 이 덱으로
  * 대체됐다. 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
  * 새 Objective 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
  *
- * Theater 가 없거나 새로 더할 때는 이 화면에서 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길). 더한 Theater 가
- * 곧 이번 세션의 Theater 다. 시작 보기의 기억은 '+' 입구의 것(launch-start-surface)을 그대로 잇는다.
+ * 사령관에게 Theater 가 없거나 새로 더할 때는 Theater 칩의 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길).
+ * 더한 Theater 는 그 사령관의 목록에 들어가고 곧 이번 세션의 Theater 다. 시작 보기의 기억은 '+' 입구의 것(launch-start-surface)을 그대로 잇는다.
  */
 export function NewSessionColumn({ state, target, tools }: {
   readonly state: ConsoleState;
@@ -58,16 +63,31 @@ export function NewSessionColumn({ state, target, tools }: {
 }) {
   const t = useT();
   const ct = composerT(useConsoleLocale());
-  // 고른 Theater 가 사라졌거나(잊음) 처음부터 없으면 기본 규칙으로 다시 고른다 — Theater 가 하나도 없으면 null.
-  const theater = state.theaters.find((candidate) => candidate.id === target.theaterId)
-    ?? state.theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId())
+  // 사령관은 화면을 열 때 실려 와 고정이다. 실려 오지 않았을 때만(사령관이 아직 없던 순간에 연 화면) 지금 규칙으로 고른다.
+  const commodores = useCommodoreList();
+  const commodoreId = target.commodoreId ?? resolveNewSessionCommodoreId();
+  const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
+  const commodoreName = commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
+  // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라졌거나 등록이 풀린 행은 시작할 수 없으므로 세우지 않는다.
+  // 사령관이 하나도 없을 때만(첫 실행이 새 사령관을 만든다) Console 에 등록된 Theater 를 후보로 둔다.
+  const theaters = useMemo(() => {
+    if (commodoreId === null) return state.theaters.map((info) => ({ id: info.id, label: info.label }));
+    return (commodore?.theaters ?? []).flatMap((row) => {
+      if (row.status !== "available") return [];
+      const info = state.theaters.find((candidate) => candidate.id === row.theaterId);
+      return info ? [{ id: info.id, label: info.label }] : [];
+    });
+  }, [commodoreId, commodore, state.theaters]);
+  // 고른 Theater 가 이 사령관 목록에 없으면(다른 사령관의 것이거나 빠졌다) 기본 규칙으로 다시 고른다 — 목록이 비면 null.
+  const theater = theaters.find((candidate) => candidate.id === target.theaterId)
+    ?? theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId(commodoreId))
     ?? null;
   const [catalog, setCatalog] = useState<readonly ObjectiveCatalogPlugin[] | null>(null);
   const [prompt, setPrompt] = useState("");
   const [startView, setStartView] = useState<ObjectiveLaunchView>(readLaunchStartSurface);
   const [starting, setStarting] = useState(false);
   const [launchError, setLaunchError] = useState<{ readonly key: string; readonly shortenBy: number | null } | null>(null);
-  const [theaterMenuOpen, setTheaterMenuOpen] = useState<"chip" | "card" | null>(null);
+  const [theaterMenuOpen, setTheaterMenuOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [choice, setChoice] = useState<NewSessionLaunchChoice | null>(null);
   // '/'·'@' 목록 — 판정은 문면과 caret 에서 파생한다. 상태로 남는 것은 caret, 활성 행, 「이번 문면에서 Esc로 닫았다」뿐이다.
@@ -170,20 +190,28 @@ export function NewSessionColumn({ state, target, tools }: {
   const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && hasContent && !tooLong && !starting && !uploading;
 
   const pickTheater = (theaterId: string) => {
-    setTheaterMenuOpen(null);
-    // 고른 Theater 는 기억에 남는다 — 다음 새 세션(데스크톱·모바일)이 같은 Theater 로 시작한다.
+    setTheaterMenuOpen(false);
+    // 고른 Theater 는 기억에 남는다 — 다음 새 세션(데스크톱·모바일)이 같은 Theater 로 시작한다. 사령관은 그대로 둔다.
     writeNewSessionTheater(theaterId);
-    openNewSession({ theaterId });
+    openNewSession({ ...target, theaterId });
   };
 
   const addTheater = () => {
-    setTheaterMenuOpen(null);
+    setTheaterMenuOpen(false);
     setFolderDialogOpen(true);
   };
 
+  // 폴더를 Theater 로 등록하고 이 사령관의 목록에 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
   const confirmFolder = (path: string) => {
     setFolderDialogOpen(false);
-    void registerTheaterFromPath(path).then((theaterId) => { if (theaterId !== null) pickTheater(theaterId); });
+    void registerTheaterFromPath(path).then(async (theaterId) => {
+      if (theaterId === null) return;
+      if (commodoreId !== null && !theaters.some((candidate) => candidate.id === theaterId)) {
+        await addCommodoreTheater({ commodoreId, theaterId });
+        await refreshCommodoreList();
+      }
+      pickTheater(theaterId);
+    }).catch(() => {});
   };
 
   // ── '/'·'@' ────────────────────────────────────────────────────────────────
@@ -253,7 +281,7 @@ export function NewSessionColumn({ state, target, tools }: {
       if (command.command === "theater") {
         return [
           { kind: "section", key: "theater", label: t("conversation.newSession.deckTheater") },
-          ...state.theaters
+          ...theaters
             .filter((candidate) => candidate.label.toLowerCase().includes(query))
             .map((candidate): NewSessionDeckItem => ({
               kind: "row",
@@ -530,7 +558,6 @@ export function NewSessionColumn({ state, target, tools }: {
     attachmentStore.clearNotice();
     setStarting(true);
     writeNewSessionTheater(theater.id);
-    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
     requestLaunch({
       theaterId: theater.id,
       ...(commodoreId ? { commodoreId } : {}),
@@ -547,7 +574,6 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
     requestLaunch({ theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
   };
 
@@ -572,7 +598,6 @@ export function NewSessionColumn({ state, target, tools }: {
     closeNewSession();
   };
 
-  const theaterName = theater ? theater.label : "";
   const viewLabel = t(startView === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
   const adding = state.addingTheater;
 
@@ -585,31 +610,6 @@ export function NewSessionColumn({ state, target, tools }: {
       <div className="new-session-body">
         <NewSessionPlayground />
         <div className="new-session-cards">
-          <section className="new-session-section" aria-labelledby="new-session-where">
-            <h2 className="new-session-heading" id="new-session-where">{t("conversation.newSession.where")}</h2>
-            <div className="new-session-card">
-              {theater ? (
-                <div className="new-session-row is-current" aria-current="true">
-                  <TheaterAvatar theaterId={theater.id} size={18} label={theaterName} decorative />
-                  <span className="new-session-row-label">{theaterName}</span>
-                  <span className="new-session-row-meta">{t("conversation.newSession.currentTheater")}</span>
-                </div>
-              ) : null}
-              {state.theaters.length > 1 ? (
-                <span className="new-session-anchor">
-                  <button type="button" className="new-session-row" aria-haspopup="menu" aria-expanded={theaterMenuOpen === "card"} onClick={() => setTheaterMenuOpen(theaterMenuOpen === "card" ? null : "card")}>
-                    <span className="new-session-row-label">{t("conversation.newSession.otherTheater")}</span>
-                    <ChevronGlyph />
-                  </button>
-                  {theaterMenuOpen === "card" ? <TheaterMenu theaters={state.theaters} current={theater?.id ?? null} placement="below" onPick={pickTheater} onAdd={addTheater} onClose={() => setTheaterMenuOpen(null)} /> : null}
-                </span>
-              ) : null}
-              <button type="button" className="new-session-row" onClick={addTheater} disabled={adding || starting} data-new-session-add-theater="card">
-                <FolderPlusGlyph />
-                <span className="new-session-row-label">{t("conversation.newSession.addTheater")}</span>
-              </button>
-            </div>
-          </section>
           {directKinds.length > 0 ? (
             <section className="new-session-section" aria-labelledby="new-session-other">
               <h2 className="new-session-heading" id="new-session-other">{t("conversation.newSession.otherKinds")}</h2>
@@ -686,24 +686,36 @@ export function NewSessionColumn({ state, target, tools }: {
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.8M4.2 7.4 8 3.6l3.8 3.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
-        {/* 칩 줄 — 왼쪽은 어디서(Theater·시작 표면), 오른쪽은 무엇으로(모델·강도 칸). 좁은 폭 접힘은 new-session.css 의 @container 가 정한다. */}
+        {/* 칩 줄 — 왼쪽은 어디서(사령관 › Theater·시작 표면), 오른쪽은 무엇으로(모델·강도 칸). 좁은 폭 접힘은 new-session.css 의 @container 가 정한다. */}
         <div className="new-session-chips">
           <div className="new-session-chips-row">
             <span className="new-session-chips-lead">
-              {theater ? (
+              {/* 사령관 › Theater — 앞은 고정 표식(누를 수 없다), 뒤만 고른다. 이어짐 기호는 장식이고 읽는 순서는 이름 둘이다. */}
+              <span className="new-session-crumb" data-new-session-crumb="">
+                {commodoreId !== null ? (
+                  <>
+                    <span className="new-session-commodore" data-new-session-commodore={commodoreId}>
+                      <KeyedAvatar avatarKey={commodoreAvatarKey(commodoreId)} role="commodore" state="idle" size={14} label="" decorative />
+                      <span className="new-session-chip-label">{commodoreName}</span>
+                    </span>
+                    <span className="new-session-crumb-sep" aria-hidden="true"><CrumbGlyph /></span>
+                  </>
+                ) : null}
                 <span className="new-session-anchor">
-                  <button type="button" className="new-session-chip" aria-haspopup="menu" aria-expanded={theaterMenuOpen === "chip"} disabled={starting} onClick={() => setTheaterMenuOpen(theaterMenuOpen === "chip" ? null : "chip")}>
-                    <TheaterAvatar theaterId={theater.id} size={14} label={theaterName} decorative />
-                    <span className="new-session-chip-label">{theaterName}</span>
-                  </button>
-                  {theaterMenuOpen === "chip" ? <TheaterMenu theaters={state.theaters} current={theater.id} placement="above" onPick={pickTheater} onAdd={addTheater} onClose={() => setTheaterMenuOpen(null)} /> : null}
+                  {theater ? (
+                    <button type="button" className="new-session-chip" aria-haspopup="menu" aria-expanded={theaterMenuOpen} aria-label={t("conversation.newSession.theaterChipAria", { name: theater.label })} disabled={starting} onClick={() => setTheaterMenuOpen(!theaterMenuOpen)} data-new-session-theater={theater.id}>
+                      <TheaterAvatar theaterId={theater.id} size={14} label={theater.label} decorative />
+                      <span className="new-session-chip-label">{theater.label}</span>
+                    </button>
+                  ) : (
+                    <button type="button" className="new-session-chip is-quiet" onClick={addTheater} disabled={adding || starting} data-new-session-add-theater="chip">
+                      <span className="new-session-chip-glyph" aria-hidden="true"><FolderPlusGlyph /></span>
+                      <span className="new-session-chip-label">{t("conversation.newSession.addTheater")}</span>
+                    </button>
+                  )}
+                  {theaterMenuOpen && theater ? <TheaterMenu theaters={theaters} current={theater.id} onPick={pickTheater} onAdd={addTheater} onClose={() => setTheaterMenuOpen(false)} /> : null}
                 </span>
-              ) : (
-                <button type="button" className="new-session-chip" onClick={addTheater} disabled={adding} data-new-session-add-theater="chip">
-                  <span className="new-session-chip-glyph" aria-hidden="true"><FolderPlusGlyph /></span>
-                  <span className="new-session-chip-label">{t("conversation.newSession.addTheater")}</span>
-                </button>
-              )}
+              </span>
               {chatAvailable ? (
                 <button type="button" className="new-session-chip" onClick={toggleView} disabled={starting} aria-label={t("conversation.newSession.viewAria", { view: viewLabel })} title={t("conversation.newSession.viewAria", { view: viewLabel })}>
                   <span className="new-session-chip-glyph" aria-hidden="true">{startView === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon />}</span>
@@ -730,11 +742,10 @@ export function NewSessionColumn({ state, target, tools }: {
   );
 }
 
-/** Theater 고르기 — 칩(위로)과 「다른 Theater…」 줄(아래로)이 같은 목록을 연다. 맨 아래 「Theater 추가…」. 즉시 열리고 Esc·바깥 클릭이 닫는다. */
-function TheaterMenu({ theaters, current, placement, onPick, onAdd, onClose }: {
-  readonly theaters: readonly TheaterInfo[];
+/** Theater 고르기 — 칩 위로 이 사령관의 Theater 목록을 연다. 맨 아래 「Theater 추가…」. 즉시 열리고 Esc·바깥 클릭이 닫는다. */
+function TheaterMenu({ theaters, current, onPick, onAdd, onClose }: {
+  readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly current: string | null;
-  readonly placement: "above" | "below";
   readonly onPick: (theaterId: string) => void;
   readonly onAdd: () => void;
   readonly onClose: () => void;
@@ -773,7 +784,7 @@ function TheaterMenu({ theaters, current, placement, onPick, onAdd, onClose }: {
     }
   };
   return (
-    <div ref={ref} className={`new-session-menu is-${placement}`} role="menu" aria-label={t("conversation.newSession.theaterMenuAria")} onKeyDown={onKeyDown}>
+    <div ref={ref} className="new-session-menu is-above" role="menu" aria-label={t("conversation.newSession.theaterMenuAria")} onKeyDown={onKeyDown}>
       {theaters.map((theater) => (
         <button key={theater.id} type="button" role="menuitemradio" aria-checked={theater.id === current} className="new-session-menu-item" onClick={() => onPick(theater.id)}>
           <TheaterAvatar theaterId={theater.id} size={16} label={theater.label} decorative />
@@ -790,8 +801,8 @@ function TheaterMenu({ theaters, current, placement, onPick, onAdd, onClose }: {
   );
 }
 
-const ChevronGlyph = () => (
-  <svg className="new-session-row-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.2 8 9.7l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+const CrumbGlyph = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 4.5 10 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
 );
 const FolderPlusGlyph = () => (
   <svg className="new-session-row-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.3h5.8v6.7h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="M8 8v3M6.5 9.5h3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
