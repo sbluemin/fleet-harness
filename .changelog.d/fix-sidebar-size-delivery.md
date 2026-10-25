@@ -1,5 +1,5 @@
 ---
-branch: fix/sidebar-size-unify
+branch: fix/sidebar-size-delivery
 ---
 
 ### fleet-console
