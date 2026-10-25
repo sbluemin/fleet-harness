@@ -1169,6 +1169,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       order,
       ...(tab.defaultWidth === undefined ? {} : { defaultWidth: tab.defaultWidth }),
       ...(section ? { section } : {}),
+      ...(descriptor.opensWithoutTheater ? { opensWithoutTheater: true } : {}),
       // 본문 배치는 패널 머리와 같은 축의 공통 틀이 진다 — 탭이 `fill` 을 선언하지 않으면 가운데 읽기 열이다.
       render: () => <ConversationPanelFrame layout={tab.layout}><FeatureErrorBoundary fallback={null}>{tab.render(context)}</FeatureErrorBoundary></ConversationPanelFrame>,
     }));

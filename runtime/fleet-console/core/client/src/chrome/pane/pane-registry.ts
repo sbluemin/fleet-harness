@@ -70,6 +70,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
     side: panel.side,
     ...(panel.activate ? { activate: panel.activate } : { panes: [panel.id] }),
     ...(panel.surfaceId ? { surfaceId: panel.surfaceId } : {}),
+    ...(panel.opensWithoutTheater ? { opensWithoutTheater: true } : {}),
   };
 
   // activate형(Shell)은 펼칠 본문이 없다 — 아이콘이 곧 동작이다.
