@@ -12,7 +12,7 @@ function visibleError(value: string): string {
 }
 
 const labels = {
-  ko: { command: "명령", output: "출력", read: "읽은 내용", write: "작성한 내용 · 이전 본문 없음", before: "이전 입력", after: "새 입력", message: "보낸 메시지", result: "도구 결과", diff: "변경 비교 · 실제 입력 old → new", pending: "결과를 기다리는 중", truncated: "일부만 표시 · 상한 초과", masked: "경로·자격증명 가림 적용", copy: "복사", copied: "복사됨", input: "도구 입력", reply: "도구 응답", local: "조각 내 행", file: "파일 행", failed: "실패한 호출 · 변경 적용 여부를 확인할 수 없음" },
+  ko: { command: "명령", output: "출력", read: "읽은 내용", write: "작성한 내용 · 이전 본문 없음", before: "이전 입력", after: "새 입력", message: "보낸 메시지", result: "도구 결과", diff: "변경 비교 · 실제 입력 old → new", pending: "결과를 기다리는 중", truncated: "상한을 넘어 일부만 보여요", masked: "경로와 자격증명은 가려서 보여요", copy: "복사", copied: "복사됨", input: "도구 입력", reply: "도구 응답", local: "조각 내 행", file: "파일 행", failed: "실패한 호출이에요. 변경이 적용됐는지는 알 수 없어요" },
   en: { command: "Command", output: "Output", read: "Read content", write: "Written content · no previous version", before: "Old input", after: "New input", message: "Sent message", result: "Tool result", diff: "Change comparison · actual input old → new", pending: "Waiting for result", truncated: "Excerpt only · limit reached", masked: "Paths and credentials masked", copy: "Copy", copied: "Copied", input: "Tool input", reply: "Tool result", local: "Snippet line", file: "File line", failed: "Failed call · changes are not confirmed" },
 } as const;
 
