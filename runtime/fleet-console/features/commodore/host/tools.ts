@@ -24,6 +24,16 @@ export const COMMODORE_TOOL_GROUP = "commodore";
 /** 순찰 예약이 받는 가장 먼 값 — 순찰 간격 사다리의 끝. 실제 상한은 사람이 고른 간격이고, 넘는 값은 그 간격으로 줄인다. */
 export const MAX_WAKE_MINUTES: number = Math.max(...COMMODORE_PATROL_MINUTES.filter((minutes) => typeof minutes === "number"));
 const MAX_FILE_BYTES = 64 * 1024;
+const MAX_LIST_ENTRIES = 500;
+const MAX_FOUND = 200;
+const MAX_MATCHES = 100;
+const MAX_MATCH_TEXT = 240;
+/** 재귀 탐색이 살펴보는 항목 수의 상한 — 큰 Theater 에서도 한 호출이 Console 을 오래 붙잡지 않는다. */
+const MAX_WALK_ENTRIES = 20_000;
+/** 내용 검색이 여는 파일 하나의 상한 — 넘는 파일은 건너뛰고 skipped 로 센다. */
+const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
+/** 재귀 탐색이 들어가지 않는 폴더 — list_dir 로는 볼 수 있다. */
+const WALK_SKIP_DIRS = new Set([".git", "node_modules"]);
 const MAX_LOG = 100;
 const MAX_ISSUES = 100;
 const COMMAND_TIMEOUT_MS = 20_000;
@@ -206,6 +216,53 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
         return { path: requested, size: stat.size, offset: start, text: chunk.toString("utf8"), truncated: start + bytesRead < stat.size };
       } finally { await handle.close(); }
     }),
+    tool("list_dir", "List one folder of the Theater (repository), read-only: each entry's name, type (file, dir, link or other) and file size. path is relative to the Theater root; omit it for the root. Symbolic links are listed but not followed; links that leave the Theater are marked outside: true. Use find_files and search_text to look deeper.", z.object({ theaterId: z.string().optional(), path: z.string().min(1).max(1_024).optional() }).strict(), async ({ theaterId, path: requested }) => {
+      const { realRoot, dir } = containedDir(pickRoot(theaterId), requested);
+      const stat = await fs.promises.stat(dir);
+      if (!stat.isDirectory()) throw new Error("not_a_directory");
+      const dirents = (await fs.promises.readdir(dir, { withFileTypes: true })).sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
+      const entries = await Promise.all(dirents.slice(0, MAX_LIST_ENTRIES).map(async (entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return { name: entry.name, type: "dir" };
+        if (entry.isFile()) return { name: entry.name, type: "file", size: (await fs.promises.lstat(full).catch(() => null))?.size };
+        if (entry.isSymbolicLink()) return { name: entry.name, type: "link", ...(await insideRoot(realRoot, full) ? {} : { outside: true }) };
+        return { name: entry.name, type: "other" };
+      }));
+      return { path: relativePath(realRoot, dir), entries, truncated: dirents.length > MAX_LIST_ENTRIES };
+    }),
+    tool("find_files", "Find files of the Theater (repository) whose path matches a glob, read-only. A pattern without / matches file names at any depth (*.md); one with / matches the path from the search folder (src/**/*.ts). * stays within a folder, ** crosses folders, ? is one character, {a,b} is either. path limits the search to a folder relative to the root. Symbolic links, .git and node_modules are not entered.", z.object({ theaterId: z.string().optional(), pattern: z.string().min(1).max(256), path: z.string().min(1).max(1_024).optional() }).strict(), async ({ theaterId, pattern, path: requested }, context) => {
+      const { realRoot, dir } = containedDir(pickRoot(theaterId), requested);
+      const matcher = globMatcher(pattern);
+      const files: string[] = [];
+      const walked = await walkFiles(dir, context.signal, (file) => {
+        if (!matcher(path.relative(dir, file).split(path.sep).join("/"))) return true;
+        files.push(relativePath(realRoot, file));
+        return files.length < MAX_FOUND;
+      });
+      return { path: relativePath(realRoot, dir), pattern, files, truncated: walked.stopped || walked.limited };
+    }),
+    tool("search_text", "Search the text files of the Theater (repository) for a literal string, read-only: matching lines with path and line number. caseSensitive defaults to false. path limits the search to a folder relative to the root and glob filters files as in find_files. Binary files and files over 1 MiB are skipped; symbolic links, .git and node_modules are not entered.", z.object({ theaterId: z.string().optional(), query: z.string().min(1).max(256), path: z.string().min(1).max(1_024).optional(), glob: z.string().min(1).max(256).optional(), caseSensitive: z.boolean().optional() }).strict(), async ({ theaterId, query, path: requested, glob, caseSensitive }, context) => {
+      const { realRoot, dir } = containedDir(pickRoot(theaterId), requested);
+      const matcher = glob === undefined ? () => true : globMatcher(glob);
+      const needle = caseSensitive ? query : query.toLowerCase();
+      const matches: { path: string; line: number; text: string }[] = [];
+      let skipped = 0;
+      const walked = await walkFiles(dir, context.signal, async (file, size) => {
+        if (!matcher(path.relative(dir, file).split(path.sep).join("/"))) return true;
+        if (size > MAX_SEARCH_FILE_BYTES) { skipped += 1; return true; }
+        const buffer = await fs.promises.readFile(file).catch(() => null);
+        if (!buffer || buffer.includes(0)) { skipped += 1; return true; }
+        const lines = buffer.toString("utf8").split(/\r?\n/);
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = lines[index]!;
+          if (!(caseSensitive ? line : line.toLowerCase()).includes(needle)) continue;
+          matches.push({ path: relativePath(realRoot, file), line: index + 1, text: line.length > MAX_MATCH_TEXT ? `${line.slice(0, MAX_MATCH_TEXT)}…` : line });
+          if (matches.length >= MAX_MATCHES) return false;
+        }
+        return true;
+      });
+      return { path: relativePath(realRoot, dir), query, matches, skipped, truncated: walked.stopped || walked.limited };
+    }),
     tool("git_log", "Recent commits of the Theater repository, newest first: short hash, date, author and subject. Optionally limited to a path relative to the root.", z.object({ theaterId: z.string().optional(), limit: z.number().int().min(1).max(MAX_LOG).optional(), path: z.string().min(1).max(1_024).optional() }).strict(), async ({ theaterId, limit, path: scoped }, context) => {
       const root = pickRoot(theaterId);
       if (scoped !== undefined) containedPath(root, scoped, { mustExist: false });
@@ -247,6 +304,114 @@ function containedPath(root: string, requested: string, options: { readonly must
   const relative = path.relative(realRoot, real);
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("unsafe_path");
   return real;
+}
+
+/** 폴더 하나 — 생략·`.` 은 Theater 루트 자신, 그 밖은 containedPath 와 같은 검사를 거친다. */
+function containedDir(root: string, requested: string | undefined): { readonly realRoot: string; readonly dir: string } {
+  const realRoot = fs.realpathSync(root);
+  if (requested === undefined || requested.split(/[\\/]+/).every((segment) => segment === "" || segment === ".") && !path.isAbsolute(requested) && !/^[\\/]/.test(requested)) return { realRoot, dir: realRoot };
+  return { realRoot, dir: containedPath(root, requested) };
+}
+
+/** 링크가 가리키는 실경로가 Theater 안인지 — 깨진 링크는 밖으로 본다. */
+async function insideRoot(realRoot: string, link: string): Promise<boolean> {
+  const real = await fs.promises.realpath(link).catch(() => null);
+  if (!real) return false;
+  const relative = path.relative(realRoot, real);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+const relativePath = (realRoot: string, file: string) => path.relative(realRoot, file).split(path.sep).join("/") || ".";
+
+/**
+ * 폴더 아래 일반 파일을 이름 순으로 훑는다 — 심볼릭 링크는 파일이든 폴더든 따라가지 않으므로 Theater 밖으로 나가지 않는다.
+ * visit 가 false 를 돌려주면 멈춘다(stopped). 살펴본 항목이 상한에 닿으면 멈춘다(limited).
+ */
+async function walkFiles(dir: string, signal: AbortSignal | undefined, visit: (file: string, size: number) => boolean | Promise<boolean>): Promise<{ readonly stopped: boolean; readonly limited: boolean }> {
+  let seen = 0;
+  const pending = [dir];
+  while (pending.length) {
+    if (signal?.aborted) throw new Error("timeout");
+    const current = pending.shift()!;
+    const dirents = await fs.promises.readdir(current, { withFileTypes: true }).catch(() => []);
+    dirents.sort((a, b) => a.name.localeCompare(b.name));
+    const children: string[] = [];
+    for (const entry of dirents) {
+      if (++seen > MAX_WALK_ENTRIES) return { stopped: false, limited: true };
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) { if (!WALK_SKIP_DIRS.has(entry.name)) children.push(full); continue; }
+      if (!entry.isFile()) continue;
+      const size = (await fs.promises.lstat(full).catch(() => null))?.size ?? 0;
+      if (!await visit(full, size)) return { stopped: true, limited: false };
+    }
+    pending.unshift(...children);
+  }
+  return { stopped: false, limited: false };
+}
+
+/** 중괄호 선택지를 펼친 glob 들 — 중첩을 받고, 펼친 수가 상한을 넘으면 거절한다. */
+const MAX_GLOB_EXPANSIONS = 64;
+function expandBraces(pattern: string): string[] {
+  const open = pattern.indexOf("{");
+  if (open < 0) { if (pattern.includes("}")) throw new Error("invalid_pattern"); return [pattern]; }
+  let depth = 0;
+  const cuts: number[] = [];
+  let close = -1;
+  for (let index = open; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) { close = index; break; }
+    else if (char === "," && depth === 1) cuts.push(index);
+  }
+  if (close < 0 || pattern.slice(0, open).includes("}")) throw new Error("invalid_pattern");
+  const bounds = [open, ...cuts, close];
+  const out: string[] = [];
+  for (let index = 0; index < bounds.length - 1; index += 1) {
+    for (const rest of expandBraces(pattern.slice(0, open) + pattern.slice(bounds[index]! + 1, bounds[index + 1]) + pattern.slice(close + 1))) {
+      out.push(rest);
+      if (out.length > MAX_GLOB_EXPANSIONS) throw new Error("invalid_pattern");
+    }
+  }
+  return out;
+}
+
+/** 이름 하나와 `*`·`?` 패턴 — 되돌림 지점 하나만 두는 탐욕 비교라 패턴 모양과 무관하게 길이의 곱 안에 끝난다. */
+function wildcardMatch(pattern: string, name: string): boolean {
+  let p = 0, n = 0, star = -1, mark = 0;
+  while (n < name.length) {
+    if (p < pattern.length && (pattern[p] === "?" || pattern[p] === name[n])) { p += 1; n += 1; }
+    else if (p < pattern.length && pattern[p] === "*") { star = p; mark = n; p += 1; }
+    else if (star >= 0) { p = star + 1; mark += 1; n = mark; }
+    else return false;
+  }
+  while (p < pattern.length && pattern[p] === "*") p += 1;
+  return p === pattern.length;
+}
+
+/**
+ * glob 한 줄을 경로 판정으로 — `/` 가 없으면 파일 이름만, 있으면 검색 폴더 기준 경로 전체를 본다. `**` 마디는 폴더 0개 이상이다.
+ * 정규식으로 옮기지 않는다: 모델이 쓴 패턴이 되돌림 폭주로 Console 을 붙잡지 않게 마디 단위 표 채우기로 판정한다.
+ */
+function globMatcher(pattern: string): (relative: string) => boolean {
+  const alternatives = expandBraces(pattern).map((one) => one.split("/").filter(Boolean).map((segment) => (segment === "**" ? segment : segment.replace(/\*+/g, "*"))));
+  if (alternatives.some((segments) => !segments.length)) throw new Error("invalid_pattern");
+  const byName = !pattern.includes("/");
+  const matchSegments = (globs: readonly string[], names: readonly string[]): boolean => {
+    // reach[i][j]: 패턴 마디 i 부터가 이름 마디 j 부터와 맞는가 — 뒤에서부터 채운다.
+    let next: boolean[] = Array.from({ length: names.length + 1 }, (_, j) => j === names.length);
+    for (let i = globs.length - 1; i >= 0; i -= 1) {
+      const row: boolean[] = new Array(names.length + 1).fill(false);
+      for (let j = names.length; j >= 0; j -= 1) {
+        row[j] = globs[i] === "**" ? next[j]! || (j < names.length && row[j + 1]!) : j < names.length && next[j + 1]! && wildcardMatch(globs[i]!, names[j]!);
+      }
+      next = row;
+    }
+    return next[0]!;
+  };
+  return (relative) => {
+    const names = byName ? [relative.slice(relative.lastIndexOf("/") + 1)] : relative.split("/");
+    return alternatives.some((globs) => matchSegments(byName ? globs.map((glob) => (glob === "**" ? "*" : glob)) : globs, names));
+  };
 }
 
 function commandFailure(error: unknown, fallback: string): string {

@@ -296,7 +296,9 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
     case "next_wake": return { name, summary: [typeof args.inMinutes === "number" ? `${args.inMinutes}m` : undefined, str("reason")].filter(Boolean).join(" · "), counts: false };
-    case "read_file": case "git_log": return { name, summary: str("path"), counts: false };
+    case "read_file": case "git_log": case "list_dir": return { name, summary: str("path"), counts: false };
+    case "find_files": return { name, summary: [str("path"), str("pattern")].filter(Boolean).join(" · "), counts: false };
+    case "search_text": return { name, summary: [str("path"), str("query")].filter(Boolean).join(" · "), counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
     // Read는 Theater 밖의 절대 경로도 받는다 — 기록에는 경로 요약 없이 도구명·성공 여부만 남긴다.
     case "Read": return { name, counts: false };
