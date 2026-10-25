@@ -10,12 +10,18 @@ import { getConversationSubject } from "./conversation-slots.js";
 import { readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
 
 /**
- * 새 세션이 처음 고르는 Theater — 데스크톱 화면과 모바일 새 대화 시트가 같은 규칙을 쓴다:
- * ① 마지막으로 고른 Theater, ② 지금 보고 있는 Theater, ③ 목록 첫 Theater. 등록된 Theater 가 없으면 null —
- * 데스크톱 화면이 「Theater 추가…」를 먼저 세운다.
+ * 새 세션이 처음 고르는 Theater — 후보는 그 사령관이 가진 Theater 목록뿐이다:
+ * ① 마지막으로 고른 Theater, ② 지금 보고 있는 Theater, ③ 그 사령관 목록의 첫 Theater. 후보가 없으면 null —
+ * 화면이 Theater 칩 자리에 「Theater 추가…」를 세운다. commodoreId 가 null 이면(사령관이 아직 없거나 폰 시트) Console 에 등록된 Theater 에서 같은 순서로 고른다.
  */
-export function resolveNewSessionTheaterId(): string | null {
-  const ids = getState().theaters.map((theater) => theater.id);
+export function resolveNewSessionTheaterId(commodoreId: string | null): string | null {
+  const registered = new Set(getState().theaters.map((theater) => theater.id));
+  const owned = commodoreId === null
+    ? null
+    : readCommodoreList().find((commodore) => commodore.commodoreId === commodoreId)?.theaters
+      .filter((theater) => theater.status === "available" && registered.has(theater.theaterId))
+      .map((theater) => theater.theaterId) ?? [];
+  const ids = owned ?? [...registered];
   const remembered = readNewSessionSelection().theaterId;
   if (remembered !== null && ids.includes(remembered)) return remembered;
   const viewed = getViewedTheaterId();
@@ -30,13 +36,11 @@ function commodoreUuid(id: string | null | undefined): string | null {
 }
 
 /**
- * 새 세션이 실을 사령관. Theater 칩은 후보를 제한하지 않고, 소유만 이 순서로 정한다.
- * ① 컴포저를 연 섹션, ② 가운데 사령관 대화와 지금 보는 기록, ③ 작전 구역·폰 칩, ④ 목록의 첫 사령관.
- * 팔레트·단축키가 예전에 담아 둔 값은 섹션이 아니다. 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
+ * 새 세션이 실을 사령관. 화면을 열 때 한 번 정해 고정하고, Theater 후보는 이 사령관의 목록이다.
+ * ① 가운데 사령관 대화와 지금 보는 기록, ② 작전 구역·폰 칩, ③ 목록의 첫 사령관. 섹션 「+」는 제 사령관을 직접 싣는다.
+ * 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
  */
-export function resolveNewSessionCommodoreId(sectionCommodoreId?: string | null): string | null {
-  const section = commodoreUuid(sectionCommodoreId);
-  if (section) return section;
+export function resolveNewSessionCommodoreId(): string | null {
   const surface = getConversationSurface();
   const conversation = surface?.surfaceId === "commodore"
     ? commodoreUuid(typeof surface.params.commodoreId === "string" ? surface.params.commodoreId : null)
@@ -52,26 +56,22 @@ export function resolveNewSessionCommodoreId(sectionCommodoreId?: string | null)
   return commodoreUuid(picked) ?? readCommodoreList()[0]?.commodoreId ?? null;
 }
 
+/** 섹션 머리의 「+」 — 그 사령관을 싣고 연다. 기본 Theater 는 그 사령관 목록 안에서 고른다(resolveNewSessionTheaterId). */
+export function openCommodoreNewSession(commodoreId: string): void {
+  openNewSession({ theaterId: resolveNewSessionTheaterId(commodoreId), commodoreId });
+}
+
 /**
  * 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다.
  * 이미 열려 있으면 고른 Theater 를 그대로 두고 컴포저로 돌아간다 — 쓰던 문장과 고른 자리를 단축키가 갈아치우지 않는다.
  */
-/** 섹션 머리의 「+」. 기본 Theater 는 그 사령관에 추가한 첫 Theater 이고, 없으면 마지막에 쓴 Theater 다. */
-export function openCommodoreNewSession(commodoreId: string): void {
-  const added = readCommodoreList().find((commodore) => commodore.commodoreId === commodoreId)?.theaters[0]?.theaterId ?? null;
-  const remembered = readNewSessionSelection().theaterId;
-  const ids = getState().theaters.map((theater) => theater.id);
-  const theaterId = added ?? (remembered !== null && ids.includes(remembered) ? remembered : null);
-  openNewSession({ theaterId, commodoreId, commodoreFromSection: true });
-}
-
 export function openDefaultNewSession(): void {
   if (getState().newSession !== null) {
     requestNewSessionFocus();
     return;
   }
   const commodoreId = resolveNewSessionCommodoreId();
-  openNewSession({ theaterId: resolveNewSessionTheaterId(), ...(commodoreId ? { commodoreId } : {}) });
+  openNewSession({ theaterId: resolveNewSessionTheaterId(commodoreId), ...(commodoreId ? { commodoreId } : {}) });
 }
 
 /**

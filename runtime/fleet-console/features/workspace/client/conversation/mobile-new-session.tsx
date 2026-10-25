@@ -109,7 +109,8 @@ export function MobileNewSession() {
     if (!opening) return;
     epochRef.current += 1;
     const remembered = readNewSessionSelection();
-    setTheaterId(resolveNewSessionTheaterId());
+    // 폰 시트는 아직 Console 에 등록된 Theater 에서 고른다(사령관 목록으로 좁히는 것은 데스크톱 새 세션 화면만 했다).
+    setTheaterId(resolveNewSessionTheaterId(null));
     setModel(remembered.model ?? LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
     setSubmitting(false);

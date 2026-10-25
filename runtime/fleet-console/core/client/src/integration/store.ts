@@ -828,7 +828,7 @@ export function requestObjectiveKeyboardFocus(objectiveId: string): void {
  * 만들지 않고, 첫 메시지가 실행 의도(requestLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
  */
 export function openNewSession(target: NewSessionTarget): void {
-  if (state.newSession?.theaterId === target.theaterId && state.newSession.commodoreId === target.commodoreId && state.newSession.commodoreFromSection === target.commodoreFromSection) return;
+  if (state.newSession?.theaterId === target.theaterId && state.newSession.commodoreId === target.commodoreId) return;
   setState({ newSession: target });
 }
 

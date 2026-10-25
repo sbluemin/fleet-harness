@@ -106,7 +106,6 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
 }
-.new-session-menu.is-below { top: calc(100% + 6px); }
 .new-session-menu.is-above { bottom: calc(100% + 6px); }
 
 .new-session-menu-item {
@@ -290,6 +289,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 @container new-session-chips (max-width: 379px) {
   .new-session-chips .effort-track-value { display: none; }
   .new-session-chip,
+  .new-session-commodore,
   .new-session-launch-slot .launch-chip { max-width: 140px; }
 }
 .new-session-chip {
@@ -316,6 +316,33 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 .new-session-chip:disabled { cursor: default; }
 .new-session-chip-glyph { display: inline-flex; width: 13px; height: 13px; }
 .new-session-chip-glyph svg { width: 100%; height: 100%; }
+/* 「사령관 › Theater」 — 앞 칩은 이 세션의 고정 표식이라 누름·호버가 없고, 이어짐 기호는 두 칩 사이 여백 안에 앉는다.
+   기호는 위치를 말하지 않는 구두점이라 brass 가 아니라 3차 잉크를 낮춰 쓴다. 뒤 칩만 평소 칩 문법으로 고른다. */
+.new-session-crumb { display: inline-flex; align-items: center; min-width: 0; }
+/* 칩과 같은 높이·글자·잉크지만 단추가 아니다 — .new-session-chip 을 빌리면 공통 누름 축소(components.css)까지 따라온다. */
+.new-session-commodore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  max-width: 180px;
+  padding: 0 4px 0 9px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+  cursor: default;
+}
+.new-session-commodore > .new-session-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.new-session-crumb-sep {
+  display: inline-flex;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: color-mix(in oklch, var(--text-tertiary) 70%, transparent);
+}
+.new-session-crumb-sep svg { width: 100%; height: 100%; }
+.new-session-crumb-sep + .new-session-anchor > .new-session-chip { padding-left: 5px; }
+.new-session-chip.is-quiet { color: var(--text-tertiary); }
 
 .new-session-status { color: var(--text-tertiary); font-size: var(--t-sm); }
 .new-session-status.is-alert { color: var(--coral); }
