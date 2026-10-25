@@ -833,10 +833,9 @@
 }
 
 /* ── 오른쪽 패널 본문 틀(ConversationPanelFrame) ─────────────────────────────────
-   머리가 슬롯 전폭 가운데에 서므로 본문 축의 기본값도 같은 자리(이 틀)가 진다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
+   머리가 슬롯 전폭에 서므로 본문 외곽도 이 칸의 가용 폭을 채운다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
    사용자 조절·사이드바 점유로 정해져 창 폭과 따로 논다. 읽기 열(read)이 기본이고, 스크롤을 스스로 갖는 본문만 fill 이다.
-   읽기 열의 시작 여백은 (칸 − 열)/2 이고 끝 여백은 거터뿐이다 — 100cqi 는 스크롤바를 포함한 칸 폭이라, 열 중심이 스크롤바 유무와
-   무관하게 머리 중심과 맞는다. 좁으면 열이 줄고 양쪽 거터만 남는다. 「적용」 줄도 같은 시작선을 쓴다. */
+   좌우 여백은 같은 거터다. 좁으면 거터만 줄고 본문은 칸을 채운다. 「적용」 줄도 같은 거터를 쓴다. */
 .conversation-panel-page {
   container: conversation-panel / inline-size;
   display: flex;
@@ -847,9 +846,8 @@
 }
 
 .conversation-panel-page > * {
-  --conversation-panel-measure: 640px;
   --conversation-panel-gutter: clamp(var(--space-4), 6cqi, 28px);
-  --conversation-panel-inset: max(var(--conversation-panel-gutter), (100cqi - var(--conversation-panel-measure)) / 2);
+  --conversation-panel-inset: var(--conversation-panel-gutter);
 }
 
 .conversation-panel-frame {
@@ -863,7 +861,7 @@
 /* 낱말 사이가 없는 긴 글(경로·토큰)도 열 안에서 줄을 바꾼다 — CSS 없는 새 칸이 가로로 넘치지 않는 기본값이다. */
 .conversation-panel-frame[data-layout="read"] {
   display: grid;
-  grid-template-columns: minmax(0, var(--conversation-panel-measure));
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   padding: var(--space-4) var(--conversation-panel-gutter) var(--space-6) var(--conversation-panel-inset);
   overflow-wrap: anywhere;
