@@ -108,6 +108,14 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
   return () => { off(); offReconnect?.(); };
 }
 
+/** 섹션 머리 이름. 별칭, 없으면 첫 Theater 이름, 없으면 현지화된 fallback. 서버 label 의 영문 Commodore 는 쓰지 않는다. */
+export function commodoreSectionLabel(
+  commodore: { readonly alias?: string; readonly theaters: readonly { readonly label: string }[] },
+  fallbackLabel: string,
+): string {
+  return commodore.alias || commodore.theaters.find((theater) => theater.label)?.label || fallbackLabel;
+}
+
 export interface SidebarCommodore {
   readonly commodoreId: string;
   readonly label: string;
@@ -129,7 +137,7 @@ export function sidebarCommodores(
   for (const commodore of listed) {
     byId.set(commodore.commodoreId, {
       commodoreId: commodore.commodoreId,
-      label: commodore.label || commodore.alias || fallbackLabel,
+      label: commodoreSectionLabel(commodore, fallbackLabel),
       ...(commodore.alias ? { alias: commodore.alias } : {}),
       theaters: commodore.theaters,
     });

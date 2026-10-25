@@ -91,6 +91,11 @@ export interface TheaterPromptControllerOptions {
   readonly onMissing: (theater: PromptTheater) => void;
   /** 「초안 버리고 닫기」 — 초안을 버린 뒤 그리는 쪽이 닫는다. */
   readonly onDiscarded: () => void;
+  /**
+   * 등록 Theater 목록으로 잊힘을 보지 않는다. 사령관 설정은 id 가 Theater 가 아니라 그 목록에 없다.
+   * 그 경로에서 null 이름을 잊힘으로 보면 읽은 시스템 프롬프트가 초안에 닿기 전에 끊긴다.
+   */
+  readonly ignoreTheaterRegistry?: boolean;
 }
 
 /**
@@ -246,6 +251,7 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   useEffect(() => {
+    if (optionsRef.current.ignoreTheaterRegistry) return;
     if (!theater || theaterRef.current?.id !== theater.id) return;
     if (registeredLabel === null) { markForgotten(); return; }
     if (!forgottenRef.current) return;

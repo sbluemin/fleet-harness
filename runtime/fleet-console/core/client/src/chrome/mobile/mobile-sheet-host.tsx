@@ -9,7 +9,7 @@ import { createCommodoreGroup, forgetTheaterCompletely, registerTheaterFromPath 
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
-import { setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { CommodoreTheaterTab } from "../../../../../features/commodore/client/commodore-theater-tab.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -126,15 +126,25 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   if (commodores.length > 0) {
     return (
       <MobileSheet title={t("sidebar.commodore.fallback")} onClose={cancel}>
-        {commodores.map((commodore) => (
-          <button key={commodore.commodoreId} type="button" className="mobile-sheet-row is-theater" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); closeMobileSheets(); }}>
-            <span className="mobile-sheet-row-copy"><strong>{commodore.alias ?? commodore.label}</strong></span>
-          </button>
-        ))}
+        {commodores.map((commodore) => {
+          const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
+          return (
+            <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
+              <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); closeMobileSheets(); }}>
+                <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
+              </button>
+              <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>
+                <MobileIcon name="kebab" />
+              </button>
+            </div>
+          );
+        })}
         <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
         </button>
+        <div className="mobile-sheet-sep" role="separator" />
+        <p className="mobile-sheet-hint">{t("mobile.sheet.commodore.actionsHint")}</p>
       </MobileSheet>
     );
   }
@@ -159,6 +169,63 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
         ) : null}
       </MobileSheet>
     </>
+  );
+}
+
+/** 사령관 칩 시트의 ⋯. 작전 구역은 Theater 탭만, 이름·모양은 별칭이다. 길게 누르기에 기대지 않는다. */
+function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+  const t = useT();
+  const openZone = () => {
+    setZoneCommodore(commodoreId);
+    pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={commodoreId} /></MobileSheet> });
+  };
+  const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
+  return (
+    <MobileSheet title={label} onClose={onClose}>
+      <button type="button" className="mobile-sheet-row" onClick={openZone}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
+      </button>
+      <button type="button" className="mobile-sheet-row" onClick={openAppearance}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.appearance")}</strong></span>
+      </button>
+    </MobileSheet>
+  );
+}
+
+function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+  const t = useT();
+  const [value, setValue] = useState(alias);
+  const [saving, setSaving] = useState(false);
+  const composingRef = useRef(false);
+  const save = () => {
+    if (saving) return;
+    const next = commodoreAliasEditor.clamp(value).trim();
+    const saved = next.length > 0 ? next : null;
+    if (saved === (alias || null)) { onClose(); return; }
+    setSaving(true);
+    void commodoreAliasEditor.save(commodoreId, saved)
+      .then(() => { void refreshCommodoreList(); closeMobileSheets(); showMobileToast(t(saved === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
+      .catch(() => setSaving(false));
+  };
+  return (
+    <MobileSheet title={t("sidebar.commodore.appearance")} onClose={onClose} footer={<>
+      <button type="button" className="mobile-pill-secondary" onClick={onClose}>{t("mobile.sheet.cancel")}</button>
+      <button type="button" className="mobile-pill-secondary is-inverse" onClick={save} disabled={saving}>{t("mobile.sheet.save")}</button>
+    </>}>
+      <input
+        className="mobile-field"
+        value={value}
+        placeholder={label}
+        aria-label={t("sidebar.theater.alias.inputAria", { theater: label })}
+        onChange={(event) => setValue(composingRef.current ? event.target.value : commodoreAliasEditor.clamp(event.target.value))}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={(event) => { composingRef.current = false; setValue(commodoreAliasEditor.clamp(event.currentTarget.value)); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
+        autoFocus
+      />
+    </MobileSheet>
   );
 }
 

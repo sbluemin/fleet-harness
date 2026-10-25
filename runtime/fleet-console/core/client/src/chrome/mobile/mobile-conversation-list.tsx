@@ -16,7 +16,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
-import { selectMobileCommodore, useCommodoreList, useMobileCommodoreSelection } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreSectionLabel, selectMobileCommodore, useCommodoreList, useMobileCommodoreSelection } from "../../../../../features/commodore/client/commodore-list.js";
 import { commodoreAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
 import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -81,7 +81,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         <span className="mobile-conv-gap" />
         <button type="button" data-press="r1" className="mobile-conv-theater" aria-label={t("mobile.list.theaterAria")} onClick={() => pushMobileSheet({ kind: "theater" })}>
           {commodoreId ? <KeyedAvatar avatarKey={commodoreAvatarKey(commodoreId)} role="commodore" state="idle" size={32} label="" decorative /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
-          <strong>{commodore?.alias ?? commodore?.label ?? theater?.commodore?.alias ?? theater?.label ?? t("sidebar.commodore.fallback")}</strong>
+          <strong>{commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : theater?.commodore?.alias ?? theater?.label ?? t("sidebar.commodore.fallback")}</strong>
           <MobileIcon name="down" size={16} />
         </button>
         <span className="mobile-conv-gap" />

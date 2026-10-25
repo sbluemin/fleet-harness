@@ -331,7 +331,7 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
 }
 
 export function CommodoreSessionSettings({ commodoreId }: { readonly commodoreId: string }) {
-  const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined });
+  const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined, ignoreTheaterRegistry: true });
   const names = useTheaterPromptModeNames();
   const modes = Object.keys(names) as Array<keyof typeof names>;
   if (!commodoreId) return null;

@@ -1006,10 +1006,6 @@ export function ObjectiveRecordsSideBar({
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       onContextMenu={openNewSessionAtCursor}
     >
-      {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
-      {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
-      {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
-
       {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓴다. */}
       {topStripVariant === "compact" ? (
         <div className="side-bar-top-strip is-compact">
@@ -1031,6 +1027,9 @@ export function ObjectiveRecordsSideBar({
 
       {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
+      {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
+      {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
+      {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {orderedFaces.map((theater, theaterIndex) => {
           const isViewedTheater = theater.id === viewedTheaterId;

@@ -16,7 +16,6 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
-import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { registerConversationObjectiveTab } from "../../../core/client/src/chrome/rail/objective-tabs.js";
@@ -417,19 +416,14 @@ function CommodoreConversationActions({ commodoreId, language }: { readonly comm
 
 /* ── 오른쪽 패널 탭 ────────────────────────────────────────────────────── */
 
-function CommodoreConversationTab({ tab, commodoreId, theaterId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly theaterId: string | null; readonly language: "en" | "ko" }) {
+function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
-  if (tab === "goals") {
-    return (
-      <div className="objectives-commodore-conversation-tab is-goals">
-        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
-      </div>
-    );
-  }
+  // 기록은 가운데 칸이다. 목표 흔적(CommodoreTrail)은 Inbox 기록 곁과 폰 「목표」에만 남긴다.
+  if (tab === "goals") return null;
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
@@ -504,7 +498,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);
-      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} theaterId={params.theaterId} language={ctx.language} /> : null;
+      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
   defaultTab: TAB_IDS.goals,
