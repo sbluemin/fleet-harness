@@ -560,7 +560,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
     owners: () => ownership?.objectives() ?? [],
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
-    migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership!),
+    migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, { entities: ownership!.entities, issueForAlias: ownership!.issueIfReady }),
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveId: string) => void) | null = null;

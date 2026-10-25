@@ -10,7 +10,7 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { backupDurableStateV3, readDurableStateVersion, sanitizeDurableConsoleState } from "../features/workspace/host/durable-state.js";
 
 const tempDirs: string[] = [];
@@ -80,10 +80,9 @@ describe("durable console state", () => {
         return { ...store, save: (value: unknown) => { if (deps.filePath === h.file("absent-directory")) throw new Error("commit_interrupted"); store.save(value); } };
       }) as typeof createDurableJsonStore,
     });
-    expect(interrupted.load().objectiveRecords).toEqual([]);
+    expect(() => interrupted.load()).not.toThrow();
     expect(interrupted.blocked()).toBe(false);
-    expect(interrupted.board.directory("c1")).toBeNull();
-    expect(() => interrupted.board.save("c1", { ...h.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
+    expect(interrupted.board.directory("c1")).toBe(h.destination);
     expect(fs.readFileSync(h.archiveFile, "utf8")).toBe(source);
     const moved = h.open(); const state = moved.load();
     expect(state.objectiveRecords.map((node) => node.id)).toEqual(["active"]);
@@ -168,6 +167,10 @@ describe("durable console state", () => {
     expect(fs.readFileSync(legacyFile, "utf8")).toBe(badOwner);
     expect(fs.readFileSync(badLocationFile, "utf8")).toBe(badLocation);
     expect(() => isolated.board.save("c1", pending)).toThrow("archive_recovery_required");
+    fs.writeFileSync(legacyFile, legacyPending);
+    const repaired = h.open(); repaired.load();
+    expect(repaired.board.list("c1").map((record) => record.id)).toContain("legacy-pending");
+    expect(repaired.board.unavailable("legacy-pending")).toBe(false);
     // 보관 본문은 목표 파일에 남는다. 격리한 본문과 색인은 형제 저장 뒤에도 보존한다.
     isolated.save({ ...readable, objectiveRecords: readable.objectiveRecords.filter((record) => record.id !== "archived") }, [{ archiveId: "held-archive", archivedAt: 5, objectiveRecord: readable.objectiveRecords.find((record) => record.id === "archived")! }]);
     const corruptBody = { ...JSON.parse(fs.readFileSync(h.file("archived"), "utf8")), addedBy: { kind: "commodore", commodoreId: "other-owner" } };
@@ -218,7 +221,8 @@ describe("durable console state", () => {
     expect(partialState.groups).toEqual([{ ...storedGroup, commodoreId: "healthy", theaterId: "healthy" }]);
     expect(partial.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(partial.board.directory("c1")).toBe(damaged.destination);
-    expect(partial.board.directory("broken")).toBeNull();
+    expect(partial.board.directory("broken")).toBe(broken.directory);
+    expect(() => partial.board.save("broken", { ...damaged.doc("fresh"), pending: true })).not.toThrow();
     expect(partial.board.owners().flatMap((owner) => partial.board.list(owner.commodoreId)).map((row) => row.id)).toContain("live");
     expect(partial.board.directory("healthy")).toBe(healthy.directory);
     for (const id of ["bad-event", "bad-deletion"]) {
@@ -236,7 +240,7 @@ describe("durable console state", () => {
     expect(fs.readFileSync(path.join(damaged.destination, ".archive-migration", `${sourceHash}.json`), "utf8")).toBe(damagedSource);
     const brokenHash = createHash("sha256").update("{broken archive").digest("hex");
     expect(fs.readFileSync(path.join(broken.directory, ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken archive");
-    expect(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).toBe("{broken archive");
+    expect(JSON.parse(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).entries).toEqual([]);
     // 이주와 무관한 owner의 legacy 본문은 읽기와 다른 owner의 정상 저장 모두에서 바이트가 고정이다.
     expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
     partial.save({ ...partialState, objectiveRecords: partialState.objectiveRecords.map((node) => node.id === "unrelated-active" ? { ...node, title: "saved after migration" } : node) });
@@ -307,25 +311,59 @@ describe("durable console state", () => {
     expect(h.open().load().objectiveRecords[0]?.note).toBe("committed board");
     const legacy = fixture();
     fs.rmSync(legacy.destination, { recursive: true });
-    const oldBoard = path.join(ensureWorkspaceDirectory(legacy.directory, legacy.directory).path, "objectives");
-    fs.mkdirSync(oldBoard); fs.writeFileSync(path.join(oldBoard, "untouched"), "older original");
+    const windowsCwd = "G:\\MyProject\\DungeonCore";
+    legacy.owner.legacyCwd = windowsCwd;
+    const slug = "G--MyProject-DungeonCore";
+    const oldBoard = path.join(legacy.directory, "workspaces", slug, "objectives");
+    const evidenceBytes = Buffer.from("sealed proof");
+    fs.mkdirSync(path.join(oldBoard, "active", "shared"), { recursive: true });
+    fs.mkdirSync(path.join(oldBoard, "active", "evidence"), { recursive: true });
+    const activeBoard = JSON.stringify({ operationId: "active", rank: 10, note: "Board active", missions: [], addedBy: { kind: "commodore", theaterId: "t1" }, evidence: [{ evidenceId: "d7f24ad7-6854-4b2a-8802-e4f242b30629", name: "proof.txt", mediaType: "text/plain", bytes: evidenceBytes.length, sha256: createHash("sha256").update(evidenceBytes).digest("hex"), capturedAt: 1, ownerOperationId: "active" }] });
+    fs.writeFileSync(path.join(oldBoard, "active", "objective.json"), activeBoard);
+    fs.writeFileSync(path.join(oldBoard, "active", "shared", "proof.txt"), "bytes active");
+    fs.writeFileSync(path.join(oldBoard, "active", "evidence", "d7f24ad7-6854-4b2a-8802-e4f242b30629.txt"), evidenceBytes);
+    fs.mkdirSync(path.join(oldBoard, "broken"));
+    fs.writeFileSync(path.join(oldBoard, "broken", "objective.json"), "{");
+    fs.mkdirSync(path.join(oldBoard, "stray"));
+    fs.writeFileSync(path.join(oldBoard, "stray", "objective.json"), JSON.stringify({ operationId: "stray", rank: 1, note: "not mine", missions: [] }));
+    fs.mkdirSync(path.join(legacy.directory, "workspaces", `${slug}--${"a".repeat(64)}`));
+    const operation = { id: "active", theaterId: "t1", title: "Active", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: { session: { harness: "claude-code", id: "resume-id" } } };
+    const archived = { id: "archived", theaterId: "t1", title: "Archived", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    fs.mkdirSync(path.join(oldBoard, "archived"));
+    fs.writeFileSync(path.join(oldBoard, "archived", "objective.json"), JSON.stringify({ operationId: "archived", rank: 1, note: "Board archived", missions: [] }));
+    const oldState = JSON.stringify({ ...legacy.source, operations: [operation], groups: [{ id: "g1", theaterId: "t1", name: "Group", color: "blue", order: 0, createdAt: 1 }] });
+    fs.writeFileSync(legacy.stateFile, oldState);
     const oldArchive = path.join(legacy.directory, "operations-archive.json");
-    fs.writeFileSync(oldArchive, "older archive bytes");
+    const oldArchiveBytes = JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "a1", archivedAt: 3, operation: archived }], deletions: [], events: [] });
+    fs.writeFileSync(oldArchive, oldArchiveBytes);
     const marker = `${legacy.stateFile}.objectives-migration.json`;
     fs.writeFileSync(marker, "old marker bytes");
-    const unavailable = legacy.open(); expect(unavailable.load().objectiveRecords).toEqual([]);
-    expect(unavailable.board.directory("c1")).toBeNull();
-    expect(() => unavailable.board.save("c1", { ...legacy.doc("new"), pending: true })).toThrow("objective_owner_unavailable");
-    expect(fs.existsSync(legacy.destination)).toBe(false);
-    expect(fs.readFileSync(oldArchive, "utf8")).toBe("older archive bytes");
-    expect(fs.readFileSync(path.join(oldBoard, "untouched"), "utf8")).toBe("older original");
+    const nativeRename = fs.renameSync.bind(fs);
+    const interrupt = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(from).includes(".import-active")) throw new Error("commit_interrupted");
+      nativeRename(from, to);
+    });
+    try { expect(legacy.open().load().objectiveRecords.map((node) => node.id)).not.toContain("active"); }
+    finally { interrupt.mockRestore(); }
+    expect(fs.existsSync(path.join(legacy.destination, "active", "objective.json"))).toBe(false);
+    expect(fs.readFileSync(path.join(oldBoard, "active", "objective.json"), "utf8")).toBe(activeBoard);
+    const imported = legacy.open(); const importedState = imported.load();
+    expect(imported.blocked()).toBe(false);
+    expect(imported.board.directory("c1")).toBe(legacy.destination);
+    expect(importedState.objectiveRecords.map((node) => node.id)).toContain("active");
+    expect(imported.entries().map((entry) => entry.objectiveRecord.id)).toContain("archived");
+    expect(importedState.groups?.map((group) => group.id)).toContain("g1");
+    expect(imported.board.list("c1").map((row) => row.id)).toEqual(expect.arrayContaining(["active", "archived"]));
+    expect(imported.board.list("c1").map((row) => row.id)).not.toContain("stray");
+    expect(imported.board.list("c1").map((row) => row.id)).not.toContain("broken");
+    expect(fs.readFileSync(path.join(legacy.destination, "active", "shared", "proof.txt"), "utf8")).toBe("bytes active");
+    expect(JSON.parse(fs.readFileSync(path.join(legacy.destination, "active", "objective.json"), "utf8")).evidence[0].ownerObjectiveId).toBe("active");
+    expect(() => imported.board.save("c1", { ...legacy.doc("new"), pending: true })).not.toThrow();
+    const again = legacy.open().load();
+    expect(again.objectiveRecords.map((node) => node.id).sort()).toEqual(importedState.objectiveRecords.map((node) => node.id).sort());
+    expect(fs.readFileSync(oldArchive, "utf8")).toBe(oldArchiveBytes);
+    expect(fs.readFileSync(path.join(oldBoard, "active", "objective.json"), "utf8")).toBe(activeBoard);
     expect(fs.readFileSync(marker, "utf8")).toBe("old marker bytes");
-    // 옛 state의 손상 행이 sanitizer에서 빠져도 새 빈 저장소로 덮지 않는다.
-    fs.rmSync(oldArchive); fs.rmSync(oldBoard, { recursive: true });
-    const oldState = JSON.stringify({ ...legacy.source, operations: [{ id: "unreadable", theaterId: "t1" }] });
-    fs.writeFileSync(legacy.stateFile, oldState);
-    expect(legacy.open().load().objectiveRecords).toEqual([]);
-    expect(fs.existsSync(legacy.destination)).toBe(false);
     expect(fs.readFileSync(legacy.stateFile, "utf8")).toBe(oldState);
   });
 

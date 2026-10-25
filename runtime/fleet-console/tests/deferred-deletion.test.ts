@@ -1,4 +1,5 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -298,18 +299,21 @@ describe("Objective archive persistence and deletion", () => {
       const archiveFile = path.join(directory, "commodore", "owner", "objectives", "archive.json");
       const intact = fs.readFileSync(archiveFile, "utf8");
       fs.unlinkSync(archiveFile);
+      const objectiveFile = path.join(directory, "commodore", "owner", "objectives", "op", "objective.json");
+      const objectiveBytes = fs.readFileSync(objectiveFile, "utf8");
       const missingIndex = createArchiveHarness(directory);
       expect(missingIndex.storage.blocked()).toBe(false);
-      expect(missingIndex.storage.board.directory("c1")).toBeNull();
-      expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_unavailable");
-      expect(fs.existsSync(archiveFile)).toBe(false);
+      expect(missingIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).not.toThrow();
+      expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
       fs.writeFileSync(archiveFile, intact);
       fs.writeFileSync(archiveFile, "{broken");
       const brokenIndex = createArchiveHarness(directory);
       expect(brokenIndex.storage.blocked()).toBe(false);
-      expect(brokenIndex.storage.board.directory("c1")).toBeNull();
-      expect(() => brokenIndex.storage.board.forget("c1", "op")).toThrow("objective_owner_unavailable");
-      expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
+      expect(brokenIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
+      const brokenHash = createHash("sha256").update("{broken").digest("hex");
+      expect(fs.readFileSync(path.join(path.dirname(archiveFile), ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken");
     });
   });
 

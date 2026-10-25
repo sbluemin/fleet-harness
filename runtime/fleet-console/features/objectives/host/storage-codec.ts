@@ -57,7 +57,8 @@ function actors(value: unknown, context: ObjectiveDocumentContext): unknown {
 }
 export function normalizeObjectiveDocument(doc: ObjectiveDocument, context: ObjectiveDocumentContext): ObjectiveDocument {
   const cwd = doc.cwd === undefined ? context.legacyCwd : doc.cwd;
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd) || cwd.includes("\0")) throw new Error("objective_location_unavailable");
+  // 드라이브 경로는 이 프로세스가 Windows가 아니어도 위치다. 구분자만 다른 같은 경로를 거절하지 않는다.
+  if (typeof cwd !== "string" || !(path.isAbsolute(cwd) || path.win32.isAbsolute(cwd)) || cwd.includes("\0")) throw new Error("objective_location_unavailable");
   return { ...actors(doc, context) as ObjectiveDocument, cwd };
 }
 export function documentFromBoard(board: StoredObjective, previous?: ObjectiveDocument): ObjectiveDocument {

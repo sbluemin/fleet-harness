@@ -1,15 +1,15 @@
-import { legacyTheaterAliases, retainRegistrationAliases, withoutTheaterAliases, type LegacyTheaterAlias } from "../../workspace/host/registration-migration.js";
+import { legacyTheaterAliases, retainRegistrationAliases, type LegacyTheaterAlias } from "../../workspace/host/registration-migration.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createDurableJsonStore, ensureSafeDirectory, NOFOLLOW_FLAG, type DurableJsonStore } from "@fleet-console/infra";
-import { resolveWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { ObjectiveRecord } from "./records/objective-records-domain.js";
 import { STATE_VERSION, sanitizeDurableConsoleState, deletionObjectiveRecords, type DurableConsoleState, type DurableDeletionTombstone, type DurableObjectiveGroup } from "../../workspace/host/durable-state.js";
 import { ObjectiveArchiveError, validateLocations, type ArchivedObjective, type ArchiveLifecycleEvent } from "../../workspace/host/objective-archive-storage.js";
 import type { StoredObjective } from "../shared/types.js";
 import { assertMinimal, boardFromDocument, documentFromBoard, documentFromObjective, object, objectiveRecordFromDocument, normalizeObjectiveDocument, type ObjectiveDocumentContext, type ObjectiveDocument } from "./storage-codec.js";
+import { importMissingObjectives } from "./legacy-import.js";
 
 export interface ObjectiveOwner extends ObjectiveDocumentContext { readonly directory: string }
 export interface ObjectiveBoardStorage {
@@ -49,7 +49,7 @@ interface Transaction {
   documents: readonly ObjectiveDocument[]; groups: readonly Group[]; archive: Archive;
   state: DurableConsoleState; purgeIds: readonly string[];
 }
-interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive }
+interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string> }
 const emptyArchive = (): Archive => ({ revision: 0, entries: [], deletions: [], events: [] });
 const failure = () => new ObjectiveArchiveError(503, "archive_recovery_required");
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
@@ -149,7 +149,18 @@ function inactive(scope: Scope): Set<string> {
   return new Set([...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
     ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...scope.archive.unavailable ?? []]);
 }
-function unavailable(scope: Scope, id: string): boolean { return scope.archive.unavailable?.includes(id) ?? false; }
+function unavailable(scope: Scope, id: string): boolean { return (scope.archive.unavailable?.includes(id) ?? false) || scope.unreadable.has(id); }
+function renameOwnerOperationId(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(renameOwnerOperationId);
+  if (!object(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const next = key === "ownerOperationId" ? "ownerObjectiveId" : key;
+    if (next === "ownerObjectiveId" && Object.hasOwn(out, "ownerObjectiveId")) continue;
+    out[next] = renameOwnerOperationId(item);
+  }
+  return out;
+}
 function document(scope: Scope, id: string): ObjectiveDocument {
   const doc = scope.documents.get(id);
   if (!doc || unavailable(scope, id)) throw failure();
@@ -163,8 +174,8 @@ export function createObjectiveStorage(deps: {
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
   initializeOwners?: (state: DurableConsoleState) => void;
-  /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 실패하면 별칭을 지우지 않고 기동을 중단한다. */
-  migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => void;
+  /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 커밋하지 못한 별칭은 명부에 남기고, 기동은 중단하지 않는다. 반환은 명부에서 거둬도 되는 theaterId. */
+  migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => readonly string[] | void;
   createStore?: typeof createDurableJsonStore;
 }) {
   const scopes = new Map<string, Scope>();
@@ -180,6 +191,7 @@ export function createObjectiveStorage(deps: {
   let state: DurableConsoleState = { version: STATE_VERSION, theaters: [], objectiveRecords: [] };
   let previousRaw: Record<string, unknown> = {};
   const unavailableOwners = new Set<string>();
+  const deferredAliasOwners = new Set<string>();
   const archiveStore = (scope: Scope) => createStore<Archive>({ filePath: path.join(scope.owner.directory, "archive.json"), lockDir: null, sensitivity: "sensitive", sanitize: readArchive });
   const journalPath = (scope: Scope, id: string) => path.join(scope.owner.directory, ".transactions", `${segment(id)}.json`);
   function writeJson(file: string, value: unknown): void {
@@ -238,19 +250,38 @@ export function createObjectiveStorage(deps: {
     state = tx.state;
     apply(scope, tx, id);
   }
-  function readDocuments(scope: Scope): void {
+  function dropReadHold(scope: Scope, id: string, clearUnavailable: boolean): void {
+    const unavailableIds = clearUnavailable ? (scope.archive.unavailable ?? []).filter((held) => held !== id) : [...scope.archive.unavailable ?? []];
+    const quarantine = (scope.archive.quarantine ?? []).filter((row) => !(row.id === id && row.reason === "objective_unreadable"));
+    scope.archive = { ...scope.archive, ...(unavailableIds.length ? { unavailable: unavailableIds } : {}), quarantine };
+    if (!unavailableIds.length) delete scope.archive.unavailable;
+    if (!quarantine.length) delete scope.archive.quarantine;
+  }
+  function readDocuments(scope: Scope, heldThisBoot: ReadonlySet<string>): void {
+    scope.unreadable.clear();
+    const conflicts = new Set((scope.archive.quarantine ?? []).filter((row) => row.reason === "invalid_inline_row" || row.reason === "id_conflict").flatMap((row) => row.id ? [row.id] : []));
     for (const entry of fs.readdirSync(scope.owner.directory, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || unavailable(scope, entry.name)) continue;
+      if (!entry.isDirectory() || entry.name.startsWith(".") || conflicts.has(entry.name)) continue;
       const file = path.join(objectiveDir(scope, entry.name), "objective.json");
       if (!exists(file)) continue;
       try {
-        const doc = readDocument(readJson(file), scope.owner);
+        const raw = readJson(file);
+        const renamed = renameOwnerOperationId(raw);
+        const doc = readDocument(renamed, scope.owner);
         if (doc.id !== entry.name) throw failure();
         scope.documents.set(doc.id, doc);
+        // 이번 기동이 충돌로 숨긴 id는 파일이 읽혀도 유지한다. 예전 읽기 실패만 풀어 준다.
+        dropReadHold(scope, entry.name, !heldThisBoot.has(entry.name));
+        if (JSON.stringify(raw).includes("\"ownerOperationId\"")) writeJson(file, doc);
       } catch (error) {
         if (!(error instanceof SyntaxError) && !(error instanceof ObjectiveArchiveError) && !(error instanceof Error && /^(objective_actor|objective_owner|objective_location|invalid_objective)/.test(error.message))) throw error;
-        // 참조 중인 원본도 지우거나 빈 본문으로 바꾸지 않는다. 해당 목표만 격리한다.
-        scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], entry.name])] };
+        // 읽기 실패는 이 기동에서만 숨긴다. 디스크 unavailable로 남기면 고친 파일도 다음 기동에 안 읽힌다.
+        scope.unreadable.add(entry.name);
+        dropReadHold(scope, entry.name, !heldThisBoot.has(entry.name));
+        const sourceHash = createHash("sha256").update(readBytes(file)).digest("hex");
+        const reason = error instanceof Error && /^(objective_|invalid_)/.test(error.message) ? error.message : "objective_unreadable";
+        console.warn(`[objectives] ${entry.name}: ${reason}; original preserved`);
+        scope.archive = { ...scope.archive, quarantine: [...scope.archive.quarantine ?? [], { id: entry.name, sourceHash, location: "objective.json", reason: "objective_unreadable" }] };
       }
     }
   }
@@ -314,7 +345,7 @@ export function createObjectiveStorage(deps: {
       ...(quarantine.length ? { quarantine } : {}), ...(conflicted.size ? { unavailable: [...conflicted] } : {}),
     });
     scope.archive = archive;
-    readDocuments(scope);
+    readDocuments(scope, new Set(scope.archive.unavailable ?? []));
     for (const id of scope.archive.unavailable ?? []) conflicted.add(id);
     for (const [id, doc] of candidates) {
       try {
@@ -353,39 +384,81 @@ export function createObjectiveStorage(deps: {
       scope.archive = archive;
     }
   }
+  function importLegacy(scope: Scope): void {
+    const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
+      ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
+    let imported: ReturnType<typeof importMissingObjectives>;
+    try {
+      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
+    } catch (error) {
+      console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
+      return;
+    }
+    for (const doc of imported.documents) scope.documents.set(doc.id, doc);
+    const present = new Set(scope.groups.map((group) => group.id));
+    const groups = [...scope.groups, ...imported.groups.filter((group) => !present.has(group.id))];
+    if (groups.length !== scope.groups.length) {
+      try { assertMinimal({ groups: minimalGroups(groups) }); scope.groups = groups; writeJson(path.join(scope.owner.directory, "groups.json"), { groups }); }
+      catch (error) { console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_groups_unreadable"}; original preserved`); }
+    }
+    const take = <T>(kind: "entries" | "deletions" | "events", rows: readonly T[]): T[] => rows.flatMap((row) => {
+      try { readArchive({ ...emptyArchive(), [kind]: [row] }); return [row]; } catch { return []; }
+    });
+    const entries = take("entries", imported.entries.filter((entry) => !scope.archive.entries.some((prior) => prior.objectiveId === entry.objectiveId) && !imported.deletions.some((row) => row.objectiveIds.includes(entry.objectiveId))));
+    const deletions = take("deletions", imported.deletions.filter((row) => !scope.archive.deletions.some((prior) => prior.deletionId === row.deletionId)));
+    const events = take("events", imported.events);
+    const quarantine = [...scope.archive.quarantine ?? [], ...imported.quarantine.filter((row) => !(scope.archive.quarantine ?? []).some((prior) => prior.id === row.id && prior.sourceHash === row.sourceHash && prior.reason === row.reason))];
+    if (!entries.length && !deletions.length && !events.length && quarantine.length === (scope.archive.quarantine?.length ?? 0)) return;
+    try {
+      scope.archive = readArchive({ ...scope.archive, entries: [...scope.archive.entries, ...entries], deletions: [...scope.archive.deletions, ...deletions], events: [...scope.archive.events, ...events], ...(quarantine.length ? { quarantine } : {}) });
+    } catch (error) { console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_index_unreadable"}; original preserved`); }
+  }
   function readScope(owner: ObjectiveOwner): Scope {
     const existing = exists(owner.directory);
     safeDir(owner.directory);
     const groupsFile = path.join(owner.directory, "groups.json"), archiveFile = path.join(owner.directory, "archive.json");
-    if (existing && (!exists(groupsFile) || !exists(archiveFile))) throw failure();
-    const groups = exists(groupsFile) ? readJson(groupsFile) : { groups: [] };
-    if (!object(groups) || !Array.isArray(groups.groups)) throw failure();
-    assertMinimal({ groups: minimalGroups(groups.groups as Group[]) });
-    const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive() };
+    let groups: { groups: unknown } = { groups: [] };
+    if (exists(groupsFile)) {
+      try {
+        const raw = readJson(groupsFile);
+        if (!object(raw) || !Array.isArray(raw.groups)) throw failure();
+        assertMinimal({ groups: minimalGroups(raw.groups as Group[]) });
+        groups = raw as { groups: unknown };
+      } catch (error) {
+        if (!(error instanceof SyntaxError) && !(error instanceof ObjectiveArchiveError)) throw error;
+        console.warn(`[objectives] owner ${owner.commodoreId}: groups.json unreadable; original preserved`);
+      }
+    }
+    const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive(), unreadable: new Set() };
+    let persistArchive = true;
     if (exists(archiveFile)) {
       const source = readBytes(archiveFile);
-      try {
-        const raw: unknown = JSON.parse(source.toString("utf8"));
-        const inline = object(raw) && (object(raw.transaction) || [raw.entries, raw.deletions, raw.events].some((rows) => Array.isArray(rows) && rows.some((row) => object(row) && ("objective" in row || "objectives" in row))));
-        if (inline) migrateInline(scope, raw, source);
-        else scope.archive = readArchive(raw);
-      } catch (error) {
+      const noteBroken = () => {
         const sourceHash = preserveSource(owner, source);
         const quarantineFile = path.join(owner.directory, ".archive-migration", `${sourceHash}.quarantine.json`);
         if (!exists(quarantineFile)) writeJson(quarantineFile, [
           { id: null, sourceHash, location: "archive.json", reason: "owner_recovery_required" },
         ]);
-        throw error;
-      }
+        console.warn(`[objectives] owner ${owner.commodoreId}: archive.json unreadable; original preserved`);
+        scope.archive = emptyArchive();
+      };
+      try {
+        const raw: unknown = JSON.parse(source.toString("utf8"));
+        const inline = object(raw) && (object(raw.transaction) || [raw.entries, raw.deletions, raw.events].some((rows) => Array.isArray(rows) && rows.some((row) => object(row) && ("objective" in row || "objectives" in row))));
+        if (inline) {
+          try { migrateInline(scope, raw, source); }
+          catch (error) { noteBroken(); persistArchive = false; deferredAliasOwners.add(owner.commodoreId); console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
+        } else scope.archive = readArchive(raw);
+      } catch { noteBroken(); }
     }
-    recover(scope);
+    try { recover(scope); } catch (error) { deferredAliasOwners.add(owner.commodoreId); console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
     const purgeIds = scope.archive.events.filter((row) => row.channel === "objective:purged" && !unavailable(scope, row.objectiveId)).map((row) => row.objectiveId);
     if (purgeIds.some((id) => scope.archive.entries.some((row) => row.objectiveId === id) || scope.archive.deletions.some((row) => row.objectiveIds.includes(id)))) throw failure();
     purgeDocuments(scope, purgeIds);
     for (const id of purgeIds) scope.documents.delete(id);
-    readDocuments(scope);
+    readDocuments(scope, new Set(scope.archive.unavailable ?? []));
     for (const id of [...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds)]) {
-      if (!scope.documents.has(id)) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], id])] };
+      if (!scope.documents.has(id) && !scope.unreadable.has(id)) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], id])] };
     }
     for (const row of scope.archive.deletions) if (row.objectiveIds.some((id) => unavailable(scope, id))) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], ...row.objectiveIds])] };
     // 이미 어긋난 Theater 삭제도 행 단위로 격리한다. snapshot의 decode가 Console 전체를 막지 않는다.
@@ -400,13 +473,15 @@ export function createObjectiveStorage(deps: {
         quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration", theaterId: row.targetId }))],
       };
     }
+    importLegacy(scope);
     // 소유자 하나의 충돌은 다른 목표의 정상 저장을 막지 않는다. 격리 ID는 재기동에도 예약한다.
-    archiveStore(scope).save(scope.archive);
-    if (!existing) writeJson(groupsFile, { groups: [] });
+    // 인라인 이주가 중간에 끊기면 원문 archive가 다음 기동의 권위다. 빈 색인으로 덮지 않는다.
+    if (persistArchive) archiveStore(scope).save(scope.archive);
+    if (!exists(groupsFile)) writeJson(groupsFile, { groups: scope.groups });
     const journals = path.join(owner.directory, ".transactions");
-    if (exists(journals)) {
+    if (persistArchive && exists(journals)) {
       safeDir(journals);
-      for (const name of fs.readdirSync(journals)) if (/^[0-9a-f-]{36}\.json$/.test(name)) fs.rmSync(path.join(journals, name), { force: true });
+      for (const name of fs.readdirSync(journals)) if (/^[0-9a-f-]{36}\.json$/.test(name) && name !== `${scope.archive.transaction ?? ""}.json`) fs.rmSync(path.join(journals, name), { force: true });
     }
     return scope;
   }
@@ -417,7 +492,7 @@ export function createObjectiveStorage(deps: {
     const existing = scopes.get(commodoreId);
     if (existing) return existing;
     const owner = deps.owners().find((entry) => entry.commodoreId === commodoreId);
-    if (!owner || olderSource(owner)) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
+    if (!owner) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
     const scope = readScope(owner); scopes.set(commodoreId, scope); return scope;
   }
   function encodeDeletion(row: DurableDeletionTombstone, commodoreId: string): Deletion {
@@ -436,17 +511,31 @@ export function createObjectiveStorage(deps: {
     return { ...base, kind: "theater", theater: registration.theater, objectiveRecords: objectiveIds.map(decode), groups: (groups ?? []).map((group) => ({ ...group, commodoreId: scope.owner.commodoreId, theaterId: group.theaterId ?? scope.owner.legacyTheaterId })) };
   }
   function retainHeldAliases(source: Record<string, unknown>, normalized: Record<string, unknown>): Record<string, unknown> {
-    if (!deps.migrateRegistrationAliases || !unavailableOwners.size) return normalized;
+    const aliasHeld = (theaterId: string) => unavailableOwners.has(ownerOfTheater(theaterId) ?? "") || deferredAliasOwners.has(ownerOfTheater(theaterId) ?? "");
+    if (!deps.migrateRegistrationAliases || ![...unavailableOwners, ...deferredAliasOwners].length) return normalized;
     // 보류한 owner의 저널이 더 최신 이름/해제를 담을 수 있다. 그 명부는 이관 원본으로 먼저 소비하지 않는다.
     const heldSource = { ...source,
-      theaters: Array.isArray(source.theaters) ? source.theaters.filter((row) => object(row) && unavailableOwners.has(ownerOfTheater(String(row.id)) ?? "")) : [],
-      deletionTombstones: Array.isArray(source.deletionTombstones) ? source.deletionTombstones.filter((row) => object(row) && unavailableOwners.has(ownerOfTheater(String(row.targetId)) ?? "")) : [],
+      theaters: Array.isArray(source.theaters) ? source.theaters.filter((row) => object(row) && aliasHeld(String(row.id))) : [],
+      deletionTombstones: Array.isArray(source.deletionTombstones) ? source.deletionTombstones.filter((row) => object(row) && aliasHeld(String(row.targetId))) : [],
     };
     return retainRegistrationAliases(heldSource, normalized);
   }
-  function cleanMigratedAliases(source: Record<string, unknown>): Record<string, unknown> {
-    const cleaned = retainHeldAliases(source, withoutTheaterAliases(source));
-    return isDeepStrictEqual(source, cleaned) ? source : cleaned;
+  function stripCommittedAliases(source: Record<string, unknown>, committed: ReadonlySet<string>): Record<string, unknown> {
+    if (!committed.size) return source;
+    let changed = false;
+    const clean = (value: unknown, id: string): unknown => {
+      if (!committed.has(id) || !object(value) || !Object.hasOwn(value, "alias")) return value;
+      changed = true;
+      const { alias: _alias, ...rest } = value;
+      return rest;
+    };
+    const theaters = Array.isArray(source.theaters) ? source.theaters.map((row) => object(row) ? clean(row, String(row.id)) : row) : source.theaters;
+    const deletionTombstones = Array.isArray(source.deletionTombstones) ? source.deletionTombstones.map((row) => {
+      if (!object(row) || row.kind !== "theater") return row;
+      const theater = clean(row.theater, String(row.targetId));
+      return theater === row.theater ? row : { ...row, theater };
+    }) : source.deletionTombstones;
+    return changed ? { ...source, ...(Array.isArray(theaters) ? { theaters } : {}), ...(Array.isArray(deletionTombstones) ? { deletionTombstones } : {}) } : source;
   }
   function ownerOfTheater(theaterId: string): string | undefined {
     return deps.owners().find((owner) => owner.legacyTheaterId === theaterId)?.commodoreId;
@@ -592,59 +681,42 @@ export function createObjectiveStorage(deps: {
       writeJson(path.join(objectiveDir(scope, doc.id), "objective.json"), doc); scope.documents.set(doc.id, doc);
     },
   };
-  function olderSource(owner: ObjectiveOwner): boolean {
-    // 현재 owner가 직전 위치의 권위다. 옛 정리가 미뤄졌더라도 그 원본은 읽거나 지우지 않는다.
-    if (exists(owner.directory)) return false;
-    // 옛 위치만 남아 있으면 이주하거나 순회하지 않고 빈 owner 발급도 막는다.
-    if (exists(path.join(resolveWorkspaceDirectory(deps.directory, owner.legacyCwd).path, "objectives"))) return true;
-    const oldRows = [previousRaw.operations, previousRaw.objectiveRecords, previousRaw.groups].flatMap((rows) => Array.isArray(rows) ? rows : rows === undefined ? [] : [rows]);
-    if (oldRows.some((row) => !object(row) || typeof row.theaterId !== "string" || row.theaterId === owner.legacyTheaterId)
-      || state.deletionTombstones?.some((row) => row.kind === "objectiveRecord" ? row.objectiveRecord.theaterId === owner.legacyTheaterId : row.targetId === owner.legacyTheaterId && row.objectiveRecords.length > 0)) return true;
-    const oldArchive = path.join(deps.directory, "operations-archive.json");
-    if (!exists(oldArchive)) return false;
-    // 이전 reader를 재도입하지 않는다. 소유 맥락만 확인하며, 불명확한 공유 원본은 보수적으로 막는다.
-    try {
-      const raw = readJson(oldArchive);
-      if (!object(raw)) return true;
-      const owners = new Set<string>();
-      const contexts = (value: unknown): void => {
-        if (Array.isArray(value)) { value.forEach(contexts); return; }
-        if (!object(value)) return;
-        if (typeof value.theaterId === "string") owners.add(value.theaterId);
-        if (value.kind === "theater" && typeof value.targetId === "string") owners.add(value.targetId);
-        for (const key of ["entries", "events", "deletions", "transaction", "state", "archive", "operations", "objectiveRecords", "deletionTombstones", "operation", "objectiveRecord", "descendants"]) contexts(value[key]);
-      };
-      contexts(raw);
-      return !owners.size || owners.has(owner.legacyTheaterId);
-    } catch { return true; }
-  }
   function load(): DurableConsoleState {
     try {
       const raw = exists(deps.stateStore.path) ? readJson(deps.stateStore.path) : { version: STATE_VERSION, theaters: [] };
       if (!object(raw)) throw failure();
       previousRaw = raw; state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
       deps.initializeOwners?.(readRegistrations(state));
+      const failedOwners = new Set<string>();
       for (const owner of deps.owners()) {
-        try {
-          if (olderSource(owner)) throw new ObjectiveArchiveError(503, "older_source_requires_recovery");
-          const scope = readScope(owner); scopes.set(owner.commodoreId, scope);
-        } catch {
-          unavailableOwners.add(owner.commodoreId);
-          console.warn(`[objectives] owner ${owner.commodoreId}: recovery required; original preserved`);
+        try { const scope = readScope(owner); scopes.set(owner.commodoreId, scope); }
+        catch (error) {
+          failedOwners.add(owner.commodoreId);
+          console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
         }
       }
       // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
-      // 별칭 이주는 별개다. owner 저널에서 복구한 새 이름·해제를 대상에 커밋한 뒤 명부에서 거둔다.
+      // 별칭 이주는 별개다. 커밋한 항목만 명부에서 거둔다. 이번 기동에 복구가 끝난 owner만 거둔다.
       if (deps.migrateRegistrationAliases) {
-        deps.migrateRegistrationAliases(legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => !unavailableOwners.has(ownerOfTheater(entry.theaterId) ?? "")));
-        if (exists(deps.stateStore.path)) {
-          const current = readJson(deps.stateStore.path);
-          if (!object(current)) throw failure();
-          const cleaned = cleanMigratedAliases(current);
-          if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
-        }
-        previousRaw = cleanMigratedAliases(previousRaw);
-        state = readRegistrations(state);
+        const aliases = legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => {
+          const owner = ownerOfTheater(entry.theaterId) ?? "";
+          return !failedOwners.has(owner) && !unavailableOwners.has(owner) && !deferredAliasOwners.has(owner);
+        });
+        let committed = new Set<string>();
+        try {
+          const result = deps.migrateRegistrationAliases(aliases);
+          committed = new Set(result ?? aliases.map((entry) => entry.theaterId));
+        } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_migration_failed"}; aliases retained`); }
+        try {
+          if (exists(deps.stateStore.path)) {
+            const current = readJson(deps.stateStore.path);
+            if (!object(current)) throw failure();
+            const cleaned = stripCommittedAliases(current, committed);
+            if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
+          }
+          previousRaw = stripCommittedAliases(previousRaw, committed);
+          state = readRegistrations(state);
+        } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_cleanup_failed"}; aliases retained`); }
       }
       ready = true; blocked = false;
       return snapshot();
