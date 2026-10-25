@@ -36,9 +36,12 @@ export function readImportedIds(dir: string): { readonly ok: true; readonly ids:
 export function rememberImported(dir: string, ids: readonly string[]): void {
   const prior = readImportedIds(dir);
   const next = prior.ok ? prior.ids : new Set<string>();
+  const before = [...next].sort().join("\n");
   for (const id of ids) if (segment(id)) next.add(id);
+  const sorted = [...next].sort();
+  if (prior.ok && exists(ledgerFile(dir)) && before === sorted.join("\n")) return;
   fs.mkdirSync(path.dirname(ledgerFile(dir)), { recursive: true, mode: 0o700 });
-  writeAtomicSync(ledgerFile(dir), JSON.stringify({ ids: [...next].sort() }));
+  writeAtomicSync(ledgerFile(dir), JSON.stringify({ ids: sorted }));
 }
 const pendingFile = (dir: string) => path.join(dir, ".archive-migration", "pending-index.json");
 export function readPendingIndex(dir: string): Set<string> {
@@ -57,9 +60,12 @@ export function recordPendingIndex(dir: string, id: string): void {
 }
 export function clearPendingIndex(dir: string, ids: readonly string[]): void {
   const left = readPendingIndex(dir);
+  const before = [...left].sort().join("\n");
   for (const id of ids) left.delete(id);
+  const sorted = [...left].sort();
+  if (exists(pendingFile(dir)) && before === sorted.join("\n")) return;
   fs.mkdirSync(path.dirname(pendingFile(dir)), { recursive: true, mode: 0o700 });
-  writeAtomicSync(pendingFile(dir), JSON.stringify({ ids: [...left].sort() }));
+  writeAtomicSync(pendingFile(dir), JSON.stringify({ ids: sorted }));
 }
 
 const channels: Record<string, LegacyImportResult["events"][number]["channel"]> = {

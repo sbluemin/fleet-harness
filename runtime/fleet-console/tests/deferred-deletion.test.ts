@@ -298,6 +298,21 @@ describe("Objective archive persistence and deletion", () => {
       await h.archive.archive("op");
       const archiveFile = path.join(directory, "commodore", "owner", "objectives", "archive.json");
       const intact = fs.readFileSync(archiveFile, "utf8");
+      const nativeOpen = fs.openSync.bind(fs);
+      const busy = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return nativeOpen(...args);
+      });
+      try {
+        const failed = createArchiveHarness(directory);
+        expect(failed.storage.blocked()).toBe(false);
+        expect(failed.storage.board.list("c1")).toEqual([]);
+        expect(() => failed.storage.board.save("c1", { id: "during-busy", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
+        expect(fs.readFileSync(archiveFile, "utf8")).toBe(intact);
+      } finally { busy.mockRestore(); }
+      const afterBusy = createArchiveHarness(directory);
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe(intact);
+      expect(afterBusy.storage.entries().map((row) => row.objectiveRecord.id)).toContain("op");
       fs.unlinkSync(archiveFile);
       const objectiveFile = path.join(directory, "commodore", "owner", "objectives", "op", "objective.json");
       const objectiveBytes = fs.readFileSync(objectiveFile, "utf8");
@@ -320,6 +335,11 @@ describe("Objective archive persistence and deletion", () => {
       const brokenRestart = createArchiveHarness(directory);
       expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).toContain("added");
       expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
+      const recovered = fs.readFileSync(archiveFile, "utf8");
+      expect(recovered).not.toContain("owner_recovery_required");
+      const stable = createArchiveHarness(directory);
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe(recovered);
+      expect(stable.storage.board.list("c1").map((row) => row.id)).toContain("added");
     });
   });
 

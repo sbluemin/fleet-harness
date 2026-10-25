@@ -49,7 +49,7 @@ interface Transaction {
   documents: readonly ObjectiveDocument[]; groups: readonly Group[]; archive: Archive;
   state: DurableConsoleState; purgeIds: readonly string[];
 }
-interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string>; journalDeferred?: boolean }
+interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string>; journalDeferred?: boolean; indexUnread?: boolean }
 const emptyArchive = (): Archive => ({ revision: 0, entries: [], deletions: [], events: [] });
 const failure = () => new ObjectiveArchiveError(503, "archive_recovery_required");
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
@@ -399,17 +399,15 @@ export function createObjectiveStorage(deps: {
     scope.archive = { ...scope.archive, unavailable: [...new Set([...(scope.archive.unavailable ?? []), ...ids])], quarantine };
   }
   function holdDirectory(owner: ObjectiveOwner): Scope {
-    const ids: string[] = [];
+    const unreadable = new Set<string>();
     try {
       safeDir(owner.directory);
       for (const entry of fs.readdirSync(owner.directory, { withFileTypes: true })) {
-        if (entry.isDirectory() && !entry.name.startsWith(".") && exists(path.join(owner.directory, entry.name, "objective.json"))) ids.push(entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith(".") && exists(path.join(owner.directory, entry.name, "objective.json"))) unreadable.add(entry.name);
       }
-    } catch { /* 자리를 못 열면 새 쓰기부터 시도한다. */ }
-    const scope: Scope = { owner, documents: new Map(), groups: [], archive: emptyArchive(), unreadable: new Set() };
-    holdIds(scope, ids, "archive_unreadable", "0".repeat(64));
-    try { archiveStore(scope).save(scope.archive); } catch (error) { console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
-    return scope;
+    } catch { /* 자리를 못 열어도 원본 색인은 쓰지 않는다. */ }
+    // 읽지 못한 색인을 빈 색인으로 덮지 않는다. 보류는 이 기동 메모리에만 있고, 다음 기동이 원본을 다시 읽는다.
+    return { owner, documents: new Map(), groups: [], archive: emptyArchive(), unreadable, indexUnread: true };
   }
   function isolateOrphanDeletions(scope: Scope, owner: ObjectiveOwner, archiveFile: string): void {
     const orphans = scope.archive.deletions.flatMap((row, index) => row.kind === "theater"
@@ -481,14 +479,11 @@ export function createObjectiveStorage(deps: {
     const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive(), unreadable: new Set() };
     let persistArchive = true;
     let rebuildIndex = false;
+    let loadedArchive: Archive | null = null;
     if (exists(archiveFile)) {
       const source = readBytes(archiveFile);
       const noteBroken = () => {
-        const sourceHash = preserveSource(owner, source);
-        const quarantineFile = path.join(owner.directory, ".archive-migration", `${sourceHash}.quarantine.json`);
-        if (!exists(quarantineFile)) writeJson(quarantineFile, [
-          { id: null, sourceHash, location: "archive.json", reason: "owner_recovery_required" },
-        ]);
+        preserveSource(owner, source);
         console.warn(`[objectives] owner ${owner.commodoreId}: archive.json unreadable; original preserved`);
         scope.archive = emptyArchive();
         rebuildIndex = true;
@@ -504,7 +499,7 @@ export function createObjectiveStorage(deps: {
             deferredAliasOwners.add(owner.commodoreId);
             console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
           }
-        } else scope.archive = readArchive(raw);
+        } else { scope.archive = readArchive(raw); loadedArchive = JSON.parse(JSON.stringify(scope.archive)) as Archive; }
       } catch { noteBroken(); }
     }
     try { recover(scope); } catch (error) {
@@ -537,7 +532,8 @@ export function createObjectiveStorage(deps: {
       if (!scope.archive.entries.some((row) => row.objectiveId === id) && !scope.archive.deletions.some((row) => row.objectiveIds.includes(id))) holdIds(scope, [id], "index_missing", "0".repeat(64));
     }
     if (persistArchive) {
-      archiveStore(scope).save(scope.archive);
+      // 읽은 색인과 같으면 다시 쓰지 않는다. 키 순서만 다른 정규화가 재시작마다 archive.json을 바꾸면 안 된다.
+      if (!loadedArchive || !isDeepStrictEqual(loadedArchive, scope.archive)) archiveStore(scope).save(scope.archive);
       if (touched.length) rememberImported(owner.directory, touched);
       clearPendingIndex(owner.directory, touched);
     }
@@ -709,8 +705,6 @@ export function createObjectiveStorage(deps: {
         purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id)) };
       return { scope, transaction, id: "" };
     }).filter(({ scope, transaction }) => {
-      // 미적용 저널을 다시 쓰면 별칭 정리와 준비 포인터를 잃는다. 보드 추가·저장은 이 플래그를 보지 않는다.
-      if (scope.journalDeferred) return false;
       // 읽기에서 복구한 cwd·행위자는 메모리 뷰다. 다른 owner의 저장이 원문 확정 쓰기가 되면 안 된다.
       // 동일한 writer 투영끼리 비교해 옛 직렬화 모양이나 문서 순서만 다른 scope도 건너뛴다.
       const previous = new Map([...scope.documents].filter(([id]) => !unavailable(scope, id)).map(([id, doc]) => [id,
@@ -720,6 +714,8 @@ export function createObjectiveStorage(deps: {
       return transaction.purgeIds.length > 0 || !isDeepStrictEqual(previous, new Map(transaction.documents.map((doc) => [doc.id, doc])))
         || !isDeepStrictEqual(groups, transaction.groups) || !isDeepStrictEqual(scope.archive, transaction.archive);
     });
+    // 색인을 못 읽었거나 저널이 미적용인 owner를 성공으로 건너뛰면 그 저장이 조용히 사라진다. 쓰기 전에 그 owner만 거절한다.
+    if (plans.some(({ scope }) => scope.indexUnread || scope.journalDeferred)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
     try {
       // owner별 prepare → 등록 → apply → finalize 의미는 유지한다. 본문은 별도 일시 저널에만 담는다.
       for (const plan of plans) plan.id = prepare(plan.scope, plan.transaction);
@@ -732,8 +728,9 @@ export function createObjectiveStorage(deps: {
     assertReady(); const consumed = new Set(ids);
     try {
       for (const scope of scopes.values()) {
-        if (scope.journalDeferred) continue;
+        if (scope.journalDeferred || scope.indexUnread) continue;
         const archive = { ...scope.archive, events: scope.archive.events.filter((event) => !consumed.has(event.eventId)) };
+        if (isDeepStrictEqual(scope.archive, archive)) continue;
         archiveStore(scope).save(archive); scope.archive = archive;
       }
     } catch (error) { blocked = true; throw error; }
@@ -743,6 +740,7 @@ export function createObjectiveStorage(deps: {
     unavailable: (id) => isReserved(id),
     forget(commodoreId, id) {
       const scope = scopeOf(commodoreId);
+      if (scope.indexUnread) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       if (unavailable(scope, id) || scope.archive.entries.some((row) => row.objectiveId === id) || scope.archive.deletions.some((row) => row.objectiveIds.includes(id))) throw failure();
       const doc = scope.documents.get(id);
       if (doc && !doc.pending) throw failure();
@@ -752,6 +750,7 @@ export function createObjectiveStorage(deps: {
     list(commodoreId) { const scope = scopeOf(commodoreId); return [...scope.documents.values()].filter((doc) => !unavailable(scope, doc.id)).map((doc) => boardFromDocument(doc, scope.owner)); },
     save(commodoreId, value) {
       const scope = scopeOf(commodoreId), previous = scope.documents.get(value.id);
+      if (scope.indexUnread) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       if (unavailable(scope, value.id) || (!previous && !value.pending) || scope.archive.events.some((row) => row.channel === "objective:purged" && row.objectiveId === value.id)) throw failure();
       const doc = readDocument(documentFromBoard(value, previous), scope.owner);
       writeJson(path.join(objectiveDir(scope, doc.id), "objective.json"), doc); scope.documents.set(doc.id, doc);
