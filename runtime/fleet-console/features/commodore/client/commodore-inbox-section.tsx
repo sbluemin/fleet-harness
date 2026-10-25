@@ -126,7 +126,12 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
   onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id, true),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
-  openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
+  // Theater id를 UUID 자리에 넣지 않는다. 아직 못 풀었으면 false를 돌려 시트가 useCommodoreOwner로 푼다.
+  openConversation: ({ theater, pageId }) => {
+    if (pageId !== "log") return false;
+    const owner = ownerOfContext(theater.id);
+    return owner ? openCommodoreConversation(owner) : false;
+  },
 };
 
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {
@@ -136,7 +141,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const t = getT(language);
   noteCommodoreLanguage(language);
   const tab: CommodoreTab = COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log";
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
@@ -246,7 +251,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
-      {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
+      {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
       {tab === "log" ? <footer className="objectives-commodore-foot"><CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} context={run?.context} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );

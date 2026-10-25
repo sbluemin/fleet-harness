@@ -10,10 +10,25 @@ import { hasLegacyKnowledge, legacyKnowledgeSources } from "./knowledge-sources.
 export function createCommodoreOwnership(paths: WorkspacePaths) {
   const migration = migrateCommodoreData(paths.consoleDataDir);
   const entities = createCommodoreEntities(path.join(paths.consoleDataDir, "commodore"), paths.workspaceHash);
+  // 등록 id는 옛 경로 문자열의 해시일 수 있다. 링크 해시가 달라도 지금 실경로가 같으면 그 사령관을 쓴다.
+  const resolveOwner = (theaterId: string): string | null => {
+    const direct = entities.resolve(theaterId);
+    if (direct) return direct;
+    const root = paths.resolveTheaterPath(theaterId);
+    if (!root) return null;
+    const found = entities.locate(root);
+    if (found) entities.bind(theaterId, found);
+    return found;
+  };
+  const theaterIdsOf = (commodoreId: string): readonly string[] => {
+    const hashed = entities.theaterIds(commodoreId);
+    const registered = (paths.listTheaterIds?.() ?? []).filter((id) => resolveOwner(id) === commodoreId);
+    return [...new Set([...registered, ...hashed])];
+  };
   const create = (theaterId: string) => {
     const root = paths.resolveTheaterPath(theaterId);
     if (!root) throw new CommodoreStoreError("theater_unavailable");
-    const existing = entities.resolve(theaterId);
+    const existing = resolveOwner(theaterId);
     if (existing) return existing;
     const unresolved = workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
     if (migration.blockedPaths.has(root) || unresolved) throw new CommodoreStoreError("commodore_migration_pending");
@@ -30,7 +45,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   const issueForKnowledge = (root: string) => entities.create(root);
   for (const theaterId of paths.listTheaterIds?.() ?? []) {
     const root = paths.resolveTheaterPath(theaterId);
-    if (!root || entities.resolve(theaterId) || !hasLegacyKnowledge(paths.consoleDataDir, root)) continue;
+    if (!root || resolveOwner(theaterId) || !hasLegacyKnowledge(paths.consoleDataDir, root)) continue;
     try { issueForKnowledge(root); console.warn(`[commodore] registered theater ${theaterId}: entity issued for knowledge; pending records preserved`); }
     catch { console.warn(`[commodore] registered theater ${theaterId}: knowledge entity unavailable`); }
   }
@@ -41,7 +56,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     forContext(theaterId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
       const root = paths.resolveTheaterPath(theaterId);
       if (!root) return { ok: false, reason: "unknown_context" };
-      try { return { ok: true, commodoreId: entities.resolve(theaterId) ?? issueForKnowledge(root) }; }
+      try { return { ok: true, commodoreId: resolveOwner(theaterId) ?? issueForKnowledge(root) }; }
       catch { return { ok: false, reason: "unavailable" }; }
     },
     legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).map((link) => link.path)),
@@ -49,13 +64,13 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   const issueForAlias = (theaterId: string) => {
     const root = paths.resolveTheaterPath(theaterId);
     if (!root) throw new CommodoreStoreError("theater_unavailable");
-    return entities.resolve(theaterId) ?? entities.create(root);
+    return resolveOwner(theaterId) ?? entities.create(root);
   };
   // 자동 별칭 이주만 보류 가드를 탄다. 명시적 forAlias 발급은 원본 이동을 대신하지 않는다.
   const issueIfReady = (theaterId: string) => create(theaterId);
-  return { entities, create, issueForAlias, issueIfReady, ensureRegistered, knowledge,
+  return { entities, create, resolve: resolveOwner, theaterIds: theaterIdsOf, issueForAlias, issueIfReady, ensureRegistered, knowledge,
     creation(commodoreId: string, theaterId: string) {
-      if (!entities.dirOf(commodoreId) || !entities.theaterIds(commodoreId).includes(theaterId)) throw new Error("objective_owner_unavailable");
+      if (!entities.dirOf(commodoreId) || !theaterIdsOf(commodoreId).includes(theaterId)) throw new Error("objective_owner_unavailable");
       const cwd = paths.resolveTheaterPath(theaterId);
       if (!cwd) throw new Error("objective_location_unavailable");
       return { commodoreId, cwd };

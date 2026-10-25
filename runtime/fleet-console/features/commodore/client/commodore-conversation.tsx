@@ -221,10 +221,10 @@ const REVEAL_PAGE_LIMIT = 10;
 function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const board = useObjectiveTheater(commodoreId);
   const reveal = useCommodoreReveal(commodoreId);
-  const failure = useConversationFailure(commodoreId);
+  const failure = useConversationFailure(commodoreId) ?? (transcriptError ? failureWord(t, new Error(transcriptError)) : null);
   const setFailure = (next: string | null) => setConversationFailure(commodoreId, next);
   useEffect(() => {
     void loadCommodore(commodoreId);

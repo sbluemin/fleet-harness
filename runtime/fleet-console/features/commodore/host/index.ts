@@ -39,16 +39,16 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let board: CommodoreBoardAdapter | null = null;
   let restored = false;
   let disposed = false;
-  const { entities, create, issueIfReady, ensureRegistered, knowledge } = deps.ownership ?? createCommodoreOwnership(deps.paths);
+  const { entities, create, resolve, theaterIds, issueIfReady, ensureRegistered, knowledge } = deps.ownership ?? createCommodoreOwnership(deps.paths);
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => {
     deps.events.publish(COMMODORE_CHANNEL, event);
     if (event.op === "state" && event.change === "alias") deps.identityChanged?.(event.theaterIds);
   };
-  const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit });
+  const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, emit });
   const supervisor = createCommodoreSupervisor({
-    store, agent, board: () => board, theaterIds: entities.theaterIds, cwd: entities.dirOf,
+    store, agent, board: () => board, theaterIds, cwd: entities.dirOf,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),
     experiments: () => deps.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
     ...(deps.experiments?.subscribe ? { subscribeExperiments: deps.experiments.subscribe } : {}),
@@ -72,7 +72,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   };
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const routes = createCommodoreRoutes(context, store, {
-    resolve: entities.resolve, create, createForAlias: (theaterId) => { const id = issueIfReady(theaterId); deps.identityChanged?.([theaterId]); return id; }, theaterIds: entities.theaterIds,
+    resolve, create, createForAlias: (theaterId) => { const id = issueIfReady(theaterId); deps.identityChanged?.([theaterId]); return id; }, theaterIds,
     acceptsMessage: (id) => supervisor.acceptsMessage(id),
     run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,
@@ -87,14 +87,14 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   return {
     host,
     identity(theaterId: string): { readonly id: string; readonly alias?: string } | null {
-      const id = entities.resolve(theaterId);
+      const id = resolve(theaterId);
       if (!id) return null;
       const state = store.read(id);
       return state ? { id, ...(state.alias ? { alias: state.alias } : {}) } : null;
     },
     knowledge,
     routes,
-    active: (theaterId: string) => { const id = entities.resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
+    active: (theaterId: string) => { const id = resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
     sync: () => { ensureRegistered(); restored = true; supervisor.sync("restart"); },
     async dispose() {
       if (disposed) return;
