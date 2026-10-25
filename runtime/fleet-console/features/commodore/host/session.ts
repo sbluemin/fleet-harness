@@ -287,6 +287,8 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   const name = rawName.replace(MCP_PREFIX, "");
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
+  // Theater 도구의 경로는 상대 경로일 때만 요약한다 — 절대 경로는 거절되더라도 기록(브라우저에 보이는)에 남기지 않는다.
+  const relative = (key: string) => { const value = str(key); return value !== undefined && !/^([\\/~]|[A-Za-z]:)/.test(value) ? value : undefined; };
   const writes = boardWrites.get(name);
   if (writes) {
     const called = str("action");
@@ -296,9 +298,9 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
     case "next_wake": return { name, summary: [typeof args.inMinutes === "number" ? `${args.inMinutes}m` : undefined, str("reason")].filter(Boolean).join(" · "), counts: false };
-    case "read_file": case "git_log": case "list_dir": return { name, summary: str("path"), counts: false };
-    case "find_files": return { name, summary: [str("path"), str("pattern")].filter(Boolean).join(" · "), counts: false };
-    case "search_text": return { name, summary: [str("path"), str("query")].filter(Boolean).join(" · "), counts: false };
+    case "read_file": case "git_log": case "list_dir": return { name, summary: relative("path"), counts: false };
+    case "find_files": return { name, summary: [relative("path"), str("pattern")].filter(Boolean).join(" · ") || undefined, counts: false };
+    case "search_text": return { name, summary: [relative("path"), str("query")].filter(Boolean).join(" · ") || undefined, counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
     // Read는 Theater 밖의 절대 경로도 받는다 — 기록에는 경로 요약 없이 도구명·성공 여부만 남긴다.
     case "Read": return { name, counts: false };
