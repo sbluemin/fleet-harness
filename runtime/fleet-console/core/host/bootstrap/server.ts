@@ -764,7 +764,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const objectiveRecordArchive = createObjectiveArchiveCoordinator({
     objectiveRecords, storage: archiveStorage,
     snapshot: () => snapshotDurableState(deletionCoordinator.list()),
-    theaterExists: (id) => !!theaters.get(id),
+    canAccessObjective: (root) => {
+      if (theaters.get(root.theaterId)) return true;
+      const ownerDir = ownership?.entities.dirOf(root.commodoreId);
+      if (!ownerDir || root.cwd !== path.join(ownerDir, "objectives")) return false;
+      // 미등록 문맥은 그 소유자의 실제 objectives 디렉터리만 허용한다. 링크로 다른 경계를 열지 않는다.
+      try { return fs.realpathSync.native(root.cwd) === root.cwd && fs.statSync(root.cwd).isDirectory(); }
+      catch { return false; }
+    },
     pendingDeletion: (id) => deletionCoordinator.hasPendingObjective(id),
     stop: async (objectiveRecord) => {
       if (!stopForArchive) throw new ObjectiveArchiveError(503, "archive_stop_failed");

@@ -146,6 +146,7 @@ afterEach(async () => {
   delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
   delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
   delete (globalThis as { __fleetAgentCliDetector?: unknown }).__fleetAgentCliDetector;
+  delete (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory;
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
 });
@@ -158,6 +159,52 @@ describe("console terminal observability", () => {
     // Objective 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
     expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required" });
+  });
+
+  it("commences an owned-directory objective and retains its Commander and member in records without a registered Theater", async () => {
+    // 기능 하네스의 access 모형 대신 실제 서버의 복원 경계를 지난다. SDK만 무과금 스트림으로 바꾼다.
+    (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async (options: { models: readonly string[] }) => ({
+      configDir: os.tmpdir(), models: options.models, dispose: async () => {},
+      openSession: async () => {
+        const messages: unknown[] = [];
+        let wake: (() => void) | undefined;
+        let closed = false;
+        return {
+          send: () => { messages.push({ type: "result", subtype: "success", is_error: false, duration_ms: 1 }); wake?.(); },
+          interrupt: async () => {}, getContextUsage: async () => null,
+          setModel: async () => {}, applySessionSettings: async () => {},
+          close: () => { closed = true; wake?.(); },
+          async *[Symbol.asyncIterator]() {
+            while (!closed) {
+              if (messages.length) yield messages.shift();
+              else await new Promise<void>((resolve) => { wake = resolve; });
+            }
+          },
+        };
+      },
+    });
+    const fixture = await startFixture();
+    const post = async (pathname: string, body: unknown) => {
+      const response = await fetch(new URL(`api/v1/${pathname}`, fixture.endpoint), {
+        method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const value = await response.json();
+      expect(response.status, JSON.stringify(value)).toBe(200);
+      return value;
+    };
+    const { commodoreId } = await post("commodore/create", { alias: "No Theater" });
+    const { objective } = await post("objectives/objective/create", { commodoreId, title: "Owned objective" });
+    await post("objectives/plan/request", { objectiveId: objective.id });
+    await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
+    await post("objectives/commander/start", { objectiveId: objective.id });
+    const { objectiveRecords } = await (await fetch(new URL("api/v1/objectives/records", fixture.endpoint))).json();
+    const commander = objectiveRecords.find((record: { id: string }) => record.id === objective.id);
+    expect(commander).toMatchObject({ commodoreId });
+    expect(commander.sessions).toHaveLength(1);
+    const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", objective.id, "objective.json"), "utf8"));
+    expect(saved.cwd).toBe(path.join(fs.realpathSync.native(fixture.fleetDataDir), "console", "commodore", commodoreId, "objectives"));
+    expect(saved.sessions[0].cwd).toBe(saved.cwd);
+    expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json()).theaters).toEqual([]);
   });
 
   it("injects dormant durable objectives without exposing server-only provider data", () => {

@@ -554,7 +554,7 @@ function createArchiveHarness(directory: string, crossOwner = false) {
   });
   deletion.load(state.deletionTombstones ?? []);
   const archive = createObjectiveArchiveCoordinator({ objectiveRecords, storage, snapshot,
-    theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingObjective,
+    canAccessObjective: (root) => !!theaters.get(root.theaterId), pendingDeletion: deletion.hasPendingObjective,
     stop: async (node) => { stopped.push(node.id); if (stopGate.current) await stopGate.current; }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
     readRetentionDays: () => retention.days,
