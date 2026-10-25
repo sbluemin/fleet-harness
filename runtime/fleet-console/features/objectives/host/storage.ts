@@ -9,7 +9,7 @@ import { STATE_VERSION, sanitizeDurableConsoleState, deletionObjectiveRecords, t
 import { ObjectiveArchiveError, validateLocations, type ArchivedObjective, type ArchiveLifecycleEvent } from "../../workspace/host/objective-archive-storage.js";
 import type { StoredObjective } from "../shared/types.js";
 import { assertMinimal, boardFromDocument, documentFromBoard, documentFromObjective, object, objectiveRecordFromDocument, normalizeObjectiveDocument, type ObjectiveDocumentContext, type ObjectiveDocument } from "./storage-codec.js";
-import { importMissingObjectives } from "./legacy-import.js";
+import { importMissingObjectives, rememberImported } from "./legacy-import.js";
 
 export interface ObjectiveOwner extends ObjectiveDocumentContext { readonly directory: string }
 export interface ObjectiveBoardStorage {
@@ -49,7 +49,7 @@ interface Transaction {
   documents: readonly ObjectiveDocument[]; groups: readonly Group[]; archive: Archive;
   state: DurableConsoleState; purgeIds: readonly string[];
 }
-interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string> }
+interface Scope { owner: ObjectiveOwner; documents: Map<string, ObjectiveDocument>; groups: readonly Group[]; archive: Archive; unreadable: Set<string>; archiveFrozen: boolean }
 const emptyArchive = (): Archive => ({ revision: 0, entries: [], deletions: [], events: [] });
 const failure = () => new ObjectiveArchiveError(503, "archive_recovery_required");
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
@@ -345,7 +345,7 @@ export function createObjectiveStorage(deps: {
       ...(quarantine.length ? { quarantine } : {}), ...(conflicted.size ? { unavailable: [...conflicted] } : {}),
     });
     scope.archive = archive;
-    readDocuments(scope, new Set(scope.archive.unavailable ?? []));
+    readDocuments(scope, new Set((scope.archive.quarantine ?? []).filter((row) => row.reason === "invalid_inline_row" || row.reason === "id_conflict").flatMap((row) => row.id ? [row.id] : [])));
     for (const id of scope.archive.unavailable ?? []) conflicted.add(id);
     for (const [id, doc] of candidates) {
       try {
@@ -359,7 +359,8 @@ export function createObjectiveStorage(deps: {
       for (const child of doc.sessions) if (object(child) && typeof child.id === "string") conflicted.add(segment(child.id));
     }
     if (oldTx && (conflicted.size || quarantine.length)) throw failure(); // 준비 연산의 원자성을 임의로 쪼개지 않는다.
-    archive = { ...archive, ...(conflicted.size ? { unavailable: [...conflicted] } : {}) };
+    archive = { ...archive, ...(conflicted.size ? { unavailable: [...conflicted] } : {}),
+      ...(conflicted.size ? { quarantine: [...archive.quarantine ?? [], ...[...conflicted].filter((id) => !(archive.quarantine ?? []).some((row) => row.id === id)).map((id) => ({ id, sourceHash, location: "objective.json", reason: "id_conflict" }))] } : {}) };
     for (const [id, doc] of candidates) if (!conflicted.has(id)) scope.documents.set(id, doc);
     for (const id of conflicted) scope.documents.delete(id);
     if (oldTx && object(oldTx)) {
@@ -384,7 +385,20 @@ export function createObjectiveStorage(deps: {
       scope.archive = archive;
     }
   }
-  function importLegacy(scope: Scope): void {
+  function isolateOrphanDeletions(scope: Scope, owner: ObjectiveOwner, archiveFile: string): void {
+    const orphans = scope.archive.deletions.flatMap((row, index) => row.kind === "theater"
+      && (!state.deletionTombstones?.some((entry) => entry.kind === "theater" && entry.targetId === row.targetId && entry.deletionId === row.deletionId)) ? [{ row, index }] : []);
+    if (!orphans.length) return;
+    const sourceHash = exists(archiveFile) ? preserveSource(owner, readBytes(archiveFile)) : "0".repeat(64);
+    const rejected = new Set(orphans.map(({ row }) => row));
+    scope.archive = { ...scope.archive,
+      deletions: scope.archive.deletions.filter((row) => !rejected.has(row)),
+      unavailable: [...new Set([...scope.archive.unavailable ?? [], ...orphans.flatMap(({ row }) => row.objectiveIds)])],
+      quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration", theaterId: row.targetId }))],
+    };
+    for (const id of orphans.flatMap(({ row }) => row.objectiveIds)) scope.unreadable.add(id);
+  }
+  function importLegacy(scope: Scope): readonly string[] {
     const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
     let imported: ReturnType<typeof importMissingObjectives>;
@@ -392,7 +406,7 @@ export function createObjectiveStorage(deps: {
       imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
-      return;
+      return [];
     }
     for (const doc of imported.documents) scope.documents.set(doc.id, doc);
     const present = new Set(scope.groups.map((group) => group.id));
@@ -408,10 +422,14 @@ export function createObjectiveStorage(deps: {
     const deletions = take("deletions", imported.deletions.filter((row) => !scope.archive.deletions.some((prior) => prior.deletionId === row.deletionId)));
     const events = take("events", imported.events);
     const quarantine = [...scope.archive.quarantine ?? [], ...imported.quarantine.filter((row) => !(scope.archive.quarantine ?? []).some((prior) => prior.id === row.id && prior.sourceHash === row.sourceHash && prior.reason === row.reason))];
-    if (!entries.length && !deletions.length && !events.length && quarantine.length === (scope.archive.quarantine?.length ?? 0)) return;
+    if (!entries.length && !deletions.length && !events.length && quarantine.length === (scope.archive.quarantine?.length ?? 0)) return imported.touched;
     try {
       scope.archive = readArchive({ ...scope.archive, entries: [...scope.archive.entries, ...entries], deletions: [...scope.archive.deletions, ...deletions], events: [...scope.archive.events, ...events], ...(quarantine.length ? { quarantine } : {}) });
-    } catch (error) { console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_index_unreadable"}; original preserved`); }
+    } catch (error) {
+      console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_index_unreadable"}; original preserved`);
+      for (const row of deletions) for (const id of row.objectiveIds) scope.unreadable.add(id);
+    }
+    return imported.touched;
   }
   function readScope(owner: ObjectiveOwner): Scope {
     const existing = exists(owner.directory);
@@ -429,7 +447,7 @@ export function createObjectiveStorage(deps: {
         console.warn(`[objectives] owner ${owner.commodoreId}: groups.json unreadable; original preserved`);
       }
     }
-    const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive(), unreadable: new Set() };
+    const scope: Scope = { owner, documents: new Map(), groups: groups.groups as Group[], archive: emptyArchive(), unreadable: new Set(), archiveFrozen: false };
     let persistArchive = true;
     if (exists(archiveFile)) {
       const source = readBytes(archiveFile);
@@ -441,42 +459,46 @@ export function createObjectiveStorage(deps: {
         ]);
         console.warn(`[objectives] owner ${owner.commodoreId}: archive.json unreadable; original preserved`);
         scope.archive = emptyArchive();
+        scope.archiveFrozen = true;
+        persistArchive = false;
       };
       try {
         const raw: unknown = JSON.parse(source.toString("utf8"));
         const inline = object(raw) && (object(raw.transaction) || [raw.entries, raw.deletions, raw.events].some((rows) => Array.isArray(rows) && rows.some((row) => object(row) && ("objective" in row || "objectives" in row))));
         if (inline) {
           try { migrateInline(scope, raw, source); }
-          catch (error) { noteBroken(); persistArchive = false; deferredAliasOwners.add(owner.commodoreId); console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
+          catch (error) { noteBroken(); deferredAliasOwners.add(owner.commodoreId); console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
         } else scope.archive = readArchive(raw);
       } catch { noteBroken(); }
     }
     try { recover(scope); } catch (error) { deferredAliasOwners.add(owner.commodoreId); console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`); }
     const purgeIds = scope.archive.events.filter((row) => row.channel === "objective:purged" && !unavailable(scope, row.objectiveId)).map((row) => row.objectiveId);
-    if (purgeIds.some((id) => scope.archive.entries.some((row) => row.objectiveId === id) || scope.archive.deletions.some((row) => row.objectiveIds.includes(id)))) throw failure();
-    purgeDocuments(scope, purgeIds);
-    for (const id of purgeIds) scope.documents.delete(id);
-    readDocuments(scope, new Set(scope.archive.unavailable ?? []));
+    const purgeConflict = new Set(purgeIds.filter((id) => scope.archive.entries.some((row) => row.objectiveId === id) || scope.archive.deletions.some((row) => row.objectiveIds.includes(id))));
+    if (purgeConflict.size) {
+      console.warn(`[objectives] owner ${owner.commodoreId}: purge conflicts isolated; original preserved`);
+      scope.archive = { ...scope.archive, events: scope.archive.events.filter((row) => !purgeConflict.has(row.objectiveId)), unavailable: [...new Set([...(scope.archive.unavailable ?? []), ...purgeConflict])] };
+    }
+    purgeDocuments(scope, purgeIds.filter((id) => !purgeConflict.has(id)));
+    for (const id of purgeIds) if (!purgeConflict.has(id)) scope.documents.delete(id);
+    readDocuments(scope, new Set((scope.archive.quarantine ?? []).filter((row) => row.reason === "invalid_inline_row" || row.reason === "id_conflict").flatMap((row) => row.id ? [row.id] : [])));
     for (const id of [...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds)]) {
       if (!scope.documents.has(id) && !scope.unreadable.has(id)) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], id])] };
     }
     for (const row of scope.archive.deletions) if (row.objectiveIds.some((id) => unavailable(scope, id))) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], ...row.objectiveIds])] };
-    // 이미 어긋난 Theater 삭제도 행 단위로 격리한다. snapshot의 decode가 Console 전체를 막지 않는다.
-    const orphans = scope.archive.deletions.flatMap((row, index) => row.kind === "theater"
-      && (!state.deletionTombstones?.some((entry) => entry.kind === "theater" && entry.targetId === row.targetId && entry.deletionId === row.deletionId)) ? [{ row, index }] : []);
-    if (orphans.length) {
-      const sourceHash = preserveSource(owner, readBytes(archiveFile));
-      const rejected = new Set(orphans.map(({ row }) => row));
-      scope.archive = { ...scope.archive,
-        deletions: scope.archive.deletions.filter((row) => !rejected.has(row)),
-        unavailable: [...new Set([...scope.archive.unavailable ?? [], ...orphans.flatMap(({ row }) => row.objectiveIds)])],
-        quarantine: [...scope.archive.quarantine ?? [], ...orphans.map(({ row, index }) => ({ id: row.targetId, sourceHash, location: `deletions[${index}]`, reason: "missing_theater_registration", theaterId: row.targetId }))],
-      };
+    if (scope.archiveFrozen) for (const id of scope.documents.keys()) scope.unreadable.add(id);
+    const preexisting = !exists(archiveFile) ? new Set(scope.documents.keys()) : new Set<string>();
+    let touched: readonly string[] = [];
+    if (!scope.archiveFrozen) touched = importLegacy(scope);
+    isolateOrphanDeletions(scope, owner, archiveFile);
+    for (const id of preexisting) if (!scope.archive.entries.some((row) => row.objectiveId === id) && !scope.archive.deletions.some((row) => row.objectiveIds.includes(id))) {
+      scope.unreadable.add(id);
+      scope.archive = { ...scope.archive, unavailable: [...new Set([...(scope.archive.unavailable ?? []), id])] };
     }
-    importLegacy(scope);
-    // 소유자 하나의 충돌은 다른 목표의 정상 저장을 막지 않는다. 격리 ID는 재기동에도 예약한다.
-    // 인라인 이주가 중간에 끊기면 원문 archive가 다음 기동의 권위다. 빈 색인으로 덮지 않는다.
-    if (persistArchive) archiveStore(scope).save(scope.archive);
+    // 읽지 못한 색인은 빈 색인으로 덮지 않는다. 원본 바이트가 권위다.
+    if (persistArchive && !scope.archiveFrozen) {
+      archiveStore(scope).save(scope.archive);
+      if (touched.length) rememberImported(owner.directory, touched);
+    }
     if (!exists(groupsFile)) writeJson(groupsFile, { groups: scope.groups });
     const journals = path.join(owner.directory, ".transactions");
     if (persistArchive && exists(journals)) {
@@ -493,7 +515,13 @@ export function createObjectiveStorage(deps: {
     if (existing) return existing;
     const owner = deps.owners().find((entry) => entry.commodoreId === commodoreId);
     if (!owner) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
-    const scope = readScope(owner); scopes.set(commodoreId, scope); return scope;
+    try { const scope = readScope(owner); scopes.set(commodoreId, scope); return scope; }
+    catch (error) {
+      console.warn(`[objectives] owner ${commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
+      const scope: Scope = { owner, documents: new Map(), groups: [], archive: emptyArchive(), unreadable: new Set(), archiveFrozen: true };
+      scopes.set(commodoreId, scope);
+      return scope;
+    }
   }
   function encodeDeletion(row: DurableDeletionTombstone, commodoreId: string): Deletion {
     return { deletionId: row.deletionId, targetId: row.targetId, deletedAt: row.deletedAt, expiresAt: row.expiresAt,
@@ -501,13 +529,13 @@ export function createObjectiveStorage(deps: {
       ...(row.archived ? { archived: Object.fromEntries(Object.entries(row.archived).filter(([id]) => deletionObjectiveRecords(row).some((node) => node.id === id && node.commodoreId === commodoreId))) } : {}), ...(row.kind === "theater" ? { groups: row.groups.filter((group) => group.commodoreId === commodoreId).map(withoutOwner) } : {}),
     };
   }
-  function decodeDeletion(row: Deletion, scope: Scope): DurableDeletionTombstone {
+  function decodeDeletion(row: Deletion, scope: Scope): DurableDeletionTombstone | null {
     const { objectiveIds, groups, kind, ...base } = row;
     const decode = (id: string) => recordOf(scope, document(scope, id));
     if (kind === "objective") return { ...base, kind: "objectiveRecord", objectiveRecord: decode(row.targetId),
       ...(objectiveIds.length > 1 ? { descendants: objectiveIds.filter((id) => id !== row.targetId).map(decode) } : {}) };
     const registration = state.deletionTombstones?.find((entry) => entry.kind === "theater" && entry.deletionId === row.deletionId);
-    if (!registration || registration.kind !== "theater") throw failure();
+    if (!registration || registration.kind !== "theater") return null;
     return { ...base, kind: "theater", theater: registration.theater, objectiveRecords: objectiveIds.map(decode), groups: (groups ?? []).map((group) => ({ ...group, commodoreId: scope.owner.commodoreId, theaterId: group.theaterId ?? scope.owner.legacyTheaterId })) };
   }
   function retainHeldAliases(source: Record<string, unknown>, normalized: Record<string, unknown>): Record<string, unknown> {
@@ -575,7 +603,10 @@ export function createObjectiveStorage(deps: {
       const hidden = inactive(scope);
       for (const doc of scope.documents.values()) if (!doc.pending && !hidden.has(doc.id)) objectiveRecords.push(recordOf(scope, doc));
       groups.push(...scope.groups.map((group) => ({ ...group, commodoreId: scope.owner.commodoreId, theaterId: group.theaterId ?? scope.owner.legacyTheaterId })));
-      deletions.push(...scope.archive.deletions.filter((row) => !row.objectiveIds.some((id) => unavailable(scope, id))).map((row) => decodeDeletion(row, scope)));
+      for (const row of scope.archive.deletions.filter((row) => !row.objectiveIds.some((id) => unavailable(scope, id)))) {
+        try { const decoded = decodeDeletion(row, scope); if (decoded) deletions.push(decoded); }
+        catch (error) { console.warn(`[objectives] ${row.deletionId}: ${error instanceof Error ? error.message : "deletion_unreadable"}; original preserved`); }
+      }
     }
     const merged = new Map<string, DurableDeletionTombstone>();
     for (const row of deletions) {
@@ -636,6 +667,7 @@ export function createObjectiveStorage(deps: {
         purgeIds: [...scope.documents.keys()].filter((id) => !documents.has(id) && !unavailable(scope, id)) };
       return { scope, transaction, id: "" };
     }).filter(({ scope, transaction }) => {
+      if (scope.archiveFrozen) return false;
       // 읽기에서 복구한 cwd·행위자는 메모리 뷰다. 다른 owner의 저장이 원문 확정 쓰기가 되면 안 된다.
       // 동일한 writer 투영끼리 비교해 옛 직렬화 모양이나 문서 순서만 다른 scope도 건너뛴다.
       const previous = new Map([...scope.documents].filter(([id]) => !unavailable(scope, id)).map(([id, doc]) => [id,
@@ -657,6 +689,7 @@ export function createObjectiveStorage(deps: {
     assertReady(); const consumed = new Set(ids);
     try {
       for (const scope of scopes.values()) {
+        if (scope.archiveFrozen) continue;
         const archive = { ...scope.archive, events: scope.archive.events.filter((event) => !consumed.has(event.eventId)) };
         archiveStore(scope).save(archive); scope.archive = archive;
       }

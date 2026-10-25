@@ -1,5 +1,4 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -304,16 +303,18 @@ describe("Objective archive persistence and deletion", () => {
       const missingIndex = createArchiveHarness(directory);
       expect(missingIndex.storage.blocked()).toBe(false);
       expect(missingIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(missingIndex.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
       expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).not.toThrow();
       expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
+      if (fs.existsSync(archiveFile)) expect(JSON.parse(fs.readFileSync(archiveFile, "utf8")).entries ?? []).not.toContainEqual(expect.objectContaining({ objectiveId: "op" }));
       fs.writeFileSync(archiveFile, intact);
       fs.writeFileSync(archiveFile, "{broken");
       const brokenIndex = createArchiveHarness(directory);
       expect(brokenIndex.storage.blocked()).toBe(false);
       expect(brokenIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(brokenIndex.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
       expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
-      const brokenHash = createHash("sha256").update("{broken").digest("hex");
-      expect(fs.readFileSync(path.join(path.dirname(archiveFile), ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken");
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
     });
   });
 

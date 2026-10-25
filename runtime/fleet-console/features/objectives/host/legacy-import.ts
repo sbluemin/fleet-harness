@@ -20,6 +20,21 @@ export interface LegacyImportResult {
   deletions: readonly { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; objectiveIds: readonly string[]; groups?: readonly object[] }[];
   events: readonly { eventId: string; channel: "objective:archived" | "objective:restored" | "objective:deleted" | "objective:purged"; objectiveId: string; sessionIds: readonly string[] }[];
   quarantine: readonly LegacyQuarantine[];
+  /** 옛 원본에서 이 owner로 귀속된 id. 다시 수입하지 않도록 원장에 남긴다. */
+  touched: readonly string[];
+}
+const ledgerFile = (dir: string) => path.join(dir, ".archive-migration", "imported.json");
+export function readImportedIds(dir: string): Set<string> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(ledgerFile(dir), "utf8")) as { ids?: unknown };
+    return new Set(Array.isArray(raw.ids) ? raw.ids.filter((id): id is string => typeof id === "string" && segment(id)) : []);
+  } catch { return new Set(); }
+}
+export function rememberImported(dir: string, ids: readonly string[]): void {
+  const prior = readImportedIds(dir);
+  for (const id of ids) if (segment(id)) prior.add(id);
+  fs.mkdirSync(path.dirname(ledgerFile(dir)), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(ledgerFile(dir), JSON.stringify({ ids: [...prior].sort() }));
 }
 
 const channels: Record<string, LegacyImportResult["events"][number]["channel"]> = {
@@ -29,8 +44,12 @@ const channels: Record<string, LegacyImportResult["events"][number]["channel"]> 
 const segment = (id: string) => /^[a-zA-Z0-9_-]{1,200}$/.test(id);
 
 function sameCwd(left: string, right: string): boolean {
-  const norm = (value: string) => value.replace(/[\\/]+/g, "/").replace(/\/+$/, "").replace(/^([A-Za-z]):/, (_, letter: string) => `${letter.toUpperCase()}:`);
-  return norm(left) === norm(right);
+  const slash = (value: string) => value.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  const a = slash(left);
+  const b = slash(right);
+  // win32 경로는 드라이브 문자만이 아니라 전체 대소문자를 접는다. POSIX 경로는 구분한다.
+  if (path.win32.isAbsolute(left) || path.win32.isAbsolute(right)) return a.toLowerCase() === b.toLowerCase();
+  return a === b;
 }
 function legacyNames(cwd: string): readonly string[] {
   const names = new Set<string>();
@@ -65,8 +84,17 @@ function copyTree(source: string, target: string): void {
   const stat = fs.lstatSync(source);
   if (stat.isSymbolicLink()) {
     const link = fs.readlinkSync(source);
-    fs.symlinkSync(link, target);
-    if (fs.readlinkSync(target) !== link) throw new Error("link_mismatch");
+    try {
+      fs.symlinkSync(link, target);
+      if (fs.readlinkSync(target) !== link) throw new Error("link_mismatch");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES") {
+        console.warn(`[objectives] symlink skipped: ${source}; original preserved`);
+        return;
+      }
+      throw error;
+    }
     return;
   }
   if (stat.isDirectory()) {
@@ -136,11 +164,21 @@ export function importMissingObjectives(deps: {
   accept: (value: unknown) => ObjectiveDocument;
   warn: (message: string) => void;
 }): LegacyImportResult {
+  const touched = new Set<string>(readImportedIds(deps.owner.directory));
   const documents: ObjectiveDocument[] = [];
   const entries: LegacyImportResult["entries"][number][] = [];
   const deletions: { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; objectiveIds: string[]; groups?: readonly object[] }[] = [];
   const events: LegacyImportResult["events"][number][] = [];
   const quarantine: LegacyQuarantine[] = [];
+  const noteIndex = (id: string, hit?: RecordHit) => {
+    if (!hit) return;
+    if (hit.archived && !entries.some((row) => row.objectiveId === id)) entries.push({ ...hit.archived, objectiveId: id });
+    if (hit?.deleted) {
+      const prior = deletions.find((row) => row.deletionId === hit.deleted!.deletionId);
+      if (prior) { if (!prior.objectiveIds.includes(id)) prior.objectiveIds.push(id); }
+      else deletions.push({ ...hit.deleted, targetId: hit.deleted.kind === "objective" ? id : hit.deleted.targetId || deps.owner.legacyTheaterId, objectiveIds: [id], ...(hit.deleted.kind === "theater" ? { groups: hit.deleted.groups ?? [] } : {}) });
+    }
+  };
   const warnOnce = (key: string, message: string) => { if (!quarantine.some((row) => row.location === key)) deps.warn(message); };
   let archive: unknown = null;
   const archiveFile = path.join(deps.dataDir, "operations-archive.json");
@@ -176,8 +214,14 @@ export function importMissingObjectives(deps: {
     for (const entry of entriesOnDisk) {
       if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "commodore") continue;
       const id = entry.name;
-      if (!segment(id) || deps.known.has(id)) {
-        if (!segment(id)) quarantine.push({ id: null, sourceHash: hashOf(Buffer.from(id)), location: path.join(tree.name, id), reason: "legacy_unreadable" });
+      if (!segment(id)) {
+        quarantine.push({ id: null, sourceHash: hashOf(Buffer.from(id)), location: path.join(tree.name, id), reason: "legacy_unreadable" });
+        continue;
+      }
+      if (touched.has(id)) continue;
+      if (deps.known.has(id)) {
+        noteIndex(id, records.get(id));
+        touched.add(id);
         continue;
       }
       const source = path.join(tree.dir, id);
@@ -204,7 +248,11 @@ export function importMissingObjectives(deps: {
       wanted.set(id, { source, hit });
     }
   }
-  for (const [id, hit] of records) if (!deps.known.has(id) && !wanted.has(id)) wanted.set(id, { hit });
+  for (const [id, hit] of records) {
+    if (touched.has(id)) continue;
+    if (deps.known.has(id)) { noteIndex(id, hit); touched.add(id); continue; }
+    if (!wanted.has(id)) wanted.set(id, { hit });
+  }
 
   deps.prepareDir(deps.owner.directory);
   for (const name of fs.readdirSync(deps.owner.directory)) {
@@ -230,6 +278,7 @@ export function importMissingObjectives(deps: {
       deps.writeJson(boardFile, doc);
       fs.renameSync(staging, path.join(deps.owner.directory, id));
       documents.push(doc);
+      touched.add(id);
       const hit = item.hit;
       if (hit?.archived && !deps.known.has(id)) entries.push({ ...hit.archived, objectiveId: id });
       if (hit?.deleted) {
@@ -250,5 +299,5 @@ export function importMissingObjectives(deps: {
     const { commodoreId: _owner, ...group } = row;
     return [group as Omit<DurableObjectiveGroup, "commodoreId">];
   }) : [];
-  return { documents, groups, entries, deletions, events, quarantine };
+  return { documents, groups, entries, deletions, events, quarantine, touched: [...touched] };
 }

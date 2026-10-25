@@ -219,7 +219,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(feature.knowledge.legacySources(pendingOwner)).toEqual([{ path: path.join(pending.workspace, "knowledge"), label: path.basename(pending.workspace) }]);
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
     expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
-    // 별칭의 명시적 발급은 기록 이주 보류를 푸는 것이 아니다. 원본은 보존하고 실행은 시작하지 않는다.
+    // 별칭의 명시적 발급도 보류 가드를 탄다. 빈 엔티티를 만들지 않고 원본은 그대로다.
     const aliasRoot = theater("pending-with-alias");
     const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending directive");
     fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
@@ -227,9 +227,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     await feature.dispose(); feature = createCommodoreFeature(deps);
     expect(await call("commodore/resolve", { theaterId: workspaceHash(aliasRoot) })).toEqual({ commodoreId: null });
     expect(await call("commodore/create", { theaterId: workspaceHash(aliasRoot) }, 409)).toEqual({ error: "commodore_migration_pending" });
-    const aliasOwner = (await call("commodore/create", { theaterId: workspaceHash(aliasRoot), forAlias: true })).commodoreId as string;
-    expect(await call("commodore/alias", { commodoreId: aliasOwner, alias: "Assigned" })).toMatchObject({ active: false, state: { alias: "Assigned" }, run: { phase: "off" } });
-    expect(feature.identity(workspaceHash(aliasRoot))).toEqual({ id: aliasOwner, alias: "Assigned" });
+    expect(await call("commodore/create", { theaterId: workspaceHash(aliasRoot), forAlias: true }, 409)).toEqual({ error: "commodore_migration_pending" });
     expect(fs.readFileSync(path.join(aliasPending.dir, "state.json"), "utf8")).toBe(state(aliasPending.text));
     expect(warn).toHaveBeenCalled();
   } finally {

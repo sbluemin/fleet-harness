@@ -240,7 +240,7 @@ describe("durable console state", () => {
     expect(fs.readFileSync(path.join(damaged.destination, ".archive-migration", `${sourceHash}.json`), "utf8")).toBe(damagedSource);
     const brokenHash = createHash("sha256").update("{broken archive").digest("hex");
     expect(fs.readFileSync(path.join(broken.directory, ".archive-migration", `${brokenHash}.json`), "utf8")).toBe("{broken archive");
-    expect(JSON.parse(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).entries).toEqual([]);
+    expect(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).toBe("{broken archive");
     // 이주와 무관한 owner의 legacy 본문은 읽기와 다른 owner의 정상 저장 모두에서 바이트가 고정이다.
     expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
     partial.save({ ...partialState, objectiveRecords: partialState.objectiveRecords.map((node) => node.id === "unrelated-active" ? { ...node, title: "saved after migration" } : node) });
@@ -365,6 +365,28 @@ describe("durable console state", () => {
     expect(fs.readFileSync(path.join(oldBoard, "active", "objective.json"), "utf8")).toBe(activeBoard);
     expect(fs.readFileSync(marker, "utf8")).toBe("old marker bytes");
     expect(fs.readFileSync(legacy.stateFile, "utf8")).toBe(oldState);
+    // 색인 저장 전에 끊겨도 다음 기동은 보관 상태만 맞춘다.
+    fs.rmSync(path.join(legacy.destination, ".archive-migration", "imported.json"), { force: true });
+    const dropped = JSON.parse(fs.readFileSync(path.join(legacy.destination, "archive.json"), "utf8"));
+    dropped.entries = [];
+    fs.writeFileSync(path.join(legacy.destination, "archive.json"), JSON.stringify(dropped));
+    const reconciled = legacy.open(); reconciled.load();
+    expect(reconciled.entries().map((entry) => entry.objectiveRecord.id)).toContain("archived");
+    // 원장에 남은 id는 파일을 지워도 옛 원본에서 다시 들어오지 않는다.
+    fs.rmSync(path.join(legacy.destination, "active"), { recursive: true, force: true });
+    const afterPurge = legacy.open(); afterPurge.load();
+    expect(afterPurge.board.list("c1").map((row) => row.id)).not.toContain("active");
+    // Theater 삭제가 archive에만 있어도 첫 기동은 막지 않고 그 목표는 활성으로 되살리지 않는다.
+    const held = fixture();
+    fs.rmSync(held.destination, { recursive: true });
+    const heldBoard = path.join(ensureWorkspaceDirectory(held.directory, held.directory).path, "objectives", "gone");
+    fs.mkdirSync(heldBoard, { recursive: true });
+    fs.writeFileSync(path.join(heldBoard, "objective.json"), JSON.stringify({ operationId: "gone", rank: 1, note: "gone", missions: [] }));
+    fs.writeFileSync(path.join(held.directory, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [], events: [], deletions: [{ deletionId: "td1", kind: "theater", targetId: "t1", deletedAt: 1, expiresAt: 9, groups: [], operations: [{ id: "gone", theaterId: "t1", title: "Gone", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} }] }] }));
+    const booted = held.open();
+    expect(() => booted.load()).not.toThrow();
+    expect(booted.blocked()).toBe(false);
+    expect(booted.board.list("c1").map((row) => row.id)).not.toContain("gone");
   });
 
   it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {
