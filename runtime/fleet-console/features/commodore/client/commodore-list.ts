@@ -69,6 +69,12 @@ export function useMobileCommodoreSelection(): string | null {
   return useSyncExternalStore(subscribeCommodoreList, readMobileCommodoreId, readMobileCommodoreId);
 }
 
+export function replaceCommodoreList(next: readonly ConsoleCommodoreSummary[]): void {
+  commodores = next;
+  loaded = true;
+  emit();
+}
+
 export function refreshCommodoreList(): Promise<void> {
   if (refreshFlight) {
     refreshAgain = true;

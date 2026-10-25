@@ -18,9 +18,9 @@ import { GroupContextMenu } from "./group-context-menu.js";
 import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
-import { setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
+import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
+import { saveCommodoreOrder } from "../../../commodore/client/theaters-api.js";
 import { setCommodoreAlias } from "../../../../core/client/src/integration/api.js";
-import { refreshCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { createCommodoreGroup } from "../theater.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { KeyedAvatar } from "../avatars.js";
@@ -395,6 +395,8 @@ export function ObjectiveRecordsSideBar({
   const [browserOpen, setBrowserOpen] = useState(false);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const collapsedGroups = theaters.flatMap((theater) => getTheaterGroupCollapse(theater.id).collapsedGroups);
   const collapsedTheaters = useCollapsedTheaters();
@@ -456,7 +458,11 @@ export function ObjectiveRecordsSideBar({
     activeAdmiralCount: 0,
     commodore: { id: section.commodoreId, ...(section.alias ? { alias: section.alias } : {}) },
   }));
-  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionRecordIds(theater.id), theater.id) }));
+  const orderedFaces = pendingOrder === null ? sectionFaces : [...sectionFaces].sort((left, right) => {
+    const rank = (id: string) => { const index = pendingOrder.indexOf(id); return index === -1 ? pendingOrder.length : index; };
+    return rank(left.id) - rank(right.id);
+  });
+  const theaterPlans = orderedFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionRecordIds(theater.id), theater.id) }));
   // 고른 목표나 활성 Objective 을 품은 줄이 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal·직접 활성화) 그 접기를
   // 펼치고 줄이 보이게 스크롤한다. 그 줄이나 그 줄이 든 접기(그룹 이동)가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
   const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected || item.anchor?.active || item.fold.some((entry) => entry.active)).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
@@ -675,7 +681,7 @@ export function ObjectiveRecordsSideBar({
     currentOrderRef.current = currentOrder;
     dropSectionsRef.current = dropSections;
     orderedGroupIdsRef.current = orderedGroupIds;
-    orderedTheaterIdsRef.current = theaters.map((theater) => theater.id);
+    orderedTheaterIdsRef.current = orderedFaces.map((theater) => theater.id);
     onSetGroupIdRef.current = onSetGroupId;
     onReorderGroupsRef.current = onReorderGroups;
     onReorderTheatersRef.current = onReorderTheaters;
@@ -731,7 +737,15 @@ export function ObjectiveRecordsSideBar({
       if (snap.kind === "theater") {
         const nextTheaterIds = reorderTheaterIds(orderedTheaterIdsRef.current, snap.sourceTheaterId, snap.dropIndex);
         if (nextTheaterIds.join("\0") === orderedTheaterIdsRef.current.join("\0")) return;
-        onReorderTheatersRef.current(nextTheaterIds);
+        setOrderError(null);
+        setPendingOrder(nextTheaterIds);
+        void saveCommodoreOrder({ commodoreIds: nextTheaterIds }).then((result) => {
+          replaceCommodoreList(result.commodores);
+          setPendingOrder(null);
+        }).catch(() => {
+          setPendingOrder(null);
+          setOrderError(t("sidebar.commodore.orderFailed"));
+        });
         return;
       }
 
@@ -881,7 +895,7 @@ export function ObjectiveRecordsSideBar({
 
   const beginTheaterPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => {
     if (event.button !== 0) return;
-    const orderedTheaterIds = theaters.map((theater) => theater.id);
+    const orderedTheaterIds = orderedTheaterIdsRef.current;
     if (!orderedTheaterIds.includes(theaterId)) return;
     setActiveContextMenu(null);
     updateDrag({
@@ -994,6 +1008,7 @@ export function ObjectiveRecordsSideBar({
     >
       {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
+      {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
 
       {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓴다. */}
       {topStripVariant === "compact" ? (
@@ -1004,7 +1019,7 @@ export function ObjectiveRecordsSideBar({
         </div>
       ) : (
       <div className="side-bar-top-strip">
-        {sectionFaces.length > 0 ? (
+        {orderedFaces.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.theaters")}</span>
             <SideBarViewMenu />
@@ -1017,7 +1032,7 @@ export function ObjectiveRecordsSideBar({
       {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
       <ol className="objective-records-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
-        {sectionFaces.map((theater, theaterIndex) => {
+        {orderedFaces.map((theater, theaterIndex) => {
           const isViewedTheater = theater.id === viewedTheaterId;
           const statusAxis = statusTheaterIds.has(theater.id);
           const theaterObjectiveRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
@@ -1073,8 +1088,7 @@ export function ObjectiveRecordsSideBar({
                 onOpenInbox={openTheaterHeaderInbox}
                 onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
                 menuTarget={theaterMenuTargetId === theater.id}
-                // 섹션 순서는 사령관 목록 응답 순서다. 끌기 저장은 patchTheaterOrder(theaterId)라 사령관 UUID를 넣으면 등록 Theater를 찾지 못한다.
-                onPointerDragStart={() => undefined}
+                onPointerDragStart={beginTheaterPointerDrag}
                 onNewSession={() => openCommodoreNewSession(theater.id)}
               />
               {!theaterCollapsed && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(theater.id) ? <TheaterContributionRows theater={theater} /> : null}
@@ -1222,7 +1236,7 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
         })}
-        {sectionFaces.length === 0 ? (
+        {orderedFaces.length === 0 ? (
           // Theater가 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
           // 첫 행동(폴더 선택)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
           // 되돌아가는 길도 여기 둔다.
