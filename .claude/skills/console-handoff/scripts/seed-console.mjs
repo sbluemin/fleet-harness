@@ -149,8 +149,12 @@ if (typeof prompt !== "string") {
   process.exit(0);
 }
 
-const { commodoreId } = await api("POST", "/api/v1/commodore/resolve", { theaterId });
-if (!commodoreId) fail("Theater has no Commodore owner");
+let { commodoreId, commodoreIds = [] } = await api("POST", "/api/v1/commodore/resolve", { theaterId });
+if (!commodoreId) {
+  if (commodoreIds.length > 0) fail("Theater has multiple Commodore owners; choose an unambiguous fixture Theater");
+  ({ commodoreId } = await api("POST", "/api/v1/commodore/create", { alias: path.basename(theaterPath) || "Fixture" }));
+  await api("POST", "/api/v1/commodore/theaters/add", { commodoreId, theaterId });
+}
 const session = await api("POST", "/api/v1/agent/sessions", {
   commodoreId,
   theaterId,
