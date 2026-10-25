@@ -524,13 +524,14 @@ const pendingOrders = new Map<string, Promise<void>>();
 const orderRevisions = new Map<string, number>();
 
 export function setObjectiveOrder(theaterId: string, ids: readonly string[]): void {
-  const theaterObjectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId);
+  const inSection = (objectiveRecord: ObjectiveRecord) => objectiveRecord.commodoreId === theaterId || objectiveRecord.theaterId === theaterId;
+  const theaterObjectiveRecords = state.objectiveRecords.filter(inSection);
   const valid = new Set(theaterObjectiveRecords.map((objectiveRecord) => objectiveRecord.id));
   const orderedIds = [...new Set(ids.filter((id) => valid.has(id)))];
   const positions = new Map(orderedIds.map((id, index) => [id, index]));
   const revision = (orderRevisions.get(theaterId) ?? 0) + 1;
   orderRevisions.set(theaterId, revision);
-  setState({ objectiveRecords: state.objectiveRecords.map((objectiveRecord) => objectiveRecord.theaterId !== theaterId ? objectiveRecord : {
+  setState({ objectiveRecords: state.objectiveRecords.map((objectiveRecord) => !inSection(objectiveRecord) ? objectiveRecord : {
     ...objectiveRecord,
     order: positions.get(objectiveRecord.id),
   }) });
@@ -564,8 +565,11 @@ const suppressedOrders = new Set<string>();
 
 export function applyObjectiveUpdate(objectiveRecord: ObjectiveRecord, confirmedOrder = false): void {
   // 내 요청이 진행 중일 때 서버가 이전 순서의 개별 SSE를 보내도 낙관적 배치를 되돌리지 않는다.
-  if (!confirmedOrder && pendingOrders.has(objectiveRecord.theaterId) && objectiveRecord.order !== findObjective(objectiveRecord.id)?.order) {
-    suppressedOrders.add(objectiveRecord.theaterId);
+  const orderKey = pendingOrders.has(objectiveRecord.commodoreId)
+    ? objectiveRecord.commodoreId
+    : pendingOrders.has(objectiveRecord.theaterId) ? objectiveRecord.theaterId : null;
+  if (!confirmedOrder && orderKey !== null && objectiveRecord.order !== findObjective(objectiveRecord.id)?.order) {
+    suppressedOrders.add(orderKey);
     objectiveRecord = { ...objectiveRecord, order: findObjective(objectiveRecord.id)?.order };
   }
   const index = state.objectiveRecords.findIndex((op) => op.id === objectiveRecord.id);
@@ -824,7 +828,7 @@ export function requestObjectiveKeyboardFocus(objectiveId: string): void {
  * 만들지 않고, 첫 메시지가 실행 의도(requestLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
  */
 export function openNewSession(target: NewSessionTarget): void {
-  if (state.newSession?.theaterId === target.theaterId) return;
+  if (state.newSession?.theaterId === target.theaterId && state.newSession.commodoreId === target.commodoreId) return;
   setState({ newSession: target });
 }
 

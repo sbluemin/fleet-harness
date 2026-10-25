@@ -37,7 +37,7 @@ export interface LaunchRequest {
 export interface NewSessionTarget {
   /** 처음 고른 Theater. 등록된 Theater 가 없으면 null — 화면이 「Theater 추가…」를 먼저 세운다. */
   readonly theaterId: string | null;
-  /** 머리 「+」가 연 섹션의 사령관. 팔레트·단축키 입구는 비운다. */
+  /** 컴포저를 연 섹션의 사령관. 팔레트·단축키는 고른 사령관, 없으면 목록 첫 사령관을 싣는다. */
   readonly commodoreId?: string;
 }
 

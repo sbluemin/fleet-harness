@@ -715,7 +715,7 @@ export function ObjectiveRecordsSideBar({
       if (current.dragging) event.preventDefault();
       autoScrollSideBar(event.clientY, chipsRef.current);
       if (current.kind === "chip") {
-        const dropTarget = dropTargetFromPoint(event.clientY, groupObjectiveRecords(entriesRef.current.filter((entry) => entry.objectiveRecord.theaterId === current.theaterId), groupsRef.current.filter((group) => group.theaterId === current.theaterId), []).map((section) => ({ groupId: section.groupId, entryIds: section.entries.map((entry) => entry.objectiveRecord.id) })), chipsRef.current?.querySelector<HTMLOListElement>(`[data-theater-id="${CSS.escape(current.theaterId)}"] > .side-bar-theater-groups`) ?? null, current.sourceId);
+        const dropTarget = dropTargetFromPoint(event.clientY, groupObjectiveRecords(entriesRef.current.filter((entry) => entry.objectiveRecord.commodoreId === current.theaterId), groupsRef.current.filter((group) => group.commodoreId === current.theaterId), []).map((section) => ({ groupId: section.groupId, entryIds: section.entries.map((entry) => entry.objectiveRecord.id) })), chipsRef.current?.querySelector<HTMLOListElement>(`[data-theater-id="${CSS.escape(current.theaterId)}"] > .side-bar-theater-groups`) ?? null, current.sourceId);
         updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex: dropTarget.index, dropGroupId: dropTarget.groupId });
         return;
       }
@@ -724,7 +724,7 @@ export function ObjectiveRecordsSideBar({
         updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
         return;
       }
-      const dropIndex = groupDropIndexFromPoint(event.clientY, orderedGroupIdsRef.current.filter((id) => groupsRef.current.some((group) => group.id === id && group.theaterId === current.theaterId)), chipsRef.current?.querySelector<HTMLOListElement>(`[data-theater-id="${CSS.escape(current.theaterId)}"] > .side-bar-theater-groups`) ?? null, current.sourceGroupId);
+      const dropIndex = groupDropIndexFromPoint(event.clientY, orderedGroupIdsRef.current.filter((id) => groupsRef.current.some((group) => group.id === id && group.commodoreId === current.theaterId)), chipsRef.current?.querySelector<HTMLOListElement>(`[data-theater-id="${CSS.escape(current.theaterId)}"] > .side-bar-theater-groups`) ?? null, current.sourceGroupId);
       updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex });
     };
 
@@ -750,7 +750,7 @@ export function ObjectiveRecordsSideBar({
       }
 
       if (snap.kind === "group") {
-        const groupIds = orderedGroupIdsRef.current.filter((id) => groupsRef.current.some((group) => group.id === id && group.theaterId === snap.theaterId));
+        const groupIds = orderedGroupIdsRef.current.filter((id) => groupsRef.current.some((group) => group.id === id && group.commodoreId === snap.theaterId));
         const nextGroupIds = reorderGroupIds(groupIds, snap.sourceGroupId, snap.dropIndex);
         if (nextGroupIds.join("\0") === groupIds.join("\0")) return;
         onReorderGroupsRef.current(nextGroupIds);
@@ -762,8 +762,8 @@ export function ObjectiveRecordsSideBar({
         if (dropGroupId !== sourceGroupId) snap.moveRow(dropGroupId);
         return;
       }
-      const sections = groupObjectiveRecords(entriesRef.current.filter((entry) => entry.objectiveRecord.theaterId === snap.theaterId), groupsRef.current.filter((group) => group.theaterId === snap.theaterId), []).map((section) => ({ groupId: section.groupId, entryIds: section.entries.map((entry) => entry.objectiveRecord.id) }));
-      const allIds = currentOrderRef.current.filter((id) => entriesRef.current.some((entry) => entry.objectiveRecord.id === id && entry.objectiveRecord.theaterId === snap.theaterId));
+      const sections = groupObjectiveRecords(entriesRef.current.filter((entry) => entry.objectiveRecord.commodoreId === snap.theaterId), groupsRef.current.filter((group) => group.commodoreId === snap.theaterId), []).map((section) => ({ groupId: section.groupId, entryIds: section.entries.map((entry) => entry.objectiveRecord.id) }));
+      const allIds = currentOrderRef.current.filter((id) => entriesRef.current.some((entry) => entry.objectiveRecord.id === id && entry.objectiveRecord.commodoreId === snap.theaterId));
 
       if (dropGroupId !== sourceGroupId) {
         const dropSection = sections.find((s) => s.groupId === dropGroupId);
@@ -803,11 +803,11 @@ export function ObjectiveRecordsSideBar({
     if (event.target instanceof Element && event.target.closest(interactive)) return;
     setActiveContextMenu(null);
     const sourceEntry = allEntries.find((e) => e.objectiveRecord.id === objectiveId);
-    if (!sourceEntry || getTheaterGroupCollapse(sourceEntry.objectiveRecord.theaterId).statusAxis) return;
+    if (!sourceEntry || getTheaterGroupCollapse(sourceEntry.objectiveRecord.commodoreId).statusAxis) return;
     const sourceGroupId = sourceEntry.objectiveRecord.groupId ?? null;
     updateDrag({
       kind: "chip",
-      theaterId: sourceEntry!.objectiveRecord.theaterId,
+      theaterId: sourceEntry.objectiveRecord.commodoreId,
       sourceId: objectiveId,
       sourceGroupId,
       pointerId: event.pointerId,
@@ -827,12 +827,13 @@ export function ObjectiveRecordsSideBar({
       return;
     }
     const moveRow = item.row.moveToGroup;
-    if (getTheaterGroupCollapse(item.layout.cluster.theaterId).statusAxis || !moveRow || event.button !== 0) return;
+    const sectionId = item.layout.cluster.commodoreId;
+    if (!sectionId || getTheaterGroupCollapse(sectionId).statusAxis || !moveRow || event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest(".status-glyph.is-actionable")) return;
     setActiveContextMenu(null);
     updateDrag({
       kind: "chip",
-      theaterId: item.layout.cluster.theaterId,
+      theaterId: sectionId,
       sourceId: `row:${item.layout.cluster.id}`,
       sourceGroupId: item.row.groupId,
       pointerId: event.pointerId,
@@ -882,7 +883,7 @@ export function ObjectiveRecordsSideBar({
     setActiveContextMenu(null);
     updateDrag({
       kind: "group",
-      theaterId: groups.find((group) => group.id === groupId)!.theaterId,
+      theaterId: groups.find((group) => group.id === groupId)!.commodoreId,
       sourceGroupId: groupId,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -1279,7 +1280,7 @@ export function ObjectiveRecordsSideBar({
         <GroupContextMenu
           kind="chip"
           objectiveRecord={contextMenuObjective}
-          groups={groups.filter((group) => group.theaterId === contextMenuObjective.theaterId)}
+          groups={groups.filter((group) => group.commodoreId === contextMenuObjective.commodoreId)}
           accentKey={objectiveRecordAccent[contextMenuObjective.id] ?? objectiveRecordAccentFromNode(contextMenuObjective)}
           anchor={activeContextMenu.anchor}
           actions={{

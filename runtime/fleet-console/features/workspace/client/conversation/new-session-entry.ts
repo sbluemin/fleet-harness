@@ -5,7 +5,8 @@ import { navigateConsoleRoute } from "../../../../core/client/src/integration/co
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { readNewSessionSelection } from "./new-session-preferences.js";
-import { readCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { getConversationSurface } from "./conversation-surface-store.js";
+import { readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
 
 /**
  * 새 세션이 처음 고르는 Theater — 데스크톱 화면과 모바일 새 대화 시트가 같은 규칙을 쓴다:
@@ -19,6 +20,31 @@ export function resolveNewSessionTheaterId(): string | null {
   const viewed = getViewedTheaterId();
   if (viewed !== null && ids.includes(viewed)) return viewed;
   return ids[0] ?? null;
+}
+
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function knownCommodore(id: string | null | undefined): string | null {
+  if (!id || !COMMODORE_UUID.test(id)) return null;
+  return readCommodoreList().some((row) => row.commodoreId === id) ? id : null;
+}
+
+/**
+ * 새 세션이 실을 사령관. Theater 칩은 후보를 제한하지 않고, 소유만 이 순서로 정한다.
+ * ① 컴포저를 연 섹션, ② 지금 고른 사령관(폰은 칩, 데스크톱은 열린 대화 다음 작전 구역), ③ 목록의 첫 사령관.
+ * 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
+ */
+export function resolveNewSessionCommodoreId(sectionCommodoreId?: string | null): string | null {
+  const explicit = sectionCommodoreId ?? getState().newSession?.commodoreId ?? null;
+  if (explicit && COMMODORE_UUID.test(explicit)) return explicit;
+  const surface = getConversationSurface();
+  const conversation = surface?.surfaceId === "commodore" && typeof surface.params.commodoreId === "string"
+    ? surface.params.commodoreId
+    : null;
+  const selected = getViewModeSnapshot().effective === "mobile"
+    ? readMobileCommodoreId()
+    : conversation ?? readZoneCommodore();
+  return knownCommodore(selected) ?? readCommodoreList()[0]?.commodoreId ?? null;
 }
 
 /**
@@ -39,7 +65,8 @@ export function openDefaultNewSession(): void {
     requestNewSessionFocus();
     return;
   }
-  openNewSession({ theaterId: resolveNewSessionTheaterId() });
+  const commodoreId = resolveNewSessionCommodoreId();
+  openNewSession({ theaterId: resolveNewSessionTheaterId(), ...(commodoreId ? { commodoreId } : {}) });
 }
 
 /**

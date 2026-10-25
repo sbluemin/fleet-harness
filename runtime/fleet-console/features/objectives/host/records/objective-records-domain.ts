@@ -287,14 +287,16 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function reorder(theaterId: string, orderedIds: readonly string[]): readonly ObjectiveRecord[] {
+    const inSection = (node: ObjectiveRecord) => node.commodoreId === theaterId || node.theaterId === theaterId;
     const positions = new Map<string, number>();
     for (const id of orderedIds) {
-      if (positions.has(id) || nodes.get(id)?.theaterId !== theaterId) continue;
+      const node = nodes.get(id);
+      if (positions.has(id) || !node || !inSection(node)) continue;
       positions.set(id, positions.size);
     }
     const changed: ObjectiveRecord[] = [];
     for (const [id, node] of nodes) {
-      if (node.theaterId !== theaterId) continue;
+      if (!inSection(node)) continue;
       const order = positions.get(id);
       if (node.order === order) continue;
       const updated = { ...node, order };

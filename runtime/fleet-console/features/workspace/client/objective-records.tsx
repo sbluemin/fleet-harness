@@ -507,7 +507,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     <GroupContextMenu
       kind="chip"
       objectiveRecord={menuObjective}
-      groups={state.groups.filter((group) => group.theaterId === menuObjective.theaterId)}
+      groups={state.groups.filter((group) => group.commodoreId === menuObjective.commodoreId)}
       accentKey={getTheaterGroupCollapse(menuObjective.theaterId).objectiveRecordAccent[menuObjective.id]
         ?? objectiveRecordAccentFromNode(menuObjective)}
       anchor={objectiveRecordMenu.anchor}
@@ -515,7 +515,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
       actions={{
         onSetAccent: (key) => handleSetAccent(menuObjective.id, key),
         onSetGroupId: (groupId) => handleSetGroupId(menuObjective.id, groupId),
-        onCreateGroup: (name) => handleCreateGroup(menuObjective.theaterId, name, menuObjective.id),
+        onCreateGroup: (name) => handleCreateGroup(menuObjective.commodoreId, name, menuObjective.id),
         onCloseObjective: () => handleClose(menuObjective.id),
       }}
       onClose={closeObjectiveMenu}

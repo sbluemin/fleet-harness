@@ -33,7 +33,7 @@ import { TheaterAvatar } from "../theater-avatar.js";
 import { registerTheaterFromPath } from "../theater.js";
 import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
-import { resolveNewSessionTheaterId } from "./new-session-entry.js";
+import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import "./new-session.css";
 
 /**
@@ -530,9 +530,10 @@ export function NewSessionColumn({ state, target, tools }: {
     attachmentStore.clearNotice();
     setStarting(true);
     writeNewSessionTheater(theater.id);
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreId);
     requestLaunch({
       theaterId: theater.id,
-      ...(state.newSession?.commodoreId ? { commodoreId: state.newSession.commodoreId } : {}),
+      ...(commodoreId ? { commodoreId } : {}),
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
@@ -546,7 +547,8 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    requestLaunch({ theaterId: theater.id, pluginId, kind, variant: {} });
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreId);
+    requestLaunch({ theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
   };
 
   // 거절은 starting 을 풀어 이 타이머를 취소한다. 응답이 전혀 없을 때만 닫아, 시작하는 중에 가두지 않는다.
