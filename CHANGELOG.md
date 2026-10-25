@@ -5,6 +5,36 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.257.0] - 2026-10-25
+
+### fleet-console
+
+#### Added
+- Create a commodore from the sidebar's top "+" with a live preview of its look, then add or remove its own Theaters by picking folders at the top of its Settings tab; the same folder can be added to more than one commodore. Objectives a commodore runs work in the commodore's own folder with its Theaters attached, while ordinary sessions still run in the Theater you choose.
+- The Commodore can now look around its own Theaters by listing folders, finding files by name pattern, and searching file contents, read-only and without leaving those folders.
+
+#### Changed
+- The sidebar groups sessions by commodore, and system prompt and subagent settings now belong to each commodore in its Settings tab; existing Theater settings carry over to the commodore that had that Theater.
+- New sessions on the desktop screen and the phone's new conversation sheet now start under their commodore: they show the commodore followed by the Theater, and you pick only from that commodore's own Theaters or add a folder to its list.
+- File Explorer, Repository, and Shell are temporarily unavailable during the commodore revamp; their dimmed toolbar icons explain why on hover.
+- Group conversations always fold member turns, including for people who previously kept them unfolded; the Fold turns switch has been removed.
+- The right sidebar keeps one width as you move between a commodore, a commander, and their tabs, and the log, directive, memory, and settings bodies fill that width.
+- The commodore directive box keeps the height you last set with its resize handle after you switch tabs, close the panel, or reload.
+- Descriptions, hints, and messages across Console now lead with what you get, in shorter and friendlier Korean.
+
+#### Breaking Changes
+- After using empty, multiple, or shared Theater assignments, downgrading to an older Console may hide affected Commodores and their boards until you upgrade again; their files remain on disk.
+
+### fleet-desktop
+
+#### Changed
+- Desktop startup, console switching, and confirmation messages now use the same shorter, friendlier Korean as Console.
+
+### fleet-mobile
+
+#### Changed
+- The phone app's console list, pairing, camera, and connection messages now lead with what happens next, in friendlier Korean.
+
 ## [1.256.0] - 2026-10-25
 
 ### fleet-console
