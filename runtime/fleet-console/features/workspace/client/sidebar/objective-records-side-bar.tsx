@@ -394,6 +394,7 @@ export function ObjectiveRecordsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const collapsedGroups = theaters.flatMap((theater) => getTheaterGroupCollapse(theater.id).collapsedGroups);
   const collapsedTheaters = useCollapsedTheaters();
@@ -445,11 +446,7 @@ export function ObjectiveRecordsSideBar({
   const groupedSections = groupObjectiveRecords(allEntries, activeGroups, activeObjectiveOrder);
   // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
-  const sectionTheaterIds = (commodoreId: string): readonly string[] => {
-    const listed = commodoreSections.find((section) => section.commodoreId === commodoreId)?.theaters.map((theater) => theater.theaterId) ?? [];
-    const fromRecords = objectiveRecords.filter((record) => record.commodoreId === commodoreId).map((record) => record.theaterId);
-    return [...new Set([...listed, ...fromRecords])];
-  };
+  const sectionRecordIds = (commodoreId: string): ReadonlySet<string> => new Set(objectiveRecords.filter((record) => record.commodoreId === commodoreId).map((record) => record.id));
   const sectionFaces: TheaterInfo[] = commodoreSections.map((section) => ({
     id: section.commodoreId,
     label: section.alias ?? section.label,
@@ -459,7 +456,7 @@ export function ObjectiveRecordsSideBar({
     activeAdmiralCount: 0,
     commodore: { id: section.commodoreId, ...(section.alias ? { alias: section.alias } : {}) },
   }));
-  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionTheaterIds(theater.id)) }));
+  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionRecordIds(theater.id)) }));
   // 고른 목표나 활성 Objective 을 품은 줄이 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal·직접 활성화) 그 접기를
   // 펼치고 줄이 보이게 스크롤한다. 그 줄이나 그 줄이 든 접기(그룹 이동)가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
   const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected || item.anchor?.active || item.fold.some((entry) => entry.active)).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
@@ -975,7 +972,10 @@ export function ObjectiveRecordsSideBar({
   };
   const finishAliasEdit = (theaterId: string, alias: string | null | undefined) => {
     setAliasEditingTheaterId((current) => (current === theaterId ? null : current));
-    if (alias !== undefined) void setCommodoreAlias(theaterId, alias).then(() => refreshCommodoreList()).catch(() => onSetTheaterAlias(theaterId, alias));
+    if (alias !== undefined) {
+      setAliasError(null);
+      void setCommodoreAlias(theaterId, alias).then(() => refreshCommodoreList()).catch(() => setAliasError(t("sidebar.commodore.aliasFailed")));
+    }
   };
   const aliasEditingFor = (theaterId: string): TheaterAliasEditing => ({
     clampAlias,
@@ -993,6 +993,7 @@ export function ObjectiveRecordsSideBar({
       onContextMenu={openNewSessionAtCursor}
     >
       {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
+      {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
 
       {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓴다. */}
       {topStripVariant === "compact" ? (
@@ -1038,7 +1039,7 @@ export function ObjectiveRecordsSideBar({
           const allEntries = buildTheaterEntries({ theaterId: theater.id, objectiveRecords: theaterObjectiveRecords, objectiveRecordOrder: objectiveRecordOrderFromNodes(theaterObjectiveRecords), activeObjectiveId, selectedObjectiveId: doubleClickOpen ? selectedObjectiveId : null, objectiveRecordNotifications, objectiveRecordRuntime });
           const theaterGroups = groups.filter((group) => group.commodoreId === theater.id);
           const groupedSections = groupObjectiveRecords(allEntries, theaterGroups, objectiveRecordOrderFromNodes(theaterObjectiveRecords));
-          const rowPlan = planSideBarRows(groupedSections, clusterIndex, sectionTheaterIds(theater.id));
+          const rowPlan = planSideBarRows(groupedSections, clusterIndex, sectionRecordIds(theater.id));
           const collapsedGroupSet = new Set(getTheaterGroupCollapse(theater.id).collapsedGroups);
           const objectiveRecordAccent = getTheaterGroupCollapse(theater.id).objectiveRecordAccent;
           const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
@@ -1072,10 +1073,11 @@ export function ObjectiveRecordsSideBar({
                 onOpenInbox={openTheaterHeaderInbox}
                 onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
                 menuTarget={theaterMenuTargetId === theater.id}
+                // 섹션 순서는 사령관 목록 응답 순서다. 끌기 저장은 patchTheaterOrder(theaterId)라 사령관 UUID를 넣으면 등록 Theater를 찾지 못한다.
                 onPointerDragStart={() => undefined}
                 onNewSession={() => openCommodoreNewSession(theater.id)}
               />
-              {!theaterCollapsed ? <TheaterContributionRows theater={theater} /> : null}
+              {!theaterCollapsed && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(theater.id) ? <TheaterContributionRows theater={theater} /> : null}
               {!theaterCollapsed ? (
               <ol className="side-bar-theater-groups" aria-label={t("sidebar.theater.objectiveRecordsAria", { theater: theater.label })}>
                 {statusAxis ? statusSections.filter((section) => section.entries.length > 0).map((section) => (
@@ -1234,7 +1236,7 @@ export function ObjectiveRecordsSideBar({
               onClick={requestCommodoreCreate}
               disabled={addingTheater}
             >
-              {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.starter.chooseFolder")}
+              {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.commodore.createTitle")}
             </button>
             <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
               {t("sidebar.starter.reopenGuide")}
@@ -1270,7 +1272,7 @@ export function ObjectiveRecordsSideBar({
           actions={{
             onSetAccent: (key) => onSetAccent(contextMenuObjective.id, key),
             onSetGroupId: (groupId) => onSetGroupId(contextMenuObjective.id, groupId),
-            onCreateGroup: (name) => onCreateGroup(contextMenuObjective.theaterId, name, contextMenuObjective.id),
+            onCreateGroup: (name) => onCreateGroup(contextMenuObjective.commodoreId, name, contextMenuObjective.id),
             onCloseObjective: () => onClose(contextMenuObjective.id),
             ...(doubleClickOpen ? {
               onOpen: () => {

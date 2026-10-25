@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
+import { createCommodoreGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
@@ -260,7 +260,9 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
     const alias = next.length > 0 ? next : null;
     if (alias === (theater.commodore?.alias ?? null)) { popMobileSheet(); return; }
     setSaving(true);
-    void commodoreAliasEditor.save(theater.id, alias)
+    const commodoreId = theater.commodore?.id;
+    if (!commodoreId) return;
+    void commodoreAliasEditor.save(commodoreId, alias)
       .then(() => { closeMobileSheets(); showMobileToast(t(alias === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
       .catch(() => setSaving(false));
   };
@@ -291,19 +293,20 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
 /** 새 그룹 이름 — 데스크톱 메뉴의 「새 그룹…」과 같은 기본 이름에서 시작한다. 폰 목록은 그룹을 그리지 않으므로 토스트가 결과를 말한다. */
 function TheaterGroupSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
   const t = useT();
-  const theaterExists = state.theaters.some((item) => item.id === theaterId);
-  const groupCount = state.groups.filter((group) => group.theaterId === theaterId).length;
+  const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
+  const commodoreId = theater?.commodore?.id ?? null;
+  const groupCount = state.groups.filter((group) => group.commodoreId === commodoreId).length;
   const [value, setValue] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
   // 다른 창의 잊기로 Theater가 사라지면 시트를 걷는다 — 서버는 Theater 존재를 따지지 않아 저장하면 고아 그룹이 남는다.
-  useEffect(() => { if (!theaterExists) popMobileSheet(); }, [theaterExists]);
-  if (!theaterExists) return null;
+  useEffect(() => { if (!theater || !commodoreId) popMobileSheet(); }, [theater, commodoreId]);
+  if (!theater || !commodoreId) return null;
   const name = value.trim();
   const save = () => {
     if (name === "" || saving) return;
     setSaving(true);
-    void createTheaterGroup(theaterId, name)
+    void createCommodoreGroup(commodoreId, name)
       .then(() => { closeMobileSheets(); showMobileToast(t("mobile.toast.groupCreated", { name })); })
       .catch(() => setSaving(false));
   };

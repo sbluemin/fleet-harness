@@ -325,13 +325,13 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     );
   }, [refreshObjectiveRecords, runMutation]);
 
-  const handleCreateGroup = useCallback((theaterId: string, name: string, objectiveId?: string) => {
+  const handleCreateGroup = useCallback((commodoreId: string, name: string, objectiveId?: string) => {
     let createdGroupId: string | null = null;
     runMutation(
       async () => {
         const group = createdGroupId
           ? { id: createdGroupId }
-          : await createGroup({ theaterId, name, color: "blue" });
+          : await createGroup({ commodoreId, name, color: "blue" } as unknown as Parameters<typeof createGroup>[0]);
         createdGroupId = group.id;
         if (objectiveId) await patchObjective(objectiveId, { groupId: group.id });
         await refreshObjectiveRecordsAndGroups();

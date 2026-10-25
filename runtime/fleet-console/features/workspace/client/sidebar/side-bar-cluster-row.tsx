@@ -145,13 +145,16 @@ export function rowGlyphState(item: SideBarRowItem): ObjectiveClusterRowGlyph | 
 export function planSideBarRows(
   sections: readonly { readonly groupId: string | null; readonly entries: readonly SideBarEntry[] }[],
   clusterIndex: ClusterIndex,
-  theaterId: string | readonly string[] | null,
+  allowedRecordIds: ReadonlySet<string>,
 ): SideBarRowPlan {
-  const allowed = typeof theaterId === "string" ? [theaterId] : theaterId;
   const entryById = new Map(sections.flatMap((section) => section.entries.map((entry) => [entry.objectiveRecord.id, entry] as const)));
   const sectionIds = new Set(sections.map((section) => section.groupId));
+  const owns = (id: string | undefined): boolean => id !== undefined && allowedRecordIds.has(id);
   const items: SideBarRowItem[] = clusterIndex.rows
-    .filter((layout) => layout.cluster.row && (allowed === null ? layout.cluster.theaterId === null : allowed.includes(layout.cluster.theaterId)))
+    .filter((layout) => layout.cluster.row !== undefined && (
+      owns(layout.cluster.id) || owns(layout.cluster.root) || owns(layout.cluster.avatarObjectiveId)
+      || layout.cluster.row.fold.some(owns) || layout.cluster.members.some((member) => owns(member.objectiveId))
+    ))
     .map((layout) => {
       const row = layout.cluster.row!;
       const fold = row.fold.flatMap((id) => { const entry = entryById.get(id); return entry ? [entry] : []; });
