@@ -382,8 +382,9 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
     const prepared = fs.readFileSync(ownerArchiveFile, "utf8");
     expect(typeof JSON.parse(prepared).transaction).toBe("string");
-    expect(() => deferred.save(deferredState)).toThrow("objective_owner_recovery_required");
+    expect(() => deferred.save(deferredState)).not.toThrow();
     expect(deferred.blocked()).toBe(false);
+    expect(() => deferred.board.save(ownerId, { id: "during-defer", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
     expect(fs.readFileSync(ownerArchiveFile, "utf8")).toBe(prepared);
     failOwnerApply = false;

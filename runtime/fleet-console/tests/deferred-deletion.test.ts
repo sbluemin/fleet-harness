@@ -340,6 +340,32 @@ describe("Objective archive persistence and deletion", () => {
       const stable = createArchiveHarness(directory);
       expect(fs.readFileSync(archiveFile, "utf8")).toBe(recovered);
       expect(stable.storage.board.list("c1").map((row) => row.id)).toContain("added");
+      const otherDir = path.join(directory, "commodore", "other", "objectives");
+      fs.mkdirSync(path.join(otherDir, "kept"), { recursive: true });
+      fs.writeFileSync(path.join(otherDir, "groups.json"), JSON.stringify({ groups: [] }));
+      fs.writeFileSync(path.join(otherDir, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+      fs.writeFileSync(path.join(otherDir, "kept", "objective.json"), JSON.stringify({ id: "kept", cwd: directory, title: "Kept", rank: 1, note: "", missions: [], ts: { createdAt: 1, updatedAt: 1 }, session: { harness: "claude-code", id: "kept-session" } }));
+      const pairedStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
+      const openHeld = fs.openSync.bind(fs);
+      const blockHeld = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return openHeld(...args);
+      });
+      try {
+        const paired = createObjectiveStorage({ directory, stateStore: pairedStore, owners: () => [
+          { directory: path.dirname(archiveFile), commodoreId: "c1", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id },
+          { directory: otherDir, commodoreId: "c2", legacyTheaterId: "t2", legacyCwd: directory, theaterIdOf: () => THEATER.id },
+        ] });
+        const loaded = paired.load();
+        paired.board.list("c1");
+        const beforeHeld = fs.readFileSync(archiveFile, "utf8");
+        const kept = loaded.objectiveRecords.find((node) => node.id === "kept");
+        expect(kept?.commodoreId).toBe("c2");
+        paired.save({ ...loaded, objectiveRecords: [...loaded.objectiveRecords.map((node) => node.id === "kept" ? { ...node, title: "saved while neighbor held" } : node), { ...kept!, id: "ghost-held", commodoreId: "c1" }] });
+        expect(paired.blocked()).toBe(false);
+        expect(fs.readFileSync(archiveFile, "utf8")).toBe(beforeHeld);
+        expect(JSON.parse(fs.readFileSync(path.join(otherDir, "kept", "objective.json"), "utf8")).title).toBe("saved while neighbor held");
+      } finally { blockHeld.mockRestore(); }
     });
   });
 

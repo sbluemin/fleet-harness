@@ -4,5 +4,5 @@ branch: fix/objectives-version-independent-migration
 
 ### fleet-console
 #### Fixed
-- Updating Console no longer locks a board or drops an objective already copied when startup is interrupted. A temporary failure while reading an index leaves that index unchanged, and an index that cannot be parsed stays hidden instead of reappearing as active.
-  ko: 기동이 중간에 끊겨도 이미 복사된 목표가 다음 시작에서 빠지거나 보드 전체가 잠기지 않습니다. 색인을 읽다 잠시 실패해도 그 색인은 그대로 남고, 해석할 수 없는 색인은 활성으로 되살아나지 않고 숨겨 둡니다.
+- Updating Console no longer locks every board when one commodore's index cannot be read. That index stays unchanged, and saving the other boards still persists.
+  ko: 한 사령관의 색인을 읽지 못해도 Console 업데이트가 모든 보드를 잠그지 않습니다. 그 색인은 그대로 남고, 다른 보드의 저장은 계속 디스크에 남습니다.

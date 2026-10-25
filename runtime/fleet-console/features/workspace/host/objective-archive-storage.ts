@@ -32,6 +32,8 @@ export interface ObjectiveArchiveStorage {
   events(): readonly ArchiveLifecycleEvent[];
   revision(): number;
   blocked(): boolean;
+  /** 이 Commodore의 색인만 보류 중이면 참. 없으면 다른 owner 저장을 막지 않는 구현이다. */
+  ownerRecoveryRequired?(commodoreId: string): boolean;
 }
 
 /** 실행 정리용 투영이다. 자식은 별도 보관 레코드나 active 최상위 노드로 저장하지 않는다. */

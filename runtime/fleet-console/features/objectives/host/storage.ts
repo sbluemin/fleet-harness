@@ -546,16 +546,26 @@ export function createObjectiveStorage(deps: {
     return scope;
   }
   function assertReady(): void { if (!ready || blocked) throw failure(); }
+  const retryNotBefore = new Map<string, number>();
+  const retryAfterMs = 30_000;
+  function held(scope: Scope): boolean { return scope.indexUnread === true || scope.journalDeferred === true; }
   function scopeOf(commodoreId: string): Scope {
     assertReady();
     if (unavailableOwners.has(commodoreId)) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
     const existing = scopes.get(commodoreId);
-    if (existing) return existing;
     const owner = deps.owners().find((entry) => entry.commodoreId === commodoreId);
     if (!owner) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
-    try { const scope = readScope(owner); scopes.set(commodoreId, scope); return scope; }
-    catch (error) {
+    // 일시적 읽기 실패는 재시작까지 붙잡아 두지 않는다. 간격이 지난 접근에서만 다시 읽고, 실패해도 디스크는 쓰지 않는다.
+    if (existing && !(existing.indexUnread && Date.now() >= (retryNotBefore.get(commodoreId) ?? 0))) return existing;
+    try {
+      const scope = readScope(owner);
+      scopes.set(commodoreId, scope);
+      retryNotBefore.delete(commodoreId);
+      return scope;
+    } catch (error) {
       console.warn(`[objectives] owner ${commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
+      retryNotBefore.set(commodoreId, Date.now() + retryAfterMs);
+      if (existing?.indexUnread) return existing;
       const scope = holdDirectory(owner);
       scopes.set(commodoreId, scope);
       return scope;
@@ -682,7 +692,8 @@ export function createObjectiveStorage(deps: {
     }
     for (const id of new Set([...next.objectiveRecords.map((node) => node.commodoreId), ...(next.groups ?? []).map((group) => group.commodoreId), ...archived.map((entry) => entry.objectiveRecord.commodoreId), ...(next.deletionTombstones ?? []).flatMap((row) => [...deletionObjectiveRecords(row).map((node) => node.commodoreId), ...(row.kind === "theater" ? [ownerOfTheater(row.targetId)].filter((id): id is string => !!id) : [])])])) scopeOf(id);
     const registration = registrationState(next);
-    const plans = [...scopes.values()].map((scope) => {
+    for (const scope of scopes.values()) if (held(scope) && (next.objectiveRecords.some((node) => node.commodoreId === scope.owner.commodoreId) || (next.groups ?? []).some((group) => group.commodoreId === scope.owner.commodoreId) || archived.some((entry) => entry.objectiveRecord.commodoreId === scope.owner.commodoreId) || (next.deletionTombstones ?? []).some((row) => row.kind === "theater" ? row.targetId === scope.owner.legacyTheaterId || deletionObjectiveRecords(row).some((node) => node.commodoreId === scope.owner.commodoreId) : row.objectiveRecord.commodoreId === scope.owner.commodoreId))) console.warn(`[objectives] owner ${scope.owner.commodoreId}: objective_owner_recovery_required; original preserved`);
+    const plans = [...scopes.values()].filter((scope) => !held(scope)).map((scope) => {
       const commodoreId = scope.owner.commodoreId;
       const documents = new Map([...scope.documents].filter(([, doc]) => doc.pending && !unavailable(scope, doc.id)));
       const retain = (node: ObjectiveRecord) => {
@@ -714,8 +725,6 @@ export function createObjectiveStorage(deps: {
       return transaction.purgeIds.length > 0 || !isDeepStrictEqual(previous, new Map(transaction.documents.map((doc) => [doc.id, doc])))
         || !isDeepStrictEqual(groups, transaction.groups) || !isDeepStrictEqual(scope.archive, transaction.archive);
     });
-    // 색인을 못 읽었거나 저널이 미적용인 owner를 성공으로 건너뛰면 그 저장이 조용히 사라진다. 쓰기 전에 그 owner만 거절한다.
-    if (plans.some(({ scope }) => scope.indexUnread || scope.journalDeferred)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
     try {
       // owner별 prepare → 등록 → apply → finalize 의미는 유지한다. 본문은 별도 일시 저널에만 담는다.
       for (const plan of plans) plan.id = prepare(plan.scope, plan.transaction);
@@ -740,7 +749,7 @@ export function createObjectiveStorage(deps: {
     unavailable: (id) => isReserved(id),
     forget(commodoreId, id) {
       const scope = scopeOf(commodoreId);
-      if (scope.indexUnread) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+      if (held(scope)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       if (unavailable(scope, id) || scope.archive.entries.some((row) => row.objectiveId === id) || scope.archive.deletions.some((row) => row.objectiveIds.includes(id))) throw failure();
       const doc = scope.documents.get(id);
       if (doc && !doc.pending) throw failure();
@@ -750,7 +759,7 @@ export function createObjectiveStorage(deps: {
     list(commodoreId) { const scope = scopeOf(commodoreId); return [...scope.documents.values()].filter((doc) => !unavailable(scope, doc.id)).map((doc) => boardFromDocument(doc, scope.owner)); },
     save(commodoreId, value) {
       const scope = scopeOf(commodoreId), previous = scope.documents.get(value.id);
-      if (scope.indexUnread) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+      if (held(scope)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       if (unavailable(scope, value.id) || (!previous && !value.pending) || scope.archive.events.some((row) => row.channel === "objective:purged" && row.objectiveId === value.id)) throw failure();
       const doc = readDocument(documentFromBoard(value, previous), scope.owner);
       writeJson(path.join(objectiveDir(scope, doc.id), "objective.json"), doc); scope.documents.set(doc.id, doc);
@@ -800,5 +809,8 @@ export function createObjectiveStorage(deps: {
   function isReserved(id: string): boolean {
     return [...scopes.values()].some((scope) => unavailable(scope, id) || scope.archive.events.some((event) => event.channel === "objective:purged" && (event.objectiveId === id || event.sessionIds.includes(id))));
   }
-  return { load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
+  function ownerRecoveryRequired(commodoreId: string): boolean {
+    try { return held(scopeOf(commodoreId)); } catch { return false; }
+  }
+  return { load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
 }
