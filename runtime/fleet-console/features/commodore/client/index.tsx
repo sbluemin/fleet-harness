@@ -11,7 +11,7 @@ import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
-import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
+import { CommodoreOperationsTabHost, commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
 import { getT } from "./i18n/index.js";
@@ -94,7 +94,10 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     subscribeMentionTargets: subscribeCommodoreMentions,
     messageMentionTarget: messageCommodoreMention,
     theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
-    persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
+    persistentComponents: [
+      { id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } },
+      { id: "commodore-operations-tab", render: () => <CommodoreOperationsTabHost /> },
+    ],
     conversationSurfaces: [commodoreConversationSurface],
   };
   return { plugin, host, install };

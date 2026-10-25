@@ -19,9 +19,16 @@ import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
+import { registerConversationObjectiveTab } from "../../../core/client/src/chrome/rail/objective-tabs.js";
+import { getT as getCoreT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
+import { theaterInboxPanelTabId } from "../../workspace/client/theater-inbox/theater-inbox-panel.js";
+import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
+import { CommodoreTheaterTab } from "./commodore-theater-tab.js";
+import { setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
-import { contextsOf, ownerOfContext } from "./commodore-state.js";
+import { ownerOfContext } from "./commodore-state.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -102,8 +109,8 @@ const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. Theater id는 UUID가 아니라 여기서 거절한다. */
 export function openCommodoreConversation(commodoreId: string, options: CommodoreConversationOptions = {}): boolean {
   if (!port || !port.isActive() || !COMMODORE_UUID.test(commodoreId)) return false;
-  const theaterId = contextsOf(commodoreId)[0];
-  const opened = port.open(COMMODORE_SURFACE_ID, { commodoreId, ...(theaterId ? { theaterId } : {}), ...options });
+  // 오른쪽 패널의 문맥 id는 등록 Theater가 아니라 사령관 UUID다. Inbox도 같은 값을 써야 빈 상태가 곧 닫히지 않는다.
+  const opened = port.open(COMMODORE_SURFACE_ID, { ...options, commodoreId, theaterId: commodoreId });
   if (!opened) return false;
   void loadCommodore(commodoreId);
   if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
@@ -118,6 +125,34 @@ export function openCommodoreConversation(commodoreId: string, options: Commodor
 export function openCommodoreLog(commodoreId: string, theaterId: string | null = null): void {
   if (openCommodoreConversation(commodoreId)) return;
   if (theaterId) inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
+}
+
+const OPERATIONS_SECTION_ID = "console:settings";
+const OPERATIONS_PAGE_ID = "theaters";
+
+/** 선택된 사령관의 작전 구역 탭. Inbox가 닫혀 있어도 패널 1행이 [사령관 | 작전 구역] 두 칸이 되도록 항상 등록한다. */
+export function CommodoreOperationsTabHost(): null {
+  const selection = useConversationSurface();
+  const inbox = useTheaterInboxState();
+  const zone = useZoneCommodore();
+  const language = useConsoleLocale();
+  const fromSelection = selection?.surfaceId === COMMODORE_SURFACE_ID && typeof selection.params.commodoreId === "string" ? selection.params.commodoreId : null;
+  const fromInbox = inbox !== null && COMMODORE_UUID.test(inbox.theaterId) ? inbox.theaterId : null;
+  const commodoreId = fromSelection ?? (selection === null ? zone ?? fromInbox : fromInbox);
+  useEffect(() => {
+    if (!commodoreId || !COMMODORE_UUID.test(commodoreId)) return;
+    setZoneCommodore(commodoreId);
+    const title = getCoreT(language === "ko" ? "ko" : "en")("theaterInbox.settings.title");
+    return registerConversationObjectiveTab({
+      id: theaterInboxPanelTabId({ sectionId: OPERATIONS_SECTION_ID, pageId: OPERATIONS_PAGE_ID }),
+      title: (locale) => getCoreT(locale === "ko" ? "ko" : "en")("theaterInbox.theaters.page"),
+      icon: null,
+      order: 100,
+      section: { id: OPERATIONS_SECTION_ID, title, theaterId: commodoreId },
+      render: () => <CommodoreTheaterTab commodoreId={commodoreId} />,
+    });
+  }, [commodoreId, language]);
+  return null;
 }
 
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */

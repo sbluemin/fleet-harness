@@ -6,6 +6,7 @@ import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
 import { useT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { openTheaterInbox } from "../../workspace/client/theater-inbox/store.js";
+import { openCommodoreConversation } from "./commodore-conversation.js";
 import { createCommodore } from "./theaters-api.js";
 import { refreshCommodoreList, setZoneCommodore } from "./commodore-list.js";
 
@@ -50,6 +51,7 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
       if (!saved) { setFailed(true); return; }
       await refreshCommodoreList();
       setZoneCommodore(commodoreId);
+      openCommodoreConversation(commodoreId);
       openTheaterInbox({ theaterId: commodoreId, sectionId: "console:settings", pageId: "theaters" });
       onClose();
     } catch {
