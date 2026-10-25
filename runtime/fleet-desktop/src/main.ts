@@ -567,7 +567,7 @@ async function boot(): Promise<void> {
         type: "warning",
         title: korean ? "저장한 콘솔 빼기" : "Forget saved console",
         message: korean ? `“${label}” 콘솔을 목록에서 뺄까요?` : `Forget “${label}” from this computer?`,
-        detail: korean ? "다시 연결하려면 새 액세스 링크가 필요합니다." : "A new access link will be needed to connect again.",
+        detail: korean ? "다시 연결하려면 새 액세스 링크가 있어야 해요." : "A new access link will be needed to connect again.",
         buttons: korean ? ["취소", "빼기"] : ["Cancel", "Forget"], defaultId: 0, cancelId: 0, noLink: true,
       })).response === 1;
     },
