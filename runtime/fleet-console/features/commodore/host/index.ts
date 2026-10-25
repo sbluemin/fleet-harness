@@ -27,6 +27,8 @@ export interface CommodoreFeatureDeps {
   readonly ownership?: ReturnType<typeof createCommodoreOwnership>;
   readonly created?: (commodoreId: string) => void;
   readonly beforeTheatersChange?: (commodoreId: string) => void;
+  /** Console 단위 설정 저장소의 주입 포트. 엔티티의 strict state에는 표시 순서를 쓰지 않는다. */
+  readonly order?: { readonly read: () => readonly string[]; readonly write: (commodoreIds: readonly string[]) => void };
   readonly identityChanged?: (theaterIds: readonly string[]) => void;
   readonly paths: WorkspacePaths;
   readonly events: EventPort;
@@ -85,8 +87,25 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     const active = board !== null && commodoreActive(context, store, commodoreId);
     return { commodoreId, ...(state.alias ? { alias: state.alias } : {}), label: state.alias ?? theaters[0]?.label ?? "Commodore", theaters, active, run: { ...(supervisor.status(commodoreId) ?? { phase: active ? "idle" : "off" }), totals: state.run ?? EMPTY_RUN_TOTALS } };
   };
+  const orderedIds = (): readonly string[] => {
+    const ids = entities.ids();
+    const known = new Set(ids);
+    return [...new Set([...(deps.order?.read() ?? []).filter((id) => known.has(id)), ...ids])];
+  };
   const routes = createCommodoreRoutes(context, store, {
-    resolve, resolveAll, theaterIds, summary, list: () => entities.ids().map(summary),
+    resolve, resolveAll, theaterIds, summary, list: () => orderedIds().map(summary),
+    setOrder: (requested) => {
+      if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");
+      const known = new Set(entities.ids());
+      const next = [...new Set(requested.filter((id) => known.has(id)))];
+      const previous = deps.order.read();
+      if (next.length === previous.length && next.every((id, index) => id === previous[index])) return;
+      deps.order.write(next);
+      // 순서는 Console 전체의 투영이다. 기존 state 사건 하나로 목록을 무효화하되 엔티티 파일은 쓰지 않는다.
+      const first = orderedIds()[0];
+      const state = first ? store.read(first) : null;
+      if (first && state) emit({ op: "state", commodoreId: first, theaterIds: theaterIds(first), state, change: "order" });
+    },
     create: (alias) => { const id = ownership.create(); deps.created?.(id); store.setAlias(id, alias); store.announceCreated(id); return id; },
     changeTheater: (id, theaterId, add) => {
       try { deps.beforeTheatersChange?.(id); } catch { throw new CommodoreStoreError("objective_owner_recovery_required"); }

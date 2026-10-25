@@ -48,6 +48,7 @@ export interface CommodoreRouteHooks {
   readonly create?: (alias: string) => string;
   readonly resolveAll?: (theaterId: string) => readonly string[];
   readonly list?: () => readonly ConsoleCommodoreSummary[];
+  readonly setOrder?: (commodoreIds: readonly string[]) => void;
   readonly summary?: (id: string) => ConsoleCommodoreSummary;
   readonly changeTheater?: (id: string, theaterId: string, add: boolean) => void;
   readonly createForAlias?: (theaterId: string) => string;
@@ -127,6 +128,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   return [
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
     { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [] })) },
+    { name: "commodore/order", method: "POST", summary: "Save the display order of Commodore sections.", handler: json(z.object({ commodoreIds: z.array(ids) }).strict(), ({ commodoreIds }) => {
+      if (!hooks.setOrder || !hooks.list) throw new CommodoreStoreError("commodore_unavailable");
+      hooks.setOrder(commodoreIds);
+      return { commodores: hooks.list() };
+    }) },
     { name: "commodore/resolve", method: "POST", summary: "Resolve all Commodores using a Theater, without choosing an ambiguous owner.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => { const commodoreIds = hooks.resolveAll?.(theaterId) ?? (hooks.resolve?.(theaterId) ? [hooks.resolve(theaterId)!] : []); return { commodoreIds, commodoreId: commodoreIds.length === 1 ? commodoreIds[0] : null }; }) },
     { name: "commodore/create", method: "POST", summary: "Create a Commodore with no Theaters.", handler: json(z.object({ alias: z.string().transform(normalizeCommodoreAlias).pipe(z.string().min(1)) }).strict(), ({ alias }) => {
       if (!hooks.create || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");

@@ -2718,6 +2718,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
         ownership,
+        order: {
+          read: () => consoleSettingsStore.load().commodoreOrder ?? [],
+          write: (commodoreIds) => { consoleSettingsStore.update((current) => {
+            const { commodoreOrder: _previous, ...rest } = current;
+            return commodoreIds.length ? { ...rest, commodoreOrder: [...commodoreIds] } : rest;
+          }); },
+        },
         created: (id) => { commodoreSystemPrompts.save(id, null); },
         beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
         identityChanged: (ids) => { for (const id of ids) publishTheaterLifecycle("updated", id); },

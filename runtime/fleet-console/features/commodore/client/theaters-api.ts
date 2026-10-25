@@ -1,4 +1,4 @@
-import { COMMODORE_ROUTES, type CommodoreCreateInput, type CommodoreCreateResponse, type CommodoreListResponse, type CommodoreTheaterInput, type CommodoreTheaterResponse } from "../shared/contracts/theaters.js";
+import { COMMODORE_ROUTES, type CommodoreCreateInput, type CommodoreCreateResponse, type CommodoreListResponse, type CommodoreOrderInput, type CommodoreOrderResponse, type CommodoreTheaterInput, type CommodoreTheaterResponse } from "../shared/contracts/theaters.js";
 
 async function post<T>(route: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
@@ -10,3 +10,4 @@ export const fetchCommodores = (signal?: AbortSignal): Promise<CommodoreListResp
 export const createCommodore = (input: CommodoreCreateInput, signal?: AbortSignal): Promise<CommodoreCreateResponse> => post(COMMODORE_ROUTES.create, input, signal);
 export const addCommodoreTheater = (input: CommodoreTheaterInput, signal?: AbortSignal): Promise<CommodoreTheaterResponse> => post(COMMODORE_ROUTES.addTheater, input, signal);
 export const removeCommodoreTheater = (input: CommodoreTheaterInput, signal?: AbortSignal): Promise<CommodoreTheaterResponse> => post(COMMODORE_ROUTES.removeTheater, input, signal);
+export const saveCommodoreOrder = (input: CommodoreOrderInput, signal?: AbortSignal): Promise<CommodoreOrderResponse> => post(COMMODORE_ROUTES.order, input, signal);

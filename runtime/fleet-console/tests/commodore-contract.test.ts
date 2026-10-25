@@ -16,6 +16,8 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
+import { createCommodoreFeature } from "../features/commodore/host/index.js";
+import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
@@ -54,6 +56,76 @@ function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" |
 const TEST_PATROL_MS = 60 * 60_000;
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+
+it("persists UUID section order through the public route without rewriting entity state or no-op settings", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-order-"));
+  dirs.push(dir);
+  const paths = { dir, settingsFile: path.join(dir, "settings.json"), stateFile: path.join(dir, "state.json") };
+  let settings = createConsoleSettingsStore({ paths });
+  settings.load();
+  let body: unknown;
+  let result: { status: number; value: any };
+  let authorized = true;
+  const events: CommodoreEvent[] = [];
+  const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
+  const create = () => createCommodoreFeature({
+    paths: { fleetDataDir: dir, consoleDataDir: dir, resolveTheaterPath: () => null, workspaceHash,
+      canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
+      ensureWorkspaceDirectory: () => { throw new Error("unexpected_workspace_creation"); },
+      withDirectoryLock: (_lock, run) => run(),
+    },
+    order: { read: () => settings.load().commodoreOrder ?? [], write },
+    events: { registerSseChannel: () => () => {}, subscribe: () => () => {}, publish: (_channel, value) => { events.push(value as CommodoreEvent); } },
+    http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
+    security: { isTerminalAuthorized: () => authorized } as never,
+    agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
+    experiments: undefined, models: undefined, attachments: undefined, knowledgeTools: () => [],
+  });
+  let feature = create();
+  const route = async (name: string, input: unknown = {}) => {
+    body = input;
+    const target = feature.routes.find((candidate) => candidate.name === `commodore/${name}`)!;
+    await target.handler({ req: { method: target.method } as never, res: {} as never, pathname: `/api/v1/${target.name}` });
+    return result!;
+  };
+  try {
+    const a = (await route("create", { alias: "A" })).value.commodoreId;
+    const b = (await route("create", { alias: "B" })).value.commodoreId;
+    const c = (await route("create", { alias: "C" })).value.commodoreId;
+    const ids = async () => (await route("list")).value.commodores.map((row: { commodoreId: string }) => row.commodoreId);
+    const initial = await ids();
+    expect(initial).toEqual([a, b, c]);
+    expect(settings.load().commodoreOrder).toBeUndefined();
+    const entityFiles = [a, b, c].map((id) => path.join(dir, "commodore", id, "state.json"));
+    const before = entityFiles.map((file) => fs.readFileSync(file, "utf8"));
+    authorized = false;
+    expect((await route("order", { commodoreIds: [c] })).status).toBe(401);
+    authorized = true;
+    expect(write).not.toHaveBeenCalled();
+    expect((await route("order", { commodoreIds: [c, c, a] })).status).toBe(200);
+    expect(await ids()).toEqual([c, a, b]);
+    expect(settings.load().commodoreOrder).toEqual([c, a]);
+    expect(events.at(-1)).toMatchObject({ op: "state", change: "order" });
+    const bytes = fs.readFileSync(paths.settingsFile, "utf8");
+    const eventCount = events.length;
+    await route("order", { commodoreIds: [c, a] });
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(eventCount);
+    expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(bytes);
+    // 알 수 없는 UUID는 읽을 때 무시하되, 다음 명시 저장 전까지 원본에 남긴다.
+    const stale = "00000000-0000-4000-8000-000000000099";
+    settings.update((current) => ({ ...current, commodoreOrder: [stale, c, a] }));
+    const staleBytes = fs.readFileSync(paths.settingsFile, "utf8");
+    await feature.dispose();
+    settings = createConsoleSettingsStore({ paths });
+    feature = create();
+    expect(await ids()).toEqual([c, a, b]);
+    expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(staleBytes);
+    await route("order", { commodoreIds: [stale, c, a] });
+    expect(settings.load().commodoreOrder).toEqual([c, a]);
+    expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+  } finally { await feature.dispose(); }
+});
 
 function harness(now?: () => number, maxRetainedImageBytes?: number) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-"));
