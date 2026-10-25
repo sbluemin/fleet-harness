@@ -10197,15 +10197,18 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
    소유한다 — 표면은 자리(메뉴가 뜨는 위치·감싼 칸의 여백)만 덧붙인다. 폰 배치에서는 theme.css 가 데스크톱 토큰을 모바일
    토큰으로 바꿔 같은 규칙이 폰 값으로 선다. */
 .fc-composer-capsule {
+  --fc-composer-circle: 28px;
+  --fc-composer-line: calc(var(--font-body-size) + 6px);
+  --fc-composer-line-pad: calc((var(--fc-composer-circle) - var(--fc-composer-line)) / 2);
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  min-height: 48px;
+  min-height: calc(var(--fc-composer-circle) + 16px);
   /* 양 끝에 같은 크기의 원(「+」·보내기)이 앉으므로 안쪽 여백도 양쪽이 같다. */
   padding: 7px;
   box-sizing: border-box;
   border: 1px solid var(--surface-capsule-rim);
-  border-radius: 24px;
+  border-radius: calc(var(--fc-composer-circle) / 2 + 8px);
   background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
@@ -10217,16 +10220,16 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-composer-input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 32px;
+  min-height: var(--fc-composer-circle);
   max-height: 160px;
-  padding: 6px 0;
+  padding: var(--fc-composer-line-pad) 0;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
   font: inherit;
   font-size: var(--font-body-size);
-  line-height: 1.45;
+  line-height: var(--fc-composer-line);
   color: var(--text-primary);
 }
 .fc-composer-input::placeholder { color: var(--text-tertiary); }
@@ -10294,6 +10297,60 @@ button.fc-mention-chip {
 button.fc-mention-chip:hover { color: var(--brass-ink); }
 button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline-offset: 1px; }
 
+/* 입력 속 멘션은 본문과 같은 줄 상자·글자 크기다. 기록 말풍선의 알약 외양은 그대로 둔다. */
+.fc-composer-capsule .fc-mention-chip {
+  position: relative;
+  gap: 6px;
+  height: var(--fc-composer-line);
+  padding: 0 2px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-size: var(--font-body-size);
+  font-weight: var(--weight-medium);
+  line-height: var(--fc-composer-line);
+  vertical-align: top;
+}
+/* 그룹의 수신자는 textarea 밖에 있으므로 첫 줄에 붙이고, 좁은 폭에서는 입력 몫을 남긴다. */
+.fc-composer-capsule > .fc-mention-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  align-self: flex-start;
+  margin-top: var(--fc-composer-line-pad);
+  margin-right: -4px;
+}
+.fc-composer-capsule .fc-mention-chip-label { display: block; }
+.fc-composer-capsule .fc-mention-chip:not(.is-bare) .fc-mention-chip-at { display: none; }
+/* 기본은 라벨 뒤의 삭제 표시다. 보이는 16px보다 누르는 영역을 넓히되 글자·줄 높이는 밀지 않는다. */
+.fc-composer-capsule .fc-mention-chip-x {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+}
+.fc-composer-capsule .fc-mention-chip-x::before { content: ""; position: absolute; inset: -4px; }
+.fc-composer-capsule .fc-mention-chip-x:focus-visible { outline: 1px solid var(--brass); outline-offset: 0; }
+/* 마우스에서만 삭제를 아바타 자리에 겹친다. 터치·coarse 포인터는 항상 보이는 삭제를 유지한다. */
+@media (hover: hover) and (pointer: fine) {
+  .fc-composer-capsule .fc-mention-chip:hover { background: var(--control-wash-hover); color: var(--text-primary); }
+  .fc-composer-capsule .fc-mention-chip:not(.is-bare) .fc-mention-chip-x {
+    position: absolute;
+    left: 2px;
+    top: calc((var(--fc-composer-line) - 16px) / 2);
+    background: var(--control-rest);
+    color: var(--text-primary);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .fc-composer-capsule .fc-mention-chip:hover .fc-mention-chip-x,
+  .fc-composer-capsule .fc-mention-chip .fc-mention-chip-x:focus-visible { opacity: 1; pointer-events: auto; }
+  .fc-composer-capsule .fc-mention-chip:has(> .fc-mention-chip-x):hover .fc-mention-chip-mark,
+  .fc-composer-capsule .fc-mention-chip:has(> .fc-mention-chip-x:focus-visible) .fc-mention-chip-mark { opacity: 0; }
+}
+
 /* 「+」·보내기 원 — 같은 크기·면. 메뉴가 열려 있는 동안 「+」는 hover 와 같은 brass 워시로 선다. */
 .fc-composer-circle {
   flex: none;
@@ -10308,6 +10365,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   cursor: pointer;
 }
 .fc-composer-circle svg { width: 16px; height: 16px; }
+/* 단일 채팅·새 세션에서도 원 부품을 쓴다. 작은 원은 이 두 캡슐 안에서만 적용한다. */
+.fc-composer-capsule .fc-composer-circle { width: var(--fc-composer-circle); height: var(--fc-composer-circle); }
+.fc-composer-capsule .fc-composer-circle svg { width: 14px; height: 14px; }
 .fc-composer-plus { color: var(--text-secondary); }
 .fc-composer-send { color: var(--text-primary); }
 .fc-composer-circle:focus-visible,

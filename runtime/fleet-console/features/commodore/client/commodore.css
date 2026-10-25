@@ -507,6 +507,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   display: inline-flex; align-items: center; justify-content: center;
   padding: 7px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); cursor: pointer;
 }
+.objectives-commodore-composer .objectives-commodore-ctx-chip { padding: calc((var(--fc-composer-circle, 28px) - 16px) / 2); }
 .objectives-commodore-ctx-chip:hover,
 .objectives-commodore-ctx-chip:focus-visible { background: var(--brass-glow); outline: none; }
 .objectives-commodore-ctx-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
