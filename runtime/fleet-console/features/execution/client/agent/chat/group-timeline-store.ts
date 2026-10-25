@@ -10,7 +10,6 @@ import { getAgentState, subscribe as subscribeAgent } from "../store.js";
 import { readChatJournalEvent } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
-import { readFoldTurns, subscribeFoldTurns } from "./group/fold-turns.js";
 
 const EMPTY_CLUSTERS: ReturnType<ObjectiveClusterSource["get"]> = [];
 const emptyClusterSource: ObjectiveClusterSource = { get: () => EMPTY_CLUSTERS, subscribe: () => () => {} };
@@ -43,24 +42,6 @@ export function hasGroupConversation(objectiveId: string): boolean {
   return isGroupConversationRoot(objectiveId) || getState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === objectiveId);
 }
 
-/**
- * 턴 접기가 접을 구성원 말이 생길 수 있는가. `foldTimeline` 은 `speaker.kind === "member"` 인 말만 접으므로,
- * 하위 Objective(살아 있는 구성원)이나 명부의 구성원이 있을 때 참이다. 말이 아직 없어도 참이다 — 접기는 다음 구성원 말에 걸린다.
- * 제거된 구성원(`member-left`)의 지난 말도 타임라인에 남아 접히므로(`snapshot` 의 historical), 그런 구성원이 있어도 참이다 —
- * 마지막 구성원이 떠난 뒤에도 접힌 말을 펼칠 수 있어야 한다. 지휘관만 있는 대화는 거짓이다. 눌러도 접히는 말이 없다.
- */
-export function conversationHasFoldableMembers(objectiveId: string): boolean {
-  if (getState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === objectiveId)) return true;
-  const board = boundClusterSource.get().find((cluster) => cluster.conversation?.objectiveId === objectiveId)?.conversation;
-  if ((board?.members ?? []).some((member) => member.kind === "member")) return true;
-  return (board?.events ?? []).some((event) => event.kind === "member-left" && event.speaker.objectiveId !== undefined);
-}
-
-export function useConversationHasFoldableMembers(objectiveId: string): boolean {
-  const read = () => conversationHasFoldableMembers(objectiveId);
-  return useSyncExternalStore(subscribeGroupConversation, read, read);
-}
-
 function subscribeGroupConversation(listener: () => void): () => void {
   const disposeClusters = subscribeGroupClusters(listener);
   const disposeConsole = subscribeConsole(listener);
@@ -73,12 +54,12 @@ export function useHasGroupConversation(objectiveId: string): boolean {
 }
 
 /**
- * 모바일 Objective 화면이 이 루트를 그룹 대화로 세우는가 — 「턴 접기」를 켰고, 살아 있는 채팅 루트이며, 그룹 대화가 서는 대화다.
+ * 모바일 Objective 화면이 이 루트를 그룹 대화로 세우는가 — 살아 있는 채팅 루트이며, 그룹 대화가 서는 대화다.
  * 채팅 본문(`MobileGroupConversation` 을 고르는 자리)과 아래 소켓 수명이 같은 판정을 읽는다. 「지금 그 화면이 열려 있는가」는
  * 호스트가 실은 대화 주인(`conversation.subjectObjectiveId`)이 따로 말한다.
  */
 export function showsMobileGroupConversation(objectiveId: string): boolean {
-  if (!readFoldTurns() || getAgentState().sessions[objectiveId]?.chatActive !== true) return false;
+  if (getAgentState().sessions[objectiveId]?.chatActive !== true) return false;
   const objectiveRecord = getState().objectiveRecords.find((candidate) => candidate.id === objectiveId);
   return objectiveRecord?.chatMode === true && hasGroupConversation(objectiveId);
 }
@@ -123,7 +104,7 @@ const getRevision = () => revision;
  * execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다.
  * 소켓과 휴면 이력은 대화 중심 화면이 서 있을 때만 연다. 판정은 호스트가 주입한 `conversation.isActive()`이고,
  * 그 subscribe가 레이아웃을 깨운다. 능력이 없는 호스트는 대화 중심 화면으로 본다.
- * 대화 중심 화면이 아닌 호스트(모바일)는 「턴 접기」를 켠 그룹 루트를 실제로 열었을 때만 그 루트의 참여자 몫을 연다 — 열린 대화의
+ * 대화 중심 화면이 아닌 호스트(모바일)는 살아 있는 그룹 채팅 루트를 실제로 열었을 때만 그 루트의 참여자 몫을 연다 — 열린 대화의
  * 주인은 호스트가 실은 `conversation.subjectObjectiveId()` 이고, 목록 홈에서는 null 이라 아무것도 열지 않는다.
  */
 export function installGroupTimeline(ctx: {
@@ -176,7 +157,7 @@ export function installGroupTimeline(ctx: {
         const abort = new AbortController();
         pending.history = "loading"; pending.historyAbort = abort; pending.loading = true;
         void fetchHistory(objectiveRecord.id, abort.signal).catch(() => null).then((journal) => {
-          // 그새 live 소켓이 섰거나 토글이 꺼졌다면 abort가 이 응답을 버린다 — 늦은 이력이 live 스냅숏을 덮지 않는다.
+          // 그새 live 소켓이 섰거나 대화 화면을 떠났다면 abort가 이 응답을 버린다 — 늦은 이력이 live 스냅숏을 덮지 않는다.
           if (disposed || abort.signal.aborted || held.get(objectiveRecord.id) !== pending || pending.historyAbort !== abort) return;
           pending.historyAbort = undefined; pending.loading = false;
           if (journal) { pending.journal = journal; pending.history = "done"; } else pending.history = "failed";
@@ -227,7 +208,7 @@ export function installGroupTimeline(ctx: {
     }
     notify();
   };
-  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), subscribeFoldTurns(sync), subscribeGroupClusters(sync), ctx.conversation ? ctx.conversation.subscribe(sync) : ctx.experiments.subscribe(sync)];
+  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), subscribeGroupClusters(sync), ctx.conversation ? ctx.conversation.subscribe(sync) : ctx.experiments.subscribe(sync)];
   resync = sync;
   sync();
   return () => {

@@ -1050,7 +1050,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-card-settled-q { font-size: var(--t-xs); color: var(--text-secondary); }
 .group-card-settled-mark { flex: none; color: var(--positive-ink); }
 
-/* 턴 접기(「턴 접기」 스위치) — 시안 B. 짧은 진행 말은 발화자 표식 줄의 칩 하나로, 긴 말풍선은 높이 상한으로, 구성원 보고 줄은
+/* 구성원 턴 접기 — 짧은 진행 말은 발화자 표식 줄의 칩 하나로, 긴 말풍선은 높이 상한으로, 구성원 보고 줄은
    말풍선 머리의 꼬리표로 간다. 칩은 말풍선 열(표식 22px + 틈) 안쪽에 서서 누구의 턴인지 자리로도 말한다. */
 .group-chat-notes {
   align-self: flex-start;

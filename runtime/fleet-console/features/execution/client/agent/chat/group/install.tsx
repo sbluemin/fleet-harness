@@ -1,5 +1,4 @@
 import { OpenUINavigationContext } from "../../openui-boundary.js";
-import { CaptionTipHost } from "../../../../../workspace/client/components/caption-actions.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
 import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
 import * as React from "react";
@@ -12,14 +11,12 @@ import {
   getConversationSubject,
   registerConversationObjectiveTab,
   setConversationBodyRenderer,
-  setConversationCaptionRenderer,
   setConversationStandInComposer,
   subscribeConversationStandIn,
   subscribeConversationSubject,
   useConversationStandIn,
   useConversationSubject,
   type ConversationBodyContext,
-  type ConversationCaptionContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
@@ -29,13 +26,12 @@ import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useObjectiveLinks } from "../../objective-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
-import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
-import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
@@ -57,9 +53,8 @@ import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
-  const disposeCaption = setConversationCaptionRenderer(renderConversationCaption);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
-  return () => { disposeComposer(); disposeCaption(); disposeBody(); };
+  return () => { disposeComposer(); disposeBody(); };
 }
 
 /**
@@ -146,56 +141,8 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.objectiveRecord} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 제목 pill 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
-function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
-  // 구성원 원장도 CLI 를 보고 있으면 턴 접기가 할 일이 없다.
-  if (context.bodyObjective.chatMode !== true) return null;
-  if (!isGroupConversationObjective(context.objectiveRecord, context.nestedObjectiveRecords.length > 0)) return null;
-  if (!conversationHasFoldableMembers(context.objectiveRecord.id)) return null;
-  return <GroupFoldToggle language={context.language} />;
-}
-
 /**
- * 접기 글리프 — 가운데 가로선과, 위아래에서 그 선을 향한 꺾쇠. 캡션 글리프와 같은 16px 격자·1.35 획이다.
- * 켬/끔은 이 모양이 아니라 칸의 aria-pressed(워시 + 황동)가 말한다.
- */
-function GroupFoldGlyph() {
-  const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.35, strokeLinecap: "round", strokeLinejoin: "round" } as const;
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3.2 8h9.6" {...stroke} />
-      <path d="M5.7 2.9 8 5.1l2.3-2.2" {...stroke} />
-      <path d="M5.7 13.1 8 10.9l2.3 2.2" {...stroke} />
-    </svg>
-  );
-}
-
-/**
- * 제목 pill 안의 칸. 호스트가 pill 을 세우고, 이 칸은 그 안에 선다. 켬·겨눔·고대비는 머리 줄이 정한다.
- * 접근 이름은 「턴 접기」로 고정하고 상태는 aria-pressed가 전한다. 말풍선만 누르면 일어날 일을 말한다.
- * CaptionActionButton은 접근 이름과 말풍선을 한 문자열로 묶어, 이 둘을 가를 수 없다.
- */
-function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
-  const t = getGroupT(language);
-  const folded = useFoldTurns();
-  return (
-    <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
-      <button
-        type="button"
-        className="fleet-caption-action"
-        aria-pressed={folded}
-        aria-label={t("group.fold.toggle")}
-        onPointerDown={(event) => { event.stopPropagation(); }}
-        onClick={() => setFoldTurns(!folded)}
-      >
-        <GroupFoldGlyph />
-      </button>
-    </CaptionTipHost>
-  );
-}
-
-/**
- * 모바일 Objective 화면의 그룹 대화 — 「턴 접기」를 켠 그룹 루트에서 채팅 본문이 1:1 원장 대신 이 자리를 세운다. 데스크톱 가운데 칸의
+ * 모바일 Objective 화면의 그룹 대화 — 살아 있는 그룹 채팅 루트에서 본문이 1:1 원장 대신 이 자리를 세운다. 데스크톱 가운데 칸의
  * 루트 자리와 같은 화면이다: 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관 원장(children = 기존 채팅 본문)을 틀에 넣는다.
  * 기존 본문은 원장일 때만 그려지므로 그 동안만 자기 소켓을 연다. 그룹 소켓은 호스트가 실은 대화 주인(`subjectObjectiveId`)으로
  * 실행 기능의 집계가 연다.
@@ -247,7 +194,6 @@ function GroupLinkBoundary({ root, language, ports, children }: {
 
 function RootConversation({ root, language, phone = false, fileLinkError = null }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly fileLinkError?: string | null }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
-  const fold = useFoldTurns();
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((objectiveId: string) => openLedger(root.id, objectiveId), [root.id]);
@@ -299,7 +245,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       onOpenLedger={openMemberLedger}
       onOpenCommodoreRecord={openRecord}
       cards={cards}
-      fold={fold}
+      fold
       computerActor={computerActor}
       pillObjectiveId={root.id}
       {...(actions ? { onOpenUISend: sendOpenUI } : {})}

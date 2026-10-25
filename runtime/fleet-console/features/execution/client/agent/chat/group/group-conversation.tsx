@@ -68,9 +68,9 @@ export interface GroupConversationProps {
   /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
   /**
-   * 턴 접기(「턴 접기」 스위치) — 구성원 턴에서 이어지는 짧은 진행 말을 진행 칩 하나로 접고, 구성원 말풍선에 높이 상한을 두고,
-   * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 구성원이 아닌 말(지휘관·보드 없는 루트·사령관)은 접지 않고 상한도 두지 않는다.
-   * 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
+   * 구성원 턴 표시 — 그룹 루트는 항상 켜고, 플러그인 소유 대화는 기존 원장 표시를 유지한다. 사용자 선호가 아니다.
+   * 짧은 진행 말은 진행 칩 하나로, 긴 말풍선은 높이 상한으로, 말풍선과 겹치는 보고 줄은 머리 꼬리표로 접는다.
+   * 구성원이 아닌 말(지휘관·보드 없는 루트·사령관)은 접지 않고 상한도 두지 않는다.
    */
   readonly fold?: boolean;
   /** 대화 칸 위에 떠 있는 것(공유 화면 미리보기). 이 칸(`.group-chat`)이 배치의 부모다. */
@@ -232,7 +232,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     return () => window.clearTimeout(timer);
   }, [reveal, growth, setFollowing]);
 
-  // 화면에 서는 줄 — 턴 접기를 켜면 접힌 말은 칩 하나로, 말풍선에 옮긴 보고 줄은 빠진다. 끄면 원장 줄 그대로다.
+  // 그룹 루트는 진행 칩과 말풍선 머리 보고로 접고, 플러그인 소유 대화는 원장 줄을 그대로 세운다.
   const items = React.useMemo(() => fold ? foldTimeline(entries, snapshot.participants, snapshot.rootObjectiveId) : entries.map((entry): TimelineItem => ({ kind: "entry", entry })), [entries, fold, snapshot.participants, snapshot.rootObjectiveId]);
   // 칩은 말풍선 묶음을 끊는 자리(null)다. 시각 줄은 칩도 그 자리의 첫 말로 센다.
   const flow = React.useMemo(() => items.map((item) => item.kind === "entry" ? item.entry : null), [items]);
@@ -468,7 +468,7 @@ const NOTE_MAX_CHARS = 200;
  *   새 턴을 열고 아직 말이 없는 동안에도 지난 턴의 답은 말풍선으로 남는다.
  * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 구성원 말은 길이와 무관하게 칩의 최신 한 줄로만 보인다 —
  *   완성되어 200자 이상이면 그때 그 자리에 말풍선으로 선다. 흐르는 동안 칩과 말풍선을 오가지 않는다.
- *   흐르는 중인 구성원이 아닌 말은 칩이 아니라 말풍선으로 선다(접기를 껐을 때와 같다).
+ *   흐르는 중인 구성원이 아닌 말은 칩이 아니라 말풍선으로 선다.
  * - 구성원이 지휘관에게 보낸 보고 줄은 같은 턴에 말풍선이 있으면 빠지고, 그 턴의 마지막 말풍선 머리에 꼬리표로 붙는다(누르면
  *   보고 전문). 그 턴이 아직 열려 있거나 흐르는 말이 있으면 말풍선이 정해지지 않았으므로 줄을 세우지 않는다 — 턴이 끝나도 말풍선이
  *   없으면 그때 줄로 선다. 받는 이가 아직 풀리지 않은 구성원의 전언(도구 결과 전)도 열린 턴 동안은 같은 이유로 기다린다.

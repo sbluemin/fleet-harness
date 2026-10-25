@@ -42,11 +42,9 @@ import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-ga
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
-import { installGroupTimeline, useGroupClusters, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
+import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
-import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
-import { getGroupT } from "./chat/group/group-chat-i18n.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
@@ -505,7 +503,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
       </span>
     : null;
 
-  // 그룹 대화는 자기 구성원 턴 접기를 머리 슬롯에 싣는다. 1:1 채팅만 이전 문답 자동 접기를 보탠다.
+  // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
   if (part === "view-switch") return <>{chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null}{viewSwitch}</>;
   if (part === "tools-lead") return browser;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
@@ -629,9 +627,6 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
   const computerUseEnabled = readComputerUseEnabled(context.objectiveRecord);
   const [usePending, setUsePending] = React.useState(false);
   const canSwitch = chatMode || session.status !== "dormant";
-  // 「턴 접기」는 접힐 구성원 말이 있을 때만 — 데스크톱 머리 버튼과 같은 판정이다.
-  const canFoldTurns = useConversationHasFoldableMembers(context.objectiveId) && chatMode;
-  const foldTurns = useFoldTurns();
 
   const toTerminal = async () => {
     setTerminalHandoff(context.objectiveId, { pending: true, error: "none" });
@@ -678,15 +673,6 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
       run: () => { void (chatMode ? toTerminal() : toChat()); },
     });
   }
-  if (canFoldTurns) {
-    items.push({
-      id: "agent-fold-turns",
-      label: getGroupT(context.language ?? "en")("group.fold.toggle"),
-      icon: <MobileGlyph name="fold" />,
-      checked: foldTurns,
-      run: () => setFoldTurns(!foldTurns),
-    });
-  }
   if (experiments?.computerUse === true) {
     items.push({
       id: "agent-computer-use",
@@ -697,7 +683,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRende
       run: toggleComputerUse,
     });
   }
-  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${canFoldTurns}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
   return null;
 }
 
@@ -735,10 +721,9 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
   });
   const fileLinkFailure = links.fileLinkFailure;
   const terminalFileLinks = useAgentTerminalFileLinks(context.objectiveId, context.objectiveRecord.theaterId, context.navigate);
-  // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
+  // 모바일의 살아 있는 그룹 채팅 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면).
   const groupConversation = useHasGroupConversation(context.objectiveId);
   const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === context.objectiveId)?.conversation?.openUIOpen;
-  const foldTurns = useFoldTurns();
   // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
   const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
 
@@ -749,7 +734,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     );
     return (
       <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
-        {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
+        {mobileSurface && groupConversation && observed?.chatActive === true
           ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
           : chatView}
         {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}

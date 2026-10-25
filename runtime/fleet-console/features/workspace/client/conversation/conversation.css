@@ -459,7 +459,7 @@
 .conversation-pill-tools-lead,
 .conversation-pill-browser { display: inline-flex; flex: none; align-items: center; }
 
-/* 머리 줄 버튼(턴 접기·전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
+/* 머리 줄 버튼(전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
    공용 .fleet-caption-action(브라우저 패널·리더·문서 칸)은 그대로 둔다. */
 :is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action {
   border-radius: var(--radius-pill);
