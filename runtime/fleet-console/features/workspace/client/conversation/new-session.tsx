@@ -530,7 +530,7 @@ export function NewSessionColumn({ state, target, tools }: {
     attachmentStore.clearNotice();
     setStarting(true);
     writeNewSessionTheater(theater.id);
-    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreId);
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
     requestLaunch({
       theaterId: theater.id,
       ...(commodoreId ? { commodoreId } : {}),
@@ -547,7 +547,7 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreId);
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
     requestLaunch({ theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
   };
 

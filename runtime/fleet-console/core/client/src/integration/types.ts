@@ -39,6 +39,8 @@ export interface NewSessionTarget {
   readonly theaterId: string | null;
   /** 컴포저를 연 섹션의 사령관. 팔레트·단축키는 고른 사령관, 없으면 목록 첫 사령관을 싣는다. */
   readonly commodoreId?: string;
+  /** 섹션 「+」가 소유를 고정했다. 팔레트·단축키로 연 값은 실행 때 다시 고른다. */
+  readonly commodoreFromSection?: boolean;
 }
 
 /**

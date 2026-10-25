@@ -6,6 +6,7 @@ import { getViewModeSnapshot } from "../../../../core/client/src/integration/vie
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { readNewSessionSelection } from "./new-session-preferences.js";
 import { getConversationSurface } from "./conversation-surface-store.js";
+import { getConversationSubject } from "./conversation-slots.js";
 import { readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
 
 /**
@@ -24,27 +25,31 @@ export function resolveNewSessionTheaterId(): string | null {
 
 const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function knownCommodore(id: string | null | undefined): string | null {
-  if (!id || !COMMODORE_UUID.test(id)) return null;
-  return readCommodoreList().some((row) => row.commodoreId === id) ? id : null;
+function commodoreUuid(id: string | null | undefined): string | null {
+  return id && COMMODORE_UUID.test(id) ? id : null;
 }
 
 /**
  * 새 세션이 실을 사령관. Theater 칩은 후보를 제한하지 않고, 소유만 이 순서로 정한다.
- * ① 컴포저를 연 섹션, ② 지금 고른 사령관(폰은 칩, 데스크톱은 열린 대화 다음 작전 구역), ③ 목록의 첫 사령관.
- * 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
+ * ① 컴포저를 연 섹션, ② 가운데 사령관 대화와 지금 보는 기록, ③ 작전 구역·폰 칩, ④ 목록의 첫 사령관.
+ * 팔레트·단축키가 예전에 담아 둔 값은 섹션이 아니다. 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
  */
 export function resolveNewSessionCommodoreId(sectionCommodoreId?: string | null): string | null {
-  const explicit = sectionCommodoreId ?? getState().newSession?.commodoreId ?? null;
-  if (explicit && COMMODORE_UUID.test(explicit)) return explicit;
+  const section = commodoreUuid(sectionCommodoreId);
+  if (section) return section;
   const surface = getConversationSurface();
-  const conversation = surface?.surfaceId === "commodore" && typeof surface.params.commodoreId === "string"
-    ? surface.params.commodoreId
+  const conversation = surface?.surfaceId === "commodore"
+    ? commodoreUuid(typeof surface.params.commodoreId === "string" ? surface.params.commodoreId : null)
     : null;
-  const selected = getViewModeSnapshot().effective === "mobile"
-    ? readMobileCommodoreId()
-    : conversation ?? readZoneCommodore();
-  return knownCommodore(selected) ?? readCommodoreList()[0]?.commodoreId ?? null;
+  if (conversation) return conversation;
+  const state = getState();
+  const viewed = getConversationSubject()
+    ?? state.objectiveRecords.find((record) => record.id === state.activeObjectiveId)
+    ?? null;
+  const recordOwner = commodoreUuid(viewed?.commodoreId);
+  if (recordOwner) return recordOwner;
+  const picked = getViewModeSnapshot().effective === "mobile" ? readMobileCommodoreId() : readZoneCommodore();
+  return commodoreUuid(picked) ?? readCommodoreList()[0]?.commodoreId ?? null;
 }
 
 /**
@@ -57,7 +62,7 @@ export function openCommodoreNewSession(commodoreId: string): void {
   const remembered = readNewSessionSelection().theaterId;
   const ids = getState().theaters.map((theater) => theater.id);
   const theaterId = added ?? (remembered !== null && ids.includes(remembered) ? remembered : null);
-  openNewSession({ theaterId, commodoreId });
+  openNewSession({ theaterId, commodoreId, commodoreFromSection: true });
 }
 
 export function openDefaultNewSession(): void {

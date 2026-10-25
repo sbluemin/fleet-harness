@@ -655,15 +655,16 @@ export function ObjectiveRecordsSideBar({
 
   const keyboardMove = (objectiveId: string, direction: -1 | 1) => {
     const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === objectiveId);
-    if (!objectiveRecord || getTheaterGroupCollapse(objectiveRecord.theaterId).statusAxis) return;
-    const entries = visibleEntries.filter((entry) => entry.objectiveRecord.theaterId === objectiveRecord.theaterId);
+    const sectionId = objectiveRecord?.commodoreId;
+    if (!sectionId || getTheaterGroupCollapse(sectionId).statusAxis) return;
+    const entries = visibleEntries.filter((entry) => entry.objectiveRecord.commodoreId === sectionId);
     const index = entries.findIndex((entry) => entry.objectiveRecord.id === objectiveId);
     if (index < 0) return;
     const targetIndex = Math.max(0, Math.min(entries.length - 1, index + direction));
     if (targetIndex === index) return;
-    const order = currentOrder.filter((id) => objectiveRecords.some((candidate) => candidate.id === id && candidate.theaterId === objectiveRecord.theaterId));
+    const order = currentOrder.filter((id) => objectiveRecords.some((candidate) => candidate.id === id && candidate.commodoreId === sectionId));
     const visibleOrder = entries.map((entry) => entry.objectiveRecord.id);
-    setObjectiveOrder(objectiveRecord.theaterId, applyVisibleReorder(order, visibleOrder, moveByTargetIndex(visibleOrder, objectiveId, targetIndex)));
+    setObjectiveOrder(sectionId, applyVisibleReorder(order, visibleOrder, moveByTargetIndex(visibleOrder, objectiveId, targetIndex)));
   };
 
   // entryIds는 collapsed 그룹도 실제 멤버를 담는다. dropTargetFromPoint는 DOM 기반이라 collapsed에서
