@@ -27,6 +27,7 @@ export interface KnowledgeHost {
   /**
    * 이주 전용 입력: 이 사령관에 대응하는 옛 지식 원본. 아무것도 만들지 않는다. 런타임 위치 해석에는 쓰지 않는다 —
    * 옛 원본은 사령관 이전 시절의 키로 저장되어 있어, 그 대응은 이주 한 번에만 필요하다.
+   * resuming은 검증한 기존 저널의 재개에만 사용한다. 여전히 호스트가 확인한 작업 경계 안의 원본이어야 한다.
    */
-  legacyKnowledgeSources(commodoreId: string): readonly LegacyKnowledgeSource[];
+  legacyKnowledgeSources(commodoreId: string, resuming?: boolean): readonly LegacyKnowledgeSource[];
 }

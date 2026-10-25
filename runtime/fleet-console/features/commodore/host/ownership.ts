@@ -53,8 +53,8 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       const id = resolve(contextId);
       return id ? { ok: true, commodoreId: id } : { ok: false, reason: "unavailable" };
     },
-    legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).filter((row) => {
-      if (entities.locateAll(row.path).length === 1) return true;
+    legacySources: (id: string, resuming = false) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).filter((row) => {
+      if (resuming || entities.locateAll(row.path).length === 1) return true;
       if (hasLegacyKnowledge(paths.consoleDataDir, row.path)) console.warn(`[commodore] wiki migration ${id}: ambiguous_source; original preserved`);
       return false;
     }).map((row) => row.path)),

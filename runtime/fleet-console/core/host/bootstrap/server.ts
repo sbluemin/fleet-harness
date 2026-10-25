@@ -1208,7 +1208,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
       ids: () => commodore?.knowledge.ids() ?? [],
       commodoreForContext: (contextId) => commodore ? commodore.knowledge.forContext(contextId) : { ok: false, reason: "unavailable" },
-      legacyKnowledgeSources: (commodoreId) => commodore?.knowledge.legacySources(commodoreId) ?? [],
+      legacyKnowledgeSources: (commodoreId, resuming) => commodore?.knowledge.legacySources(commodoreId, resuming) ?? [],
     },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
     models: createModelRosterHost({ readSettings: gatewaySettings.read, ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); } }),
