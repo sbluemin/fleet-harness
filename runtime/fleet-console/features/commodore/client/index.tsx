@@ -9,6 +9,7 @@ import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
+import { installCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
@@ -76,9 +77,10 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
   const install = (ctx: CommodoreClientDeps): (() => void) => {
       const offBoard = installCommodoreBoard(board);
       const offState = installCommodoreState(ctx);
+      const offList = installCommodoreList(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
       const offQuotes = ctx.composer.receiveQuotes?.("commodore", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets });
-      return () => { offQuotes?.(); offConversation(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offQuotes?.(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {

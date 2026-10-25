@@ -1,8 +1,6 @@
 import { getViewedTheaterId, useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
-import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
 export { theaterInitials } from "./theater-initials.js";
-import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
@@ -17,7 +15,15 @@ import { useSearchShortcutLabel } from "../../../../core/client/src/integration/
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "./group-context-menu.js";
-import { openDefaultNewSession } from "../conversation/new-session-entry.js";
+import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
+import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
+import { setCommodoreAlias } from "../../../../core/client/src/integration/api.js";
+import { refreshCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { createCommodoreGroup } from "../theater.js";
+import { commodoreAvatarKey } from "../../shared/avatars.js";
+import { KeyedAvatar } from "../avatars.js";
 import { objectiveRecordAccentFromNode, resolveAccentColor } from "../objective-accent.js";
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeSideBarAddTheater, openOnboarding, objectiveRecordOrderFromNodes, selectObjective, setObjectiveOrder, sortObjectiveRecordsByOrder } from "../../../../core/client/src/integration/store.js";
@@ -204,6 +210,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   /** 열린 Theater 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 Theater 에서도 열리므로 머리가 대상을 말한다. */
   readonly menuTarget: boolean;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
+  readonly onNewSession?: () => void;
   /** 이 Theater 가 목표 줄의 묶음 머리일 때 — `theaterClusterHead`. */
   readonly clusterHead?: { readonly hiddenClusterIds: readonly string[]; readonly anyList: boolean } | undefined;
 }
@@ -217,7 +224,8 @@ interface TheaterActionsMenuProps {
   readonly atCursor?: boolean;
   readonly onCreateGroup: (name: string) => void;
   readonly onForgetTheater: () => void;
-  readonly onOpenSystemPrompt: () => void;
+  readonly onOpenZone: () => void;
+  readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
   readonly onClose: () => void;
   /** 「+」 메뉴의 「새 그룹…」에서 열었으면 이름 입력부터 연다. */
@@ -436,7 +444,22 @@ export function ObjectiveRecordsSideBar({
   });
   const groupedSections = groupObjectiveRecords(allEntries, activeGroups, activeObjectiveOrder);
   // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
-  const theaterPlans = theaters.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.theaterId === theater.id), groups.filter((group) => group.theaterId === theater.id), []), clusterIndex, theater.id) }));
+  const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
+  const sectionTheaterIds = (commodoreId: string): readonly string[] => {
+    const listed = commodoreSections.find((section) => section.commodoreId === commodoreId)?.theaters.map((theater) => theater.theaterId) ?? [];
+    const fromRecords = objectiveRecords.filter((record) => record.commodoreId === commodoreId).map((record) => record.theaterId);
+    return [...new Set([...listed, ...fromRecords])];
+  };
+  const sectionFaces: TheaterInfo[] = commodoreSections.map((section) => ({
+    id: section.commodoreId,
+    label: section.alias ?? section.label,
+    createdAt: "",
+    lastOpenedAt: "",
+    hasWiki: false,
+    activeAdmiralCount: 0,
+    commodore: { id: section.commodoreId, ...(section.alias ? { alias: section.alias } : {}) },
+  }));
+  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionTheaterIds(theater.id)) }));
   // 고른 목표나 활성 Objective 을 품은 줄이 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal·직접 활성화) 그 접기를
   // 펼치고 줄이 보이게 스크롤한다. 그 줄이나 그 줄이 든 접기(그룹 이동)가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
   const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected || item.anchor?.active || item.fold.some((entry) => entry.active)).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
@@ -927,9 +950,11 @@ export function ObjectiveRecordsSideBar({
   // 호스트의 시스템 프롬프트 칸이다(「시스템 프롬프트…」 항목과 같은 길이라 폰·대화 중심 화면도 그 경로를 그대로 탄다).
   const openTheaterHeaderInbox = (theater: TheaterInfo, returnFocus: HTMLElement | null) => {
     setActiveContextMenu(null);
+    setZoneCommodore(theater.id);
+    if (openCommodoreConversation(theater.id)) return;
     const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
     if (landing) openTheaterInbox({ theaterId: theater.id, ...landing, returnFocus });
-    else openTheaterSystemPrompt(theater, returnFocus);
+    else openTheaterInbox({ theaterId: theater.id, sectionId: "commodore:commodore", pageId: "log", returnFocus });
   };
 
   // "Theater 추가" 요청 소비(팔레트) — Theater 브라우저를 연다.
@@ -950,7 +975,7 @@ export function ObjectiveRecordsSideBar({
   };
   const finishAliasEdit = (theaterId: string, alias: string | null | undefined) => {
     setAliasEditingTheaterId((current) => (current === theaterId ? null : current));
-    if (alias !== undefined) onSetTheaterAlias(theaterId, alias);
+    if (alias !== undefined) void setCommodoreAlias(theaterId, alias).then(() => refreshCommodoreList()).catch(() => onSetTheaterAlias(theaterId, alias));
   };
   const aliasEditingFor = (theaterId: string): TheaterAliasEditing => ({
     clampAlias,
@@ -978,7 +1003,7 @@ export function ObjectiveRecordsSideBar({
         </div>
       ) : (
       <div className="side-bar-top-strip">
-        {theaters.length > 0 ? (
+        {sectionFaces.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.theaters")}</span>
             <SideBarViewMenu />
@@ -991,10 +1016,10 @@ export function ObjectiveRecordsSideBar({
       {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
       <ol className="objective-records-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
-        {theaters.map((theater, theaterIndex) => {
+        {sectionFaces.map((theater, theaterIndex) => {
           const isViewedTheater = theater.id === viewedTheaterId;
           const statusAxis = statusTheaterIds.has(theater.id);
-          const theaterObjectiveRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id);
+          const theaterObjectiveRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(theaterObjectiveRecords, objectiveRecordRuntime);
           const showStatusLiveTick = !statusAxis && waitingCount > 0;
           const summary: TheaterSummary = { commanders: theaterObjectiveRecords.length, waiting: waitingCount };
@@ -1010,10 +1035,10 @@ export function ObjectiveRecordsSideBar({
             && drag.sourceTheaterId !== theater.id
             && theaterIndex === theaters.length - 1
             && drag.dropIndex === theaters.length;
-          const allEntries = buildTheaterEntries({ theaterId: theater.id, objectiveRecords, objectiveRecordOrder: objectiveRecordOrderFromNodes(theaterObjectiveRecords), activeObjectiveId, selectedObjectiveId: doubleClickOpen ? selectedObjectiveId : null, objectiveRecordNotifications, objectiveRecordRuntime });
-          const theaterGroups = groups.filter((group) => group.theaterId === theater.id);
+          const allEntries = buildTheaterEntries({ theaterId: theater.id, objectiveRecords: theaterObjectiveRecords, objectiveRecordOrder: objectiveRecordOrderFromNodes(theaterObjectiveRecords), activeObjectiveId, selectedObjectiveId: doubleClickOpen ? selectedObjectiveId : null, objectiveRecordNotifications, objectiveRecordRuntime });
+          const theaterGroups = groups.filter((group) => group.commodoreId === theater.id);
           const groupedSections = groupObjectiveRecords(allEntries, theaterGroups, objectiveRecordOrderFromNodes(theaterObjectiveRecords));
-          const rowPlan = planSideBarRows(groupedSections, clusterIndex, theater.id);
+          const rowPlan = planSideBarRows(groupedSections, clusterIndex, sectionTheaterIds(theater.id));
           const collapsedGroupSet = new Set(getTheaterGroupCollapse(theater.id).collapsedGroups);
           const objectiveRecordAccent = getTheaterGroupCollapse(theater.id).objectiveRecordAccent;
           const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
@@ -1047,7 +1072,8 @@ export function ObjectiveRecordsSideBar({
                 onOpenInbox={openTheaterHeaderInbox}
                 onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
                 menuTarget={theaterMenuTargetId === theater.id}
-                onPointerDragStart={beginTheaterPointerDrag}
+                onPointerDragStart={() => undefined}
+                onNewSession={() => openCommodoreNewSession(theater.id)}
               />
               {!theaterCollapsed ? <TheaterContributionRows theater={theater} /> : null}
               {!theaterCollapsed ? (
@@ -1194,7 +1220,7 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
         })}
-        {theaters.length === 0 ? (
+        {sectionFaces.length === 0 ? (
           // Theater가 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
           // 첫 행동(폴더 선택)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
           // 되돌아가는 길도 여기 둔다.
@@ -1205,7 +1231,7 @@ export function ObjectiveRecordsSideBar({
             <button
               type="button"
               className="side-bar-starter-primary"
-              onClick={openTheaterBrowser}
+              onClick={requestCommodoreCreate}
               disabled={addingTheater}
             >
               {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.starter.chooseFolder")}
@@ -1288,16 +1314,21 @@ export function ObjectiveRecordsSideBar({
           atCursor={activeContextMenu.atCursor === true}
           startWithNewGroup={activeContextMenu.newGroup === true}
           onCreateGroup={(name) => {
-            onCreateGroup(contextMenuTheater.id, name);
+            void createCommodoreGroup(contextMenuTheater.id, name);
             closeActiveContextMenu();
           }}
           onForgetTheater={() => {
             onForgetTheater(contextMenuTheater.id);
             closeActiveContextMenu();
           }}
-          onOpenSystemPrompt={() => {
-            openTheaterSystemPrompt(contextMenuTheater, activeContextMenu.returnFocus ?? null, activeContextMenu.anchor);
+          onOpenZone={() => {
+            setZoneCommodore(contextMenuTheater.id);
+            openTheaterInbox({ theaterId: contextMenuTheater.id, sectionId: "console:settings", pageId: "theaters", returnFocus: activeContextMenu.returnFocus ?? null });
             setActiveContextMenu(null);
+          }}
+          onNewSession={() => {
+            openCommodoreNewSession(contextMenuTheater.id);
+            closeActiveContextMenu();
           }}
           onEditAlias={() => startAliasEdit(contextMenuTheater.id)}
           onClose={closeActiveContextMenu}
@@ -1434,7 +1465,7 @@ export function buildTheaterEntries({
 }: TheaterEntryBuildInput): SideBarEntry[] {
   const idleArrivalIds = getIdleArrivalIds();
   return sortObjectiveRecordsByOrder(
-    objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId),
+    objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theaterId),
     objectiveRecordOrder,
   ).map((objectiveRecord) => {
     const activity = resolveObjectiveActivity(objectiveRecord, objectiveRecordRuntime);
@@ -1468,6 +1499,7 @@ function TheaterSectionHeader({
   onStartAliasEdit,
   onFinishAliasEdit,
   onPointerDragStart,
+  onNewSession,
   clusterHead,
 }: TheaterSectionHeaderProps) {
   const t = useT();
@@ -1503,7 +1535,7 @@ function TheaterSectionHeader({
         ...(summary.waiting > 0 ? [t("sidebar.theater.summary.waiting", { count: summary.waiting })] : []),
       ].join(" · ");
   // 둘째 줄 — 별칭이 있으면 원래 Theater 이름이 먼저 선다(어느 폴더인지 늘 보인다). 사령관 카드는 그 뒤에 요약을 잇는다.
-  const subline = [...(theater.commodore?.alias ? [theater.label] : []), summaryText].join(" · ");
+  const subline = summaryText;
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
@@ -1573,7 +1605,7 @@ function TheaterSectionHeader({
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
-      <TheaterAvatar theaterId={theater.id} size={32} label="" decorative />
+      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.commodore?.id ?? theater.id)} role="commodore" state="idle" size={32} label="" decorative />
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
@@ -1632,6 +1664,7 @@ function TheaterSectionHeader({
       )}
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
         <SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />
+        {onNewSession ? <button type="button" className="side-bar-theater-row-btn" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession}><PlusIcon /></button> : null}
         {/* Theater 동작은 머리의 우클릭·키·길게 누르기 메뉴에 있다(handleContextMenu). 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
         <button
           type="button"
@@ -1698,22 +1731,9 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenZone, onNewSession, onEditAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
-  const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
-  const [promptLoaded, setPromptLoaded] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    setPromptLoaded(false);
-    void fetchTheaterSystemPrompt(theater.id, controller.signal).then((state) => {
-      if (controller.signal.aborted) return;
-      setPrompt(state.prompt);
-      setPromptLoaded(true);
-    }).catch(() => undefined);
-    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === theater.id) { setPrompt(value); setPromptLoaded(true); } });
-    return () => { controller.abort(); unsubscribe(); };
-  }, [theater.id]);
   const [newName, setNewName] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -1794,13 +1814,16 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
         {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}
         <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.theater.alias.edit")}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.appearance")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenSystemPrompt}>
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={onNewSession}>
+          <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
+        </button>
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenZone}>
           <span className="theater-menu-check" aria-hidden="true">✦</span>
-          <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
-          <span className="theater-prompt-menu-state">{promptLoaded ? (prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")) : null}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
         </button>
         <TheaterContributionMenuItems theater={theater} onClose={onClose} />
         <div className="theater-menu-divider" aria-hidden="true" />

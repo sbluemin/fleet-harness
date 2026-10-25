@@ -124,6 +124,11 @@ export function theaterAvatarKey(theaterId: string): string {
   return `theater:${theaterId}`;
 }
 
+/** 사령관 얼굴. 기존 `theater:` 문법 안의 목적 키라 허용 정규식은 바꾸지 않는다. */
+export function commodoreAvatarKey(commodoreId: string): string {
+  return `theater:commodore:${commodoreId}`;
+}
+
 export function objectiveRecordAvatarKey(objectiveId: string): string {
   return `objective:${objectiveId}`;
 }

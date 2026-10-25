@@ -5,8 +5,10 @@ import { useConsoleLocale } from "../i18n/index.js";
 import { useTheaterLabel } from "../hooks/use-store.js";
 import { useFeatureRegistry } from "./feature-registry.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
-import { createTheaterSettingsInboxSection, THEATER_SETTINGS_SECTION_ID, THEATER_SYSTEM_PROMPT_PAGE_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
-import { openTheaterSystemPrompt, subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
+import { createTheaterSettingsInboxSection, THEATER_MEMBERSHIP_PAGE_ID, THEATER_SETTINGS_SECTION_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
+import { subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
+import { readZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
+import { openCommodoreMobile } from "../../../../features/commodore/client/commodore-state.js";
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
 import { TheaterAvatar } from "../../../../features/workspace/client/theater-avatar.js";
@@ -18,7 +20,7 @@ const SETTINGS_SECTION: ResolvedTheaterInboxSection = {
   id: `console:${THEATER_SETTINGS_SECTION_ID}`,
   descriptor: createTheaterSettingsInboxSection({ icon: ({ theater }) => <TheaterAvatar theaterId={theater.id} size={18} label="" decorative className="theater-inbox-avatar" /> }),
 };
-const SYSTEM_PROMPT_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION.id, pageId: THEATER_SYSTEM_PROMPT_PAGE_ID };
+const THEATERS_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION.id, pageId: THEATER_MEMBERSHIP_PAGE_ID };
 
 /**
  * Theater Inbox 의 합성 — 시트 틀(workspace feature), 호스트의 「Theater 설정」(settings feature), 플러그인 섹션(registry)을
@@ -32,8 +34,8 @@ export function TheaterInboxHost() {
   const mobile = useViewMode().effective === "mobile";
   const open = useTheaterInboxState();
   const sections = useMemo<readonly ResolvedTheaterInboxSection[]>(() => [
-    SETTINGS_SECTION,
     ...theaterInboxSections.map((descriptor) => ({ id: descriptor.id, descriptor })),
+    SETTINGS_SECTION,
   ], [theaterInboxSections]);
   const label = useTheaterLabel(open?.theaterId);
   // 연 채로 Theater 가 잊혀도 시트는 남는다(프롬프트 칸이 남은 글을 보여 준다) — 마지막 이름을 붙들어 둔다.
@@ -45,7 +47,7 @@ export function TheaterInboxHost() {
   useEffect(() => subscribeTheaterSystemPromptOpen((request) => {
     // 폰의 입구는 프롬프트 시트가 받는다.
     if (getViewModeSnapshot().effective === "mobile") return;
-    openTheaterInbox({ theaterId: request.theater.id, ...SYSTEM_PROMPT_ADDRESS, returnFocus: request.returnFocus });
+    openTheaterInbox({ theaterId: request.theater.id, ...THEATERS_ADDRESS, returnFocus: request.returnFocus });
   }), []);
 
   // 데스크톱에서 연 채 폰 배치로 바뀌면 — 보던 섹션의 폰 화면으로 넘기고 시트를 닫는다(언마운트가 대기 저장을 확정한다).
@@ -56,7 +58,8 @@ export function TheaterInboxHost() {
     const summary = { id: current.theaterId, label: lastLabel.current?.id === current.theaterId ? lastLabel.current.label : "" };
     closeTheaterInbox();
     if (current.address.sectionId === SETTINGS_SECTION.id) {
-      openTheaterSystemPrompt(summary, null);
+      const commodoreId = readZoneCommodore();
+      if (commodoreId) openCommodoreMobile("settings", commodoreId, true);
       return;
     }
     const section = sections.find((candidate) => candidate.id === current.address.sectionId);
@@ -72,7 +75,7 @@ export function TheaterInboxHost() {
       language={language}
       navigation={theaterInboxCapability}
       select={selectTheaterInboxPage}
-      fallback={SYSTEM_PROMPT_ADDRESS}
+      fallback={THEATERS_ADDRESS}
     />
   );
 }

@@ -16,6 +16,9 @@ import { MobileIcon } from "./mobile-icons.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
+import { selectMobileCommodore, useCommodoreList, useMobileCommodoreSelection } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
+import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
@@ -46,10 +49,14 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
 
   const theater = state.theaters.find((item) => item.id === getViewedTheaterId()) ?? null;
+  const commodores = useCommodoreList();
+  const selectedCommodore = useMobileCommodoreSelection();
+  const commodoreId = selectedCommodore ?? commodores.find((item) => item.commodoreId === theater?.commodore?.id)?.commodoreId ?? commodores[0]?.commodoreId ?? theater?.commodore?.id ?? null;
+  const commodore = commodores.find((item) => item.commodoreId === commodoreId) ?? null;
   const consoleName = appearance.console?.label ?? window.location.hostname;
   const inTheater = useMemo(() => conversations
-    .filter((conversation) => conversation.objectiveRecord.theaterId === getViewedTheaterId())
-    .sort((left, right) => right.objectiveRecord.ts.updatedAt - left.objectiveRecord.ts.updatedAt || right.objectiveRecord.ts.createdAt - left.objectiveRecord.ts.createdAt), [conversations, getViewedTheaterId()]);
+    .filter((conversation) => commodoreId === null || conversation.objectiveRecord.commodoreId === commodoreId)
+    .sort((left, right) => right.objectiveRecord.ts.updatedAt - left.objectiveRecord.ts.updatedAt || right.objectiveRecord.ts.createdAt - left.objectiveRecord.ts.createdAt), [commodoreId, conversations]);
   const byId = useMemo(() => new Map(inTheater.map((conversation) => [conversation.objectiveRecord.id, conversation])), [inTheater]);
   const attentionObjectiveIds = new Set(attention.flatMap((row) => row.kind === "objectiveRecord" ? [row.objectiveRecord.id] : []));
   const rest = inTheater.filter((conversation) => !attentionObjectiveIds.has(conversation.objectiveRecord.id));
@@ -73,8 +80,8 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         </button>
         <span className="mobile-conv-gap" />
         <button type="button" data-press="r1" className="mobile-conv-theater" aria-label={t("mobile.list.theaterAria")} onClick={() => pushMobileSheet({ kind: "theater" })}>
-          {theater ? <TheaterAvatar theaterId={theater.id} size={32} label="" decorative /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
-          <strong>{theater?.label ?? t("mobile.home.noTheater")}</strong>
+          {commodoreId ? <KeyedAvatar avatarKey={commodoreAvatarKey(commodoreId)} role="commodore" state="idle" size={32} label="" decorative /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
+          <strong>{commodore?.alias ?? commodore?.label ?? theater?.commodore?.alias ?? theater?.label ?? t("sidebar.commodore.fallback")}</strong>
           <MobileIcon name="down" size={16} />
         </button>
         <span className="mobile-conv-gap" />

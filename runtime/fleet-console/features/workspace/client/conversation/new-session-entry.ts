@@ -5,6 +5,7 @@ import { navigateConsoleRoute } from "../../../../core/client/src/integration/co
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { readNewSessionSelection } from "./new-session-preferences.js";
+import { readCommodoreList } from "../../../commodore/client/commodore-list.js";
 
 /**
  * 새 세션이 처음 고르는 Theater — 데스크톱 화면과 모바일 새 대화 시트가 같은 규칙을 쓴다:
@@ -24,6 +25,15 @@ export function resolveNewSessionTheaterId(): string | null {
  * 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다.
  * 이미 열려 있으면 고른 Theater 를 그대로 두고 컴포저로 돌아간다 — 쓰던 문장과 고른 자리를 단축키가 갈아치우지 않는다.
  */
+/** 섹션 머리의 「+」. 기본 Theater 는 그 사령관에 추가한 첫 Theater 이고, 없으면 마지막에 쓴 Theater 다. */
+export function openCommodoreNewSession(commodoreId: string): void {
+  const added = readCommodoreList().find((commodore) => commodore.commodoreId === commodoreId)?.theaters[0]?.theaterId ?? null;
+  const remembered = readNewSessionSelection().theaterId;
+  const ids = getState().theaters.map((theater) => theater.id);
+  const theaterId = added ?? (remembered !== null && ids.includes(remembered) ? remembered : null);
+  openNewSession({ theaterId, commodoreId });
+}
+
 export function openDefaultNewSession(): void {
   if (getState().newSession !== null) {
     requestNewSessionFocus();

@@ -242,7 +242,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     const request = state.pendingLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
@@ -602,8 +602,9 @@ async function launchViaPlugin(
   plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
+  commodoreId?: string,
 ): Promise<void> {
-  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId);
+  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId, commodoreId);
 }
 
 async function createLaunchedObjective(
@@ -614,13 +615,14 @@ async function createLaunchedObjective(
   plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
+  commodoreId?: string,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {}); };
   const capabilities = createHostCapabilities(resync);
   let newObjectiveId: string | null = null;
   if (plugin?.launch) {
-    const result = await plugin.launch({ theaterId, kind, geometry, objectiveRecords: capabilities.objectiveRecords, variant });
+    const result = await plugin.launch({ theaterId, kind, geometry, objectiveRecords: capabilities.objectiveRecords, variant, ...(commodoreId ? { commodoreId } : {}) });
     newObjectiveId = result.id;
   } else {
     const objectiveRecord = await capabilities.objectiveRecords.create({

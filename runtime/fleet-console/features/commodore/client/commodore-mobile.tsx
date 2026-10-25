@@ -22,7 +22,7 @@ import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
-import { CommodoreComposer, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
+import { CommodoreComposer, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
@@ -732,6 +732,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
             <span className="fc-select__trigger fc-select--mobile objectives-cm-info-value"><span className="fc-select__value">{usage}</span></span>
           </SettingsRow>
         </SettingsCard>
+        <CommodoreSessionSettings commodoreId={theaterId} />
       </div>
     </div>
   );

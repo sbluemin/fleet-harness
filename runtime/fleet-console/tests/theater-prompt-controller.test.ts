@@ -4,10 +4,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const http = vi.hoisted(() => ({ fetch: vi.fn(), save: vi.fn() }));
-vi.mock("../features/settings/client/execution-settings.js", async (original) => ({
-  ...await original<object>(),
-  fetchTheaterSystemPrompt: http.fetch,
-  saveTheaterSystemPrompt: http.save,
+vi.mock("../features/settings/client/commodore-settings.js", () => ({
+  fetchCommodoreSystemPrompt: http.fetch,
+  saveCommodoreSystemPrompt: http.save,
+  fetchCommodoreSubagents: http.fetch,
+  saveCommodoreSubagents: http.save,
 }));
 // 등록된 Theater 로 본다 — 잊힘 처리는 이 계약의 대상이 아니다.
 vi.mock("../core/client/src/hooks/use-store.js", () => ({ useTheaterLabel: (id: string | null | undefined) => id ?? null }));

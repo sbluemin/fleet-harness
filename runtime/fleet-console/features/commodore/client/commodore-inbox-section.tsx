@@ -15,6 +15,7 @@ import { useComposerAttachmentSnapshot } from "../../execution/client/composer-p
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
+import { TheaterSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -208,7 +209,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
     if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
     setFailure(code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code }));
   };
-  const openSystemPrompt = () => navigation.open({ ...links.systemPrompt, theaterId, focus: "editor-end" });
+  const openSystemPrompt = () => navigation.open({ theaterId, sectionId: "commodore:commodore", pageId: "settings", focus: "editor-end" });
   const totals = !view ? "" : [
     run && run.totals.session > 0 ? t("commodore.drawer.session", { n: run.totals.session }) : null,
     t("commodore.drawer.cost", { cost: (run?.totals.costUsd ?? 0).toFixed(2) }),
@@ -324,6 +325,30 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
           onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
         />
       </SettingsRow>
+      <CommodoreSessionSettings commodoreId={theaterId} />
+    </div>
+  );
+}
+
+export function CommodoreSessionSettings({ commodoreId }: { readonly commodoreId: string }) {
+  const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined });
+  const names = useTheaterPromptModeNames();
+  const modes = Object.keys(names) as Array<keyof typeof names>;
+  if (!commodoreId) return null;
+  return (
+    <div className="theater-prompt-page">
+      <div className="theater-prompt-modes" role="radiogroup">
+        {modes.map((mode) => (
+          <label key={mode} className="theater-prompt-mode-choice">
+            <input type="radio" name={`commodore-prompt-${commodoreId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
+            <span>{names[mode]}</span>
+          </label>
+        ))}
+      </div>
+      {controller.draft.mode !== "on" ? (
+        <textarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
+      ) : null}
+      <TheaterSubagentsSection theaterId={commodoreId} titled={false} />
     </div>
   );
 }

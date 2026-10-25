@@ -45,7 +45,7 @@ function viewTheaterInbox(theaterId: string): void {
   }
   else {
     closeConversationSurface();
-    openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "system-prompt" });
+    openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "theaters" });
   }
   navigateConsoleRoute("/objectives");
 }
@@ -114,7 +114,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
         // 페인 착지는 Theater 설정을 여는 요청이 아니다. 같은 Theater면 대화를 그대로 두고,
         // 다른 Theater면 문맥만 바꿔 뒤따르는 Inbox 효과가 목표 페인을 덮지 않게 한다.
         closeConversationSurface();
-        setTheaterInboxContext({ theaterId, address: { sectionId: "console:settings", pageId: "system-prompt" } });
+        setTheaterInboxContext({ theaterId, address: { sectionId: "console:settings", pageId: "theaters" } });
       }
       return true;
     },

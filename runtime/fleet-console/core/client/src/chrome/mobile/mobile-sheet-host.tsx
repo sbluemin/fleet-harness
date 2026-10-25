@@ -8,7 +8,10 @@ import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
-import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
+import { CommodoreTheaterTab } from "../../../../../features/commodore/client/commodore-theater-tab.js";
+import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
@@ -117,7 +120,24 @@ function RenameSheet({ state, objectiveId }: { readonly state: ConsoleState; rea
  */
 function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
+  const commodores = useCommodoreList();
+  const selected = useMobileCommodoreSelection();
   const cancel = () => popMobileSheet();
+  if (commodores.length > 0) {
+    return (
+      <MobileSheet title={t("sidebar.commodore.fallback")} onClose={cancel}>
+        {commodores.map((commodore) => (
+          <button key={commodore.commodoreId} type="button" className="mobile-sheet-row is-theater" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); closeMobileSheets(); }}>
+            <span className="mobile-sheet-row-copy"><strong>{commodore.alias ?? commodore.label}</strong></span>
+          </button>
+        ))}
+        <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
+        </button>
+      </MobileSheet>
+    );
+  }
   return (
     <>
       <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
@@ -196,9 +216,13 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
       </button>
       <div className="mobile-sheet-sep" role="separator" />
-      <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(theater, null)}>
+      <button type="button" className="mobile-sheet-row" onClick={() => { setZoneCommodore(theater.commodore?.id ?? null); pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={theater.commodore?.id ?? null} /></MobileSheet> }); }}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.prompt")}</strong></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
+      </button>
+      <button type="button" className="mobile-sheet-row" onClick={() => { if (theater.commodore?.id) openCommodoreMobile("settings", theater.commodore.id, true); }}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.commodore.settings")}</strong></span>
       </button>
       {pluginRows.map((row) => (
         <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
@@ -397,6 +421,10 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
+      <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
+      </button>
       <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openMobileNewSession)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>

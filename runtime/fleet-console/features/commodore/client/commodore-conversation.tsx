@@ -18,6 +18,7 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import { contextsOf, ownerOfContext } from "./commodore-state.js";
@@ -37,10 +38,6 @@ type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
 let inbox: ClientTheaterInboxCapability | null = null;
-
-/** 호스트 「Theater 설정」 섹션의 정준 id(SDK `TheaterInboxAddress` 문서). 칸을 모르면 호스트가 시스템 프롬프트 칸으로 연다. */
-const THEATER_SETTINGS_SECTION = "console:settings";
-const THEATER_SYSTEM_PROMPT_PAGE = "system-prompt";
 
 /**
  * 설치 때 받은 능력을 쥔다. 구버전 호스트(능력 없음)면 대화 중심 화면은 없는 것으로 다룬다. Theater Inbox 는 지시 탭의
@@ -400,7 +397,7 @@ function CommodoreConversationTab({ tab, commodoreId, theaterId, language }: { r
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
       {tab === "directive" ? (
         <>
-          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => { if (theaterId) inbox?.open({ theaterId, sectionId: THEATER_SETTINGS_SECTION, pageId: THEATER_SYSTEM_PROMPT_PAGE, focus: "editor-end" }); }} onFail={fail} onClear={clear} />
+          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => presentRailPanel("commodore-settings")} onFail={fail} onClear={clear} />
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
         </>
       ) : null}

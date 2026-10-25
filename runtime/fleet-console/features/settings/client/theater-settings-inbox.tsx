@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
+import { CommodoreTheaterTab } from "../../commodore/client/commodore-theater-tab.js";
 import { getT, useT } from "../../../core/client/src/i18n/index.js";
 import type { ClaudeCodeSystemPromptMode } from "./execution-settings.js";
 import {
@@ -21,6 +22,7 @@ import "./theater-system-prompt-sheet.css";
 export const THEATER_SETTINGS_SECTION_ID = "settings";
 export const THEATER_SYSTEM_PROMPT_PAGE_ID = "system-prompt";
 export const THEATER_SUBAGENTS_PAGE_ID = "subagents";
+export const THEATER_MEMBERSHIP_PAGE_ID = "theaters";
 
 const sectionStates = new Map<string, TheaterInboxSectionState>();
 
@@ -35,8 +37,7 @@ export function createTheaterSettingsInboxSection({ icon }: { readonly icon: The
     // 표식은 합성 쪽이 넘긴다(사이드바 Theater 머리와 같은 모노그램) — 이 feature 는 다른 feature 를 가져오지 않는다.
     icon,
     pages: [
-      { id: THEATER_SYSTEM_PROMPT_PAGE_ID, title: (language) => getT(language)("sidebar.theater.prompt.title"), applies: (language) => getT(language)("theaterInbox.applies.prompt") },
-      { id: THEATER_SUBAGENTS_PAGE_ID, title: (language) => getT(language)("sidebar.theater.subagents.title"), applies: (language) => getT(language)("theaterInbox.applies.subagents") },
+      { id: THEATER_MEMBERSHIP_PAGE_ID, title: (language) => getT(language)("theaterInbox.theaters.page"), applies: (language) => getT(language)("theaterInbox.theaters.applies") },
     ],
     read: (_theater, language) => {
       const cached = sectionStates.get(language);
@@ -55,29 +56,11 @@ export function createTheaterSettingsInboxSection({ icon }: { readonly icon: The
  * 쓰던 글과 대기 저장을 잃지 않는다. 시트를 닫으면 언마운트되며 그때 대기 저장을 확정한다.
  */
 function TheaterSettingsInboxBody({ context }: { readonly context: TheaterInboxBodyContext }) {
-  const { theater, pageId, visible, focusRequest, links, navigation } = context;
-  const controller = useTheaterPromptController(theater, 0, {
-    onMissing: () => navigation.close(),
-    onDiscarded: () => navigation.close(),
-  });
-  const promptVisible = visible && pageId === THEATER_SYSTEM_PROMPT_PAGE_ID;
-  const subagentsVisible = visible && pageId === THEATER_SUBAGENTS_PAGE_ID;
+  const { pageId, visible } = context;
+  const showTheaters = visible && pageId === THEATER_MEMBERSHIP_PAGE_ID;
   // controller(쓰던 글·대기 저장)는 이 본문에 남고, 보이지 않는 칸의 화면만 내린다 — 모드 선택 상자는 body 포털이라
   // 숨김만으로는 닫히지 않고, 가려진 채 고르면 보이지 않는 칸에 저장된다.
-  return (
-    <>
-      {promptVisible ? (
-        <div className="theater-prompt-page">
-          <TheaterPromptPage context={context} controller={controller} visible focusRequest={focusRequest} operatorDirective={links.operatorDirective} />
-        </div>
-      ) : null}
-      {subagentsVisible ? (
-        <div className="theater-prompt-page">
-          {controller.forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} titled={false} />}
-        </div>
-      ) : null}
-    </>
-  );
+  return showTheaters ? <CommodoreTheaterTab /> : null;
 }
 
 function TheaterPromptPage({ context, controller, visible, focusRequest, operatorDirective }: {

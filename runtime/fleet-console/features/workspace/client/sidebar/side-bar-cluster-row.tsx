@@ -145,12 +145,13 @@ export function rowGlyphState(item: SideBarRowItem): ObjectiveClusterRowGlyph | 
 export function planSideBarRows(
   sections: readonly { readonly groupId: string | null; readonly entries: readonly SideBarEntry[] }[],
   clusterIndex: ClusterIndex,
-  theaterId: string | null,
+  theaterId: string | readonly string[] | null,
 ): SideBarRowPlan {
+  const allowed = typeof theaterId === "string" ? [theaterId] : theaterId;
   const entryById = new Map(sections.flatMap((section) => section.entries.map((entry) => [entry.objectiveRecord.id, entry] as const)));
   const sectionIds = new Set(sections.map((section) => section.groupId));
   const items: SideBarRowItem[] = clusterIndex.rows
-    .filter((layout) => layout.cluster.theaterId === theaterId && layout.cluster.row)
+    .filter((layout) => layout.cluster.row && (allowed === null ? layout.cluster.theaterId === null : allowed.includes(layout.cluster.theaterId)))
     .map((layout) => {
       const row = layout.cluster.row!;
       const fold = row.fold.flatMap((id) => { const entry = entryById.get(id); return entry ? [entry] : []; });

@@ -48,6 +48,7 @@ import { closeConversationSurface, useConversationSurface, type ConversationSurf
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -187,7 +188,7 @@ export function ConversationSideBarActions() {
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <button type="button" className="conversation-round" onClick={openDefaultNewSession} aria-label={t("conversation.side.newSession")} title={newSessionTitle} data-new-session-entry="sidebar">
+      <button type="button" className="conversation-round" onClick={requestCommodoreCreate} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")} data-new-session-entry="sidebar">
         <PlusGlyph />
       </button>
     </span>
