@@ -88,6 +88,8 @@ const channels: Record<string, LegacyImportResult["events"][number]["channel"]> 
   "operation:archived": "objective:archived", "operation:restored": "objective:restored", "operation:deleted": "objective:deleted", "operation:purged": "objective:purged",
   "objective:archived": "objective:archived", "objective:restored": "objective:restored", "objective:deleted": "objective:deleted", "objective:purged": "objective:purged",
 };
+/** 드라이브 문자나 UNC 접두가 있는 경로만 Windows 경로다. path.win32.isAbsolute는 POSIX "/x"도 참이다. */
+const isWindowsPath = (value: string) => /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
 const segment = (id: string) => /^[a-zA-Z0-9_-]{1,200}$/.test(id);
 
 function sameCwd(left: string, right: string): boolean {
@@ -95,7 +97,7 @@ function sameCwd(left: string, right: string): boolean {
   const a = slash(left);
   const b = slash(right);
   // win32 경로는 드라이브 문자만이 아니라 전체 대소문자를 접는다. POSIX 경로는 구분한다.
-  if (path.win32.isAbsolute(left) || path.win32.isAbsolute(right)) return a.toLowerCase() === b.toLowerCase();
+  if (isWindowsPath(left) && isWindowsPath(right)) return a.toLowerCase() === b.toLowerCase();
   return a === b;
 }
 function legacyNames(cwd: string): readonly string[] {

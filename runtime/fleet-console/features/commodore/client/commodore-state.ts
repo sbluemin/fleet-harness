@@ -410,6 +410,12 @@ export function readCommodore(commodoreId: string | null): TheaterCommodore {
   return commodoreId ? theaters.get(commodoreId) ?? EMPTY_VIEW_SNAPSHOT : EMPTY_VIEW_SNAPSHOT;
 }
 
+/** 기록을 아직 못 받았거나 지난 시도가 실패했으면 다시 불러온다. 실패는 로딩을 끝내되 다음 열기에서 재시도한다. */
+export function transcriptNeeded(commodoreId: string): boolean {
+  const current = readCommodore(commodoreId);
+  return !current.transcriptLoaded || current.transcriptError !== null;
+}
+
 export function useCommodore(commodoreId: string | null): TheaterCommodore {
   return useSyncExternalStore(subscribeCommodore, () => readCommodore(commodoreId), () => readCommodore(commodoreId));
 }

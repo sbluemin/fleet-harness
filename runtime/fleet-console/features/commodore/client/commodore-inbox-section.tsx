@@ -45,6 +45,7 @@ import {
   ownerOfContext,
   resolveContext,
   readCommodore,
+  transcriptNeeded,
   readCommodoreExperiment,
   removeCommodoreIntel,
   INTEL_EDIT_ATTRIBUTE,
@@ -156,7 +157,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   useEffect(() => {
     if (!commodoreId) return;
     void loadCommodore(commodoreId);
-    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+    if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId]);
   useLayoutEffect(() => {
     const node = bodyRef.current;

@@ -17,7 +17,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import { contextsOf, ownerOfContext } from "./commodore-state.js";
@@ -109,7 +109,7 @@ export function openCommodoreConversation(commodoreId: string, options: Commodor
   const opened = port.open(COMMODORE_SURFACE_ID, { commodoreId, ...(theaterId ? { theaterId } : {}), ...options });
   if (!opened) return false;
   void loadCommodore(commodoreId);
-  if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+  if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   if (options.revealAt !== undefined) revealCommodoreTurn(commodoreId, options.revealAt);
   return true;
 }
@@ -229,7 +229,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const setFailure = (next: string | null) => setConversationFailure(commodoreId, next);
   useEffect(() => {
     void loadCommodore(commodoreId);
-    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+    if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;

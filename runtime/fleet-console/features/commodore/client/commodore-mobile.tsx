@@ -32,6 +32,7 @@ import {
   loadTranscript,
   noteCommodoreLanguage,
   readCommodore,
+  transcriptNeeded,
   removeCommodoreIntel,
   retryCommodore,
   saveCommodoreDirective,
@@ -189,7 +190,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
     if (!enabled) return;
     if (!commodoreId) return;
     void loadCommodore(commodoreId);
-    if (!readCommodore(commodoreId).transcriptLoaded) void loadTranscript(commodoreId);
+    if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId, enabled]);
   useEffect(() => { setFailure(null); }, [tab, panel]);
 

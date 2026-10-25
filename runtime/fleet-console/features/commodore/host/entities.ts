@@ -10,8 +10,13 @@ export const COMMODORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 /** win32는 대소문자·구분자·`\\?\` 접두만 다른 같은 위치다. POSIX 경로는 문자열로 접지 않는다. */
 function samePlace(left: string, right: string): boolean {
   if (left === right) return true;
-  if (!(path.win32.isAbsolute(left) || path.win32.isAbsolute(right))) return false;
+  // 접기는 Windows 경로에서만 한다. path.win32.isAbsolute는 "/tmp/x"도 참이라 POSIX 경로를 섞으면 대소문자 구분 파일시스템의 다른 폴더가 묶인다.
+  if (!(isWindowsPath(left) && isWindowsPath(right))) return false;
   return win32Comparable(left) === win32Comparable(right);
+}
+/** 드라이브 문자(`X:\` 또는 `X:/`)나 UNC·`\\?\` 접두가 있는 절대 경로만 Windows 경로로 본다. */
+function isWindowsPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
 }
 function win32Comparable(value: string): string {
   let text = value;
