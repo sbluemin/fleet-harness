@@ -16,6 +16,12 @@ html[data-mobile-scheme="light"] .mls-input { background: var(--m-surface); }
 .mls-circ { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; color: var(--m-text); background: var(--m-chip); border: 0; border-radius: 50%; }
 .mls-chips .mls-theater-chip { flex: 0 1 auto; min-width: 0; max-width: 176px; }
 .mls-chips .mls-model-chip { flex: 0 1 auto; min-width: 0; }
+/* 「사령관 › Theater」 — 사령관은 이 대화의 고정 표식이라 칩 면이 없는 글자 줄이고, 이어짐 기호는 위치를 말하지 않는
+   구두점이라 가장 흐린 잉크를 쓴다. 고르는 것은 뒤의 Theater 칩뿐이다. 좁은 폭에서는 사령관 이름이 먼저 줄어든다. */
+.mls-crumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mls-crumb .mls-commodore { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 0; max-width: 45%; padding-left: 4px; color: var(--m-text-nav); }
+.mls-crumb .mls-crumb-sep { display: inline-flex; flex: none; margin: 0 -2px; color: var(--m-text-faint); }
+.mls-crumb .mls-theater-chip { flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; }
 .mls-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mls-chip-effort { flex: none; margin-left: 4px; color: var(--m-text-nav); }
 .mls-secnote { margin: 0; padding: 0 2px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }

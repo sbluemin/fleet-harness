@@ -22,6 +22,9 @@ import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
 import { useMentionSources } from "./new-session-mention-sources.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
+import { registerTheaterFromPath } from "../theater.js";
+import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { addCommodoreTheater } from "../../../commodore/client/theaters-api.js";
 
 /**
  * 모바일 「새 대화」 — 폰의 새 세션 입구. 데스크톱 새 세션 화면과 같은 실행 의도(requestLaunch)·기억(new-session-preferences)·
@@ -30,6 +33,9 @@ import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionThe
  * 앱에 늘 마운트돼 있다 — 시트를 닫아도 쓰던 문장·칩이 이 컴포넌트 상태에 남아 다음 열림에서 이어진다(닫힘은 취소가 아니라 미룸).
  * 보내면 비운다. '@'로 기존 Objective·플러그인 행선지(부관 등)에 보낼 수 있고, 부관의 답은 부관 자기 카드에 선다.
  * 시작 보기 선택은 없다 — 폰의 새 대화는 채팅을 선언한 실행 종류면 늘 채팅으로 연다.
+ *
+ * 데스크톱 새 세션 화면과 같은 규칙으로 사령관 단위다: 사령관은 시트를 열 때 한 번 정해 고정하고(칩 줄 「사령관 › Theater」),
+ * Theater 후보·기본값·추가는 그 사령관의 Theater 목록에서만 한다. Console 전체 Theater 목록은 후보가 아니다.
  */
 export function MobileNewSession() {
   const state = useConsoleState();
@@ -46,6 +52,8 @@ export function MobileNewSession() {
   const promptRef = useRef(prompt);
   promptRef.current = prompt;
   const [theaterId, setTheaterId] = useState<string | null>(null);
+  // 이 시트의 사령관 — 열림 전이에서 한 번 정한다. 사령관이 하나도 없으면 null 이고, 실행이 새 사령관을 만든다.
+  const [commodoreId, setCommodoreId] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(LAUNCH_DEFAULT_MODEL);
   const [effort, setEffort] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,7 +74,24 @@ export function MobileNewSession() {
   const attachmentSnap = useComposerAttachmentSnapshot(attachmentStore);
   const attachments = attachmentSnap.items;
 
-  const theaters = state.theaters ?? [];
+  const commodores = useCommodoreList();
+  const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
+  const commodoreName = commodoreId === null ? null : commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
+  // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라졌거나 등록이 풀린 행은 시작할 수 없으므로 세우지 않는다.
+  // 사령관이 하나도 없을 때만(첫 실행이 새 사령관을 만든다) Console 에 등록된 Theater 를 후보로 둔다 — 데스크톱과 같다.
+  const registered = state.theaters;
+  const theaters = useMemo(() => {
+    if (commodoreId === null) return (registered ?? []).map((info) => ({ id: info.id, label: info.label }));
+    return (commodore?.theaters ?? []).flatMap((row) => {
+      if (row.status !== "available") return [];
+      const info = registered.find((candidate) => candidate.id === row.theaterId);
+      return info ? [{ id: info.id, label: info.label }] : [];
+    });
+  }, [commodoreId, commodore, registered]);
+  // 고른 Theater 가 이 사령관 목록에 없으면(목록이 늦게 왔거나 다른 사령관의 기억) 기본 규칙으로 다시 고른다 — 목록이 비면 null.
+  const effectiveTheaterId = theaters.find((candidate) => candidate.id === theaterId)?.id
+    ?? theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId(commodoreId))?.id
+    ?? null;
   const target = useMemo(() => findVariantLaunchKind(catalog), [catalog]);
   const groups = target?.kind.variants ?? [];
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
@@ -109,8 +134,9 @@ export function MobileNewSession() {
     if (!opening) return;
     epochRef.current += 1;
     const remembered = readNewSessionSelection();
-    // 폰 시트는 아직 Console 에 등록된 Theater 에서 고른다(사령관 목록으로 좁히는 것은 데스크톱 새 세션 화면만 했다).
-    setTheaterId(resolveNewSessionTheaterId(null));
+    const opened = resolveNewSessionCommodoreId();
+    setCommodoreId(opened);
+    setTheaterId(resolveNewSessionTheaterId(opened));
     setModel(remembered.model ?? LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
     setSubmitting(false);
@@ -237,7 +263,7 @@ export function MobileNewSession() {
   const hasContent = text.length > 0 || attachments.length > 0;
   // 멘션 제출은 실행 좌표가 필요 없다 — 행선지가 그 자리를 대신한다.
   const canSubmit = hasContent && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !uploading
-    && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
+    && (mentionTarget !== null || (!!effectiveTheaterId && !!target && !!selectedRow));
 
   const submit = () => {
     if (!canSubmit) return;
@@ -291,6 +317,7 @@ export function MobileNewSession() {
         });
       return;
     }
+    const theaterId = effectiveTheaterId;
     if (!theaterId || !target || !selectedRow) return;
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
@@ -301,10 +328,22 @@ export function MobileNewSession() {
     if (launched.length > 0) variant.attachments = launched.map((attachment) => attachment.id).join(",");
     writeNewSessionTheater(theaterId);
     writeNewSessionModelEffort(model, effort);
-    const commodoreId = resolveNewSessionCommodoreId();
     requestLaunch({ theaterId, ...(commodoreId ? { commodoreId } : {}), pluginId: target.pluginId, kind: target.kind, variant, ...(launched.length > 0 ? { attachments: launched } : {}) });
     navigate("/objectives");
     finishSubmission();
+  };
+
+  // 폴더를 Theater 로 등록하고 이 사령관의 목록에 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
+  const addFolder = (path: string) => {
+    void registerTheaterFromPath(path, true).then(async (added) => {
+      if (added === null) return;
+      if (commodoreId !== null && !theaters.some((candidate) => candidate.id === added)) {
+        await addCommodoreTheater({ commodoreId, theaterId: added });
+        await refreshCommodoreList();
+      }
+      setTheaterId(added);
+      writeNewSessionTheater(added);
+    }).catch(() => {});
   };
 
   if (!open) return null;
@@ -325,9 +364,13 @@ export function MobileNewSession() {
       inputRef={inputRef}
       prompt={prompt}
       onPromptChange={updatePrompt}
+      commodoreId={commodoreId}
+      commodoreName={commodoreName}
       theaters={theaters}
-      theaterId={theaterId}
+      theaterId={effectiveTheaterId}
       onTheater={(id) => { setTheaterId(id); writeNewSessionTheater(id); }}
+      onAddFolder={addFolder}
+      addingTheater={state.addingTheater}
       groups={groups}
       selectedRow={selectedRow}
       effort={effort}

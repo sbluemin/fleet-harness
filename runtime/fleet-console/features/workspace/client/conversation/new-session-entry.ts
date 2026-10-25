@@ -7,12 +7,12 @@ import { getViewedTheaterId } from "../../../../core/client/src/integration/view
 import { readNewSessionSelection } from "./new-session-preferences.js";
 import { getConversationSurface } from "./conversation-surface-store.js";
 import { getConversationSubject } from "./conversation-slots.js";
-import { readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
+import { mobileCommodoreTarget, readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
 
 /**
  * 새 세션이 처음 고르는 Theater — 후보는 그 사령관이 가진 Theater 목록뿐이다:
  * ① 마지막으로 고른 Theater, ② 지금 보고 있는 Theater, ③ 그 사령관 목록의 첫 Theater. 후보가 없으면 null —
- * 화면이 Theater 칩 자리에 「Theater 추가…」를 세운다. commodoreId 가 null 이면(사령관이 아직 없거나 폰 시트) Console 에 등록된 Theater 에서 같은 순서로 고른다.
+ * 화면이 Theater 칩 자리에 「Theater 추가…」를 세운다. commodoreId 가 null 이면(사령관이 아직 없다) Console 에 등록된 Theater 에서 같은 순서로 고른다.
  */
 export function resolveNewSessionTheaterId(commodoreId: string | null): string | null {
   const registered = new Set(getState().theaters.map((theater) => theater.id));
@@ -38,6 +38,7 @@ function commodoreUuid(id: string | null | undefined): string | null {
 /**
  * 새 세션이 실을 사령관. 화면을 열 때 한 번 정해 고정하고, Theater 후보는 이 사령관의 목록이다.
  * ① 가운데 사령관 대화와 지금 보는 기록, ② 작전 구역·폰 칩, ③ 목록의 첫 사령관. 섹션 「+」는 제 사령관을 직접 싣는다.
+ * 폰은 ②에서 홈 대화 목록 머리와 같은 사령관을 쓴다 — 칩에서 고른 사령관, 없으면 보고 있는 Theater 를 가진 사령관이다.
  * 사령관이 하나도 없으면 null — 호출부는 지금처럼 새 사령관을 만들도록 둔다.
  */
 export function resolveNewSessionCommodoreId(): string | null {
@@ -52,7 +53,9 @@ export function resolveNewSessionCommodoreId(): string | null {
     ?? null;
   const recordOwner = commodoreUuid(viewed?.commodoreId);
   if (recordOwner) return recordOwner;
-  const picked = getViewModeSnapshot().effective === "mobile" ? readMobileCommodoreId() : readZoneCommodore();
+  const picked = getViewModeSnapshot().effective === "mobile"
+    ? readMobileCommodoreId() ?? mobileCommodoreTarget(getViewedTheaterId())
+    : readZoneCommodore();
   return commodoreUuid(picked) ?? readCommodoreList()[0]?.commodoreId ?? null;
 }
 

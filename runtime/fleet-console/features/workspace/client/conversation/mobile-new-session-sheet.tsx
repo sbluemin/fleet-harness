@@ -13,11 +13,14 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ObjectiveSearchEntry } from "../../../../core/client/src/integration/objective-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { MobileFolderSheet } from "../../../../core/client/src/chrome/mobile/mobile-folder-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { isMentionSelectable, mentionTargetName, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
 import { TheaterAvatar } from "../theater-avatar.js";
+import { KeyedAvatar } from "../avatars.js";
+import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { ObjectiveNameMark } from "../../../execution/client/components/objective-name-mark.js";
@@ -31,7 +34,7 @@ import "../../../execution/client/components/mobile-launch-sheet.css";
  * 채팅으로 열리고(실효값은 데스크톱 컴포넌트가 정한다), 실행 하네스는 그룹과 무관하게 같다(NT).
  */
 
-type Sub = "theater" | "model" | "attach";
+type Sub = "theater" | "folder" | "model" | "attach";
 
 interface Attachment { readonly key: string; readonly name: string; readonly previewUrl: string; readonly uploading: boolean }
 
@@ -39,9 +42,16 @@ export interface MobileNewSessionSheetProps {
   readonly inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   readonly prompt: string;
   readonly onPromptChange: (value: string, element: HTMLTextAreaElement) => void;
+  /** 이 시트의 사령관 — 열 때 정해 고정이다. 칩 줄 「사령관 › Theater」의 앞이고 누를 수 없다. 사령관이 없으면 null. */
+  readonly commodoreId: string | null;
+  readonly commodoreName: string | null;
+  /** 이 사령관의 Theater 목록뿐이다. */
   readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly theaterId: string | null;
   readonly onTheater: (id: string) => void;
+  /** 고른 폴더를 Theater 로 등록하고 이 사령관의 목록에 더한다. */
+  readonly onAddFolder: (path: string) => void;
+  readonly addingTheater: boolean;
   readonly groups: readonly ObjectiveLaunchVariantGroup[];
   readonly selectedRow: ObjectiveLaunchVariantRow | null;
   readonly effort: string | null;
@@ -179,8 +189,17 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
             {candidate.id === theaterId ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
           </button>
         ))}
+        {/* 이 사령관의 목록에 폴더를 더한다 — 폰 셸의 Theater 시트와 같은 행 문법이다. */}
+        <button type="button" className="mobile-sheet-row" onClick={() => setSub("folder")} disabled={props.addingTheater} data-mls-add-theater="">
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
+        </button>
       </MobileSheet>
     );
+  }
+
+  if (sub === "folder") {
+    return <MobileFolderSheet key="folder" onClose={() => setSub("theater")} onConfirm={(path) => { setSub(null); props.onAddFolder(path); }} />;
   }
 
   if (sub === "model") {
@@ -302,12 +321,34 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
       </div>
       <ComposerAttachmentTray store={props.attachmentStore} t={props.attachmentT} disabled={props.submitting} />
       {props.mentionTarget === null ? (
+        <div className="mls-crumb">
+          {/* 사령관 › Theater — 앞은 이 대화의 고정 표식(단추가 아니다), 뒤만 고른다. 데스크톱 새 세션 칩 줄과 같은 문법이다.
+              폰 폭에서는 모델 칩과 한 줄에 서면 세 이름이 다 잘리므로 입력칸 바로 아래 자기 줄에 선다. */}
+          {props.commodoreId !== null ? (
+            <>
+              <span className="mls-commodore" data-mls-commodore={props.commodoreId}>
+                <KeyedAvatar avatarKey={commodoreAvatarKey(props.commodoreId)} role="commodore" state="idle" size={20} label="" decorative />
+                <span className="mls-chip-name">{props.commodoreName}</span>
+              </span>
+              <span className="mls-crumb-sep" aria-hidden="true"><MobileIcon name="right" size={14} /></span>
+            </>
+          ) : null}
+          {theater ? (
+            <button type="button" className="mobile-pill-secondary mls-theater-chip" aria-label={t("chrome.launch.mobile.theaterChip", { name: theater.label })} onClick={() => setSub("theater")} data-mls-theater={theater.id}>
+              <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative />
+              <span className="mls-chip-name">{theater.label}</span>
+            </button>
+          ) : (
+            <button type="button" className="mobile-pill-secondary mls-theater-chip" onClick={() => setSub("folder")} disabled={props.addingTheater} data-mls-add-theater="chip">
+              <MobileIcon name="plus" size={18} />
+              <span className="mls-chip-name">{t("mobile.sheet.theater.add")}</span>
+            </button>
+          )}
+        </div>
+      ) : null}
+      {props.mentionTarget === null ? (
         <div className="mls-chips">
           <button type="button" className="mls-circ" data-press="r3" aria-label={t("chrome.launch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
-          <button type="button" className="mobile-pill-secondary mls-theater-chip" aria-label={theater ? t("chrome.launch.mobile.theaterChip", { name: theater.label }) : t("chrome.launch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
-            {theater ? <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative /> : null}
-            <span className="mls-chip-name">{theater?.label ?? t("chrome.launch.mobile.theater")}</span>
-          </button>
           <button type="button" className="mobile-pill-secondary mls-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
             <span className="mls-chip-name">{selectedRow ? (groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow)) ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.launch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mls-chip-effort">{effortLabel}</span> : null}
           </button>
