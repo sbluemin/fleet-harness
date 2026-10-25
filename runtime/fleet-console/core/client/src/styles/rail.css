@@ -170,6 +170,16 @@
 
 .right-rail-ico svg { width: 15px; height: 15px; }
 
+/* 잠시 닫아 둔 도구(entry.paused) — 제자리에 흐리게 서고 겨눔에도 밝아지지 않는다. 까닭은 말풍선이 말한다. */
+.right-rail-ico.is-paused,
+.right-rail-ico.is-paused:hover,
+.right-rail-ico.is-paused:focus-visible {
+  cursor: default;
+  opacity: 0.42;
+  color: var(--text-tertiary);
+  background: none;
+}
+
 /* 켜짐 표식은 아이콘 아래 선이다 — 가로 줄 사이에 선 세로 띠로 읽히지 않게. */
 .right-rail-ico.is-active::before {
   content: "";

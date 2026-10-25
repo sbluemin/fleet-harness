@@ -198,6 +198,8 @@ function ConnectedApp() {
   const paletteRailPanels = useMemo<readonly PaletteSearchPanel[]>(
     () => railBindings
       // 페인을 세우지 않는 엔트리도 찾을 것을 가질 수 있다 — 확대 표면을 여는 기여가 그렇다.
+      // 잠시 닫아 둔 도구(entry.paused)는 팔레트에도 서지 않는다.
+      .filter((binding) => binding.entry.paused !== true)
       .filter((binding) => binding.panes.length > 0 || binding.entry.search !== undefined || binding.entry.surfaceId !== undefined)
       .map((binding) => {
         const providers = [
@@ -452,6 +454,8 @@ function ConnectedApp() {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
+        // 잠시 닫아 둔 도구는 단축키로도 열리지 않는다 — 키는 삼켜 터미널 입력으로 새지 않게 한다.
+        if (entry.paused) return true;
         if (getViewedTheaterId() === null) {
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;

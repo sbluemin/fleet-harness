@@ -18,6 +18,8 @@ export const globalShellEntry: RailEntryDescriptor = {
   scope: "fleet",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
+  // 사령관 개편 동안 잠시 닫아 둔다 — 레일·단축키·팔레트·모바일 입구가 함께 닫힌다.
+  paused: true,
   // 셸이 서 있는 동안 아이콘이 켜져 있다 — 어느 표면을 여는지 호스트에게 말해 둔다.
   surfaceId: SHELL_SURFACE_ID,
   // 모바일 홈에서는 목표·파일·위키 다음의 바로가기 칩이다 — 순서만 선언하고 화면은 호스트가 연다.

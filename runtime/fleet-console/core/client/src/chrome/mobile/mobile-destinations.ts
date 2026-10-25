@@ -101,8 +101,9 @@ export function mobilePluginRows(bindings: readonly RailEntryBinding[]): readonl
   return bindings.filter((binding) => binding.entry.mobile?.destination === undefined && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && visible(binding));
 }
 
+/** 잠시 닫아 둔 도구(entry.paused)는 폰의 바로가기 칩·「플러그인」 행에 서지 않는다 — 겨눔이 없는 폰에서는 까닭을 말할 말풍선이 없다. */
 function visible(binding: RailEntryBinding): boolean {
-  return binding.entry.visible?.() !== false;
+  return binding.entry.visible?.() !== false && binding.entry.paused !== true;
 }
 
 // ── 확인 필요 ────────────────────────────────────────────────────────────

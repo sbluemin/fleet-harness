@@ -133,6 +133,11 @@ export interface RailEntryDescriptor {
    */
   readonly scope?: "theater" | "fleet";
   /**
+   * 잠시 닫아 둔 도구. 아이콘은 제자리에 흐리게 서서 눌러도 열리지 않고, 말풍선이 그 까닭(호스트 문구)을 말한다.
+   * 단축키·팔레트·모바일 입구도 이 도구를 열지 않는다. 다시 여는 날에는 이 표식만 걷으면 된다.
+   */
+  readonly paused?: true;
+  /**
    * 등록 Theater가 없어도 본문을 연다. 패널 등록(`opensWithoutTheater`)이 투영 때 이 엔트리로 온다.
    * Console 전체 도구(`scope: "fleet"`)와는 다르다.
    */

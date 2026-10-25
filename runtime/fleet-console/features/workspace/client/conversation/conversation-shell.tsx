@@ -1021,7 +1021,7 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
           const item = items[index]!;
           item.setAttribute("data-overflow", "true");
           if (item instanceof HTMLButtonElement && item.id.startsWith("rail-tab-")) {
-            next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled, element: item });
+            next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled || item.getAttribute("aria-disabled") === "true", element: item });
           }
           reserve();
           if (fits(pill, title)) break;
