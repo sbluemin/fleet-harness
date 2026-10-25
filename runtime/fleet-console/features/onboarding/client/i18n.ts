@@ -16,11 +16,11 @@ const onboardingEn = {
 
 const onboardingKo: Record<keyof typeof onboardingEn, string> = {
   "tour.skip": "건너뛰기",
-  "tour.gotIt": "알겠습니다",
+  "tour.gotIt": "알겠어요",
   "tour.next": "다음",
   "tour.done": "시작하기",
   "tour.progress": "{current} / {total}",
-  "tour.exampleLead": "이렇게 요청해 보세요.",
+  "tour.exampleLead": "이렇게 요청해 볼 수 있어요.",
   "hint.open": "열어 보기",
   "hint.dismiss": "안내 닫기",
   "hint.shortcut": "단축키 {shortcut}",
