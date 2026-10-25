@@ -13,6 +13,7 @@ export const MENTION_CHIP_CLASS = "fc-mention-chip";
 export const MENTION_CHIP_MARK_CLASS = "fc-mention-chip-mark";
 export const MENTION_CHIP_LABEL_CLASS = "fc-mention-chip-label";
 export const MENTION_CHIP_REMOVE_CLASS = "fc-mention-chip-x";
+const MENTION_CHIP_AT_CLASS = "fc-mention-chip-at";
 
 export interface MentionChipMarkup {
   /** `@`를 붙이기 전의 이름·제목. 잘림은 CSS가 하고, 여기에는 전체를 싣는다. */
@@ -49,7 +50,7 @@ export function mentionChipHtml(spec: MentionChipMarkup): string {
   const remove = spec.removeLabel
     ? `<span role="button" tabindex="0" class="${MENTION_CHIP_REMOVE_CLASS}" aria-label="${escapeHtml(spec.removeLabel)}">×</span>`
     : "";
-  return `<span class="${rootClass}" title="${escapeHtml(tip)}"${extraAttributes(spec.attributes)}>${mark}<span class="${MENTION_CHIP_LABEL_CLASS}">${escapeHtml(shown)}</span>${remove}</span>`;
+  return `<span class="${rootClass}" title="${escapeHtml(tip)}"${extraAttributes(spec.attributes)}>${mark}<span class="${MENTION_CHIP_LABEL_CLASS}"><span class="${MENTION_CHIP_AT_CLASS}">@</span>${escapeHtml(spec.label)}</span>${remove}</span>`;
 }
 
 /** `mentionChipHtml`과 같은 마크업의 원소. 초안 복원처럼 DOM을 직접 세울 때 쓴다. */
@@ -80,7 +81,7 @@ export function MentionChip({ label, title, mark, removeLabel, onRemove, onActiv
   const body = (
     <>
       {mark !== undefined ? <span className={MENTION_CHIP_MARK_CLASS} aria-hidden="true">{mark}</span> : null}
-      <span className={MENTION_CHIP_LABEL_CLASS}>{shown}</span>
+      <span className={MENTION_CHIP_LABEL_CLASS}><span className={MENTION_CHIP_AT_CLASS}>@</span>{label}</span>
       {removeLabel ? (
         <span
           role="button"

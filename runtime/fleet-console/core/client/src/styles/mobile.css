@@ -1332,6 +1332,9 @@ html[data-view-mode="mobile"] .app-toast-action {
    머리의 높이(--m-screen-head)는 화면이 재서 적는다. 머리 빈 자리의 누름은 뒤의 목록으로 지나간다. */
 .mobile-screen-head { position: absolute; top: var(--m-chrome-top); right: 0; left: 0; z-index: 1; pointer-events: none; background: var(--m-fade-down); }
 .mobile-screen-head > :not(.mobile-conv-gap) { pointer-events: auto; }
+/* 폰의 입력 원은 기존 엄지 크기와 글리프를 유지한다. */
+:root[data-view-mode="mobile"] .fc-composer-capsule { --fc-composer-circle: 34px; }
+:root[data-view-mode="mobile"] .fc-composer-capsule .fc-composer-circle svg { width: 16px; height: 16px; }
 /* 떠 있는 입력 캡슐은 비활성이어도 면이 불투명하다 — 뒤로 흐르는 본문이 비치지 않게 면은 그대로 두고 안의 내용만 흐리게 한다. */
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled { opacity: 1; }
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled > * { opacity: var(--control-disabled-opacity); }
