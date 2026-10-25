@@ -526,7 +526,18 @@ export function createObjectiveStorage(deps: {
     const preexisting = !exists(archiveFile) && !rebuildIndex ? new Set(scope.documents.keys()) : new Set<string>();
     const importedLegacy = importLegacy(scope);
     const touched = importedLegacy.touched;
-    const importedGroupIds = importedLegacy.groupIds;
+    // 원장에 그룹 id를 남기기 전에 합친 groups.json을 먼저 쓴다. 쓰기가 실패하면 그 id는 다음 기동이 다시 수입한다.
+    let durableGroupIds: readonly string[] = [];
+    if (importedLegacy.groupIds.length) {
+      try {
+        assertMinimal({ groups: minimalGroups(scope.groups) });
+        writeJson(groupsFile, { groups: scope.groups });
+        const onDisk = new Set(scope.groups.map((group) => group.id));
+        durableGroupIds = importedLegacy.groupIds.filter((id) => onDisk.has(id));
+      } catch (error) {
+        console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_groups_unreadable"}; original preserved`);
+      }
+    }
     isolateOrphanDeletions(scope, owner, archiveFile);
     // rename 뒤 색인 저장 전에 끊긴 id는 pending-index에 있다. 색인 없는 기존 문서로 숨기면 재개 때 목록에서 빠진다.
     const pendingRename = readPendingIndex(owner.directory);
@@ -537,7 +548,7 @@ export function createObjectiveStorage(deps: {
     if (persistArchive) {
       // 읽은 색인과 같으면 다시 쓰지 않는다. 키 순서만 다른 정규화가 재시작마다 archive.json을 바꾸면 안 된다.
       if (!loadedArchive || !isDeepStrictEqual(loadedArchive, scope.archive)) archiveStore(scope).save(scope.archive);
-      if (touched.length || importedGroupIds.length) rememberImported(owner.directory, touched, importedGroupIds);
+      if (touched.length || durableGroupIds.length) rememberImported(owner.directory, touched, durableGroupIds);
       clearPendingIndex(owner.directory, touched);
     }
     if (!exists(groupsFile)) writeJson(groupsFile, { groups: scope.groups });
