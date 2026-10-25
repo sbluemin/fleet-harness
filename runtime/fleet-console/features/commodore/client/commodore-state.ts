@@ -542,8 +542,10 @@ export function useCommodoreMobilePanelRequest(request: string | undefined, onOp
 export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string | null, panel = false): void {
   setCommodoreMobileTab(tab);
   mobilePanelRequest = panel ? String(++mobilePanelSequence) : null;
+  // 사령관 UUID 는 등록 Theater 가 아니다 — theaterId 로 넘기면 착지가 그 Theater 를 찾지 못해 화면이 서지 않는다. 폰 화면이 읽는 commodoreId 로 넘긴다.
+  const target: Record<string, string> = theaterId && COMMODORE_UUID.test(theaterId) ? { commodoreId: theaterId } : theaterId ? { theaterId } : {};
   installed?.rail.open(COMMODORE_ENTRY_ID, {
-    ...(theaterId ? { theaterId } : {}),
+    ...target,
     ...(mobilePanelRequest ? { commodorePanel: mobilePanelRequest } : {}),
   });
 }

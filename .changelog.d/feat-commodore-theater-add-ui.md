@@ -4,8 +4,8 @@ branch: feat/commodore-theater-add-ui
 
 ### fleet-console
 #### Added
-- Create a commodore from the sidebar's top "+" and add any number of Theaters to it from its operations pane, including a Theater another commodore already uses. Objectives a commodore runs work in the commodore's own folder with its Theaters attached, while ordinary sessions still run in the Theater you choose.
-  ko: 사이드바 맨 위 '+'로 사령관을 만들고, 작전 구역에서 Theater를 원하는 만큼 추가할 수 있습니다. 다른 사령관이 쓰는 Theater도 추가할 수 있습니다. 사령관이 실행하는 목표는 추가한 Theater를 함께 다루며 사령관 폴더에서 작업하고, 일반 세션은 지금처럼 고른 Theater에서 실행됩니다.
+- Create a commodore from the sidebar's top "+" with a live preview of its look, then add or remove its own Theaters by picking folders at the top of its Settings tab; the same folder can be added to more than one commodore. Objectives a commodore runs work in the commodore's own folder with its Theaters attached, while ordinary sessions still run in the Theater you choose.
+  ko: 사이드바 맨 위 '+'로 모습을 미리 보며 사령관을 만들고, 설정 탭 맨 위에서 폴더를 골라 그 사령관의 Theater를 바로 추가하거나 뺄 수 있습니다. 같은 폴더를 여러 사령관에 추가할 수도 있습니다. 사령관이 실행하는 목표는 추가한 Theater를 함께 다루며 사령관 폴더에서 작업하고, 일반 세션은 지금처럼 고른 Theater에서 실행됩니다.
 #### Changed
 - The sidebar groups sessions by commodore, and system prompt and subagent settings now belong to each commodore in its Settings tab; existing Theater settings carry over to the commodore that had that Theater.
   ko: 사이드바는 사령관별로 세션을 묶고, 시스템 프롬프트와 서브에이전트 설정은 사령관의 설정 탭에서 사령관마다 관리합니다. 기존 Theater 설정은 그 Theater를 가진 사령관으로 옮겨집니다.

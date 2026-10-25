@@ -878,6 +878,7 @@
   outline: none;
 }
 .mobile-field::placeholder { color: var(--m-text-muted); }
+.mobile-avatar-hero { display: grid; place-items: center; padding: 4px 0 12px; }
 
 /* 하단 시트 */
 .mobile-sheet-scrim {

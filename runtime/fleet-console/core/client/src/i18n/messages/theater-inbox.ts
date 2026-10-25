@@ -20,11 +20,10 @@ export const theaterInboxEn = {
   "theaterInbox.theaters.applies": "Objectives run in the commodore folder, and added Theaters are in scope · new sessions",
   "theaterInbox.theaters.empty": "No Theaters added. Objectives work only inside the commodore folder.",
   "theaterInbox.theaters.add": "Add Theater",
-  "theaterInbox.theaters.search": "Search",
-  "theaterInbox.theaters.fromFolder": "Add from a folder…",
   "theaterInbox.theaters.remove": "Remove",
+  "theaterInbox.theaters.removeAria": "Remove {theater} from this commodore",
+  "theaterInbox.theaters.failed": "Could not change this commodore's Theaters. Try again.",
   "theaterInbox.theaters.missing": "Not found",
-  "theaterInbox.theaters.forget": "Forget Theater",
 };
 
 export const theaterInboxKo: Record<keyof typeof theaterInboxEn, string> = {
@@ -48,9 +47,8 @@ export const theaterInboxKo: Record<keyof typeof theaterInboxEn, string> = {
   "theaterInbox.theaters.applies": "목표는 사령관 폴더에서 실행되고, 여기 추가한 Theater도 함께 다뤄요 · 새 세션부터",
   "theaterInbox.theaters.empty": "추가한 Theater가 없어요. 목표는 사령관 폴더 안에서만 작업해요.",
   "theaterInbox.theaters.add": "Theater 추가",
-  "theaterInbox.theaters.search": "검색",
-  "theaterInbox.theaters.fromFolder": "폴더에서 추가…",
   "theaterInbox.theaters.remove": "제거",
+  "theaterInbox.theaters.removeAria": "이 사령관에서 {theater} 제거",
+  "theaterInbox.theaters.failed": "이 사령관의 Theater를 바꾸지 못했어요. 다시 시도해 주세요.",
   "theaterInbox.theaters.missing": "찾을 수 없음",
-  "theaterInbox.theaters.forget": "Theater 잊기",
 };

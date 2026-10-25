@@ -8,7 +8,7 @@ import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_MEMBERSHIP_PAGE_ID, THEATER_SETTINGS_SECTION_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
 import { subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
 import { readZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
-import { openCommodoreMobile } from "../../../../features/commodore/client/commodore-state.js";
+import { openCommodoreMobile, useCommodoreEnabled } from "../../../../features/commodore/client/commodore-state.js";
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
 import { TheaterAvatar } from "../../../../features/workspace/client/theater-avatar.js";
@@ -21,6 +21,8 @@ const SETTINGS_SECTION: ResolvedTheaterInboxSection = {
   descriptor: createTheaterSettingsInboxSection({ icon: ({ theater }) => <TheaterAvatar theaterId={theater.id} size={18} label="" decorative className="theater-inbox-avatar" /> }),
 };
 const THEATERS_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION.id, pageId: THEATER_MEMBERSHIP_PAGE_ID };
+/** 사령관이 켜져 있으면 Theater 목록은 사령관 「설정」 맨 위에 있다 — 옛 작전 구역 주소로 온 요청도 이 칸이 받는다. */
+const COMMODORE_SETTINGS_ADDRESS: TheaterInboxAddress = { sectionId: "commodore:commodore", pageId: "settings" };
 
 /**
  * Theater Inbox 의 합성 — 시트 틀(workspace feature), 호스트의 「Theater 설정」(settings feature), 플러그인 섹션(registry)을
@@ -33,10 +35,13 @@ export function TheaterInboxHost() {
   const language = useConsoleLocale();
   const mobile = useViewMode().effective === "mobile";
   const open = useTheaterInboxState();
+  // 사령관 섹션이 서면 작전 구역 섹션을 따로 세우지 않는다 — 오른쪽 패널에 [사령관 | 작전 구역] 두 줄이 서지 않고, 그 주소는 폴백이 사령관 설정으로 잇는다.
+  const commodoreOwnsTheaters = useCommodoreEnabled() && theaterInboxSections.some((descriptor) => descriptor.id === COMMODORE_SETTINGS_ADDRESS.sectionId);
   const sections = useMemo<readonly ResolvedTheaterInboxSection[]>(() => [
     ...theaterInboxSections.map((descriptor) => ({ id: descriptor.id, descriptor })),
-    SETTINGS_SECTION,
-  ], [theaterInboxSections]);
+    ...(commodoreOwnsTheaters ? [] : [SETTINGS_SECTION]),
+  ], [commodoreOwnsTheaters, theaterInboxSections]);
+  const fallback = commodoreOwnsTheaters ? COMMODORE_SETTINGS_ADDRESS : THEATERS_ADDRESS;
   const label = useTheaterLabel(open?.theaterId);
   // 연 채로 Theater 가 잊혀도 시트는 남는다(프롬프트 칸이 남은 글을 보여 준다) — 마지막 이름을 붙들어 둔다.
   const lastLabel = useRef<{ readonly id: string; readonly label: string } | null>(null);
@@ -75,7 +80,7 @@ export function TheaterInboxHost() {
       language={language}
       navigation={theaterInboxCapability}
       select={selectTheaterInboxPage}
-      fallback={THEATERS_ADDRESS}
+      fallback={fallback}
     />
   );
 }

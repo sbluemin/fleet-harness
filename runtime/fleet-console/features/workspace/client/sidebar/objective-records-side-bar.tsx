@@ -1340,7 +1340,7 @@ export function ObjectiveRecordsSideBar({
           }}
           onOpenZone={() => {
             setZoneCommodore(contextMenuTheater.id);
-            openTheaterInbox({ theaterId: contextMenuTheater.id, sectionId: "console:settings", pageId: "theaters", returnFocus: activeContextMenu.returnFocus ?? null });
+            openTheaterInbox({ theaterId: contextMenuTheater.id, sectionId: "commodore:commodore", pageId: "settings", returnFocus: activeContextMenu.returnFocus ?? null });
             setActiveContextMenu(null);
           }}
           onNewSession={() => {

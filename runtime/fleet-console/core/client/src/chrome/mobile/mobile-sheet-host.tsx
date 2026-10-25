@@ -10,13 +10,13 @@ import { useLongPress } from "../../../../../features/workspace/client/long-pres
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
-import { CommodoreTheaterTab } from "../../../../../features/commodore/client/commodore-theater-tab.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
 import { commodoreAvatarKey, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
 import { setMongleLook, useMongleLook } from "../../../../../features/workspace/client/avatar-events.js";
 import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
+import { MongleAvatar } from "../../../../../features/workspace/client/components/mongle-avatar.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
@@ -176,19 +176,21 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   );
 }
 
-/** 사령관 칩 시트의 ⋯. 작전 구역은 Theater 탭만, 이름·모양은 별칭이다. 길게 누르기에 기대지 않는다. */
+/** 사령관 칩 시트의 ⋯. 설정(맨 위가 그 사령관의 Theater)과 이름·모양 별칭. 길게 누르기에 기대지 않는다. */
 function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
   const t = useT();
-  const openZone = () => {
+  // Theater 목록은 그 사령관 「설정」 맨 위에 있다 — 다른 사령관과 나누는 목록 시트를 따로 띄우지 않는다.
+  const openSettings = () => {
     setZoneCommodore(commodoreId);
-    pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={commodoreId} /></MobileSheet> });
+    closeMobileSheets();
+    openCommodoreMobile("settings", commodoreId, true);
   };
   const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
   return (
     <MobileSheet title={label} onClose={onClose}>
-      <button type="button" className="mobile-sheet-row" onClick={openZone}>
+      <button type="button" className="mobile-sheet-row" onClick={openSettings}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.commodore.settings")}</strong></span>
       </button>
       <button type="button" className="mobile-sheet-row" onClick={openAppearance}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
@@ -229,6 +231,8 @@ function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly 
   };
   return (
     <MobileSheet title={t("sidebar.commodore.appearance")} onClose={onClose}>
+      {/* 고르는 모양·색·상태 미리보기를 연기하는 큰 얼굴 — 편집기 격자는 늘 대기 중 얼굴이다. */}
+      <div className="mobile-avatar-hero"><MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={88} label={label} decorative /></div>
       <input
         className="mobile-field"
         value={value}
@@ -326,10 +330,6 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
       </button>
       <div className="mobile-sheet-sep" role="separator" />
-      <button type="button" className="mobile-sheet-row" onClick={() => { setZoneCommodore(theater.commodore?.id ?? null); pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={theater.commodore?.id ?? null} /></MobileSheet> }); }}>
-        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
-      </button>
       <button type="button" className="mobile-sheet-row" onClick={() => { if (theater.commodore?.id) openCommodoreMobile("settings", theater.commodore.id, true); }}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.commodore.settings")}</strong></span>

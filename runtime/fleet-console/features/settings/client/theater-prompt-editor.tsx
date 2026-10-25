@@ -382,7 +382,7 @@ export function isOverPromptLimit(draft: TheaterSystemPrompt): boolean {
  * Console이 호출마다 읽으므로 실행 중인 세션도 다음 호출부터 따른다. 저장은 누르는 즉시이며, 실패하면 되돌린다.
  * 데스크톱 Theater Inbox 는 이 칸을 따로 세우고(`titled` 없음 — 칸 제목이 대신한다), 폰 시트는 프롬프트 아래에 붙인다.
  */
-export function TheaterSubagentsSection({ theaterId, mobile = false, titled = true }: { readonly theaterId: string; readonly mobile?: boolean; readonly titled?: boolean }) {
+export function TheaterSubagentsSection({ theaterId, mobile = false }: { readonly theaterId: string; readonly mobile?: boolean }) {
   const t = useT(mobile);
   const [replaced, setReplaced] = useState<boolean | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving" | "loadFailed" | "saveFailed">("loading");
@@ -419,23 +419,22 @@ export function TheaterSubagentsSection({ theaterId, mobile = false, titled = tr
       : state === "loadFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
         : <>
           <SettingsCard>
-            <SettingsRow label={t("sidebar.theater.subagents.toggle")} hint={t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}>
+            <SettingsRow label={t("sidebar.theater.subagents.toggle")}>
               <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />
             </SettingsRow>
           </SettingsCard>
           {state === "saveFailed" ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
         </>;
   }
+  // 설정 줄 하나 — 제목 자리가 곧 토글 이름이고, 지침 선택과는 구분선으로 떨어진다. 켜고 끈 뜻을 풀어 쓰는 부가 문구는 두지 않는다.
   return (
-    <div className="theater-subagents" role="group" aria-labelledby={titled ? "theater-subagents-title" : undefined} aria-label={titled ? undefined : t("sidebar.theater.subagents.title")}>
-      {titled ? <strong id="theater-subagents-title">{t("sidebar.theater.subagents.title")}</strong> : null}
-      {state === "loading" ? <p role="status">{t("sidebar.theater.prompt.loading")}</p>
-        : state === "loadFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
-          : <>
-            <SettingsToggle checked={replaced === true} busy={state === "saving"} label={t("sidebar.theater.subagents.toggle")} onChange={change} />
-            <p className="theater-prompt-caption">{t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}</p>
-            {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
-          </>}
+    <div className="theater-subagents">
+      <SettingsRow label={t("sidebar.theater.subagents.toggle")}>
+        {state === "loading" ? <span className="theater-prompt-caption" role="status">{t("sidebar.theater.prompt.loading")}</span>
+          : state === "loadFailed" ? <span className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</span>
+            : <SettingsToggle checked={replaced === true} busy={state === "saving"} ariaLabel={t("sidebar.theater.subagents.toggle")} onChange={change} />}
+      </SettingsRow>
+      {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
     </div>
   );
 }

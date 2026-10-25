@@ -19,6 +19,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
+import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
@@ -199,9 +200,9 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
       title,
       ...(pillStatus ? { subtitle: pillStatus } : {}),
       depth: 0,
-      pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => setPanel(true) },
+      pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => setPanel(true) },
     });
-  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, t]);
+  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, commodoreId, t]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -692,6 +693,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
     <div className="objectives-cm-content">
       <div className="objectives-cm-pad objectives-cm-settings">
         {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
+        <CommodoreTheaters commodoreId={theaterId} phone />
         <SettingsCard description={t("commodore.settings.modelHint")}>
           <SettingsRow label={t("commodore.settings.model")} icon={<SparkIcon />} disabled={!online}>
             <CommodoreCoordinateField
@@ -749,7 +751,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
             <span className="fc-select__trigger fc-select--mobile objectives-cm-info-value"><span className="fc-select__value">{usage}</span></span>
           </SettingsRow>
         </SettingsCard>
-        <CommodoreSessionSettings commodoreId={theaterId} />
+        <CommodoreSessionSettings commodoreId={theaterId} phone />
       </div>
     </div>
   );

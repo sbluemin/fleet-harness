@@ -16,6 +16,7 @@ import { referencePlainText } from "../../execution/shared/conversation/referenc
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
 import { TheaterSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
+import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -284,6 +285,7 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
     <div className="objectives-commodore-settings">
+      <CommodoreTheaters commodoreId={theaterId} />
       <SettingsRow
         label={t("commodore.settings.model")}
         hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
@@ -330,26 +332,29 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   );
 }
 
-export function CommodoreSessionSettings({ commodoreId }: { readonly commodoreId: string }) {
+export function CommodoreSessionSettings({ commodoreId, phone = false }: { readonly commodoreId: string; readonly phone?: boolean }) {
   const controller = useTheaterPromptController(commodoreId ? { id: commodoreId, label: commodoreId } : null, 0, { onMissing: () => undefined, onDiscarded: () => undefined, ignoreTheaterRegistry: true });
   const names = useTheaterPromptModeNames();
   const modes = Object.keys(names) as Array<keyof typeof names>;
   if (!commodoreId) return null;
+  // 지침 선택(모드 상자와 본문)과 구성원 맡기기 토글은 서로 다른 설정이다 — 토글은 상자 밖 자기 줄에 선다.
   return (
-    <div className="theater-prompt-page">
-      <div className="theater-prompt-modes" role="radiogroup">
-        {modes.map((mode) => (
-          <label key={mode} className="theater-prompt-mode-choice">
-            <input type="radio" name={`commodore-prompt-${commodoreId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
-            <span>{names[mode]}</span>
-          </label>
-        ))}
+    <>
+      <div className="theater-prompt-page">
+        <div className="theater-prompt-modes" role="radiogroup">
+          {modes.map((mode) => (
+            <label key={mode} className="theater-prompt-mode-choice">
+              <input type="radio" name={`commodore-prompt-${commodoreId}`} checked={controller.draft.mode === mode} onChange={() => controller.changeMode(mode)} />
+              <span>{names[mode]}</span>
+            </label>
+          ))}
+        </div>
+        {controller.draft.mode !== "on" ? (
+          <textarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
+        ) : null}
       </div>
-      {controller.draft.mode !== "on" ? (
-        <textarea className="commodore-prompt-body" value={controller.draft.body} aria-label={names[controller.draft.mode]} onChange={(event) => controller.changeBody(event.target.value)} onBlur={() => controller.flush()} />
-      ) : null}
-      <TheaterSubagentsSection theaterId={commodoreId} titled={false} />
-    </div>
+      <TheaterSubagentsSection theaterId={commodoreId} mobile={phone} />
+    </>
   );
 }
 

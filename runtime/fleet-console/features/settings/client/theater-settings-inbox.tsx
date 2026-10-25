@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
-import { CommodoreTheaterTab } from "../../commodore/client/commodore-theater-tab.js";
+import { CommodoreTheaters } from "../../commodore/client/commodore-theater-tab.js";
 import { getT, useT } from "../../../core/client/src/i18n/index.js";
 import type { ClaudeCodeSystemPromptMode } from "./execution-settings.js";
 import {
@@ -60,7 +60,7 @@ function TheaterSettingsInboxBody({ context }: { readonly context: TheaterInboxB
   const showTheaters = visible && pageId === THEATER_MEMBERSHIP_PAGE_ID;
   // controller(쓰던 글·대기 저장)는 이 본문에 남고, 보이지 않는 칸의 화면만 내린다 — 모드 선택 상자는 body 포털이라
   // 숨김만으로는 닫히지 않고, 가려진 채 고르면 보이지 않는 칸에 저장된다.
-  return showTheaters ? <CommodoreTheaterTab /> : null;
+  return showTheaters ? <div className="theater-inbox-theaters"><CommodoreTheaters commodoreId={context.theater.id} /></div> : null;
 }
 
 function TheaterPromptPage({ context, controller, visible, focusRequest, operatorDirective }: {

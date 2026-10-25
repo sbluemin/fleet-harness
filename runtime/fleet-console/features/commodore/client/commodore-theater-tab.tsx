@@ -1,83 +1,98 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { DirectoryBrowserModal } from "../../../core/client/src/chrome/components/directory-browser-modal.js";
+import { MobileFolderSheet } from "../../../core/client/src/chrome/mobile/mobile-folder-sheet.js";
+import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
-import { forgetTheaterCompletely, registerTheaterFromPath } from "../../workspace/client/theater.js";
+import { registerTheaterFromPath } from "../../workspace/client/theater.js";
 import { addCommodoreTheater, removeCommodoreTheater } from "./theaters-api.js";
-import { refreshCommodoreList, useCommodoreList, useZoneCommodore } from "./commodore-list.js";
+import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 
 /**
- * 작전 구역의 Theater 탭. 검색, 등록 목록(이미 추가한 행은 체크), 폴더에서 추가.
- * 행을 누르면 바로 추가하고 시트는 연 채로 둔다. 제거는 확인이 없다.
+ * 설정 맨 위의 「Theater」 — 이 사령관이 가진 Theater 목록이다. 다른 사령관과 나누는 목록에서 골라 잇지 않는다:
+ * 「+ Theater 추가」는 곧바로 폴더를 고르고 그 폴더를 이 사령관에 더하며, 행의 「제거」는 이 사령관에서만 뺀다.
+ * 데스크톱은 지시 탭의 정보 목록, 폰은 폰 정보 묶음과 같은 줄 문법이다.
  */
-export function CommodoreTheaterTab({ commodoreId: commodoreIdProp }: { readonly commodoreId?: string | null }) {
-  const t = useT();
-  const zone = useZoneCommodore();
-  const commodoreId = commodoreIdProp ?? zone;
-  const commodores = useCommodoreList();
-  const theaters = useConsoleState().theaters;
-  const commodore = commodores.find((item) => item.commodoreId === commodoreId) ?? null;
-  const added = new Set(commodore?.theaters.map((theater) => theater.theaterId) ?? []);
-  const [query, setQuery] = useState("");
-  const [menu, setMenu] = useState<string | null>(null);
+export function CommodoreTheaters({ commodoreId, phone = false }: { readonly commodoreId: string; readonly phone?: boolean }) {
+  const t = useT(phone);
+  const commodore = useCommodoreList().find((item) => item.commodoreId === commodoreId) ?? null;
+  const registrationError = useConsoleState().theaterError;
   const [browserOpen, setBrowserOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const needle = query.trim().toLowerCase();
-  const rows = useMemo(() => theaters.filter((theater) => needle.length === 0 || theater.label.toLowerCase().includes(needle)), [theaters, needle]);
+  const [failed, setFailed] = useState(false);
+  const theaters = commodore?.theaters ?? [];
 
-  const add = (theaterId: string) => {
-    if (!commodoreId || added.has(theaterId) || busy) return;
+  const run = (work: () => Promise<boolean>) => {
+    if (busy) return;
     setBusy(true);
-    void addCommodoreTheater({ commodoreId, theaterId }).then(() => refreshCommodoreList()).finally(() => setBusy(false));
+    setFailed(false);
+    void work().then((ok) => { if (!ok) setFailed(true); }, () => setFailed(true)).finally(() => setBusy(false));
   };
-  const remove = (theaterId: string) => {
-    if (!commodoreId || busy) return;
-    setBusy(true);
-    void removeCommodoreTheater({ commodoreId, theaterId }).then(() => refreshCommodoreList()).finally(() => setBusy(false));
+  const remove = (theaterId: string) => run(async () => {
+    await removeCommodoreTheater({ commodoreId, theaterId });
+    await refreshCommodoreList();
+    return true;
+  });
+  const addFolder = (path: string) => run(async () => {
+    const theaterId = await registerTheaterFromPath(path, phone);
+    if (!theaterId) return false;
+    await addCommodoreTheater({ commodoreId, theaterId });
+    await refreshCommodoreList();
+    return true;
+  });
+  const pickFolder = () => {
+    if (busy) return;
+    if (phone) pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileFolderSheet onClose={dismiss} onConfirm={(path) => { dismiss(); addFolder(path); }} /> });
+    else setBrowserOpen(true);
   };
-  const addFromFolder = (path: string) => {
-    if (!commodoreId) return;
-    setBrowserOpen(false);
-    setBusy(true);
-    void registerTheaterFromPath(path).then((theaterId) => {
-      if (!theaterId) return;
-      return addCommodoreTheater({ commodoreId, theaterId }).then(() => refreshCommodoreList());
-    }).finally(() => setBusy(false));
-  };
+  const failure = failed ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{registrationError ?? t("theaterInbox.theaters.failed")}</p> : null;
+  if (!commodoreId) return null;
+  const note = theaters.length === 0 ? t("theaterInbox.theaters.empty") : t("theaterInbox.theaters.applies");
 
-  if (!commodoreId) return <p className="commodore-theaters-empty">{t("theaterInbox.theaters.empty")}</p>;
+  if (phone) {
+    return (
+      <section className="commodore-theaters is-phone" aria-label={t("theaterInbox.theaters.page")}>
+        <p className="objectives-cm-glab">{t("theaterInbox.theaters.page")}</p>
+        <div className="objectives-cm-grp">
+          {theaters.map((theater) => (
+            <div key={theater.theaterId} className={`objectives-cm-gr${theater.status === "missing" ? " is-missing" : ""}`}>
+              <span className="objectives-cm-gr-tx">{theater.label}{theater.status === "missing" ? <small>{t("theaterInbox.theaters.missing")}</small> : null}</span>
+              <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
+            </div>
+          ))}
+          <button type="button" data-press="r1" className="objectives-cm-gr commodore-theaters-phone-add" disabled={busy} onClick={pickFolder}>
+            <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
+            <span className="objectives-cm-gr-tx">{t("theaterInbox.theaters.add")}</span>
+          </button>
+        </div>
+        {failure}
+        <p className="objectives-cm-secnote">{note}</p>
+      </section>
+    );
+  }
 
   return (
-    <div className="commodore-theaters">
-      <p className="commodore-theaters-applies">{t("theaterInbox.theaters.applies")}</p>
-      {commodore && commodore.theaters.length === 0 ? <p className="commodore-theaters-empty">{t("theaterInbox.theaters.empty")}</p> : null}
-      <ul className="commodore-theaters-list">
-        {commodore?.theaters.map((theater) => (
-          <li key={theater.theaterId} className={theater.status === "missing" ? "is-missing" : ""}>
-            <span className="commodore-theaters-name">{theater.label}</span>
-            {theater.status === "missing" ? <span className="commodore-theaters-missing">{t("theaterInbox.theaters.missing")}</span> : null}
-            <button type="button" className="commodore-theaters-remove" onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
-          </li>
-        ))}
-      </ul>
-      <div className="commodore-theaters-sheet">
-        <input className="commodore-theaters-search" value={query} placeholder={t("theaterInbox.theaters.search")} aria-label={t("theaterInbox.theaters.search")} onChange={(event) => setQuery(event.target.value)} />
-        <ul>
-          {rows.map((theater) => (
-            <li key={theater.id}>
-              <button type="button" className="commodore-theaters-candidate" onClick={() => add(theater.id)} disabled={added.has(theater.id)}>
-                <span>{theater.label}</span>
-                {added.has(theater.id) ? <span aria-hidden="true">✓</span> : null}
-              </button>
-              <button type="button" className="commodore-theaters-more" aria-label={t("theaterInbox.theaters.forget")} onClick={() => setMenu(menu === theater.id ? null : theater.id)}>⋯</button>
-              {menu === theater.id ? <button type="button" className="commodore-theaters-forget" onClick={() => { setMenu(null); void forgetTheaterCompletely(theater.id); }}>{t("theaterInbox.theaters.forget")}</button> : null}
+    <section className="objectives-commodore-section commodore-theaters" aria-label={t("theaterInbox.theaters.page")}>
+      <p className="objectives-commodore-section-title">{t("theaterInbox.theaters.page")}</p>
+      {theaters.length > 0 ? (
+        <ul className="commodore-theaters-list">
+          {theaters.map((theater) => (
+            <li key={theater.theaterId} className={theater.status === "missing" ? "is-missing" : undefined}>
+              <span className="commodore-theaters-name" title={theater.label}>{theater.label}</span>
+              {theater.status === "missing" ? <span className="commodore-theaters-missing">{t("theaterInbox.theaters.missing")}</span> : null}
+              <button type="button" className="objectives-commodore-text-button" aria-label={t("theaterInbox.theaters.removeAria", { theater: theater.label })} disabled={busy} onClick={() => remove(theater.theaterId)}>{t("theaterInbox.theaters.remove")}</button>
             </li>
           ))}
         </ul>
-        <button type="button" className="commodore-theaters-folder" onClick={() => setBrowserOpen(true)} disabled={busy}>{t("theaterInbox.theaters.fromFolder")}</button>
-      </div>
-      <DirectoryBrowserModal open={browserOpen} onCancel={() => setBrowserOpen(false)} onConfirm={addFromFolder} />
-    </div>
+      ) : null}
+      <button type="button" className="commodore-theaters-add" disabled={busy} onClick={pickFolder}>
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <span>{t("theaterInbox.theaters.add")}</span>
+      </button>
+      {failure}
+      <p className="objectives-commodore-hint">{note}</p>
+      <DirectoryBrowserModal open={browserOpen} onCancel={() => setBrowserOpen(false)} onConfirm={(path) => { setBrowserOpen(false); addFolder(path); }} />
+    </section>
   );
 }
