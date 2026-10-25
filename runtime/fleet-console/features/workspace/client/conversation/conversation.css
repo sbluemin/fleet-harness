@@ -83,6 +83,11 @@
   padding-block: 0;
 }
 
+/* 사령관 사이만 4px로 좁힌다 — 목록의 다른 행은 12px 리듬과 Desktop 배율 보정을 유지한다. */
+.console-body.is-conversation .objective-records-side-bar.is-compact .side-bar-theater-section + .side-bar-theater-section {
+  margin-top: calc((4px - 12px) / var(--compact-layout-zoom));
+}
+
 .console-body.is-conversation .objective-records-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-header.is-card) {
   padding-inline: 0;
 }
