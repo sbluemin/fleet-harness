@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/link",
-  "version": "1.255.3",
+  "version": "1.255.4",
   "private": true,
   "type": "module",
   "exports": {

@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.255.4] - 2026-10-25
+
+### fleet-console
+
+#### Fixed
+- 이전 버전에서 업데이트한 뒤 Theater 머리에서 사령관 대화를 열어도 "대화를 불러오는 중"에 멈추거나 `theater_unavailable`로 저장에 실패하지 않습니다.
+
 ## [1.255.3] - 2026-10-25
 
 ### fleet-console
