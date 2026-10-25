@@ -24,14 +24,23 @@ function win32Comparable(value: string): string {
   else if (text.startsWith("\\\\?\\")) text = text.slice(4);
   return text.replace(/[\\/]+/g, "/").replace(/\/+$/, "").toLowerCase();
 }
-export const commodoreTheatersSchema = z.array(z.object({ path: z.string().min(1).max(4096).refine(path.isAbsolute) }).strict()).length(1);
+export const commodoreTheatersSchema = z.array(z.object({ path: z.string().min(1).max(4096).refine(path.isAbsolute) }).strict());
 export const commodoreEntitySchema = z.preprocess(migrateCommodorePatrolState, commodoreStateSchema.extend({ theaters: commodoreTheatersSchema }));
 export type CommodoreTheaterLink = { readonly path: string };
 /** state.json이 권위이고 이 색인은 기동마다 재구성한다. 잊힌 Theater의 연결도 그대로 보존한다. */
 export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPath: string) => string) {
   const links = new Map<string, readonly CommodoreTheaterLink[]>();
-  const reverse = new Map<string, string>();
-  const conflicts = new Set<string>();
+  const reverse = new Map<string, Set<string>>();
+  const bind = (theaterId: string, id: string): void => {
+    const ids = reverse.get(theaterId) ?? new Set<string>();
+    ids.add(id); reverse.set(theaterId, ids);
+  };
+  const replaceTheatersInIndex = (id: string, rows: readonly CommodoreTheaterLink[]): void => {
+    for (const [key, ids] of reverse) { ids.delete(id); if (!ids.size) reverse.delete(key); }
+    const unique = rows.filter((row, index) => !rows.slice(0, index).some((other) => samePlace(row.path, other.path)));
+    links.set(id, unique);
+    for (const row of unique) bind(theaterIdOf(row.path), id);
+  };
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   if (fs.lstatSync(root).isSymbolicLink()) throw new Error("commodore_root_invalid");
   const base = fs.realpathSync.native(root);
@@ -61,76 +70,51 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
       const stat = fs.lstatSync(file);
       if (fs.realpathSync.native(dir) !== dir || !stat.isFile() || stat.isSymbolicLink()) throw new Error("invalid_state_file");
       const state = commodoreEntitySchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
-      const link = state.theaters[0]!;
-      // 사라진 경로도 연결은 보존한다. 존재할 때만 실경로와 비교한다.
-      if (path.normalize(link.path) !== link.path) throw new Error("noncanonical_path");
-      try { if (fs.realpathSync.native(link.path) !== link.path) throw new Error("noncanonical_path"); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      const theaterId = theaterIdOf(link.path);
-      if (reverse.has(theaterId)) { conflicts.add(theaterId); warn(entry.name, `duplicate_theater; using ${reverse.get(theaterId)}`); continue; }
-      links.set(entry.name, state.theaters);
-      reverse.set(theaterId, entry.name);
+      for (const theater of state.theaters) {
+        if (path.normalize(theater.path) !== theater.path) throw new Error("noncanonical_path");
+        try { if (fs.realpathSync.native(theater.path) !== theater.path) throw new Error("noncanonical_path"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      }
+      replaceTheatersInIndex(entry.name, state.theaters);
     } catch { warn(entry.name, "unreadable_state"); }
   }
   const canonical = (theater: string) => fs.realpathSync.native(theater);
   const nativeOf = (theater: string): string | null => { try { return fs.realpathSync.native(theater); } catch { return null; } };
-  // 해시가 어긋나도 같은 위치의 기존 사령관을 찾는다. 둘 이상이면 새 UUID를 만들지 않게 먼저 읽힌 연결을 유지한다.
-  const locate = (candidate: string): string | null => {
+  // 같은 위치의 등록 해시와 canonical 해시를 모두 허용하되 모호한 UUID를 고르지 않는다.
+  const locateAll = (candidate: string): readonly string[] => {
     const native = nativeOf(candidate);
-    const hashed = reverse.get(theaterIdOf(native ?? candidate));
-    if (hashed) return hashed;
-    const matches: string[] = [];
-    for (const [id, rows] of links) {
-      const link = rows[0]?.path;
-      if (!link) continue;
-      if (link === candidate || (native !== null && link === native) || samePlace(link, candidate) || (native !== null && samePlace(link, native))) matches.push(id);
-    }
-    if (matches.length === 0) return null;
-    if (matches.length > 1) warn(matches[0]!, "ambiguous_path");
-    return matches[0]!;
+    return [...links].filter(([, rows]) => rows.some((row) => samePlace(row.path, candidate) || (native !== null && samePlace(row.path, native)))).map(([id]) => id).sort();
   };
-  const bind = (theaterId: string, commodoreId: string): void => {
-    if (!links.has(commodoreId)) return;
-    const owner = reverse.get(theaterId);
-    if (owner && owner !== commodoreId) return;
-    reverse.set(theaterId, commodoreId);
-  };
+  const resolveAll = (theaterId: string): readonly string[] => [...(reverse.get(theaterId) ?? [])].sort();
+  const unique = (ids: readonly string[]): string | null => ids.length === 1 ? ids[0]! : null;
   return {
     dirOf,
-    conflicts: () => [...conflicts],
     ids: () => [...links.keys()],
-    locate,
+    locateAll,
+    locate: (candidate: string) => unique(locateAll(candidate)),
     bind,
-    resolve: (theaterId: string) => reverse.get(theaterId) ?? null,
+    resolveAll,
+    resolve: (theaterId: string) => unique(resolveAll(theaterId)),
+    replaceTheatersInIndex,
     theatersOf: (id: string) => links.get(id) ?? [],
-    theaterIds: (id: string) => (links.get(id) ?? []).map((link) => theaterIdOf(link.path)),
-    create(theater: string): string {
-      const realpath = canonical(theater);
-      const theaterId = theaterIdOf(realpath);
-      const existing = reverse.get(theaterId) ?? locate(realpath);
-      if (existing) { bind(theaterId, existing); return existing; }
+    theaterIds: (id: string) => (links.get(id) ?? []).map((row) => theaterIdOf(row.path)),
+    // Theater 인자는 옛 데이터의 발급에만 쓴다. 사람의 새 사령관은 빈 배열로 만든다.
+    create(theater?: string): string {
+      const theaters = theater ? [{ path: canonical(theater) }] : [];
+      if (theater) {
+        const existing = locateAll(theater);
+        if (existing.length > 1) throw new CommodoreStoreError("commodore_required");
+        if (existing.length === 1) return existing[0]!;
+      }
       const id = randomUUID();
       const staging = path.join(base, `.new-${id}`);
-      const theaters = [{ path: realpath }];
       fs.mkdirSync(staging, { mode: 0o700 });
       try {
         fs.writeFileSync(path.join(staging, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters }), { flag: "wx", mode: 0o600 });
         fs.renameSync(staging, path.join(base, id));
       } catch (error) { fs.rmSync(staging, { recursive: true, force: true }); throw error; }
-      links.set(id, theaters);
-      reverse.set(theaterId, id);
+      replaceTheatersInIndex(id, theaters);
       return id;
-    },
-    link(id: string, theater: string): void {
-      const dir = dirOf(id);
-      if (!dir) throw new CommodoreStoreError("commodore_unavailable");
-      const realpath = canonical(theater);
-      const theaterId = theaterIdOf(realpath);
-      const owner = reverse.get(theaterId);
-      if (owner && owner !== id) throw new CommodoreStoreError("theater_already_linked");
-      if (links.get(id)?.[0]?.path === realpath) return;
-      // 이번 제품 계약은 정확히 한 Theater다. 기존 연결을 조용히 갈아끼우지 않는다.
-      throw new CommodoreStoreError("commodore_already_linked");
     },
   };
 }

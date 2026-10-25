@@ -114,7 +114,11 @@ function rememberContext(theaterId: string, commodoreId: string): void {
 }
 
 /** 이미 풀어 둔 화면 문맥의 사령관 UUID. 아직 모르면 null. */
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function ownerOfContext(theaterId: string): string | null {
+  // 사이드바 섹션은 Theater 해시 대신 사령관 UUID를 넘긴다. 그 값은 소유자 자신이라 다시 해석하지 않는다.
+  if (COMMODORE_UUID.test(theaterId)) return theaterId;
   return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.id ?? contextOwners.get(theaterId) ?? null;
 }
 
@@ -228,7 +232,9 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
   const loadRegistered = () => {
-    for (const theaterId of commodoreTheaterIds()) void resolveContext(theaterId).then((commodoreId) => { if (commodoreId) void loadCommodore(commodoreId); });
+    const owners = new Set<string>();
+    for (const theater of installed?.consoleState.getTheaters() ?? []) if (theater.commodore?.id) owners.add(theater.commodore.id);
+    for (const commodoreId of owners) void loadCommodore(commodoreId);
   };
   let registered = commodoreTheaterIds().join("\0");
   // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 등록 목록이 바뀔 때만 새로 한다.

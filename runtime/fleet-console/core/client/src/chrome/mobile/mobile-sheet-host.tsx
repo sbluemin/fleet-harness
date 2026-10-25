@@ -5,11 +5,18 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
+import { createCommodoreGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
-import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
+import { CommodoreTheaterTab } from "../../../../../features/commodore/client/commodore-theater-tab.js";
+import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
+import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
+import { commodoreAvatarKey, pickMongleBase } from "../../../../../features/workspace/shared/avatars.js";
+import { setMongleLook, useMongleLook } from "../../../../../features/workspace/client/avatar-events.js";
+import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
@@ -117,7 +124,34 @@ function RenameSheet({ state, objectiveId }: { readonly state: ConsoleState; rea
  */
 function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
+  const commodores = useCommodoreList();
+  const selected = useMobileCommodoreSelection();
   const cancel = () => popMobileSheet();
+  if (commodores.length > 0) {
+    return (
+      <MobileSheet title={t("sidebar.commodore.fallback")} onClose={cancel}>
+        {commodores.map((commodore) => {
+          const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
+          return (
+            <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
+              <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; if (home) setMobileListTheaterId(home); closeMobileSheets(); }}>
+                <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
+              </button>
+              <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>
+                <MobileIcon name="kebab" />
+              </button>
+            </div>
+          );
+        })}
+        <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
+        </button>
+        <div className="mobile-sheet-sep" role="separator" />
+        <p className="mobile-sheet-hint">{t("mobile.sheet.commodore.actionsHint")}</p>
+      </MobileSheet>
+    );
+  }
   return (
     <>
       <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
@@ -139,6 +173,102 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
         ) : null}
       </MobileSheet>
     </>
+  );
+}
+
+/** 사령관 칩 시트의 ⋯. 작전 구역은 Theater 탭만, 이름·모양은 별칭이다. 길게 누르기에 기대지 않는다. */
+function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+  const t = useT();
+  const openZone = () => {
+    setZoneCommodore(commodoreId);
+    pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={commodoreId} /></MobileSheet> });
+  };
+  const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
+  return (
+    <MobileSheet title={label} onClose={onClose}>
+      <button type="button" className="mobile-sheet-row" onClick={openZone}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
+      </button>
+      <button type="button" className="mobile-sheet-row" onClick={openAppearance}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.appearance")}</strong></span>
+      </button>
+    </MobileSheet>
+  );
+}
+
+function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+  const t = useT();
+  const locale = useConsoleLocale() === "ko" ? "ko" : "en";
+  const look = useMongleLook(commodoreAvatarKey(commodoreId));
+  const [value, setValue] = useState(alias);
+  const [base, setBase] = useState(look.base);
+  const [tone, setTone] = useState<IdentityTone | null>(look.tone);
+  const [preview, setPreview] = useState<MongleAvatarPreviewState>("idle");
+  const [saving, setSaving] = useState(false);
+  const composingRef = useRef(false);
+  const lookChanged = base !== look.base || tone !== look.tone;
+  const save = () => {
+    if (saving) return;
+    const next = commodoreAliasEditor.clamp(value).trim();
+    const saved = next.length > 0 ? next : null;
+    const nameChanged = saved !== (alias || null);
+    if (!nameChanged && !lookChanged) { onClose(); return; }
+    setSaving(true);
+    void (async () => {
+      if (nameChanged) await commodoreAliasEditor.save(commodoreId, saved);
+      if (lookChanged) {
+        const wrote = await setMongleLook(commodoreAvatarKey(commodoreId), base, tone);
+        if (!wrote) throw new Error("avatar");
+      }
+      void refreshCommodoreList();
+      closeMobileSheets();
+      showMobileToast(t(saved === null && nameChanged ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved"));
+    })().catch(() => setSaving(false));
+  };
+  return (
+    <MobileSheet title={t("sidebar.commodore.appearance")} onClose={onClose}>
+      <input
+        className="mobile-field"
+        value={value}
+        placeholder={label}
+        aria-label={t("sidebar.theater.alias.inputAria", { theater: label })}
+        onChange={(event) => setValue(composingRef.current ? event.target.value : commodoreAliasEditor.clamp(event.target.value))}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={(event) => { composingRef.current = false; setValue(commodoreAliasEditor.clamp(event.currentTarget.value)); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
+        autoFocus
+      />
+      <MongleAvatarPicker
+        role="commodore"
+        base={base}
+        tone={tone}
+        previewState={preview}
+        locale={locale}
+        dirty={value.trim() !== alias.trim() || lookChanged}
+        busy={saving}
+        labels={{
+          heading: t("sidebar.commodore.shape"),
+          reroll: t("avatar.editor.reroll"),
+          reset: t("avatar.editor.reset"),
+          preview: t("avatar.editor.preview"),
+          cancel: t("mobile.sheet.cancel"),
+          apply: t("mobile.sheet.save"),
+          toneGroup: t("avatar.editor.toneGroup"),
+          baseGroup: t("avatar.editor.baseGroup"),
+          states: { running: t("avatar.state.running"), awaiting: t("avatar.state.awaiting"), unseen: t("avatar.state.unseen"), idle: t("avatar.state.idle"), ended: t("avatar.state.ended") },
+          tones: { cerulean: t("avatar.tone.cerulean"), teal: t("avatar.tone.teal"), amber: t("avatar.tone.amber"), plum: t("avatar.tone.plum"), rose: t("avatar.tone.rose"), moss: t("avatar.tone.moss"), indigo: t("avatar.tone.indigo"), crimson: t("avatar.tone.crimson") },
+        }}
+        onBase={setBase}
+        onTone={setTone}
+        onPreviewState={setPreview}
+        onReroll={() => setBase(pickMongleBase(new Set([base])))}
+        onReset={() => { setBase(look.origin); setTone(null); }}
+        onCancel={onClose}
+        onApply={save}
+      />
+    </MobileSheet>
   );
 }
 
@@ -196,9 +326,13 @@ function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleStat
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
       </button>
       <div className="mobile-sheet-sep" role="separator" />
-      <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(theater, null)}>
+      <button type="button" className="mobile-sheet-row" onClick={() => { setZoneCommodore(theater.commodore?.id ?? null); pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileSheet title={t("theaterInbox.theaters.page")} onClose={dismiss}><CommodoreTheaterTab commodoreId={theater.commodore?.id ?? null} /></MobileSheet> }); }}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.prompt")}</strong></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.zone")}</strong></span>
+      </button>
+      <button type="button" className="mobile-sheet-row" onClick={() => { if (theater.commodore?.id) openCommodoreMobile("settings", theater.commodore.id, true); }}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.commodore.settings")}</strong></span>
       </button>
       {pluginRows.map((row) => (
         <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
@@ -236,7 +370,9 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
     const alias = next.length > 0 ? next : null;
     if (alias === (theater.commodore?.alias ?? null)) { popMobileSheet(); return; }
     setSaving(true);
-    void commodoreAliasEditor.save(theater.id, alias)
+    const commodoreId = theater.commodore?.id;
+    if (!commodoreId) return;
+    void commodoreAliasEditor.save(commodoreId, alias)
       .then(() => { closeMobileSheets(); showMobileToast(t(alias === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
       .catch(() => setSaving(false));
   };
@@ -267,19 +403,20 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
 /** 새 그룹 이름 — 데스크톱 메뉴의 「새 그룹…」과 같은 기본 이름에서 시작한다. 폰 목록은 그룹을 그리지 않으므로 토스트가 결과를 말한다. */
 function TheaterGroupSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
   const t = useT();
-  const theaterExists = state.theaters.some((item) => item.id === theaterId);
-  const groupCount = state.groups.filter((group) => group.theaterId === theaterId).length;
+  const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
+  const commodoreId = theater?.commodore?.id ?? null;
+  const groupCount = state.groups.filter((group) => group.commodoreId === commodoreId).length;
   const [value, setValue] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
   // 다른 창의 잊기로 Theater가 사라지면 시트를 걷는다 — 서버는 Theater 존재를 따지지 않아 저장하면 고아 그룹이 남는다.
-  useEffect(() => { if (!theaterExists) popMobileSheet(); }, [theaterExists]);
-  if (!theaterExists) return null;
+  useEffect(() => { if (!theater || !commodoreId) popMobileSheet(); }, [theater, commodoreId]);
+  if (!theater || !commodoreId) return null;
   const name = value.trim();
   const save = () => {
     if (name === "" || saving) return;
     setSaving(true);
-    void createTheaterGroup(theaterId, name)
+    void createCommodoreGroup(commodoreId, name)
       .then(() => { closeMobileSheets(); showMobileToast(t("mobile.toast.groupCreated", { name })); })
       .catch(() => setSaving(false));
   };
@@ -397,6 +534,10 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
+      <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
+      </button>
       <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openMobileNewSession)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>

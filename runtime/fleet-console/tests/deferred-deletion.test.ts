@@ -7,7 +7,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../features/workspace/host/deferred-deletion.js";
-import { createTheaterSystemPromptService } from "../features/settings/host/agent-options.js";
+import { createCommodoreSystemPromptService } from "../features/settings/host/agent-options.js";
 import type { AgentOptionsData } from "@fleet-console/infra";
 import { STATE_VERSION, type DurableConsoleState, type DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
@@ -52,26 +52,26 @@ describe("deferred deletion coordinator", () => {
     expect(restored).toEqual({ ok: true, kind: "theater", targetId: THEATER.id });
     expect(harness.theaters.get(THEATER.id)).toEqual(THEATER);
     expect(harness.objectiveRecords.listByTheater(THEATER.id).map((objectiveRecord) => objectiveRecord.id)).toEqual(["op-a", "op-b"]);
-    expect(harness.objectiveRecords.listGroups(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
+    expect(harness.objectiveRecords.listGroupsByTheater(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
     expect(harness.events.filter((event) => event.channel === "objective:restored")).toHaveLength(2);
   });
 
-  it("hides a forgotten Theater prompt, restores it during grace, and purges it after expiry", async () => {
+  it("purges retired Theater settings without deleting the owning Commodore settings", async () => {
     const harness = createHarness();
-    let data: AgentOptionsData = {};
-    const options = { load: () => data, update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => (data = mutate(data)) };
-    const prompts = createTheaterSystemPromptService(options, (id) => harness.theaters.get(id) !== null);
-    prompts.save(THEATER.id, { mode: "off", body: "private instructions" });
-    prompts.keepSubagents(THEATER.id, true);
+    let data: AgentOptionsData = { claudeCodeTheaterSystemPrompts: { [THEATER.id]: { mode: "off", body: "private instructions" } }, claudeCodeTheaterSubagents: { [THEATER.id]: true } };
+    const prompts = createCommodoreSystemPromptService({ load: () => data, update: (mutate) => (data = mutate(data)) }, (id) => id === "c1");
+    prompts.migrate([{ commodoreId: "c1", theaterIds: [THEATER.id] }]);
     harness.beforePurge.value = (_nodes, tombstone) => { if (tombstone.kind === "theater") prompts.purge(tombstone.targetId); };
     const deletion = harness.coordinator.deleteTheater(THEATER.id)!;
-    expect(prompts.read(THEATER.id)).toBeNull();
+    expect(prompts.read("c1")).toEqual({ mode: "off", body: "private instructions" });
     await harness.coordinator.restore(deletion.deletionId);
-    expect(prompts.read(THEATER.id)).toEqual({ mode: "off", body: "private instructions" });
     const again = harness.coordinator.deleteTheater(THEATER.id)!;
     harness.clock.value = again.expiresAt;
     harness.coordinator.sweepExpired();
-    expect(data).toEqual({});
+    expect(data.claudeCodeTheaterSystemPrompts).toBeUndefined();
+    expect(data.claudeCodeTheaterSubagents).toBeUndefined();
+    expect(prompts.subagentsKept("c1")).toBe(true);
+    expect(prompts.read("c1")).toEqual({ mode: "off", body: "private instructions" });
   });
 
   it("rolls memory back when the durable save fails", () => {
@@ -554,7 +554,7 @@ function createArchiveHarness(directory: string, crossOwner = false) {
   });
   deletion.load(state.deletionTombstones ?? []);
   const archive = createObjectiveArchiveCoordinator({ objectiveRecords, storage, snapshot,
-    theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingObjective,
+    canAccessObjective: (root) => !!theaters.get(root.theaterId), pendingDeletion: deletion.hasPendingObjective,
     stop: async (node) => { stopped.push(node.id); if (stopGate.current) await stopGate.current; }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
     readRetentionDays: () => retention.days,

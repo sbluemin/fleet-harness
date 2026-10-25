@@ -72,6 +72,11 @@ interface RailContributionBase {
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);
   readonly side?: "right";
+  /**
+   * 등록 Theater가 없어도 본문을 연다. 사령관 대화처럼 문맥이 Theater id가 아닌 패널이 등록 때 표시한다.
+   * `scope: "fleet"`(Console 전체 도구)과는 다르다 — 레일 아이콘 묶음은 바꾸지 않는다.
+   */
+  readonly opensWithoutTheater?: boolean;
 }
 
 export type RailPanelDescriptor = RailContributionBase & ({
@@ -127,6 +132,11 @@ export interface RailEntryDescriptor {
    * 구분선으로 갈라 세운다 — 순서는 범위 안에서 등록 순서 그대로다.
    */
   readonly scope?: "theater" | "fleet";
+  /**
+   * 등록 Theater가 없어도 본문을 연다. 패널 등록(`opensWithoutTheater`)이 투영 때 이 엔트리로 온다.
+   * Console 전체 도구(`scope: "fleet"`)와는 다르다.
+   */
+  readonly opensWithoutTheater?: boolean;
   /**
    * 이 엔트리가 레일 표면에 세우는 페인들의 id. 순서가 곧 왼쪽부터의 배치이며, 호스트는
    * 이 목록에서 `role: "primary"`인 것을 처음에 세우고 나머지는 `panes.open`을 기다린다.

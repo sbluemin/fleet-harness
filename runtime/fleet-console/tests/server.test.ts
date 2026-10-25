@@ -146,6 +146,7 @@ afterEach(async () => {
   delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
   delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
   delete (globalThis as { __fleetAgentCliDetector?: unknown }).__fleetAgentCliDetector;
+  delete (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory;
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
 });
@@ -158,6 +159,52 @@ describe("console terminal observability", () => {
     // Objective 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
     expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required" });
+  });
+
+  it("commences an owned-directory objective and retains its Commander and member in records without a registered Theater", async () => {
+    // 기능 하네스의 access 모형 대신 실제 서버의 복원 경계를 지난다. SDK만 무과금 스트림으로 바꾼다.
+    (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async (options: { models: readonly string[] }) => ({
+      configDir: os.tmpdir(), models: options.models, dispose: async () => {},
+      openSession: async () => {
+        const messages: unknown[] = [];
+        let wake: (() => void) | undefined;
+        let closed = false;
+        return {
+          send: () => { messages.push({ type: "result", subtype: "success", is_error: false, duration_ms: 1 }); wake?.(); },
+          interrupt: async () => {}, getContextUsage: async () => null,
+          setModel: async () => {}, applySessionSettings: async () => {},
+          close: () => { closed = true; wake?.(); },
+          async *[Symbol.asyncIterator]() {
+            while (!closed) {
+              if (messages.length) yield messages.shift();
+              else await new Promise<void>((resolve) => { wake = resolve; });
+            }
+          },
+        };
+      },
+    });
+    const fixture = await startFixture();
+    const post = async (pathname: string, body: unknown) => {
+      const response = await fetch(new URL(`api/v1/${pathname}`, fixture.endpoint), {
+        method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const value = await response.json();
+      expect(response.status, JSON.stringify(value)).toBe(200);
+      return value;
+    };
+    const { commodoreId } = await post("commodore/create", { alias: "No Theater" });
+    const { objective } = await post("objectives/objective/create", { commodoreId, title: "Owned objective" });
+    await post("objectives/plan/request", { objectiveId: objective.id });
+    await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
+    await post("objectives/commander/start", { objectiveId: objective.id });
+    const { objectiveRecords } = await (await fetch(new URL("api/v1/objectives/records", fixture.endpoint))).json();
+    const commander = objectiveRecords.find((record: { id: string }) => record.id === objective.id);
+    expect(commander).toMatchObject({ commodoreId });
+    expect(commander.sessions).toHaveLength(1);
+    const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", objective.id, "objective.json"), "utf8"));
+    expect(saved.cwd).toBe(path.join(fs.realpathSync.native(fixture.fleetDataDir), "console", "commodore", commodoreId, "objectives"));
+    expect(saved.sessions[0].cwd).toBe(saved.cwd);
+    expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json()).theaters).toEqual([]);
   });
 
   it("injects dormant durable objectives without exposing server-only provider data", () => {
@@ -839,10 +886,10 @@ describe("console static and terminal ticket boundary", () => {
     });
     expect(createdResponse.status).toBe(200);
     const created = await createdResponse.json() as { objective: { id: string; commodoreId: string; theaterId: string } };
-    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId });
+    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId: workspaceHash(fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives"))) });
     expect(created.objective).not.toHaveProperty("cwd");
     const pending = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8"));
-    expect(pending).toMatchObject({ pending: true, cwd: realpath });
+    expect(pending).toMatchObject({ pending: true, cwd: fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives")) });
     const deniedOwner = await fetch(`${origin}/api/v1/objectives/objective/create`, {
       method: "POST", headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ commodoreId: "00000000-0000-4000-8000-000000000000", theaterId, title: "Not this owner" }),
@@ -850,6 +897,39 @@ describe("console static and terminal ticket boundary", () => {
     expect(deniedOwner.status).toBe(409);
     expect(await deniedOwner.json()).toEqual({ error: "objective_owner_unavailable" });
 
+    // 사령관 생성·그룹·다중 작업 범위는 같은 서버 writer를 지나며 기존 목표 위치와 파일을 건드리지 않는다.
+    const post = async (route: string, body: unknown) => {
+      const response = await fetch(`${origin}/api/v1/${route}`, { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) });
+      expect(response.ok).toBe(true);
+      return await response.json();
+    };
+    const fresh = await post("commodore/create", { alias: "Fresh" });
+    expect(fresh.commodore.theaters).toEqual([]);
+    const freshId = fresh.commodoreId as string;
+    const group = await post("objectives/records/groups", { commodoreId: freshId, name: "Independent", color: "blue" });
+    expect(group.group.commodoreId).toBe(freshId);
+    const groups = await getJson(`${origin}/api/v1/objectives/records/groups?commodoreId=${freshId}`) as { groups: unknown[] };
+    expect(groups.groups).toEqual([group.group]);
+    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
+    const two = await post("commodore/theaters/add", { commodoreId: freshId, theaterId: workspaceHash(registered) });
+    expect(two.commodore.theaters).toHaveLength(2);
+    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
+    expect((await post("commodore/resolve", { theaterId })).commodoreIds.sort()).toEqual([ownerId, freshId].sort());
+    expect((await post("commodore/resolve", { theaterId })).commodoreId).toBeNull();
+    const record = await post("objectives/records", { commodoreId: freshId, theaterId: workspaceHash(registered), title: "General session" });
+    const recordFile = path.join(ownerRoot, freshId, "objectives", record.objectiveRecord.id, "objective.json");
+    const recordBefore = fs.readFileSync(recordFile, "utf8");
+    expect(JSON.parse(recordBefore).cwd).toBe(registered);
+    const pendingBefore = fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8");
+    await post("commodore/theaters/remove", { commodoreId: freshId, theaterId });
+    const removed = await post("commodore/theaters/remove", { commodoreId: freshId, theaterId: workspaceHash(registered) });
+    expect(removed.commodore.theaters).toEqual([]);
+    expect(fs.readFileSync(recordFile, "utf8")).toBe(recordBefore);
+    expect(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8")).toBe(pendingBefore);
+    expect(fs.existsSync(registered)).toBe(true);
+    const listing = await post("commodore/list", {});
+    expect(listing.commodores).toEqual(expect.arrayContaining([expect.objectContaining({ commodoreId: freshId, theaters: [] })]));
+    expect(JSON.stringify(listing)).not.toContain(realpath);
     expect(JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8"))).not.toHaveProperty("objectiveRecords");
   });
 

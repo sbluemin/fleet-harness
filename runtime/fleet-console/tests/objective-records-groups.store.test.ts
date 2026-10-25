@@ -26,7 +26,7 @@ describe("ObjectiveRecordsStore — 그룹 CRUD", () => {
 
     const deleted = store.deleteGroup(group.id);
     expect(deleted).toBe(true);
-    expect(store.listGroups("theater-1")).toHaveLength(0);
+    expect(store.listGroupsByTheater("theater-1")).toHaveLength(0);
     expect(store.get(op.id)?.groupId).toBeNull();
   });
 
@@ -38,7 +38,7 @@ describe("ObjectiveRecordsStore — 그룹 CRUD", () => {
     store.create({ ...BASE_OP, title: "Shell" });
 
     store.deleteByTheater("theater-1");
-    expect(store.listGroups("theater-1")).toHaveLength(0);
-    expect(store.listGroups("theater-2")).toHaveLength(1);
+    expect(store.listGroupsByTheater("theater-1")).toHaveLength(0);
+    expect(store.listGroupsByTheater("theater-2")).toHaveLength(1);
   });
 });

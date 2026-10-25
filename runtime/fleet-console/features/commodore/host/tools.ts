@@ -39,7 +39,11 @@ const defaultExecute: CommandExecute = async (file, args, options) => {
   return execute(file, [...args], { cwd: options.cwd, env, signal: options.signal, timeout: COMMAND_TIMEOUT_MS, maxBuffer: COMMAND_BUFFER, shell: false, windowsHide: true });
 };
 
+export interface CommodoreToolTheater { readonly theaterId: string; readonly label: string; readonly root: string | null }
+
 export interface CommodoreToolsOptions {
+  readonly theaters?: () => readonly CommodoreToolTheater[];
+  readonly cwd?: string;
   readonly commodoreId: string;
   /** Theater 루트의 실경로 — 읽기 도구의 담김 경계. */
   readonly theaterRoot: string;
@@ -55,6 +59,16 @@ export interface CommodoreToolsOptions {
 export function createCommodoreTools(options: CommodoreToolsOptions): readonly ConsoleMcpTool[] {
   const now = options.now ?? Date.now;
   const run = options.execute ?? defaultExecute;
+  const theaters = () => options.theaters?.() ?? [{ theaterId: "", label: "Theater", root: options.theaterRoot }];
+  const pickRoot = (id?: string): string => {
+    const rows = theaters();
+    if (!rows.length) throw new Error("no_theater");
+    if (id === undefined && rows.length > 1) throw new Error("theater_required");
+    const row = id === undefined ? rows[0] : rows.find((item) => item.theaterId === id);
+    if (!row) throw new Error("theater_unknown");
+    if (!row.root) throw new Error("theater_unavailable");
+    return row.root;
+  };
   const state = () => {
     const current = options.store.read(options.commodoreId);
     if (!current) throw new Error("theater_unavailable");
@@ -68,7 +82,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       try { return text(await body(parsed.data, context)); }
       catch (error) {
         const code = error instanceof Error ? error.message : "commodore_failed";
-        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed");
+        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", /^(theater_|no_theater)/.test(code) ? { theaters: theaters().map(({ theaterId, label, root }) => ({ theaterId, label, available: root !== null })) } : {});
       }
     },
   });
@@ -178,8 +192,8 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       options.store.memory.remove(options.commodoreId, ref);
       return { ref, deleted: true };
     }),
-    tool("read_file", "Read a UTF-8 text file of the Theater (repository) by path relative to its root, read-only. Large files are cut at 64 KiB with truncated: true. Symbolic links that leave the Theater are refused.", z.object({ path: z.string().min(1).max(1_024), offset: z.number().int().nonnegative().optional() }).strict(), async ({ path: requested, offset }) => {
-      const file = containedPath(options.theaterRoot, requested);
+    tool("read_file", "Read a UTF-8 text file of the Theater (repository) by path relative to its root, read-only. Large files are cut at 64 KiB with truncated: true. Symbolic links that leave the Theater are refused.", z.object({ theaterId: z.string().optional(), path: z.string().min(1).max(1_024), offset: z.number().int().nonnegative().optional() }).strict(), async ({ theaterId, path: requested, offset }) => {
+      const file = containedPath(pickRoot(theaterId), requested);
       const stat = await fs.promises.stat(file);
       if (!stat.isFile()) throw new Error("not_a_file");
       const start = Math.min(offset ?? 0, stat.size);
@@ -192,10 +206,11 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
         return { path: requested, size: stat.size, offset: start, text: chunk.toString("utf8"), truncated: start + bytesRead < stat.size };
       } finally { await handle.close(); }
     }),
-    tool("git_log", "Recent commits of the Theater repository, newest first: short hash, date, author and subject. Optionally limited to a path relative to the root.", z.object({ limit: z.number().int().min(1).max(MAX_LOG).optional(), path: z.string().min(1).max(1_024).optional() }).strict(), async ({ limit, path: scoped }, context) => {
-      if (scoped !== undefined) containedPath(options.theaterRoot, scoped, { mustExist: false });
+    tool("git_log", "Recent commits of the Theater repository, newest first: short hash, date, author and subject. Optionally limited to a path relative to the root.", z.object({ theaterId: z.string().optional(), limit: z.number().int().min(1).max(MAX_LOG).optional(), path: z.string().min(1).max(1_024).optional() }).strict(), async ({ theaterId, limit, path: scoped }, context) => {
+      const root = pickRoot(theaterId);
+      if (scoped !== undefined) containedPath(root, scoped, { mustExist: false });
       const args = ["log", "--no-decorate", "--date=short", "--format=%h%x1f%ad%x1f%an%x1f%s", "-n", String(limit ?? 30), ...(scoped !== undefined ? ["--", scoped] : [])];
-      const { stdout } = await run("git", args, { cwd: options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "git_failed")); });
+      const { stdout } = await run("git", args, { cwd: root, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "git_failed")); });
       const commits = stdout.split("\n").filter(Boolean).map((line) => { const [hash = "", date = "", author = "", subject = ""] = line.split("\x1f"); return { hash, date, author, subject }; });
       return { commits };
     }),
@@ -205,7 +220,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       if (source.kind !== "github-issues") return { source: sourceView(source), hint: "This source is a URL. Read it with WebFetch." };
       if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(source.locator)) throw new Error("invalid_source");
       const args = ["issue", "list", "-R", source.locator, "--state", issueState ?? "open", "--limit", String(limit ?? 30), "--json", "number,title,state,updatedAt,labels,url"];
-      const { stdout } = await run("gh", args, { cwd: options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "gh_failed")); });
+      const { stdout } = await run("gh", args, { cwd: options.cwd ?? options.theaterRoot, signal: context.signal }).catch((error: unknown) => { throw new Error(commandFailure(error, "gh_failed")); });
       const parsed = JSON.parse(stdout) as readonly { number?: number; title?: string; state?: string; updatedAt?: string; labels?: readonly { name?: string }[]; url?: string }[];
       return { source: sourceView(source), issues: parsed.map((issue) => ({ number: issue.number, title: issue.title, state: issue.state, updatedAt: issue.updatedAt, labels: (issue.labels ?? []).map((label) => label.name).filter((name): name is string => typeof name === "string"), url: issue.url })) };
     }),

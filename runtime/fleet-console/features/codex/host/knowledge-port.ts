@@ -20,13 +20,14 @@ export interface KnowledgeHost {
   /** 존재하는 사령관 id 전부. 기동 이주가 순회한다. */
   ids(): readonly string[];
   /**
-   * 사람이 지금 보는 화면 맥락(그 화면이 고른 맥락 id)의 사령관. 사령관이 아직 없으면 호스트가 발급해 연결한다.
+   * 사람이 고른 사령관 UUID를 해석한다. 옛 Theater 맥락은 사령관이 유일할 때만 받아들이며 발급하지 않는다.
    * 맥락과 사령관의 대응은 호스트만 안다 — 플러그인은 맥락 id를 해석하지 않는다.
    */
   commodoreForContext(contextId: string): KnowledgeOwnerResult;
   /**
    * 이주 전용 입력: 이 사령관에 대응하는 옛 지식 원본. 아무것도 만들지 않는다. 런타임 위치 해석에는 쓰지 않는다 —
    * 옛 원본은 사령관 이전 시절의 키로 저장되어 있어, 그 대응은 이주 한 번에만 필요하다.
+   * resuming은 검증한 기존 저널의 재개에만 사용한다. 여전히 호스트가 확인한 작업 경계 안의 원본이어야 한다.
    */
-  legacyKnowledgeSources(commodoreId: string): readonly LegacyKnowledgeSource[];
+  legacyKnowledgeSources(commodoreId: string, resuming?: boolean): readonly LegacyKnowledgeSource[];
 }

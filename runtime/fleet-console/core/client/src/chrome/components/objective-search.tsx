@@ -397,7 +397,7 @@ export function ObjectiveSearch({
         closeConversationSurface();
         // 사이드바 Theater 머리처럼 누르는 순간 기여의 첫 칸을 읽고, 없으면 폰에서도 시스템 프롬프트로 간다.
         const landing = resolveTheaterInboxLanding(registry.theaterContributions, action.theaterId);
-        openTheaterInbox({ theaterId: action.theaterId, ...(landing ?? { sectionId: "console:settings", pageId: "system-prompt" }) });
+        openTheaterInbox({ theaterId: action.theaterId, ...(landing ?? { sectionId: "console:settings", pageId: "theaters" }) });
         navigate("/objectives");
         break;
       }

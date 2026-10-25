@@ -1,4 +1,4 @@
-import { theaterAvatarKey, type MongleState } from "../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, theaterAvatarKey, type MongleState } from "../../workspace/shared/avatars.js";
 import { useMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 
@@ -16,6 +16,6 @@ export function CommodoreAvatar({ theaterId, state, size, label, decorative = fa
   readonly decorative?: boolean;
   readonly className?: string;
 }) {
-  const look = useMongleLook(theaterAvatarKey(theaterId));
+  const look = useMongleLook(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(theaterId) ? commodoreAvatarKey(theaterId) : theaterAvatarKey(theaterId));
   return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state={state} size={size} label={label} decorative={decorative} className={className} />;
 }

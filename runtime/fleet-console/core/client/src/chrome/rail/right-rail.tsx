@@ -98,7 +98,8 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchObjec
     ? null
     : (paneEntries.find((binding) => binding.entry.id === activePanelId) ?? null);
   // 빈 대화에서는 Theater 도구의 본문을 내린다. 선택한 도구 id는 보존해 다음 대화에서 같은 도구가 다시 선다.
-  const hasPanel = activeBinding !== null && (theaterId !== null || activeBinding.entry.scope === "fleet");
+  // 사령관 대화는 등록 때 opensWithoutTheater 를 표시한다. Theater가 0개여도 그 패널은 연다.
+  const hasPanel = activeBinding !== null && (theaterId !== null || standsWithoutTheater(activeBinding.entry));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   // 부유 사이드바 카드의 점유 폭 — 두 카드는 같은 층(z --z-rail)의 절대 배치라 그리드가
   // 겹침을 막아 주지 않는다. 레일 폭 상한이 이 점유를 빼지 않으면 드래그·End 키 한 번에
@@ -637,17 +638,23 @@ interface RailIconProps {
   readonly text?: boolean;
 }
 
+/** Console 전체 도구이거나, 등록 때 Theater 없이 연다고 표시한 패널. */
+function standsWithoutTheater(entry: RailEntryDescriptor): boolean {
+  return entry.scope === "fleet" || entry.opensWithoutTheater === true;
+}
+
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
+  const withoutTheater = standsWithoutTheater(entry);
   const handleClick = useCallback(() => {
     if (entry.activate) {
       // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
-      // Theater 없이 열 수 없어 조용히 둔다.
-      if (context.theaterId === null && entry.scope !== "fleet") return;
+      // Theater 없이 열 수 없어 조용히 둔다. 등록 때 표시한 패널(사령관)도 예외다.
+      if (context.theaterId === null && !withoutTheater) return;
       entry.activate(context);
       return;
     }
     toggleRailPanel(entry.id);
-  }, [context, entry]);
+  }, [context, entry, withoutTheater]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
@@ -676,7 +683,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
       aria-label={named}
-      disabled={context.theaterId === null && entry.scope !== "fleet"}
+      disabled={context.theaterId === null && !withoutTheater}
       // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.

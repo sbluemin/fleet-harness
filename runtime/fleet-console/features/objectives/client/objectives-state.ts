@@ -1,4 +1,4 @@
-import { ownerOfContext, resolveContext, subscribeCommodore } from "./board-commodore.js";
+import { commodoreIds, ownerOfContext, resolveContext, subscribeCommodore } from "./board-commodore.js";
 import type { ObjectivesClientDeps } from "./deps.js";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -289,12 +289,12 @@ function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
   describeMissingObjectiveRecords();
 }
 
-/** 모든 등록 Theater와 관측된 Objective의 Theater를 같은 조회 정책으로 읽는다. */
+/** Theater가 없거나 공유된 사령관도 UUID 목록으로 읽고, 구형 문맥·관측 기록은 보완한다. */
 function loadRegisteredTheaters(api: ClientApiCapability): void {
   for (const theater of installed?.consoleState.getTheaters() ?? []) {
     if (!ownerOfContext(theater.id)) void resolveContext(theater.id).then((id: string | null) => { if (id && installed?.api === api) void loadBoard(api, id); }).catch(() => {});
   }
-  const ids = [...new Set([...(installed?.consoleState.getTheaters() ?? []).flatMap((theater) => ownerOfContext(theater.id) ?? []), ...objectiveRecordsSnapshot.map((node) => node.commodoreId)])].filter(Boolean);
+  const ids = [...new Set([...commodoreIds(), ...(installed?.consoleState.getTheaters() ?? []).flatMap((theater) => ownerOfContext(theater.id) ?? []), ...objectiveRecordsSnapshot.map((node) => node.commodoreId)])].filter(Boolean);
   if (degraded) {
     if (Date.now() < degraded.until || inflight.size > 0) return;
     const probe = ids.find((id) => !boards.get(id)?.loaded || refreshAfterReconnect.has(id));

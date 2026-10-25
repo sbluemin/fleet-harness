@@ -16,6 +16,8 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
+import { createCommodoreFeature } from "../features/commodore/host/index.js";
+import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
@@ -55,6 +57,76 @@ const TEST_PATROL_MS = 60 * 60_000;
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
+it("persists UUID section order through the public route without rewriting entity state or no-op settings", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-order-"));
+  dirs.push(dir);
+  const paths = { dir, settingsFile: path.join(dir, "settings.json"), stateFile: path.join(dir, "state.json") };
+  let settings = createConsoleSettingsStore({ paths });
+  settings.load();
+  let body: unknown;
+  let result: { status: number; value: any };
+  let authorized = true;
+  const events: CommodoreEvent[] = [];
+  const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
+  const create = () => createCommodoreFeature({
+    paths: { fleetDataDir: dir, consoleDataDir: dir, resolveTheaterPath: () => null, workspaceHash,
+      canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
+      ensureWorkspaceDirectory: () => { throw new Error("unexpected_workspace_creation"); },
+      withDirectoryLock: (_lock, run) => run(),
+    },
+    order: { read: () => settings.load().commodoreOrder ?? [], write },
+    events: { registerSseChannel: () => () => {}, subscribe: () => () => {}, publish: (_channel, value) => { events.push(value as CommodoreEvent); } },
+    http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
+    security: { isTerminalAuthorized: () => authorized } as never,
+    agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
+    experiments: undefined, models: undefined, attachments: undefined, knowledgeTools: () => [],
+  });
+  let feature = create();
+  const route = async (name: string, input: unknown = {}) => {
+    body = input;
+    const target = feature.routes.find((candidate) => candidate.name === `commodore/${name}`)!;
+    await target.handler({ req: { method: target.method } as never, res: {} as never, pathname: `/api/v1/${target.name}` });
+    return result!;
+  };
+  try {
+    const a = (await route("create", { alias: "A" })).value.commodoreId;
+    const b = (await route("create", { alias: "B" })).value.commodoreId;
+    const c = (await route("create", { alias: "C" })).value.commodoreId;
+    const ids = async () => (await route("list")).value.commodores.map((row: { commodoreId: string }) => row.commodoreId);
+    const initial = await ids();
+    expect(initial).toEqual([a, b, c]);
+    expect(settings.load().commodoreOrder).toBeUndefined();
+    const entityFiles = [a, b, c].map((id) => path.join(dir, "commodore", id, "state.json"));
+    const before = entityFiles.map((file) => fs.readFileSync(file, "utf8"));
+    authorized = false;
+    expect((await route("order", { commodoreIds: [c] })).status).toBe(401);
+    authorized = true;
+    expect(write).not.toHaveBeenCalled();
+    expect((await route("order", { commodoreIds: [c, c, a] })).status).toBe(200);
+    expect(await ids()).toEqual([c, a, b]);
+    expect(settings.load().commodoreOrder).toEqual([c, a]);
+    expect(events.at(-1)).toMatchObject({ op: "state", change: "order" });
+    const bytes = fs.readFileSync(paths.settingsFile, "utf8");
+    const eventCount = events.length;
+    await route("order", { commodoreIds: [c, a] });
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(eventCount);
+    expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(bytes);
+    // 알 수 없는 UUID는 읽을 때 무시하되, 다음 명시 저장 전까지 원본에 남긴다.
+    const stale = "00000000-0000-4000-8000-000000000099";
+    settings.update((current) => ({ ...current, commodoreOrder: [stale, c, a] }));
+    const staleBytes = fs.readFileSync(paths.settingsFile, "utf8");
+    await feature.dispose();
+    settings = createConsoleSettingsStore({ paths });
+    feature = create();
+    expect(await ids()).toEqual([c, a, b]);
+    expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(staleBytes);
+    await route("order", { commodoreIds: [stale, c, a] });
+    expect(settings.load().commodoreOrder).toEqual([c, a]);
+    expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+  } finally { await feature.dispose(); }
+});
+
 function harness(now?: () => number, maxRetainedImageBytes?: number) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-"));
   dirs.push(dir);
@@ -90,7 +162,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
 }
 
 describe("commodore theater state", () => {
-  it("persists UUID entities with canonical single-Theater links and isolated patrol, directive and intel", async () => {
+  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated patrol, directive and intel", async () => {
     const h = harness();
     // 엔티티 저장 무결성: id는 폴더에만, 연결은 path 하나만 남기고 색인은 재구성한다.
     const root = path.join(h.objectivesDir, "entities");
@@ -107,7 +179,7 @@ describe("commodore theater state", () => {
     expect(disk).not.toHaveProperty("id");
     expect(entities.resolve(workspaceHash(canonical))).toBe(id);
     const entityEvents: CommodoreEvent[] = [];
-    const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: (event) => entityEvents.push(event) });
+    const entityStore = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit: (event) => entityEvents.push(event) });
     entityStore.setDirective(id, "Keep entity links intact.");
     // UUID 이름은 경로 연결·실행 설정과 독립적으로 보존된다.
     entityStore.setAlias(id, "Flagship");
@@ -122,7 +194,17 @@ describe("commodore theater state", () => {
     const secondTheater = path.join(h.objectivesDir, "second");
     fs.mkdirSync(secondTheater);
     const secondId = entities.create(secondTheater);
-    expect(() => entities.link(secondId, theater)).toThrow("theater_already_linked");
+    entityStore.setTheaters(secondId, [...entities.theatersOf(secondId), { path: canonical }]);
+    expect(entities.resolve(workspaceHash(canonical))).toBeNull();
+    expect(entities.resolveAll(workspaceHash(canonical))).toEqual([id, secondId].sort());
+    const emptyId = entities.create();
+    expect(entities.theatersOf(emptyId)).toEqual([]);
+    const beforeFailedWrite = fs.readFileSync(path.join(root, secondId, "state.json"), "utf8");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("write_failed"); });
+    expect(() => entityStore.setTheaters(secondId, [])).toThrow("write_failed");
+    rename.mockRestore();
+    expect(fs.readFileSync(path.join(root, secondId, "state.json"), "utf8")).toBe(beforeFailedWrite);
+    expect(entities.resolveAll(workspaceHash(canonical))).toContain(secondId);
     // 손편집 중복과 링크·손상은 원본을 건드리지 않고 경고와 함께 제외한다.
     const loser = "ffffffff-ffff-ffff-ffff-ffffffffffff";
     fs.mkdirSync(path.join(root, loser));
@@ -134,12 +216,12 @@ describe("commodore theater state", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       const restored = createCommodoreEntities(root, workspaceHash);
-      expect(restored.resolve(workspaceHash(canonical))).toBe(id);
-      expect(restored.ids()).toEqual([id]);
+      expect(restored.resolveAll(workspaceHash(canonical))).toEqual([id, loser].sort());
+      expect(restored.ids().sort()).toEqual([id, loser, emptyId].sort());
       expect(fs.readFileSync(path.join(root, loser, "state.json"), "utf8")).toBe(preserved);
       expect(warn).toHaveBeenCalled();
       fs.rmSync(theater, { recursive: true });
-      expect(createCommodoreEntities(root, workspaceHash).resolve(workspaceHash(canonical))).toBe(id);
+      expect(createCommodoreEntities(root, workspaceHash).resolveAll(workspaceHash(canonical))).toEqual([id, loser].sort());
     } finally { warn.mockRestore(); }
     const stateFile = path.join(h.objectivesDir, "state.json");
 
@@ -451,7 +533,7 @@ describe("commodore session", () => {
 
     // 세션 — 베이스 프롬프트뿐이고 지시·정보 본문은 프롬프트에도 깨움 턴에도 없다.
     const options = stub.created[0]!;
-    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation", sessionName: "commodore-fleet-harness-t1" });
+    expect(options).toMatchObject({ model: "opus[1m]", effort: "high", continuation: "conversation" });
     expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
@@ -459,7 +541,7 @@ describe("commodore session", () => {
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
-    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.$/);
+    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\]$/);
     expect(stub.sent[0]).not.toContain("newest");
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.

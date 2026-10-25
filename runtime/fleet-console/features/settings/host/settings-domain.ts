@@ -178,6 +178,8 @@ export interface ConsoleBrowserSettings {
 export interface ConsoleSettingsData {
   readonly version: 1;
   readonly general?: ConsoleGeneralSettings;
+  /** 사령관 섹션의 표시 순서. 존재 여부는 사령관 feature가 조회·저장할 때 판단한다. */
+  readonly commodoreOrder?: readonly string[];
   readonly browser?: ConsoleBrowserSettings;
   readonly execution?: Record<string, unknown>;
   /**
@@ -263,6 +265,7 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
   const scuttlebutt = document("scuttlebutt");
   const agent = sanitizeAgentOptionsData(value.agent).data;
   const browser = sanitizeConsoleBrowserSettings(value.browser);
+  const commodoreOrder = Array.isArray(value.commodoreOrder) ? value.commodoreOrder.filter((id): id is string => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) : [];
   return {
     version: SETTINGS_VERSION,
     general: general ?? {},
@@ -271,6 +274,7 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
     ...(execution ? { execution } : {}),
     ...(Object.keys(agent).length > 0 ? { agent } : {}),
     ...(browser ? { browser } : {}),
+    ...(commodoreOrder.length ? { commodoreOrder } : {}),
   };
 }
 

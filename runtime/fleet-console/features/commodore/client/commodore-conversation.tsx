@@ -16,8 +16,15 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
-import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
+import { registerConversationObjectiveTab } from "../../../core/client/src/chrome/rail/objective-tabs.js";
+import { getT as getCoreT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
+import { theaterInboxPanelTabId } from "../../workspace/client/theater-inbox/theater-inbox-panel.js";
+import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
+import { CommodoreTheaterTab } from "./commodore-theater-tab.js";
+import { setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import { contextsOf, ownerOfContext } from "./commodore-state.js";
@@ -37,10 +44,6 @@ type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
 let inbox: ClientTheaterInboxCapability | null = null;
-
-/** 호스트 「Theater 설정」 섹션의 정준 id(SDK `TheaterInboxAddress` 문서). 칸을 모르면 호스트가 시스템 프롬프트 칸으로 연다. */
-const THEATER_SETTINGS_SECTION = "console:settings";
-const THEATER_SYSTEM_PROMPT_PAGE = "system-prompt";
 
 /**
  * 설치 때 받은 능력을 쥔다. 구버전 호스트(능력 없음)면 대화 중심 화면은 없는 것으로 다룬다. Theater Inbox 는 지시 탭의
@@ -105,8 +108,10 @@ const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. Theater id는 UUID가 아니라 여기서 거절한다. */
 export function openCommodoreConversation(commodoreId: string, options: CommodoreConversationOptions = {}): boolean {
   if (!port || !port.isActive() || !COMMODORE_UUID.test(commodoreId)) return false;
+  // 등록 Theater가 있으면 그 id를 대화 파라미터에 둔다. 패널이 열리는 화면 Theater는 이 값이다.
+  // 섹션 문맥은 theater()가 사령관 UUID로 돌려 주고, Inbox도 그 UUID를 쓴다.
   const theaterId = contextsOf(commodoreId)[0];
-  const opened = port.open(COMMODORE_SURFACE_ID, { commodoreId, ...(theaterId ? { theaterId } : {}), ...options });
+  const opened = port.open(COMMODORE_SURFACE_ID, { ...options, commodoreId, ...(theaterId ? { theaterId } : {}) });
   if (!opened) return false;
   void loadCommodore(commodoreId);
   if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
@@ -121,6 +126,35 @@ export function openCommodoreConversation(commodoreId: string, options: Commodor
 export function openCommodoreLog(commodoreId: string, theaterId: string | null = null): void {
   if (openCommodoreConversation(commodoreId)) return;
   if (theaterId) inbox?.open({ theaterId, sectionId: "commodore:commodore", pageId: "log" });
+}
+
+const OPERATIONS_SECTION_ID = "console:settings";
+const OPERATIONS_PAGE_ID = "theaters";
+
+/** 선택된 사령관의 작전 구역 탭. Inbox가 닫혀 있어도 패널 1행이 [사령관 | 작전 구역] 두 칸이 되도록 항상 등록한다. */
+export function CommodoreOperationsTabHost(): null {
+  const selection = useConversationSurface();
+  const inbox = useTheaterInboxState();
+  const zone = useZoneCommodore();
+  const language = useConsoleLocale();
+  const fromSelection = selection?.surfaceId === COMMODORE_SURFACE_ID && typeof selection.params.commodoreId === "string" ? selection.params.commodoreId : null;
+  const fromInbox = inbox !== null && COMMODORE_UUID.test(inbox.theaterId) ? inbox.theaterId : null;
+  const commodoreId = fromSelection ?? (selection === null ? zone ?? fromInbox : fromInbox);
+  useEffect(() => {
+    if (!commodoreId || !COMMODORE_UUID.test(commodoreId)) return;
+    setZoneCommodore(commodoreId);
+    const title = getCoreT(language === "ko" ? "ko" : "en")("theaterInbox.settings.title");
+    return registerConversationObjectiveTab({
+      id: theaterInboxPanelTabId({ sectionId: OPERATIONS_SECTION_ID, pageId: OPERATIONS_PAGE_ID }),
+      title: (locale) => getCoreT(locale === "ko" ? "ko" : "en")("theaterInbox.theaters.page"),
+      icon: null,
+      order: 100,
+      section: { id: OPERATIONS_SECTION_ID, title, theaterId: commodoreId },
+      render: () => <CommodoreTheaterTab commodoreId={commodoreId} />,
+      opensWithoutTheater: true,
+    });
+  }, [commodoreId, language]);
+  return null;
 }
 
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
@@ -382,25 +416,20 @@ function CommodoreConversationActions({ commodoreId, language }: { readonly comm
 
 /* ── 오른쪽 패널 탭 ────────────────────────────────────────────────────── */
 
-function CommodoreConversationTab({ tab, commodoreId, theaterId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly theaterId: string | null; readonly language: "en" | "ko" }) {
+function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
-  if (tab === "goals") {
-    return (
-      <div className="objectives-commodore-conversation-tab is-goals">
-        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
-      </div>
-    );
-  }
+  // 기록은 가운데 칸이다. 목표 흔적(CommodoreTrail)은 Inbox 기록 곁과 폰 「목표」에만 남긴다.
+  if (tab === "goals") return null;
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
       {tab === "directive" ? (
         <>
-          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => { if (theaterId) inbox?.open({ theaterId, sectionId: THEATER_SETTINGS_SECTION, pageId: THEATER_SYSTEM_PROMPT_PAGE, focus: "editor-end" }); }} onFail={fail} onClear={clear} />
+          <CommodoreDirective t={t} theaterId={commodoreId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={() => presentRailPanel("commodore-settings")} onFail={fail} onClear={clear} />
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
         </>
       ) : null}
@@ -425,14 +454,14 @@ const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
 export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   id: COMMODORE_SURFACE_ID,
   title: (ctx) => {
-    const theaterId = readParams(ctx.params)?.theaterId ?? "";
-    return commodoreName(theaterId, getT(ctx.language));
+    const commodoreId = readParams(ctx.params)?.commodoreId ?? "";
+    return commodoreName(commodoreId, getT(ctx.language));
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("commodore.conversation.readOnly") : null),
   avatar: (ctx) => {
     const params = readParams(ctx.params);
-    const theaterId = params?.theaterId;
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: commodoreName(theaterId, getT(ctx.language)), state: commodoreMongleState(readCommodore(params.commodoreId).view, readTheater(params.commodoreId).objectives) } : null;
+    if (!params) return null;
+    return { key: theaterAvatarKey(params.commodoreId), role: "commodore", label: commodoreName(params.commodoreId, getT(ctx.language)), state: commodoreMongleState(readCommodore(params.commodoreId).view, readTheater(params.commodoreId).objectives) };
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);
@@ -454,10 +483,12 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     return params ? <CommodoreConversationBody commodoreId={params.commodoreId} theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
   },
+  // 등록 Theater가 0개여도 이 대화의 탭은 오른쪽 패널에 선다. 레일 범위는 Theater 그대로다.
+  opensWithoutTheater: true,
   // 이 대화는 그 Theater 의 Inbox 「사령관」 섹션을 대신한다 — 오른쪽 패널이 이 탭들을 Theater 설정 곁의 「사령관」 섹션으로 묶는다.
   theater: (ctx) => {
     const params = readParams(ctx.params);
-    return params?.theaterId ? { theaterId: params.theaterId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
+    return params ? { theaterId: params.commodoreId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
   },
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
@@ -467,7 +498,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);
-      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} theaterId={params.theaterId} language={ctx.language} /> : null;
+      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
   defaultTab: TAB_IDS.goals,

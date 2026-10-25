@@ -852,7 +852,7 @@ ts: { createdAt, updatedAt: createdAt }};
     agentOptionsService: agentOptionsStub,
     // 모델 좌표 후보는 모델 로스터(Settings › AI Gateway)다 — 운영처럼 Claude 항목이 켜진 로스터를 둔다.
     readAiGatewaySettings: () => ({ version: 1, models: [{ id: "claude--sonnet" }, { id: "claude--opus-1m" }] }),
-    ...(options.theaterPrompt ? { theaterSystemPrompts: { exists: (id: string) => id === "theater-1", read: (id: string | undefined) => id === "theater-1" ? options.theaterPrompt! : null, save: () => null, subagentsKept: () => false, keepSubagents: () => false, purge: () => {} } } : {}),
+    ...(options.theaterPrompt ? { commodoreSystemPrompts: { exists: (id: string) => id === "owner-1", read: (id: string | undefined) => id === "owner-1" ? options.theaterPrompt! : null, save: () => null, subagentsKept: () => false, keepSubagents: () => false, purge: () => {}, migrate: () => {} } } : {}),
   });
   let api = await start();
   cleanups.push(async () => {

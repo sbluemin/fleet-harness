@@ -1,3 +1,4 @@
+import { readObjectiveLaunchSource } from "../../../features/objectives/shared/records/launch-source.js";
 import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../features/objectives/shared/records/types.js";
 import type { ConsoleControlHost } from "../../../features/console-use/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
@@ -14,7 +15,7 @@ import { createWorkspaceActions } from "../../../features/workspace/host/actions
 import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../../features/workspace/host/objective-archive-storage.js";
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
-import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
+import { createAvatarRouter, createAvatarStore, migrateCommodoreAvatars } from "../../../features/workspace/host/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -76,7 +77,7 @@ import { createRemoteEndpointStore } from "../../../features/remote-access/host/
 import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/remote-access/host/remote-hosts.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
-import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
+import { createAgentOptionsService, createCommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
 import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createSettingsDocumentRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
@@ -509,6 +510,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   // 그룹 이동·삭제는 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮기거나 비운다.
   const objectiveRecords = createObjectiveRecordsStore({
+    resolveGroupCreation: (commodoreId) => {
+      const dir = ownership?.entities.dirOf(commodoreId);
+      if (!dir) throw new Error("objective_owner_unavailable");
+      if (archiveStorage.ownerRecoveryRequired(commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+      return workspaceHash(path.join(dir, "objectives"));
+    },
     resolveCreation: (input) => {
       if (!ownership) throw new Error("objective_owner_unavailable");
       if (!ownership.entities.dirOf(input.commodoreId)) throw new Error("objective_owner_unavailable");
@@ -524,7 +531,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (pending.commodoreId !== input.commodoreId || !pending.cwd) throw new Error("objective_owner_unavailable");
         return { commodoreId: pending.commodoreId, cwd: pending.cwd };
       }
-      const location = ownership.creation(input.commodoreId, input.theaterId);
+      const location = ownership.sessionCreation(input.commodoreId, input.theaterId);
       if (input.cwd !== undefined && input.cwd !== location.cwd) throw new Error("objective_location_mismatch");
       return location;
     },
@@ -574,7 +581,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
-  const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions, (id) => theaters.get(id) !== null);
+  const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptions, (id) => ownership?.entities.dirOf(id) != null);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "dark",
   });
@@ -719,7 +726,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     beforePurge: (purged, tombstone) => {
       if (!purgeCoreObjective) throw new ObjectiveArchiveError(503, "archive_recovery_required");
       for (const objectiveRecord of purged.flatMap(archiveSessionNodes)) purgeCoreObjective(objectiveRecord.id);
-      if (tombstone.kind === "theater") theaterSystemPrompts.purge(tombstone.targetId);
+      if (tombstone.kind === "theater") commodoreSystemPrompts.purge(tombstone.targetId);
     },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
     // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Objective 은 다음 재수화까지 화면에 남는다.
@@ -757,7 +764,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const objectiveRecordArchive = createObjectiveArchiveCoordinator({
     objectiveRecords, storage: archiveStorage,
     snapshot: () => snapshotDurableState(deletionCoordinator.list()),
-    theaterExists: (id) => !!theaters.get(id),
+    canAccessObjective: (root) => {
+      if (theaters.get(root.theaterId)) return true;
+      const ownerDir = ownership?.entities.dirOf(root.commodoreId);
+      if (!ownerDir || root.cwd !== path.join(ownerDir, "objectives")) return false;
+      // 미등록 문맥은 그 소유자의 실제 objectives 디렉터리만 허용한다. 링크로 다른 경계를 열지 않는다.
+      try { return fs.realpathSync.native(root.cwd) === root.cwd && fs.statSync(root.cwd).isDirectory(); }
+      catch { return false; }
+    },
     pendingDeletion: (id) => deletionCoordinator.hasPendingObjective(id),
     stop: async (objectiveRecord) => {
       if (!stopForArchive) throw new ObjectiveArchiveError(503, "archive_stop_failed");
@@ -1020,7 +1034,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveObjectivePath: (objectiveId) => {
       try {
         const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
-        const cwd = node?.cwd ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === objectiveId)?.cwd;
+        const board = node ? null : archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((entry) => entry.id === objectiveId);
+        const cwd = node?.cwd ?? board?.cwd;
+        const commodoreId = node?.commodoreId ?? board?.commodoreId;
         if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
         const within = (root: string, candidate: string): boolean => {
           const relative = path.relative(root, candidate);
@@ -1033,8 +1049,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           try { return within(fs.realpathSync.native(theater.realpath), real); }
           catch { return false; }
         });
-        return registered && fs.statSync(real).isDirectory() ? real : null;
+        const ownerDir = commodoreId ? ownership?.entities.dirOf(commodoreId) : null;
+        const roots = ownerDir ? [path.join(ownerDir, "objectives"), ...(ownership?.entities.theatersOf(commodoreId!).map((row) => row.path) ?? [])] : [];
+        const owned = roots.some((root) => {
+          if (!within(root, cwd)) return false;
+          try { const canonical = fs.realpathSync.native(root); return canonical === root && within(canonical, real); } catch { return false; }
+        });
+        return (registered || owned) && fs.statSync(real).isDirectory() ? real : null;
       } catch { return null; }
+    },
+    resolveObjectiveAdditionalDirectories: (objectiveId) => {
+      const node = objectiveRecords.get(objectiveId);
+      if (!node || !ownership) return undefined;
+      const parent = objectiveRecords.getChild(objectiveId)?.parent ?? node;
+      // 일반 세션도 보드에 투영된다. 기존 출처가 objectives인 세션만 작업 범위를 넓힌다.
+      // 출처가 없는 옛 세션은 저장 cwd만 사용하며 추측해서 권한 범위를 넓히지 않는다.
+      const sources = [readObjectiveLaunchSource(parent.launchedBy), readObjectiveLaunchSource(node.launchedBy)];
+      return sources.some((source) => source?.kind === "feature" && source.featureId === "objectives") ? ownership.additionalDirectories(parent.commodoreId) : undefined;
     },
     listTheaterIds: () => theaters.list().map((theater) => theater.id),
     canonicalizeTheaterPath: canonicalizeTheaterPathSync,
@@ -1184,7 +1215,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
       ids: () => commodore?.knowledge.ids() ?? [],
       commodoreForContext: (contextId) => commodore ? commodore.knowledge.forContext(contextId) : { ok: false, reason: "unavailable" },
-      legacyKnowledgeSources: (commodoreId) => commodore?.knowledge.legacySources(commodoreId) ?? [],
+      legacyKnowledgeSources: (commodoreId, resuming) => commodore?.knowledge.legacySources(commodoreId, resuming) ?? [],
     },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
     models: createModelRosterHost({ readSettings: gatewaySettings.read, ensureClaudeNativeModels: async () => { await ensureClaudeNativeModels?.(); } }),
@@ -2131,6 +2162,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function rehydrateDurableState(): Promise<void> {
     // 소유 색인 → 한 단계 이주 → 실행 복원. 저널 실패를 빈 Console로 숨기지 않는다.
     const state = archiveStorage.load();
+    if (ownership) {
+      const owners = ownership.entities.ids().map((commodoreId) => ({ commodoreId, theaterIds: ownership!.theaterIds(commodoreId) }));
+      commodoreSystemPrompts.migrate(owners);
+      migrateCommodoreAvatars(avatarStore, owners);
+    }
     theaters.restore(state.theaters);
     objectiveRecords.replace(state.objectiveRecords);
     objectiveRecords.replaceGroups(state.groups ?? []);
@@ -2669,7 +2705,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, theaterSystemPrompts);
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts);
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2682,6 +2718,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleUse.activate({ ...consoleActions, ...execution.actions });
       commodore = createCommodoreFeature({
         ownership,
+        order: {
+          read: () => consoleSettingsStore.load().commodoreOrder ?? [],
+          write: (commodoreIds) => { consoleSettingsStore.update((current) => {
+            const { commodoreOrder: _previous, ...rest } = current;
+            return commodoreIds.length ? { ...rest, commodoreOrder: [...commodoreIds] } : rest;
+          }); },
+        },
+        created: (id) => { commodoreSystemPrompts.save(id, null); },
+        beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
         identityChanged: (ids) => { for (const id of ids) publishTheaterLifecycle("updated", id); },
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,

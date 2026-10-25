@@ -4,7 +4,8 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "./preferences-context
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { TheaterInfo } from "../../../core/client/src/integration/types.js";
 import { useTheaterLabel } from "../../../core/client/src/hooks/use-store.js";
-import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSubagents, fetchTheaterSystemPrompt, saveTheaterSubagents, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
+import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
+import { fetchCommodoreSubagents, fetchCommodoreSystemPrompt, saveCommodoreSubagents, saveCommodoreSystemPrompt } from "./commodore-settings.js";
 
 /**
  * Theater 시스템 프롬프트의 편집 상태와 저장 — 데스크톱 Theater Inbox 칸과 폰 시트가 같은 이 controller 하나를 쓴다.
@@ -90,6 +91,11 @@ export interface TheaterPromptControllerOptions {
   readonly onMissing: (theater: PromptTheater) => void;
   /** 「초안 버리고 닫기」 — 초안을 버린 뒤 그리는 쪽이 닫는다. */
   readonly onDiscarded: () => void;
+  /**
+   * 등록 Theater 목록으로 잊힘을 보지 않는다. 사령관 설정은 id 가 Theater 가 아니라 그 목록에 없다.
+   * 그 경로에서 null 이름을 잊힘으로 보면 읽은 시스템 프롬프트가 초안에 닿기 전에 끊긴다.
+   */
+  readonly ignoreTheaterRegistry?: boolean;
 }
 
 /**
@@ -157,7 +163,7 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
     const revision = ++revisionRef.current;
     promptQueue = promptQueue.catch(() => undefined).then(async () => {
       try {
-        const saved = (await saveTheaterSystemPrompt(theaterId, value)).prompt;
+        const saved = (await saveCommodoreSystemPrompt(theaterId, value)).prompt;
         announce(theaterId, saved);
         // 앞선 정상 저장이 끝나는 사이 새 긴 초안이 생겼다면 그것까지 지우지 않는다.
         if (!keepDraft && overLimitDrafts.get(theaterId) === keptDraft) overLimitDrafts.delete(theaterId);
@@ -207,7 +213,7 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
     fetchControllerRef.current = controller;
     void promptQueue.catch(() => undefined).then(() => {
       if (controller.signal.aborted) return null;
-      return fetchTheaterSystemPrompt(next.id, controller.signal);
+      return fetchCommodoreSystemPrompt(next.id, controller.signal);
     }).then((result) => {
       if (openIdRef.current !== openId) return;
       if (!result || controller.signal.aborted) { setLoading(false); setLoadFailed(true); return; }
@@ -245,6 +251,7 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   useEffect(() => {
+    if (optionsRef.current.ignoreTheaterRegistry) return;
     if (!theater || theaterRef.current?.id !== theater.id) return;
     if (registeredLabel === null) { markForgotten(); return; }
     if (!forgottenRef.current) return;
@@ -384,7 +391,7 @@ export function TheaterSubagentsSection({ theaterId, mobile = false, titled = tr
   useEffect(() => {
     const controller = new AbortController();
     setState("loading");
-    void fetchTheaterSubagents(theaterId, controller.signal).then((result) => {
+    void fetchCommodoreSubagents(theaterId, controller.signal).then((result) => {
       setReplaced(!result.subagentsKept);
       setState("ready");
     }, () => { if (!controller.signal.aborted) setState("loadFailed"); });
@@ -396,7 +403,7 @@ export function TheaterSubagentsSection({ theaterId, mobile = false, titled = tr
     const revision = ++revisionRef.current;
     setReplaced(next);
     setState("saving");
-    void saveTheaterSubagents(theaterId, !next).then((result) => {
+    void saveCommodoreSubagents(theaterId, !next).then((result) => {
       if (revision !== revisionRef.current) return;
       setReplaced(!result.subagentsKept);
       setState("ready");

@@ -8,7 +8,7 @@ interface ObjectiveArchiveDeps {
   readonly objectiveRecords: ObjectiveRecordsStore;
   readonly storage: ObjectiveArchiveStorage;
   readonly snapshot: () => DurableConsoleState;
-  readonly theaterExists: (id: string) => boolean;
+  readonly canAccessObjective: (objective: ObjectiveRecord) => boolean;
   readonly pendingDeletion: (id: string) => boolean;
   readonly stop: (objectiveRecord: ObjectiveRecord) => Promise<void>;
   readonly use: (id: string, intent: ObjectiveAccessIntent) => Promise<void>;
@@ -124,8 +124,8 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     });
   });
   function dormant(root: ObjectiveRecord): ObjectiveRecord {
-    if (!deps.theaterExists(root.theaterId)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
-    const groups = new Set(deps.objectiveRecords.listGroups(root.theaterId).map((group) => group.id));
+    if (!deps.canAccessObjective(root)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
+    const groups = new Set(deps.objectiveRecords.listGroups(root.commodoreId).map((group) => group.id));
     return {
       ...root,
       ...(root.groupId && !groups.has(root.groupId) ? { groupId: null } : {}),
@@ -136,7 +136,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   async function accessNow(id: string, intent: ObjectiveAccessIntent): Promise<ObjectiveAccessResult> {
     const root = requireNode(id);
     refuseHeld(root.commodoreId);
-    if (!deps.theaterExists(root.theaterId)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
+    if (!deps.canAccessObjective(root)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
     const archived = deps.storage.entries().some((entry) => entry.objectiveRecord.id === root.id);
     if (archived) {
       const restored = dormant(root);

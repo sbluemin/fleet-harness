@@ -71,7 +71,7 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     expect(await createHostCapabilities().navigate.openFile(request)).toEqual({ ok: false, reason: "no_handler" });
     expect(await createHostCapabilities().navigate.openWikiEntry({ theaterId: "a", entryId: "entry" })).toEqual({ ok: false, reason: "no_handler" });
     host.consoleState.viewTheater!("a");
-    expect(readTheaterInboxState()).toMatchObject({ theaterId: "a", address: { sectionId: "console:settings", pageId: "system-prompt" } });
+    expect(readTheaterInboxState()).toMatchObject({ theaterId: "a", address: { sectionId: "console:settings", pageId: "theaters" } });
     expect(readTheaterInboxState()?.focusRequest).not.toBeNull();
 
     // 데스크톱 착지 검사만으로는 폰 화면이 주소로 primary 를 다시 열 때 요청을 잃는 결함을 잡지 못한다.

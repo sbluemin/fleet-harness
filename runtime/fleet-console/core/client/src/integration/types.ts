@@ -20,6 +20,8 @@ export type ThemeId = "dark" | "light";
  */
 export interface LaunchRequest {
   readonly theaterId: string;
+  /** 사이드바 섹션이 지정한 사령관. 같은 Theater 를 여러 사령관이 가져도 이 섹션으로 만든다. */
+  readonly commodoreId?: string;
   readonly pluginId: string | null;
   readonly kind: ObjectiveLaunchKind;
   readonly variant: Readonly<Record<string, string>>;
@@ -35,6 +37,10 @@ export interface LaunchRequest {
 export interface NewSessionTarget {
   /** 처음 고른 Theater. 등록된 Theater 가 없으면 null — 화면이 「Theater 추가…」를 먼저 세운다. */
   readonly theaterId: string | null;
+  /** 컴포저를 연 섹션의 사령관. 팔레트·단축키는 고른 사령관, 없으면 목록 첫 사령관을 싣는다. */
+  readonly commodoreId?: string;
+  /** 섹션 「+」가 소유를 고정했다. 팔레트·단축키로 연 값은 실행 때 다시 고른다. */
+  readonly commodoreFromSection?: boolean;
 }
 
 /**

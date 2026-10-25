@@ -56,6 +56,7 @@ export function isCommodoreWaiting(objective: Objective): boolean {
 
 
 let host: CommodoreClientHost | undefined;
+export const commodoreIds = () => host?.ids() ?? [];
 export const ownerOfContext = (theaterId: string | null) => theaterId ? host?.ownerOfContext(theaterId) ?? null : null;
 export const resolveContext = (theaterId: string) => host?.resolveContext(theaterId) ?? Promise.resolve(null);
 let revision = 0;

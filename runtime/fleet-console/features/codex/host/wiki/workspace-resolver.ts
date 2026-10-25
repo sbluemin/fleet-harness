@@ -100,7 +100,7 @@ function createResolver(deps: WikiWorkspaceResolverDependencies, hooks?: WikiWor
     let journal = readJournal(journalPath);
     const rootState = inspectTree(root, true);
     if (rootState === "unsafe") throw new WikiMigrationError("unsafe_destination");
-    const sources = knowledge.legacyKnowledgeSources(owner);
+    const sources = knowledge.legacyKnowledgeSources(owner, journal !== null);
 
     if (journal) {
       // 저널이 가리키는 원본이 남아 있으면, 그 경로는 지금도 호스트가 이 사령관의 원본이라고 말하는 경로여야 한다 — 저널만으로

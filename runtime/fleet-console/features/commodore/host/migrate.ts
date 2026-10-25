@@ -15,7 +15,7 @@ const markerSchema = z.object({
   startedAt: z.number().int().nonnegative(),
 }).strict();
 type Marker = z.output<typeof markerSchema>;
-interface Target { readonly id: string; readonly dir: string; readonly theater: string; readonly marker: Marker | null }
+interface Target { readonly id: string; readonly dir: string; readonly theaters: readonly string[]; readonly marker: Marker | null }
 
 export interface CommodoreMigrationResult {
   readonly moved: number;
@@ -104,7 +104,7 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
         try { parsed = JSON.parse(raw); } catch { /* 아래에서 원문을 보존한다. */ }
         const current = commodoreEntitySchema.safeParse(parsed);
         if (current.success) {
-          if (current.data.theaters[0]!.path !== marker.path) throw new Error("target_theater_conflict");
+          if (!current.data.theaters.some((row) => row.path === marker.path)) throw new Error("target_theater_conflict");
           if (stat(path.join(dir, MARKER))) fs.unlinkSync(path.join(dir, MARKER));
           return;
         }
@@ -141,9 +141,11 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
     const blockedIds = new Set<string>();
     const index = (target: Target) => {
       targets.set(target.id, target);
-      const ids = byTheater.get(target.theater) ?? new Set<string>();
-      ids.add(target.id);
-      byTheater.set(target.theater, ids);
+      for (const theater of target.theaters) {
+        const ids = byTheater.get(theater) ?? new Set<string>();
+        ids.add(target.id);
+        byTheater.set(theater, ids);
+      }
     };
     for (const entry of fs.readdirSync(entitiesRoot, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const dir = path.join(entitiesRoot, entry.name);
@@ -157,27 +159,27 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
       try {
         directory(dir);
         const marker = markerAt(dir);
+        let theaters: readonly string[];
         if (marker) {
           theater = marker.path;
+          theaters = [theater];
           if (marker.commodoreId !== entry.name) throw new Error("marker_id_mismatch");
         } else {
           const state = commodoreEntitySchema.parse(JSON.parse(read(path.join(dir, "state.json"))));
-          theater = canonical(state.theaters[0]!.path);
-          if (theater !== state.theaters[0]!.path) throw new Error("noncanonical_target_path");
+          theaters = state.theaters.map((row) => {
+            const normalized = canonical(row.path);
+            if (normalized !== row.path) throw new Error("noncanonical_target_path");
+            return normalized;
+          });
         }
-        index({ id: entry.name, dir, theater, marker });
+        index({ id: entry.name, dir, theaters, marker });
       } catch { blockedIds.add(entry.name); problem(entry.name, "target_unresolved", theater); }
     }
-    // 다른 UUID가 같은 Theater를 이미 소유하면 미완성 대상도 자동 병합·수정하지 않는다.
+    // 현재 작업 범위의 중복은 정상이다. marker의 UUID만 이주 대상의 정체성이다.
     for (const target of targets.values()) {
-      if (byTheater.get(target.theater)!.size > 1) {
-        blockedIds.add(target.id);
-        problem(target.id, "theater_conflict", target.theater);
-        continue;
-      }
       if (!target.marker) continue;
       try { finish(target.dir, target.marker); resumed += 1; }
-      catch { blockedIds.add(target.id); problem(target.id, "target_completion_failed", target.theater); }
+      catch { blockedIds.add(target.id); problem(target.id, "target_completion_failed", target.marker.path); }
     }
 
     const workspaces = path.join(root, "workspaces");
@@ -200,14 +202,14 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
           let marker = markerAt(source);
           if (marker && marker.path !== theater) throw new Error("source_marker_path_mismatch");
           const owners = byTheater.get(theater);
-          if (owners?.size && (!marker || [...owners].some((id) => id !== marker!.commodoreId))) {
+          if (owners?.size && !marker) {
             problem(entry.name, "theater_conflict", theater);
             continue;
           }
           marker ??= { commodoreId: randomUUID(), path: theater, startedAt: Date.now() };
           const target = path.join(entitiesRoot, marker.commodoreId);
           if (stat(target)) {
-            if (blockedIds.has(marker.commodoreId) || targets.get(marker.commodoreId)?.theater !== theater) throw new Error("target_unresolved");
+            if (blockedIds.has(marker.commodoreId) || !targets.get(marker.commodoreId)?.theaters.includes(theater)) throw new Error("target_unresolved");
             finish(target, marker);
             verifyCommittedCopy(source, target);
             fs.rmSync(source, { recursive: true, force: true });
@@ -234,7 +236,7 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
             }
           }
           // rename이 커밋점이다. 이후 실패하면 대상의 marker로 완성만 재개한다.
-          index({ id: marker.commodoreId, dir: target, theater, marker: null });
+          index({ id: marker.commodoreId, dir: target, theaters: [theater], marker: null });
           finish(target, marker);
           if (copied) { verifyCommittedCopy(source, target); fs.rmSync(source, { recursive: true, force: true }); }
           moved += 1;

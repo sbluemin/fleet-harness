@@ -26,16 +26,17 @@ async function fixture() {
   const destination = path.join(owner, "knowledge");
   const source = path.join(workspace, "knowledge");
   const warn = vi.fn<(message: string) => void>();
+  let shared = false;
   const knowledge = {
     root: (id: string) => (id === OWNER ? destination : null),
     ids: () => [OWNER],
     // 호스트(knowledge-sources.ts)처럼 지금 존재하는 원본만 돌려준다 — 옮겨진 뒤의 원본은 목록에서 사라진다.
-    legacyKnowledgeSources: () => (fs.existsSync(source) ? [{ path: source, label: "theater" }] : []),
+    legacyKnowledgeSources: (_id: string, resuming = false) => ((!shared || resuming) && fs.existsSync(source) ? [{ path: source, label: "theater" }] : []),
   };
   const resolver = (hooks?: Hooks) => hooks
     ? createWikiWorkspaceResolverForTest({ knowledge, warn }, hooks)
     : createWikiWorkspaceResolver({ knowledge, warn });
-  return { owner, workspace, destination, source, warn, resolver };
+  return { owner, workspace, destination, source, warn, resolver, share: () => { shared = true; } };
 }
 
 /** 옛 위키 하나 — 항목·원문·스키마·기록·폐지된 대기열·감사 로그와 트리 안 파일 링크까지. */
@@ -121,6 +122,7 @@ describe("createWikiWorkspaceResolver", () => {
       const rename = planted.rename ?? (exdev ? exdevOnce(interrupted.source) : undefined);
       expect(() => interrupted.resolver({ ...planted, ...(rename ? { rename } : {}) }).resolve(OWNER), name).toThrow(/crash/);
       expect(fs.existsSync(path.join(interrupted.owner, "knowledge.migration.json")), name).toBe(true);
+      if (name === "after journal") interrupted.share();
       interrupted.resolver(exdev ? { rename: exdevOnce(interrupted.source) } : undefined).migrateAll();
       expect(interrupted.warn, name).not.toHaveBeenCalled();
       expect(tree(interrupted.destination), name).toEqual(original);

@@ -11,6 +11,8 @@ import type { ConsoleTheme } from "../../settings/shared/theme.js";
 import type { ClientMobileObjectiveCapability } from "../../workspace/shared/mobile.js";
 export interface LaunchContext {
   readonly theaterId: string;
+  /** 섹션에서 연 세션은 그 사령관의 UUID. 없으면 Theater 에서 소유자를 해석한다. */
+  readonly commodoreId?: string;
   readonly kind: ObjectiveLaunchKind;
   readonly geometry: ObjectiveGeometry;
   readonly objectiveRecords: ClientObjectiveRecordsCapability;

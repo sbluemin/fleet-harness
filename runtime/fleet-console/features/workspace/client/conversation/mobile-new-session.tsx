@@ -18,7 +18,7 @@ import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execut
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
-import { resolveNewSessionTheaterId } from "./new-session-entry.js";
+import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
 import { useMentionSources } from "./new-session-mention-sources.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
@@ -300,7 +300,8 @@ export function MobileNewSession() {
     if (launched.length > 0) variant.attachments = launched.map((attachment) => attachment.id).join(",");
     writeNewSessionTheater(theaterId);
     writeNewSessionModelEffort(model, effort);
-    requestLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant, ...(launched.length > 0 ? { attachments: launched } : {}) });
+    const commodoreId = resolveNewSessionCommodoreId();
+    requestLaunch({ theaterId, ...(commodoreId ? { commodoreId } : {}), pluginId: target.pluginId, kind: target.kind, variant, ...(launched.length > 0 ? { attachments: launched } : {}) });
     navigate("/objectives");
     finishSubmission();
   };

@@ -26,7 +26,7 @@ export interface ObjectiveGroupCreateInput {
   readonly name: string;
   readonly color: string;
   readonly order?: number;
-  readonly theaterId: string;
+  readonly theaterId?: string;
 }
 
 export interface ObjectiveGroupPatchInput {
@@ -74,7 +74,8 @@ export interface ObjectiveRecordsStore {
   createGroup(input: ObjectiveGroupCreateInput): ObjectiveGroup;
   updateGroup(id: string, input: ObjectiveGroupPatchInput): ObjectiveGroup | null;
   deleteGroup(id: string): boolean;
-  listGroups(theaterId: string): readonly ObjectiveGroup[];
+  listGroups(commodoreId: string): readonly ObjectiveGroup[];
+  listGroupsByTheater(theaterId: string): readonly ObjectiveGroup[];
   listAllGroups(): readonly ObjectiveGroup[];
   deleteGroupsByTheater(theaterId: string): number;
   replaceGroups(groups: readonly ObjectiveGroup[]): void;
@@ -157,6 +158,7 @@ import crypto from "node:crypto";
 
 export interface ObjectiveRecordsStoreDeps {
   readonly now?: () => number;
+  readonly resolveGroupCreation?: (commodoreId: string) => string;
   readonly resolveCreation?: (input: ObjectiveRecordCreateInput) => { readonly commodoreId: string; readonly cwd: string };
   readonly isReserved?: (id: string) => boolean;
   readonly assertRelationMutable?: (id: string) => void;
@@ -285,14 +287,16 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function reorder(theaterId: string, orderedIds: readonly string[]): readonly ObjectiveRecord[] {
+    const inSection = (node: ObjectiveRecord) => node.commodoreId === theaterId || node.theaterId === theaterId;
     const positions = new Map<string, number>();
     for (const id of orderedIds) {
-      if (positions.has(id) || nodes.get(id)?.theaterId !== theaterId) continue;
+      const node = nodes.get(id);
+      if (positions.has(id) || !node || !inSection(node)) continue;
       positions.set(id, positions.size);
     }
     const changed: ObjectiveRecord[] = [];
     for (const [id, node] of nodes) {
-      if (node.theaterId !== theaterId) continue;
+      if (!inSection(node)) continue;
       const order = positions.get(id);
       if (node.order === order) continue;
       const updated = { ...node, order };
@@ -337,14 +341,14 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function createGroup(input: ObjectiveGroupCreateInput): ObjectiveGroup {
-    deps.resolveCreation?.({ commodoreId: input.commodoreId, theaterId: input.theaterId, title: input.name });
+    const theaterId = deps.resolveGroupCreation?.(input.commodoreId) ?? input.theaterId ?? `commodore:${input.commodoreId}`;
     const id = input.id ?? crypto.randomUUID();
     if (groups.has(id)) throw new Error("group_exists");
     const order = input.order ?? groups.size;
     const group: ObjectiveGroup = {
       id,
       commodoreId: input.commodoreId,
-      theaterId: input.theaterId,
+      theaterId,
       name: input.name.trim().slice(0, MAX_GROUP_NAME_LENGTH) || "Group",
       color: input.color,
       order,
@@ -383,10 +387,14 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     return true;
   }
 
-  function listGroups(theaterId: string): readonly ObjectiveGroup[] {
+  function listGroupsByTheater(theaterId: string): readonly ObjectiveGroup[] {
     return Array.from(groups.values())
       .filter((g) => g.theaterId === theaterId)
       .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  }
+
+  function listGroups(commodoreId: string): readonly ObjectiveGroup[] {
+    return listAllGroups().filter((group) => group.commodoreId === commodoreId);
   }
 
   function listAllGroups(): readonly ObjectiveGroup[] {
@@ -410,7 +418,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     }
   }
 
-  return { list, listByTheater, get, getChild, listChildren, createChild, deleteChild, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
+  return { list, listByTheater, get, getChild, listChildren, createChild, deleteChild, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listGroupsByTheater, listAllGroups, deleteGroupsByTheater, replaceGroups };
 }
 
 function normalizeCreateInput(input: ObjectiveRecordCreateInput, id: string, timestamp: number): ObjectiveRecord {
@@ -706,7 +714,8 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
     // objectiveRecords 컬렉션(handleCollection)과 동일한 계약: theaterId가 있으면 Theater별, 없으면 전체.
     // 클라이언트는 모든 Theater의 그룹을 표시하므로 null 호출도 전체 목록을 반환해야 한다.
     const theaterId = readRequestUrl(req).searchParams.get("theaterId");
-    const groups = theaterId ? deps.store.listGroups(theaterId) : deps.store.listAllGroups();
+    const commodoreId = readRequestUrl(req).searchParams.get("commodoreId");
+    const groups = commodoreId ? deps.store.listGroups(commodoreId) : theaterId ? deps.store.listGroupsByTheater(theaterId) : deps.store.listAllGroups();
     deps.writeJson(res, 200, { groups });
     return;
   }
@@ -719,7 +728,7 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
     return;
   }
   const body = await deps.readJsonBody<CreateGroupBody>(req);
-  if (!body || typeof body.commodoreId !== "string" || typeof body.theaterId !== "string" || typeof body.name !== "string") {
+  if (!body || typeof body.commodoreId !== "string" || typeof body.name !== "string") {
     deps.writeJson(res, 400, { error: "invalid_group" });
     return;
   }
@@ -730,7 +739,7 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
   try {
     const group = deps.store.createGroup({
       commodoreId: body.commodoreId as string,
-      theaterId: body.theaterId,
+      ...(typeof body.theaterId === "string" ? { theaterId: body.theaterId } : {}),
       name: body.name,
       color: body.color,
       ...(typeof body.order === "number" ? { order: body.order } : {}),

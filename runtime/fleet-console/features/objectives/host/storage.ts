@@ -273,7 +273,7 @@ export function createObjectiveStorage(deps: {
         scope.documents.set(doc.id, doc);
         // 이번 기동이 충돌로 숨긴 id는 파일이 읽혀도 유지한다. 예전 읽기 실패만 풀어 준다.
         dropReadHold(scope, entry.name, !heldThisBoot.has(entry.name));
-        if (JSON.stringify(raw).includes("\"ownerOperationId\"")) writeJson(file, doc);
+        if (!scope.journalDeferred && !isDeepStrictEqual(raw, doc)) writeJson(file, doc);
       } catch (error) {
         if (!(error instanceof SyntaxError) && !(error instanceof ObjectiveArchiveError) && !(error instanceof Error && /^(objective_actor|objective_owner|objective_location|invalid_objective)/.test(error.message))) throw error;
         // 읽기 실패는 이 기동에서만 숨긴다. 디스크 unavailable로 남기면 고친 파일도 다음 기동에 안 읽힌다.
@@ -519,6 +519,11 @@ export function createObjectiveStorage(deps: {
     purgeDocuments(scope, purgeIds.filter((id) => !purgeConflict.has(id)));
     for (const id of purgeIds) if (!purgeConflict.has(id)) scope.documents.delete(id);
     readDocuments(scope, persistentHolds(scope));
+    if (!scope.journalDeferred && owner.legacyTheaterId) {
+      const normalizedGroups = scope.groups.map((group) => group.theaterId === undefined ? { ...group, theaterId: owner.legacyTheaterId } : group);
+      if (!isDeepStrictEqual(normalizedGroups, scope.groups)) { writeJson(groupsFile, { groups: normalizedGroups }); scope.groups = normalizedGroups; }
+      scope.archive = { ...scope.archive, deletions: scope.archive.deletions.map((row) => row.groups ? { ...row, groups: row.groups.map((group) => group.theaterId === undefined ? { ...group, theaterId: owner.legacyTheaterId } : group) } : row) };
+    }
     for (const id of [...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds)]) {
       if (!scope.documents.has(id) && !scope.unreadable.has(id)) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], id])] };
     }
@@ -635,7 +640,8 @@ export function createObjectiveStorage(deps: {
     return [owner.legacyTheaterId, ...(owner.legacyTheaterIds ?? [])];
   }
   function ownerOfTheater(theaterId: string): string | undefined {
-    return deps.owners().find((owner) => ownerTheaterIds(owner).includes(theaterId))?.commodoreId;
+    const owners = deps.owners().filter((owner) => ownerTheaterIds(owner).includes(theaterId));
+    return owners.length === 1 ? owners[0]!.commodoreId : undefined;
   }
   function heldTheaters(): Set<string> {
     const held = new Set(deps.owners().filter((owner) => unavailableOwners.has(owner.commodoreId)).flatMap((owner) => ownerTheaterIds(owner)));
@@ -847,5 +853,9 @@ export function createObjectiveStorage(deps: {
   function ownerRecoveryRequired(commodoreId: string): boolean {
     try { return held(scopeOf(commodoreId)); } catch { return false; }
   }
-  return { load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
+  function assertTheatersMutable(commodoreId: string): void {
+    const scope = scopeOf(commodoreId);
+    if (held(scope) || scope.unreadable.size) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+  }
+  return { load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, assertTheatersMutable, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
 }

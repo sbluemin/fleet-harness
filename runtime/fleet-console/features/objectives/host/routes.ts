@@ -115,7 +115,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     return true;
   };
 
-  const groupsOf = (theaterId: string) => ctx.objectiveRecords.groups?.list(theaterId) ?? [];
+  const groupsOf = (commodoreId: string) => ctx.objectiveRecords.groups?.list(commodoreId) ?? [];
   const objective = (value: Objective) => ({ objective: value });
   const syncSidebarOrder = async (moved: Objective) => {
     const reorder = ctx.objectiveRecords.reorder;

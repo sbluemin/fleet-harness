@@ -14,7 +14,7 @@ import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, pre
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
-import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
+import type { CommodoreSystemPromptService } from "../../../settings/host/agent-options.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
@@ -51,7 +51,7 @@ export interface TerminalLaunchResolverDeps {
   /** launch 프롬프트 파일의 자리(이 Console의 lock 도메인). 생략하면 OS temp에 바로 만든다. */
   readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
-  readonly theaterSystemPrompts?: TheaterSystemPromptService;
+  readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -172,6 +172,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     const testLaunch = (globalThis as { __fleetTerminalLaunch?: TerminalLaunchResolver }).__fleetTerminalLaunch;
     if (testLaunch) return testLaunch(cwd, context);
     let launchEnv = buildLaunchEnv(env, cwd, context?.sessionId, context?.colorScheme);
+    if (context?.additionalDirectories !== undefined) launchEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD = "1";
     if (deps.readAgentCliPaths) {
       launchEnv = applyAgentCliPathEnvOverlay(launchEnv, context?.cliId, await deps.readAgentCliPaths());
     }
@@ -180,7 +181,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
     // 계약을 알 수 없어 사용자 텍스트를 뒤에 붙일 수 없기 때문이다. 조용히 버리면 Objective은
     // 열렸는데 아무 지시도 받지 못한 세션이 남으므로, 프롬프트를 들고 온 런치는 아예 거부한다.
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
-    if (override && context?.prompt) {
+    if (override && (context?.prompt || context?.additionalDirectories !== undefined)) {
       throw new LaunchPromptError(
         "prompt_unsupported_launch",
         "FLEET_TERMINAL_CMD replaces the Agent CLI launch, so a launch prompt cannot be delivered in this configuration.",
@@ -208,8 +209,10 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       plugin: deps.plugin,
       ...(deps.promptDirectories ? { promptDirectories: deps.promptDirectories } : {}),
       infraServices,
-      ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
+      ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
       theaterId: context?.theaterId,
+      commodoreId: context?.commodoreId,
+      additionalDirectories: context?.additionalDirectories,
       createSessionCaptureHookExec,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
@@ -242,6 +245,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly cwd: string;
   readonly theaterId?: string;
+  readonly commodoreId?: string;
+  readonly additionalDirectories?: readonly string[];
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly prompt?: string;
@@ -249,7 +254,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly plugin: AgentCliPlugin;
   readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
-  readonly theaterSystemPrompts?: TheaterSystemPromptService;
+  readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (objectiveId: string, providerSessionId: string) => WorkspaceHookBinding;
@@ -335,14 +340,15 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    const theaterPrompt = options.theaterSystemPrompts?.read(options.theaterId);
+    const theaterPrompt = options.commodoreSystemPrompts?.read(options.commodoreId);
     const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
+      ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       ...(options.promptDirectories ? { promptDirectories: options.promptDirectories } : {}),
-      // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
+      // 사령관 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),

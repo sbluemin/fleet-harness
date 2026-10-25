@@ -598,3 +598,17 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
 .objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
+
+.commodore-create-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
+.commodore-create { width: min(420px, 100%); max-height: min(720px, 100%); overflow: auto; padding: 16px; color: var(--text-primary); background: var(--popover-face); border: 1px solid var(--popover-rim); border-radius: var(--radius-lg); }
+.commodore-create-name { display: grid; gap: 6px; margin: 12px 0; }
+.commodore-create-name input, .commodore-theaters-search, .commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
+.commodore-theaters { display: grid; gap: 12px; padding: 12px 16px 20px; }
+.commodore-theaters-applies, .commodore-theaters-empty, .commodore-theaters-missing { color: var(--text-secondary); }
+.commodore-theaters-list, .commodore-theaters-sheet ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.commodore-theaters-list li, .commodore-theaters-sheet li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.commodore-theaters-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-theaters-list li.is-missing .commodore-theaters-name { color: var(--text-tertiary); }
+.commodore-theaters-remove, .commodore-theaters-folder, .commodore-theaters-forget, .commodore-theaters-more, .commodore-theaters-candidate { color: var(--text-primary); background: transparent; border: 0; }
+.commodore-theaters-candidate { display: flex; flex: 1; justify-content: space-between; min-width: 0; text-align: start; }
+.commodore-prompt-body { min-height: 120px; margin-top: 8px; }

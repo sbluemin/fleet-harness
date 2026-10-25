@@ -11,7 +11,7 @@ import type { AgentOptionsData } from "@fleet-console/infra";
 
 import { renderConsoleAgentCliPlugin } from "../features/execution/host/agent/host-hooks.js";
 import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../features/execution/host/agent/launch.js";
-import { createTheaterSystemPromptService } from "../features/settings/host/agent-options.js";
+import { createCommodoreSystemPromptService } from "../features/settings/host/agent-options.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../features/execution/host/terminal/pty.js";
 import type { TerminalLaunchSpec } from "../features/execution/host/terminal/terminal-types.js";
 
@@ -87,11 +87,11 @@ describe("createDefaultTerminalLaunchResolver", () => {
       return { ...profile, args: [...profile.args, "--fleet"] };
     });
     const agentOptions = createFakeInfraServices();
-    const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions.agentOptionsService, (id) => id === "theater-a");
-    theaterSystemPrompts.save("theater-a", { mode: "append", body: "Theater rules" });
+    const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptions.agentOptionsService, (id) => id === "theater-a");
+    commodoreSystemPrompts.save("theater-a", { mode: "append", body: "Theater rules" });
     const resolve = createDefaultTerminalLaunchResolver({
       dataDir: launchDataDir,
-      theaterSystemPrompts,
+      commodoreSystemPrompts,
       plugin: launchPluginStub,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -101,7 +101,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    const spec = await resolve("/work/project", { sessionId: "session-a", theaterId: "theater-a" });
+    const spec = await resolve("/work/project", { sessionId: "session-a", commodoreId: "theater-a", additionalDirectories: ["/work/a", "/work/b"] });
 
     expect(spec).toMatchObject<TerminalLaunchSpec>({
       bin: "/bin/claude",
@@ -109,6 +109,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       cwd: "/work/project",
       env: expect.objectContaining({
         FLEET_CONSOLE_SESSION_ID: "session-a",
+        CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
         INIT_CWD: "/work/project",
         PWD: "/work/project",
         COLORTERM: "truecolor",
@@ -118,7 +119,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       terminalName: "xterm-256color",
     });
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
-    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "append", claudeCodeCustomSystemPrompt: "Theater rules" }));
+    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "append", claudeCodeCustomSystemPrompt: "Theater rules", additionalDirectories: ["/work/a", "/work/b"] }));
     await resolve("/work/project", { sessionId: "session-b" });
     expect(injectProfile.mock.calls[1]?.[1]).not.toHaveProperty("claudeCodeSystemPrompt");
     expect(events).toEqual([]);

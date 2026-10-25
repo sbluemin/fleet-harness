@@ -87,6 +87,7 @@ export type ClaudeSessionCoordinate =
   | { readonly kind: "external"; readonly sessionId: string };
 
 export interface AgentCliInjectionContext {
+  readonly additionalDirectories?: readonly string[];
   readonly cliId: AgentCliId;
   /**
    * Claude Code `--settings`의 `skillOverrides` 맵. 세션이 싣지 않을 내장 스킬을

@@ -73,6 +73,11 @@ export interface ConversationSurfaceDescriptor {
    */
   readonly theater?: (ctx: ConversationSurfaceContext) => { readonly theaterId: string; readonly inboxSection: string } | null;
   /**
+   * 이 대화의 오른쪽 패널 탭은 등록 Theater가 없어도 연다. 문맥이 Theater id가 아닌 대화(사령관)가 등록 때 표시한다.
+   * 레일 범위(`fleet`)로 묶지 않는다.
+   */
+  readonly opensWithoutTheater?: boolean;
+  /**
    * 이 대화가 아직 서지 않은 Objective 대화를 대신하면 그 Objective id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
    * 오른쪽 패널이 Objective 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
    * 묶음 대화(`ObjectiveCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.

@@ -41,6 +41,8 @@ export interface ObjectiveCluster {
   /** 플러그인 안에서 유일한 id. 호스트가 `<pluginId>:` 를 앞에 붙인다. */
   readonly id: string;
   readonly theaterId: string;
+  /** 실행 기록이 아직 없는 목표도 UUID 소유자의 섹션에 선다. */
+  readonly commodoreId?: string;
   /** 묶음의 제목(목표 제목) — 툴팁에 선다. */
   readonly title: string;
   /**

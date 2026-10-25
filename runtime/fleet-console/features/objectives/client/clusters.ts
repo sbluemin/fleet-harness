@@ -302,7 +302,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
-      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarObjectiveId: commander }), members: [], conversation, open: openDetail, row });
+      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarObjectiveId: commander }), members: [], conversation, open: openDetail, row });
       continue;
     }
     // 구성원 Objective → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
@@ -364,7 +364,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId, objective.id);
     };
-    out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
+    out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
   // 사령관의 질문 — 목표 묶음이 아닌 줄로 「내 결정」에 선다(물은 시각순). 누르면 질문 카드가 선 사령관 기록이 열린다.
   for (const theaterId of openAskTheaters()) {
@@ -373,7 +373,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     for (const ask of openAsks(ownerOfContext(theaterId))) {
       const objectiveTitle = ask.objectiveId ? askObjectiveTitle(board, served, ask.objectiveId) : null;
       out.push({
-        id: `commodore-ask:${ask.id}`, theaterId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(ownerOfContext(theaterId) ?? ""),
+        id: `commodore-ask:${ask.id}`, theaterId, commodoreId: ownerOfContext(theaterId) ?? undefined, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(ownerOfContext(theaterId) ?? ""),
         row: {
           groupId: null, order: -1, fold: [], commodore: true, decisionRequestedAt: ask.at, decisionQuestions: ask.questions.length,
           decisionNote: (locale) => { const t = getT(locale); return objectiveTitle ? `${t("objectives.ask.title")} · ${objectiveTitle}` : t("objectives.ask.title"); },
@@ -402,7 +402,7 @@ const boardSignature = (board: GroupBoardActions | undefined) => (board ? [
   board.note ? [resolveText(board.note.text), board.note.reveal ? resolveText(board.note.reveal.label) : ""] : null, board.hint ? resolveText(board.hint) : "",
   board.commanderOnly === true, board.actionsOnly === true,
 ] : null);
-const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.commodoreId ?? null, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Objective 은
@@ -428,7 +428,7 @@ function doneStandInCluster(objective: Objective, roster: ModelRoster | null, bo
   const open = () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); };
   const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, open, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
     { state: () => "closed", roster }, boardOf(objective.commodoreId).active);
-  return { id: objective.id, theaterId: objective.theaterId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
+  return { id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
 }
 
 export const objectivesClusterSource: ObjectiveClusterSource = {

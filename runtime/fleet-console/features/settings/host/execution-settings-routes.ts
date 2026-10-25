@@ -11,7 +11,7 @@ interface ExecutionSettingsContext {
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 import type http from "node:http";
-import type { TheaterSystemPromptService } from "./agent-options.js";
+import type { CommodoreSystemPromptService } from "./agent-options.js";
 
 import {
   MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS,
@@ -37,7 +37,7 @@ import {
 } from "@fleet-console/ai-gateway";
 
 interface TerminalSettingsRouteDeps {
-  readonly theaterSystemPrompts: TheaterSystemPromptService;
+  readonly commodoreSystemPrompts: CommodoreSystemPromptService;
   readonly aiGatewayStore: AiGatewaySettingsStore;
   /** Resolves Claude alias entries to the installed CLI's versions before the catalog is shown. */
   readonly ensureClaudeNativeModels?: () => Promise<void>;
@@ -206,7 +206,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     { method: "PUT", path: "", summary: "Save Terminal plugin settings.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
-  ctx.registerRouter("agent/theater-system-prompt", async ({ req, res }) => {
+  ctx.registerRouter("agent/commodore-system-prompt", async ({ req, res }) => {
     if (req.method !== "GET" && req.method !== "PUT") {
       ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
       return true;
@@ -215,13 +215,13 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const theaterId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("theaterId");
-    if (!theaterId || !deps.theaterSystemPrompts.exists(theaterId)) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+    const commodoreId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("commodoreId");
+    if (!commodoreId || !deps.commodoreSystemPrompts.exists(commodoreId)) {
+      ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
     }
     if (req.method === "GET") {
-      ctx.host.http.writeJson(res, 200, { theaterId, prompt: deps.theaterSystemPrompts.read(theaterId) });
+      ctx.host.http.writeJson(res, 200, { commodoreId, prompt: deps.commodoreSystemPrompts.read(commodoreId) });
       return true;
     }
     if (!isJsonRequest(req)) {
@@ -231,25 +231,25 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const prompt = parseTheaterSystemPromptUpdate(body);
     if (prompt === undefined) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_theater_system_prompt" });
+      ctx.host.http.writeJson(res, 400, { error: "invalid_commodore_system_prompt" });
       return true;
     }
     // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
-    if (!deps.theaterSystemPrompts.exists(theaterId)) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+    if (!deps.commodoreSystemPrompts.exists(commodoreId)) {
+      ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
     }
-    const saved = deps.theaterSystemPrompts.save(theaterId, prompt);
-    ctx.host.http.writeJson(res, 200, { theaterId, prompt: saved });
+    const saved = deps.commodoreSystemPrompts.save(commodoreId, prompt);
+    ctx.host.http.writeJson(res, 200, { commodoreId, prompt: saved });
     return true;
   }, [
-    { method: "GET", path: "", summary: "Read a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "PUT", path: "", summary: "Save or clear a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "", summary: "Read a Commodore's Claude Code system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Save or clear a Commodore's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   // Theater별 서브에이전트 — 기본은 대체(키 없음)이고, 켜 둔 Theater만 서브에이전트를 그대로 쓴다.
   // 판단은 호출마다 읽으므로 떠 있는 세션도 다음 서브에이전트 호출부터 바뀐 값을 따른다.
-  ctx.registerRouter("agent/theater-subagents", async ({ req, res }) => {
+  ctx.registerRouter("agent/commodore-subagents", async ({ req, res }) => {
     if (req.method !== "GET" && req.method !== "PUT") {
       ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
       return true;
@@ -258,13 +258,13 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const theaterId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("theaterId");
-    if (!theaterId || !deps.theaterSystemPrompts.exists(theaterId)) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+    const commodoreId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("commodoreId");
+    if (!commodoreId || !deps.commodoreSystemPrompts.exists(commodoreId)) {
+      ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
     }
     if (req.method === "GET") {
-      ctx.host.http.writeJson(res, 200, { theaterId, subagentsKept: deps.theaterSystemPrompts.subagentsKept(theaterId) });
+      ctx.host.http.writeJson(res, 200, { commodoreId, subagentsKept: deps.commodoreSystemPrompts.subagentsKept(commodoreId) });
       return true;
     }
     if (!isJsonRequest(req)) {
@@ -274,19 +274,19 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     const body = await ctx.host.http.readJsonBody<unknown>(req);
     const kept = body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 1 ? (body as { subagentsKept?: unknown }).subagentsKept : undefined;
     if (typeof kept !== "boolean") {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_theater_subagents" });
+      ctx.host.http.writeJson(res, 400, { error: "invalid_commodore_subagents" });
       return true;
     }
     // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
-    if (!deps.theaterSystemPrompts.exists(theaterId)) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+    if (!deps.commodoreSystemPrompts.exists(commodoreId)) {
+      ctx.host.http.writeJson(res, 404, { error: "commodore_not_found" });
       return true;
     }
-    ctx.host.http.writeJson(res, 200, { theaterId, subagentsKept: deps.theaterSystemPrompts.keepSubagents(theaterId, kept) });
+    ctx.host.http.writeJson(res, 200, { commodoreId, subagentsKept: deps.commodoreSystemPrompts.keepSubagents(commodoreId, kept) });
     return true;
   }, [
-    { method: "GET", path: "", summary: "Read whether a registered Theater keeps Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "PUT", path: "", summary: "Choose whether a registered Theater keeps Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "", summary: "Read whether a Commodore keeps Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Choose whether a Commodore keeps Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 }
 

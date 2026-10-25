@@ -9,8 +9,9 @@ import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
+import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
-import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
+import { CommodoreOperationsTabHost, commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
 import { getT } from "./i18n/index.js";
@@ -56,7 +57,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const value = { commodoreId: readCommodore(commodoreId).view?.commodoreId ?? commodoreId, ...commodoreBoardOf(commodoreId), view: readCommodore(commodoreId).view, asks: openAsks(commodoreId) };
       snapshots.set(commodoreId, { revision, value }); return value;
     },
-    subscribe: subscribeCommodore,
+    subscribe: (listener) => { const offState = subscribeCommodore(listener); const offList = subscribeCommodoreList(listener); return () => { offState(); offList(); }; },
+    ids: () => readCommodoreList().map((row) => row.commodoreId),
     revision: commodoreRevision,
     askTheaters: openAskTheaters,
     load: (commodoreId) => loadCommodore(commodoreId),
@@ -64,7 +66,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     ownerOfContext,
     open(commodoreId, options) {
       const theaterId = contextsOf(commodoreId)[0] ?? null;
-      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", theaterId); return true; }
+      // 폰 화면의 문맥은 기억된 Theater가 아니라 사령관 UUID다. 빠진 Theater 이름이 부제로 남지 않는다.
+      if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", commodoreId); return true; }
       if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(commodoreId, options);
       openCommodoreLog(commodoreId, theaterId); return true;
     },
@@ -76,9 +79,10 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
   const install = (ctx: CommodoreClientDeps): (() => void) => {
       const offBoard = installCommodoreBoard(board);
       const offState = installCommodoreState(ctx);
+      const offList = installCommodoreList(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
       const offQuotes = ctx.composer.receiveQuotes?.("commodore", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets });
-      return () => { offQuotes?.(); offConversation(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offQuotes?.(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {
@@ -91,7 +95,10 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     subscribeMentionTargets: subscribeCommodoreMentions,
     messageMentionTarget: messageCommodoreMention,
     theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
-    persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
+    persistentComponents: [
+      { id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } },
+      { id: "commodore-operations-tab", render: () => <CommodoreOperationsTabHost /> },
+    ],
     conversationSurfaces: [commodoreConversationSurface],
   };
   return { plugin, host, install };

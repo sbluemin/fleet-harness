@@ -97,7 +97,7 @@ describe("durable console state", () => {
     expect(JSON.parse(fs.readFileSync(h.file("archived"), "utf8"))).toEqual(archived);
     expect(JSON.parse(fs.readFileSync(h.file("deleted"), "utf8"))).toEqual(h.doc("deleted"));
     expect(JSON.parse(fs.readFileSync(h.file("conflict"), "utf8"))).toEqual(existing);
-    expect(fs.readFileSync(h.file("active"), "utf8")).toBe(originalActive);
+    expect(JSON.parse(fs.readFileSync(h.file("active"), "utf8"))).toEqual({ ...JSON.parse(originalActive), addedBy: { kind: "commodore", commodoreId: "c1" } });
     expect(fs.existsSync(h.file("already-purged"))).toBe(false);
     expect(moved.events()).toEqual([{ eventId: "purged-event", channel: "objective:purged", objectiveId: "already-purged", commodoreId: "c1", theaterId: "t1", sessionIds: [] }]);
     const archive = JSON.parse(fs.readFileSync(h.archiveFile, "utf8"));
@@ -149,7 +149,7 @@ describe("durable console state", () => {
     const legacyStore = h.open(); legacyStore.load();
     const pending = legacyStore.board.list("c1").find((record) => record.id === "legacy-pending")!;
     expect(pending).toMatchObject({ commodoreId: "c1", cwd: h.directory, addedBy: { kind: "commodore", commodoreId: "c1", why: "keep" } });
-    expect(fs.readFileSync(legacyFile, "utf8")).toBe(legacyPending);
+    expect(JSON.parse(fs.readFileSync(legacyFile, "utf8"))).toEqual({ ...JSON.parse(legacyPending), cwd: h.directory, addedBy: { kind: "commodore", commodoreId: "c1", why: "keep" } });
     legacyStore.board.save("c1", pending);
     expect(JSON.parse(fs.readFileSync(legacyFile, "utf8")).cwd).toBe(h.directory);
     expect(() => legacyStore.board.save("c1", { ...pending, addedBy: { kind: "commodore", commodoreId: "other-owner" } })).toThrow("objective_actor_owner_mismatch");
@@ -245,12 +245,15 @@ describe("durable console state", () => {
     expect(JSON.parse(fs.readFileSync(path.join(broken.directory, "archive.json"), "utf8")).entries ?? []).toEqual([]);
     const brokenRestart = openAll(); brokenRestart.load();
     expect(brokenRestart.board.list("broken").map((row) => row.id)).toContain("fresh");
-    // 이주와 무관한 owner의 legacy 본문은 읽기와 다른 owner의 정상 저장 모두에서 바이트가 고정이다.
-    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
+    // boot 정규화는 빠진 cwd와 옛 행위자만 내구화한다. 이후 membership이 없어져도 그대로 복구된다.
+    const normalizedBytes = fs.readFileSync(stableFile, "utf8");
+    expect(JSON.parse(normalizedBytes)).toMatchObject({ cwd: healthy.legacyCwd, addedBy: { kind: "commodore", commodoreId: "healthy", why: "preserve" } });
+    healthy.legacyCwd = ""; healthy.legacyTheaterId = "";
+    expect(normalizedBytes).not.toBe(stableBytes);
     partial.save({ ...partialState, objectiveRecords: partialState.objectiveRecords.map((node) => node.id === "unrelated-active" ? { ...node, title: "saved after migration" } : node) });
-    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
+    expect(fs.readFileSync(stableFile, "utf8")).toBe(normalizedBytes);
     const retry = openAll(); const retryState = retry.load();
-    expect(fs.readFileSync(stableFile, "utf8")).toBe(stableBytes);
+    expect(fs.readFileSync(stableFile, "utf8")).toBe(normalizedBytes);
     expect(retryState.objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolationIndex.quarantine);

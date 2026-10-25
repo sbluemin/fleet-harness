@@ -109,6 +109,7 @@ export type AgentChatCoordinatesResult =
   | { readonly ok: false; readonly error: "coordinates_apply_failed"; readonly cause?: import("../../../console-use/shared/control.js").ConsoleCoordinatesFailureCause };
 
 export interface AgentChatSessionSeed {
+  readonly additionalDirectories?: readonly string[];
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
@@ -2527,6 +2528,7 @@ class AgentChatSession {
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
               ...chatChildEnv(process.env),
+              ...(this.seed.additionalDirectories === undefined ? {} : { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }),
               ...this.workspaceHook?.env,
               // 서브에이전트 호출 hook만 이 세션의 Objective을 안다. 턴·주의 hook의 식별자와 이름을 나눠
               // 그 hook들이 채팅 자식에서 남의 축이 아니라 아예 침묵하는 지금 동작을 그대로 둔다.
@@ -2627,6 +2629,7 @@ class AgentChatSession {
           ...(this.coordinates.effort ? { effort: this.coordinates.effort } : {}),
           ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
           cwd: this.seed.cwd,
+          ...(this.seed.additionalDirectories === undefined ? {} : { additionalDirectories: this.seed.additionalDirectories }),
           ...(this.seed.sessionName ? { sessionName: this.seed.sessionName } : {}),
           // 이어붙일 좌표는 admiral이 세션을 준비할 때 이미 확정했다. 채팅으로 태어난 세션도
           // 마찬가지다 — 자식이 만든 id를 받아 적는 대신 우리가 못박았으므로, 첫 턴을 기다리지

@@ -22,7 +22,10 @@ export function getViewedTheaterId(): string | null {
   const surface = getConversationSurface();
   if (surface !== null) {
     const theaterId = surface.params.theaterId;
-    return typeof theaterId === "string" && state.theaters.some((theater) => theater.id === theaterId) ? theaterId : null;
+    if (typeof theaterId === "string" && state.theaters.some((theater) => theater.id === theaterId)) return theaterId;
+    const commodoreId = surface.params.commodoreId;
+    if (typeof commodoreId === "string") return state.theaters.find((theater) => theater.commodore?.id === commodoreId)?.id ?? null;
+    return null;
   }
   const inbox = readTheaterInboxState();
   if (inbox !== null) return state.theaters.some((theater) => theater.id === inbox.theaterId) ? inbox.theaterId : null;

@@ -80,8 +80,9 @@ function dropForgottenTheater(theaterId: string): void {
 // ─── groups ───────────────────────────────────────────────────────────────────
 
 // 저장 성공 뒤 재수화 실패로 중복 생성을 유도하지 않는다. 서버 사건도 상태를 맞춘다.
-export async function createTheaterGroup(theaterId: string, name: string): Promise<void> {
-  await createGroup({ theaterId, name, color: "blue" });
+/** 그룹 생성은 사령관 UUID 를 넘긴다. integration 함수 본문은 호스트 커밋이 commodoreId 를 읽도록 바꾼다. */
+export async function createCommodoreGroup(commodoreId: string, name: string): Promise<void> {
+  await createGroup({ commodoreId, name, color: "blue" } as unknown as Parameters<typeof createGroup>[0]);
   await fetchGroups(null).then(hydrateGroups).catch(() => {});
 }
 

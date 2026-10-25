@@ -33,7 +33,7 @@ import { TheaterAvatar } from "../theater-avatar.js";
 import { registerTheaterFromPath } from "../theater.js";
 import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
-import { resolveNewSessionTheaterId } from "./new-session-entry.js";
+import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import "./new-session.css";
 
 /**
@@ -229,7 +229,7 @@ export function NewSessionColumn({ state, target, tools }: {
     if (command?.kind === "commands") {
       const query = command.query.trim().toLowerCase();
       const all = [
-        { id: "theater" as const, label: t("conversation.newSession.commandTheater"), value: theater ? theater.commodore?.alias || theater.label : null, icon: <TheaterCommandGlyph /> },
+        { id: "theater" as const, label: t("conversation.newSession.commandTheater"), value: theater ? theater.label : null, icon: <TheaterCommandGlyph /> },
         { id: "model" as const, label: t("conversation.newSession.commandModel"), value: selectedRow?.label ?? null, icon: <ModelCommandGlyph /> },
         { id: "effort" as const, label: t("conversation.newSession.commandEffort"), value: selectedRow ? (selectedRow.chips?.find((chip) => chip.id === launchChoice.effort)?.label ?? autoLabel) : null, icon: <EffortCommandGlyph /> },
         ...(chatAvailable ? [{ id: "view" as const, label: t("conversation.newSession.commandView"), value: viewLabelOf(startView), icon: startView === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon /> }] : []),
@@ -254,12 +254,12 @@ export function NewSessionColumn({ state, target, tools }: {
         return [
           { kind: "section", key: "theater", label: t("conversation.newSession.deckTheater") },
           ...state.theaters
-            .filter((candidate) => (candidate.commodore?.alias || candidate.label).toLowerCase().includes(query))
+            .filter((candidate) => candidate.label.toLowerCase().includes(query))
             .map((candidate): NewSessionDeckItem => ({
               kind: "row",
               key: `theater-${candidate.id}`,
-              icon: <TheaterAvatar theaterId={candidate.id} size={16} label={candidate.commodore?.alias || candidate.label} decorative />,
-              name: markMatch(candidate.commodore?.alias || candidate.label, query),
+              icon: <TheaterAvatar theaterId={candidate.id} size={16} label={candidate.label} decorative />,
+              name: markMatch(candidate.label, query),
               checked: candidate.id === theater?.id,
               pick: () => { pickTheater(candidate.id); finishCommand(); },
             })),
@@ -530,8 +530,10 @@ export function NewSessionColumn({ state, target, tools }: {
     attachmentStore.clearNotice();
     setStarting(true);
     writeNewSessionTheater(theater.id);
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
     requestLaunch({
       theaterId: theater.id,
+      ...(commodoreId ? { commodoreId } : {}),
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
@@ -545,7 +547,8 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    requestLaunch({ theaterId: theater.id, pluginId, kind, variant: {} });
+    const commodoreId = resolveNewSessionCommodoreId(state.newSession?.commodoreFromSection ? state.newSession.commodoreId : null);
+    requestLaunch({ theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
   };
 
   // 거절은 starting 을 풀어 이 타이머를 취소한다. 응답이 전혀 없을 때만 닫아, 시작하는 중에 가두지 않는다.
@@ -569,7 +572,7 @@ export function NewSessionColumn({ state, target, tools }: {
     closeNewSession();
   };
 
-  const theaterName = theater ? theater.commodore?.alias || theater.label : "";
+  const theaterName = theater ? theater.label : "";
   const viewLabel = t(startView === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
   const adding = state.addingTheater;
 
@@ -773,8 +776,8 @@ function TheaterMenu({ theaters, current, placement, onPick, onAdd, onClose }: {
     <div ref={ref} className={`new-session-menu is-${placement}`} role="menu" aria-label={t("conversation.newSession.theaterMenuAria")} onKeyDown={onKeyDown}>
       {theaters.map((theater) => (
         <button key={theater.id} type="button" role="menuitemradio" aria-checked={theater.id === current} className="new-session-menu-item" onClick={() => onPick(theater.id)}>
-          <TheaterAvatar theaterId={theater.id} size={16} label={theater.commodore?.alias || theater.label} decorative />
-          <span className="new-session-row-label">{theater.commodore?.alias || theater.label}</span>
+          <TheaterAvatar theaterId={theater.id} size={16} label={theater.label} decorative />
+          <span className="new-session-row-label">{theater.label}</span>
           {theater.id === current ? <span className="new-session-menu-check" aria-hidden="true">✓</span> : null}
         </button>
       ))}

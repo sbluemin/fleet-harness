@@ -242,7 +242,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     const request = state.pendingLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
@@ -325,13 +325,13 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     );
   }, [refreshObjectiveRecords, runMutation]);
 
-  const handleCreateGroup = useCallback((theaterId: string, name: string, objectiveId?: string) => {
+  const handleCreateGroup = useCallback((commodoreId: string, name: string, objectiveId?: string) => {
     let createdGroupId: string | null = null;
     runMutation(
       async () => {
         const group = createdGroupId
           ? { id: createdGroupId }
-          : await createGroup({ theaterId, name, color: "blue" });
+          : await createGroup({ commodoreId, name, color: "blue" } as unknown as Parameters<typeof createGroup>[0]);
         createdGroupId = group.id;
         if (objectiveId) await patchObjective(objectiveId, { groupId: group.id });
         await refreshObjectiveRecordsAndGroups();
@@ -507,7 +507,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     <GroupContextMenu
       kind="chip"
       objectiveRecord={menuObjective}
-      groups={state.groups.filter((group) => group.theaterId === menuObjective.theaterId)}
+      groups={state.groups.filter((group) => group.commodoreId === menuObjective.commodoreId)}
       accentKey={getTheaterGroupCollapse(menuObjective.theaterId).objectiveRecordAccent[menuObjective.id]
         ?? objectiveRecordAccentFromNode(menuObjective)}
       anchor={objectiveRecordMenu.anchor}
@@ -515,7 +515,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
       actions={{
         onSetAccent: (key) => handleSetAccent(menuObjective.id, key),
         onSetGroupId: (groupId) => handleSetGroupId(menuObjective.id, groupId),
-        onCreateGroup: (name) => handleCreateGroup(menuObjective.theaterId, name, menuObjective.id),
+        onCreateGroup: (name) => handleCreateGroup(menuObjective.commodoreId, name, menuObjective.id),
         onCloseObjective: () => handleClose(menuObjective.id),
       }}
       onClose={closeObjectiveMenu}
@@ -602,8 +602,9 @@ async function launchViaPlugin(
   plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
+  commodoreId?: string,
 ): Promise<void> {
-  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId);
+  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId, commodoreId);
 }
 
 async function createLaunchedObjective(
@@ -614,13 +615,14 @@ async function createLaunchedObjective(
   plugins: readonly ClientFeatureDescriptor[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
+  commodoreId?: string,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {}); };
   const capabilities = createHostCapabilities(resync);
   let newObjectiveId: string | null = null;
   if (plugin?.launch) {
-    const result = await plugin.launch({ theaterId, kind, geometry, objectiveRecords: capabilities.objectiveRecords, variant });
+    const result = await plugin.launch({ theaterId, kind, geometry, objectiveRecords: capabilities.objectiveRecords, variant, ...(commodoreId ? { commodoreId } : {}) });
     newObjectiveId = result.id;
   } else {
     const objectiveRecord = await capabilities.objectiveRecords.create({

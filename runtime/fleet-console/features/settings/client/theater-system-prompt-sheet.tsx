@@ -11,7 +11,6 @@ import { SyncedTextarea } from "../../execution/client/composer-primitives/input
 import {
   isNearPromptLimit,
   isOverPromptLimit,
-  openTheaterSystemPrompt,
   subscribeTheaterSystemPromptOpen,
   TheaterSubagentsSection,
   useFocusAfterReset,
@@ -95,9 +94,7 @@ export function TheaterSystemPromptSheet() {
   // 폰 시트를 연 채 데스크톱으로 바뀌면 — 닫으며 입력을 확정하고 같은 Theater 를 Theater Inbox 로 넘긴다.
   useEffect(() => {
     if (mobile || !request) return;
-    const theater = request.theater;
     setRequest(null);
-    openTheaterSystemPrompt(theater, null);
   }, [mobile, request]);
 
   const mobileSheetOpen = mobile && request !== null;

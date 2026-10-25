@@ -46,7 +46,7 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
-import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
+import type { CommodoreSystemPromptService } from "../../../settings/host/agent-options.js";
 type SessionCreateBody = { readonly commodoreId?: unknown; readonly cliId?: unknown; readonly theaterId?: unknown; readonly objectiveId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
@@ -63,7 +63,7 @@ type ObjectiveRenamedEvent = {
 interface AgentRouteDeps {
   readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
   readonly agentOptionsService: AgentOptionsService;
-  readonly theaterSystemPrompts?: TheaterSystemPromptService;
+  readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
   readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
@@ -268,7 +268,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     plugin: ctx.agentCliPlugin,
     ...(ctx.launchPromptDirectories ? { promptDirectories: ctx.launchPromptDirectories } : {}),
     infraServices: deps,
-    ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
+    ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
     readAgentCliPaths,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
@@ -632,16 +632,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
+        const source = readObjectiveLaunchSource(caller);
+        if (!source) throw new ConsoleControlError("invalid_launch_source");
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, launchedBy: source, commodoreId: input.commodoreId, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentObjectiveId ? { parentObjectiveId: input.parentObjectiveId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newObjectiveId && caller.kind === "plugin" ? { newObjectiveId: input.newObjectiveId } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
-        // 계보 — 누가 시작했는지를 목표의 launchedBy에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
+        // 계보는 생성 payload에 들어가 launch 스냅샷보다 먼저 내구화된다.
         const launchedId = response.value.sessionId as string;
-        const launched = ctx.host.objectiveRecords.get(launchedId);
-        if (launched) {
-          const source = readObjectiveLaunchSource(caller);
-          if (!source) throw new ConsoleControlError("invalid_launch_source");
-          ctx.host.objectiveRecords.patch(launchedId, { ...launched, launchedBy: source });
-        }
         // 제목은 사람의 이름 바꾸기와 같은 길로 — 그래야 관측 세션이 사용자 소유 라벨로 기록해 자동 이름이 덮지 않는다.
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
@@ -1176,7 +1172,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly launchedBy?: NonNullable<ReturnType<typeof readObjectiveLaunchSource>>; readonly sourceObjectiveId?: string; readonly commodoreId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentObjectiveId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly newObjectiveId?: string; readonly geometry?: ObjectiveGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1210,6 +1206,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const namedSession = titled ?? named?.session ?? session;
       const bornPayload = {
         ...toObjectivePayload(undefined, cwd, namedSession),
+        ...(launchOptions.launchedBy ? { launchedBy: launchOptions.launchedBy } : {}),
         session: {
           harness: "claude-code",
           ...(launchOptions.model ? { model: launchOptions.model } : {}),
@@ -2205,13 +2202,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
-    const chatTheaterPrompt = deps.theaterSystemPrompts?.read(node.theaterId);
+    const additionalDirectories = ctx.host.paths.resolveObjectiveAdditionalDirectories?.(node.id);
+    const chatTheaterPrompt = deps.commodoreSystemPrompts?.read(node.commodoreId);
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory === true;
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
       seed: {
+        ...(additionalDirectories === undefined ? {} : { additionalDirectories }),
         resolveExecutablePath: async () => {
           const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: await readAgentCliPaths() });
           if (!resolution.resolved || resolution.error) throw new Error("chat_cli_unavailable");
@@ -2447,9 +2446,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 404, { error: "unknown_objectiveRecord" });
       return true;
     }
-    // 서브에이전트를 그대로 쓰기로 한 Theater에서는 아무것도 묻지 않는다 — 호출마다 읽어 떠 있는 세션에도 곧바로 닿는다.
-    const theaterId = ctx.host.objectiveRecords.get(sessionId)?.theaterId;
-    if (deps.theaterSystemPrompts?.subagentsKept(theaterId)) {
+    // 서브에이전트를 그대로 쓰기로 한 사령관에서는 아무것도 묻지 않는다 — 호출마다 읽어 떠 있는 세션에도 곧바로 닿는다.
+    const node = ctx.host.objectiveRecords.get(sessionId);
+    const commodoreId = node?.commodoreId;
+    if (node && !subagentSpawnBlocked(node) && deps.commodoreSystemPrompts?.subagentsKept(commodoreId)) {
       ctx.host.http.writeJson(res, 200, { reason: null });
       return true;
     }
@@ -2534,6 +2534,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       objectiveRecordType: AGENT_OBJECTIVE_TYPE,
       pluginId: null,
       ...(objectiveRecord?.theaterId ? { theaterId: objectiveRecord.theaterId } : {}),
+      ...(objectiveRecord?.commodoreId ? { commodoreId: objectiveRecord.commodoreId } : {}),
+      additionalDirectories: ctx.host.paths.resolveObjectiveAdditionalDirectories?.(objectiveId),
       ...(cliId ? { cliId } : {}),
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),

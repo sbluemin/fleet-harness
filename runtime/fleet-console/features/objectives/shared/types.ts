@@ -1084,7 +1084,7 @@ const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
 export const createObjectiveSchema = z.object({
   commodoreId: ids,
-  theaterId: ids,
+  theaterId: ids.optional().default(""),
   viewMode: z.enum(["terminal", "chat"]).optional(),
   language: z.enum(["en", "ko"]).optional(),
   groupId: ids.nullable().optional(),

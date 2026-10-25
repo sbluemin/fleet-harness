@@ -4,6 +4,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildSessionArgs(context.sessionCoordinate),
+    ...(context.additionalDirectories ?? []).flatMap((directory) => ["--add-dir", directory]),
     ...buildSystemPromptArgs(context.claudeCodeSystemPrompt, context.claudeCodeCustomSystemPromptFile),
     "--plugin-url",
     context.pluginUrl,
