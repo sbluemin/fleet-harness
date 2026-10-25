@@ -194,6 +194,7 @@ export const workspaceEn = {
   "rail.chrome.panelsAria": "Activity panels",
   "rail.chrome.resizeCard": "Resize tool panel",
   "rail.chrome.resetWidth": "Reset panel width",
+  "rail.paused.commodoreRevamp": "Temporarily disabled for the commodore revamp",
   "rail.theater.fallback": "Theater",
   "workspace.plugin.objectiveRecordFailed": "Plugin objectiveRecord failed to render.",
 } as const;
@@ -390,6 +391,7 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "rail.chrome.panelsAria": "Activity 패널",
   "rail.chrome.resizeCard": "도구 패널 폭 조절",
   "rail.chrome.resetWidth": "패널 폭 초기화",
+  "rail.paused.commodoreRevamp": "사령관 개편으로 잠시 비활성화됐어요",
   "rail.theater.fallback": "Theater",
   "workspace.plugin.objectiveRecordFailed": "Plugin 목표를 렌더하지 못했습니다.",
 };

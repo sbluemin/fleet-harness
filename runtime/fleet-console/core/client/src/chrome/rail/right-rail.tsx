@@ -644,8 +644,12 @@ function standsWithoutTheater(entry: RailEntryDescriptor): boolean {
 }
 
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
+  const t = useT();
   const withoutTheater = standsWithoutTheater(entry);
+  const paused = entry.paused === true;
   const handleClick = useCallback(() => {
+    // 잠시 닫아 둔 도구는 누름을 받지 않는다. disabled 대신 aria-disabled 로 닫아야 겨눔이 살아 말풍선이 까닭을 말한다.
+    if (paused) return;
     if (entry.activate) {
       // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
       // Theater 없이 열 수 없어 조용히 둔다. 등록 때 표시한 패널(사령관)도 예외다.
@@ -654,7 +658,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       return;
     }
     toggleRailPanel(entry.id);
-  }, [context, entry, withoutTheater]);
+  }, [context, entry, paused, withoutTheater]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
@@ -678,14 +682,15 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   return (
     <button
       id={`rail-tab-${entry.id}`}
-      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
+      className={`right-rail-ico${text ? " is-text" : ""}${pressed ? " is-active" : ""}${paused ? " is-paused" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={pressed}
       aria-label={named}
-      disabled={context.theaterId === null && !withoutTheater}
-      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
-      data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
+      disabled={!paused && context.theaterId === null && !withoutTheater}
+      aria-disabled={paused || undefined}
+      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다. 닫아 둔 도구는 그 까닭을 말한다.
+      data-tip={paused ? `${title} · ${t("rail.paused.commodoreRevamp")}` : wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-objective-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
       data-keep-objective-active={entry.keepsObjectiveActive ? "" : undefined}
       onClick={handleClick}

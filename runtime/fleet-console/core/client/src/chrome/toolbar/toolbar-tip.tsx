@@ -22,7 +22,11 @@ const TIP_GAP = 10;
 const VIEWPORT_MARGIN = 8;
 const ARROW_INSET = 12;
 
-const ITEM_SELECTOR = ".right-rail-ico, .command-band-button";
+// 캡션 동작(.fleet-caption-action) — 도구 캡슐 맨 앞의 지구본처럼 도구 줄에 선 캡션 버튼도 같은 말풍선으로 말한다.
+// 캡션 자리의 CSS 이름표(.fleet-caption-tip)는 도구 줄 안에서 걷힌다(conversation.css).
+const ITEM_SELECTOR = ".right-rail-ico, .command-band-button, .fleet-caption-action";
+/** 캡션 동작을 감싼 자리 — disabled 버튼은 겨눔을 받지 않을 수 있어 자리가 대신 받는다(닫힌 문도 까닭을 말한다). */
+const CAPTION_SLOT_SELECTOR = ".fleet-caption-slot";
 const POPUP_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
 const STASHED_TITLE = "data-toolbar-tip-title";
 
@@ -53,7 +57,9 @@ export function focusToolbarItemQuietly(item: HTMLElement): void {
 
 function toolbarItemOf(node: EventTarget | null, root: HTMLElement): HTMLElement | null {
   if (!(node instanceof Element)) return null;
-  const item = node.closest<HTMLElement>(ITEM_SELECTOR);
+  const item = node.closest<HTMLElement>(ITEM_SELECTOR)
+    ?? node.closest(CAPTION_SLOT_SELECTOR)?.querySelector<HTMLElement>(":scope > .fleet-caption-action")
+    ?? null;
   if (item === null || !root.contains(item)) return null;
   if (item.getAttribute("role")?.startsWith("menuitem")) return null;
   const popup = item.closest(POPUP_SELECTOR);

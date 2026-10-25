@@ -1589,6 +1589,8 @@ export const repositoryEntry: RailEntryDescriptor = {
   mobile: { available: false, description: (locale) => getT(locale)("repository.mobile.description"), icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></svg> },
   title: (locale) => getT(locale)("repository.panel.title"),
   icon: () => <RepositoryIcon />,
+  // 사령관 개편 동안 잠시 닫아 둔다 — 레일·단축키·팔레트·모바일 입구가 함께 닫힌다.
+  paused: true,
   surfaceId: REPOSITORY_SURFACE_ID,
   activate: (ctx) => {
     const surfaces = ctx.surfaces;

@@ -373,7 +373,11 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .update-outcome {
   box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-xs) var(--font-ui);
-  white-space: nowrap;
+  /* 이름은 한 줄이고, 닫힌 문의 까닭처럼 긴 문장만 접힌다. */
+  width: max-content;
+  max-width: min(48ch, calc(100vw - 16px));
+  white-space: normal;
+  word-break: keep-all;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;

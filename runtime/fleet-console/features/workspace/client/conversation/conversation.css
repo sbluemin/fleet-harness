@@ -364,8 +364,8 @@
 
 .conversation-pill-tools :is(.right-rail-ico, .fleet-caption-action) svg { width: 16px; height: 16px; }
 
-.conversation-pill-tools .right-rail-ico:hover:not(:disabled):not(.is-active),
-.conversation-pill-tools .right-rail-ico:focus-visible {
+.conversation-pill-tools .right-rail-ico:hover:not(:disabled):not(.is-active):not(.is-paused),
+.conversation-pill-tools .right-rail-ico:focus-visible:not(.is-paused) {
   background: var(--control-rest-hover);
   color: var(--text-primary);
   outline: none;
@@ -379,8 +379,10 @@
 
 .conversation-pill-tools .right-rail-ico.is-active::before { display: none; }
 
-/* Theater 가 없는 빈 칸의 Theater 도구 — 닫힌 문은 흐리게 서서 말풍선이 이름을 말한다(캡션 동작의 닫힌 문과 같은 농도). */
-.conversation-pill-tools .right-rail-ico:disabled {
+/* Theater 가 없는 빈 칸의 Theater 도구 — 닫힌 문은 흐리게 서서 말풍선이 이름을 말한다(캡션 동작의 닫힌 문과 같은 농도).
+   잠시 닫아 둔 도구(entry.paused)도 같은 농도로 서고, 말풍선이 그 까닭을 말한다. */
+.conversation-pill-tools .right-rail-ico:disabled,
+.conversation-pill-tools .right-rail-ico.is-paused {
   cursor: default;
   opacity: 0.42;
 }
@@ -458,6 +460,9 @@
 /* 도구 캡슐 맨 앞의 지구본. 측정이 걷는 .right-rail-ico 밖이라 「⋯」로 걷히지 않는다. */
 .conversation-pill-tools-lead,
 .conversation-pill-browser { display: inline-flex; flex: none; align-items: center; }
+
+/* 도구 줄의 캡션 버튼(지구본)은 이 줄의 도구 말풍선(toolbar-tip.tsx)이 이름을 말한다 — 캡션 자리의 이름표까지 서면 모양이 다른 풍선이 겹친다. */
+.conversation-pill-tools .fleet-caption-tip { display: none; }
 
 /* 머리 줄 버튼(전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
    공용 .fleet-caption-action(브라우저 패널·리더·문서 칸)은 그대로 둔다. */
