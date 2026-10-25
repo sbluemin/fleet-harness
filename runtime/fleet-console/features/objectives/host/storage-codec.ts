@@ -14,6 +14,8 @@ export interface ObjectiveDocumentContext {
   readonly commodoreId: string;
   /** 자기 cwd가 없던 옛 목표의 마지막 복구 근거. 새 목표 생성에는 쓰지 않는다. */
   readonly legacyTheaterId: string;
+  /** 같은 위치의 옛 등록 해시. 보관·그룹 귀속에만 쓴다. */
+  readonly legacyTheaterIds?: readonly string[];
   readonly legacyCwd: string;
   readonly theaterIdOf: (cwd: string) => string;
 }
@@ -38,19 +40,22 @@ function execution(payload: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 /** 옛 행위자만 파일 소유자로 복구한다. 사용자 객체의 동명 필드는 지우지 않는다. */
+function legacyIds(context: ObjectiveDocumentContext): ReadonlySet<string> {
+  return new Set([context.legacyTheaterId, ...(context.legacyTheaterIds ?? [])]);
+}
 function actors(value: unknown, context: ObjectiveDocumentContext): unknown {
   if (Array.isArray(value)) return value.map((item) => actors(item, context));
   if (!object(value)) return value;
   const out = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, actors(item, context)]));
   if (out.kind === "commodore") {
     if (out.commodoreId !== undefined && out.commodoreId !== context.commodoreId) throw new Error("objective_actor_owner_mismatch");
-    if (out.theaterId !== undefined && out.theaterId !== context.legacyTheaterId) throw new Error("objective_actor_owner_mismatch");
+    if (out.theaterId !== undefined && !legacyIds(context).has(String(out.theaterId))) throw new Error("objective_actor_owner_mismatch");
     delete out.theaterId;
     out.commodoreId = context.commodoreId;
   }
   if (typeof out.objectiveId === "string" && out.objectiveId.startsWith("commodore:")) {
     const id = out.objectiveId.slice("commodore:".length);
-    if (id !== context.commodoreId && id !== context.legacyTheaterId) throw new Error("objective_actor_owner_mismatch");
+    if (id !== context.commodoreId && !legacyIds(context).has(id)) throw new Error("objective_actor_owner_mismatch");
     out.objectiveId = `commodore:${context.commodoreId}`;
   }
   return out;

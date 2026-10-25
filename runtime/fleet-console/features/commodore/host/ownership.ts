@@ -11,13 +11,28 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   const migration = migrateCommodoreData(paths.consoleDataDir);
   const entities = createCommodoreEntities(path.join(paths.consoleDataDir, "commodore"), paths.workspaceHash);
   // 등록 id는 옛 경로 문자열의 해시일 수 있다. 링크 해시가 달라도 지금 실경로가 같으면 그 사령관을 쓴다.
+  // 실경로 조회는 기동 때와 등록 목록이 바뀔 때만 한다. 끊긴 드라이브를 매 호출마다 다시 열지 않는다.
+  let registeredKey = "";
+  const resolved = new Map<string, string | null>();
+  const remember = (theaterId: string, commodoreId: string) => {
+    entities.bind(theaterId, commodoreId);
+    resolved.set(theaterId, commodoreId);
+  };
   const resolveOwner = (theaterId: string): string | null => {
     const direct = entities.resolve(theaterId);
     if (direct) return direct;
+    const ids = paths.listTheaterIds?.() ?? [];
+    const key = ids.join("\0");
+    if (key !== registeredKey) {
+      registeredKey = key;
+      for (const id of [...resolved.keys()]) if (!ids.includes(id)) resolved.delete(id);
+    }
+    if (resolved.has(theaterId)) return resolved.get(theaterId) ?? null;
     const root = paths.resolveTheaterPath(theaterId);
-    if (!root) return null;
+    if (!root) { resolved.set(theaterId, null); return null; }
     const found = entities.locate(root);
-    if (found) entities.bind(theaterId, found);
+    if (found) remember(theaterId, found);
+    else resolved.set(theaterId, null);
     return found;
   };
   const theaterIdsOf = (commodoreId: string): readonly string[] => {
@@ -32,7 +47,9 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     if (existing) return existing;
     const unresolved = workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
     if (migration.blockedPaths.has(root) || unresolved) throw new CommodoreStoreError("commodore_migration_pending");
-    return entities.create(root);
+    const issued = entities.create(root);
+    remember(theaterId, issued);
+    return issued;
   };
   const ensureRegistered = () => {
     for (const theaterId of paths.listTheaterIds?.() ?? []) {
@@ -56,7 +73,13 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     forContext(theaterId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
       const root = paths.resolveTheaterPath(theaterId);
       if (!root) return { ok: false, reason: "unknown_context" };
-      try { return { ok: true, commodoreId: resolveOwner(theaterId) ?? issueForKnowledge(root) }; }
+      try {
+        const existing = resolveOwner(theaterId);
+        if (existing) return { ok: true, commodoreId: existing };
+        const issued = issueForKnowledge(root);
+        remember(theaterId, issued);
+        return { ok: true, commodoreId: issued };
+      }
       catch { return { ok: false, reason: "unavailable" }; }
     },
     legacySources: (id: string) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).map((link) => link.path)),
@@ -64,7 +87,11 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   const issueForAlias = (theaterId: string) => {
     const root = paths.resolveTheaterPath(theaterId);
     if (!root) throw new CommodoreStoreError("theater_unavailable");
-    return resolveOwner(theaterId) ?? entities.create(root);
+    const existing = resolveOwner(theaterId);
+    if (existing) return existing;
+    const issued = entities.create(root);
+    remember(theaterId, issued);
+    return issued;
   };
   // 자동 별칭 이주만 보류 가드를 탄다. 명시적 forAlias 발급은 원본 이동을 대신하지 않는다.
   const issueIfReady = (theaterId: string) => create(theaterId);
@@ -81,7 +108,9 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       const [legacyLink] = entities.theatersOf(id);
       const root = legacyLink?.path;
       if (!directory || !root || entities.theaterIds(id).some((theaterId) => entities.conflicts().includes(theaterId)) || migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name))) return [];
-      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: paths.workspaceHash(root), legacyCwd: root, theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
+      const linkId = paths.workspaceHash(root);
+      const registered = (paths.listTheaterIds?.() ?? []).filter((theaterId) => resolveOwner(theaterId) === id);
+      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: [...new Set([linkId, ...registered])], legacyCwd: root, theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
     }),
   };
 }

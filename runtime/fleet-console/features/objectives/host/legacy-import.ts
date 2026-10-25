@@ -25,6 +25,10 @@ export interface LegacyImportResult {
   touched: readonly string[];
   /** 이 owner로 귀속된 옛 그룹 id. 지운 뒤에도 다음 기동에 다시 넣지 않도록 원장에 남긴다. */
   groupIds: readonly string[];
+  /** 이미 수입된 id에 옛 보관·삭제를 한 번 보정한 기록. 다시 적용하지 않는다. */
+  correctedIds: readonly string[];
+  /** 이미 수입된 문서에 비어 있던 소속만 채운다. */
+  groupPatches: readonly { readonly id: string; readonly groupId: string }[];
 }
 const ledgerFile = (dir: string) => path.join(dir, ".archive-migration", "imported.json");
 export function readImportedIds(dir: string): { readonly ok: true; readonly ids: Set<string> } | { readonly ok: false } {
@@ -35,29 +39,33 @@ export function readImportedIds(dir: string): { readonly ok: true; readonly ids:
     return { ok: true, ids: new Set(Array.isArray(raw.ids) ? raw.ids.filter((id): id is string => typeof id === "string" && segment(id)) : []) };
   } catch { return { ok: false }; }
 }
-function readLedger(dir: string): { readonly ok: true; readonly ids: Set<string>; readonly groupIds: Set<string> } | { readonly ok: false } {
+function readLedger(dir: string): { readonly ok: true; readonly ids: Set<string>; readonly groupIds: Set<string>; readonly correctedIds: Set<string> } | { readonly ok: false } {
   const ids = readImportedIds(dir);
   if (!ids.ok) return ids;
   try {
-    if (!exists(ledgerFile(dir))) return { ok: true, ids: ids.ids, groupIds: new Set() };
-    const raw = JSON.parse(fs.readFileSync(ledgerFile(dir), "utf8")) as { groupIds?: unknown };
-    const groupIds = new Set(Array.isArray(raw.groupIds) ? raw.groupIds.filter((id): id is string => typeof id === "string" && segment(id)) : []);
-    return { ok: true, ids: ids.ids, groupIds };
+    if (!exists(ledgerFile(dir))) return { ok: true, ids: ids.ids, groupIds: new Set(), correctedIds: new Set() };
+    const raw = JSON.parse(fs.readFileSync(ledgerFile(dir), "utf8")) as { groupIds?: unknown; correctedIds?: unknown };
+    const listed = (value: unknown) => new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string" && segment(id)) : []);
+    return { ok: true, ids: ids.ids, groupIds: listed(raw.groupIds), correctedIds: listed(raw.correctedIds) };
   } catch { return { ok: false }; }
 }
-export function rememberImported(dir: string, ids: readonly string[], groupIds: readonly string[] = []): void {
+export function rememberImported(dir: string, ids: readonly string[], groupIds: readonly string[] = [], correctedIds: readonly string[] = []): void {
   const prior = readLedger(dir);
   const next = prior.ok ? prior.ids : new Set<string>();
   const nextGroups = prior.ok ? prior.groupIds : new Set<string>();
+  const nextCorrected = prior.ok ? prior.correctedIds : new Set<string>();
   const before = [...next].sort().join("\n");
   const beforeGroups = [...nextGroups].sort().join("\n");
+  const beforeCorrected = [...nextCorrected].sort().join("\n");
   for (const id of ids) if (segment(id)) next.add(id);
   for (const id of groupIds) if (segment(id)) nextGroups.add(id);
+  for (const id of correctedIds) if (segment(id)) nextCorrected.add(id);
   const sorted = [...next].sort();
   const sortedGroups = [...nextGroups].sort();
-  if (prior.ok && exists(ledgerFile(dir)) && before === sorted.join("\n") && beforeGroups === sortedGroups.join("\n")) return;
+  const sortedCorrected = [...nextCorrected].sort();
+  if (prior.ok && exists(ledgerFile(dir)) && before === sorted.join("\n") && beforeGroups === sortedGroups.join("\n") && beforeCorrected === sortedCorrected.join("\n")) return;
   fs.mkdirSync(path.dirname(ledgerFile(dir)), { recursive: true, mode: 0o700 });
-  writeAtomicSync(ledgerFile(dir), JSON.stringify({ ids: sorted, ...(sortedGroups.length ? { groupIds: sortedGroups } : {}) }));
+  writeAtomicSync(ledgerFile(dir), JSON.stringify({ ids: sorted, ...(sortedGroups.length ? { groupIds: sortedGroups } : {}), ...(sortedCorrected.length ? { correctedIds: sortedCorrected } : {}) }));
 }
 const pendingFile = (dir: string) => path.join(dir, ".archive-migration", "pending-index.json");
 export function readPendingIndex(dir: string): Set<string> {
@@ -178,12 +186,12 @@ function copyTree(source: string, target: string): void {
 
 interface RecordHit { node: ReturnType<typeof sanitizeObjectiveRecord>; archived?: { archiveId: string; archivedAt: number }; deleted?: { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; groups?: readonly object[] }; purged?: { eventId: string; sessionIds: readonly string[] } }
 
-function collect(previousRaw: Record<string, unknown>, archive: unknown, theaterId: string): Map<string, RecordHit> {
+function collect(previousRaw: Record<string, unknown>, archive: unknown, theaterIds: ReadonlySet<string>): Map<string, RecordHit> {
   const hits = new Map<string, RecordHit>();
   const take = (value: unknown, extra?: Partial<RecordHit>) => {
     const renamed = renameKeys(value);
     const node = sanitizeObjectiveRecord(object(renamed) ? { ...renamed, id: renamed.id ?? renamed.operationId } : renamed);
-    if (!node || node.theaterId !== theaterId || !segment(node.id)) return;
+    if (!node || !theaterIds.has(node.theaterId) || !segment(node.id)) return;
     const prior = hits.get(node.id);
     hits.set(node.id, { node, ...prior, ...extra });
   };
@@ -228,11 +236,14 @@ export function importMissingObjectives(deps: {
   writeJson: (file: string, value: unknown) => void;
   accept: (value: unknown) => ObjectiveDocument;
   warn: (message: string) => void;
+  /** 목적지 색인에 이미 보관·삭제 행이 있는 id. 보정은 이 집합이 비어 있을 때만 보관을 넣는다. */
+  indexed: ReadonlySet<string>;
 }): LegacyImportResult {
+  const empty = { documents: [], groups: [], entries: [], deletions: [], events: [], quarantine: [], touched: [], groupIds: [], correctedIds: [], groupPatches: [] };
   const ledger = readLedger(deps.owner.directory);
   if (!ledger.ok) {
     deps.warn(`[objectives] owner ${deps.owner.commodoreId}: imported.json unreadable; import skipped`);
-    return { documents: [], groups: [], entries: [], deletions: [], events: [], quarantine: [], touched: [], groupIds: [] };
+    return empty;
   }
   const pending = readPendingIndex(deps.owner.directory);
   const touched = new Set<string>(ledger.ids);
@@ -257,7 +268,8 @@ export function importMissingObjectives(deps: {
     try { archive = JSON.parse(fs.readFileSync(archiveFile, "utf8")); }
     catch { warnOnce(archiveFile, `[objectives] operations-archive.json: unreadable; original preserved`); }
   }
-  const records = collect(deps.previousRaw, archive, deps.owner.legacyTheaterId);
+  const theaterIds = new Set([deps.owner.legacyTheaterId, ...(deps.owner.legacyTheaterIds ?? [])].filter((id) => id.length > 0));
+  const records = collect(deps.previousRaw, archive, theaterIds);
   const names = new Set<string>(legacyNames(deps.owner.legacyCwd));
   try { for (const name of workspaceDirectoryNames(deps.owner.legacyCwd)) names.add(name); } catch { /* 경로를 정규화하지 못한 cwd도 옛 이름으로 찾는다. */ }
   const trees: { dir: string; whole: boolean; name: string }[] = [];
@@ -310,7 +322,7 @@ export function importMissingObjectives(deps: {
         } catch { /* 본문 판정 실패는 복사 단계에서 격리한다. */ }
       }
       const hit = records.get(id);
-      const owned = tree.whole || bodyTheater === deps.owner.legacyTheaterId || hit?.node?.theaterId === deps.owner.legacyTheaterId;
+      const owned = tree.whole || (bodyTheater !== undefined && theaterIds.has(bodyTheater)) || (hit?.node != null && theaterIds.has(hit.node.theaterId));
       if (!owned) {
         const bytes = exists(file) ? fs.readFileSync(file) : Buffer.from(id);
         quarantine.push({ id, sourceHash: hashOf(bytes), location: file, reason: "legacy_unattributed" });
@@ -368,12 +380,40 @@ export function importMissingObjectives(deps: {
       deps.warn(`[objectives] ${id}: ${error instanceof Error ? error.message : "legacy_unreadable"}; original preserved`);
     }
   }
+  // 이미 원장에 있는 id는 다시 복사하지 않는다. 이번에 귀속이 된 옛 보관만, 색인에 행이 없을 때 넣는다. 삭제·purge는 적용하지 않는다.
+  const correctedIds: string[] = [];
+  const groupPatches: { id: string; groupId: string }[] = [];
+  for (const [id, hit] of records) {
+    if (!ledger.ids.has(id) || ledger.correctedIds.has(id)) continue;
+    if (hit.archived && !deps.indexed.has(id) && !entries.some((row) => row.objectiveId === id)) entries.push({ ...hit.archived, objectiveId: id });
+    if ((hit.deleted || hit.purged) && !deps.indexed.has(id) && !deps.quarantined.some((row) => row.id === id)) {
+      quarantine.push({ id, sourceHash: hashOf(Buffer.from(`${id}:legacy-destructive`)), location: "operations-archive.json", reason: "legacy_destructive_skipped" });
+      deps.warn(`[objectives] ${id}: legacy_destructive_skipped; original preserved`);
+    }
+    const groupId = hit.node?.groupId;
+    if (typeof groupId === "string" && segment(groupId)) {
+      const file = path.join(deps.owner.directory, id, "objective.json");
+      if (exists(file) && !fs.lstatSync(file).isSymbolicLink()) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+          if (object(raw) && (raw.groupId === undefined || raw.groupId === null || raw.groupId === "")) {
+            deps.writeJson(file, { ...raw, groupId });
+            groupPatches.push({ id, groupId });
+          }
+        } catch (error) {
+          deps.warn(`[objectives] ${id}: ${error instanceof Error ? error.message : "legacy_group_unreadable"}; original preserved`);
+          continue;
+        }
+      }
+    }
+    correctedIds.push(id);
+  }
   const attributedGroups = Array.isArray(deps.previousRaw.groups) ? deps.previousRaw.groups.flatMap((row) => {
-    if (!object(row) || row.theaterId !== deps.owner.legacyTheaterId || typeof row.id !== "string" || !segment(row.id)) return [];
+    if (!object(row) || typeof row.theaterId !== "string" || !theaterIds.has(row.theaterId) || typeof row.id !== "string" || !segment(row.id)) return [];
     const { commodoreId: _owner, ...group } = row;
     return [group as Omit<DurableObjectiveGroup, "commodoreId">];
   }) : [];
   const groupIds = attributedGroups.map((group) => group.id);
   const groups = attributedGroups.filter((group) => !ledger.groupIds.has(group.id));
-  return { documents, groups, entries, deletions, events, quarantine, touched: [...touched], groupIds };
+  return { documents, groups, entries, deletions, events, quarantine, touched: [...touched], groupIds, correctedIds, groupPatches };
 }
