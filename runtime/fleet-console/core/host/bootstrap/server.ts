@@ -512,6 +512,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     resolveCreation: (input) => {
       if (!ownership) throw new Error("objective_owner_unavailable");
       if (!ownership.entities.dirOf(input.commodoreId)) throw new Error("objective_owner_unavailable");
+      if (archiveStorage.ownerRecoveryRequired(input.commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       const sourceId = typeof input.sourceObjectiveId === "string" ? input.sourceObjectiveId : null;
       if (sourceId) {
         const source = objectiveRecords.get(sourceId) ?? objectiveRecordArchive.describe(sourceId)?.objectiveRecord ?? archiveStorage.board.owners().flatMap((owner) => archiveStorage.board.list(owner.commodoreId)).find((board) => board.id === sourceId);
@@ -560,7 +561,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
     owners: () => ownership?.objectives() ?? [],
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
-    migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership!),
+    migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, { entities: ownership!.entities, issueForAlias: ownership!.issueIfReady }),
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveId: string) => void) | null = null;
@@ -2727,7 +2728,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         executionApiCatalog.push({ method: route.method, path: routePath, summary: route.summary, category: "Commodore", gate: "origin-write", transport: "http" });
       }
       objectives = createObjectivesFeature({
-        resolveCreation: (commodoreId, theaterId) => { if (!ownership) throw new Error("objective_owner_unavailable"); return ownership.creation(commodoreId, theaterId); },
+        resolveCreation: (commodoreId, theaterId) => { if (!ownership) throw new Error("objective_owner_unavailable"); if (archiveStorage.ownerRecoveryRequired(commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required"); return ownership.creation(commodoreId, theaterId); },
         storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },

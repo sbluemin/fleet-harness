@@ -53,6 +53,9 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   function pendingFor(id: string): boolean {
     return [...pending.values()].some((batch) => batch.entries.some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)));
   }
+  function refuseHeld(commodoreId: string | undefined): void {
+    if (commodoreId && deps.storage.ownerRecoveryRequired?.(commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
+  }
   function requireNode(id: string): ObjectiveRecord {
     deps.storage.assertReady();
     if (disposed) throw new ObjectiveArchiveError(503, "archive_recovery_required");
@@ -64,6 +67,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   function requireRoot(id: string): ObjectiveRecord {
     const objectiveRecord = requireNode(id);
     if (objectiveRecord.id !== id) throw new ObjectiveArchiveError(409, "child_session_not_closable");
+    refuseHeld(objectiveRecord.commodoreId);
     return objectiveRecord;
   }
   function describe(id: string): ObjectiveDescription | null {
@@ -131,6 +135,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   }
   async function accessNow(id: string, intent: ObjectiveAccessIntent): Promise<ObjectiveAccessResult> {
     const root = requireNode(id);
+    refuseHeld(root.commodoreId);
     if (!deps.theaterExists(root.theaterId)) throw new ObjectiveArchiveError(409, "restore_parent_missing");
     const archived = deps.storage.entries().some((entry) => entry.objectiveRecord.id === root.id);
     if (archived) {
@@ -280,7 +285,11 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
       pending.clear();
     },
     isTransitioning: (id: string) => locked.has(id) || pendingFor(id),
-    assertMutable: (id: string) => { deps.storage.assertReady(); if (locked.has(id) || pendingFor(id)) throw new ObjectiveArchiveError(409, "objectiveRecord_busy"); },
+    assertMutable: (id: string) => {
+      deps.storage.assertReady();
+      if (locked.has(id) || pendingFor(id)) throw new ObjectiveArchiveError(409, "objectiveRecord_busy");
+      refuseHeld((deps.objectiveRecords.get(id) ?? deps.storage.entries().find((entry) => entry.objectiveRecord.id === id)?.objectiveRecord)?.commodoreId);
+    },
   };
 }
 export type ObjectiveArchiveCoordinator = ReturnType<typeof createObjectiveArchiveCoordinator>;

@@ -51,7 +51,9 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     if (!root) throw new CommodoreStoreError("theater_unavailable");
     return entities.resolve(theaterId) ?? entities.create(root);
   };
-  return { entities, create, issueForAlias, ensureRegistered, knowledge,
+  // 자동 별칭 이주만 보류 가드를 탄다. 명시적 forAlias 발급은 원본 이동을 대신하지 않는다.
+  const issueIfReady = (theaterId: string) => create(theaterId);
+  return { entities, create, issueForAlias, issueIfReady, ensureRegistered, knowledge,
     creation(commodoreId: string, theaterId: string) {
       if (!entities.dirOf(commodoreId) || !entities.theaterIds(commodoreId).includes(theaterId)) throw new Error("objective_owner_unavailable");
       const cwd = paths.resolveTheaterPath(theaterId);

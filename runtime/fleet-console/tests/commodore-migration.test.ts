@@ -219,7 +219,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     expect(feature.knowledge.legacySources(pendingOwner)).toEqual([{ path: path.join(pending.workspace, "knowledge"), label: path.basename(pending.workspace) }]);
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
     expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
-    // 별칭의 명시적 발급은 기록 이주 보류를 푸는 것이 아니다. 원본은 보존하고 실행은 시작하지 않는다.
+    // 별칭의 명시적 발급도 보류 가드를 탄다. 빈 엔티티를 만들지 않고 원본은 그대로다.
     const aliasRoot = theater("pending-with-alias");
     const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending directive");
     fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
@@ -227,9 +227,7 @@ it("migrates legacy workspaces before eager issuance, resumes interrupted commit
     await feature.dispose(); feature = createCommodoreFeature(deps);
     expect(await call("commodore/resolve", { theaterId: workspaceHash(aliasRoot) })).toEqual({ commodoreId: null });
     expect(await call("commodore/create", { theaterId: workspaceHash(aliasRoot) }, 409)).toEqual({ error: "commodore_migration_pending" });
-    const aliasOwner = (await call("commodore/create", { theaterId: workspaceHash(aliasRoot), forAlias: true })).commodoreId as string;
-    expect(await call("commodore/alias", { commodoreId: aliasOwner, alias: "Assigned" })).toMatchObject({ active: false, state: { alias: "Assigned" }, run: { phase: "off" } });
-    expect(feature.identity(workspaceHash(aliasRoot))).toEqual({ id: aliasOwner, alias: "Assigned" });
+    expect(await call("commodore/create", { theaterId: workspaceHash(aliasRoot), forAlias: true }, 409)).toEqual({ error: "commodore_migration_pending" });
     expect(fs.readFileSync(path.join(aliasPending.dir, "state.json"), "utf8")).toBe(state(aliasPending.text));
     expect(warn).toHaveBeenCalled();
   } finally {
@@ -273,14 +271,14 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
         } };
       }) as typeof createDurableJsonStore,
     });
-    // 대상 커밋 실패는 원본 별칭을 그대로 두고 기동을 중단한다.
+    // 대상 커밋 실패는 원본 별칭을 그대로 두고 기동은 계속한다.
     const nativeRename = fs.renameSync.bind(fs);
     const failTarget = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
       if (String(to).startsWith(path.join(directory, "commodore")) && String(to).endsWith("state.json")) throw new Error("alias_target_write_failed");
       nativeRename(from, to);
     });
-    try { expect(() => open().load()).toThrow("alias_target_write_failed"); } finally { failTarget.mockRestore(); }
-    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
+    try { expect(() => open().load()).not.toThrow(); } finally { failTarget.mockRestore(); }
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("  Flagship  ");
     const ownerId = ownership!.entities.resolve(workspaceHash(project))!;
     expect(ownerId).toEqual(expect.any(String));
     const ownerFile = path.join(directory, "commodore", ownerId, "state.json");
@@ -288,9 +286,9 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     // 대상은 성공하고 명부 정리만 실패한 재시작. 사용자 데이터와 연결은 바뀌지 않는다.
     const save = stateStore.save.bind(stateStore);
     const failSource = vi.spyOn(stateStore, "save").mockImplementation(() => { throw new Error("alias_source_cleanup_failed"); });
-    try { expect(() => open().load()).toThrow("alias_source_cleanup_failed"); } finally { failSource.mockRestore(); }
+    try { expect(() => open().load()).not.toThrow(); } finally { failSource.mockRestore(); }
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).toEqual({ ...before, alias: "Flagship" });
-    expect(fs.readFileSync(stateFile, "utf8")).toBe(JSON.stringify(source));
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("  Flagship  ");
     // 대상 우선: 정리 전에 남은 명부 값으로 기존 별칭을 덮어쓰지 않는다.
     fs.writeFileSync(ownerFile, JSON.stringify({ ...before, alias: "Current" }));
     const loaded = open().load();
@@ -321,7 +319,7 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
       if (!JSON.stringify(value).includes('"alias"')) throw new Error("alias_cleanup_interrupted");
       save(value);
     });
-    try { expect(() => open().load()).toThrow("alias_cleanup_interrupted"); } finally { failCleanup.mockRestore(); }
+    try { expect(() => open().load()).not.toThrow(); } finally { failCleanup.mockRestore(); }
     expect(JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"))).not.toHaveProperty("transaction");
     const restarted = open(); const snapshot = restarted.load();
     expect(snapshot.theaters).toEqual(cleaned.theaters);
@@ -340,12 +338,12 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
         documents: [], groups: [], archive: ownerArchive, state: { version: 6, theaters: [recoveredTheater] },
       } }));
       if (alias !== undefined) {
-        // 복구 후 대상 이관이 실패해도 기동은 중단되고 새 이름이 명부에 남아 다음 기동이 재시도한다.
+        // 복구 후 대상 이관이 실패해도 기동은 계속되고 새 이름이 명부에 남아 다음 기동이 재시도한다.
         const failRecoveredTarget = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
           if (String(to) === ownerFile) throw new Error("recovered_alias_write_failed");
           nativeRename(from, to);
         });
-        try { expect(() => open().load()).toThrow("recovered_alias_write_failed"); } finally { failRecoveredTarget.mockRestore(); }
+        try { expect(() => open().load()).not.toThrow(); } finally { failRecoveredTarget.mockRestore(); }
         expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe(alias);
         expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).not.toHaveProperty("alias");
       }
@@ -384,12 +382,39 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
     const prepared = fs.readFileSync(ownerArchiveFile, "utf8");
     expect(typeof JSON.parse(prepared).transaction).toBe("string");
-    deferred.save(deferredState);
+    expect(() => deferred.save(deferredState)).not.toThrow();
+    expect(deferred.blocked()).toBe(false);
+    expect(() => deferred.board.save(ownerId, { id: "during-defer", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Deferred journal name");
     expect(fs.readFileSync(ownerArchiveFile, "utf8")).toBe(prepared);
     failOwnerApply = false;
     open().load();
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Deferred journal name");
     expect(JSON.stringify(open().load())).not.toContain('"alias"');
+
+    // 경로가 없는 별칭은 기동을 막지 않고 명부에 남는다. 빈 commodore는 만들지 않는다.
+    const missingRoot = path.join(temp, "missing-project");
+    const missingTheater = workspaceHash(missingRoot);
+    roots.set(missingTheater, missingRoot);
+    const idsBefore = new Set(fs.readdirSync(path.join(directory, "commodore")));
+    fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ ...registration(project), id: missingTheater, path: missingRoot, realpath: missingRoot, alias: "Away" }] }));
+    expect(() => open().load()).not.toThrow();
+    expect(new Set(fs.readdirSync(path.join(directory, "commodore")))).toEqual(idsBefore);
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Away");
+
+    // 보류된 commodore 이동 중 별칭 발급은 빈 엔티티를 만들지 않는다.
+    const blockedRoot = fs.realpathSync.native(fs.mkdirSync(path.join(temp, "blocked-project"), { recursive: true }) as string);
+    const blockedData = path.join(temp, "blocked-console");
+    const blockedName = workspaceDirectoryNames(blockedRoot)[1] ?? workspaceDirectoryNames(blockedRoot)[0];
+    const blockedSource = path.join(blockedData, "workspaces", blockedName, "objectives", "commodore");
+    fs.mkdirSync(blockedSource, { recursive: true });
+    fs.writeFileSync(path.join(blockedData, "workspaces", blockedName, "cwd.json"), JSON.stringify({ cwd: blockedRoot }));
+    fs.writeFileSync(path.join(blockedSource, "state.json"), JSON.stringify(EMPTY_COMMODORE_STATE));
+    fs.symlinkSync(path.join(temp, "absent-link-target"), path.join(blockedSource, "linked"));
+    const blocked = createCommodoreOwnership({ consoleDataDir: blockedData, workspaceHash, listTheaterIds: () => [workspaceHash(blockedRoot)], resolveTheaterPath: () => blockedRoot } as unknown as CommodoreFeatureDeps["paths"]);
+    const blockedEntities = path.join(blockedData, "commodore");
+    const blockedBefore = fs.existsSync(blockedEntities) ? fs.readdirSync(blockedEntities) : [];
+    expect(() => blocked.issueIfReady(workspaceHash(blockedRoot))).toThrow("commodore_migration_pending");
+    expect(fs.existsSync(blockedEntities) ? fs.readdirSync(blockedEntities) : []).toEqual(blockedBefore);
   } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });

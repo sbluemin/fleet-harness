@@ -1,4 +1,5 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -297,19 +298,103 @@ describe("Objective archive persistence and deletion", () => {
       await h.archive.archive("op");
       const archiveFile = path.join(directory, "commodore", "owner", "objectives", "archive.json");
       const intact = fs.readFileSync(archiveFile, "utf8");
+      const nativeOpen = fs.openSync.bind(fs);
+      const busy = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return nativeOpen(...args);
+      });
+      try {
+        const failed = createArchiveHarness(directory);
+        expect(failed.storage.blocked()).toBe(false);
+        expect(failed.storage.board.list("c1")).toEqual([]);
+        expect(() => failed.storage.board.save("c1", { id: "during-busy", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
+        expect(fs.readFileSync(archiveFile, "utf8")).toBe(intact);
+      } finally { busy.mockRestore(); }
+      const afterBusy = createArchiveHarness(directory);
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe(intact);
+      expect(afterBusy.storage.entries().map((row) => row.objectiveRecord.id)).toContain("op");
       fs.unlinkSync(archiveFile);
+      const objectiveFile = path.join(directory, "commodore", "owner", "objectives", "op", "objective.json");
+      const objectiveBytes = fs.readFileSync(objectiveFile, "utf8");
       const missingIndex = createArchiveHarness(directory);
       expect(missingIndex.storage.blocked()).toBe(false);
-      expect(missingIndex.storage.board.directory("c1")).toBeNull();
-      expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_unavailable");
-      expect(fs.existsSync(archiveFile)).toBe(false);
+      expect(missingIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(missingIndex.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
+      expect(() => missingIndex.storage.board.save("c1", { id: "new", pending: true, rank: 0, note: "", missions: [] })).not.toThrow();
+      expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
+      if (fs.existsSync(archiveFile)) expect(JSON.parse(fs.readFileSync(archiveFile, "utf8")).entries ?? []).not.toContainEqual(expect.objectContaining({ objectiveId: "op" }));
       fs.writeFileSync(archiveFile, intact);
       fs.writeFileSync(archiveFile, "{broken");
       const brokenIndex = createArchiveHarness(directory);
       expect(brokenIndex.storage.blocked()).toBe(false);
-      expect(brokenIndex.storage.board.directory("c1")).toBeNull();
-      expect(() => brokenIndex.storage.board.forget("c1", "op")).toThrow("objective_owner_unavailable");
-      expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
+      expect(brokenIndex.storage.board.directory("c1")).toBe(path.dirname(archiveFile));
+      expect(brokenIndex.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
+      expect(fs.readFileSync(objectiveFile, "utf8")).toBe(objectiveBytes);
+      expect(fs.readFileSync(path.join(path.dirname(archiveFile), ".archive-migration", `${createHash("sha256").update("{broken").digest("hex")}.json`), "utf8")).toBe("{broken");
+      expect(() => brokenIndex.storage.board.save("c1", { id: "added", pending: true, rank: 0, note: "", missions: [] })).not.toThrow();
+      const brokenRestart = createArchiveHarness(directory);
+      expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).toContain("added");
+      expect(brokenRestart.storage.board.list("c1").map((row) => row.id)).not.toContain("op");
+      const recovered = fs.readFileSync(archiveFile, "utf8");
+      expect(recovered).not.toContain("owner_recovery_required");
+      const stable = createArchiveHarness(directory);
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe(recovered);
+      expect(stable.storage.board.list("c1").map((row) => row.id)).toContain("added");
+      const otherDir = path.join(directory, "commodore", "other", "objectives");
+      fs.mkdirSync(path.join(otherDir, "kept"), { recursive: true });
+      fs.writeFileSync(path.join(otherDir, "groups.json"), JSON.stringify({ groups: [] }));
+      fs.writeFileSync(path.join(otherDir, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+      fs.writeFileSync(path.join(otherDir, "kept", "objective.json"), JSON.stringify({ id: "kept", cwd: directory, title: "Kept", rank: 1, note: "", missions: [], ts: { createdAt: 1, updatedAt: 1 }, session: { harness: "claude-code", id: "kept-session" } }));
+      const pairedStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
+      const openHeld = fs.openSync.bind(fs);
+      const blockHeld = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return openHeld(...args);
+      });
+      try {
+        const paired = createObjectiveStorage({ directory, stateStore: pairedStore, owners: () => [
+          { directory: path.dirname(archiveFile), commodoreId: "c1", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id },
+          { directory: otherDir, commodoreId: "c2", legacyTheaterId: "t2", legacyCwd: directory, theaterIdOf: () => THEATER.id },
+        ] });
+        const loaded = paired.load();
+        paired.board.list("c1");
+        const beforeHeld = fs.readFileSync(archiveFile, "utf8");
+        const kept = loaded.objectiveRecords.find((node) => node.id === "kept");
+        expect(kept?.commodoreId).toBe("c2");
+        paired.save({ ...loaded, objectiveRecords: [...loaded.objectiveRecords.map((node) => node.id === "kept" ? { ...node, title: "saved while neighbor held" } : node), { ...kept!, id: "ghost-held", commodoreId: "c1" }] });
+        expect(paired.blocked()).toBe(false);
+        expect(fs.readFileSync(archiveFile, "utf8")).toBe(beforeHeld);
+        expect(JSON.parse(fs.readFileSync(path.join(otherDir, "kept", "objective.json"), "utf8")).title).toBe("saved while neighbor held");
+      } finally { blockHeld.mockRestore(); }
+      const lateFile = path.join(path.dirname(archiveFile), "added", "objective.json");
+      const lateBytes = fs.readFileSync(lateFile);
+      const late = createObjectiveStorage({ directory, stateStore: pairedStore, owners: () => [
+        { directory: path.dirname(archiveFile), commodoreId: "c1", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id },
+        { directory: otherDir, commodoreId: "c2", legacyTheaterId: "t2", legacyCwd: directory, theaterIdOf: () => THEATER.id },
+      ] });
+      const failLate = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === archiveFile) throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+        return openHeld(...args);
+      });
+      let lateLoaded: DurableConsoleState;
+      try { lateLoaded = late.load(); } finally { failLate.mockRestore(); }
+      expect(late.board.list("c1").map((row) => row.id)).toContain("added");
+      expect(() => late.board.save("c1", { id: "during-late", pending: true, rank: 0, note: "", missions: [] })).toThrow("objective_owner_recovery_required");
+      late.save({ ...lateLoaded, objectiveRecords: lateLoaded.objectiveRecords.filter((node) => node.commodoreId !== "c1").map((node) => node.id === "kept" ? { ...node, title: "saved after neighbor recovered" } : node) });
+      expect(fs.readFileSync(lateFile)).toEqual(lateBytes);
+      const cutDir = path.join(directory, "commodore", "cut", "objectives");
+      fs.mkdirSync(path.join(cutDir, "doomed"), { recursive: true });
+      fs.writeFileSync(path.join(cutDir, "groups.json"), JSON.stringify({ groups: [{ id: "g-cut", name: "Cut", color: "blue", order: 0, createdAt: 1 }] }));
+      fs.writeFileSync(path.join(cutDir, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+      fs.writeFileSync(path.join(cutDir, "doomed", "objective.json"), JSON.stringify({ id: "doomed", cwd: directory, title: "Doomed", rank: 1, note: "", missions: [], ts: { createdAt: 1, updatedAt: 1 }, session: { harness: "claude-code", id: "doomed-session" } }));
+      const cutOwner = () => [{ directory: cutDir, commodoreId: "c3", legacyTheaterId: THEATER.id, legacyCwd: directory, theaterIdOf: () => THEATER.id }];
+      const cut = createObjectiveStorage({ directory, stateStore: pairedStore, owners: cutOwner });
+      const cutLoaded = cut.load();
+      cut.save({ ...cutLoaded, objectiveRecords: cutLoaded.objectiveRecords.filter((node) => node.id !== "doomed"), groups: (cutLoaded.groups ?? []).filter((group) => group.id !== "g-cut") });
+      const cutRestart = createObjectiveStorage({ directory, stateStore: pairedStore, owners: cutOwner }).load();
+      expect(cutRestart.objectiveRecords.map((node) => node.id)).not.toContain("doomed");
+      expect(fs.existsSync(path.join(cutDir, "doomed", "objective.json"))).toBe(false);
+      expect(cutRestart.groups?.some((group) => group.id === "g-cut")).toBe(false);
     });
   });
 

@@ -39,7 +39,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let board: CommodoreBoardAdapter | null = null;
   let restored = false;
   let disposed = false;
-  const { entities, create, issueForAlias, ensureRegistered, knowledge } = deps.ownership ?? createCommodoreOwnership(deps.paths);
+  const { entities, create, issueIfReady, ensureRegistered, knowledge } = deps.ownership ?? createCommodoreOwnership(deps.paths);
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => {
@@ -72,7 +72,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   };
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const routes = createCommodoreRoutes(context, store, {
-    resolve: entities.resolve, create, createForAlias: (theaterId) => { const id = issueForAlias(theaterId); deps.identityChanged?.([theaterId]); return id; }, theaterIds: entities.theaterIds,
+    resolve: entities.resolve, create, createForAlias: (theaterId) => { const id = issueIfReady(theaterId); deps.identityChanged?.([theaterId]); return id; }, theaterIds: entities.theaterIds,
     acceptsMessage: (id) => supervisor.acceptsMessage(id),
     run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,

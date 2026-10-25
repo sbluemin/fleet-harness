@@ -11,6 +11,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
+import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
 import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
 /**
@@ -50,6 +51,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof ObjectiveStoreError) { ctx.http.writeJson(res, ["unknown_objective", "unknown_mission", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup", "unknown_evidence", "unknown_result"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveArchiveError) { ctx.http.writeJson(res, error.status, { error: error.message }); return; }
     const code = error instanceof Error ? error.message : "objective_failed";
     ctx.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "objective_failed" });
   };
