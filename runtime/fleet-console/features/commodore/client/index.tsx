@@ -9,7 +9,7 @@ import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
-import { installCommodoreList } from "./commodore-list.js";
+import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskTheaters, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
@@ -57,7 +57,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
       const value = { commodoreId: readCommodore(commodoreId).view?.commodoreId ?? commodoreId, ...commodoreBoardOf(commodoreId), view: readCommodore(commodoreId).view, asks: openAsks(commodoreId) };
       snapshots.set(commodoreId, { revision, value }); return value;
     },
-    subscribe: subscribeCommodore,
+    subscribe: (listener) => { const offState = subscribeCommodore(listener); const offList = subscribeCommodoreList(listener); return () => { offState(); offList(); }; },
+    ids: () => readCommodoreList().map((row) => row.commodoreId),
     revision: commodoreRevision,
     askTheaters: openAskTheaters,
     load: (commodoreId) => loadCommodore(commodoreId),

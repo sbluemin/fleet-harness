@@ -14,6 +14,8 @@ export interface CommodoreClientHost {
   read(commodoreId: string): CommodoreClientSnapshot;
   subscribe(listener: () => void): () => void;
   revision(): number;
+  /** Theater 등록 수와 독립된 사령관 UUID 목록. */
+  ids(): readonly string[];
   /** 서 있는 질문이 있는 화면 문맥(Theater). 사령관의 정체성이 아니다. */
   askTheaters(): readonly string[];
   load(commodoreId: string): Promise<void>;

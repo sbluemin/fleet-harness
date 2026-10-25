@@ -456,7 +456,7 @@ export function ObjectiveRecordsSideBar({
     activeAdmiralCount: 0,
     commodore: { id: section.commodoreId, ...(section.alias ? { alias: section.alias } : {}) },
   }));
-  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionRecordIds(theater.id)) }));
+  const theaterPlans = sectionFaces.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupObjectiveRecords(allEntries.filter((entry) => entry.objectiveRecord.commodoreId === theater.id), groups.filter((group) => group.commodoreId === theater.id), []), clusterIndex, sectionRecordIds(theater.id), theater.id) }));
   // 고른 목표나 활성 Objective 을 품은 줄이 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal·직접 활성화) 그 접기를
   // 펼치고 줄이 보이게 스크롤한다. 그 줄이나 그 줄이 든 접기(그룹 이동)가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
   const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected || item.anchor?.active || item.fold.some((entry) => entry.active)).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
@@ -1039,7 +1039,7 @@ export function ObjectiveRecordsSideBar({
           const allEntries = buildTheaterEntries({ theaterId: theater.id, objectiveRecords: theaterObjectiveRecords, objectiveRecordOrder: objectiveRecordOrderFromNodes(theaterObjectiveRecords), activeObjectiveId, selectedObjectiveId: doubleClickOpen ? selectedObjectiveId : null, objectiveRecordNotifications, objectiveRecordRuntime });
           const theaterGroups = groups.filter((group) => group.commodoreId === theater.id);
           const groupedSections = groupObjectiveRecords(allEntries, theaterGroups, objectiveRecordOrderFromNodes(theaterObjectiveRecords));
-          const rowPlan = planSideBarRows(groupedSections, clusterIndex, sectionRecordIds(theater.id));
+          const rowPlan = planSideBarRows(groupedSections, clusterIndex, sectionRecordIds(theater.id), theater.id);
           const collapsedGroupSet = new Set(getTheaterGroupCollapse(theater.id).collapsedGroups);
           const objectiveRecordAccent = getTheaterGroupCollapse(theater.id).objectiveRecordAccent;
           const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
