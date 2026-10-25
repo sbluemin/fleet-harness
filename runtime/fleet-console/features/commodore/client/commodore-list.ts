@@ -65,6 +65,16 @@ export function readMobileCommodoreId(): string | null {
   return mobileCommodoreId;
 }
 
+/**
+ * 폰 사령관 화면의 주인. 그 Theater를 가진 사령관이 하나면 그 사령관이고, 없거나 여럿이면 칩에서 고른 사령관, 그것도 없으면 목록의 첫 사령관이다.
+ * 미소속 Theater는 주인을 만들지 않는다.
+ */
+export function mobileCommodoreTarget(theaterId: string | null): string | null {
+  const owners = theaterId ? commodores.filter((row) => row.theaters.some((theater) => theater.theaterId === theaterId)) : [];
+  if (owners.length === 1) return owners[0]?.commodoreId ?? null;
+  return mobileCommodoreId ?? commodores[0]?.commodoreId ?? null;
+}
+
 export function useMobileCommodoreSelection(): string | null {
   return useSyncExternalStore(subscribeCommodoreList, readMobileCommodoreId, readMobileCommodoreId);
 }

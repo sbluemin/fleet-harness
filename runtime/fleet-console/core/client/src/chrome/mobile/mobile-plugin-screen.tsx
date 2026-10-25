@@ -67,10 +67,13 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
     // 앞의 열기 효과가 복원한 params를 읽는다 — 이전 Theater의 같은 primary를 렌더가 포착했을 수 있다.
     const params = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === primaryId)?.params;
     if (params === undefined) return;
+    const paneParams = Object.fromEntries(Object.entries(params).filter(([key]) => key !== "requestId"));
     // 페인의 주소 교체는 전체 params를 바꾸므로, Theater를 생략한 교체에서도 목적지의 문맥은 지킨다.
+    // 사령관 화면은 문맥을 commodoreId로 바꾸며 Theater를 일부러 빼므로, 옛 theaterId를 다시 붙이지 않는다.
+    const dropsTheater = typeof paneParams.commodoreId === "string" && paneParams.theaterId === undefined;
     const kept = {
-      ...(current.params?.theaterId ? { theaterId: current.params.theaterId } : {}),
-      ...Object.fromEntries(Object.entries(params).filter(([key]) => key !== "requestId")),
+      ...(current.params?.theaterId && !dropsTheater ? { theaterId: current.params.theaterId } : {}),
+      ...paneParams,
     };
     setMobileDestination(Object.keys(kept).length > 0 ? { kind: "plugin", entryId, params: kept } : { kind: "plugin", entryId });
   }, [activeRail, entryId, primaryId, primaryParams]);

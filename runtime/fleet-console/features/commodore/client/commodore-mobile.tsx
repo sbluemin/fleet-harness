@@ -113,13 +113,22 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const enabled = useCommodoreEnabled();
   const known = useCommodoreExperimentKnown();
-  const addressedTheaterId = ctx.theaterId ?? "";
-  // 화면의 주인은 칩에서 고른 사령관이다. 최근에 연 Theater(미소속 포함)는 문맥이 아니다.
+  const { mobileBar, visible } = ctx;
+  const rawCommodore = ctx.params["commodoreId"];
+  const rawTheater = ctx.params["theaterId"];
+  const paramCommodoreId = typeof rawCommodore === "string" && rawCommodore.length > 0 ? rawCommodore : null;
+  const addressedTheaterId = (typeof rawTheater === "string" ? rawTheater : "") || ctx.theaterId || "";
+  // 주소의 Theater를 가진 사령관이 하나면 그 사령관. 미소속이거나 여럿이면 칩에서 고른 사령관, 없으면 목록의 첫 사령관.
   const selectedCommodoreId = useMobileCommodoreSelection();
   const listed = useCommodoreList();
-  const ownerOfAddress = listed.find((row) => row.theaters.some((theater) => theater.theaterId === addressedTheaterId))?.commodoreId ?? null;
-  const commodoreId = selectedCommodoreId ?? ownerOfAddress;
-  const { mobileBar, visible } = ctx;
+  const owners = listed.filter((row) => row.theaters.some((theater) => theater.theaterId === addressedTheaterId));
+  const fromTheater = owners.length === 1 ? owners[0]?.commodoreId ?? null : null;
+  const commodoreId = paramCommodoreId ?? fromTheater ?? selectedCommodoreId ?? listed[0]?.commodoreId ?? null;
+  useEffect(() => {
+    if (!commodoreId || !visible) return;
+    if (paramCommodoreId === commodoreId && rawTheater === undefined) return;
+    ctx.panes.replaceParams({ commodoreId });
+  }, [commodoreId, ctx.panes, paramCommodoreId, rawTheater, visible]);
   if (ctx.language) noteCommodoreLanguage(ctx.language);
   const row = commodoreId ? listed.find((item) => item.commodoreId === commodoreId) ?? null : null;
   const firstTheaterLabel = row?.theaters.find((theater) => theater.label)?.label ?? "";

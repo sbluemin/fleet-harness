@@ -2,6 +2,9 @@ import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
+import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
+import { commodoreAvatarKey } from "../../../../../features/workspace/shared/avatars.js";
+import { mobileCommodoreTarget } from "../../../../../features/commodore/client/commodore-list.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -41,7 +44,7 @@ export function MobileHomeFeatured({ state, conversationCount }: { readonly stat
   const countText = count > 0 ? featured.entry.attention?.label(count, locale) ?? String(count) : null;
   return (
     <button type="button" data-press="r1" className="mobile-conv-hero is-featured" onClick={() => openMobilePluginDestination(featured.entry.id, getViewedTheaterId())}>
-      <TheaterAvatar theaterId={theater.id} size={88} label={name} decorative />
+      {featured.entry.id === "commodore" && mobileCommodoreTarget(theater.id) ? <KeyedAvatar avatarKey={commodoreAvatarKey(mobileCommodoreTarget(theater.id)!)} role="commodore" state="idle" size={88} label={name} decorative /> : <TheaterAvatar theaterId={theater.id} size={88} label={name} decorative />}
       <strong>{name}</strong>
       <small className={status?.tone ? `is-${status.tone}` : undefined}>
         {status?.text ?? ""}

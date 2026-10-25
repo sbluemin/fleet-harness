@@ -4,6 +4,7 @@ import type { MobileConfirmSpec } from "../../../../../features/workspace/shared
 import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
+import { mobileCommodoreTarget } from "../../../../../features/commodore/client/commodore-list.js";
 
 
 /**
@@ -115,8 +116,13 @@ export function setMobileDestination(next: MobileDestination): void {
   emit();
 }
 
-/** 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. */
+/** 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. 사령관 화면의 주소는 Theater가 아니라 고른 사령관 UUID다. */
 export function openMobilePluginDestination(entryId: string, theaterId: string | null): void {
+  if (entryId === "commodore") {
+    const commodoreId = mobileCommodoreTarget(theaterId);
+    setMobileDestination({ kind: "plugin", entryId, ...(commodoreId ? { params: { commodoreId } } : {}) });
+    return;
+  }
   setMobileDestination({ kind: "plugin", entryId, ...(theaterId === null ? {} : { params: { theaterId } }) });
 }
 
