@@ -326,7 +326,7 @@ export const chromeEn = {
   "chrome.toast.archiveUndo": "Undo",
   "chrome.toast.openArchive": "Archive",
   "chrome.toast.theaterForgottenWithArchived": "Theater forgotten · includes {count} archived objectives",
-  "chrome.toast.archiveFailed": "Couldn't archive the objectiveRecord. Try again.",
+  "chrome.toast.archiveFailed": "Couldn't archive the objective. Try again.",
   "chrome.toast.archiveUndoStale": "Can't undo: it was already restored, archived again, or deleted elsewhere.",
   "chrome.toast.archiveUndoFailed": "Couldn't undo the archive. Restore it from the archive.",
   "archive.title": "Archive",

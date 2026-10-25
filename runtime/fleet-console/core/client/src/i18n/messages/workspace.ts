@@ -150,11 +150,11 @@ export const workspaceEn = {
   "sidebar.group.expand": "Expand group {name}",
   "sidebar.group.collapse": "Collapse group {name}",
   "sidebar.group.objectiveRecordsCount": "{count} objectives",
-  "sidebar.chip.focusAria": "Focus objectiveRecord {title}{groupContext}",
+  "sidebar.chip.focusAria": "Focus objective {title}{groupContext}",
   "sidebar.chip.focusedAria": "{title}{groupContext} (focused)",
   "sidebar.chip.selectedAria": "{title}{groupContext} (selected)",
   "sidebar.row.selected": "selected",
-  "sidebar.chip.resumeAria": "Start ended objectiveRecord {title}{groupContext} again",
+  "sidebar.chip.resumeAria": "Start ended objective {title}{groupContext} again",
   "sidebar.chip.inGroup": " in group {name}",
   "sidebar.chip.gaze": "{caller}: {summary}",
   "sidebar.group.createdBy": "{caller} made this group",
@@ -181,9 +181,9 @@ export const workspaceEn = {
   "sidebar.chip.detail.location": "Where",
   "sidebar.chip.detail.started": "Started",
   "sidebar.chip.detail.ended": "Ended",
-  "sidebar.chip.renameAria": "Rename objectiveRecord {title}",
+  "sidebar.chip.renameAria": "Rename objective {title}",
   "sidebar.chip.groupAria": "Group {name}",
-  "sidebar.chip.archiveAria": "Archive objectiveRecord {title}",
+  "sidebar.chip.archiveAria": "Archive objective {title}",
   "sidebar.chip.archiveTitle": "Archive",
   // ── sidebar 헤더/필터 (전면 해도 개편 P2) ────────────────────────────────
   // ── rail ────────────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ export const workspaceEn = {
   "rail.chrome.resetWidth": "Reset panel width",
   "rail.paused.commodoreRevamp": "Temporarily disabled for the commodore revamp",
   "rail.theater.fallback": "Theater",
-  "workspace.plugin.objectiveRecordFailed": "Plugin objectiveRecord failed to render.",
+  "workspace.plugin.objectiveRecordFailed": "Plugin objective failed to render.",
 } as const;
 
 export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
