@@ -461,6 +461,22 @@ describe("durable console state", () => {
       skipped: archive.quarantine?.some((row) => row.id === "kept" && row.reason === "legacy_destructive_skipped"),
       stayedClear: cleared.entries().every((entry) => entry.objectiveRecord.id !== "kept"),
     }).toEqual({ oldIdIncluded: true, archived: true, group: true, membership: "g-old", deletionApplied: false, skipped: true, stayedClear: true });
+    // id가 원래 일치한 일반 이주는 복원·그룹 제외를 다음 기동에도 유지한다.
+    const normal = fixture();
+    fs.rmSync(normal.destination, { recursive: true });
+    fs.mkdirSync(path.join(normal.destination, "restored"), { recursive: true });
+    fs.writeFileSync(path.join(normal.destination, "restored", "objective.json"), JSON.stringify({ id: "restored", cwd: normal.directory, title: "Restored", rank: 1, note: "back", missions: [], groupId: null, ts: { createdAt: 1, updatedAt: 20 } }));
+    fs.mkdirSync(path.join(normal.destination, ".archive-migration"), { recursive: true });
+    fs.writeFileSync(path.join(normal.destination, ".archive-migration", "imported.json"), JSON.stringify({ ids: ["restored"] }));
+    fs.writeFileSync(path.join(normal.destination, "groups.json"), JSON.stringify({ groups: [] }));
+    fs.writeFileSync(path.join(normal.destination, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+    const matched = { id: "restored", theaterId: "t1", groupId: "g1", title: "Restored", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    fs.writeFileSync(normal.stateFile, JSON.stringify({ ...normal.source, operations: [matched], groups: [{ id: "g1", theaterId: "t1", name: "Group", color: "blue", order: 0, createdAt: 1 }] }));
+    fs.writeFileSync(path.join(normal.directory, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "a-restored", archivedAt: 3, operation: matched }], deletions: [], events: [] }));
+    const keptActive = normal.open();
+    const keptState = keptActive.load();
+    const restored = keptActive.board.list("c1").find((row) => row.id === "restored");
+    expect({ active: Boolean(restored), archived: keptActive.entries().some((entry) => entry.objectiveRecord.id === "restored"), groupId: restored?.groupId ?? null, groupImported: keptState.groups?.some((group) => group.id === "g1") ?? false }).toEqual({ active: true, archived: false, groupId: null, groupImported: true });
   });
 
   it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {

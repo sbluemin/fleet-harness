@@ -432,9 +432,10 @@ export function createObjectiveStorage(deps: {
     const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
     const indexed = new Set<string>([...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds)]);
+    const presentGroups = new Set(scope.groups.map((group) => group.id));
     let imported: ReturnType<typeof importMissingObjectives>;
     try {
-      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, indexed, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
+      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, indexed, presentGroups, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
       return { touched: [], groupIds: [], correctedIds: [] };
