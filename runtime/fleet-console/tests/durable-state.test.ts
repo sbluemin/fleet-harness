@@ -357,6 +357,11 @@ describe("durable console state", () => {
     expect(importedState.objectiveRecords.map((node) => node.id)).toContain("active");
     expect(imported.entries().map((entry) => entry.objectiveRecord.id)).toContain("archived");
     expect(importedState.groups?.map((group) => group.id)).toContain("g1");
+    const groupsFile = path.join(legacy.destination, "groups.json");
+    const storedGroups = JSON.parse(fs.readFileSync(groupsFile, "utf8")) as { groups: { id: string }[] };
+    storedGroups.groups = storedGroups.groups.filter((group) => group.id !== "g1");
+    fs.writeFileSync(groupsFile, JSON.stringify(storedGroups));
+    expect(legacy.open().load().groups?.some((group) => group.id === "g1")).toBe(false);
     expect(imported.board.list("c1").map((row) => row.id)).toEqual(expect.arrayContaining(["active", "archived", "unlaunched"]));
     expect(imported.board.list("c1").find((row) => row.id === "unlaunched")).toMatchObject({ pending: true, title: "Before launch", chatMode: true });
     expect(imported.board.list("c1").map((row) => row.id)).not.toContain("stray");

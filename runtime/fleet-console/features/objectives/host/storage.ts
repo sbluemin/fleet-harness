@@ -428,7 +428,7 @@ export function createObjectiveStorage(deps: {
     };
     for (const id of objectiveIds) scope.unreadable.add(id);
   }
-  function importLegacy(scope: Scope): readonly string[] {
+  function importLegacy(scope: Scope): { readonly touched: readonly string[]; readonly groupIds: readonly string[] } {
     const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
     let imported: ReturnType<typeof importMissingObjectives>;
@@ -436,7 +436,7 @@ export function createObjectiveStorage(deps: {
       imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
-      return [];
+      return { touched: [], groupIds: [] };
     }
     for (const doc of imported.documents) scope.documents.set(doc.id, doc);
     const present = new Set(scope.groups.map((group) => group.id));
@@ -452,14 +452,14 @@ export function createObjectiveStorage(deps: {
     const deletions = take("deletions", imported.deletions.filter((row) => !scope.archive.deletions.some((prior) => prior.deletionId === row.deletionId)));
     const events = take("events", imported.events);
     const quarantine = [...scope.archive.quarantine ?? [], ...imported.quarantine.filter((row) => !(scope.archive.quarantine ?? []).some((prior) => prior.id === row.id && prior.sourceHash === row.sourceHash && prior.reason === row.reason))];
-    if (!entries.length && !deletions.length && !events.length && quarantine.length === (scope.archive.quarantine?.length ?? 0)) return imported.touched;
+    if (!entries.length && !deletions.length && !events.length && quarantine.length === (scope.archive.quarantine?.length ?? 0)) return { touched: imported.touched, groupIds: imported.groupIds };
     try {
       scope.archive = readArchive({ ...scope.archive, entries: [...scope.archive.entries, ...entries], deletions: [...scope.archive.deletions, ...deletions], events: [...scope.archive.events, ...events], ...(quarantine.length ? { quarantine } : {}) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_index_unreadable"}; original preserved`);
       for (const row of deletions) for (const id of row.objectiveIds) scope.unreadable.add(id);
     }
-    return imported.touched;
+    return { touched: imported.touched, groupIds: imported.groupIds };
   }
   function readScope(owner: ObjectiveOwner): Scope {
     const existing = exists(owner.directory);
@@ -524,7 +524,9 @@ export function createObjectiveStorage(deps: {
     for (const row of scope.archive.deletions) if (row.objectiveIds.some((id) => unavailable(scope, id))) scope.archive = { ...scope.archive, unavailable: [...new Set([...scope.archive.unavailable ?? [], ...row.objectiveIds])] };
     if (rebuildIndex) holdIds(scope, [...scope.documents.keys()], "archive_unreadable", "0".repeat(64));
     const preexisting = !exists(archiveFile) && !rebuildIndex ? new Set(scope.documents.keys()) : new Set<string>();
-    const touched = importLegacy(scope);
+    const importedLegacy = importLegacy(scope);
+    const touched = importedLegacy.touched;
+    const importedGroupIds = importedLegacy.groupIds;
     isolateOrphanDeletions(scope, owner, archiveFile);
     // rename 뒤 색인 저장 전에 끊긴 id는 pending-index에 있다. 색인 없는 기존 문서로 숨기면 재개 때 목록에서 빠진다.
     const pendingRename = readPendingIndex(owner.directory);
@@ -535,7 +537,7 @@ export function createObjectiveStorage(deps: {
     if (persistArchive) {
       // 읽은 색인과 같으면 다시 쓰지 않는다. 키 순서만 다른 정규화가 재시작마다 archive.json을 바꾸면 안 된다.
       if (!loadedArchive || !isDeepStrictEqual(loadedArchive, scope.archive)) archiveStore(scope).save(scope.archive);
-      if (touched.length) rememberImported(owner.directory, touched);
+      if (touched.length || importedGroupIds.length) rememberImported(owner.directory, touched, importedGroupIds);
       clearPendingIndex(owner.directory, touched);
     }
     if (!exists(groupsFile)) writeJson(groupsFile, { groups: scope.groups });
