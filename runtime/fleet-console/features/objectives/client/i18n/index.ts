@@ -795,7 +795,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.routing.reason.routing_off": "AI 라우팅이 꺼져 있어요",
   "objectives.routing.reason.no_candidate": "고를 수 있는 후보가 없어요",
   "objectives.routing.reason.decision_timeout": "판단 시간이 초과됐어요",
-  "objectives.routing.reason.not_signed_in": "라우팅 모델에 로그인되어 있지 않아요",
+  "objectives.routing.reason.not_signed_in": "라우팅 모델에 로그인돼 있지 않아요",
   "objectives.routing.reason.decision_failed": "판단에 실패했어요",
   "objectives.routing.reason.settings_changed": "판단 중에 라우팅 설정이 바뀌었어요",
   "objectives.routing.reason.invalid_choice": "판단이 쓸 수 없는 모델을 골랐어요",
@@ -817,7 +817,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.routing.judgingRow": "판단 중",
   "objectives.routing.viaRoute": "라우팅",
   "objectives.routing.viaPicked": "라우팅 → 직접 지정",
-  "objectives.routing.picked": "라우팅 결과 대신 이 모델로 띄워요",
+  "objectives.routing.picked": "직접 골랐어요. 라우팅 결과 대신 이 모델로 띄워요",
   "objectives.routing.useResult": "라우팅 결과 쓰기",
   "objectives.routing.atLaunch": "개시 때 판단",
   "objectives.routing.fixedModel": "직접 지정",
@@ -856,7 +856,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.steer": "스티어링",
   "objectives.review.complete": "완료",
   "objectives.extend.action": "범위 넓히기",
-  "objectives.extend.doneDesc": "메시지를 보내도 완료 상태는 그대로예요. 일을 더하려면 범위 넓히기를 눌러 주세요.",
+  "objectives.extend.doneDesc": "메시지는 지휘관에게 가고 완료 상태는 그대로예요. 일을 더하려면 범위 넓히기를 눌러 주세요.",
   "objectives.extend.placeholder": "이 목표에 더할 범위 (필수)",
   "objectives.extend.chip": "확장 {n}",
   "objectives.extend.original": "처음 범위",
@@ -1030,7 +1030,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.band.reason.taken": "같은 요청이 이미 진행 중이에요",
   "objectives.band.reason.awaiting": "지휘관이 허용을 기다리고 있어 전달되지 않았어요",
   "objectives.band.reason.undelivered": "지휘관에게 전달되지 않았어요",
-  "objectives.band.reason.trustRequired": "Claude Code가 이 폴더의 신뢰를 확인하지 못했어요. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 그다음 다시 시도해 주세요",
+  "objectives.band.reason.trustRequired": "Claude Code가 이 폴더를 아직 신뢰하지 않아요. 그 폴더에서 터미널을 열고 claude를 실행해 신뢰 확인 화면에서 “Yes, I trust this folder”를 고른 뒤 다시 시도해 주세요",
   "objectives.band.reason.unavailable": "이 호스트에서는 목표를 시작할 수 없어요",
   "objectives.band.reason.done": "이미 완료된 목표예요",
   "objectives.band.reason.criteriaPending": "승인을 기다리는 달성 기준 제안이 남아 있어요",
@@ -1327,7 +1327,7 @@ const translators: Record<ConsoleLocale, Translate<ObjectiveMessageKey>> = {
 
 const mobileMessages = {
   en: { ...objectivesEn, "objectives.band.reason.trustRequired": "Trust has not been confirmed for this folder. Open a terminal in the folder and run claude. If the trust dialog appears, choose “Yes, I trust this folder”, then retry" },
-  ko: { ...objectivesKo, "objectives.band.reason.trustRequired": "이 폴더의 신뢰를 확인하지 못했어요. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 그다음 다시 시도해 주세요" },
+  ko: { ...objectivesKo, "objectives.band.reason.trustRequired": "이 폴더를 아직 신뢰하지 않아요. 그 폴더에서 터미널을 열고 claude를 실행해 신뢰 확인 화면에서 “Yes, I trust this folder”를 고른 뒤 다시 시도해 주세요" },
 };
 const mobileTranslators: Record<ConsoleLocale, Translate<ObjectiveMessageKey>> = {
   en: createTranslator(mobileMessages, "en"),

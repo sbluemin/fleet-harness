@@ -317,7 +317,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.staging.viewHistory": "기록 보기",
   "repository.staging.editLastCommit": "마지막 커밋 수정",
   "repository.staging.amendChecking": "Amend 초안의 대상 커밋을 확인하고 있어요…",
-  "repository.staging.amendHeadChanged": "Amend 초안을 쓴 뒤 HEAD가 바뀌었어요. 메시지는 그대로 남아 있어요. 현재 커밋을 수정하려면 Amend를 끄고 기록을 확인한 뒤 다시 선택해 주세요.",
+  "repository.staging.amendHeadChanged": "Amend 초안을 쓴 뒤 HEAD가 바뀌었어요. 메시지는 그대로 남아 있어요. 현재 커밋을 수정하려면 Amend를 끄고 기록을 확인한 뒤 다시 골라 주세요.",
 
   "repository.section.context": "컨텍스트",
   "repository.section.working": "작업",

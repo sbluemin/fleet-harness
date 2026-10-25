@@ -191,7 +191,7 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.profile.cleared": "내 프로필을 비웠어요.",
   "terminal.browser.import.title": "브라우저에서 가져오기",
   "terminal.browser.import.windowsPending": "Windows의 브라우저 가져오기는 준비 중이에요.",
-  "terminal.browser.import.body": "플릿 브라우저로 가져올 데이터를 선택해 주세요.",
+  "terminal.browser.import.body": "플릿 브라우저로 가져올 데이터를 골라 주세요.",
   "terminal.browser.import.source": "원본",
   "terminal.browser.import.cookies": "쿠키 (로그인 상태)",
   "terminal.browser.import.cookiesHelp": "비밀번호와 방문 기록은 격리된 브라우저에 넣을 수 없어서 가져오지 않아요.",
