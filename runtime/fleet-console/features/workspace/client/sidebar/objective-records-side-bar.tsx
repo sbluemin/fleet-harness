@@ -223,7 +223,8 @@ interface TheaterActionsMenuProps {
   /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
   readonly atCursor?: boolean;
   readonly onCreateGroup: (name: string) => void;
-  readonly onForgetTheater: () => void;
+  /** 등록 Theater 를 잊는다 — 사령관 행에는 없다(사령관은 Theater 가 아니다). */
+  readonly onForgetTheater?: (() => void) | undefined;
   readonly onOpenZone: () => void;
   readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
@@ -649,8 +650,9 @@ export function ObjectiveRecordsSideBar({
     ? groups.find((g) => g.id === activeContextMenu.groupId) ?? null
     : null;
   const theaterMenuTargetId = activeContextMenu?.kind === "theater" ? activeContextMenu.theaterId : null;
+  // 사이드바 행은 사령관(UUID)이다 — 메뉴 대상도 그 행의 얼굴에서 찾는다. 등록 Theater 목록에는 사령관 UUID 가 없다.
   const contextMenuTheater = activeContextMenu?.kind === "theater"
-    ? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
+    ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
 
   const keyboardMove = (objectiveId: string, direction: -1 | 1) => {
@@ -1334,12 +1336,14 @@ export function ObjectiveRecordsSideBar({
             void createCommodoreGroup(contextMenuTheater.id, name);
             closeActiveContextMenu();
           }}
-          onForgetTheater={() => {
+          onForgetTheater={theaters.some((theater) => theater.id === contextMenuTheater.id) ? () => {
             onForgetTheater(contextMenuTheater.id);
             closeActiveContextMenu();
-          }}
+          } : undefined}
           onOpenZone={() => {
             setZoneCommodore(contextMenuTheater.id);
+            // 오른쪽 패널의 탭은 가운데에 대화가 선 동안만 선다 — 사령관 대화를 먼저 세우고 그 설정(맨 위가 Theater)을 연다.
+            openCommodoreConversation(contextMenuTheater.id);
             openTheaterInbox({ theaterId: contextMenuTheater.id, sectionId: "commodore:commodore", pageId: "settings", returnFocus: activeContextMenu.returnFocus ?? null });
             setActiveContextMenu(null);
           }}
@@ -1872,16 +1876,20 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
             <span className="theater-menu-label">{t("sidebar.theater.newGroup")}</span>
           </button>
         )}
-        <div className="theater-menu-divider" aria-hidden="true" />
-        <button
-          type="button"
-          role="menuitem"
-          className="theater-menu-item theater-menu-forget"
-          onClick={onForgetTheater}
-        >
-          <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.theater.forget")}</span>
-        </button>
+        {onForgetTheater ? (
+          <>
+            <div className="theater-menu-divider" aria-hidden="true" />
+            <button
+              type="button"
+              role="menuitem"
+              className="theater-menu-item theater-menu-forget"
+              onClick={onForgetTheater}
+            >
+              <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
+              <span className="theater-menu-label">{t("sidebar.theater.forget")}</span>
+            </button>
+          </>
+        ) : null}
       </div>
     </div>,
     document.body,
