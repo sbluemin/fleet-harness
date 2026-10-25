@@ -414,7 +414,7 @@ describe("durable console state", () => {
     const heldAgain = held.open(); heldAgain.load();
     expect(heldAgain.board.list("c1").map((row) => row.id)).not.toContain("gone");
     expect(JSON.parse(fs.readFileSync(path.join(held.destination, "archive.json"), "utf8")).quarantine).toContainEqual(expect.objectContaining({ id: "gone", reason: "missing_theater_registration" }));
-    // 등록 id가 옛 표기 해시여도 보관·그룹이 귀속되고, 원장에 있는 id의 보관만 보정된다. 삭제는 적용하지 않는다.
+    // 아직 수입하지 않은 데이터는 같은 위치의 옛 등록 해시도 귀속한다. 이미 수입된 id를 다시 고치지는 않는다.
     const spelledRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(".fleet/isolated/durable-tests", "spell-")));
     tempDirs.push(spelledRoot);
     const project = path.join(spelledRoot, "Project");
@@ -433,50 +433,20 @@ describe("durable console state", () => {
     fs.writeFileSync(path.join(entity, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters: [{ path: native }] }));
     const ownership = createCommodoreOwnership({ consoleDataDir: data, workspaceHash, listTheaterIds: () => [oldId], resolveTheaterPath: (id: string) => id === oldId ? spelled : null } as unknown as Parameters<typeof createCommodoreOwnership>[0]);
     const owner = ownership.objectives()[0]!;
-    fs.mkdirSync(path.join(owner.directory, "kept"), { recursive: true });
-    fs.writeFileSync(path.join(owner.directory, "kept", "objective.json"), JSON.stringify({ id: "kept", cwd: native, title: "Kept", rank: 1, note: "kept", missions: [], ts: { createdAt: 1, updatedAt: 2 } }));
-    fs.mkdirSync(path.join(owner.directory, ".archive-migration"), { recursive: true });
-    fs.writeFileSync(path.join(owner.directory, ".archive-migration", "imported.json"), JSON.stringify({ ids: ["kept"] }));
+    fs.mkdirSync(owner.directory, { recursive: true });
     fs.writeFileSync(path.join(owner.directory, "groups.json"), JSON.stringify({ groups: [] }));
-    const keptOperation = { id: "kept", theaterId: oldId, groupId: "g-old", title: "Kept", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    const freshOperation = { id: "fresh", theaterId: oldId, title: "Fresh", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
     const stateFile = path.join(data, "state.json");
-    fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ id: oldId, path: native, realpath: native, label: "Project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" }], operations: [keptOperation], groups: [{ id: "g-old", theaterId: oldId, name: "Old", color: "blue", order: 0, createdAt: 1 }] }));
-    fs.writeFileSync(path.join(data, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "arc-old", archivedAt: 4, operation: keptOperation }], deletions: [{ deletionId: "del-old", kind: "objective", targetId: "kept", deletedAt: 1, expiresAt: 9, operation: keptOperation }], events: [] }));
+    fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ id: oldId, path: native, realpath: native, label: "Project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" }], operations: [freshOperation], groups: [{ id: "g-old", theaterId: oldId, name: "Old", color: "blue", order: 0, createdAt: 1 }] }));
+    fs.writeFileSync(path.join(data, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "arc-old", archivedAt: 4, operation: freshOperation }], deletions: [], events: [] }));
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
-    const openSpelled = () => createObjectiveStorage({ directory: data, stateStore, owners: () => ownership.objectives() });
-    const corrected = openSpelled();
-    const correctedState = corrected.load();
-    const archiveFile = path.join(owner.directory, "archive.json");
-    const archive = JSON.parse(fs.readFileSync(archiveFile, "utf8")) as { entries: { objectiveId: string }[]; deletions: { deletionId: string }[]; quarantine?: { id: string; reason: string }[] };
-    archive.entries = [];
-    fs.writeFileSync(archiveFile, JSON.stringify(archive));
-    const cleared = openSpelled();
-    cleared.load();
+    const spelledImport = createObjectiveStorage({ directory: data, stateStore, owners: () => ownership.objectives() });
+    const spelledState = spelledImport.load();
     expect({
-      oldIdIncluded: owner.legacyTheaterIds?.includes(oldId),
-      archived: corrected.entries().some((entry) => entry.objectiveRecord.id === "kept"),
-      group: correctedState.groups?.some((group) => group.id === "g-old"),
-      membership: corrected.entries().find((entry) => entry.objectiveRecord.id === "kept")?.objectiveRecord.groupId,
-      deletionApplied: archive.deletions.some((row) => row.deletionId === "del-old"),
-      skipped: archive.quarantine?.some((row) => row.id === "kept" && row.reason === "legacy_destructive_skipped"),
-      stayedClear: cleared.entries().every((entry) => entry.objectiveRecord.id !== "kept"),
-    }).toEqual({ oldIdIncluded: true, archived: true, group: true, membership: "g-old", deletionApplied: false, skipped: true, stayedClear: true });
-    // id가 원래 일치한 일반 이주는 복원·그룹 제외를 다음 기동에도 유지한다.
-    const normal = fixture();
-    fs.rmSync(normal.destination, { recursive: true });
-    fs.mkdirSync(path.join(normal.destination, "restored"), { recursive: true });
-    fs.writeFileSync(path.join(normal.destination, "restored", "objective.json"), JSON.stringify({ id: "restored", cwd: normal.directory, title: "Restored", rank: 1, note: "back", missions: [], groupId: null, ts: { createdAt: 1, updatedAt: 20 } }));
-    fs.mkdirSync(path.join(normal.destination, ".archive-migration"), { recursive: true });
-    fs.writeFileSync(path.join(normal.destination, ".archive-migration", "imported.json"), JSON.stringify({ ids: ["restored"] }));
-    fs.writeFileSync(path.join(normal.destination, "groups.json"), JSON.stringify({ groups: [] }));
-    fs.writeFileSync(path.join(normal.destination, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
-    const matched = { id: "restored", theaterId: "t1", groupId: "g1", title: "Restored", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
-    fs.writeFileSync(normal.stateFile, JSON.stringify({ ...normal.source, operations: [matched], groups: [{ id: "g1", theaterId: "t1", name: "Group", color: "blue", order: 0, createdAt: 1 }] }));
-    fs.writeFileSync(path.join(normal.directory, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "a-restored", archivedAt: 3, operation: matched }], deletions: [], events: [] }));
-    const keptActive = normal.open();
-    const keptState = keptActive.load();
-    const restored = keptActive.board.list("c1").find((row) => row.id === "restored");
-    expect({ active: Boolean(restored), archived: keptActive.entries().some((entry) => entry.objectiveRecord.id === "restored"), groupId: restored?.groupId ?? null, groupImported: keptState.groups?.some((group) => group.id === "g1") ?? false }).toEqual({ active: true, archived: false, groupId: null, groupImported: true });
+      oldIdIncluded: owner.legacyTheaterIds?.includes(oldId) && !owner.legacyTheaterIds?.every((id) => id === owner.legacyTheaterId),
+      archived: spelledImport.entries().some((entry) => entry.objectiveRecord.id === "fresh"),
+      group: spelledState.groups?.some((group) => group.id === "g-old"),
+    }).toEqual({ oldIdIncluded: true, archived: true, group: true });
   });
 
   it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {

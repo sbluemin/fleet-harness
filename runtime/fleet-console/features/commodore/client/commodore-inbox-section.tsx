@@ -43,6 +43,7 @@ import {
   noteCommodoreLanguage,
   openCommodoreMobile,
   ownerOfContext,
+  resolveContext,
   readCommodore,
   readCommodoreExperiment,
   removeCommodoreIntel,
@@ -126,11 +127,13 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
   onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id, true),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
-  // Theater id를 UUID 자리에 넣지 않는다. 아직 못 풀었으면 false를 돌려 시트가 useCommodoreOwner로 푼다.
+  // Theater 머리 착지는 이 칸을 연다. theater.id는 등록 해시라 UUID 자리에 넣지 않는다.
   openConversation: ({ theater, pageId }) => {
     if (pageId !== "log") return false;
     const owner = ownerOfContext(theater.id);
-    return owner ? openCommodoreConversation(owner) : false;
+    if (owner) return openCommodoreConversation(owner);
+    void resolveContext(theater.id).then((id) => { if (id) openCommodoreConversation(id); });
+    return false;
   },
 };
 
