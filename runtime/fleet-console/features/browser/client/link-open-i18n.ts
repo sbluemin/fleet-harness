@@ -18,9 +18,9 @@ const linkOpenEn = {
 const linkOpenKo: Record<keyof typeof linkOpenEn, string> = {
   "terminal.link.cardAria": "이 링크를 어디서 열지 고르기",
   "terminal.link.objectiveRecordBrowser": "플릿 브라우저",
-  "terminal.link.objectiveRecordBrowserHelp": "이 Session의 에이전트와 같은 탭을 봅니다",
+  "terminal.link.objectiveRecordBrowserHelp": "이 Session의 에이전트와 같은 탭을 봐요",
   "terminal.link.webBrowser": "내 브라우저",
-  "terminal.link.webBrowserHelp": "이 컴퓨터의 기본 브라우저에서 엽니다",
+  "terminal.link.webBrowserHelp": "이 컴퓨터의 기본 브라우저에서 열어요",
 };
 
 const messages = {

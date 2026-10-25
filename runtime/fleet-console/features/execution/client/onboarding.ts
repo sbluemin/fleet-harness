@@ -13,12 +13,12 @@ const messagesEn = {
 } as const;
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
-  "claudeObjectiveRecords.step3Title": "하나의 Gateway로 실행하는 Claude입니다",
-  "claudeObjectiveRecords.step3Body": "Claude Code 내장 Claude 모델과 설정에서 켠 게이트웨이 모델을 함께 사용합니다. 실행 후 /model로 모델을 바꿀 수 있습니다.",
-  "chatMode.step2Title": "바로 여기에서 씁니다",
-  "chatMode.step2Body": "이 쉬는 한 줄이 패널의 컴포저입니다 — 누르면 그 자리에서 펼쳐집니다. Enter로 보내고 Esc로 물러나며, 초안은 이 패널에 남습니다. 새 세션의 '@' 멘션은 별도 경로로 그대로 동작합니다.",
-  "chatMode.step3Title": "터미널은 한 번의 클릭 거리에 있습니다",
-  "chatMode.step3Body": "언제든 터미널로 돌아갈 수 있습니다 — 어느 쪽이든 같은 세션입니다. 채팅 턴은 터미널 스크롤백에 남고, 터미널에서 한 작업은 채팅으로 다시 돌아옵니다.",
+  "claudeObjectiveRecords.step3Title": "하나의 Gateway로 실행하는 Claude예요",
+  "claudeObjectiveRecords.step3Body": "Claude Code 내장 Claude 모델과 설정에서 켠 게이트웨이 모델을 함께 쓸 수 있어요. 실행한 뒤에도 /model로 모델을 바꿀 수 있어요.",
+  "chatMode.step2Title": "바로 여기에서 써요",
+  "chatMode.step2Body": "쉬고 있는 이 한 줄이 패널의 컴포저예요. 누르면 그 자리에서 펼쳐져요. Enter로 보내고 Esc로 접으며, 초안은 이 패널에 남아요. 새 세션의 '@' 멘션은 별도 경로로 그대로 동작해요.",
+  "chatMode.step3Title": "터미널은 한 번 클릭하면 돼요",
+  "chatMode.step3Body": "언제든 터미널로 돌아갈 수 있어요. 어느 쪽이든 같은 세션이에요. 채팅 턴은 터미널 스크롤백에 남고, 터미널에서 한 작업은 채팅에도 다시 나타나요.",
 };
 
 function T(key: keyof typeof messagesEn): LocalizedText {

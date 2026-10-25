@@ -19,18 +19,18 @@ const messagesEn = {
 } as const;
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
-  "remoteAccess.spotlightTitle": "다른 기기에서 이 콘솔에 접속할 수 있습니다",
-  "remoteAccess.spotlightBody": "설정 → 원격 접속에서 다른 기기에 액세스 링크를 건네거나, Fleet Desktop으로 열 수 있는 다른 콘솔을 저장할 수 있습니다.",
+  "remoteAccess.spotlightTitle": "다른 기기에서 이 콘솔에 접속할 수 있어요",
+  "remoteAccess.spotlightBody": "설정 → 원격 접속에서 다른 기기에 액세스 링크를 건네거나, Fleet Desktop으로 열 수 있는 다른 콘솔을 저장할 수 있어요.",
   "remoteAccess.step1Title": "원격 접속을 켜기 전에",
-  "remoteAccess.step1Body": "켜면 이 콘솔이 다른 기기에 열리므로 각 항목을 읽어 보고 사용하세요.",
-  "remoteAccess.step2Title": "건너갈 수 있는 콘솔 목록입니다",
-  "remoteAccess.step2Body": "다른 콘솔의 액세스 링크를 붙여넣으면 이 목록에 들어옵니다. 찾기 옆 콘솔 단추에서 실제로 여는 데는 Fleet Desktop이 필요합니다 — 브라우저는 콘솔의 인증서를 대조할 수 없습니다.",
-  "remoteAccess.step3Title": "이 콘솔이 응답할 주소를 고릅니다",
-  "remoteAccess.step3Body": "로컬 수신 엔드포인트와 라우터가 그곳으로 전달할 공개 호스트 이름 및 포트를 고릅니다. 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.",
-  "remoteAccess.step4Title": "이 콘솔의 지문입니다",
-  "remoteAccess.step4Body": "액세스 링크가 이 지문을 실어, Fleet Console 앱이 이 콘솔과 사칭을 구분합니다. 지문을 갱신하면 연결된 모든 기기가 한 번에 끊깁니다.",
-  "remoteAccess.step5Title": "액세스 링크를 건넵니다",
-  "remoteAccess.step5Body": "링크는 처음 한 번만 쓰이고 기기 하나와 페어링됩니다. full 링크는 그 기기가 이 기계에서 명령을 실행할 수 있게 하고, monitoring 링크는 그럴 수 없습니다. 링크는 비밀로 다루세요.",
+  "remoteAccess.step1Body": "켜면 이 콘솔이 다른 기기에 열려요. 각 항목을 읽어 보고 사용해 주세요.",
+  "remoteAccess.step2Title": "건너갈 수 있는 콘솔 목록이에요",
+  "remoteAccess.step2Body": "다른 콘솔의 액세스 링크를 붙여넣으면 이 목록에 들어와요. 찾기 옆 콘솔 단추로 실제로 열려면 Fleet Desktop이 필요해요. 브라우저는 콘솔의 인증서를 대조할 수 없거든요.",
+  "remoteAccess.step3Title": "이 콘솔이 응답할 주소를 골라요",
+  "remoteAccess.step3Body": "로컬 수신 엔드포인트와, 라우터가 그곳으로 전달할 공개 호스트 이름 및 포트를 골라요. 끄면 리스너가 닫히고 모든 원격 세션이 바로 끝나요.",
+  "remoteAccess.step4Title": "이 콘솔의 지문이에요",
+  "remoteAccess.step4Body": "액세스 링크에 이 지문이 담겨서 Fleet Console 앱이 이 콘솔과 사칭을 구분해요. 지문을 갱신하면 연결된 모든 기기가 한 번에 끊겨요.",
+  "remoteAccess.step5Title": "액세스 링크를 건네요",
+  "remoteAccess.step5Body": "링크는 처음 한 번만 쓸 수 있고 기기 하나와 페어링돼요. full 링크는 그 기기가 이 컴퓨터에서 명령을 실행할 수 있게 하고, monitoring 링크는 그럴 수 없어요. 링크는 비밀로 다뤄 주세요.",
 };
 
 function T(key: keyof typeof messagesEn): LocalizedText {

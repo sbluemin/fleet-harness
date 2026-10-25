@@ -6,8 +6,8 @@ const en = {
 } satisfies Partial<Record<QuotaMessageKey, string>>;
 
 const ko: Record<keyof typeof en, string> = {
-  "quota.connect.body": "로컬 로그인 정보로 Anthropic에 사용량을 조회합니다. 자격증명은 저장되거나 변경되지 않습니다.",
-  "quota.claude.signedOut": "로그인 정보를 찾지 못했습니다. claude를 한 번 실행해 로그인하세요.",
+  "quota.connect.body": "로컬 로그인 정보로 Anthropic에서 사용량을 가져와요. 자격 증명은 저장하거나 바꾸지 않아요.",
+  "quota.claude.signedOut": "로그인 정보를 찾지 못했어요. claude를 한 번 실행해 로그인해 주세요.",
 };
 
 export const MOBILE_MESSAGES = { en, ko };
