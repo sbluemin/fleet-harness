@@ -51,8 +51,11 @@ let layouts = new Map<string, WorkbenchLayout>();
 let currentKey: string = NON_CONVERSATION_KEY;
 let focusedTileId: string | null = null;
 let loadState: "idle" | "loading" | "loaded" = "idle";
-/** 서버 값이 도착하기 전에 이 화면에서 손댄 대화 — 도착한 값이 덮지 않는다. */
-const touchedBeforeLoad = new Set<string>();
+/** 읽기 전에는 빈 배치의 스냅샷이 아니라 조작 의도를 보관한다. 사령관을 옮겨도 원래 키에 적용한다. */
+const pendingChanges: { readonly key: string; readonly apply: () => void }[] = [];
+/** 수화 전 open이 돌려준 임시 id — 이미 저장된 같은 출처의 칸을 재사용하면 그 id로 이어 준다. */
+const pendingTileIds = new Map<string, { readonly key: string; readonly id: string | null }>();
+let replayingChanges = false;
 const dirty = new Set<string>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let tileSeq = 0;
@@ -60,6 +63,7 @@ let version = 0;
 
 function notify(): void {
   version += 1;
+  if (replayingChanges) return;
   for (const listener of listeners) listener();
 }
 
@@ -105,25 +109,56 @@ export function setWorkbenchConversation(key: string | null): void {
 
 // ── 저장 ──────────────────────────────────────────────────────────────────
 
-/** 서버의 배치를 한 번 읽는다. 그 사이 이 화면에서 손댄 대화는 화면의 것이 이긴다. */
+/** 서버의 배치를 먼저 읽고, 기다리던 조작을 그 배치 위에 순서대로 적용한다. 읽기 실패를 빈 배치로 저장하지 않는다. */
 export function loadWorkbenchLayouts(): void {
   if (loadState !== "idle" || typeof fetch === "undefined") return;
   loadState = "loading";
   void fetch(CONVERSATION_WORKBENCH_API_PATH, { headers: { Accept: "application/json" } })
-    .then(async (response) => (response.ok ? await response.json() as unknown : null))
-    .catch(() => null)
+    .then(async (response) => {
+      if (!response.ok) throw new Error("Workbench load failed");
+      return await response.json() as unknown;
+    })
     .then((body) => {
-      loadState = "loaded";
       const book = sanitizeLayoutBook(body !== null && typeof body === "object" ? (body as { readonly layouts?: unknown }).layouts : null);
-      const next = new Map(layouts);
-      for (const [key, stored] of Object.entries(book)) {
-        if (touchedBeforeLoad.has(key)) continue;
-        next.set(key, stored.layout);
+      layouts = new Map(Object.entries(book).map(([key, stored]) => [key, stored.layout]));
+      loadState = "loaded";
+      const activeKey = currentKey;
+      const focusByKey = new Map<string, string | null>([[activeKey, focusedTileId]]);
+      const closeByKey = new Map<string, typeof pendingClose>([[activeKey, pendingClose]]);
+      replayingChanges = true;
+      try {
+        for (const change of pendingChanges.splice(0)) {
+          currentKey = change.key;
+          focusedTileId = focusByKey.get(currentKey) ?? null;
+          pendingClose = closeByKey.get(currentKey) ?? null;
+          change.apply();
+          focusByKey.set(currentKey, focusedTileId);
+          closeByKey.set(currentKey, pendingClose);
+        }
+      } finally {
+        currentKey = activeKey;
+        focusedTileId = focusByKey.get(activeKey) ?? null;
+        pendingClose = closeByKey.get(activeKey) ?? null;
+        replayingChanges = false;
       }
-      touchedBeforeLoad.clear();
-      layouts = next;
       notify();
+    }, () => {
+      // 다음 조작이나 마운트가 다시 읽는다. 기다리던 의도는 성공할 때까지 남긴다.
+      loadState = "idle";
     });
+}
+
+function deferUntilLoaded(apply: () => void): boolean {
+  if (loadState === "loaded") return false;
+  pendingChanges.push({ key: currentKey, apply });
+  loadWorkbenchLayouts();
+  return true;
+}
+
+function resolvedTileId(tileId: string): string {
+  // 자리가 없어 열리지 않은 임시 id는 어느 실제 칸과도 맞지 않는다.
+  const resolved = pendingTileIds.get(tileId);
+  return resolved?.key === currentKey ? resolved.id ?? tileId : tileId;
 }
 
 function scheduleSave(key: string): void {
@@ -135,6 +170,7 @@ function scheduleSave(key: string): void {
 /** 모아 둔 배치를 지금 쓴다. 실패해도 화면의 배치는 그대로다 — 다음 변경이 다시 쓴다. */
 export function flushWorkbenchSaves(): void {
   if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
+  if (loadState !== "loaded") return;
   if (typeof fetch === "undefined") { dirty.clear(); return; }
   for (const key of dirty) {
     const layout = layouts.get(key) ?? null;
@@ -161,7 +197,6 @@ function commit(next: WorkbenchLayout, options: { readonly persist?: boolean } =
   if (isWorkbenchEmpty(next)) map.delete(key);
   else map.set(key, next);
   layouts = map;
-  if (loadState !== "loaded") touchedBeforeLoad.add(key);
   if (options.persist !== false) scheduleSave(key);
   notify();
 }
@@ -213,6 +248,7 @@ function averageWeight(weights: readonly number[]): number {
 }
 
 export function findWorkbenchTile(layout: WorkbenchLayout, tileId: string): { readonly tile: WorkbenchTile; readonly place: WorkbenchTilePlace } | null {
+  tileId = resolvedTileId(tileId);
   for (let column = 0; column < layout.columns.length; column += 1) {
     const index = layout.columns[column]!.tiles.findIndex((tile) => tile.id === tileId);
     if (index !== -1) return { tile: layout.columns[column]!.tiles[index]!, place: { area: "column", column, index } };
@@ -313,8 +349,17 @@ export interface OpenTileOptions {
   readonly reuse?: boolean;
 }
 
-/** 칸을 연다. 같은 출처의 칸이 있으면 그 칸으로 포커스를 옮긴다(표면은 params 를 갈아탄다). 자리가 없으면 null. */
+/** 칸을 연다. 같은 출처는 재사용한다(표면은 params 를 갈아탄다). 수화 전에는 후속 조작용 임시 id, 수화 뒤 자리가 없으면 null. */
 export function openWorkbenchTile(source: WorkbenchTileSource, options: OpenTileOptions = {}): string | null {
+  if (loadState !== "loaded") {
+    const id = nextTileId();
+    deferUntilLoaded(() => { pendingTileIds.set(id, { key: currentKey, id: openLoadedWorkbenchTile(source, options, id) }); });
+    return id;
+  }
+  return openLoadedWorkbenchTile(source, options);
+}
+
+function openLoadedWorkbenchTile(source: WorkbenchTileSource, options: OpenTileOptions, reservedId?: string): string | null {
   const layout = getWorkbenchLayout();
   if (options.reuse !== false) {
     const existing = workbenchTiles(layout).find((tile) => sameSource(tile, source));
@@ -333,7 +378,7 @@ export function openWorkbenchTile(source: WorkbenchTileSource, options: OpenTile
   const draft = thaw(layout);
   const target = defaultTarget(draft, options.placement ?? "split");
   if (target === null) return null;
-  const id = nextTileId();
+  const id = reservedId ?? nextTileId();
   const tile: WorkbenchTile = source.kind === "surface"
     ? { id, kind: "surface", surfaceId: source.surfaceId, params: sanitizeWorkbenchParams(source.params) }
     : source.kind === "entry" ? { id, kind: "entry", entryId: source.entryId } : { id, kind: "browser" };
@@ -397,6 +442,8 @@ export function cancelWorkbenchClose(): void {
  * 표면이 스스로 부르는 `close()`와 확인을 마친 닫기는 묻지 않는다.
  */
 export function closeWorkbenchTile(tileId: string, options: { readonly confirmed?: boolean } = {}): void {
+  if (deferUntilLoaded(() => closeWorkbenchTile(tileId, options))) return;
+  tileId = resolvedTileId(tileId);
   if (options.confirmed !== true) {
     const found = findWorkbenchTile(getWorkbenchLayout(), tileId);
     const answer = found === null ? null : closeGuard(found.tile);
@@ -427,11 +474,14 @@ export function closeWorkbenchTile(tileId: string, options: { readonly confirmed
 }
 
 function closeWhere(predicate: (tile: WorkbenchTile) => boolean): void {
+  if (deferUntilLoaded(() => closeWhere(predicate))) return;
   const targets = workbenchTiles(getWorkbenchLayout()).filter(predicate);
   for (const tile of targets) closeWorkbenchTile(tile.id);
 }
 
 export function moveWorkbenchTile(tileId: string, target: WorkbenchDropTarget): boolean {
+  if (deferUntilLoaded(() => moveWorkbenchTile(tileId, target))) return false;
+  tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   const found = findWorkbenchTile(layout, tileId);
   if (found === null) return false;
@@ -465,6 +515,8 @@ export function moveWorkbenchTile(tileId: string, target: WorkbenchDropTarget): 
 
 /** ⌥+화살표·⋮ 메뉴의 한 걸음 이동. 움직일 수 없으면 false. */
 export function nudgeWorkbenchTile(tileId: string, direction: WorkbenchNudge): boolean {
+  if (deferUntilLoaded(() => nudgeWorkbenchTile(tileId, direction))) return false;
+  tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   const found = findWorkbenchTile(layout, tileId);
   if (found === null) return false;
@@ -490,12 +542,14 @@ export function nudgeWorkbenchTile(tileId: string, direction: WorkbenchNudge): b
 
 /** 「대화 아래로」. */
 export function moveWorkbenchTileBelow(tileId: string): boolean {
+  if (deferUntilLoaded(() => moveWorkbenchTileBelow(tileId))) return false;
   const layout = getWorkbenchLayout();
   return moveWorkbenchTile(tileId, { area: "below", index: layout.below.tiles.length });
 }
 
 /** 「오른쪽 분할로」 — 마지막 열 아래(차 있으면 새 열). */
 function moveToSplit(tileId: string): boolean {
+  if (deferUntilLoaded(() => moveToSplit(tileId))) return false;
   const layout = getWorkbenchLayout();
   const last = layout.columns.length - 1;
   if (last >= 0 && layout.columns[last]!.tiles.length < WORKBENCH_MAX_TILES_PER_COLUMN) {
@@ -507,12 +561,19 @@ function moveToSplit(tileId: string): boolean {
 export const moveWorkbenchTileToSplit = moveToSplit;
 
 export function focusWorkbenchTile(tileId: string | null): void {
+  if (deferUntilLoaded(() => focusWorkbenchTile(tileId))) return;
+  if (tileId !== null) {
+    tileId = resolvedTileId(tileId);
+    if (findWorkbenchTile(getWorkbenchLayout(), tileId) === null) return;
+  }
   if (focusedTileId === tileId) return;
   focusedTileId = tileId;
   notify();
 }
 
 export function setWorkbenchExpanded(tileId: string | null): void {
+  if (deferUntilLoaded(() => setWorkbenchExpanded(tileId))) return;
+  if (tileId !== null) tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   if (layout.expandedTileId === tileId) return;
   if (tileId !== null && findWorkbenchTile(layout, tileId) === null) return;
@@ -520,6 +581,8 @@ export function setWorkbenchExpanded(tileId: string | null): void {
 }
 
 export function replaceWorkbenchTileParams(tileId: string, params: Readonly<Record<string, string>>): void {
+  if (deferUntilLoaded(() => replaceWorkbenchTileParams(tileId, params))) return;
+  tileId = resolvedTileId(tileId);
   const layout = getWorkbenchLayout();
   const found = findWorkbenchTile(layout, tileId);
   if (found === null || found.tile.kind !== "surface") return;
@@ -529,6 +592,7 @@ export function replaceWorkbenchTileParams(tileId: string, params: Readonly<Reco
 }
 
 export function setWorkbenchSplitRatio(ratio: number | null, options: { readonly persist?: boolean } = {}): void {
+  if (deferUntilLoaded(() => setWorkbenchSplitRatio(ratio, options))) return;
   const layout = getWorkbenchLayout();
   const next = ratio === null ? null : Math.min(0.92, Math.max(0.05, ratio));
   if (layout.splitRatio === next) return;
@@ -536,6 +600,7 @@ export function setWorkbenchSplitRatio(ratio: number | null, options: { readonly
 }
 
 export function setWorkbenchBelowRatio(ratio: number | null, options: { readonly persist?: boolean } = {}): void {
+  if (deferUntilLoaded(() => setWorkbenchBelowRatio(ratio, options))) return;
   const layout = getWorkbenchLayout();
   const next = ratio === null ? null : Math.min(0.85, Math.max(0.08, ratio));
   if (layout.belowRatio === next) return;
@@ -548,6 +613,7 @@ export function setWorkbenchWeights(
   weights: readonly number[],
   options: { readonly persist?: boolean } = {},
 ): void {
+  if (deferUntilLoaded(() => setWorkbenchWeights(target, weights, options))) return;
   const layout = getWorkbenchLayout();
   const clean = weights.map((weight) => (Number.isFinite(weight) && weight > 0 ? weight : 1));
   if (target.area === "columns") {
@@ -567,6 +633,7 @@ export function setWorkbenchWeights(
 
 /** 끌기가 끝났다 — 그 사이 따라간 값을 쓴다. */
 export function persistWorkbench(): void {
+  if (deferUntilLoaded(persistWorkbench)) return;
   scheduleSave(currentKey);
 }
 
@@ -619,6 +686,7 @@ export function closeWorkbenchEntry(entryId: string): void {
 
 /** 보이는 칸은 닫고, 없거나 다른 칸에 가려 있으면 연다. 가려진 칸은 다시 열기 경로가 펼침을 접고 초점을 준다. */
 export function toggleWorkbenchEntry(entryId: string): void {
+  if (deferUntilLoaded(() => toggleWorkbenchEntry(entryId))) return;
   if (isWorkbenchEntryShown(entryId)) closeWorkbenchEntry(entryId);
   else openWorkbenchEntry(entryId);
 }
@@ -633,6 +701,7 @@ export function closeWorkbenchBrowser(): void {
 
 /** 보이는 브라우저 칸은 닫고, 없거나 다른 칸에 가려 있으면 연다. 가려진 칸은 다시 열기 경로가 펼침을 접고 초점을 준다. */
 export function toggleWorkbenchBrowser(): void {
+  if (deferUntilLoaded(toggleWorkbenchBrowser)) return;
   if (isWorkbenchBrowserShown()) closeWorkbenchBrowser();
   else openWorkbenchBrowser();
 }
@@ -681,6 +750,7 @@ export function closeAllWorkbenchSurfaces(): void {
 
 /** 대화를 드러낸다 — 펼친 칸을 접는다. */
 export function revealWorkbenchConversation(): void {
+  if (deferUntilLoaded(revealWorkbenchConversation)) return;
   if (getWorkbenchLayout().expandedTileId !== null) setWorkbenchExpanded(null);
 }
 
@@ -690,7 +760,9 @@ export function resetWorkbenchForTest(): void {
   currentKey = NON_CONVERSATION_KEY;
   focusedTileId = null;
   loadState = "idle";
-  touchedBeforeLoad.clear();
+  pendingChanges.length = 0;
+  pendingTileIds.clear();
+  replayingChanges = false;
   dirty.clear();
   if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
   version += 1;
