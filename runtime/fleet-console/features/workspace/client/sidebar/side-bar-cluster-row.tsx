@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useId, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -604,44 +604,69 @@ export function SideBarRowZone({ theaterId, zone, count, children }: { readonly 
   );
 }
 
-/**
- * 그룹 맨 아래 「시작 전 N」·「완료 N」 접기 — 같은 부품의 두 종류다. 활성·비활성 Theater 가 같은 줄을 세운다. 펼침은 종류·Theater·그룹별로
- * 이 탭의 메모리에만 두고, 두 종류는 서로 독립이다. 글리프는 시작 전이 빈 고리 셋, 완료가 줄의 완료 글리프와 같은 중성 채움 점 셋이다.
- */
-export function SideBarRowFold({ kind, theaterId, groupId, items, expanded, renderRow }: {
+/** 그룹 맨 아래 한 줄 꼬리 — 종류별 버튼을 나란히 두고, 열린 목록 하나를 바로 아래 세운다. */
+export function SideBarRowFold({ theaterId, groupId, freshItems, doneItems, freshExpanded, doneExpanded, renderRow }: {
+  readonly theaterId: string;
+  readonly groupId: string | null;
+  readonly freshItems: readonly SideBarRowItem[];
+  readonly doneItems: readonly SideBarRowItem[];
+  readonly freshExpanded: boolean;
+  readonly doneExpanded: boolean;
+  readonly renderRow: (item: SideBarRowItem) => ReactNode;
+}) {
+  const t = useT();
+  const id = useId();
+  const folds = [
+    { kind: "fresh" as const, items: freshItems, expanded: freshExpanded, title: t("sidebar.fold.fresh") },
+    { kind: "done" as const, items: doneItems, expanded: doneExpanded, title: t("sidebar.fold.done") },
+  ].filter((fold) => fold.items.length > 0);
+  const open = folds.find((fold) => fold.expanded);
+  return (
+    <li className="side-bar-row-fold" data-side-bar-row-fold={open?.kind ?? ""} data-row-fold-group={groupId ?? "__ungrouped__"}>
+      <div className="side-bar-row-fold-tail">
+        {folds.map((fold, index) => (
+          <Fragment key={fold.kind}>
+            {index > 0 ? <span className="side-bar-row-fold-separator" aria-hidden="true" /> : null}
+            <SideBarRowFoldToggle kind={fold.kind} theaterId={theaterId} groupId={groupId} items={fold.items} expanded={fold.expanded} bodyId={`${id}-${fold.kind}`} />
+          </Fragment>
+        ))}
+      </div>
+      {open ? (
+        <ol id={`${id}-${open.kind}`} className="side-bar-row-fold-body" aria-label={open.title}>
+          <RowFoldContext.Provider value={open.kind}>{open.items.map(renderRow)}</RowFoldContext.Provider>
+        </ol>
+      ) : null}
+    </li>
+  );
+}
+
+function SideBarRowFoldToggle({ kind, theaterId, groupId, items, expanded, bodyId }: {
   readonly kind: SideBarRowFoldKind;
   readonly theaterId: string;
   readonly groupId: string | null;
   readonly items: readonly SideBarRowItem[];
   readonly expanded: boolean;
-  readonly renderRow: (item: SideBarRowItem) => ReactNode;
+  readonly bodyId: string;
 }) {
   const t = useT();
   const title = kind === "fresh" ? t("sidebar.fold.fresh") : t("sidebar.fold.done");
   // 접혀 있으면 안의 목표 줄이 받은 표식을 머리가 대신 두른다. 목록 읽기는 펼침과 상관없이 머리가 감싸인다.
   const wrap = useClusterHeadWrap(theaterId, groupId, expanded ? NO_IDS : items.map((item) => item.layout.cluster.id));
   return (
-    <li className={`side-bar-row-fold is-${kind}`} data-side-bar-row-fold={kind} data-row-fold-group={groupId ?? "__ungrouped__"}>
-      <button
-        type="button"
-        className={["side-bar-row-fold-toggle", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")}
-        title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}
-        aria-expanded={expanded}
-        aria-label={kind === "fresh" ? t("sidebar.fold.freshAria", { n: items.length }) : t("sidebar.fold.doneAria", { n: items.length })}
-        // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
-        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
-        onClick={() => setSideBarRowFoldExpanded(kind, theaterId, groupId, !expanded)}
-      >
-        <span className="side-bar-row-fold-glyph" aria-hidden="true"><i /><i /><i /></span>
-        <span aria-hidden="true">{title}</span>
-        <span className="side-bar-row-fold-count" aria-hidden="true">{items.length}</span>
-        <span className="side-bar-row-fold-chev" aria-hidden="true">›</span>
-      </button>
-      {expanded ? (
-        <ol className="side-bar-row-fold-body" aria-label={title}>
-          <RowFoldContext.Provider value={kind}>{items.map(renderRow)}</RowFoldContext.Provider>
-        </ol>
-      ) : null}
-    </li>
+    <button
+      type="button"
+      className={["side-bar-row-fold-toggle", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")}
+      title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}
+      aria-expanded={expanded}
+      aria-controls={expanded ? bodyId : undefined}
+      aria-label={kind === "fresh" ? t("sidebar.fold.freshAria", { n: items.length }) : t("sidebar.fold.doneAria", { n: items.length })}
+      // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+      onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
+      onClick={() => setSideBarRowFoldExpanded(kind, theaterId, groupId, !expanded)}
+    >
+      <span aria-hidden="true">{title}</span>
+      <span className="side-bar-row-fold-count" aria-hidden="true">{items.length}</span>
+      <span className="side-bar-row-fold-chev" aria-hidden="true">›</span>
+    </button>
   );
 }
