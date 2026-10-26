@@ -531,8 +531,8 @@ describe("commodore session", () => {
     const h = harness();
     const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
     fs.mkdirSync(theaterRoot, { recursive: true });
-    // Theater 의 프로젝트 MCP 서버 — 예약된 이름(보드 도구 묶음)은 건너뛴다.
-    fs.writeFileSync(path.join(theaterRoot, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "node", args: ["./mcp.js"] }, console: { command: "node" } } }));
+    // Theater 의 프로젝트 MCP 서버 — 사령관 세션에는 싣지 않는다.
+    fs.writeFileSync(path.join(theaterRoot, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "node", args: ["./mcp.js"] } } }));
     const outside = path.join(h.objectivesDir, "..", "..", "..", "outside.txt");
     h.store.setDirective("t1", "Fix remote first.");
     h.store.addIntel("t1", { text: "older" });
@@ -581,9 +581,9 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"], browser: { scopeId: "commodore:t1" } });
-    // Theater 들은 추가 폴더로(그 프로젝트 스킬), 그 .mcp.json 서버는 Theater 루트에서 뜨는 좌표로 건넨다.
+    // Theater 들은 추가 폴더로(그 프로젝트 스킬) 붙고, 그 .mcp.json 서버는 건네지 않는다.
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
-    expect(Object.keys(options.workspace?.mcpServers ?? {})).toEqual(["docs"]);
+    expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
