@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.260.0] - 2026-10-26
+
+### fleet-console
+
+#### Added
+- 삭제 범위를 살펴보고 이름을 확인한 뒤 사령관과 그 목표, 대화, 설정을 영구 삭제할 수 있습니다. Theater 폴더와 파일, worktree, branch, PR은 그대로 남습니다.
+
+#### Fixed
+- WSL의 Windows 드라이브처럼 느린 마운트에 Theater가 있어도 Console이 수 분씩 멈추지 않고 기동합니다.
+
 ## [1.259.0] - 2026-10-26
 
 ### fleet-console

@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.260.0] - 2026-10-26
+
+### fleet-console
+
+#### Added
+- Permanently delete a Commodore and its objectives, conversations, and settings after reviewing the impact and confirming its name. Theater folders and files, worktrees, branches, and pull requests are kept.
+
+#### Fixed
+- Start the Console without a minutes-long stall when a Theater sits on a slow mount, such as a Windows drive under WSL.
+
 ## [1.259.0] - 2026-10-26
 
 ### fleet-console
