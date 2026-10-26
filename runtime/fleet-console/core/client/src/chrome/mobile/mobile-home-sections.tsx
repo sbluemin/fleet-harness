@@ -24,10 +24,12 @@ import { MobileMarkedRow } from "./mobile-row-mark.js";
  * 엔트리가 `mobile.finished`로 올린 끝난 일(선언 순서, 사령관 UUID를 문맥으로 넘긴다). 데스크톱 사이드바 「완료」 접기와 같은 원천(`row.glyph === "done"`)이다.
  * 호스트는 어느 플러그인의 것인지 읽지 않고 줄과 선언만 그린다.
  */
-export function MobileHomeSections({ commodoreId, finishedConversations, onOpenConversation }: {
+export function MobileHomeSections({ commodoreId, finishedConversations, onOpenConversation, leave }: {
   readonly commodoreId: string;
   readonly finishedConversations: readonly MobileConversation[];
   readonly onOpenConversation: (conversation: MobileConversation) => void;
+  /** 다른 화면으로 옮기는 줄 — 이 목록을 품은 화면이 자기 상세를 먼저 접은 뒤에 부른다. */
+  readonly leave: (run: () => void) => void;
 }) {
   const t = useT();
   const locale = useConsoleLocale();
@@ -56,7 +58,7 @@ export function MobileHomeSections({ commodoreId, finishedConversations, onOpenC
                 avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-fresh">{t("mobile.search.state.fresh")}</span>{rowDetail(cluster, locale)}</>}
-                onOpen={() => cluster.open?.()}
+                onOpen={() => leave(() => cluster.open?.())}
               />
             </MobileMarkedRow>
           )) : null}
@@ -76,7 +78,7 @@ export function MobileHomeSections({ commodoreId, finishedConversations, onOpenC
                 avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="done" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{rowDetail(cluster, locale)}</>}
-                onOpen={() => cluster.open?.()}
+                onOpen={() => leave(() => cluster.open?.())}
               />
             </MobileMarkedRow>
           )) : null}
@@ -88,7 +90,7 @@ export function MobileHomeSections({ commodoreId, finishedConversations, onOpenC
                 : <span className="mobile-conv-round is-static">{entryIconOf(bindings, entryId)}</span>}
               title={item.title}
               sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{item.detail ? ` · ${item.detail}` : null}</>}
-              onOpen={item.open}
+              onOpen={() => leave(item.open)}
             />
           )) : null}
         </>

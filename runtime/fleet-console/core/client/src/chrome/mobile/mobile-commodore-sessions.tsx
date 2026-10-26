@@ -19,7 +19,7 @@ import { openMobilePluginDestination, setMobileDestination } from "./mobile-stor
  * 맨 위 「확인 필요 N」(사람을 기다리는 세션과 그 사령관 문맥의 플러그인 항목), 「진행 중」, 끝에 「시작 전 N」·「완료 N」 접기(`MobileHomeSections`).
  * 범위의 열쇠는 사령관 UUID다 — Theater는 사령관마다 따로 갖는 목록이라 범위로 쓰지 않는다. 사령관 기능은 이 본문을 주입 포트로만 받는다.
  */
-export function MobileCommodoreSessions({ commodoreId }: { readonly commodoreId: string }) {
+export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commodoreId: string; readonly leave: (run: () => void) => void }) {
   const t = useT();
   const state = useConsoleState();
   const bindings = useRailEntries();
@@ -43,7 +43,8 @@ export function MobileCommodoreSessions({ commodoreId }: { readonly commodoreId:
   const finished = rest.filter((conversation) => isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
   const live = rest.filter((conversation) => !isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
 
-  const open = (conversation: MobileConversation) => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); };
+  // 세션은 홈 자리에 선다 — 사령관 화면이 세부(깊이 항목)를 먼저 접고 내려앉은 뒤에 옮긴다. 접기 전에 옮기면 남은 항목을 뒤로가 걷으며 주소만 사령관으로 돌아간다.
+  const open = (conversation: MobileConversation) => leave(() => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); });
   // 새 세션의 주인은 이 사령관이다 — 시트가 문맥(열려 있던 대화 등)에서 다른 사령관을 고르지 않게 직접 넘긴다.
   const startSession = () => openMobileNewSession(commodoreId);
   const empty = owned.length === 0 && attention.length === 0;
@@ -63,7 +64,7 @@ export function MobileCommodoreSessions({ commodoreId }: { readonly commodoreId:
               }
               return (
                 <MobileMarkedRow key={row.key} mark={row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.row?.mark : undefined}>
-                  <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, commodoreId); row.item.open(); }}>
+                  <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, commodoreId); row.item.open(); })}>
                     <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
                     <span className="mobile-conv-row-copy">
                       <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.item.title}</span></span>
@@ -84,7 +85,7 @@ export function MobileCommodoreSessions({ commodoreId }: { readonly commodoreId:
           ))}
         </>
       ) : null}
-      <MobileHomeSections commodoreId={commodoreId} finishedConversations={finished} onOpenConversation={open} />
+      <MobileHomeSections commodoreId={commodoreId} finishedConversations={finished} onOpenConversation={open} leave={leave} />
       {empty ? <p className="mobile-conv-empty-note">{t("mobile.commodore.sessions.empty")}</p> : null}
       <div className="mobile-commodore-sessions-foot">
         <button type="button" data-press="r3" className="mobile-pill" onClick={startSession}><MobileIcon name="plus" size={18} />{t("mobile.commodore.sessions.new")}</button>

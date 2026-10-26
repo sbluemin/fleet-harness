@@ -5,7 +5,6 @@ import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
 import { mobileCommodoreTarget } from "../../../../../features/commodore/client/commodore-list.js";
-import { releaseMobileHistory } from "./mobile-history.js";
 
 
 /**
@@ -107,41 +106,7 @@ export function useMobileDestination(): MobileDestination {
 
 export function getMobileDestination(): MobileDestination { return destination; }
 
-/**
- * 깊이를 쌓은 목적지 화면의 막대(`useMobilePluginBar`) — 상세에서 다른 목적지로 곧장 옮기면 그 깊이 항목이 history에 남아,
- * 뒤로가 그 항목을 걷으며 주소만 옛 목적지로 돌아가고 화면은 남는다. 그래서 다른 목적지로 옮기기 전에 그 항목을 먼저 걷고, 내려앉은 뒤에 옮긴다.
- */
-interface MobileDepthHolder { readonly pushed: () => number; readonly drop: () => void }
-let depthHolder: MobileDepthHolder | null = null;
-
-export function holdMobileDepth(holder: MobileDepthHolder): () => void {
-  depthHolder = holder;
-  return () => { if (depthHolder === holder) depthHolder = null; };
-}
-
-function sameDestinationRoot(left: MobileDestination, right: MobileDestination): boolean {
-  return left.kind === right.kind && (left as { entryId?: string }).entryId === (right as { entryId?: string }).entryId;
-}
-
 export function setMobileDestination(next: MobileDestination): void {
-  const leaked = depthHolder?.pushed() ?? 0;
-  if (leaked > 0 && depthHolder && !sameDestinationRoot(destination, next) && typeof window !== "undefined") {
-    depthHolder.drop();
-    // 같은 동작이 이어서 주소를 적을 수 있다(예: 목적지를 홈으로 두고 곧바로 Objective를 연다) — 그 동기 흐름이 끝난 뒤의 주소를 들고 걷고,
-    // 내려앉은 항목에 그 주소를 다시 적은 다음 옮긴다. 걷는 사이 다음 화면이 항목을 쌓으면 걷기와 뒤엉키므로 목적지는 그 뒤에 바꾼다.
-    window.setTimeout(() => {
-      const latest = window.location.href;
-      releaseMobileHistory(leaked, () => {
-        window.history.replaceState(window.history.state, "", latest);
-        applyMobileDestination(next);
-      });
-    }, 0);
-    return;
-  }
-  applyMobileDestination(next);
-}
-
-function applyMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;

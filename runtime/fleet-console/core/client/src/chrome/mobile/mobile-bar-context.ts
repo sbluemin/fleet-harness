@@ -3,7 +3,7 @@ import { createContext, createElement, Fragment, useContext, useEffect, useMemo,
 import type { ClientMobileBarCapability, MobileBarSpec } from "../../../../../features/workspace/shared/pane.js";
 
 import { pushBackLayer } from "./mobile-back.js";
-import { claimMobileBar, holdMobileDepth, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
+import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
 
 /**
  * 모바일 목적지 화면이 페인에 건네는 상단 막대 창구. 컨텍스트로 두는 이유는 이 값이 있고 없음이 곧
@@ -69,17 +69,11 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       spec.onBack?.();
     };
     window.addEventListener("popstate", onPop);
-    // 다른 목적지로 옮기는 쪽이 이 막대가 쌓은 깊이 항목을 먼저 걷게 한다 — 걷은 항목은 이 막대의 뒤로가 아니다.
-    const releaseDepth = holdMobileDepth({
-      pushed: () => pushedRef.current,
-      drop: () => { pushedRef.current = 0; entriesRef.current = []; layerRef.current?.(); layerRef.current = null; },
-    });
     return () => {
       window.removeEventListener("popstate", onPop);
       layerRef.current?.();
       layerRef.current = null;
       releaseMobileBar(owner);
-      releaseDepth();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

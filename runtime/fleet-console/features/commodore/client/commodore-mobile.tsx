@@ -219,6 +219,23 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
   const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
+  // 세부에서 다른 화면으로 옮기는 동작 — 세부를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다.
+  // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
+  const leave = useCallback((run: () => void) => {
+    if (!panel) { run(); return; }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("popstate", landed);
+      window.clearTimeout(timer);
+      run();
+    };
+    const landed = (event: PopStateEvent) => { if (event.isTrusted) finish(); };
+    window.addEventListener("popstate", landed);
+    const timer = window.setTimeout(finish, 400);
+    setPanel(false);
+  }, [panel]);
   const run = view?.run;
   const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
     ...(sessionsRenderer ? [{ id: "sessions" as const, label: t("commodore.tabs.sessions") }] : []),
@@ -254,9 +271,9 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
             <CommodoreStatusRow t={t} commodoreId={commodoreId ?? ""} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
-          {tab === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} /></div> : null}
+          {tab === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
           {tab === "log" || (tab === "sessions" && !SessionsList) ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
-          {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
+          {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
           {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}

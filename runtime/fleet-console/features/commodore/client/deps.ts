@@ -11,6 +11,11 @@ import type { ClientConversationCapability } from "../../workspace/shared/conver
 import type { ClientExperimentsCapability } from "../../settings/shared/client-ports.js";
 import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
 import type { ClientObjectiveRecordsCapability } from "../../execution/shared/client-contract.js";
+/** 「지휘관 세션」 탭 본문의 입력. `leave`는 다른 화면으로 옮기는 동작을 받아, 사령관 화면이 세부를 접고 그 history 항목이 걷힌 뒤에 부른다. */
+export interface CommodoreMobileSessionsProps {
+  readonly commodoreId: string;
+  readonly leave: (run: () => void) => void;
+}
 export interface CommodoreClientDeps {
   readonly chat: ClientAgentChatCapability;
   readonly rail: ClientRailCapability;
@@ -28,5 +33,5 @@ export interface CommodoreClientDeps {
    * 폰 사령관 화면 「지휘관 세션」 탭의 본문 — 그 사령관이 소유한 지휘관 세션 목록. 세션 행·확인 필요·시작 전·완료의 문법은 호스트의 폰 홈이 가진 것이라
    * 호스트가 그려 넘긴다. 없으면 탭은 서지 않는다.
    */
-  readonly mobileSessions?: ComponentType<{ readonly commodoreId: string }>;
+  readonly mobileSessions?: ComponentType<CommodoreMobileSessionsProps>;
 }
