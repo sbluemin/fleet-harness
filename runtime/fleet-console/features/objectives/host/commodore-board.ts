@@ -238,17 +238,19 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       if (disposed || turn.stopping()) return { content: [{ type: "text", text: JSON.stringify({ error: "commodore_stopping" }) }], isError: true };
       const targets = writeTargets(args);
       for (const id of targets) runner.selfWrites.set(id, Number.POSITIVE_INFINITY);
+      let busy: string | null = null;
       try {
         const result = await tool.execute(args, context);
-        // 지휘관이 일하는 중이라 개시가 거절됐다 — 그 목표의 개시 대기는 들은 항목에서 내려, 일이 끝나 쉬게 되면 다시 깨운다.
-        // 점검 주기보다 짧은 턴이어도 이 거절이 일하던 때를 증언한다.
+        // 지휘관이 일하는 중이라 개시가 거절됐다 — 그 목표의 개시 대기는 들은 항목에서 내리고 대기 중 깨움도 다시 세워, 그 일이 끝나
+        // 그룹이 대기 중이 되면 보드가 그대로여도 다시 깨운다. 점검 주기보다 짧은 턴이어도 이 거절이 일하던 때를 증언한다.
         const call = (args ?? {}) as { action?: unknown; objectiveId?: unknown };
-        if (call.action === "commence" && typeof call.objectiveId === "string" && (result as { structuredContent?: { error?: unknown } }).structuredContent?.error === "objective_busy") runner.seen.delete(`planned:${call.objectiveId}`);
+        if (call.action === "commence" && typeof call.objectiveId === "string" && (result as { structuredContent?: { error?: unknown } }).structuredContent?.error === "objective_busy") busy = call.objectiveId;
         return result;
       } finally {
         const until = now() + SELF_WRITE_GRACE_MS;
         // 이 목표에 쓴 손은 그 목표의 지금 상태를 보고 행동했다 — 턴 도중 쌓인 그 목표의 상태·정체 사유는 처리된 것이라 다음 턴을 열지 않는다.
         for (const id of targets) { runner.selfWrites.set(id, until); forgetStatus(runner, id); }
+        if (busy) { runner.seen.delete(`planned:${busy}`); runner.settledAt.delete(busy); runner.idleSince.delete(busy); runner.selfWrites.delete(busy); }
       }
     },
   });
@@ -433,4 +435,8 @@ function groupLine(objective: Objective, observe: BoardObserver | undefined, idl
 }
 
 /** 대기 중 깨움의 보드 서명 — 보드가 앞으로 가면 바뀐다. */
-const boardSignature = (objective: Objective): string => String(objective.boardUpdatedAt ?? objective.createdAt);
+const boardSignature = (objective: Objective): string => {
+  // 구성원 실패 기록은 보드 시계를 옮기지 않는다 — 확인하지 않은 실패와 그 연속 횟수를 서명에 넣어 새 실패가 다시 깨우게 한다.
+  const failures = objective.members.flatMap((member) => (member.failure && !member.failure.acknowledged ? [`${member.id}:${member.failure.consecutiveFailures}`] : []));
+  return `${objective.boardUpdatedAt ?? objective.createdAt}${failures.length ? `|${failures.join(",")}` : ""}`;
+};
