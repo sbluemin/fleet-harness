@@ -33,7 +33,12 @@ export function MobileCommodoreSessions({ commodoreId }: { readonly commodoreId:
     .filter((conversation) => conversation.objectiveRecord.commodoreId === commodoreId)
     .sort((left, right) => right.objectiveRecord.ts.updatedAt - left.objectiveRecord.ts.updatedAt || right.objectiveRecord.ts.createdAt - left.objectiveRecord.ts.createdAt), [commodoreId, conversations]);
   const byId = useMemo(() => new Map(owned.map((conversation) => [conversation.objectiveRecord.id, conversation])), [owned]);
-  const attentionObjectiveIds = new Set(attention.flatMap((row) => row.kind === "objectiveRecord" ? [row.objectiveRecord.id] : []));
+  // 확인 필요에 선 세션은 아래 「진행 중」에 다시 서지 않는다 — 결정 요청은 플러그인 행(묶음 id)으로 오므로 그 묶음의 뿌리 세션도 뺀다.
+  const attentionObjectiveIds = new Set(attention.flatMap((row) => {
+    if (row.kind === "objectiveRecord") return [row.objectiveRecord.id];
+    const root = row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.root : undefined;
+    return root ? [root] : [];
+  }));
   const rest = owned.filter((conversation) => !attentionObjectiveIds.has(conversation.objectiveRecord.id));
   const finished = rest.filter((conversation) => isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
   const live = rest.filter((conversation) => !isFinishedConversation(clusterIndex, conversation.objectiveRecord.id));
