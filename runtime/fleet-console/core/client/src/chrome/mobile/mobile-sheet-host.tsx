@@ -180,10 +180,10 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
 export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
   const t = useT();
   // Theater 목록은 그 사령관 「설정」 맨 위에 있다 — 다른 사령관과 나누는 목록 시트를 따로 띄우지 않는다.
+  // 시트의 history 항목이 걷힌 뒤에 옮긴다 — 먼저 옮기면 세부의 깊이 항목이 걷히는 시트 항목과 뒤엉켜 뒤로가 주소만 홈으로 돌린다.
   const openSettings = () => {
     setZoneCommodore(commodoreId);
-    closeMobileSheets();
-    openCommodoreMobile("settings", commodoreId, true);
+    runAfterSheetRelease(() => openCommodoreMobile("settings", commodoreId, true));
   };
   const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
   return (
