@@ -17,11 +17,32 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
   };
   const resolve = (theaterId: string): string | null => { const ids = resolveAll(theaterId); return ids.length === 1 ? ids[0]! : null; };
-  const registeredFor = (root: string): readonly string[] => (paths.listTheaterIds?.() ?? []).filter((id) => {
-    const registered = paths.resolveTheaterPath(id);
-    if (registered === root) return true;
-    try { return registered !== null && fs.realpathSync.native(registered) === root; } catch { return false; }
-  });
+  // 등록 테마터의 realpath 는 레지스트리와 디스크가 그대로인 동안 같은 값을 돌려준다.
+  // registeredFor 는 사령관 수 x 목표 복원 경로를 타고 기동 한 번에 수만 번 불리므로, 캐시가 없으면
+  // 느린 마운트(WSL 의 /mnt 9p 등)에 올린 테마터 하나만으로 realpath 왕복이 이벤트 루프를 수십 초 막는다.
+  // 레지스트리가 바뀌면 즉시 버리고, 그 밖에는 CANONICAL_TTL_MS 안에서 다시 확인한다.
+  const CANONICAL_TTL_MS = 5000;
+  let canonicalGeneration = "";
+  const canonicalCache = new Map<string, { readonly at: number; readonly resolved: string | null }>();
+  const canonicalOf = (registered: string): string | null => {
+    const now = Date.now();
+    const hit = canonicalCache.get(registered);
+    if (hit && now - hit.at < CANONICAL_TTL_MS) return hit.resolved;
+    let resolved: string | null;
+    try { resolved = fs.realpathSync.native(registered); } catch { resolved = null; }
+    canonicalCache.set(registered, { at: now, resolved });
+    return resolved;
+  };
+  const registeredFor = (root: string): readonly string[] => {
+    const ids = paths.listTheaterIds?.() ?? [];
+    const generation = [...ids].sort().join("\u0000");
+    if (generation !== canonicalGeneration) { canonicalGeneration = generation; canonicalCache.clear(); }
+    return ids.filter((id) => {
+      const registered = paths.resolveTheaterPath(id);
+      if (registered === root) return true;
+      return registered !== null && canonicalOf(registered) === root;
+    });
+  };
   const theaterIds = (id: string): readonly string[] => entities.theatersOf(id).map((row) => registeredFor(row.path)[0] ?? paths.workspaceHash(row.path));
   const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
   const issueIfReady = (theaterId: string): string => {
