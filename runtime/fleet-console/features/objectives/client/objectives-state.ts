@@ -1076,7 +1076,8 @@ function showObjectiveConversation(objectiveId: string, theaterId: string): bool
   }
   const objective = findAnyObjective(objectiveId);
   if (!objective || objective.commander.started) return false;
-  return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId });
+  // 목표의 theaterId 는 등록 Theater 가 아니다 — 호스트가 오른쪽 패널·도구모음의 Theater 를 사령관으로 고르게 함께 싣는다.
+  return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId, commodoreId: objective.commodoreId });
 }
 
 /**
