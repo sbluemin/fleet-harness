@@ -597,8 +597,10 @@ function usePanelSections(): {
   return { list, activeId, filter, open };
 }
 
-/** 머리 pill 이름의 하한 — 도구가 모두 「⋯」로 걷힌 다음에야 이름이 이 폭까지 줄어든다(이름이 더 짧으면 그 폭). */
+/** 머리 pill 이름의 우선 하한 — 도구를 모두 「⋯」로 걷은 뒤 이 폭까지 줄이고, 그래도 모자라면 하한을 풀어 말줄임한다(짧은 이름은 그 폭). */
 const TITLE_FLOOR = 120;
+/** 말줄임한 이름을 남길 최소 폭 — 한글 서너 글자 자리도 없을 때만 표식으로 접는다(이름이 더 짧으면 그 폭). */
+const TITLE_COMPACT_MIN = 48;
 /** 머리 pill 부제(「· 구성원 n」 등)의 하한 — 줄이 모자라면 부제가 가장 먼저 이 폭까지 말줄임으로 줄어든다. */
 const SUB_FLOOR = 28;
 /** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
@@ -1010,15 +1012,24 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
     const tools = toolsRef.current;
     const itemsBox = itemsRef.current;
     const stage = band?.nextElementSibling;
-    const row = stage?.querySelector<HTMLElement>(":scope > .conversation-column > .conversation-pill-row") ?? null;
-    if (!tools || !itemsBox || !row || !(stage instanceof HTMLElement)) return;
+    if (!tools || !itemsBox || !(stage instanceof HTMLElement)) return;
     let frame = 0;
+    let observedRow: HTMLElement | null = null;
+    // 예약은 도구 캡슐 아래의 줄만 갖는다. 앞 대화가 stage 에 남긴 값은 다른 칸으로 물려주지 않는다.
+    stage.style.removeProperty("--conversation-quota-space");
+    const releaseRow = () => {
+      observedRow?.style.removeProperty("--conversation-quota-space");
+      const pill = observedRow?.querySelector<HTMLElement>(":scope > .conversation-pill");
+      pill?.removeAttribute("data-compact");
+      for (const text of pill?.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub") ?? []) text.style.minWidth = "";
+    };
     // 줄이 넘치지 않고, 이름이 자리 때문에(620px 상한 때문이 아니라) 잘리지 않으면 들어간 것이다. 실제 배치를 읽는다 — 원래 폭을
     // 셈으로만 맞추면 글꼴이 늦게 와 이름이 길어지는 것처럼 셈 밖의 변화에 이름이 먼저 잘린다.
+    // 도구를 다 걷은 뒤에는 이름의 말줄임을 허용하고 실제 배치만 검사한다.
     // 정수로 반올림한 clientWidth·scrollWidth 는 1px 밑의 말줄임을 놓친다 — 이름은 글자 범위의 실제 폭과, 줄은 상자의 실제 폭과 견준다.
     const range = typeof document === "undefined" ? null : document.createRange();
-    const fits = (pill: HTMLElement | null, title: HTMLElement | null) => {
-      if (title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
+    const fits = (row: HTMLElement, pill: HTMLElement | null, title: HTMLElement | null, allowTitleEllipsis = false) => {
+      if (!allowTitleEllipsis && title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
         range.selectNodeContents(title);
         if (range.getBoundingClientRect().width > title.getBoundingClientRect().width + 0.01) return false;
       }
@@ -1044,14 +1055,31 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
     // 줄 폭(칸 폭·도구모음 예약)뿐 아니라 줄 안 요소의 폭도 본다 — 글꼴·컨테이너 질의·인라인 스타일처럼 줄 크기나 관찰하는 속성을
     // 바꾸지 않고 이름·대화 동작의 폭만 바꾸는 변화에도 이름이 먼저 잘리지 않게. 같은 대상을 다시 observe 해도 하나로 친다.
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    const contentChanges = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "disabled"] };
     const measure = () => {
       frame = 0;
+      // 캡슐은 가장 오른쪽 칸 위에 선다. 분할·좁은 한 칸·사령관 단독 전환과 세션 교체 때마다 실제 줄을 다시 찾는다.
+      const split = stage.querySelector<HTMLElement>(":scope > .conversation-split");
+      const row = (split ?? stage).querySelector<HTMLElement>(":scope > .conversation-column:last-child > .conversation-pill-row");
+      if (row !== observedRow) {
+        releaseRow();
+        resize?.disconnect();
+        observedRow = row;
+      }
+      // 대화 본문의 스트리밍은 관찰하지 않는다. 칸의 교체·분할 상태와 머리 줄 내용만 다시 측정하게 한다.
+      mutation?.disconnect();
+      mutation?.observe(stage, { childList: true });
+      if (split !== null) mutation?.observe(split, { childList: true, attributes: true, attributeFilter: ["data-split", "data-split-narrow"] });
+      mutation?.observe(tools, contentChanges);
+      if (row === null) return;
+      mutation?.observe(row, contentChanges);
       // pill 폭을 옮기는 중(pill-takeover)에는 붙든 일시 폭 때문에 안이 넘쳐 보인다 — 재판정을 멈추고, 끝나면(클래스 변화) 한 번 잰다.
       if (row.querySelector(`:scope > .conversation-pill.${PILL_MORPHING_CLASS}`) !== null) return;
-      // 이전 사용량 자리를 도구모음이 차지한다. 현재 도구 폭만큼 양쪽을 예약해 pill 을 가운데에 둔다.
+      // 이전 사용량 자리를 도구모음이 차지한다. 이 줄에 현재 도구 폭을 예약하고, 분할 칸의 비대칭 여백은 CSS 를 따른다.
       const reserve = () => {
         const right = Number.parseFloat(getComputedStyle(tools).right) || 0;
-        stage.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
+        row.style.setProperty("--conversation-quota-space", `${Math.ceil(tools.getBoundingClientRect().width + right + 12)}px`);
       };
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico")];
       for (const item of items) item.removeAttribute("data-overflow");
@@ -1066,9 +1094,9 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
         const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
         if (titleElement !== null) resize.observe(titleElement);
       }
-      // 줄이 모자랄 때 줄어드는 순서 — 부제(「· 구성원 n」 등)가 먼저 말줄임으로 SUB_FLOOR 까지, 그다음 도구가 「⋯」로, 마지막에
-      // 이름이 TITLE_FLOOR(이름이 그보다 짧으면 그 폭)까지. 도구가 남아 있는 동안 이름은 원래 폭에 묶어 둔다. pill 내용이 상자 밖으로
-      // 흐르면(부제·이름이 하한에 닿은 뒤) 들어가지 않은 것으로 보고 도구를 더 걷는다(fits).
+      // 줄이 모자랄 때 줄어드는 순서 — 부제는 SUB_FLOOR 까지, 도구는 「⋯」로, 이름은 TITLE_FLOOR 까지 줄인다.
+      // 그래도 모자라면 이름의 하한을 풀어 남은 자리에 말줄임하고, TITLE_COMPACT_MIN 조차 남지 않을 때만 표식으로 접는다.
+      // 도구가 남아 있는 동안 이름은 원래 폭에 묶고, pill 내용이 상자 밖으로 흐르면 도구를 더 걷는다(fits).
       const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
       pill?.removeAttribute("data-compact");
       const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
@@ -1087,7 +1115,7 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
       if (title !== null) title.style.minWidth = `${titleNatural}px`;
       // 모든 도구를 세운 뒤, 이름이 제 폭을 지킬 때까지 오른쪽 끝부터 걷는다.
       const next: HiddenTool[] = [];
-      if (!fits(pill, title)) {
+      if (!fits(row, pill, title)) {
         // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지.
         // 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.
         tools.dataset.more = "shown";
@@ -1098,27 +1126,26 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
             next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled || item.getAttribute("aria-disabled") === "true", element: item });
           }
           reserve();
-          if (fits(pill, title)) break;
+          if (fits(row, pill, title)) break;
         }
-        // 도구를 다 걷어도 모자라면 이름을 하한까지 풀어 준다.
-        if (title !== null && !fits(pill, title)) title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
-        // 하한으로도 모자라면 이름을 걷고 표식(아바타)만 원형 칩 가운데에 남긴다 — 상자가 내용을 자르면 표식이 한쪽으로 쏠린다.
-        // 표식이 없는 pill 은 이름이 유일한 단서라 그대로 둔다.
-        if (pill !== null && title !== null && !fits(pill, title)
+        // 도구를 다 걷어도 모자라면 이름을 우선 하한까지 풀어 준다. 이 단계부터는 글자 전체가 아니라 실제 배치가 들어가는지 본다.
+        if (title !== null && !fits(row, pill, title)) {
+          title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
+          // 하한을 지킬 수 없으면 남은 폭을 모두 써서 말줄임한다 — 몇 px 부족하다고 읽을 수 있는 이름까지 걷지 않는다.
+          if (!fits(row, pill, title, true)) title.style.minWidth = "0px";
+        }
+        // 말줄임한 이름이 읽을 수 없을 만큼 좁아질 때만 표식(아바타)으로 접는다. 표식이 없으면 유일한 단서인 이름은 남긴다.
+        if (pill !== null && title !== null && title.getBoundingClientRect().width + 0.01 < Math.min(TITLE_COMPACT_MIN, titleNatural)
           && pill.querySelector(".conversation-pill-details > .conversation-pill-mark, .conversation-pill-details > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };
     measure();
-    // 이름·대화 동작·도구가 서고 걷히면 다시 잰다. 이 묶음이 다는 data-overflow·data-more 와 이름의 하한(style)은
-    // 관찰하지 않는다.
-    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
-    mutation?.observe(row, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "disabled"] });
-    mutation?.observe(tools, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "disabled"] });
+    // 이 묶음이 다는 data-overflow·data-more 와 이름의 하한(style)은 관찰하지 않는다.
     // 웹 글꼴이 늦게 오면 이름·단추의 폭이 줄 크기 변화 없이 바뀐다 — 그때도 다시 잰다.
     const fonts = typeof document !== "undefined" ? document.fonts : undefined;
     fonts?.addEventListener?.("loadingdone", schedule);
-    return () => { resize?.disconnect(); mutation?.disconnect(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
+    return () => { resize?.disconnect(); mutation?.disconnect(); releaseRow(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
   }, [band]);
   useEffect(() => {
     if (!menuOpen) return;
