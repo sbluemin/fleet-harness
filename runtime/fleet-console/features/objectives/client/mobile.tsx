@@ -9,7 +9,7 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, missionTitle, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
+import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard, ownerOfContext } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
@@ -564,7 +564,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
                 return (
                   <div key={mission.id} className={`objectives-m-row is-mission${mission.done ? " is-done" : ""}`}>
                     {member ? <MemberMark objective={objective} member={member} objectiveRecords={objectiveRecords} /> : <CommanderMark objective={objective} objectiveRecords={objectiveRecords} />}
-                    <span className="objectives-m-tx">{missionTitle(mission)}</span>
+                    {/* 폰은 임무 팝업이 없다 — 이름이 있으면 그 아래에 상세 전문을, 없으면 상세 전문을 그대로 세워 지시를 다 읽게 한다. */}
+                    <span className="objectives-m-tx">{mission.title ? <>{mission.title}<span className="objectives-m-detail">{mission.text}</span></> : mission.text}</span>
                     {mission.done ? <span className="objectives-m-mission-done"><CheckIcon size={18} /></span> : null}
                   </div>
                 );
