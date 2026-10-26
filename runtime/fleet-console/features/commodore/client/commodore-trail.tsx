@@ -278,15 +278,18 @@ function recentWhen(at: number, language: "en" | "ko"): string {
 
 /** 지휘관 탭에서 고른 목표 바로 아래의 최근 세 행위. 폰의 전체 기록과 같은 보드 사실을 읽는다. */
 export function CommodoreRecentActions({ commodoreId, objectiveId, language, onReveal }: {
-  readonly commodoreId: string; readonly objectiveId: string; readonly language: "en" | "ko"; readonly onReveal: (at: number) => void;
+  readonly commodoreId: string; readonly objectiveId: string; readonly language: "en" | "ko"; readonly onReveal?: (at: number) => void;
 }) {
   const t = getT(language);
   const { objectives } = useObjectiveTheater(commodoreId);
   const entries = useMemo(() => commodoreTrail(t, commodoreId, objectives.filter((objective) => objective.id === objectiveId))[0]?.entries.slice(-3) ?? [], [t, commodoreId, objectiveId, objectives]);
   if (entries.length === 0) return null;
   return <div className="objectives-commodore-recent-actions">
-    {entries.map((entry) => <button key={entry.key} type="button" title={entry.title} onClick={() => onReveal(entry.at)}>
-      <b>{entry.word}</b><span>{entry.label ?? entry.detail ?? ""}</span><time dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString(language)}>{recentWhen(entry.at, language)}</time>
-    </button>)}
+    {entries.map((entry) => {
+      const body = <><b>{entry.word}</b><span>{entry.label ?? entry.detail ?? ""}</span><time dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString(language)}>{recentWhen(entry.at, language)}</time></>;
+      return onReveal
+        ? <button key={entry.key} type="button" className="objectives-commodore-recent-entry" title={entry.title} onClick={() => onReveal(entry.at)}>{body}</button>
+        : <div key={entry.key} className="objectives-commodore-recent-entry" title={entry.title}>{body}</div>;
+    })}
   </div>;
 }

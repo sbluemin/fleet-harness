@@ -146,8 +146,8 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Commodore.", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => { prStatus?.refresh(); return { objectives: store.list(commodoreId), groups: groupsOf(commodoreId), launch: launch.describe() }; }) },
-    // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 홈의 「완료 N」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
-    { name: "finished", method: "POST", summary: "Read the completed objectives of a Commodore that a person archived (completion itself does not archive), most recent first (the phone home's Done section).", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => ({ objectives: store.all().filter((item) => item.commodoreId === commodoreId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
+    // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 지휘관 목록 끝의 「보관한 완료 N」 접기가 그 목표들을 읽기 전용으로 다시 연다.
+    { name: "finished", method: "POST", summary: "Read the completed objectives of a Commodore that a person archived (completion itself does not archive), most recent first (the phone's archived completed section).", handler: json(z.object({ commodoreId: ids, language }), ({ commodoreId }) => ({ objectives: store.all().filter((item) => item.commodoreId === commodoreId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Objective 도 목표다 — 화면이 처음 보는 에이전트 Objective 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Objective of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표 레코드만 만든다 — 같은 ID의 지휘관 Objective은 첫 「구상」·「시작」 때 선다.

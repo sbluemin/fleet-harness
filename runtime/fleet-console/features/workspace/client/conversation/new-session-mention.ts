@@ -63,7 +63,7 @@ export function buildMentionGroups(
 }
 
 /**
- * 「시작 전」 — 사이드바 「시작 전 N」 접기·모바일 홈 「시작 전」과 같은 원천이다. Objective 을 대표하는 묶음 줄(`ClusterIndex.rowOf`)의
+ * 「시작 전」 — 사이드바 「시작 전 N」 접기·폰 지휘관 목록의 시작 전 행과 같은 원천이다. Objective 을 대표하는 묶음 줄(`ClusterIndex.rowOf`)의
  * 글리프가 `fresh`(SDK `ObjectiveClusterRowGlyph`, 플러그인이 세션 없는 시작 전 줄에 단다)이고 사람이 답할 결정이 걸려 있지 않은
  * 줄이다(결정이 걸리면 「내 결정」으로 올라간다). 정의를 사이드바 하나에 두어야 두 화면이 어긋나지 않는다.
  */
