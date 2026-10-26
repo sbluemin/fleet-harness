@@ -16,7 +16,8 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
 import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
-import { createCommodoreFeature } from "../features/commodore/host/index.js";
+import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
+import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
@@ -125,6 +126,44 @@ it("persists UUID section order through the public route without rewriting entit
     expect(settings.load().commodoreOrder).toEqual([c, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
   } finally { await feature.dispose(); }
+});
+
+it("holds deletion admission until writers stop and preserves the owner on stop or rename failure", async () => {
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-delete-hold-"))); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash, listTheaterIds: () => [], resolveTheaterPath: () => null } as never);
+  const id = ownership.create();
+  const store = createHostStore({ dirOf: ownership.entities.dirOf, commodoreIds: ownership.entities.ids, theatersOf: ownership.entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  store.setAlias(id, "Owned");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const stop = vi.fn(async (): Promise<void> => { await gate; throw new Error("archive_stop_failed"); });
+  const rollback = vi.fn(), committed = vi.fn(), removed = vi.fn();
+  const detach = vi.fn(() => ({ removedObjectives: 1, rollback, committed }));
+  const deletion = createCommodoreDeletion({ ownership, store, consoleDataDir: dir,
+    supervisor: { stopForDeletion: async () => {}, sync: () => {} } as never,
+    summary: () => ({ commodoreId: id, alias: "Owned", label: "Owned", theaters: [], active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } } }) as never,
+    host: { preview: () => ({ objectives: { total: 1, active: 1, archived: 0 }, runningSessions: 1 }), stopObjectives: stop, detachObjectives: detach, cleanup: () => ["settings_cleanup_failed"], releaseKnowledge: () => {}, claudeProjectsDirectory: path.join(dir, "claude", "projects") }, removed,
+  });
+  const deleting = deletion.remove(id, "Owned");
+  const failed = expect(deleting).rejects.toThrow("archive_stop_failed");
+  expect(() => ownership.assertWritable(id)).toThrow("commodore_deleting");
+  await expect(deletion.remove(id, "Owned")).rejects.toThrow("commodore_deleting");
+  expect(ownership.entities.dirOf(id)).not.toBeNull();
+  expect(detach).not.toHaveBeenCalled();
+  release(); await failed;
+  expect(() => ownership.assertWritable(id)).not.toThrow();
+  expect(store.read(id)?.alias).toBe("Owned");
+  stop.mockImplementation(async () => {});
+  const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("rename_failed"); });
+  try { await expect(deletion.remove(id, "Owned")).rejects.toThrow("rename_failed"); } finally { rename.mockRestore(); }
+  expect(rollback).toHaveBeenCalledTimes(1);
+  expect(committed).not.toHaveBeenCalled();
+  expect(ownership.entities.dirOf(id)).not.toBeNull();
+  expect(removed).not.toHaveBeenCalled();
+  expect(await deletion.remove(id, "Owned")).toEqual({ deleted: id, removedObjectives: 1, warnings: ["settings_cleanup_failed"] });
+  expect(store.read(id)).toBeNull();
+  expect(ownership.entities.ids()).toEqual([]);
+  expect(removed).toHaveBeenCalledWith(id, []);
 });
 
 function harness(now?: () => number, maxRetainedImageBytes?: number) {

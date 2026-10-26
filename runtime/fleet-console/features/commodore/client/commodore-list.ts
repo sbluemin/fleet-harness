@@ -127,6 +127,13 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
   void refreshCommodoreList();
   const off = events.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
+    if (event?.op === "removed") {
+      commodores = commodores.filter((row) => row.commodoreId !== event.commodoreId);
+      if (zoneCommodoreId === event.commodoreId) zoneCommodoreId = null;
+      if (mobileCommodoreId === event.commodoreId) mobileCommodoreId = null;
+      emit();
+      void refreshCommodoreList();
+    }
     if (event?.op === "state" || event?.op === "run") void refreshCommodoreList();
     // 대화의 마지막 말은 목록을 다시 읽지 않고 그 행만 갈아 끼운다 — 기록 줄은 턴마다 여럿 온다.
     if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));

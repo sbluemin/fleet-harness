@@ -103,12 +103,13 @@ interface ShellInstance {
   releaseCwd: (() => void) | null;
 }
 
-export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: TerminalRuntime): void {
+export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: TerminalRuntime, admission?: { readonly canUseKey: (key: string) => boolean }) {
   const shells = new Map<string, ShellInstance>();
   const bySession = new Map<string, ShellInstance>();
   let generationSeed = Date.now();
 
   function instanceFor(key: string, create: boolean): ShellInstance | null {
+    if (create && admission && !admission.canUseKey(key)) return null;
     const existing = shells.get(key);
     if (existing || !create) return existing ?? null;
     if (shells.size >= MAX_SHELLS) {
@@ -480,6 +481,16 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
     return { directory: target.directory };
   }
+
+  return {
+    async stopForKey(key: string) {
+      const sessionId = shellSessionIdFor(key);
+      runtime.invalidateTicketsForSession(sessionId);
+      if (!await runtime.terminateAndWait(sessionId, 10_000) || !await runtime.awaitWriterExit(sessionId, 10_000)) throw new Error("archive_stop_failed");
+      const instance = shells.get(key);
+      if (instance) { release(instance); publish(instance); forget(instance); }
+    },
+  };
 }
 
 function readQueryShell(req: Parameters<RouteHandler>[0]["req"]): string | null {

@@ -28,7 +28,11 @@ describe("conversation Shell sessions", () => {
 
   it("shares a PTY by tool key and ends only the closed commodore's Shell", async () => {
     const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
-    const { call, issued, del, terminated } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
+    let release!: (exited: boolean) => void;
+    const exited = new Promise<boolean>((resolve) => { release = resolve; });
+    let blocked = false;
+    const { call, issued, del, terminated, stopForKey } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null,
+      exitWait: () => exited, canUseKey: (key) => !blocked || key !== "session:commodore:commodore:b" });
 
     await call({ shell: "session:commodore:commodore:a", cwd: { theaterId: "theater-a" } });
     await call({ shell: "session:commodore:commodore:b", cwd: { theaterId: "theater-b" } });
@@ -42,6 +46,20 @@ describe("conversation Shell sessions", () => {
 
     await del("session:commodore:commodore:a");
     expect(terminated).toEqual([a!.sessionId]);
+    // 사령관 삭제는 같은 키만 막고, 실제 필자가 끝날 때까지 기다린다. 기본 Shell은 남긴다.
+    await call({});
+    blocked = true;
+    let stopped = false;
+    const stopping = stopForKey("session:commodore:commodore:b").then(() => { stopped = true; });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    release(true); await stopping;
+    expect(terminated).toEqual([a!.sessionId, b!.sessionId]);
+    const count = issued.length;
+    await call({ shell: "session:commodore:commodore:b" });
+    expect(issued).toHaveLength(count);
+    await call({});
+    expect(issued.at(-1)!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
   });
 
   it("Theater 힌트가 없으면 사용자 홈에서 전역 Shell을 연다", async () => {
@@ -169,7 +187,7 @@ function makeTheaterFixture() {
   return { root, dataDir: path.join(base, "console"), dispose: () => rmSync(base, { recursive: true, force: true }) };
 }
 
-function mount(options: { resolveTheaterPath?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; line?: { promptSeen: boolean; promptOpen: boolean; inputPending: boolean } }; consoleDataDir?: string } = {}) {
+function mount(options: { exitWait?: () => Promise<boolean>; canUseKey?: (key: string) => boolean; resolveTheaterPath?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; line?: { promptSeen: boolean; promptOpen: boolean; inputPending: boolean } }; consoleDataDir?: string } = {}) {
   const issued: TerminalTicketContext[] = [];
   const responses: Array<{ status: number; body: unknown }> = [];
   const terminated: string[] = [];
@@ -186,6 +204,8 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
       return { ticket: "ticket", ttlMs: 1_000, role: context.role ?? "control" };
     },
     canAttach: () => true,
+    invalidateTicketsForSession: () => {},
+    awaitWriterExit: () => options.exitWait?.() ?? Promise.resolve(true),
     terminate: (sessionId: string) => { terminated.push(sessionId); return true; },
     // 실제 세션 매니저처럼 종료 통지는 호출의 동기 구간에서 나간다.
     terminateAndWait: (sessionId: string) => {
@@ -226,7 +246,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     },
   } as unknown as ConsoleRuntimeContext;
 
-  registerShellRoutes(ctx, runtime);
+  const lifecycle = registerShellRoutes(ctx, runtime, options.canUseKey ? { canUseKey: options.canUseKey } : undefined);
 
   const invoke = async (routeKey: string, method: string, body: Record<string, unknown>, query = "") => {
     const handler = routes.get(routeKey);
@@ -240,6 +260,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
   };
 
   return {
+    stopForKey: lifecycle.stopForKey,
     issued,
     responses,
     terminated,
