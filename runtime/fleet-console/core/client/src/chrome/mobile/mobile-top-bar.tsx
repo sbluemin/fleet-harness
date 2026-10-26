@@ -45,7 +45,7 @@ export function MobileTopBar() {
   );
 
   return (
-    <header className={`mobile-top-bar${bar.variant === "conversation" ? " is-conversation" : ""}`}>
+    <header className={`mobile-top-bar${bar.variant === "conversation" ? " is-conversation" : ""}${bar.round ? " is-round" : ""}`}>
       <button type="button" className="mobile-bar-button" onClick={back} aria-label={t("mobile.bar.back")}>
         <MobileIcon name="back" />
       </button>

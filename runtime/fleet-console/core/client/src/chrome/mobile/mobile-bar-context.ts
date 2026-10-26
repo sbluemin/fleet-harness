@@ -43,6 +43,7 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
         title: spec.title,
         ...(spec.subtitle ? { subtitle: spec.subtitle } : {}),
         leading: "back",
+        ...(spec.round ? { round: true } : {}),
         ...(spec.depth > 0 ? { onBack: () => window.history.back() } : {}),
         ...(spec.actions && spec.actions.length > 0 ? { actions: spec.actions } : {}),
         ...(spec.menu && spec.menu.items.length > 0 ? { menu: { label: spec.menu.label ?? spec.title, ...(spec.menu.caption ? { caption: spec.menu.caption } : {}), items: spec.menu.items } } : {}),

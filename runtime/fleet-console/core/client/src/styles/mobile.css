@@ -1457,8 +1457,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 /* 대화 헤더도 일반 막대처럼 최소 높이다 — 알약 역시 최소 48이라, 큰 글자 배율에서 알약의 제목·상태 두 줄이
    테두리와 헤더를 넘지 않고 둘이 함께 자란다. 기본 배율의 두 줄(약 32px)은 알약 48 안에 들어 모양이 그대로다.
    위아래 여백 7/5는 예전 고정 60px 안에서 알약이 놓이던 자리(7~55px)를 그대로 재현한다. */
-.mobile-top-bar.is-conversation { gap: 8px; min-height: 60px; padding: 7px 14px 5px; }
-.mobile-top-bar.is-conversation .mobile-bar-button { background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; }
+/* 프로필형 화면(is-round)도 같은 둥근 단추 머리다 — 제목 자리는 비고, 큰 아바타·이름은 본문이 그린다. */
+.mobile-top-bar:is(.is-conversation, .is-round) { gap: 8px; min-height: 60px; padding: 7px 14px 5px; }
+.mobile-top-bar:is(.is-conversation, .is-round) .mobile-bar-button { background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; }
 .mobile-conv-pill { position: relative; display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 3px 14px 3px 6px; color: var(--m-text); text-align: left; background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }
 .mobile-conv-pill:active { background: var(--m-selected); }
 .mobile-conv-pill-av { display: grid; place-items: center; flex: none; width: 36px; height: 36px; }

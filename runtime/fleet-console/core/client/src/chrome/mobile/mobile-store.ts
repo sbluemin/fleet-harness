@@ -245,6 +245,8 @@ export interface MobileBarState {
   readonly onBack?: () => void;
   /** 화면이 자기 머리를 그릴 때(도구 시트) 막대를 숨긴다. */
   readonly hidden?: boolean;
+  /** 막대 단추를 conversation 변형과 같은 둥근 면으로 그린다(프로필형 화면). */
+  readonly round?: boolean;
   readonly actions?: readonly MobileBarAction[];
   readonly menu?: { readonly label: string; readonly caption?: string; readonly items: readonly MobileBarMenuItem[] };
 }
@@ -262,7 +264,7 @@ export function useMobileBar(): MobileBarState | null {
 
 function barSignature(state: MobileBarState): string {
   return JSON.stringify({
-    v: state.variant, p: state.pill?.key, t: state.title, s: state.subtitle, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
+    v: state.variant, p: state.pill?.key, t: state.title, s: state.subtitle, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true, r: state.round === true,
     a: state.actions?.map((action) => [action.id, action.label]),
     // 스위치 행의 켬/끔도 내용이다 — 빠지면 열린 ⋮가 누른 뒤에도 이전 상태를 그린다.
     m: state.menu ? [state.menu.label, state.menu.caption, state.menu.items.map((item) => [item.id, item.label, item.destructive, item.disabled, item.checked])] : null,
