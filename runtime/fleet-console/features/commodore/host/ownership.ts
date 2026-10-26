@@ -17,9 +17,9 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
   };
   const resolve = (theaterId: string): string | null => { const ids = resolveAll(theaterId); return ids.length === 1 ? ids[0]! : null; };
-  // 등록 테마터의 realpath 는 레지스트리와 디스크가 그대로인 동안 같은 값을 돌려준다.
+  // 등록 Theater 의 realpath 는 레지스트리와 디스크가 그대로인 동안 같은 값을 돌려준다.
   // registeredFor 는 사령관 수 x 목표 복원 경로를 타고 기동 한 번에 수만 번 불리므로, 캐시가 없으면
-  // 느린 마운트(WSL 의 /mnt 9p 등)에 올린 테마터 하나만으로 realpath 왕복이 이벤트 루프를 수십 초 막는다.
+  // 느린 마운트(WSL 의 /mnt 9p 등)에 올린 Theater 하나만으로 realpath 왕복이 이벤트 루프를 수십 초 막는다.
   // 레지스트리가 바뀌면 즉시 버리고, 그 밖에는 CANONICAL_TTL_MS 안에서 다시 확인한다.
   const CANONICAL_TTL_MS = 5000;
   let canonicalGeneration = "";
