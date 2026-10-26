@@ -264,6 +264,18 @@ export function CommodoreTrail({
   );
 }
 
+const RECENT_DATE_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }),
+  ko: new Intl.DateTimeFormat("ko", { month: "long", day: "numeric" }),
+};
+
+/** 좁은 펼침 줄은 그룹 대화처럼 오늘의 시각 또는 날짜만 남긴다. 전체 기록의 표기는 그대로다. */
+function recentWhen(at: number, language: "en" | "ko"): string {
+  return new Date(at).toDateString() === new Date().toDateString()
+    ? TIME_FORMATS[language].time.format(at)
+    : RECENT_DATE_FORMATS[language].format(at);
+}
+
 /** 지휘관 탭에서 고른 목표 바로 아래의 최근 세 행위. 폰의 전체 기록과 같은 보드 사실을 읽는다. */
 export function CommodoreRecentActions({ commodoreId, objectiveId, language, onReveal }: {
   readonly commodoreId: string; readonly objectiveId: string; readonly language: "en" | "ko"; readonly onReveal: (at: number) => void;
@@ -274,7 +286,7 @@ export function CommodoreRecentActions({ commodoreId, objectiveId, language, onR
   if (entries.length === 0) return null;
   return <div className="objectives-commodore-recent-actions">
     {entries.map((entry) => <button key={entry.key} type="button" title={entry.title} onClick={() => onReveal(entry.at)}>
-      <b>{entry.word}</b><span>{entry.label ?? entry.detail ?? ""}</span><time dateTime={new Date(entry.at).toISOString()}>{when(entry.at, language)}</time>
+      <b>{entry.word}</b><span>{entry.label ?? entry.detail ?? ""}</span><time dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString(language)}>{recentWhen(entry.at, language)}</time>
     </button>)}
   </div>;
 }
