@@ -958,7 +958,7 @@
 .mobile-sheet-error { margin: 0; color: var(--m-danger); font-size: var(--t-md); }
 /* S-07 아래 안내 — 행을 길게 누르면 그 Theater의 동작 시트가 선다. 길게 누르는 행에는 iOS 콜아웃·글자 선택이 뜨지 않는다. */
 .mobile-sheet-hint { margin: 0; padding: 6px 8px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
-.mobile-sheet-row.is-theater { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.mobile-sheet-row.is-theater, .mobile-conv-row.is-commodore { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .mobile-sheet-row.is-split { gap: 0; padding-right: 0; }
 .mobile-sheet-row-main { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; min-height: 44px; padding: 0; color: inherit; font: inherit; text-align: left; background: transparent; border: 0; }
 .mobile-sheet-kebab { display: grid; place-items: center; flex: none; width: 44px; height: 44px; color: var(--m-text-muted); background: transparent; border: 0; border-radius: 22px; }

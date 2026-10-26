@@ -14,7 +14,9 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { MobileShortcutSheet } from "./mobile-shortcut-sheet.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
-import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, setMobileListTheaterId } from "./mobile-store.js";
+import { CommodoreRowActions } from "./mobile-sheet-host.js";
+import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 
 /**
  * 홈 — 모든 사령관의 목록(메신저형). 머리(프로필 · +), 사령관 행(아바타 · 이름 · 마지막 말의 시각 · 한 줄 미리보기), 아래에 떠 있는 바로가기 단추와 검색 입력.
@@ -36,6 +38,9 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const fallbackName = t("sidebar.commodore.fallback");
   const open = (commodore: ConsoleCommodoreSummary) => {
     selectMobileCommodore(commodore.commodoreId);
+    // 바로가기(파일·위키 등)의 범위는 마지막으로 연 사령관의 Theater 목록 첫 줄이다 — 옛 사령관 고르기 시트와 같은 규칙.
+    const home = commodore.theaters.find((theater) => theater.status === "available")?.theaterId ?? null;
+    if (home) setMobileListTheaterId(home);
     setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: commodore.commodoreId } });
   };
   // 머리는 목록 위에 떠 있다 — 목록이 그 높이(`--m-screen-head`)만큼 위를 비운다.
@@ -57,21 +62,9 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
       </header>
       <div className="mobile-conv-scroll">
         {commodores.length === 0 && commodoreListLoaded() ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
-        {commodores.map((commodore) => {
-          const name = commodoreSectionLabel(commodore, fallbackName);
-          return (
-            <button key={commodore.commodoreId} type="button" data-press="r1" className="mobile-conv-row" data-commodore-id={commodore.commodoreId} onClick={() => open(commodore)}>
-              <span className="mobile-conv-row-av"><KeyedAvatar avatarKey={commodoreAvatarKey(commodore.commodoreId)} role="commodore" state="idle" size={52} label="" decorative /></span>
-              <span className="mobile-conv-row-copy">
-                <span className="mobile-conv-row-top">
-                  <span className="mobile-conv-row-title">{name}</span>
-                  {commodore.last ? <span className="mobile-conv-row-aside">{time(commodore.last.at)}</span> : null}
-                </span>
-                <span className="mobile-conv-row-sub">{commodore.last?.text ?? t("mobile.home.noMessage")}</span>
-              </span>
-            </button>
-          );
-        })}
+        {commodores.map((commodore) => (
+          <HomeCommodoreRow key={commodore.commodoreId} commodore={commodore} name={commodoreSectionLabel(commodore, fallbackName)} time={time} onOpen={() => open(commodore)} />
+        ))}
       </div>
       <footer className="mobile-home-dock">
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.shortcutsAria")} onClick={() => pushMobileSheet({ kind: "custom", render: (close) => <MobileShortcutSheet onClose={close} /> })}><MobileIcon name="grid" /></button>
@@ -81,5 +74,47 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
         </button>
       </footer>
     </section>
+  );
+}
+
+/**
+ * 사령관 한 줄 — 누르면 그 사령관의 대화, 길게 누르면(터치·펜) 그 사령관의 동작 시트(설정 · 이름과 모양)다. 우클릭·메뉴 키의 contextmenu도 같은
+ * 시트를 열고, Android가 길게 누르기에 함께 보내는 contextmenu는 훅이 한 번만 열리게 거른다.
+ */
+function HomeCommodoreRow({ commodore, name, time, onOpen }: {
+  readonly commodore: ConsoleCommodoreSummary;
+  readonly name: string;
+  readonly time: (timestamp: number) => string;
+  readonly onOpen: () => void;
+}) {
+  const t = useT();
+  const openActions = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={name} alias={commodore.alias ?? ""} onClose={dismiss} /> });
+  const longPress = useLongPress<HTMLButtonElement>(openActions);
+  return (
+    <button
+      type="button"
+      data-press="r1"
+      className="mobile-conv-row is-commodore"
+      data-commodore-id={commodore.commodoreId}
+      onPointerDown={longPress.onPointerDown}
+      onPointerMove={longPress.onPointerMove}
+      onPointerUp={longPress.onPointerUp}
+      onPointerCancel={longPress.onPointerCancel}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        if (longPress.claimContextMenu(event)) return;
+        openActions();
+      }}
+      onClick={onOpen}
+    >
+      <span className="mobile-conv-row-av"><KeyedAvatar avatarKey={commodoreAvatarKey(commodore.commodoreId)} role="commodore" state="idle" size={52} label="" decorative /></span>
+      <span className="mobile-conv-row-copy">
+        <span className="mobile-conv-row-top">
+          <span className="mobile-conv-row-title">{name}</span>
+          {commodore.last ? <span className="mobile-conv-row-aside">{time(commodore.last.at)}</span> : null}
+        </span>
+        <span className="mobile-conv-row-sub">{commodore.last?.text ?? t("mobile.home.noMessage")}</span>
+      </span>
+    </button>
   );
 }

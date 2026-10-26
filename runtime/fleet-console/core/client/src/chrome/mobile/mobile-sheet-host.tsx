@@ -177,7 +177,7 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
 }
 
 /** 사령관 칩 시트의 ⋯. 설정(맨 위가 그 사령관의 Theater)과 이름·모양 별칭. 길게 누르기에 기대지 않는다. */
-function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
   const t = useT();
   // Theater 목록은 그 사령관 「설정」 맨 위에 있다 — 다른 사령관과 나누는 목록 시트를 따로 띄우지 않는다.
   const openSettings = () => {
