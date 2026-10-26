@@ -46,7 +46,8 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
   // 세션은 홈 자리에 선다 — 사령관 화면이 세부(깊이 항목)를 먼저 접고 내려앉은 뒤에 옮긴다. 접기 전에 옮기면 남은 항목을 뒤로가 걷으며 주소만 사령관으로 돌아간다.
   const open = (conversation: MobileConversation) => leave(() => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); });
   // 새 세션의 주인은 이 사령관이다 — 시트가 문맥(열려 있던 대화 등)에서 다른 사령관을 고르지 않게 직접 넘긴다.
-  const startSession = () => openMobileNewSession(commodoreId);
+  // 시작하면 새 세션이 홈 자리에 서므로, 세션 행과 같이 세부를 먼저 접고 연다.
+  const startSession = () => leave(() => openMobileNewSession(commodoreId));
   const empty = owned.length === 0 && attention.length === 0;
 
   return (
