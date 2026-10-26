@@ -88,6 +88,8 @@ export type ClaudeSessionCoordinate =
 
 export interface AgentCliInjectionContext {
   readonly additionalDirectories?: readonly string[];
+  /** 함께 실을 로컬 플러그인 디렉터리 — `--plugin-dir`로 하나씩 싣는다. */
+  readonly pluginDirs?: readonly string[];
   readonly cliId: AgentCliId;
   /**
    * Claude Code `--settings`의 `skillOverrides` 맵. 세션이 싣지 않을 내장 스킬을

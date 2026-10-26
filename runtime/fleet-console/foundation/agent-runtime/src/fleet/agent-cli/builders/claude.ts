@@ -8,6 +8,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
     ...buildSystemPromptArgs(context.claudeCodeSystemPrompt, context.claudeCodeCustomSystemPromptFile),
     "--plugin-url",
     context.pluginUrl,
+    ...(context.pluginDirs ?? []).flatMap((directory) => ["--plugin-dir", directory]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
     ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec, context.disableAutoMemory),
     ...buildSearchToolArgs(),

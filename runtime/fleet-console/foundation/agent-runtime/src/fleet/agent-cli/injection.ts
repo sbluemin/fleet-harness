@@ -30,6 +30,8 @@ import type {
 
 export interface InjectAgentCliProfileOptions {
   readonly additionalDirectories?: readonly string[];
+  /** 사람이 사령관에 고른 로컬 플러그인 디렉터리. */
+  readonly pluginDirs?: readonly string[];
   /** 호스트가 기동에 한 번 묶어 둔 플러그인. 런치는 그 주소만 싣는다. */
   readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
@@ -177,6 +179,7 @@ export async function injectAgentCliProfile(
       ...(options.claudeCodeDisabledTools ? { claudeCodeDisabledTools: options.claudeCodeDisabledTools } : {}),
       ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       plugin: options.plugin,
+      ...(options.pluginDirs?.length ? { pluginDirs: options.pluginDirs } : {}),
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
     });
@@ -192,6 +195,7 @@ export async function injectAgentCliProfile(
       cliId: profile.id,
       mcpServers,
       pluginUrl: session.pluginUrl,
+      ...(session.pluginDirs ? { pluginDirs: session.pluginDirs } : {}),
       ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
       sessionCoordinate: session.coordinate,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),

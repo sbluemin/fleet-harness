@@ -2718,7 +2718,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) });
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) }, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? []);
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
