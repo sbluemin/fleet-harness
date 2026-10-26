@@ -4,7 +4,7 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { closeNewSession, objectiveRecordOrderFromNodes } from "../../../../core/client/src/integration/store.js";
-import { useClusterIndex } from "../objective-clusters.js";
+import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
 import { buildTheaterEntries, SideBarClusterRow, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { openCommanderSplit, useCommanderSplit } from "../conversation/commander-split-store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
@@ -193,11 +193,15 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
           {sections.map((group) => <section key={group.id}>
             {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
             <ol className="commander-tab-list side-bar-group-chips">
-              {group.rows.map((item) => <Fragment key={item.layout.cluster.id}><SideBarClusterRow item={item}
-                selected={shownId === item.layout.cluster.id}
-                onFocus={(objectiveId) => { closeNewSession(); openCommanderSplit(commodoreId, objectiveId); }} />
-                {!item.row.commodore && shownId === item.layout.cluster.id ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={item.layout.cluster.id} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
-              </Fragment>)}
+              {group.rows.map((item) => {
+                const objectiveId = commanderObjectiveId(item.layout.cluster);
+                const selected = objectiveId !== null && shownId === objectiveId;
+                return <Fragment key={item.layout.cluster.id}>
+                  <SideBarClusterRow item={item} selected={selected}
+                    onFocus={(id) => { closeNewSession(); openCommanderSplit(commodoreId, id); }} />
+                  {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
+                </Fragment>;
+              })}
             </ol>
           </section>)}
         </div>

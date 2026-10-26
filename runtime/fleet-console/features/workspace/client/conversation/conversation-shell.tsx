@@ -38,7 +38,7 @@ import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/capti
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
-import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
+import { commanderObjectiveId, useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useConversationPillTakeover } from "./conversation-slots.js";
@@ -696,7 +696,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const splitRecord = splitPickedId === null ? null
     : state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === splitPickedId && objectiveRecord.commodoreId === splitCommodoreId) ?? null;
   const splitClusters = useClusterIndex();
-  const splitCluster = splitClusters.clusters.find((cluster) => cluster.id === splitPickedId && cluster.commodoreId === splitCommodoreId) ?? null;
+  const splitCluster = splitPickedId === null ? null
+    : splitClusters.clusters.find((cluster) => commanderObjectiveId(cluster) === splitPickedId && cluster.commodoreId === splitCommodoreId) ?? null;
   const splitSession = splitNewSession?.commodoreId === splitCommodoreId ? splitNewSession : null;
   useEffect(() => {
     if (splitNewSession && splitNewSession.commodoreId !== splitCommodoreId) closeNewSession();
@@ -901,9 +902,9 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
               tools={noTools}
               split={{ onExpand: () => expandCommanderSplit(splitCommodoreId!, splitRecord.id), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }}
             />
-          ) : splitCluster && splitCommodoreId ? (
-            <CommanderSplitFreshColumn key={splitCluster.id} commodoreId={splitCommodoreId} objectiveId={splitCluster.id} theaterId={splitCluster.theaterId} language={language} theme={state.activeTheme}
-              controls={{ onExpand: () => expandCommanderSplit(splitCommodoreId, splitCluster.id, false), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }} />
+          ) : splitCluster && splitCommodoreId && splitPickedId ? (
+            <CommanderSplitFreshColumn key={splitCluster.id} commodoreId={splitCommodoreId} objectiveId={splitPickedId} theaterId={splitCluster.theaterId} language={language} theme={state.activeTheme}
+              controls={{ onExpand: () => expandCommanderSplit(splitCommodoreId, splitPickedId, false), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }} />
           ) : <CommanderSplitPlaceholder onClose={closeCommanderSplit} />) : null}
         </div>
       ) : subject ? (

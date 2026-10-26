@@ -16,7 +16,7 @@ import { useInlineRename } from "../../../../core/client/src/integration/use-inl
 import { subscribeSideBarObjectiveAction } from "./interaction.js";
 import { pointOnText } from "./objective-records-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import type { ClusterIndex, ClusterLayout } from "../objective-clusters.js";
+import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../objective-clusters.js";
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
@@ -246,8 +246,9 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
   const pointerTypeRef = useRef("mouse");
   // 목표 줄은 세션 유무와 무관하게 옆 칸으로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
   const open = () => {
-    if (row.commodore) { layout.cluster.open?.(); return; }
-    onFocus(layout.cluster.id);
+    const objectiveId = commanderObjectiveId(layout.cluster);
+    if (objectiveId === null) { layout.cluster.open?.(); return; }
+    onFocus(objectiveId);
     if (anchor) registry.objectives.objectiveRecordSelected(anchor.objectiveRecord.id);
   };
   // 제목 글자 위 더블클릭은 이름 변경이다 — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로 판정한다. 이름 변경이면 dblclick 이
