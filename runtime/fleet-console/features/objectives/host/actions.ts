@@ -67,7 +67,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     return result;
   };
   const missionKinds = (patch: MissionPatchInput): ObjectiveEditKind[] => [
-    ...(patch.text !== undefined || patch.done !== undefined ? ["missions" as const] : []),
+    ...(patch.text !== undefined || patch.title !== undefined || patch.done !== undefined ? ["missions" as const] : []),
     ...(patch.prerequisites !== undefined || patch.why !== undefined ? ["lineup" as const] : []),
     ...(patch.member !== undefined ? ["member" as const] : []),
   ];
@@ -143,7 +143,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
       return objective(markEdited(objectiveId, ["members", ...(result.missionIds.length ? ["member" as const] : [])]));
     }),
     missionAdd: steerable(() => true, ({ objectiveId, mission }: Ref & { mission: MissionAddInput }) => edited(objectiveId, ["missions", ...(mission.member !== undefined ? ["member" as const] : [])], () => store.missionAdd(objectiveId, mission, { unplaced: mission.prerequisites === undefined, by: actor }))),
-    missionPatch: steerable(({ objectiveId, missionId, patch }: MissionRef & { patch: MissionPatchInput }) => only(patch, ["text", "member"]) && notStarted(objectiveId, missionId), ({ objectiveId, missionId, patch }) => edited(objectiveId, missionKinds(patch), () => store.missionPatch(objectiveId, missionId, patch, { by: actor }))),
+    missionPatch: steerable(({ objectiveId, missionId, patch }: MissionRef & { patch: MissionPatchInput }) => only(patch, ["text", "title", "member"]) && notStarted(objectiveId, missionId), ({ objectiveId, missionId, patch }) => edited(objectiveId, missionKinds(patch), () => store.missionPatch(objectiveId, missionId, patch, { by: actor }))),
     missionRemove: steerable(({ objectiveId, missionId }: MissionRef) => notStarted(objectiveId, missionId), ({ objectiveId, missionId }) => edited(objectiveId, ["missions"], () => store.missionRemove(objectiveId, missionId))),
     edge: steerable(({ objectiveId, to }: Ref & { from: string; to: string; linked?: boolean }) => notStarted(objectiveId, to), ({ objectiveId, from, to, linked }) => {
       const result = store.edgeToggle(objectiveId, from, to, undefined, linked);

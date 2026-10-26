@@ -468,7 +468,7 @@ describe("Objectives contract", () => {
     const call = async (name: string, args: Record<string, unknown>) => await tools.find((tool) => tool.name === name)!.execute({ objectiveId: id, ...args }, { cwd: h.workspace, caller: { kind: "objectiveRecord", objectiveId: id } }) as { isError: boolean; structuredContent: Record<string, unknown> };
     await call("read", {});
     expect((await call("mark_criterion", { n: 1, met: false })).structuredContent.error).toBe("recheck_approval_required");
-    expect((await call("plan", { missions: [{ text: "human addition" }] })).structuredContent.error).toBe("mission_kept");
+    expect((await call("plan", { missions: [{ title: "human addition", text: "human addition" }] })).structuredContent.error).toBe("mission_kept");
     // 기준만 제출하면 옛 충족과 사람의 임무는 그대로다. 편성 plan 의 withoutMet 와 다른 쓰기다.
     const keptMissions = store.find(id)!.missions.map((mission) => mission.id);
     const keptMet = store.find(id)!.criteria.map((criterion) => criterion.met ?? null);
@@ -476,7 +476,7 @@ describe("Objectives contract", () => {
     expect(store.find(id)!.missions.map((mission) => mission.id)).toEqual(keptMissions);
     expect(store.find(id)!.criteria.map((criterion) => criterion.met ?? null)).toEqual(keptMet);
     expect(store.find(id)!.criteriaProposals).toEqual([expect.objectContaining({ kind: "add", text: "added without a lineup" })]);
-    expect((await call("plan", { missions: [{ text: "first extension" }], criteria: [{ recheck: original.criteria[1]!.id, reason: "scope changed" }, { text: "new criterion" }] })).isError).toBe(false);
+    expect((await call("plan", { missions: [{ title: "first extension", text: "first extension" }], criteria: [{ recheck: original.criteria[1]!.id, reason: "scope changed" }, { text: "new criterion" }] })).isError).toBe(false);
     expect(store.find(id)!.missions.some((mission) => mission.id === human.id && !mission.unplaced)).toBe(true);
     expect(store.find(id)!.criteria.map((criterion) => criterion.met)).toEqual(["original evidence", "original evidence"]);
     expect(store.find(id)!.extensions[0]!.previousHandoff).toEqual(completed.handoff && { by: "commander", at: completed.handoff.at, retrospective });
@@ -588,7 +588,7 @@ describe("Objectives contract", () => {
     expect(stored.find((member) => member.role === "research")!.subagents).toBe(true);
     expect(stored.find((member) => member.role === "build")).not.toHaveProperty("subagents");
     expect(stored.every((member) => !Object.keys(member).some((key) => ["objectiveId", "session", "sessionName", "model", "effort"].includes(key)))).toBe(true);
-    const refused = await call("plan", { objectiveId: objective.id, missions: [{ text: "next" }], members: [{ role: "extra", subagents: true }] }, objective.id);
+    const refused = await call("plan", { objectiveId: objective.id, missions: [{ title: "next", text: "next" }], members: [{ role: "extra", subagents: true }] }, objective.id);
     expect(refused.isError).toBe(true);
     expect(refused.structuredContent.error).toBe("invalid_arguments");
 
@@ -1499,19 +1499,19 @@ describe("Objectives contract", () => {
     const commander = objective.id;
     const other = (await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Other", groupId: null })).id;
     // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p", text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
     expect((await call("read", { objectiveId: objective.id }, other)).structuredContent.error).toBe("not_participant");
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고(모델은 고르지 않아 라우팅), 임무에 구성원을 표시한다.
     // 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
-    const planned = await call("plan", { objectiveId: objective.id, missions: [{ text: "p1", member: "build" }, { text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander);
+    const planned = await call("plan", { objectiveId: objective.id, missions: [{ title: "p1", text: "p1", member: "build" }, { title: "p2", text: "p2", prerequisites: [{ n: 1 }] }], members: [{ role: "build", brief: "implements" }] }, commander);
     expect(planned.isError).toBe(false);
     expect(planned.structuredContent).toMatchObject({ stored: { members: [{ role: "build", brief: "implements" }] } });
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", by: "commander", launch: { mode: "route" } }]);
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["early"] }, commander)).structuredContent.error).toBe("planning_only");
     expect((await call("muster", { objectiveId: objective.id }, commander)).structuredContent.error).toBe("planning_only");
     // 명단이 있으면 지휘관은 명단을 다시 쓰지 못한다(빈 명단으로 지우는 것도).
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
+    expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p3", text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
     // 명단이 선 뒤의 일손은 enlist 로 더한다 — 서브에이전트 호출을 대신하는 자리다.
     expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build" }, { role: "review", by: "commander" }]);
@@ -1519,9 +1519,9 @@ describe("Objectives contract", () => {
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
     const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
-    const addedMission = await call("add_mission", { objectiveId: objective.id, text: "  padded  " }, commander);
+    const addedMission = await call("add_mission", { objectiveId: objective.id, title: "  Build  ", text: "  padded  " }, commander);
     expect(addedMission.structuredContent).toMatchObject({ stored: { text: store.find(objective.id)!.missions.find((entry) => entry.id === addedMission.structuredContent.missionId)!.text } });
-    expect((addedMission.structuredContent.stored as { text: string }).text).toBe("padded");
+    expect(addedMission.structuredContent.stored).toEqual({ title: "Build", text: "padded" });
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
@@ -1625,11 +1625,11 @@ describe("Objectives contract", () => {
     store.setEdited(objective.id, ["missions"]);
     expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { note: "Stored independently" } }, commander)).isError).toBe(false);
     expect(store.find(objective.id)!.edited?.kinds).toEqual(["missions"]);
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "stale" }] }, commander)).structuredContent.error).toBe("board_changed");
+    expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "stale", text: "stale" }] }, commander)).structuredContent.error).toBe("board_changed");
     const missed = (await board()).find((mission) => mission.unplaced)!;
     expect(missed).toMatchObject({ unplaced: true, ready: false });
     // 계획이 남기는 임무를 같은 문구로 다시 만들어 두 벌을 세우지 못한다.
-    expect((await call("plan", { objectiveId: objective.id, missions: [{ text: " Missed " }] }, commander)).structuredContent).toMatchObject({ error: "mission_kept", kept: [{ text: "missed", unplaced: true }] });
+    expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "Missed", text: " Missed " }] }, commander)).structuredContent).toMatchObject({ error: "mission_kept", kept: [{ text: "missed", unplaced: true }] });
     // 배치는 지휘관만 — 담당 구성원도 함께 정한다.
     expect((await call("place_mission", { objectiveId: objective.id, n: missed.n, prerequisites: [1] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("place_mission", { objectiveId: objective.id, n: missed.n, prerequisites: [1], member: "build" }, commander)).isError).toBe(false);
@@ -1643,10 +1643,10 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === p2.id)!.member).toBeNull();
     // 지휘관의 n 은 마지막으로 읽은 번호표를 가리킨다 — 선행 없이 더한 임무가 첫 열로 서며 편성 순이 바뀌어도, 다음 호출의 n 이 다른 임무로 가지 않는다.
     const read = store.find(objective.id)!.missions.map((mission) => mission.id);
-    const hotfix = (await call("add_mission", { objectiveId: objective.id, text: "hotfix" }, commander)).structuredContent as { missionId: string; n: number };
+    const hotfix = (await call("add_mission", { objectiveId: objective.id, title: "hotfix", text: "hotfix" }, commander)).structuredContent as { missionId: string; n: number };
     expect(hotfix.n).toBe(read.length + 1);
     expect(store.find(objective.id)!.missions.map((mission) => mission.id)).not.toEqual([...read, hotfix.missionId]);
-    const qa = (await call("add_mission", { objectiveId: objective.id, text: "qa", prerequisites: [{ n: hotfix.n }, { n: read.length, why: "after the rest" }] }, commander)).structuredContent as { missionId: string };
+    const qa = (await call("add_mission", { objectiveId: objective.id, title: "qa", text: "qa", prerequisites: [{ n: hotfix.n }, { n: read.length, why: "after the rest" }] }, commander)).structuredContent as { missionId: string };
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === qa.missionId)).toMatchObject({ prerequisites: [hotfix.missionId, read.at(-1)], why: { [read.at(-1)!]: "after the rest" } });
     // 번호표는 서버 메모리에만 있다 — 재시작 뒤에는 옛 n 을 지금 편성 순으로 풀지 않고 다시 읽게 한다.
     const restarted = createObjectiveMcpTools(ctx, store, launch).find((tool) => tool.name === "complete_mission")!;
@@ -1678,7 +1678,7 @@ describe("Objectives contract", () => {
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
     store.setPlanning(commander, false);
     const member = store.find(commander)!.members[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
@@ -1731,7 +1731,7 @@ describe("Objectives contract", () => {
     await call("read", { objectiveId: commander }, commander);
     // 완료된 임무는 계획이 남긴다 — 질문이 가리키는 임무가 보드에 있는 동안 요청은 그대로다.
     await call("complete_mission", { objectiveId: commander, missionId, summary: ["committed"] }, commander);
-    await call("plan", { objectiveId: commander, missions: [{ text: "later" }], criteria: [{ text: "documented" }] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ title: "later", text: "later" }], criteria: [{ text: "documented" }] }, commander);
     expect(store.find(commander)).toMatchObject({ decisionRequest: { id: placed.id }, criteriaProposals: [{ text: "documented" }] });
     activity.set(commander, "dormant");
     const delivered = await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers });
@@ -1792,7 +1792,7 @@ describe("Objectives contract", () => {
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
-    await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ title: "ship", text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
     store.setPlanning(commander, false);
     const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { id: string }[])[0]!.id;
     // 구성원에게는 말 그대로, 지휘관에게는 누구에게 말했는지와 그 말의 인용.
@@ -1913,7 +1913,7 @@ describe("Objectives contract", () => {
     const as = objective.id;
     const first = store.criterionAdd(as, "tests pass", "human").criteria[0]!;
     const second = store.criterionAdd(as, "copy unchanged", "human").criteria[1]!;
-    const plan = (criteria: unknown) => call("plan", { objectiveId: as, missions: [{ text: "fix" }], criteria }, as);
+    const plan = (criteria: unknown) => call("plan", { objectiveId: as, missions: [{ title: "fix", text: "fix" }], criteria }, as);
     // 기준 제안은 사람이 구상을 명시적으로 요청한 국면에서만 열린다.
     expect((await plan([{ text: "new" }])).structuredContent.error).toBe("criteria_not_planning");
     expect((await route("plan/request", { objectiveId: as })).status).toBe(200);
@@ -2198,7 +2198,7 @@ describe("Objectives contract", () => {
     expect(commanderBoard.attachments).toHaveLength(3);
     for (const attachment of commanderBoard.attachments) expect(fs.readFileSync(attachment.path)).toEqual(PNG);
     // 지휘관이 편성과 기준을 제안한다 — 구성원 모델 제안은 카탈로그 안의 모델·강도만 받고, 거절되면 편성 전체가 남지 않는다.
-    const lineup = { missions: [{ text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
+    const lineup = { missions: [{ title: "verify", text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
     await command("plan", { ...lineup, missions: [...lineup.missions, { text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
@@ -3013,7 +3013,7 @@ describe("Objectives contract", () => {
     const steerSends = () => sent.filter((entry) => entry.text.includes("read the board again") || entry.text.includes("보드를 다시 읽고"));
     vi.useFakeTimers();
     try {
-      expect((await call("add_mission", { objectiveId: objective.id, text: "stay quiet", member: "worker" }, commander)).isError).toBe(false);
+      expect((await call("add_mission", { objectiveId: objective.id, title: "stay quiet", text: "stay quiet", member: "worker" }, commander)).isError).toBe(false);
       const mission = store.find(objective.id)!.missions.find((entry) => !before.has(entry.id));
       expect(mission?.assignmentTs).toEqual(expect.any(Number));
       expect(mission?.member).toEqual(expect.any(String));

@@ -97,7 +97,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
         const why = Object.fromEntries(Object.entries(mission.why ?? {}).flatMap(([id, reason]) => (nOf(id) >= 1 && reason ? [[String(nOf(id)), reason]] : [])));
         const latest = latestRecord(mission);
         return {
-          n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
+          n: index + 1, missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text, done: mission.done,
           ...withoutEmpty({ by: mission.by, memberBy: mission.memberBy, extension: extensionOf(objective.extensions, mission.id, "mission") }),
           prerequisites: mission.prerequisites.map(nOf).filter((value) => value >= 1),
           ...(Object.keys(why).length ? { why } : {}),
@@ -216,7 +216,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       members: objective.members.map((member) => ({ ...observe(member.id), role: member.role, session: member.sessionName, model: member.model, effort: member.effort, next: member.next,
         ...(member.failure ? { failure: member.failure } : {}), ...(member.unreported ? { unreported: member.unreported } : {}),
         ...(member.failure || member.unreported ? {
-          missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, text: mission.text }] : []),
+          missions: objective.missions.flatMap((mission, index) => mission.member === member.id && !mission.done ? [{ n: index + 1, missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text }] : []),
         } : {}) })),
     };
   };

@@ -102,6 +102,8 @@
 .objectives-popup-title.is-read { cursor: text; white-space: pre-wrap; }
 .objectives-popup-title:focus { outline: none; }
 .objectives-popup-title:focus-visible { background: color-mix(in oklch, var(--brass) 5%, transparent); }
+/* 상세 — 이름 아래에 한 단계 작고 옅게 선다. 편집 면은 이름과 같다. */
+.objectives-popup-detail { font-size: var(--t-xs); color: var(--text-secondary); }
 .objectives-popup-group { margin-top: 7px; padding-top: 6px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent); }
 .objectives-popup-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 2px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-popup-group-head span { color: var(--text-secondary); }

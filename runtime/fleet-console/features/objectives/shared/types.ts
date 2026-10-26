@@ -46,6 +46,15 @@ export const MAX_TITLE = 120;
 export const MAX_NOTE = 20_000;
 export const MAX_MISSIONS = 40;
 export const MAX_MISSION_TEXT = 200;
+/** 임무 이름 — 보드에 서는 짧은 이름. 이름이 없는 임무는 상세(text) 앞부분을 이 길이로 줄여 이름으로 쓴다. */
+export const MAX_MISSION_TITLE = 30;
+
+/** 보드에 서는 임무 이름 — 이름이 있으면 그대로, 없으면 상세의 앞 MAX_MISSION_TITLE 자(코드포인트)를 줄여 쓴다. 저장값은 바꾸지 않는다. */
+export function missionTitle(mission: { readonly title?: string; readonly text: string }): string {
+  if (mission.title) return mission.title;
+  const chars = Array.from(mission.text.trim());
+  return chars.length > MAX_MISSION_TITLE ? `${chars.slice(0, MAX_MISSION_TITLE).join("").trimEnd()}…` : chars.join("");
+}
 /** 달성 기준 — 목표가 이루어졌다고 말할 조건. 개수와 길이, 충족 근거 한 줄의 길이. */
 export const MAX_CRITERIA = 20;
 export const MAX_CRITERION_TEXT = 300;
@@ -310,6 +319,9 @@ export interface StoredRecord {
 
 export interface StoredMission {
   readonly id: string;
+  /** 보드에 서는 짧은 이름. 없으면 text 앞부분이 이름을 대신한다(missionTitle). */
+  readonly title?: string;
+  /** 임무의 상세 — 무엇을 할지. */
   readonly text: string;
   readonly done?: true;
   readonly prerequisites: readonly StoredEdge[];
@@ -712,6 +724,8 @@ export interface MissionRecord {
 
 export interface ObjectiveMission {
   readonly id: string;
+  /** 저장된 이름. 화면은 missionTitle 로 이름 없는 임무까지 읽는다. */
+  readonly title?: string;
   readonly text: string;
   readonly done: boolean;
   /** 선행 임무 id. 전부 완료돼야 이 임무가 준비된다. */
@@ -1080,6 +1094,7 @@ export const objectiveActionSchema = z.object({
 const title = z.string().trim().min(1).max(MAX_TITLE);
 const note = z.string().max(MAX_NOTE);
 const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
+export const missionTitleSchema = z.string().trim().min(1).max(MAX_MISSION_TITLE);
 const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
 export const createObjectiveSchema = z.object({
@@ -1128,8 +1143,10 @@ export const criterionProposalSchema = z.union([
 ]);
 export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
-export const missionAddSchema = z.object({ text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), why: z.record(ids, z.string().max(300)).optional(), member: ids.nullable().optional() }).strict();
+export const missionAddSchema = z.object({ title: missionTitleSchema.optional(), text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), why: z.record(ids, z.string().max(300)).optional(), member: ids.nullable().optional() }).strict();
 export const missionPatchSchema = z.object({
+  /** null 이면 이름을 지워 상세 앞부분으로 돌아간다. */
+  title: missionTitleSchema.nullable().optional(),
   text: missionText.optional(),
   done: z.boolean().optional(),
   prerequisites: z.array(ids).max(MAX_MISSIONS).optional(),
@@ -1141,6 +1158,7 @@ export const missionPatchSchema = z.object({
 export const planSchema = z.object({
   // 생략하면 기준만 제출한다. 빈 배열은 편성이 아니다.
   missions: z.array(z.object({
+    title: missionTitleSchema.optional(),
     text: missionText,
     // n 은 이 plan 의 missions 안 1-based 번호, missionId 는 이미 있는(완료·배정된) 임무 — 새 임무가 기존 임무 뒤에 설 수 있다.
     prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_MISSIONS).optional(),
