@@ -2201,7 +2201,7 @@ describe("Objectives contract", () => {
     const lineup = { missions: [{ title: "verify", text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
-    await command("plan", { ...lineup, missions: [...lineup.missions, { text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    await command("plan", { ...lineup, missions: [...lineup.missions, { title: "review", text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
     // 맡은 일 없는 구성원만 지휘관이 거둔다 — 임무를 맡은 구성원과 사람이 더한 구성원은 남는다.
     await command("enlist", { members: [{ role: "spare" }] }, id);
     expect((await call("discharge", { objectiveId: id, member: "reviewer" }, id)).structuredContent.error).toBe("member_has_missions");
