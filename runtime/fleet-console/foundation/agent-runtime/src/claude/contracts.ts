@@ -73,6 +73,20 @@ export interface ClaudeGatewayServedMcpServer {
   readonly toolTimeoutSeconds?: number;
 }
 
+/**
+ * 호출자가 지목한 외부 MCP 서버 — 자식이 직접 띄우거나(stdio) 접속한다(http·sse).
+ *
+ * `servedMcpServers`(호스트가 서빙하는 엔드포인트)와 달리 이 패키지도 호스트도 서버를 소유하지 않는다. 자식이
+ * 스스로 찾아 읽는 ambient 설정이 아니라 호출자가 좌표를 골라 건넨 것이므로 `pluginUrl`과 같은 자격이다 —
+ * `strictMcpConfig`는 그대로이고, 이 좌표 밖의 `.mcp.json`은 여전히 읽히지 않는다.
+ *
+ * 값의 `${VAR}`는 자식이 자기 환경으로 펼친다(CLI 2.1.310 실측). stdio 서버는 자식의 작업 폴더에서 뜬다 — 다른
+ * 폴더에서 떠야 하면 호출자가 command를 그 폴더로 옮겨 실행하는 런처로 감싼다. 내부 세션 토큰은 여기에 싣지 않는다.
+ */
+export type ClaudeGatewayExternalMcpServer =
+  | { readonly type: "stdio"; readonly command: string; readonly args?: readonly string[]; readonly env?: Readonly<Record<string, string>> }
+  | { readonly type: "http" | "sse"; readonly url: string; readonly headers?: Readonly<Record<string, string>> };
+
 export interface ClaudeGatewayToolExtras {
   readonly annotations?: Readonly<Record<string, unknown>>;
   readonly searchHint?: string;
@@ -245,6 +259,15 @@ export interface ClaudeGatewaySdkOptions {
    * 설정 파일 모양으로 들어오는 통로가 다시 생긴다.
    */
   readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  /**
+   * 설정 `claudeMdExcludes` — 읽지 않을 CLAUDE.md·규칙 파일의 glob(절대 경로에 picomatch로 맞춘다). 사용자·프로젝트·
+   * 로컬 층에만 듣는다.
+   *
+   * `settingSources`에 `project`를 열면 작업 폴더와 그 상위 폴더(홈 포함)의 CLAUDE.md·`.claude/CLAUDE.md`·
+   * `.claude/rules`가 함께 실린다. 프로젝트 스킬만 원하는 호출자는 `["**\/*"]`로 그 지시를 모두 끈다
+   * (CLI 2.1.310 실측: 메모리 파일 0개, 스킬 발견은 그대로).
+   */
+  readonly claudeMdExcludes?: readonly string[];
   /** 호출자가 제공한 cwd 관찰 명령. plugin hook이 아닌 flag settings에 등록한다. */
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   /**
@@ -357,6 +380,8 @@ export interface ClaudeGatewayTurn {
   readonly mcpServers?: Readonly<Record<string, ClaudeGatewayMcpServer>>;
   /** 자식이 접속할 HTTP MCP 엔드포인트. 호스트가 이미 서빙 중이어야 한다. */
   readonly servedMcpServers?: readonly ClaudeGatewayServedMcpServer[];
+  /** 호출자가 지목한 외부 MCP 서버. 이름이 `mcpServers`·`servedMcpServers`와 겹치면 거부한다. */
+  readonly externalMcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
   readonly includePartialMessages?: boolean;
   readonly abortController?: AbortController;
   readonly stderr?: (data: string) => void;
@@ -393,6 +418,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "canUseTool",
   "mcpServers",
   "servedMcpServers",
+  "externalMcpServers",
   "includePartialMessages",
   "abortController",
   "stderr",

@@ -1,12 +1,13 @@
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
-import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
+import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
+import { theaterMcpServers } from "./theater-mcp.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
@@ -24,7 +25,6 @@ export interface CommodoreSessionOptions {
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterLabel: string;
-  readonly theaterIds?: readonly string[];
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
   readonly theaterRoot: string;
@@ -187,25 +187,29 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
 
   const open = async () => {
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, ...(options.theaters ? { theaters: options.theaters } : {}), store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣고, 그 `.mcp.json` 서버를 건넨다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
+    const theaters = (options.theaters?.() ?? []).flatMap(({ theaterId, root }) => (root ? [{ theaterId, root }] : []));
+    const knowledge = (options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP);
+    const reserved = new Set([COMMODORE_TOOL_GROUP, BOARD_TOOL_GROUP, ...AGENT_RESERVED_TOOL_GROUPS, ...(options.knowledgeTools ?? []).map((group) => group.name)]);
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
       sessionName: `commodore-${(options.store.read(options.commodoreId)?.alias ?? "commodore").normalize("NFKC").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 20) || "theater"}-${options.commodoreId.slice(0, 12)}`,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias, theaterIds: options.theaterIds }),
+      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, { commodoreId: options.commodoreId, alias: options.store.read(options.commodoreId)?.alias }),
       continuation: "conversation",
       settlement: "result",
       cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
+      workspace: { additionalDirectories: [...new Set(theaters.map(({ root }) => root))], mcpServers: theaterMcpServers(theaters, reserved) },
       tools: {
-        builtins: ["WebSearch", "WebFetch", "Read"],
+        builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
         browser: { scopeId: `commodore:${options.commodoreId}` },
         custom: [
           { name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) },
           ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : []),
-          ...(options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP)
-            .map((group) => ({ name: group.name, tools: group.tools.map(observed) })),
+          ...knowledge.map((group) => ({ name: group.name, tools: group.tools.map(observed) })),
         ],
       },
       onEvent,
@@ -243,7 +247,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
-        `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, available: root !== null })) ?? [])}`,
+        `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [
@@ -290,8 +294,6 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   const name = rawName.replace(MCP_PREFIX, "");
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
-  // Theater 도구의 경로는 상대 경로일 때만 요약한다 — 절대 경로는 거절되더라도 기록(브라우저에 보이는)에 남기지 않는다.
-  const relative = (key: string) => { const value = str(key); return value !== undefined && !/^([\\/~]|[A-Za-z]:)/.test(value) ? value : undefined; };
   const writes = boardWrites.get(name);
   if (writes) {
     const called = str("action");
@@ -301,12 +303,13 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
     case "next_wake": return { name, summary: [typeof args.inMinutes === "number" ? `${args.inMinutes}m` : undefined, str("reason")].filter(Boolean).join(" · "), counts: false };
-    case "read_file": case "git_log": case "list_dir": return { name, summary: relative("path"), counts: false };
-    case "find_files": return { name, summary: [relative("path"), str("pattern")].filter(Boolean).join(" · ") || undefined, counts: false };
-    case "search_text": return { name, summary: [relative("path"), str("query")].filter(Boolean).join(" · ") || undefined, counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
-    // Read는 Theater 밖의 절대 경로도 받는다 — 기록에는 경로 요약 없이 도구명·성공 여부만 남긴다.
+    // 내장 도구의 경로·명령은 절대 경로를 담을 수 있다 — 기록(브라우저에 보이는)에는 경로를 싣지 않는다.
+    // Read는 도구명·성공 여부만, Bash는 모델이 쓴 한 줄 설명만, Glob·Grep은 패턴만, Skill은 스킬 이름만 남긴다.
     case "Read": return { name, counts: false };
+    case "Bash": return { name, summary: str("description"), counts: false };
+    case "Glob": case "Grep": { const pattern = str("pattern"); return { name, summary: pattern !== undefined && !/^([\\/~]|[A-Za-z]:)/.test(pattern) ? pattern : undefined, counts: false }; }
+    case "Skill": return { name, summary: str("skill"), counts: false };
     case "WebSearch": return { name, summary: str("query"), counts: false };
     case "WebFetch": return { name, summary: str("url"), counts: false };
     default: return { name, counts: false };

@@ -137,9 +137,9 @@ export async function createClaudeGatewaySdk(
     ...(request.disallowedTools === undefined ? {} : { disallowedTools: [...request.disallowedTools] }),
     ...(request.permissionMode === undefined ? {} : { permissionMode: request.permissionMode }),
     ...(request.canUseTool === undefined ? {} : { canUseTool: vendorCanUseTool(request.canUseTool) }),
-    ...(request.mcpServers === undefined && request.servedMcpServers === undefined
+    ...(request.mcpServers === undefined && request.servedMcpServers === undefined && request.externalMcpServers === undefined
       ? {}
-      : { mcpServers: { ...request.mcpServers, ...vendorServedMcpServers(request.servedMcpServers) } }),
+      : { mcpServers: vendorMcpServers(request) }),
     ...(request.includePartialMessages === undefined
       ? {}
       : { includePartialMessages: request.includePartialMessages }),
@@ -357,6 +357,7 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
   if (options.skillOverrides && Object.keys(options.skillOverrides).length > 0) {
     settings.skillOverrides = { ...options.skillOverrides };
   }
+  if (options.claudeMdExcludes && options.claudeMdExcludes.length > 0) settings.claudeMdExcludes = [...options.claudeMdExcludes];
   if (options.ultracode === true) settings.ultracode = true;
   if (options.autoMemoryEnabled === false) settings.autoMemoryEnabled = false;
   if (options.cwdHook) {
@@ -435,6 +436,24 @@ function vendorServedMcpServers(
     ...(server.headers?.length ? { headers: Object.fromEntries(server.headers.map((h) => [h.name, h.value])) } : {}),
     ...(server.toolTimeoutSeconds === undefined ? {} : { timeout: Math.round(server.toolTimeoutSeconds * 1000) }),
   }]));
+}
+
+/**
+ * 세 갈래 MCP 좌표를 vendor의 한 레코드로 모은다. 이름이 겹치면 한쪽이 조용히 덮이므로 거부한다.
+ */
+function vendorMcpServers(request: ClaudeGatewaySessionRequest): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...request.mcpServers };
+  const add = (name: string, value: unknown) => {
+    if (Object.hasOwn(merged, name)) throw new TypeError(`Duplicate MCP server name: ${name}`);
+    merged[name] = value;
+  };
+  for (const [name, value] of Object.entries(vendorServedMcpServers(request.servedMcpServers))) add(name, value);
+  for (const [name, server] of Object.entries(request.externalMcpServers ?? {})) {
+    add(name, server.type === "stdio"
+      ? { type: "stdio", command: server.command, ...(server.args ? { args: [...server.args] } : {}), ...(server.env ? { env: { ...server.env } } : {}) }
+      : { type: server.type, url: server.url, ...(server.headers ? { headers: { ...server.headers } } : {}) });
+  }
+  return merged;
 }
 
 function vendorExtraArgs(pluginUrl: string | undefined, sessionName: string | undefined): { extraArgs?: Record<string, string> } {

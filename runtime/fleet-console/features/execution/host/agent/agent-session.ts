@@ -1,6 +1,6 @@
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
-import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
+import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "../../../console-use/shared/tools.js";
 import { z } from "zod";
@@ -28,7 +28,36 @@ export interface AgentSessionHostDeps {
 export interface InternalAgentSession extends AgentSession {
   steer?(input: AgentInput, id: string): boolean;
 }
-export interface InternalSessionOptions extends AgentSessionOptions { readonly cwd?: string }
+/** 모든 호스트가 싣는 내장 도구. */
+const AGENT_BUILTINS: readonly string[] = ["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"];
+/** 작업 폴더를 직접 다루는 내장 도구 — `workspace` 정책을 연 호스트만 싣는다. */
+export const WORKSPACE_BUILTINS = ["Bash", "Glob", "Grep", "Skill"] as const;
+export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
+
+/**
+ * 세션이 다룰 폴더들과 그 폴더가 가져오는 능력. `workspace` 정책을 연 호스트만 받는다.
+ *
+ * 폴더의 `.claude/skills`는 Skill 도구로 발견되고 세션 중 바뀐 것도 반영된다. 그러려면 자식이 `project` 설정 층을 읽어야
+ * 하는데, 그 층은 작업 폴더와 상위 폴더(홈 포함)의 CLAUDE.md·규칙까지 싣는다 — 그래서 어느 폴더의 CLAUDE.md·규칙도 싣지
+ * 않도록 모두 제외한다. 추가 폴더의 CLAUDE.md·설정 파일은 원래 읽히지 않는다(CLI 2.1.310 실측). 작업 폴더의
+ * `.claude/settings.json`은 읽히므로 작업 폴더는 호스트 소유 자리여야 한다. 폴더의 `.mcp.json`은 읽히지 않는다 —
+ * MCP 서버는 호출자가 `mcpServers`로 지목한다.
+ */
+export interface AgentWorkspace {
+  readonly additionalDirectories: readonly string[];
+  readonly mcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
+}
+
+type InternalTools = Omit<NonNullable<AgentSessionOptions["tools"]>, "builtins"> & { readonly builtins?: readonly (NonNullable<NonNullable<AgentSessionOptions["tools"]>["builtins"]>[number] | WorkspaceBuiltin)[] };
+export interface InternalSessionOptions extends Omit<AgentSessionOptions, "tools"> {
+  readonly cwd?: string;
+  readonly tools?: InternalTools;
+  readonly workspace?: AgentWorkspace;
+}
+/** 호스트가 스스로 싣는 MCP 서버 이름 — 호출자의 도구 묶음·외부 서버는 이 이름을 쓸 수 없다. */
+export const AGENT_RESERVED_TOOL_GROUPS: readonly string[] = [FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER];
+/** 호스트가 여는 능력. 기본은 닫혀 있다 — 플러그인 호스트는 셸·작업 폴더 도구를 싣지 않는다. */
+export interface AgentSessionHostPolicy { readonly workspace?: boolean }
 interface SessionResources {
   readonly cwd: string;
   readonly scratch: string;
@@ -37,7 +66,7 @@ interface SessionResources {
 }
 
 /** 실행 자원과 도구 수명은 공유하되, 세션 자리의 소유 정책은 호출자가 고른다. */
-export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (options: InternalSessionOptions) => Promise<SessionResources>) {
+export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (options: InternalSessionOptions) => Promise<SessionResources>, policy: AgentSessionHostPolicy = {}) {
   const sessions = new Set<InternalAgentSession>();
   const pending = new Set<Promise<InternalAgentSession>>();
   let disposed = false;
@@ -52,7 +81,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
   };
 
   async function create(options: InternalSessionOptions): Promise<InternalAgentSession> {
-    validateOptions(options);
+    validateOptions(options, policy);
     const baseUrl = deps.baseUrl();
     if (!baseUrl) throw new Error("agent_gateway_unavailable");
     if (disposed) throw new Error("agent_host_disposed");
@@ -72,7 +101,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     let browserConnection: BrowserPluginConnection | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const builtins: string[] = [...(options.tools?.builtins ?? [])];
-    const allowed: string[] = [...builtins];
+    // 외부 서버는 이름 접두로 도구 전부를 허용한다 — 도구 목록은 서버가 정하고 dontAsk는 목록에 없는 도구를 거절한다.
+    const allowed: string[] = [...builtins, ...Object.keys(options.workspace?.mcpServers ?? {}).map((name) => `mcp__${name}`)];
     // 대화 자리 전체(홈·작업 디렉터리)를 가린다. 홈 경로가 먼저 가려지도록 긴 뿌리부터 지운다.
     const hidden = [scratch, cwd];
     const redactRoots = [...new Set(hidden.flatMap((root) => [root, root.replaceAll("\\", "/"), root.replaceAll("/", "\\")]))].sort((a, b) => b.length - a.length);
@@ -102,6 +132,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),
         ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),
+        // 폴더의 스킬만 연다 — CLAUDE.md·규칙은 어느 폴더의 것도 싣지 않는다(AgentWorkspace).
+        ...(options.workspace ? { settingSources: ["project"] as const, claudeMdExcludes: ["**/*"] } : {}),
       });
     };
     const buildTurn = (): ClaudeExecutionTurn => ({
@@ -110,9 +142,11 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       ...(options.effort ? { effort: options.effort } : {}),
       systemPrompt: { mode: "replace", text: options.systemPrompt },
       cwd,
+      ...(options.workspace ? { additionalDirectories: [...options.workspace.additionalDirectories] } : {}),
       tools: [...builtins],
       allowedTools: allowed,
       mcpServers: servers,
+      ...(options.workspace?.mcpServers ? { externalMcpServers: { ...options.workspace.mcpServers } } : {}),
       permissionMode: "dontAsk",
       includePartialMessages: true,
       ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
@@ -331,7 +365,7 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
   return event;
 }
 
-function validateOptions(options: AgentSessionOptions): void {
+function validateOptions(options: InternalSessionOptions, policy: AgentSessionHostPolicy): void {
   if (!options || typeof options.model !== "string" || !options.model.trim() || typeof options.systemPrompt !== "string") throw new Error("agent_options_invalid");
   if (!["conversation", "oneshot"].includes(options.continuation) || !["result", "result-required"].includes(options.settlement)) throw new Error("agent_policy_invalid");
   if (options.effort && !["low", "medium", "high", "xhigh", "max"].includes(options.effort)) throw new Error("agent_effort_invalid");
@@ -340,9 +374,18 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
   if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
   if (options.sessionName !== undefined && (typeof options.sessionName !== "string" || !options.sessionName.trim() || options.sessionName.length > 160 || /[\r\n]/.test(options.sessionName))) throw new Error("agent_session_name_invalid");
-  if (options.tools?.builtins?.some((tool) => !["WebSearch", "WebFetch", "SendMessage", "ListAgents", "Read"].includes(tool))) throw new Error("agent_builtin_not_allowed");
+  const builtins = policy.workspace ? [...AGENT_BUILTINS, ...WORKSPACE_BUILTINS] : AGENT_BUILTINS;
+  if (options.tools?.builtins?.some((tool) => !builtins.includes(tool))) throw new Error("agent_builtin_not_allowed");
+  if (options.workspace) {
+    if (!policy.workspace) throw new Error("agent_workspace_not_allowed");
+    if (options.workspace.additionalDirectories.some((dir) => typeof dir !== "string" || !path.isAbsolute(dir) || dir.includes("\0"))) throw new Error("agent_workspace_invalid");
+  }
   if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
-  const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER]);
+  const groups = new Set<string>(AGENT_RESERVED_TOOL_GROUPS);
+  for (const name of Object.keys(options.workspace?.mcpServers ?? {})) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(name) || groups.has(name)) throw new Error("agent_tool_group_invalid");
+    groups.add(name);
+  }
   for (const group of options.tools?.custom ?? []) {
     if (!/^[a-zA-Z0-9_-]+$/.test(group.name) || groups.has(group.name)) throw new Error("agent_tool_group_invalid");
     groups.add(group.name);
