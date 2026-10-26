@@ -61,6 +61,8 @@ interface RegistryMarketplace {
   readonly status: "ready" | "syncing" | "failed";
   readonly error?: MarketplaceErrorCode;
   readonly updatedAt?: number;
+  /** 마지막으로 받기를 시도한 시각 — 실패한 기본 제공을 목록 읽기마다 다시 받지 않게 한다. */
+  readonly attemptedAt?: number;
 }
 
 interface Registry {
@@ -86,6 +88,8 @@ interface MarketplaceEntry {
 }
 
 const PRESET_REFRESH_MS = 24 * 60 * 60_000;
+/** 실패한 기본 제공을 목록 읽기로 다시 받기까지의 간격. 「갱신」 단추는 이 간격과 무관하게 바로 받는다. */
+const PRESET_RETRY_MS = 10 * 60_000;
 const CLI_TIMEOUT_MS = 180_000;
 const COMPONENT_KEYS = ["commands", "agents", "skills", "hooks", "mcpServers", "lspServers", "outputStyles"] as const;
 const segment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9_-])?$/;
@@ -399,8 +403,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       for (const preset of PRESET_MARKETPLACES) {
         const row = readRegistry().marketplaces.find((item) => item.name === preset.name);
         if (row && row.status === "ready" && row.updatedAt && now() - row.updatedAt < PRESET_REFRESH_MS && known()[preset.name]) continue;
-        if (!row) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, { name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: true, status: "syncing" }] }));
-        else patchMarketplace(preset.name, { status: "syncing" });
+        if (row && row.status === "failed" && row.attemptedAt && now() - row.attemptedAt < PRESET_RETRY_MS) continue;
+        if (!row) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, { name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: true, status: "syncing", attemptedAt: now() }] }));
+        else patchMarketplace(preset.name, { status: "syncing", attemptedAt: now() });
         if (known()[preset.name]) {
           const result = await runCli(["marketplace", "update", preset.name]);
           patchMarketplace(preset.name, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: known()[preset.name] ? "ready" : "failed", ...(result.outcome === "ok" ? {} : { error: errorCode(result) }) }, result.outcome === "ok");
