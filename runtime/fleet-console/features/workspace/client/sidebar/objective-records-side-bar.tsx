@@ -17,6 +17,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { GroupContextMenu } from "./group-context-menu.js";
 import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
 import { saveCommodoreOrder } from "../../../commodore/client/theaters-api.js";
@@ -225,6 +226,7 @@ interface TheaterActionsMenuProps {
   readonly onCreateGroup: (name: string) => void;
   /** 등록 Theater 를 잊는다 — 사령관 행에는 없다(사령관은 Theater 가 아니다). */
   readonly onForgetTheater?: (() => void) | undefined;
+  readonly onDeleteCommodore?: (() => void) | undefined;
   readonly onOpenZone: () => void;
   readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
@@ -1340,6 +1342,12 @@ export function ObjectiveRecordsSideBar({
             onForgetTheater(contextMenuTheater.id);
             closeActiveContextMenu();
           } : undefined}
+          onDeleteCommodore={contextMenuTheater.commodore?.id === contextMenuTheater.id ? () => {
+            const id = contextMenuTheater.id;
+            const opener = document.querySelector<HTMLElement>(`[data-theater-id="${CSS.escape(id)}"] .side-bar-theater-activate`);
+            setActiveContextMenu(null);
+            requestCommodoreDelete(id, opener);
+          } : undefined}
           onOpenZone={() => {
             setZoneCommodore(contextMenuTheater.id);
             // 오른쪽 패널의 탭은 가운데에 대화가 선 동안만 선다 — 사령관 대화를 먼저 세우고 그 설정(맨 위가 Theater)을 연다.
@@ -1752,7 +1760,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenZone, onNewSession, onEditAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
   const [newName, setNewName] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
@@ -1876,17 +1884,17 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = fa
             <span className="theater-menu-label">{t("sidebar.theater.newGroup")}</span>
           </button>
         )}
-        {onForgetTheater ? (
+        {onDeleteCommodore || onForgetTheater ? (
           <>
             <div className="theater-menu-divider" aria-hidden="true" />
             <button
               type="button"
               role="menuitem"
               className="theater-menu-item theater-menu-forget"
-              onClick={onForgetTheater}
+              onClick={onDeleteCommodore ?? onForgetTheater}
             >
               <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
-              <span className="theater-menu-label">{t("sidebar.theater.forget")}</span>
+              <span className="theater-menu-label">{t(onDeleteCommodore ? "sidebar.commodore.delete" : "sidebar.theater.forget")}</span>
             </button>
           </>
         ) : null}

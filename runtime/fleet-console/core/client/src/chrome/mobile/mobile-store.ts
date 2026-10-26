@@ -196,7 +196,7 @@ export type MobileSheetKind =
   | { readonly kind: "create" }
   | { readonly kind: "console" }
   /** 호스트 밖 기능(설정 섹션 등)이 자기 시트를 호스트의 쌓기·뒤로·스크림에 태운다. `render`는 `MobileSheet`를 그리고 닫기 함수를 받는다. */
-  | { readonly kind: "custom"; readonly render: (close: () => void) => ReactNode }
+  | { readonly kind: "custom"; readonly render: (close: () => void) => ReactNode; readonly onBack?: () => void }
   | { readonly kind: "confirm"; readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }
   | { readonly kind: "forget"; readonly theaterId: string }
   /** S-07 행을 길게 누르면 서는 그 Theater 의 동작 — 데스크톱 머리 메뉴와 같은 항목이다. 별칭·새 그룹은 그 위에 입력 시트를 쌓는다. */

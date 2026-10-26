@@ -8,12 +8,13 @@ import { createHostCapabilities, createHostPaneTargetPorts } from "../core/clien
 import { landPaneTarget, type PaneTargetBinding } from "../core/client/src/chrome/pane/pane-target.js";
 import { getPaneStoreSnapshot, __resetPaneStoreForTests } from "../core/client/src/chrome/pane/pane-store.js";
 import { getRailStoreSnapshot } from "../core/client/src/chrome/rail/rail-store.js";
-import { getState, setState } from "../core/client/src/integration/store.js";
+import { getState, setState, setActiveObjective, applyObjectiveRemoved } from "../core/client/src/integration/store.js";
+import { prepareCommodoreRemovalStage } from "../core/client/src/integration/commodore-deletion.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
 import { searchRailPanels } from "../core/client/src/integration/objective-search.js";
 
 import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settings/client/settings-door.js";
-import { closeConversationSurface, getConversationSurface, openConversationSurface } from "../features/workspace/client/conversation/conversation-surface-store.js";
+import { clearConversationStage, closeConversationSurface, getConversationSurface, isConversationStageEmpty, openConversationSurface, resumeConversationStage } from "../features/workspace/client/conversation/conversation-surface-store.js";
 import { closeTheaterInbox, readTheaterInboxState } from "../features/workspace/client/theater-inbox/store.js";
 import { getViewedTheaterId } from "../core/client/src/integration/viewed-theater.js";
 import { setViewModePreference } from "../core/client/src/integration/view-mode-store.js";
@@ -86,6 +87,56 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     destinationHost.rail.open(address.entryId, address.params);
     expect(getPaneStoreSnapshot().rail.find((instance) => instance.paneId === destinationPane.id)?.params).toMatchObject({ theaterId: "b", page: "details" });
   } finally { unbind(); }
+});
+
+// 기존 이동 검사는 삭제 뒤 늦게 실행되는 기본 선택이 다른 수신자를 활성화하는 경계를 지나지 않는다.
+it("keeps a deleted conversation's stage empty until an explicit conversation is opened", () => {
+  const before = getState();
+  setViewModePreference("desktop");
+  try {
+    setState({ newSession: null });
+    openConversationSurface("commodore", { commodoreId: "deleted-owner" });
+    prepareCommodoreRemovalStage("deleted-owner");
+    expect(getConversationSurface()).toBeNull();
+    expect(isConversationStageEmpty()).toBe(true);
+    // 이전 render의 effect나 기본 선택은 명시적으로 비운 무대를 다시 채우지 못한다.
+    setActiveObjective("other-owner-objective", { fromStage: true });
+    expect(getState().activeObjectiveId).toBeNull();
+    setActiveObjective("chosen-objective");
+    expect(isConversationStageEmpty()).toBe(false);
+    expect(getState().activeObjectiveId).toBe("chosen-objective");
+
+    clearConversationStage();
+    openConversationSurface("commodore", { commodoreId: "chosen-owner" });
+    expect(isConversationStageEmpty()).toBe(false);
+    // 보통 표면 닫기와 보관의 null 선택에는 삭제 전용 차단을 켜지 않는다.
+    closeConversationSurface();
+    setActiveObjective(null);
+    setActiveObjective("remaining-objective", { fromStage: true });
+    expect(getState().activeObjectiveId).toBe("remaining-objective");
+
+    const target = { id: "target-objective", commodoreId: "deleted-owner", theaterId: "a", title: "Target", ts: { createdAt: 1, updatedAt: 1 } };
+    const other = { ...target, id: "other-objective", commodoreId: "other-owner", title: "Other" };
+    setState({ objectiveRecords: [target, other] });
+    setActiveObjective(target.id);
+    prepareCommodoreRemovalStage(other.commodoreId);
+    expect(getState().activeObjectiveId).toBe(target.id);
+    expect(isConversationStageEmpty()).toBe(false);
+    // removing는 목표 제거 전 들어온다. 삭제 버튼을 누른 창이 아니어도 소유자를 잃기 전에 비운다.
+    prepareCommodoreRemovalStage(target.commodoreId);
+    applyObjectiveRemoved(target.id);
+    setActiveObjective(other.id, { fromStage: true });
+    expect(getState().objectiveRecords).toEqual([other]);
+    expect(getState().activeObjectiveId).toBeNull();
+    expect(isConversationStageEmpty()).toBe(true);
+    // 사령관 삭제 신호 없는 보통 목표 제거는 기존 기본 선택을 그대로 허용한다.
+    setState({ objectiveRecords: [target, other] });
+    setActiveObjective(target.id);
+    applyObjectiveRemoved(target.id);
+    setActiveObjective(other.id, { fromStage: true });
+    expect(getState().activeObjectiveId).toBe(other.id);
+    expect(isConversationStageEmpty()).toBe(false);
+  } finally { resumeConversationStage(); setState(before); }
 });
 
 it("keeps file coordinates separate from schemes and absolute-path classification", () => {

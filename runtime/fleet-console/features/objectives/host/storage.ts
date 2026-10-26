@@ -14,6 +14,7 @@ import { clearPendingIndex, importMissingObjectives, readPendingIndex, rememberI
 export interface ObjectiveOwner extends ObjectiveDocumentContext { readonly directory: string }
 export interface ObjectiveBoardStorage {
   owners(): readonly ObjectiveOwner[];
+  assertMutable?(commodoreId: string): void;
   unavailable(id: string): boolean;
   directory(commodoreId: string): string | null;
   list(commodoreId: string): readonly StoredObjective[];
@@ -173,6 +174,7 @@ export function createObjectiveStorage(deps: {
   directory: string;
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
+  assertOwnerMutable?: (commodoreId: string) => void;
   initializeOwners?: (state: DurableConsoleState) => void;
   /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 커밋하지 못한 별칭은 명부에 남기고, 기동은 중단하지 않는다. 반환은 명부에서 거둬도 되는 theaterId. */
   migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => readonly string[] | void;
@@ -783,6 +785,7 @@ export function createObjectiveStorage(deps: {
     } catch (error) { blocked = true; throw error; }
   }
   const board: ObjectiveBoardStorage = {
+    assertMutable: (id) => deps.assertOwnerMutable?.(id),
     owners: () => deps.owners().filter((owner) => !unavailableOwners.has(owner.commodoreId)),
     unavailable: (id) => isReserved(id),
     forget(commodoreId, id) {
@@ -796,6 +799,7 @@ export function createObjectiveStorage(deps: {
     directory(commodoreId) { try { return scopeOf(commodoreId).owner.directory; } catch { return null; } },
     list(commodoreId) { const scope = scopeOf(commodoreId); return [...scope.documents.values()].filter((doc) => !unavailable(scope, doc.id)).map((doc) => boardFromDocument(doc, scope.owner)); },
     save(commodoreId, value) {
+      deps.assertOwnerMutable?.(commodoreId);
       const scope = scopeOf(commodoreId), previous = scope.documents.get(value.id);
       if (held(scope)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       if (unavailable(scope, value.id) || (!previous && !value.pending) || scope.archive.events.some((row) => row.channel === "objective:purged" && row.objectiveId === value.id)) throw failure();
@@ -857,5 +861,18 @@ export function createObjectiveStorage(deps: {
     const scope = scopeOf(commodoreId);
     if (held(scope) || scope.unreadable.size) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
   }
-  return { load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, assertTheatersMutable, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
+  function dropOwner(id: string): () => void {
+    const scope = scopes.get(id);
+    const failed = failedAtLoad.has(id), unavailable = unavailableOwners.has(id), deferred = deferredAliasOwners.has(id);
+    const retry = retryNotBefore.get(id);
+    scopes.delete(id); failedAtLoad.delete(id); unavailableOwners.delete(id); deferredAliasOwners.delete(id); retryNotBefore.delete(id);
+    return () => {
+      if (scope) scopes.set(id, scope);
+      if (failed) failedAtLoad.add(id);
+      if (unavailable) unavailableOwners.add(id);
+      if (deferred) deferredAliasOwners.add(id);
+      if (retry !== undefined) retryNotBefore.set(id, retry);
+    };
+  }
+  return { dropOwner, load, save, assertReady, entries, events, acknowledgeEvents, board, isReserved, ownerRecoveryRequired, assertTheatersMutable, revision: () => [...scopes.values()].reduce((sum, scope) => sum + scope.archive.revision, 0), blocked: () => blocked };
 }

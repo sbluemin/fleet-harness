@@ -30,6 +30,7 @@ interface CodexGatewayDeps {
   readonly wikiWorkspaceResolver: WikiWorkspaceResolver;
   /** 호스트가 아는 사령관인가 — 모르는 id로는 workspace를 열지 않는다. */
   readonly hasCommodore: (commodoreId: string) => boolean;
+  readonly runWorkspace?: <T>(commodoreId: string, run: () => Promise<T>) => Promise<T>;
   /**
    * 옛 주소(`/w/<옛 id>/`)의 id를 그 맥락의 사령관 id로 바꾼다. 공유된 옛 링크를 새 주소로 넘기는 데만 쓴다.
    * 대응은 호스트가 정하고, 모르면 null이다.
@@ -53,6 +54,7 @@ type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
 
 export interface CodexGateway {
   getWorkspace(id: string): WorkspaceRegistration | null;
+  forgetWorkspace(id: string): void;
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
   /** 사령관 id의 workspace를 열고 지식 root를 해석한다(첫 해석이 옛 위키 이주를 마친다). */
   resolveWorkspace(commodoreId: string): CodexWorkspaceResolution;
@@ -74,7 +76,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
 
   /** 주소가 가리키는 사령관 workspace를 연다. 호스트가 모르는 사령관이면 열지 않는다. */
   function openWorkspace(commodoreId: string): WorkspaceRegistration | null {
-    return workspaces.get(commodoreId) ?? (deps.hasCommodore(commodoreId) ? workspaces.register(commodoreId) : null);
+    return deps.hasCommodore(commodoreId) ? workspaces.get(commodoreId) ?? workspaces.register(commodoreId) : null;
   }
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
@@ -144,7 +146,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, error instanceof WikiKnowledgeUnavailableError ? 404 : 500, { error: error instanceof WikiKnowledgeUnavailableError ? "knowledge_unavailable" : "internal_error" });
       return true;
     }
-    const handled = await handleApiRequest(request, response, {
+    const run = () => handleApiRequest(request, response, {
       knowledgeRoot: paths.root,
       paths,
       host: deps.host,
@@ -156,10 +158,11 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       externalMode: true,
       admitted: deps.security.isWriteAdmitted(request),
     });
+    const handled = await (deps.runWorkspace ? deps.runWorkspace(workspace.id, run) : run());
     request.url = originalUrl;
     // 감시는 요청을 처리한 *뒤에* 시작한다 — 지식 루트를 만드는 것은 그 요청이고,
     // 아직 없는 경로에 감시를 붙이면 첫 화면이 degraded부터 보게 된다.
-    deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
+    if (deps.hasCommodore(workspace.id)) deps.onKnowledgeRootResolved?.(workspace.id, paths.root);
     return handled;
   }
 
@@ -174,6 +177,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
 
   return {
     getWorkspace: (id) => workspaces.get(id),
+    forgetWorkspace: (id) => { workspaces.remove(id); },
     handle,
     resolveWorkspace,
   };

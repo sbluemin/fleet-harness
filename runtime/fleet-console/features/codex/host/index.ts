@@ -31,6 +31,15 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
   // Wiki의 정체성은 사령관 id 하나다. 옛 위치의 위키는 라우트와 도구가 서기 전에 모두 사령관 지식으로 옮긴다 —
   // 이 슬롯의 writer는 이 프로세스 하나이고 이주는 동기라, 이주 중인 root에 닿는 요청이 없다.
   const knowledge = ctx.host.knowledge;
+  const inflight = new Map<string, Set<Promise<unknown>>>();
+  const runWorkspace = <T,>(id: string, run: () => Promise<T>): Promise<T> => {
+    if (!knowledge?.root(id)) return Promise.reject(new Error("knowledge_unavailable"));
+    const tasks = inflight.get(id) ?? new Set<Promise<unknown>>();
+    inflight.set(id, tasks);
+    const task = Promise.resolve().then(run).finally(() => { tasks.delete(task); if (!tasks.size) inflight.delete(id); });
+    tasks.add(task);
+    return task;
+  };
   const wikiWorkspaceResolver = createWikiWorkspaceResolver({ knowledge });
   wikiWorkspaceResolver.migrateAll();
 
@@ -47,7 +56,9 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
 
   // Wiki 도구가 닿는 곳은 호스트가 실어 준 사령관(`context.commodoreId`)의 지식뿐이다 — Objective 세션에는 그 세션 소속의
   // 사령관이, 사령관 세션에는 그 사령관이 묶인다(`bindCommodore`).
-  cleanups.push(deps.registerMcp(CODEX_MCP_SERVER_NAME, createCodexMcpTools(wikiWorkspaceResolver), { commodoreScoped: true }));
+  cleanups.push(deps.registerMcp(CODEX_MCP_SERVER_NAME, createCodexMcpTools(wikiWorkspaceResolver).map((tool) => ({ ...tool,
+    execute: (args, context) => runWorkspace(context.commodoreId ?? "", () => Promise.resolve(tool.execute(args, context))),
+  })), { commodoreScoped: true }));
 
   const gateway = createCodexGateway({
     host: "127.0.0.1",
@@ -65,6 +76,7 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
     },
     wikiWorkspaceResolver,
     hasCommodore: (commodoreId) => knowledge?.root(commodoreId) != null,
+    runWorkspace,
     // 옛 주소의 id는 그때의 화면 맥락 id다 — 그 맥락의 사령관은 호스트가 찾는다.
     resolveLegacyWorkspace: (legacyId) => {
       const owner = knowledge?.commodoreForContext(legacyId);
@@ -110,7 +122,10 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
 
   // 매니페스트가 선언한 콘솔 경로 한 칸. 사용자가 주고받는 링크가 이 주소를 쓴다.
   addRoute("/console/codex", async ({ req, res }) => gateway.handle(req, res));
-  return { routes, async dispose() { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); } };
+  return { routes,
+    settleCommodore: async (id: string) => { await Promise.allSettled([...(inflight.get(id) ?? [])]); },
+    forgetCommodore: (id: string) => { watcher.unwatch(id); gateway.forgetWorkspace(id); },
+    async dispose() { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); } };
 }
 
 function readPort(ctx: { host: Pick<CodexFeatureDeps, "server"> }): number {

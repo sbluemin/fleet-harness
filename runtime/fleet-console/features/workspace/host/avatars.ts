@@ -58,6 +58,7 @@ export function migrateCommodoreAvatars(store: DurableJsonStore<AvatarStoreData>
 }
 
 export function createAvatarRouter(deps: {
+  readonly canWrite?: (key: string) => boolean;
   readonly store: DurableJsonStore<AvatarStoreData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
@@ -86,8 +87,10 @@ export function createAvatarRouter(deps: {
       deps.writeJson(res, 400, { error: "invalid_avatar_write" });
       return true;
     }
+    if (write.mode === "set" && deps.canWrite && !deps.canWrite(write.key)) { deps.writeJson(res, 404, { error: "avatar_owner_unavailable" }); return true; }
+    const admitted = write.mode === "claim" && deps.canWrite ? { ...write, entries: write.entries.filter((entry) => deps.canWrite!(entry.key)) } : write;
     const saved = deps.store.update((current) => {
-      const avatars = applyAvatarWrite(current.avatars, write);
+      const avatars = applyAvatarWrite(current.avatars, admitted);
       return avatars ? { version: 1, avatars } : undefined;
     });
     deps.writeJson(res, 200, { avatars: saved.avatars });

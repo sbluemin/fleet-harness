@@ -12,6 +12,7 @@ import type { MemoryEntry } from "../shared/contracts/memory.js";
 import { patrolIntervalMs, type CommodorePatrolMinutes, type CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { post } from "./request.js";
+import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
@@ -108,7 +109,7 @@ export function commodoreRevision(): number {
 }
 
 function rememberContext(theaterId: string, commodoreId: string): void {
-  if (contextOwners.get(theaterId) === commodoreId) return;
+  if (wasCommodoreRemoved(commodoreId) || contextOwners.get(theaterId) === commodoreId) return;
   contextOwners.set(theaterId, commodoreId);
   notify();
 }
@@ -118,8 +119,9 @@ const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 
 export function ownerOfContext(theaterId: string): string | null {
   // 사이드바 섹션은 Theater 해시 대신 사령관 UUID를 넘긴다. 그 값은 소유자 자신이라 다시 해석하지 않는다.
-  if (COMMODORE_UUID.test(theaterId)) return theaterId;
-  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.id ?? contextOwners.get(theaterId) ?? null;
+  if (COMMODORE_UUID.test(theaterId)) return wasCommodoreRemoved(theaterId) ? null : theaterId;
+  const owner = installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.id ?? contextOwners.get(theaterId) ?? null;
+  return owner && !wasCommodoreRemoved(owner) ? owner : null;
 }
 
 /** 그 사령관을 가리키는 화면 문맥. 이동에만 쓰고 정체성으로 쓰지 않는다. */
@@ -137,7 +139,7 @@ export function resolveContext(theaterId: string): Promise<string | null> {
   if (!client) return Promise.resolve(null);
   const request = post<{ readonly commodoreId: string | null }>(client, "/commodore/resolve", { theaterId })
     .then((result) => {
-      if (!result.commodoreId) return null;
+      if (!result.commodoreId || wasCommodoreRemoved(result.commodoreId)) return null;
       rememberContext(theaterId, result.commodoreId);
       return result.commodoreId;
     })
@@ -181,6 +183,7 @@ export function setCommodorePeek(theaterId: string | null): void {
 }
 
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>, announce = true): void {
+  if (wasCommodoreRemoved(theaterId)) return;
   const current = theaters.get(theaterId) ?? EMPTY;
   if (patch.view && (patch.view.state.transcriptClearedThrough ?? 0) < current.clearedThrough) return;
   const clearedThrough = Math.max(current.clearedThrough, patch.clearedThrough ?? 0, patch.view?.state.transcriptClearedThrough ?? 0);
@@ -253,6 +256,11 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   });
   const applyEvent = (event: CommodoreEvent) => {
     const commodoreId = event.commodoreId;
+    if (event.op === "removed") {
+      forgetCommodoreClient(commodoreId, event.theaterIds); return;
+    }
+    if (wasCommodoreRemoved(commodoreId)) return;
+    if (event.op === "state" && event.change === "alias") publishCommodoreLifecycle(event);
     for (const theaterId of event.theaterIds) rememberContext(theaterId, commodoreId);
     if (event.op === "memory") {
       if (memories.has(commodoreId)) void loadCommodoreMemory(commodoreId);
@@ -302,6 +310,8 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (!event || typeof event.commodoreId !== "string" || !Array.isArray(event.theaterIds)) return;
+    // 목표 제거는 다른 채널에서 즉시 온다. 프레임 배치로 미루면 그 사이 기본 선택이 다른 수신자를 연다.
+    if (event.op === "removing") { publishCommodoreLifecycle(event); return; }
     if (event.op === "live" && !theaters.get(event.commodoreId)?.transcriptLoaded) return;
     stream.push(event);
   });
@@ -342,13 +352,21 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   };
 }
 
+export function forgetCommodoreClient(commodoreId: string, theaterIds: readonly string[] = []): void {
+  theaters.delete(commodoreId); loading.delete(commodoreId); memories.delete(commodoreId); memoryRequests.delete(commodoreId);
+  for (const [context, owner] of contextOwners) if (owner === commodoreId) { contextOwners.delete(context); contextResolving.delete(context); }
+  if (peekTheater === commodoreId || theaterIds.includes(peekTheater ?? "")) peekTheater = null;
+  if (!wasCommodoreRemoved(commodoreId)) publishCommodoreLifecycle({ op: "removed", commodoreId, theaterIds });
+  notify();
+}
+
 function api(): ClientApiCapability | null {
   return installed?.api ?? null;
 }
 
 export function loadCommodore(commodoreId: string, force = false): Promise<void> {
   const client = api();
-  if (!client || !commodoreId || !enabledSnapshot) return Promise.resolve();
+  if (!client || !commodoreId || wasCommodoreRemoved(commodoreId) || !enabledSnapshot) return Promise.resolve();
   if (!force && theaters.get(commodoreId)?.view) return Promise.resolve();
   const inflight = loading.get(commodoreId);
   if (inflight && !force) return inflight;
@@ -362,7 +380,7 @@ export function loadCommodore(commodoreId: string, force = false): Promise<void>
 
 export async function loadTranscript(commodoreId: string, options: { readonly older?: boolean; readonly reset?: boolean } = {}): Promise<void> {
   const client = api();
-  if (!client || !commodoreId) return;
+  if (!client || !commodoreId || wasCommodoreRemoved(commodoreId)) return;
   const current = theaters.get(commodoreId) ?? EMPTY;
   const before = options.older && !options.reset ? current.entries[0]?.seq : undefined;
   let page: { readonly entries: readonly CommodoreTranscriptEntry[]; readonly hasMore: boolean; readonly clearedThrough: number };
@@ -452,7 +470,7 @@ const memoryRequests = new Map<string, number>();
 
 export function loadCommodoreMemory(commodoreId: string): Promise<void> {
   const client = api();
-  if (!client || !commodoreId) return Promise.resolve();
+  if (!client || !commodoreId || wasCommodoreRemoved(commodoreId)) return Promise.resolve();
   if (!memories.has(commodoreId)) memories.set(commodoreId, EMPTY_MEMORY);
   const ticket = (memoryRequests.get(commodoreId) ?? 0) + 1;
   memoryRequests.set(commodoreId, ticket);

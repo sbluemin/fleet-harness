@@ -292,6 +292,9 @@ export type CommodoreLiveEvent =
 
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `commodore` 채널. */
 export type CommodoreEvent =
+  /** rename으로 삭제가 확정됐다. 목표 제거 사건보다 먼저 수신자를 비우며, 완료·목록 정리는 removed가 알린다. */
+  | { readonly op: "removing"; readonly commodoreId: string; readonly theaterIds: readonly string[] }
+  | { readonly op: "removed"; readonly commodoreId: string; readonly theaterIds: readonly string[] }
   | { readonly op: "live"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly live: CommodoreLiveEvent }
   | { readonly op: "state"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
   | { readonly op: "transcript"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly entry: CommodoreTranscriptEntry }

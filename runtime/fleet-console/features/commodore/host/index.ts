@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { createCommodoreDeletion, type CommodoreDeletionHost } from "./deletion.js";
+export type { CommodoreDeletionHost } from "./deletion.js";
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
 import { EMPTY_RUN_TOTALS } from "../shared/contracts/types.js";
 import { CommodoreStoreError } from "./errors.js";
@@ -24,6 +26,7 @@ import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
 
 export interface CommodoreFeatureDeps {
+  readonly deletion?: CommodoreDeletionHost;
   readonly ownership?: ReturnType<typeof createCommodoreOwnership>;
   readonly created?: (commodoreId: string) => void;
   readonly beforeTheatersChange?: (commodoreId: string) => void;
@@ -57,7 +60,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   };
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
   const supervisor = createCommodoreSupervisor({
-    store, agent, board: () => board, theaterIds, cwd: entities.dirOf,
+    store, agent, board: () => board, theaterIds, cwd: entities.dirOf, isDeleting: ownership.isDeleting,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),
     experiments: () => deps.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
     ...(deps.experiments?.subscribe ? { subscribeExperiments: deps.experiments.subscribe } : {}),
@@ -93,7 +96,13 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     const known = new Set(ids);
     return [...new Set([...(deps.order?.read() ?? []).filter((id) => known.has(id)), ...ids])];
   };
+  const deletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
+    protectedDirectories: () => [...entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)), ...(deps.paths.listTheaterIds?.() ?? []).flatMap((id) => { const root = deps.paths.resolveTheaterPath(id); return root ? [root] : []; })],
+    removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
+    removed: (commodoreId, ids) => { emit({ op: "removed", commodoreId, theaterIds: ids }); deps.identityChanged?.(ids); },
+  }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
+    deletion, assertWritable: ownership.assertWritable,
     resolve, resolveAll, theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");

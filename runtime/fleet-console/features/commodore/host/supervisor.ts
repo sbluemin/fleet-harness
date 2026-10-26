@@ -57,6 +57,7 @@ export interface CommodoreSupervisorDeps {
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
+  readonly isDeleting?: (commodoreId: string) => boolean;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -75,6 +76,7 @@ export interface CommodoreSupervisor {
   retry(commodoreId: string): Promise<void>;
   /** 진행 턴·대기 메시지를 거두고 요약 없이 새 문맥으로 시작한다. 기록 파일도 지운다. */
   clear(commodoreId: string): Promise<void>;
+  stopForDeletion(commodoreId: string): Promise<void>;
   /** 실험 기능·순찰 간격을 다시 읽어 자동 운영할 사령관을 세운다. */
   sync(reason?: string): void;
   dispose(): Promise<void>;
@@ -247,7 +249,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     return messages.map((message) => message.seq);
   };
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
-  const canRun = (commodoreId: string) => settings().commodore && deps.store.read(commodoreId) !== null && deps.cwd(commodoreId) !== null && deps.board() !== null;
+  const canRun = (commodoreId: string) => !deps.isDeleting?.(commodoreId) && settings().commodore && deps.store.read(commodoreId) !== null && deps.cwd(commodoreId) !== null && deps.board() !== null;
   const shouldRun = (commodoreId: string) => canRun(commodoreId) && patrolIntervalMs(deps.store.read(commodoreId)) !== null;
   const resolveLanguage = (commodoreId: string): "en" | "ko" => deps.store.read(commodoreId)?.language ?? deps.board()?.language?.(commodoreId) ?? "en";
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
@@ -823,6 +825,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       });
       clears.set(commodoreId, work);
       return work;
+    },
+    async stopForDeletion(commodoreId) {
+      await stop(commodoreId, "deleted");
+      await clears.get(commodoreId);
     },
     sync,
     async dispose() {

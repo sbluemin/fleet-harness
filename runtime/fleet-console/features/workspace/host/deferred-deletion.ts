@@ -55,6 +55,7 @@ interface DeferredDeletionCoordinatorDeps {
   readonly save: (tombstones: readonly DurableDeletionTombstone[], archives?: readonly ArchivedObjective[]) => void;
   readonly archives?: () => readonly ArchivedObjective[];
   readonly assertMutable?: (id: string) => void;
+  readonly assertOwnerMutable?: (commodoreId: string) => void;
   readonly publish: (channel: string, payload: unknown) => void;
   readonly unregisterTheaterWorkspaces: (theaterId: string) => void;
   readonly validateTheaterRestore: (theater: TheaterRegistration) => Promise<void>;
@@ -192,6 +193,11 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     }
     const archives = deps.archives?.() ?? [];
     const restoredNodes = deletionObjectiveRecords(tombstone);
+    const assertOwners = () => {
+      for (const node of restoredNodes) deps.assertOwnerMutable?.(node.commodoreId);
+      if (tombstone.kind === "theater") for (const group of tombstone.groups) deps.assertOwnerMutable?.(group.commodoreId);
+    };
+    assertOwners();
     const archivedIds = new Set(Object.keys(tombstone.archived ?? {}));
     const restoredArchives = restoredNodes.filter((node) => archivedIds.has(node.id)).map((objectiveRecord) => ({ objectiveRecord, ...tombstone.archived![objectiveRecord.id]! }));
     const activeRestores = restoredNodes.filter((node) => !archivedIds.has(node.id));
@@ -215,6 +221,8 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     }
 
     await deps.validateTheaterRestore(tombstone.theater);
+    assertOwners();
+    if (!tombstones.includes(tombstone)) throw new DeferredDeletionError(409, "restore_conflict");
     if (deps.theaters.get(tombstone.targetId)
       || tombstone.objectiveRecords.some((objectiveRecord) => deps.objectiveRecords.get(objectiveRecord.id) || archives.some((entry) => entry.objectiveRecord.id === objectiveRecord.id))
       || hasGroupConflict(tombstone.groups, deps.objectiveRecords.listAllGroups())) {
@@ -249,6 +257,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const expired = due.filter((item) => {
       if (!deps.beforePurge) return true;
       try {
+        for (const node of deletionObjectiveRecords(item)) deps.assertOwnerMutable?.(node.commodoreId);
         deps.beforePurge(deletionObjectiveRecords(item), item);
         purgeRetryAt.delete(item.deletionId);
         return true;

@@ -1,3 +1,4 @@
+import { requestCommodoreDelete } from "./commodore-delete-modal.js";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
@@ -328,6 +329,9 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
         />
       </SettingsRow>
       <CommodoreSessionSettings commodoreId={theaterId} />
+      <div className="commodore-delete-setting"><SettingsRow label={t("commodore.delete.settingsLabel")} hint={t("commodore.delete.settingsHint")}>
+        <button type="button" className="fc-btn fc-btn--secondary commodore-create-button commodore-delete-confirm" onClick={(event) => requestCommodoreDelete(theaterId, event.currentTarget)}>{t("commodore.delete.open")}</button>
+      </SettingsRow></div>
     </div>
   );
 }

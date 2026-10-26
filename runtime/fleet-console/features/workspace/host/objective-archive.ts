@@ -14,6 +14,7 @@ interface ObjectiveArchiveDeps {
   readonly use: (id: string, intent: ObjectiveAccessIntent) => Promise<void>;
   readonly publish: (event: ArchiveLifecycleEvent) => void;
   readonly publishChanged: () => void;
+  readonly assertOwnerMutable?: (commodoreId: string) => void;
   readonly now?: () => number;
   readonly setTimer?: typeof setTimeout;
   readonly clearTimer?: typeof clearTimeout;
@@ -54,6 +55,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     return [...pending.values()].some((batch) => batch.entries.some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)));
   }
   function refuseHeld(commodoreId: string | undefined): void {
+    if (commodoreId) deps.assertOwnerMutable?.(commodoreId);
     if (commodoreId && deps.storage.ownerRecoveryRequired?.(commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
   }
   function requireNode(id: string): ObjectiveRecord {
@@ -105,6 +107,7 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
     try {
       for (const node of nodes) if (deps.objectiveRecords.get(node.id)) await deps.stop(node);
       deps.storage.assertReady();
+      refuseHeld(root.commodoreId);
       return run();
     } finally { for (const node of nodes) locked.delete(node.id); }
   }
@@ -276,6 +279,14 @@ export function createObjectiveArchiveCoordinator(deps: ObjectiveArchiveDeps) {
   const capability: ObjectiveArchiveCapability = { describe, listArchived, archive, access, restore, undoArchive, previewPurge, purge };
   return {
     ...capability, purge, previewBatch, restoreBatch, undoPurge, sweepExpired, sweepRetention, startRetention, revision, flushEvents,
+    settled: () => serial,
+    forgetOwner(commodoreId: string) {
+      for (const [id, batch] of pending) {
+        const entries = batch.entries.filter((entry) => entry.objectiveRecord.commodoreId !== commodoreId);
+        if (!entries.length) pending.delete(id);
+        else if (entries.length !== batch.entries.length) pending.set(id, { entries, receipt: { ...batch.receipt, objectiveIds: entries.map((entry) => entry.objectiveRecord.id) } });
+      }
+    },
     dispose: () => {
       disposed = true;
       if (timer) clearTimer(timer);

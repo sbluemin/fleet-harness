@@ -188,6 +188,7 @@ export interface ObjectiveStore {
   list(commodoreId: string): readonly Objective[];
   /** 알려진 모든 Theater 의 목표. */
   all(): readonly Objective[];
+  forgetOwner(commodoreId: string): void;
   find(objectiveId: string): Objective | null;
   /** 증거 공유 디렉터리 — 지휘관과 구성원이 같이 쓰고, 봉인은 이 안의 파일만 받는다. */
   sharedDir(commodoreId: string, objectiveId: string): string;
@@ -694,6 +695,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const cache = new Map<string, Map<string, StoredObjective>>();
 
   const dirFor = (commodoreId: string): string => {
+    options.storage?.assertMutable?.(commodoreId);
     const dir = options.dirOf(commodoreId);
     if (!dir) throw new ObjectiveStoreError("objective_owner_unavailable");
     return dir;
@@ -1209,6 +1211,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
 
   const store: ObjectiveStore = {
+    forgetOwner(commodoreId) { cache.delete(commodoreId); },
     list: (commodoreId) => visible(commodoreId).map(({ stored, node }) => project(stored, node)),
     // 보관된 목표도 관계·복구·purge 소유권은 가진다. 활성 공급은 list만 사용한다.
     all: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).map(({ stored, node }) => project(stored, node))),

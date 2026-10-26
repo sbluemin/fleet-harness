@@ -510,6 +510,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   // 그룹 이동·삭제는 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮기거나 비운다.
   const objectiveRecords = createObjectiveRecordsStore({
+    assertOwnerMutable: (id) => ownership?.assertWritable(id),
     resolveGroupCreation: (commodoreId) => {
       const dir = ownership?.entities.dirOf(commodoreId);
       if (!dir) throw new Error("objective_owner_unavailable");
@@ -567,6 +568,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let ownership: ReturnType<typeof createCommodoreOwnership> | undefined;
   const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
     owners: () => ownership?.objectives() ?? [],
+    assertOwnerMutable: (id) => ownership?.assertWritable(id),
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
     migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, { entities: ownership!.entities, issueForAlias: ownership!.issueIfReady }),
   });
@@ -581,7 +583,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
-  const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptions, (id) => ownership?.entities.dirOf(id) != null);
+  const commodoreSystemPrompts = createCommodoreSystemPromptService(agentOptions, (id) => !ownership?.isDeleting(id) && ownership?.entities.dirOf(id) != null);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "dark",
   });
@@ -721,6 +723,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     objectiveRecords,
     theaters,
     save: saveDurableState,
+    assertOwnerMutable: (id) => ownership?.assertWritable(id),
     archives: () => archiveStorage.entries(),
     assertMutable: (id) => objectiveRecordArchive.assertMutable(id),
     beforePurge: (purged, tombstone) => {
@@ -763,6 +766,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pendingClusterRemoved = new Set<string>();
   const objectiveRecordArchive = createObjectiveArchiveCoordinator({
     objectiveRecords, storage: archiveStorage,
+    assertOwnerMutable: (id) => ownership?.assertWritable(id),
     snapshot: () => snapshotDurableState(deletionCoordinator.list()),
     canAccessObjective: (root) => {
       if (theaters.get(root.theaterId)) return true;
@@ -1100,7 +1104,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       undoArchive: objectiveRecordArchive.undoArchive,
       previewPurge: objectiveRecordArchive.previewPurge,
       purge: objectiveRecordArchive.purge,
-      isTransitioning: objectiveRecordArchive.isTransitioning,
+      isTransitioning: (id) => { const owner = objectiveRecords.get(id)?.commodoreId; return !!(owner && ownership?.isDeleting(owner)) || objectiveRecordArchive.isTransitioning(id); },
       list: () => objectiveRecords.list(),
       get: (id) => objectiveRecords.get(id),
       create: (input) => {
@@ -1552,10 +1556,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const objectiveRecordArchiveRouter = createObjectiveArchiveRouter({ archive: objectiveRecordArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveObjective(node, true) });
   routeRegistry.register("/api/v1/objectives/records", async (context) => await objectiveRecordArchiveRouter(context) || objectiveRecordsRouter(context));
   routeRegistry.register("/api/v1/objectives/events", objectiveRecordsRouter);
-  const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson });
+  const writableCommodore = (id: string) => !!ownership?.entities.dirOf(id) && !ownership.isDeleting(id);
+  const writableObjectiveAppearance = (id: string) => {
+    const record = objectiveRecords.get(id) ?? objectiveRecordArchive.describe(id)?.objectiveRecord;
+    const owner = record?.commodoreId ?? objectives?.listAll().find((board) => board.id === id || board.members.some((member) => member.id === id))?.commodoreId;
+    return !!owner && writableCommodore(owner);
+  };
+  const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson,
+    canWrite: (key) => key.startsWith("theater:commodore:") ? writableCommodore(key.slice("theater:commodore:".length)) : key.startsWith("objective:") ? writableObjectiveAppearance(key.slice("objective:".length)) : true,
+  });
   routeRegistry.register("/api/v1/avatars", avatarRouter);
   routeRegistry.register("/api/v1/conversation-workbench", createConversationWorkbenchRouter({
     store: conversationWorkbenchStore,
+    canWrite: (key) => key.startsWith("session:commodore:commodore:") ? writableCommodore(key.slice("session:commodore:commodore:".length)) : key.startsWith("operation:") ? writableObjectiveAppearance(key.slice("operation:".length)) : true,
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
@@ -2705,7 +2718,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts);
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) });
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2716,8 +2729,94 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
       consoleUse.activate({ ...consoleActions, ...execution.actions });
+      const deletedOwnerKeys = new Map<string, { objectives: Set<string>; avatars: Set<string> }>();
+      const ownerRecords = (id: string) => [...new Map([
+        ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
+        ...deletionCoordinator.list().flatMap(deletionObjectiveRecords),
+      ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         ownership,
+        deletion: {
+          claudeProjectsDirectory: path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), ".claude"), "projects"),
+          preview: (id) => {
+            const boards = objectives?.listAll().filter((objective) => objective.commodoreId === id) ?? [];
+            const records = ownerRecords(id);
+            const ids = new Set([...boards.map((board) => board.id), ...records.map((node) => node.id)]);
+            const sessions = new Set(records.flatMap((node) => archiveSessionNodes(node).map((session) => session.id)));
+            const archived = archiveStorage.entries().filter((entry) => entry.objectiveRecord.commodoreId === id).length;
+            return { objectives: { total: ids.size, active: boards.filter((board) => !board.done && !board.archived && !board.removed).length, archived },
+              runningSessions: execution.listSessions().filter((session) => sessions.has(session.sessionId) && ["starting", "terminal-only", "registered"].includes(session.status)).length };
+          },
+          stopObjectives: async (id) => {
+            // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
+            await objectiveRecordArchive.settled();
+            await codexFeature.settleCommodore(id);
+            await execution.stopShellForKey(`session:commodore:commodore:${id}`);
+            for (const node of ownerRecords(id).flatMap(archiveSessionNodes)) await execution.stopForArchive(node, false);
+          },
+          detachObjectives: (id) => {
+            const previous = objectiveRecords.list(), groups = objectiveRecords.listAllGroups(), tombstones = deletionCoordinator.list();
+            const records = ownerRecords(id);
+            const boards = objectives?.listAll().filter((objective) => objective.commodoreId === id) ?? [];
+            const ids = new Set([...boards.map((board) => board.id), ...records.map((node) => node.id)]);
+            const avatarIds = new Set([...records.flatMap((node) => archiveSessionNodes(node).map((session) => session.id)), ...boards.flatMap((board) => [board.id, ...board.members.map((member) => member.id)])]);
+            const nextTombstones = tombstones.flatMap<(typeof tombstones)[number]>((tombstone) => {
+              if (tombstone.kind === "objectiveRecord") return tombstone.objectiveRecord.commodoreId === id ? [] : [tombstone];
+              return [{ ...tombstone, objectiveRecords: tombstone.objectiveRecords.filter((node) => node.commodoreId !== id), groups: tombstone.groups.filter((group) => group.commodoreId !== id), archived: Object.fromEntries(Object.entries(tombstone.archived ?? {}).filter(([key]) => !ids.has(key))) }];
+            });
+            objectiveRecords.replace(previous.filter((node) => node.commodoreId !== id));
+            objectiveRecords.replaceGroups(groups.filter((group) => group.commodoreId !== id));
+            deletionCoordinator.load(nextTombstones);
+            const restoreScope = archiveStorage.dropOwner(id);
+            deletedOwnerKeys.set(id, { objectives: ids, avatars: avatarIds });
+            return { removedObjectives: ids.size,
+              rollback: () => { restoreScope(); objectiveRecords.replace(previous); objectiveRecords.replaceGroups(groups); deletionCoordinator.load(tombstones); deletedOwnerKeys.delete(id); },
+              committed: () => {
+                objectives?.forgetOwner(id);
+                objectiveRecordArchive.forgetOwner(id);
+                for (const objectiveId of new Set([...ids, ...avatarIds])) {
+                  purgeCoreObjective?.(objectiveId);
+                  publishPluginEvent(OBJECTIVE_DELETED_EVENT_CHANNEL, { objectiveId, pluginId: null, type: "agent" }, true);
+                  broadcastObjectiveRemoved(objectiveId);
+                }
+                for (const group of groups.filter((group) => group.commodoreId === id)) {
+                  publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, { groupId: group.id, commodoreId: id, theaterId: group.theaterId }, true);
+                  broadcastGroupRemoved(group.id, group.theaterId);
+                }
+                persistDurableState();
+              },
+            };
+          },
+          cleanup: (id) => {
+            const keys = deletedOwnerKeys.get(id);
+            const warnings: string[] = [];
+            const clean = (code: string, run: () => void) => { try { run(); } catch (error) { warnings.push(code); recordFailure(code, error); } };
+            clean("commodore_settings_cleanup_failed", () => consoleSettingsStore.update((current) => {
+              const agent = { ...current.agent };
+              for (const key of ["claudeCodeCommodoreSystemPrompts", "claudeCodeCommodoreSubagents", "commodoreSettingsMigrated"] as const) {
+                const values = Object.fromEntries(Object.entries(agent[key] ?? {}).filter(([entryId]) => entryId !== id));
+                if (Object.keys(values).length) Object.assign(agent, { [key]: values }); else delete agent[key];
+              }
+              const { commodoreOrder: _order, ...rest } = current;
+              const order = current.commodoreOrder?.filter((value) => value !== id) ?? [];
+              return { ...rest, agent, ...(order.length ? { commodoreOrder: order } : {}) };
+            }));
+            clean("commodore_avatars_cleanup_failed", () => avatarStore.update((current) => {
+              const avatars = { ...current.avatars }; delete avatars[`theater:commodore:${id}`];
+              for (const key of keys?.avatars ?? []) delete avatars[`objective:${key}`];
+              return { ...current, avatars };
+            }));
+            clean("commodore_workbench_cleanup_failed", () => conversationWorkbenchStore.update((current) => {
+              const layouts = { ...current.layouts };
+              delete layouts[`session:commodore:commodore:${id}`];
+              for (const key of keys?.objectives ?? []) delete layouts[`operation:${key}`];
+              return { ...current, layouts };
+            }));
+            deletedOwnerKeys.delete(id);
+            return warnings;
+          },
+          releaseKnowledge: (id) => codexFeature.forgetCommodore(id),
+        },
         order: {
           read: () => consoleSettingsStore.load().commodoreOrder ?? [],
           write: (commodoreIds) => { consoleSettingsStore.update((current) => {

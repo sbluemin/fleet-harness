@@ -5,6 +5,7 @@ import type { CommodoreLastMessage, CommodoreTheaterSummary, ConsoleCommodoreSum
 import type { CommodoreEvent } from "../shared/contracts/types.js";
 import { commodoreLastMessage } from "../shared/last-message.js";
 import { fetchCommodores } from "./theaters-api.js";
+import { wasCommodoreRemoved } from "./commodore-delete-events.js";
 
 /**
  * 사령관 목록 — `fetchCommodores()` 와 commodore SSE 의 state/run 이 다시 읽게 한다.
@@ -82,7 +83,7 @@ export function useMobileCommodoreSelection(): string | null {
 }
 
 export function replaceCommodoreList(next: readonly ConsoleCommodoreSummary[]): void {
-  commodores = next;
+  commodores = next.filter((row) => !wasCommodoreRemoved(row.commodoreId));
   loaded = true;
   emit();
 }
@@ -96,7 +97,7 @@ function noteLastMessage(commodoreId: string, last: CommodoreLastMessage | null)
     return { ...row, last };
   });
   if (!changed) return;
-  commodores = next;
+  commodores = next.filter((row) => !wasCommodoreRemoved(row.commodoreId));
   emit();
 }
 
@@ -110,7 +111,7 @@ export function refreshCommodoreList(): Promise<void> {
       refreshAgain = false;
       try {
         const result = await fetchCommodores();
-        commodores = result.commodores;
+        commodores = result.commodores.filter((row) => !wasCommodoreRemoved(row.commodoreId));
       } catch {
         // 목록이 비어도 기록의 commodoreId 로 섹션은 남는다.
       } finally {
@@ -127,6 +128,13 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
   void refreshCommodoreList();
   const off = events.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
+    if (event?.op === "removed") {
+      commodores = commodores.filter((row) => row.commodoreId !== event.commodoreId);
+      if (zoneCommodoreId === event.commodoreId) zoneCommodoreId = null;
+      if (mobileCommodoreId === event.commodoreId) mobileCommodoreId = null;
+      emit();
+      void refreshCommodoreList();
+    }
     if (event?.op === "state" || event?.op === "run") void refreshCommodoreList();
     // 대화의 마지막 말은 목록을 다시 읽지 않고 그 행만 갈아 끼운다 — 기록 줄은 턴마다 여럿 온다.
     if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));

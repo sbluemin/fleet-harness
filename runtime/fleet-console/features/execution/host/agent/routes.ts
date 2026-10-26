@@ -162,7 +162,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
+  return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -249,7 +249,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) return { error: "chat_not_active" };
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { error: seed.error };
-      if (ctx.host.objectiveRecords.get(sessionId)?.[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      if (ctx.host.objectiveRecords.get(sessionId)?.[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.objectiveRecords.isTransitioning?.(sessionId)) {
         return { error: "chat_not_active" };
       }
       try {
@@ -1133,17 +1133,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     };
     const node = ctx.host.objectiveRecords.get(sessionId);
     if (!node) return rollback(500, "session_not_found");
+    const generation = chatRegistry.generation(sessionId);
+    const stillCurrent = () => chatRegistry.generation(sessionId) === generation && !!ctx.host.objectiveRecords.get(sessionId) && !ctx.host.objectiveRecords.isTransitioning?.(sessionId);
+    const cancelled = () => { if (launchOptions.attachmentIds?.length) launchAttachments.unreserve(launchOptions.attachmentIds); reply(409, { error: "objectiveRecord_busy" }); };
     // 채팅 어댑터는 자식을 열기 전부터 live/idle다. PTY 상태를 빌리지 않는다.
     const activated = observability.setTerminalSessionChatActive(sessionId, true);
     if (activated) observability.notifySessionUpdated(activated);
     const seed = await resolveChatSeed(node);
+    if (!stillCurrent()) return cancelled();
     if (!seed.ok) return rollback(seed.status, seed.error);
     let chat;
     try {
       chat = await chatRegistry.ensure(sessionId, () => seed.seed);
     } catch {
+      if (!stillCurrent()) return cancelled();
       return rollback(503, "chat_unavailable");
     }
+    if (!stillCurrent()) return cancelled();
     // 프롬프트 없이 태어난 채팅도 자식을 바로 세운다 — 그래야 첫 프롬프트 전에도 다른 세션이 부를 수 있다.
     chat.open();
     if (launchOptions.prompt) {
@@ -1513,6 +1519,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, presentation?: { readonly display?: string; readonly format?: "markdown" | "text" }): Promise<boolean> {
+    if (ctx.host.objectiveRecords.isTransitioning?.(sessionId)) { reply(409, { error: "objectiveRecord_busy" }); return true; }
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
     // 문면이 비어도 첨부가 있으면 보낸다 — 자식은 첨부 지시 줄만 받고, 화면 문면(display)은 ""로 남아
@@ -1565,7 +1572,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — ensure와 같은 tick에서 모드를
       // 재검증해야 stale 요청이 새 chat 세션을 만들어 되살아난 PTY와 이중 필자가 되지 않는다.
-      if (ctx.host.objectiveRecords.get(sessionId)?.[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      if (ctx.host.objectiveRecords.get(sessionId)?.[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.objectiveRecords.isTransitioning?.(sessionId)) {
         settleAttachments(false);
         reply(409, { error: "chat_not_active" });
         return true;
@@ -1574,6 +1581,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       assertCurrent();
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        if (ctx.host.objectiveRecords.get(sessionId)?.[CHAT_MODE_PAYLOAD_KEY] !== true || ctx.host.objectiveRecords.isTransitioning?.(sessionId)) {
+          settleAttachments(false); reply(409, { error: "chat_not_active" }); return true;
+        }
         if (!chat.canReportActivity()) {
           settleAttachments(false);
           reply(503, { error: "chat_activity_unavailable" });
@@ -2547,7 +2557,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     });
   }
 
-  async function stopForArchive(objectiveId: string): Promise<void> {
+  async function stopForArchive(objectiveId: string, preserveState = true): Promise<void> {
     archiveStops.add(objectiveId);
     try {
       terminalRuntime.invalidateTicketsForSession(objectiveId);
@@ -2563,7 +2573,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       } else {
         const parked = observability.updateTerminalSessionStatus(objectiveId, "dormant");
         if (parked) observability.notifySessionUpdated(parked);
-        if (objectiveRecord) ctx.host.objectiveRecords.patch(objectiveId, { ...({ ...objectiveRecord, restoredDormant: true }) });
+        if (objectiveRecord && preserveState) ctx.host.objectiveRecords.patch(objectiveId, { ...({ ...objectiveRecord, restoredDormant: true }) });
       }
     } finally { archiveStops.delete(objectiveId); }
   }
@@ -2800,7 +2810,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
+  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });

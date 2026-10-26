@@ -10,6 +10,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ClientMobileBarCapability, PaneContext } from "../../workspace/shared/pane.js";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "../../workspace/shared/rail.js";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
+import { registerCommodoreDeparture } from "./commodore-delete-events.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
 
@@ -88,6 +89,7 @@ const LogIcon = () => <Icon><path d="M5 6h14M5 10h14M5 14h10M5 18h7" /></Icon>;
 const DirectiveIcon = () => <Icon><path d="M4 20h4L19 9l-4-4L4 16z" /></Icon>;
 const BookmarkIcon = () => <Icon><path d="M6 3h12v18l-6-4-6 4Z" /></Icon>;
 const GearIcon = () => <Icon><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" /></Icon>;
+const TrashIcon = () => <Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>;
 const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
 const TheaterIcon = () => <Icon><path d="M5 5h14M4 9h16v10H4z" /></Icon>;
 const ChevronIcon = () => <Icon size={16}><path d="m9 5 7 7-7 7" /></Icon>;
@@ -230,6 +232,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
     if (!bar) { run(); return; }
     bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
   }, [bar]);
+  useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
   const newSession = useMemo(() => (actions && commodoreId ? () => leave(() => actions.newSession(commodoreId)) : null), [actions, commodoreId, leave]);
   useEffect(() => {
     if (!bar) return;
@@ -256,6 +259,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           items: [
             ...(newSession ? [{ id: "new-session", label: t("commodore.mobile.newSession"), icon: <PlusIcon />, disabled: !online, run: newSession }] : []),
             { id: "theaters", label: t("commodore.mobile.theaters"), icon: <TheaterIcon />, run: () => setSection("settings") },
+            ...(actions && commodoreId ? [{ id: "delete", label: t("commodore.mobile.delete"), icon: <TrashIcon />, destructive: true, disabled: !online, run: () => actions.delete(commodoreId) }] : []),
           ],
         },
       });
@@ -268,7 +272,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       depth: 2 + (section === "memory" ? memoryTrail.length : 0),
       onBack: () => { if (section === "memory" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t, actions]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -828,6 +832,11 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
           </SettingsRow>
         </SettingsCard>
         <CommodoreSessionSettings commodoreId={theaterId} phone />
+        <SettingsCard description={t("commodore.delete.settingsHint")}>
+          <button type="button" className="fc-settings-row is-mobile commodore-delete-row" onClick={() => commodoreMobileActions()?.delete(theaterId)}>
+            <span className="fc-settings-row__icon"><TrashIcon /></span><span className="fc-settings-row__label">{t("commodore.delete.open")}</span>
+          </button>
+        </SettingsCard>
       </div>
     </div>
   );
