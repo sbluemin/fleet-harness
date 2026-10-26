@@ -146,6 +146,15 @@ export function commanderRestTurn(objective: Objective, facts: { readonly roles:
 }
 
 /**
+ * 재시작 이어가기 — Console 이 다시 서며 진행 중이던 턴이 끊겼을 수 있다는 사실만 싣는다. 무엇을 이어 할지는 지휘관이 보드에서 정한다.
+ */
+export function restartTurn(objective: Objective, language: PromptLanguage): string {
+  return language === "ko"
+    ? `목표 \`${objective.id}\`: Console 이 다시 시작돼 진행 중이던 턴이 끊겼을 수 있습니다. \`fleet-objectives\` 로 보드를 다시 읽고 구성원 상태를 확인한 뒤 이어서 진행하세요.`
+    : `Objective \`${objective.id}\`: Console restarted, so a turn in progress may have been cut off. Read the board again with \`fleet-objectives\`, check your members, and continue.`;
+}
+
+/**
  * 개시 — 한 줄: 목표 id 와 「임무를 개시하세요」. 무엇을 어떻게 할지는 지휘관이 정한다.
  * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면 무엇이 바뀌었는지만 짧게 붙이고 다시 읽게 한다 — 바뀐 내용 자체는 보드가 말한다.
  */

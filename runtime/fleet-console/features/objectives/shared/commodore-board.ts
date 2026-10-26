@@ -5,7 +5,7 @@ export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<A
 
 export type CommodorePersonMessageReader = () => boolean;
 
-export type CommodoreBoardWakeCode = "settled" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "answered" | "returned";
+export type CommodoreBoardWakeCode = "settled" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "answered" | "returned" | "resume-failed";
 
 export interface CommodoreWakeScope {
   readonly woke: readonly CommodoreScopeItem[];

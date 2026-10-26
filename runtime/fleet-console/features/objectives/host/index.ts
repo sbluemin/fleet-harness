@@ -107,7 +107,10 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     migrateRemoved();
     adoptChat();
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
-    void launch.resumeObjectiveIntents().catch((error) => console.warn(`[objectives] Objective request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
+    // 그다음 진행 중이던 목표를 잇는다 — 재시작 때문에 사령관이 지휘관을 깨울 일이 없게.
+    void launch.resumeObjectiveIntents().catch((error) => console.warn(`[objectives] Objective request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`))
+      .then(() => launch.resumeInProgress())
+      .catch((error) => console.warn(`[objectives] In-progress resume failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
     // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 목표 ID로 이어 간다.
     try { launch.resumeFollowups(); }
     catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
@@ -131,6 +134,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
         subscribeObjectives: (listener) => deps.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
         ...(deps.consoleControl ? { observe: (objectiveId) => launch.observeBoard(objectiveId) } : {}),
         notifyCommanderRest: (objectiveId) => launch.notifyCommanderRest(objectiveId),
+        resumeFailures: { take: (id) => launch.takeResumeFailures(id), subscribe: (listener) => launch.subscribeResumeFailures(listener) },
       }, commodoreId, sink),
       objective: (commodoreId, id) => {
         const objective = store.find(id);

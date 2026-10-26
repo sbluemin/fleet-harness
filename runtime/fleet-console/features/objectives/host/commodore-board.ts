@@ -59,6 +59,11 @@ export interface CommodoreBoardWatchDeps {
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   readonly observe?: BoardObserver;
   readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
+  /** 재시작 뒤 잇지 못한 목표 — 꺼낸 것은 다시 오지 않는다. */
+  readonly resumeFailures?: {
+    readonly take: (commodoreId: string) => readonly { readonly objectiveId: string; readonly title: string; readonly error: string }[];
+    readonly subscribe: (listener: (commodoreId: string) => void) => () => void;
+  };
   readonly now?: () => number;
 }
 
@@ -292,6 +297,19 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
     return changes;
   };
 
+
+  // 재시작 뒤 잇지 못한 목표 — 재시작만으로는 깨우지 않고, 이어 가지 못한 목표가 있을 때만 깨운다. 감시를 세운 직후의 것도 한 번 본다.
+  if (deps.resumeFailures) {
+    const failures = deps.resumeFailures;
+    const report = () => {
+      if (disposed) return;
+      for (const failure of failures.take(runner.commodoreId)) wake(runner, "resume-failed", { bump: true, detail: `"${failure.title}" (${failure.error})`, objectiveId: failure.objectiveId });
+    };
+    cleanups.push(failures.subscribe((commodoreId) => { if (commodoreId === runner.commodoreId) report(); }));
+    const first = setTimeout(report, 0);
+    first.unref?.();
+    cleanups.push(() => clearTimeout(first));
+  }
 
   // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남았는데 구성원이 일하는 동안 지휘관이 오래 쉬거나, 보드가 오래 그대로인데
   // 모두 쉰다. 새로 정체된 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.

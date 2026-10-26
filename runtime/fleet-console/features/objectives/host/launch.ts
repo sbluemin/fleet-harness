@@ -6,7 +6,7 @@ import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPrese
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
-import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -68,6 +68,15 @@ export interface LaunchService {
    * 기준 결정 뒤와 지휘관 턴이 끝날 때 부른다. 조건이 아직 안 맞으면 아무것도 하지 않는다.
    */
   continueExtension(objectiveId: string, idle?: boolean): void;
+  /**
+   * Console 이 다시 선 뒤 진행 중이던 목표를 잇는다 — 지휘관에게 보드를 다시 읽고 이어 가라는 턴을 보낸다. 사람이 멈춘 목표, 구상·검토·
+   * 결정·기준 대기는 건드리지 않는다. 잇지 못한 목표는 사령관이 알도록 남긴다(`takeResumeFailures`).
+   */
+  resumeInProgress(): Promise<void>;
+  /** 이 사령관 몫의 재개 실패를 꺼낸다 — 한 번 꺼낸 것은 다시 주지 않는다. */
+  takeResumeFailures(commodoreId: string): readonly { readonly objectiveId: string; readonly title: string; readonly error: string }[];
+  /** 재개 실패가 새로 생기면 그 사령관 id 로 알린다. */
+  subscribeResumeFailures(listener: (commodoreId: string) => void): () => void;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeObjectiveIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Promise<Objective>;
@@ -470,6 +479,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const previewTasks = new Map<string, Promise<RoutingPreview>>();
   /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
   const extensionStarts = new Map<string, LaunchOptions | undefined>();
+  /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
+  const resumeFailures = new Map<string, { readonly commodoreId: string; readonly title: string; readonly error: string }>();
+  const resumeFailureListeners = new Set<(commodoreId: string) => void>();
+  /** 재시작 때 이어 갈 목표 — 개시됐고 사람이 멈추지 않았으며, 남은 임무가 있거나 인계만 남았고, 사람·기준을 기다리지 않는다. */
+  const resumable = (current: Objective): boolean => !!current.commenced && !current.done && !current.removed && !current.archived && !current.planning
+    && current.stoppedAt === null && !current.awaitingReview && !current.decisionRequest && !current.criteriaProposals.length
+    && (current.missions.some((mission) => !mission.done) || current.awaitingHandoff);
   /**
    * 루프가 새로 띄울 라우팅 구성원 — Objective 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서
    * 멈춘다. 보관된 Objective(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
@@ -1430,6 +1446,41 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       void service.startCommander(objectiveId, options).catch((error: unknown) => {
         console.warn(`[objectives] Extension did not start: ${error instanceof Error ? error.message : "unexpected_failure"}`);
       });
+    },
+
+    async resumeInProgress() {
+      for (const current of store.all()) {
+        if (disposed || !resumable(current)) continue;
+        try {
+          await orderedObjectiveRequest(current.id, async () => {
+            // 기다리는 동안 사람이 멈췄거나 끝냈으면 잇지 않는다.
+            const latest = objective(current.id);
+            if (!resumable(latest)) return;
+            await accessObjective(latest.id);
+            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en"), "");
+          });
+        } catch (error) {
+          const code = error instanceof ObjectiveStoreError ? error.code : error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "resume_failed";
+          resumeFailures.set(current.id, { commodoreId: current.commodoreId, title: current.title, error: code });
+          console.warn(`[objectives] Objective did not resume after restart: ${code}`);
+          for (const listener of resumeFailureListeners) { try { listener(current.commodoreId); } catch { /* 듣는 쪽의 오류는 재개와 무관하다. */ } }
+        }
+      }
+    },
+
+    takeResumeFailures(commodoreId) {
+      const taken: { objectiveId: string; title: string; error: string }[] = [];
+      for (const [objectiveId, failure] of resumeFailures) {
+        if (failure.commodoreId !== commodoreId) continue;
+        resumeFailures.delete(objectiveId);
+        taken.push({ objectiveId, title: failure.title, error: failure.error });
+      }
+      return taken;
+    },
+
+    subscribeResumeFailures(listener) {
+      resumeFailureListeners.add(listener);
+      return () => { resumeFailureListeners.delete(listener); };
     },
 
     async resumeObjectiveIntents() {

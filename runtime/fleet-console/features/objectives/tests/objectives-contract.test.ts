@@ -519,6 +519,30 @@ describe("Objectives contract", () => {
     launch.dispose(); h.launch.dispose();
   });
 
+  // 재시작 이어가기 — 진행 중 목표는 지휘관에게 이어 가라는 턴이 가고, 사람이 멈춘 목표는 그대로다. 잇지 못한 목표만 사령관 몫으로 남는다.
+  it("resumes in-progress objectives after a Console restart and leaves only failed resumes for the Commodore", async () => {
+    const { store, launch, sent, hostFault } = harness();
+    const started = async (title: string) => {
+      const created = await launch.create({ commodoreId: "c1", theaterId: "t1", title, groupId: null, note: "brief" });
+      store.missionAdd(created.id, { text: "work" });
+      await launch.startCommander(created.id);
+      return created.id;
+    };
+    const first = await started("First");
+    const second = await started("Second");
+    const paused = await started("Paused");
+    store.setStopped(paused, true);
+    const before = sent.length;
+    hostFault.sendError = "chat_unavailable";
+    await launch.resumeInProgress();
+    const failures = launch.takeResumeFailures("c1");
+    expect(failures).toEqual([expect.objectContaining({ error: "chat_unavailable" })]);
+    const resumedTo = sent.slice(before).map((entry) => entry.objectiveId);
+    expect(new Set([...resumedTo, failures[0]!.objectiveId])).toEqual(new Set([first, second]));
+    expect(sent.at(-1)!.text).toContain("Console restarted");
+    expect(launch.takeResumeFailures("c1")).toEqual([]);
+  });
+
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
     const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, savedObjective, objectiveRecords, objectiveRecordsHost, surfaces } = harness(() => routingOrigin);
