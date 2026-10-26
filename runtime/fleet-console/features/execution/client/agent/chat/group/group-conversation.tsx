@@ -958,17 +958,32 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
   const time = timeOf(entry.at, language);
   const action = resolveLocalizedText(entry.action, language ?? "en");
   if (entry.target) return <BoardActionTargetLine entry={entry} target={entry.target} language={language} time={time} action={action} onOpenRecord={onOpenRecord} label={label} mark={entry.target.id && references?.mark ? references.mark(entry.target.id) : null} />;
+  // 줄만 보고도 무엇을 했는지 알게 행위 낱말 뒤에 그 내용의 첫 줄(판정한 기준 등)을 잇는다. 전문은 펼쳐 읽는다.
+  const gist = firstLine(entry.text);
   const summary = (
     <>
       <SpeakerMark speaker={entry.speaker} size="sm" />
       <span className="group-chat-line-who">{entry.speaker.name}</span>
       <span className="group-chat-line-sep" aria-hidden="true">·</span>
-      <span className="group-chat-line-excerpt">{action}</span>
+      <span className="group-chat-line-act">{action}</span>
+      {gist ? <>
+        <span className="group-chat-line-sep" aria-hidden="true">·</span>
+        <span className="group-chat-line-excerpt" title={gist}>{gist}</span>
+      </> : null}
       {time ? <span className="group-chat-line-time">{time}</span> : null}
     </>
   );
-  // 펼칠 이유도, 열 기록도 없으면 눌리는 척하지 않는다.
-  if (entry.text.trim().length === 0 && !onOpenRecord) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}</div>;
+  const open = onOpenRecord ? () => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at }) : null;
+  // 펼칠 내용이 없으면 접지 않는다 — 링크만 든 빈 말풍선을 펼치지 않고, 열 기록이 있으면 줄 전체가 그 기록을 여는 단추다.
+  if (!gist) {
+    if (!open) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}</div>;
+    return (
+      <button type="button" className="group-chat-line group-chat-board" data-entry-id={entry.id} onClick={open}>
+        {summary}
+        <span className="group-chat-line-go" aria-hidden="true">↗</span>
+      </button>
+    );
+  }
   return (
     <details className="group-chat-line group-chat-board" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
@@ -976,18 +991,21 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
         <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="group-chat-line-detail">
-        {entry.text.trim() ? <>
-          <span className="group-chat-line-label">{t("group.board.reason")}</span>
-          <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
-        </> : null}
-        {onOpenRecord ? (
+        <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
+        {open ? (
           <div className="group-chat-line-actions">
-            <button type="button" className="group-chat-link" onClick={() => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at })}>{label ?? t("group.board.openRecord")}</button>
+            <button type="button" className="group-chat-link" onClick={open}>{label ?? t("group.board.openRecord")}</button>
           </div>
         ) : null}
       </div>
     </details>
   );
+}
+
+/** 행위 내용의 첫 줄 — 목록·인용·제목 표식을 걷은 글. 내용이 없으면 빈 글이다. */
+function firstLine(text: string): string {
+  const line = text.split("\n").map((part) => part.trim()).find((part) => part.length > 0) ?? "";
+  return line.replace(/^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+|>\s?)/u, "").trim();
 }
 
 /**

@@ -1,9 +1,9 @@
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../shared/types.js";
+import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
 import { decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchOwnerView, returnPersonHold, revealObjective } from "./objectives-state.js";
@@ -31,9 +31,26 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   if (objective.addedBy && "kind" in objective.addedBy && objective.addedBy.kind === "commodore") events.push({
     kind: "board-action", id: `board:${objective.id}:added`, at: objective.createdAt, objectiveId: objective.id, speaker, action: boardAct("added"), text: objective.addedBy.why ?? objective.title,
   });
-  for (const action of objective.actions ?? []) if (typeof action.by === "object" && action.by.kind === "commodore") events.push({
-    kind: "board-action", id: `board:${objective.id}:${action.id}`, at: action.at, objectiveId: objective.id, speaker, action: boardAct(action.kind), text: action.by.why ?? "",
-  });
+  // 사령관 행위 줄 — 줄만 보고도 무엇을 했는지 알게 행위의 내용(판정한 기준 문구)을 싣는다. 연달아 낸 같은 기준 판정은 한 줄로 묶는다.
+  const history = objective.actions ?? [];
+  for (let index = 0; index < history.length;) {
+    const first = history[index]!;
+    let end = index + 1;
+    if (isCommodore(first.by) && CRITERIA_VERDICTS.has(first.kind)) {
+      while (end < history.length && history[end]!.kind === first.kind && isCommodore(history[end]!.by) && history[end]!.at - history[end - 1]!.at <= VERDICT_RUN_MS) end++;
+    }
+    const run = history.slice(index, end);
+    index = end;
+    if (!isCommodore(first.by)) continue;
+    const words = run.map(actionWords).filter((text) => text.length > 0);
+    const voicedAs = VOICED_ACTS[first.kind];
+    events.push({
+      kind: "board-action", id: `board:${objective.id}:${first.id}`, at: first.at, objectiveId: objective.id, speaker,
+      action: run.length > 1 ? localized((t) => t(`objectives.prov.act.${first.kind as "criteria-approved" | "criteria-rejected"}.count`, { count: run.length })) : boardAct(first.kind),
+      text: run.length > 1 ? words.map((text) => `- ${text}`).join("\n") : words[0] ?? "",
+      ...(voicedAs ? { voicedAs } : {}),
+    });
+  }
   // 사람이 답한 결정 — 요청 하나가 한 줄로, 답한 시각의 자리에 선다(질문 순서 그대로). 대화가 하단 카드 대신 이 줄을 기록으로 읽는다.
   const answered = new Map<string, Extract<GroupTimelineEntry, { kind: "decision-answer" }>>();
   for (const decision of objective.decisions) {
@@ -72,6 +89,23 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     } } : {}),
     route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
   } : null };
+}
+
+const CRITERIA_VERDICTS: ReadonlySet<ObjectiveActionKind> = new Set(["criteria-approved", "criteria-rejected"]);
+/** 「모두 승인」처럼 한 번에 낸 판정이 따로 기록돼도 한 판정으로 읽히는 간격. */
+const VERDICT_RUN_MS = 60_000;
+/** 덧붙인 말이 제 말풍선(`via`)으로 서는 행위 — 그 말풍선이 있으면 그룹 대화가 이 줄을 비켜 세운다. */
+const VOICED_ACTS: Partial<Record<ObjectiveActionKind, ConversationMessageVia>> = { steer: "steer", commence: "start", plan: "plan" };
+
+function isCommodore(by: ObjectiveAction["by"]): by is Extract<ObjectiveAction["by"], { kind: "commodore" }> {
+  return typeof by === "object" && by.kind === "commodore";
+}
+
+/** 행위가 무엇이었는지의 글 — 기준 판정이면 그 기준 문구(폐기·재확인이면 사유), 그 밖에는 사령관이 단 근거. */
+function actionWords(action: ObjectiveAction): string {
+  const proposal = CRITERIA_VERDICTS.has(action.kind) ? action.proposal : undefined;
+  const words = proposal?.text ?? proposal?.reason ?? (isCommodore(action.by) ? action.by.why : undefined) ?? "";
+  return words.trim();
 }
 
 function boardAct(kind: string) {
