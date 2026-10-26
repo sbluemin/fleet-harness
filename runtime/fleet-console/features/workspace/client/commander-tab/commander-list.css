@@ -1,0 +1,107 @@
+/* 사령관 오른쪽 사이드바 「지휘관」 탭 — 줄 문법은 사이드바 묶음 줄(.side-bar-cluster-row)을 그대로 쓰고, 여기서는 탭 머리 줄과
+   정렬 메뉴만 진다. 메뉴의 면·행은 사이드바 우클릭 메뉴(.group-context-menu-*)와 같은 토큰이다. */
+.commander-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.commander-tab-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.commander-tab-count {
+  margin-right: auto;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commander-tab-sort { position: relative; display: inline-flex; }
+
+.commander-tab-sort-button,
+.commander-tab-direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.commander-tab-sort-button { padding: 0 10px; }
+.commander-tab-direction { width: 28px; padding: 0; }
+.commander-tab-direction svg { width: 14px; height: 14px; }
+
+.commander-tab-sort-button:hover,
+.commander-tab-direction:hover,
+.commander-tab-sort-button[aria-expanded="true"] {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.commander-tab-sort-button:focus-visible,
+.commander-tab-direction:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+
+.commander-tab-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 196px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+}
+
+.commander-tab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--popover-row);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.commander-tab-menu-item:hover { background: var(--wash-hover); }
+.commander-tab-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+
+.commander-tab-menu-check {
+  width: 12px;
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.commander-tab-menu-rule {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--hairline);
+}
+
+.commander-tab-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}

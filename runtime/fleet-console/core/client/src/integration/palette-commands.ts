@@ -62,7 +62,6 @@ export type PaletteCommandAction =
   | { readonly kind: "resume-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "archive-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "open-archive" }
-  | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
@@ -220,7 +219,6 @@ export function buildPaletteCommands(
     push({ commandId: "new-objectiveRecord", label: t("palette.newObjective", { label: activeTheater.label }), aliasLabel: alias("palette.newObjective", { label: activeTheater.label }), action: { kind: "new-objectiveRecord" }, group: "theater", glyph: "objective-new", shortcut: "console.new-session" });
     const theaterObjectiveRecords = current.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === activeTheater.id);
     if (theaterObjectiveRecords.length > 0) {
-      push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "objectives.sort-by-status" });
     }
   }
   for (const panel of railPanels) {

@@ -8,14 +8,14 @@ import type { ObjectiveLaunchKind } from "../../objectives/shared/records/types.
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientFeatureDescriptor } from "../shared/feature-surfaces.js";
 
-import { ApiError, createGroup, deleteGroup, fetchGroups, fetchObjectiveRecords, fetchTheaters, patchObjective, patchTheaterOrder, renameObjective, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
+import { createGroup, fetchGroups, fetchObjectiveRecords, patchObjective, renameObjective, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveObjective, shouldReleaseActiveObjective } from "../../../core/client/src/integration/active-objective-surface.js";
 import { blocksObjectiveRecordsShortcutWhileEditing, isBlockingDialogOpen, resolveObjectiveRecordsArrowShortcutAction } from "../../../core/client/src/integration/shortcuts.js";
-import { archiveObjectiveFromUi, resumeDormantOnOpen, resumeObjectiveInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
+import { archiveObjectiveFromUi, resumeDormantOnOpen, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { objectiveRecordAccentFromNode } from "./objective-accent.js";
-import { getTheaterGroupCollapse, pruneObjectiveAccents, toggleTheaterStatusAxis } from "./sidebar/group-collapse-store.js";
+import { getTheaterGroupCollapse, pruneObjectiveAccents } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/feature-capabilities.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
@@ -27,7 +27,7 @@ import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-stor
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleObjectiveRecordsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, hydrateTheaters, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -138,7 +138,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     for (const theater of state.theaters) pruneObjectiveAccents(theater.id, new Set(state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id).map((objectiveRecord) => objectiveRecord.id)));
   }, [state.objectiveRecords, state.theaters, state.objectiveRecordsHydrated]);
 
-  // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 지금 보고 있는 Theater 의 상태별 보기다.
+  // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
@@ -150,12 +150,6 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
         && active.matches("input, textarea, [contenteditable='true']")
         && !active.closest(".xterm");
       if (blocksObjectiveRecordsShortcutWhileEditing(editing, event)) return;
-      if (matchesShortcutCommand(event, "objectives.sort-by-status")) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        toggleTheaterStatusAxis(getViewedTheaterId());
-        return;
-      }
       if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
       const arrowAction = resolveObjectiveRecordsArrowShortcutAction(event.code);
       if (arrowAction === null) return;
@@ -163,7 +157,6 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
       event.stopImmediatePropagation();
       const snapshot = stateRef.current;
       const theaterObjectiveRecords = snapshot.objectiveRecords;
-      // 사이드바 'Sort by status'(statusAxis)는 순환 순서에 관여하지 않는다.
       const order = snapshot.theaters.flatMap((theater) => {
         const objectiveRecords = snapshot.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id);
         return focusCycleObjectiveIds(objectiveRecords, snapshot.groups.filter((group) => group.theaterId === theater.id), objectiveRecordOrderFromNodes(objectiveRecords), getTheaterGroupCollapse(theater.id).collapsedGroups);
@@ -267,13 +260,6 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     resumeIfDormant(objectiveId);
   }, [resumeIfDormant]);
 
-  const handleResume = useCallback((objectiveId: string) => {
-    const objectiveRecord = stateRef.current.objectiveRecords.find((candidate) => candidate.id === objectiveId);
-    if (!objectiveRecord) return;
-    const resume = () => resumeObjectiveInPlace(objectiveId, stateRef.current.objectiveRecords, registry.providers, handleFocus);
-    resume();
-  }, [handleFocus, registry.providers]);
-
   const runMutation = useCallback((task: () => Promise<void>, rollback: () => Promise<void>) => {
     const attempt = () => {
       void task()
@@ -291,10 +277,6 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
   );
   const refreshGroups = useCallback(
     () => fetchGroups(null).then(hydrateGroups),
-    [],
-  );
-  const refreshTheaters = useCallback(
-    () => fetchTheaters(null).then(hydrateTheaters),
     [],
   );
   const refreshObjectiveRecordsAndGroups = useCallback(
@@ -358,70 +340,6 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     onEscape: closeObjectiveMenu,
   });
 
-  const handleSetGroupColor = useCallback((groupId: string, color: string | null) => {
-    if (!color) return;
-    runMutation(
-      () => updateGroup(groupId, { color }).then(refreshGroups),
-      refreshGroups,
-    );
-  }, [refreshGroups, runMutation]);
-
-  const handleRenameGroup = useCallback((groupId: string, name: string) => {
-    runMutation(
-      () => updateGroup(groupId, { name }).then(refreshGroups),
-      refreshGroups,
-    );
-  }, [refreshGroups, runMutation]);
-
-  const handleReorderGroups = useCallback((orderedGroupIds: readonly string[]) => {
-    runMutation(
-      () => {
-        const groupById = new Map(stateRef.current.groups.map((group) => [group.id, group]));
-        return settleReorderPatches(orderedGroupIds.flatMap((groupId, order) => {
-          const group = groupById.get(groupId);
-          if (!group || group.order === order) return [];
-          return [updateGroup(groupId, { order })];
-        })).then(refreshGroups);
-      },
-      refreshGroups,
-    );
-  }, [refreshGroups, runMutation]);
-
-  const handleReorderTheaters = useCallback((orderedTheaterIds: readonly string[]) => {
-    runMutation(
-      () => {
-        const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
-        return settleReorderPatches(orderedTheaterIds.flatMap((theaterId, order) => {
-          const theater = theaterById.get(theaterId);
-          if (!theater || theater.order === order) return [];
-          return [patchTheaterOrder(theaterId, order)];
-        })).then(refreshTheaters);
-      },
-      refreshTheaters,
-    );
-  }, [refreshTheaters, runMutation]);
-
-  const handleSetTheaterAlias = useCallback((theaterId: string, alias: string | null) => {
-    runMutation(() => aliasEditor.save(theaterId, alias), refreshTheaters);
-  }, [aliasEditor, refreshTheaters, runMutation]);
-
-  const handleUngroupAll = useCallback((groupId: string) => {
-    let deleted = false;
-    runMutation(
-      async () => {
-        if (!deleted) {
-          try {
-            await deleteGroup(groupId);
-          } catch (error) {
-            if (!(error instanceof ApiError && error.status === 404)) throw error;
-          }
-          deleted = true;
-        }
-        await refreshObjectiveRecordsAndGroups();
-      },
-      refreshObjectiveRecordsAndGroups,
-    );
-  }, [refreshObjectiveRecordsAndGroups, runMutation]);
 
   const handleClose = useCallback((objectiveId: string) => {
     void archiveObjectiveFromUi(objectiveId).then((outcome) => { if (outcome) onArchived(outcome); });
@@ -460,29 +378,12 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     <ObjectiveRecordsSideBar
       theaters={state.theaters}
       objectiveRecords={state.objectiveRecords}
-      groups={state.groups}
-      activeObjectiveId={state.activeObjectiveId}
-      objectiveRecordNotifications={state.objectiveRecordNotifications}
       addingTheater={state.addingTheater}
       theaterError={state.theaterError}
-      onClose={handleClose}
-      onFocus={handleFocus}
-      onResume={handleResume}
-      onSetAccent={handleSetAccent}
-      onRename={handleRename}
-      onSetGroupId={handleSetGroupId}
-      onCreateGroup={handleCreateGroup}
-      onSetGroupColor={handleSetGroupColor}
-      onRenameGroup={handleRenameGroup}
-      onReorderGroups={handleReorderGroups}
-      onReorderTheaters={handleReorderTheaters}
-      onSetTheaterAlias={handleSetTheaterAlias}
       clampAlias={aliasEditor.clamp}
-      onUngroupAll={handleUngroupAll}
       onAddTheater={handleAddTheater}
       onCancelAddTheater={cancelAddTheater}
       onForgetTheater={handleForgetTheater}
-      topStripVariant="compact"
       topStripTrailing={<ConversationSideBarActions />}
       topStripCenter={<ConversationSideBarDeputies />}
       bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}
@@ -572,12 +473,6 @@ function focusConversationObjective(objectiveRecord: ObjectiveRecord): void {
   closeConversationSurface();
   setActiveObjective(objectiveRecord.id);
   requestObjectiveKeyboardFocus(objectiveRecord.id);
-}
-
-function settleReorderPatches(patches: readonly Promise<unknown>[]): Promise<void> {
-  return Promise.allSettled(patches).then((results) => {
-    if (results.some((result) => result.status === "rejected")) throw new Error("reorder_partial_failure");
-  });
 }
 
 function readShortenByChars(error: unknown): number | null {

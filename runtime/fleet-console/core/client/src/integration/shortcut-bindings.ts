@@ -13,7 +13,7 @@ import type { CoreMessageKey } from "../i18n/index.js";
 
 export type ShortcutBindings = Readonly<Record<string, readonly string[]>>;
 
-export type ShortcutCommandGroup = "console" | "objectiveRecords" | "companion";
+export type ShortcutCommandGroup = "console" | "companion";
 
 export interface ShortcutCommand {
   readonly id: string;
@@ -34,7 +34,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.objectiveRecords.undoClose", defaults: ["Mod+KeyZ"] },
-  { id: "objectives.sort-by-status", group: "objectiveRecords", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
 ];
 
 const CORE_COMMANDS_BY_ID = new Map(CORE_SHORTCUT_COMMANDS.map((command) => [command.id, command]));

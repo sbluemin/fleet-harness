@@ -45,6 +45,9 @@ import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
+import { clampToCommanderSplitBounds, commanderSplitBounds, CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit } from "./commander-split.js";
+import { closeCommanderSplit, setCommanderSplitVisibleObjective, showCommodoreInNarrowSplit, useCommanderSplit } from "./commander-split-store.js";
+import { acknowledgeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
@@ -678,6 +681,19 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     }
   }
   const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
+  // 사령관 대화면 「지휘관」 탭에서 고른 지휘관의 그룹 대화가 옆 칸에 선다. 열림·비율은 전역, 고른 지휘관은 사령관마다다.
+  let splitCommodoreId: string | null = null;
+  if (surfaceDescriptor?.commanderSplit && surface) {
+    try {
+      splitCommodoreId = surfaceDescriptor.commanderSplit({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
+    } catch {
+      splitCommodoreId = null;
+    }
+  }
+  const commanderSplit = useCommanderSplit();
+  const splitPickedId = splitCommodoreId === null ? null : commanderSplit.picked[splitCommodoreId] ?? null;
+  const splitRecord = splitPickedId === null ? null
+    : state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === splitPickedId && objectiveRecord.commodoreId === splitCommodoreId) ?? null;
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
@@ -771,6 +787,21 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const regionWidth = regionSize?.width ?? Math.max(0, viewport.width - insets.left - insets.right);
   const regionHeight = regionSize?.height ?? viewport.height;
   const geometry = useMemo(() => computeWorkbenchGeometry(layout, regionWidth, regionHeight), [layout, regionWidth, regionHeight]);
+  // 두 칸이 최소 폭을 남기지 못하는 좁은 창에서는 한 칸만 선다 — 고른 지휘관 칸이 먼저고 「← 사령관」으로 사령관 칸에 돌아간다.
+  // 열림 기억은 그대로라 창을 넓히면 두 칸이 돌아온다. 넓은 창에서도 저장된 비율은 두 칸의 최소 폭 안으로 묶어 그린다.
+  const splitStageWidth = regionWidth - geometry.conversationRight;
+  const splitOpen = splitCommodoreId !== null && commanderSplit.open;
+  const splitShown = splitOpen && splitStageWidth >= COMMANDER_SPLIT_MIN_STAGE_PX;
+  const splitNarrowCommander = splitOpen && !splitShown && splitRecord !== null && commanderSplit.narrowPane === "commander";
+  const splitBounds = commanderSplitBounds(splitStageWidth);
+  const splitRatio = clampToCommanderSplitBounds(commanderSplit.ratio, splitBounds);
+  // 옆 칸에 보이는 지휘관은 사람이 읽고 있는 대화다 — 설 때 그 도착 표식을 확인 처리하고, 보이는 동안 도착하는 응답은 안 읽음으로 남기지 않는다.
+  const splitVisibleId = (splitShown || splitNarrowCommander) && splitRecord !== null && !newSession ? splitRecord.id : null;
+  useEffect(() => {
+    setCommanderSplitVisibleObjective(splitVisibleId);
+    if (splitVisibleId !== null) acknowledgeIdleArrival(splitVisibleId);
+  }, [splitVisibleId]);
+  useEffect(() => () => setCommanderSplitVisibleObjective(null), []);
   const workbenchConversation = useMemo<WorkbenchConversation>(() => {
     if (surfaceDescriptor) {
       return {
@@ -824,17 +855,40 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       {newSession ? (
         <NewSessionColumn state={state} target={newSession} tools={tools(null)} />
       ) : surfaceDescriptor && surface ? (
-        <ConversationSurfaceColumn
+        // 사령관 대화 칸은 분할이 열리고 닫혀도 같은 자리에 남는다 — 칸이 다시 서면 그 탭이 연 오른쪽 사이드바가 걷힌다.
+        <div
           key={surface.surfaceId}
-          descriptor={surfaceDescriptor}
-          selection={surface}
-          language={language}
-          theme={state.activeTheme}
-          onToggleDetails={toggleDetails}
-          tools={tools}
-          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
-          browserSplitOpen={browserOpen}
-        />
+          className="conversation-split"
+          data-split={splitShown || undefined}
+          data-split-narrow={splitNarrowCommander || undefined}
+          style={splitShown ? { "--commander-split-left": `${(splitRatio * 100).toFixed(2)}%` } as CSSProperties : undefined}
+        >
+          <ConversationSurfaceColumn
+            descriptor={surfaceDescriptor}
+            selection={surface}
+            language={language}
+            theme={state.activeTheme}
+            onToggleDetails={toggleDetails}
+            tools={tools}
+            sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
+            browserSplitOpen={browserOpen}
+          />
+          {splitShown ? <CommanderSplitDivider ratio={splitRatio} bounds={splitBounds} /> : null}
+          {splitShown || splitNarrowCommander ? (splitRecord ? (
+            <ConversationColumn
+              key={splitRecord.id}
+              state={state}
+              objectiveRecord={splitRecord}
+              language={language}
+              objectiveRecordKinds={objectiveRecordKinds}
+              onToggleDetails={() => expandCommanderSplit(splitRecord.id)}
+              onClose={onClose}
+              browserSplitOpen={false}
+              tools={noTools}
+              split={{ onExpand: () => expandCommanderSplit(splitRecord.id), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }}
+            />
+          ) : <CommanderSplitPlaceholder onClose={closeCommanderSplit} />) : null}
+        </div>
       ) : subject ? (
         <ConversationColumn
           key={subject.id}
@@ -1235,7 +1289,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSplitOpen, tools }: {
+function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSplitOpen, tools, split }: {
   readonly state: ConsoleState;
   readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
@@ -1246,6 +1300,11 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   readonly browserSplitOpen: boolean;
   /** 머리 줄 도구 캡슐. 지구본(lead)을 넘기면 캡슐 맨 앞, 「⋯」 밖이다. */
   readonly tools: (lead?: ReactNode) => ReactNode;
+  /**
+   * 사령관 대화 옆 칸에 선 지휘관 대화 — 가운데 칸의 주인은 여전히 사령관이라 활성 Objective 를 바꾸지 않고, pill 은 크게 보기다.
+   * 머리 줄 도구 캡슐 대신 크게 보기·닫기 단추가 선다.
+   */
+  readonly split?: { readonly onExpand: () => void; readonly onClose: () => void; readonly onBack?: () => void };
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
@@ -1286,7 +1345,12 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     return () => { observer.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
   }, []);
 
-  const activate = useCallback(() => setActiveObjective(objectiveRecord.id), [objectiveRecord.id]);
+  const inSplit = split !== undefined;
+  // 옆 칸의 지휘관은 가운데 칸의 주인을 바꾸지 않는다 — 누르면 그 칸에서 읽은 것으로 도착 표식만 확인 처리한다.
+  const activate = useCallback(() => {
+    if (inSplit) acknowledgeIdleArrival(objectiveRecord.id);
+    else setActiveObjective(objectiveRecord.id);
+  }, [inSplit, objectiveRecord.id]);
 
   // ── 브라우저 — 이 대화의 Objective 브라우저는 오른쪽 분할 칸에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
@@ -1310,7 +1374,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const hiddenCompanions = browserSplitOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
 
   const config: ObjectiveBodyConfig = {
-    active: state.activeObjectiveId === objectiveRecord.id,
+    active: inSplit || state.activeObjectiveId === objectiveRecord.id,
     keyboardFocusRequestId: state.keyboardFocusRequest?.objectiveId === objectiveRecord.id ? state.keyboardFocusRequest.requestId : 0,
     geometry,
     objectiveRecord: bodyOwner,
@@ -1387,7 +1451,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
             type="button"
             className="conversation-pill-details"
             onClick={onToggleDetails}
-            aria-label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })}
+            aria-label={split ? t("conversation.commanderSplit.expandAria", { title: objectiveRecord.title }) : t("conversation.pill.detailsAria", { title: objectiveRecord.title })}
             inert={pillTaken || undefined}
           >
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
@@ -1402,7 +1466,21 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         </div>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
-        {tools(toolsLead)}
+        {split ? (
+          <span className="conversation-split-controls">
+            {split.onBack ? (
+              <button type="button" className="conversation-split-back" onClick={split.onBack}>
+                {t("conversation.commanderSplit.back")}
+              </button>
+            ) : null}
+            <button type="button" className="conversation-split-control" onClick={split.onExpand} aria-label={t("conversation.commanderSplit.expandAria", { title: objectiveRecord.title })} title={t("conversation.commanderSplit.expand")}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <button type="button" className="conversation-split-control" onClick={split.onClose} aria-label={t("conversation.commanderSplit.close")} title={t("conversation.commanderSplit.close")}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+            </button>
+          </span>
+        ) : tools(toolsLead)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}
@@ -1418,6 +1496,11 @@ const NO_HIDDEN_COMPANIONS: readonly string[] = [];
 const CONVERSATION_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
 
 function noop(): void {}
+
+/** 옆 칸에 선 지휘관 대화는 머리 줄 도구 캡슐을 따로 세우지 않는다 — 캡슐은 사령관 대화 칸의 것 하나다. */
+function noTools(): ReactNode {
+  return null;
+}
 
 // ── 도구 분할의 브라우저 ─────────────────────────────────────────────────────
 
