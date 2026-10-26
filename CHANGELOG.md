@@ -5,6 +5,33 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.261.0] - 2026-10-26
+
+### fleet-console
+
+#### Changed
+- Keep commander conversations and new sessions beside their commodore, with a return path from full width. The sidebar shows the latest commodore replies, while the commander list brings together recent actions, mission progress, and optional groups.
+- Commander sessions now live in a Commanders tab in the commodore's right sidebar, sorted by the order you choose instead of split into not-started and done sections. Picking one opens its group chat beside the commodore conversation in a resizable split that stays as you left it.
+- The Commodore now works in its Theaters with shell, file search and skill tools, and can use each Theater's project skills and MCP servers; Theater CLAUDE.md instructions still stay out of its context.
+- The Commodore now wakes for an objective once its group chat goes idle, with a summary of that objective's board, instead of on every board change while the Commander is still working. Stalled objectives still wake it as before.
+- Objectives that were in progress now pick up on their own after Console restarts, so the Commodore no longer wakes just because Console restarted; it wakes only for an objective that could not resume.
+- Commencing an objective starts only the members that have a mission, and the Commander can release a member that has none.
+- Extending an objective now starts the new round as soon as its success criteria are settled, without a separate commence.
+- Objective missions now show a short name on the board, with their full instructions kept as the mission's detail; missions without a name show the start of their detail, and the mission popup edits the name and the detail separately.
+
+#### Fixed
+- Opening a not-started objective no longer waits about a second before its right panel appears.
+- Show what the Commodore did on its action lines in a Commander's group chat: approved criteria appear on the line itself, criteria approved together share one line, and lines with nothing to unfold open the Commodore record directly instead of an empty bubble.
+- Keep unstarted objectives restorable when archived, and let agents merge pending objectives and open selected follow-ups at completion without supplying a retry key.
+
+#### Removed
+- The left sidebar now lists commodores only, so the per-commodore status view and its Alt+S shortcut are gone.
+
+### fleet-desktop
+
+#### Fixed
+- Fleet Browser keeps working after a remote Console you are connected to restarts, for example after a self-update, without quitting and reopening Desktop.
+
 ## [1.260.1] - 2026-10-26
 
 Release v1.260.1
