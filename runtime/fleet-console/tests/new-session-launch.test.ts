@@ -83,6 +83,10 @@ describe("resolveMentionEntry", () => {
 it("keeps a registry goal in its commander pane before and after its session arrives", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  // jsdom 은 글자 범위의 기하를 제공하지 않는다. 이 테스트는 세션 승계를 보고, 머리 줄 배치는 실앱에서 검증한다.
+  const range = vi.spyOn(document, "createRange").mockImplementation(() => Object.assign(new Range(), {
+    getBoundingClientRect: () => new DOMRect(),
+  }));
   const { combineClusterSources, loadFeatureRegistry, FeatureRegistryProvider } = await import("../core/client/src/integration/feature-registry.js");
   const { CommodoreCommanderList } = await import("../features/workspace/client/commander-tab/commander-list.js");
   const { ConversationStage } = await import("../features/workspace/client/conversation/conversation-shell.js");
@@ -173,6 +177,6 @@ it("keeps a registry goal in its commander pane before and after its session arr
   } finally {
     await act(async () => root.unmount());
     node.remove(); closeConversationSurface(); closeCommanderSplit(); offComposer(); offBody(); offBoard();
-    removeObjectiveLocally(id); setState(previous); canvas.mockRestore(); vi.unstubAllGlobals();
+    removeObjectiveLocally(id); setState(previous); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
   }
 });

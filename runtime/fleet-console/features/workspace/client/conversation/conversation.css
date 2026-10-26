@@ -1464,6 +1464,12 @@ html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conver
   padding-right: max(0px, var(--conversation-caption-reserve) - var(--conversation-quota-space));
 }
 
+/* 분할의 왼쪽 사령관 칸 위에는 도구가 없다. Desktop 의 drag 예약도 오른쪽 칸만 맡고, 왼쪽은 자기 칸 끝에서 멈춘다. */
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row {
+  right: 0;
+  padding-right: var(--space-3);
+}
+
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-tools,
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
