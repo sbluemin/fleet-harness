@@ -107,6 +107,7 @@ let state: ConsoleState = {
   objectiveRecordSearchSeedNonce: 0,
   objectiveRecordSearchMode: null,
   mobileNewSessionOpen: false,
+  mobileNewSessionCommodoreId: null,
   newSessionSeed: null,
   pendingLaunch: null,
   whatsNewOpen: false,
@@ -969,14 +970,15 @@ export function setObjectiveSearchMode(mode: ConsoleState["objectiveRecordSearch
  * 모바일 「새 대화」 시트를 연다 — 모바일 홈의 새 대화 입구와 폰에서 부른 `composer.open`이 쓴다. 데스크톱의
  * 새 세션 화면과 같은 실행 의도(requestLaunch)로 나가고, 쓰던 문장은 시트를 닫아도 시트 쪽이 지킨다.
  */
-export function openMobileNewSession(): void {
+/** `commodoreId`를 주면 그 사령관이 새 세션의 주인이다 — 주지 않으면 시트가 지금 문맥에서 고른다. */
+export function openMobileNewSession(commodoreId: string | null = null): void {
   if (state.mobileNewSessionOpen) return;
-  setState({ mobileNewSessionOpen: true });
+  setState({ mobileNewSessionOpen: true, mobileNewSessionCommodoreId: commodoreId });
 }
 
 export function closeMobileNewSession(): void {
   if (!state.mobileNewSessionOpen) return;
-  setState({ mobileNewSessionOpen: false });
+  setState({ mobileNewSessionOpen: false, mobileNewSessionCommodoreId: null });
 }
 
 /**

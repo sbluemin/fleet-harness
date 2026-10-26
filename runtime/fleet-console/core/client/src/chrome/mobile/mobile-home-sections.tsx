@@ -16,31 +16,33 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
- * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「완료 N」(기본 접힘). 둘 다 0개면 서지 않는다.
- * 「시작 전」은 데스크톱 사이드바의 「시작 전 N」 접기와 같은 원천이다: 지금 Theater의 뿌리 없는 묶음 줄(`ObjectiveCluster.row.glyph === "fresh"`) 가운데
+ * 사령관 「지휘관 세션」 탭의 「진행 중」 아래 두 접기 — 「시작 전 N」(기본 펼침)과 「완료 N」(기본 접힘). 둘 다 0개면 서지 않는다.
+ * 범위는 그 사령관이 소유한 묶음(`ObjectiveCluster.commodoreId`)이다. 「시작 전」은 뿌리 없는 묶음 줄(`row.glyph === "fresh"`) 가운데
  * 사람 차례의 결정 요청 줄(`decisionRequestedAt`, 「확인 필요」에 선다)을 뺀 것, 줄 순서(`row.order`)대로. 맡은 이가 처리 중인 줄(`delegated`)은
- * 폰에는 그 줄이 설 다른 자리가 없어 여기서 빼면 어디에도 보이지 않으므로 남긴다(이 접기는 기본으로 펼쳐 있다). 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
+ * 폰에는 그 줄이 설 다른 자리가 없어 여기서 빼면 어디에도 보이지 않으므로 남긴다. 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
  * 「완료 N」은 세 출처를 이 순서로 모은다: 묶음 줄이 「완료」인 대화(`isFinishedConversation`, 갱신 시각순) · 뿌리 없는 완료 줄(`row.order`) ·
- * 엔트리가 `mobile.finished`로 올린 끝난 일(선언 순서). 데스크톱 사이드바 「완료」 접기와 같은 원천(`row.glyph === "done"`)이다.
+ * 엔트리가 `mobile.finished`로 올린 끝난 일(선언 순서, 사령관 UUID를 문맥으로 넘긴다). 데스크톱 사이드바 「완료」 접기와 같은 원천(`row.glyph === "done"`)이다.
  * 호스트는 어느 플러그인의 것인지 읽지 않고 줄과 선언만 그린다.
  */
-export function MobileHomeSections({ theaterId, finishedConversations, onOpenConversation }: {
-  readonly theaterId: string | null;
+export function MobileHomeSections({ commodoreId, finishedConversations, onOpenConversation, leave }: {
+  readonly commodoreId: string;
   readonly finishedConversations: readonly MobileConversation[];
   readonly onOpenConversation: (conversation: MobileConversation) => void;
+  /** 다른 화면으로 옮기는 줄 — 이 목록을 품은 화면이 자기 상세를 먼저 접은 뒤에 부른다. */
+  readonly leave: (run: () => void) => void;
 }) {
   const t = useT();
   const locale = useConsoleLocale();
   const clusters = useObjectiveClusters();
   const bindings = useRailEntries();
-  const finished = useFinishedItems(bindings, theaterId, locale);
+  const finished = useFinishedItems(bindings, commodoreId, locale);
   const fresh = useMemo(() => clusters
-    .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "fresh" && cluster.row.decisionRequestedAt === undefined)
-    .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, theaterId]);
+    .filter((cluster) => cluster.commodoreId === commodoreId && cluster.root === undefined && cluster.row?.glyph === "fresh" && cluster.row.decisionRequestedAt === undefined)
+    .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, commodoreId]);
   // 지휘관 Objective이 사라졌지만 보관되지 않은 완료 줄 — 대화 행이 없어 여기서만 보인다.
   const doneRows = useMemo(() => clusters
-    .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "done" && cluster.row.decisionRequestedAt === undefined)
-    .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, theaterId]);
+    .filter((cluster) => cluster.commodoreId === commodoreId && cluster.root === undefined && cluster.row?.glyph === "done" && cluster.row.decisionRequestedAt === undefined)
+    .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, commodoreId]);
   const finishedCount = finishedConversations.length + doneRows.length + finished.length;
   const [freshOpen, setFreshOpen] = useFold("fresh", true);
   const [finishedOpen, setFinishedOpen] = useFold("finished", false);
@@ -56,7 +58,7 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
                 avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-fresh">{t("mobile.search.state.fresh")}</span>{rowDetail(cluster, locale)}</>}
-                onOpen={() => cluster.open?.()}
+                onOpen={() => leave(() => cluster.open?.())}
               />
             </MobileMarkedRow>
           )) : null}
@@ -76,7 +78,7 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
                 avatar={<KeyedAvatar avatarKey={objectiveRecordAvatarKey(cluster.avatarObjectiveId ?? cluster.id)} role="commander" state="done" size={52} label="" decorative />}
                 title={cluster.title}
                 sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{rowDetail(cluster, locale)}</>}
-                onOpen={() => cluster.open?.()}
+                onOpen={() => leave(() => cluster.open?.())}
               />
             </MobileMarkedRow>
           )) : null}
@@ -88,7 +90,7 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
                 : <span className="mobile-conv-round is-static">{entryIconOf(bindings, entryId)}</span>}
               title={item.title}
               sub={<><span className="mobile-conv-state is-done">{t("mobile.search.state.done")}</span>{item.detail ? ` · ${item.detail}` : null}</>}
-              onOpen={item.open}
+              onOpen={() => leave(item.open)}
             />
           )) : null}
         </>
@@ -146,30 +148,30 @@ function useFold(key: string, initial: boolean): readonly [boolean, (next: boole
 }
 
 /** 엔트리들이 `mobile.finished`로 올린 끝난 일 — 각 공급원의 구독을 하나의 틱으로 묶고, 값(id·제목·둘째 줄)이 같으면 다시 그리지 않는다. */
-function useFinishedItems(bindings: readonly RailEntryBinding[], theaterId: string | null, locale: ConsoleLocale): readonly { readonly entryId: string; readonly item: RailEntryFinishedItem }[] {
+function useFinishedItems(bindings: readonly RailEntryBinding[], context: string | null, locale: ConsoleLocale): readonly { readonly entryId: string; readonly item: RailEntryFinishedItem }[] {
   const key = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.mobile?.finished ? [binding.entry.mobile.finished.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => finishedVersion(bindings, theaterId, locale),
-    () => finishedVersion(bindings, theaterId, locale),
+    () => finishedVersion(bindings, context, locale),
+    () => finishedVersion(bindings, context, locale),
   );
   return useMemo(() => bindings.flatMap((binding) => {
     if (!binding.entry.mobile?.finished || binding.entry.visible?.() === false) return [];
-    return binding.entry.mobile.finished.items(scopeOf(binding, theaterId), locale).map((item) => ({ entryId: binding.entry.id, item }));
+    return binding.entry.mobile.finished.items(scopeOf(binding, context), locale).map((item) => ({ entryId: binding.entry.id, item }));
   }), // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 끝난 일이 바뀌었다는 신호다.
-  [bindings, theaterId, locale, key]);
+  [bindings, context, locale, key]);
 }
 
-function scopeOf(binding: RailEntryBinding, theaterId: string | null): string | null {
-  return binding.entry.scope === "fleet" ? null : theaterId;
+function scopeOf(binding: RailEntryBinding, context: string | null): string | null {
+  return binding.entry.scope === "fleet" ? null : context;
 }
 
-function finishedVersion(bindings: readonly RailEntryBinding[], theaterId: string | null, locale: ConsoleLocale): string {
+function finishedVersion(bindings: readonly RailEntryBinding[], context: string | null, locale: ConsoleLocale): string {
   return bindings.map((binding) => {
     const finished = binding.entry.mobile?.finished;
     if (!finished || binding.entry.visible?.() === false) return "";
-    return `${binding.entry.id}:${finished.items(scopeOf(binding, theaterId), locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.detail ?? ""}\u0001${item.avatarObjectiveId ?? ""}`).join("\u0002")}`;
+    return `${binding.entry.id}:${finished.items(scopeOf(binding, context), locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.detail ?? ""}\u0001${item.avatarObjectiveId ?? ""}`).join("\u0002")}`;
   }).join("|");
 }

@@ -1,4 +1,4 @@
-import type { CommodoreClientDeps } from "./deps.js";
+import type { CommodoreClientDeps, CommodoreMobileSessionsProps } from "./deps.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "../../execution/client/composer-primitives/attachments.js";
 import { createConversationStream } from "../../execution/shared/conversation/stream.js";
@@ -25,8 +25,8 @@ export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 export const COMMODORE_CHANNEL = "commodore";
 
 export type CommodoreTab = "log" | "directive" | "memory" | "settings";
-/** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */
-export type CommodoreMobileTab = CommodoreTab | "goals";
+/** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. 「지휘관 세션」(`sessions`)은 폰에만 있는 맨 앞 구역이다. */
+export type CommodoreMobileTab = CommodoreTab | "goals" | "sessions";
 
 interface TheaterCommodore {
   readonly view: CommodoreStateView | null;
@@ -405,6 +405,11 @@ export function commodoreDecisionCardRenderer(): ComponentType<AgentDecisionCard
   return installed?.chat.DecisionCard ?? null;
 }
 
+/** 폰 「지휘관 세션」 탭 본문(호스트 `mobileSessions`). 설치 전이거나 호스트가 주지 않으면 null — 탭이 서지 않는다. */
+export function commodoreMobileSessionsRenderer(): ComponentType<CommodoreMobileSessionsProps> | null {
+  return installed?.mobileSessions ?? null;
+}
+
 /** 컴포저 위쪽 호스트 요약 줄(호스트 `ctx.chat.ComposerTopEntries`). 설치 전이거나 구버전 호스트면 null. */
 export function commodoreComposerTopEntriesRenderer(): ComponentType | null {
   return installed?.chat.ComposerTopEntries ?? null;
@@ -513,8 +518,11 @@ export const COMMODORE_ENTRY_ID = "commodore";
 /** Theater Inbox 의 사령관 섹션 id(플러그인 로컬) — 정준 id 의 접두는 호스트가 붙인다. 섹션과 사이드바 줄이 같이 쓴다. */
 export const COMMODORE_INBOX_SECTION_ID = "commodore";
 
-/** 폰 사령관 화면의 고른 구역 — 다시 들어와도 유지한다(S-54 CM-2a). 데스크톱 Theater Inbox 에서 넘어올 때·Theater 시트 행도 여기에 구역을 남긴다. */
-let mobileTab: CommodoreMobileTab = "log";
+/**
+ * 폰 사령관 화면의 고른 구역 — 기본은 「지휘관 세션」이다. 대화 머리의 알약으로 세부를 열면 늘 그 구역에서 시작하고, 데스크톱 Theater Inbox 에서
+ * 넘어올 때·Theater 시트 행은 여기에 구역을 남겨 그 구역으로 연다.
+ */
+let mobileTab: CommodoreMobileTab = "sessions";
 
 export function setCommodoreMobileTab(tab: CommodoreMobileTab): void {
   if (mobileTab === tab) return;

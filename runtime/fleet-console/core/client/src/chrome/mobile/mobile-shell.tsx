@@ -22,7 +22,7 @@ import { MobileArchiveScreen } from "./mobile-archive-screen.js";
 import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
-import { MobileConversationList } from "./mobile-conversation-list.js";
+import { MobileHome } from "./mobile-home.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { readMobileObjectiveId, replaceMobileObjectiveId } from "./mobile-objective-url.js";
 import "../../styles/mobile.css";
@@ -110,7 +110,8 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
   } else if (destination.kind === "plugins") {
     content = <MobileTools theme={theme} language={language} />;
   } else if (destination.kind === "plugin") {
-    content = <MobilePluginScreen entryId={destination.entryId} theme={theme} language={language} />;
+    // 목적지마다 화면을 새로 세운다 — 앞 목적지의 막대 깊이·history 항목을 다음 목적지가 물려받지 않게(떠나는 막대가 자기 항목을 걷는다).
+    content = <MobilePluginScreen key={destination.entryId} entryId={destination.entryId} theme={theme} language={language} />;
   } else if (selectedObjective) {
     const infoOpen = destination.kind === "info";
     content = (
@@ -134,7 +135,7 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
       </>
     );
   } else {
-    content = consoleState.theaters.length > 0 ? <MobileConversationList state={consoleState} /> : <MobileEmptyHome />;
+    content = consoleState.theaters.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
   }
 
   return (
@@ -146,7 +147,7 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
 
 /**
  * Theater가 하나도 없을 때의 홈 — 첫 실행 화면(S-49, 상단 막대 없음). 아직 부트스트랩 전이면 빈 화면이다.
- * Theater가 있으면 홈은 대화 목록이다(`MobileConversationList`).
+ * Theater가 있으면 홈은 사령관 목록이다(`MobileHome`).
  */
 function MobileEmptyHome() {
   const t = useT();

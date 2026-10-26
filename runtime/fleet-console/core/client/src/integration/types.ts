@@ -342,6 +342,8 @@ export interface ConsoleState {
   readonly objectiveRecordSearchMode: "objectiveRecords" | "commands" | null;
   /** 모바일 「새 대화」 시트가 떠 있는가. 데스크톱 새 세션 화면(`newSession`)과 같은 실행 경로를 쓴다. */
   readonly mobileNewSessionOpen: boolean;
+  /** 시트를 연 자리가 정한 주인 사령관(사령관 화면 「지휘관 세션」 탭). null이면 시트가 지금 문맥에서 고른다. */
+  readonly mobileNewSessionCommodoreId: string | null;
   /** `composer.open`이 남긴 초안·행선지. 새 세션 화면·시트가 열리며 한 번 소비한다. */
   readonly newSessionSeed: NewSessionSeed | null;
   // 컴포저가 넘긴 실행 의도. ObjectiveRecords 화면이 자기 지오메트리·포커스 규율로 소비한다

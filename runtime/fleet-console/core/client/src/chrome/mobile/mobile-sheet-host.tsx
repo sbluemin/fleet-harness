@@ -177,13 +177,13 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
 }
 
 /** 사령관 칩 시트의 ⋯. 설정(맨 위가 그 사령관의 Theater)과 이름·모양 별칭. 길게 누르기에 기대지 않는다. */
-function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
   const t = useT();
   // Theater 목록은 그 사령관 「설정」 맨 위에 있다 — 다른 사령관과 나누는 목록 시트를 따로 띄우지 않는다.
+  // 시트의 history 항목이 걷힌 뒤에 옮긴다 — 먼저 옮기면 세부의 깊이 항목이 걷히는 시트 항목과 뒤엉켜 뒤로가 주소만 홈으로 돌린다.
   const openSettings = () => {
     setZoneCommodore(commodoreId);
-    closeMobileSheets();
-    openCommodoreMobile("settings", commodoreId, true);
+    runAfterSheetRelease(() => openCommodoreMobile("settings", commodoreId, true));
   };
   const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
   return (
@@ -516,7 +516,7 @@ function ProfileSheet() {
  * 항목과 뒤엉킨다: 목적지는 `?dest=`가 걷히는 항목에 쓰여 새로고침이 목록으로 돌아가고, 새 작업 시트는 자기 항목이 걷기에 밀려 표식 없이
  * 열려 브라우저 뒤로가 시트를 닫지 않고 페이지를 떠난다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 한다.
  */
-function runAfterSheetRelease(action: () => void): void {
+export function runAfterSheetRelease(action: () => void): void {
   const run = () => { window.removeEventListener("popstate", run); window.clearTimeout(timer); action(); };
   const timer = window.setTimeout(run, 400);
   window.addEventListener("popstate", run);
@@ -538,7 +538,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
-      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openMobileNewSession)}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(() => openMobileNewSession())}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>

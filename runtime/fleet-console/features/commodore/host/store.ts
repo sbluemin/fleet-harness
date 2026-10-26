@@ -11,6 +11,8 @@ import { commodoreTheatersSchema } from "./entities.js";
 import { CommodoreStoreError } from "./errors.js";
 import { migrateCommodorePatrolState } from "./state-migration.js";
 import { patrolIntervalMs } from "../shared/contracts/types.js";
+import type { CommodoreLastMessage } from "../shared/contracts/theaters.js";
+import { commodoreLastMessage } from "../shared/last-message.js";
 import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodorePatrolMinutes, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
@@ -78,6 +80,8 @@ export interface CommodoreStore {
   readonly memory: CommodoreMemory;
   transcriptAppend(commodoreId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(commodoreId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
+  /** 대화의 마지막 말(사람의 메시지나 사령관의 답) — 목록 요약이 싣는다. 처음 한 번만 파일을 읽고 이후는 덧붙임이 갈아 끼운다. */
+  transcriptLast(commodoreId: string): CommodoreLastMessage | null;
   /**
    * 사람에게 묻는다 — 기록에 `ask` 줄을 남긴다. 같은 목표에 같은 질문이 이미 서 있으면 그 질문을 그대로 둔다(reused).
    * 서 있는 질문이 상한(`MAX_OPEN_ASKS`)이면 `too_many_asks`.
@@ -135,6 +139,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   const now = options.now ?? Date.now;
   const states = new Map<string, CommodoreState>();
   const lastSeq = new Map<string, number>();
+  const lastMessages = new Map<string, CommodoreLastMessage | null>();
   const listeners = new Set<(event: CommodoreEvent) => void>();
 
   const dirFor = (commodoreId: string): string => {
@@ -203,6 +208,8 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
     lastSeq.set(commodoreId, parsed.data.seq);
+    const last = commodoreLastMessage(parsed.data);
+    if (last) lastMessages.set(commodoreId, last);
     const kept = compactIfLarge(file);
     if (kept) pruneImages(commodoreId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
     broadcast({ op: "transcript", commodoreId, theaterIds: options.theaterIdsOf(commodoreId), entry: parsed.data });
@@ -320,6 +327,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       // 삭제 도중 프로세스가 내려가도 남은 파일의 옛 줄을 읽지 않게 경계를 먼저 영속한다.
       const state = commit(commodoreId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
       lastSeq.set(commodoreId, clearedThrough);
+      lastMessages.set(commodoreId, null);
       fs.rmSync(transcriptFile(commodoreId), { force: true });
       pruneImages(commodoreId);
       return state;
@@ -327,6 +335,20 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     images,
     memory,
     transcriptAppend: (commodoreId, input) => append(commodoreId, input),
+    transcriptLast(commodoreId) {
+      const known = lastMessages.get(commodoreId);
+      if (known !== undefined) return known;
+      const clearedThrough = load(commodoreId).transcriptClearedThrough ?? 0;
+      const entries = readTranscriptFile(transcriptFile(commodoreId));
+      let last: CommodoreLastMessage | null = null;
+      for (let index = entries.length - 1; index >= 0 && !last; index -= 1) {
+        const entry = entries[index]!;
+        if (entry.seq <= clearedThrough) break;
+        last = commodoreLastMessage(entry);
+      }
+      lastMessages.set(commodoreId, last);
+      return last;
+    },
     transcriptRead(commodoreId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
       const clearedThrough = load(commodoreId).transcriptClearedThrough ?? 0;

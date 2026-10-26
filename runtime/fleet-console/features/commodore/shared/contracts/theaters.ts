@@ -6,6 +6,12 @@ export interface CommodoreTheaterSummary {
   readonly label: string;
   readonly status: "available" | "missing" | "unregistered";
 }
+/** The latest conversation line of a commodore — the phone home row shows its time and a one-line preview. */
+export interface CommodoreLastMessage {
+  readonly at: number;
+  readonly text: string;
+  readonly from: "person" | "commodore";
+}
 export interface ConsoleCommodoreSummary {
   readonly commodoreId: string;
   readonly alias?: string;
@@ -13,6 +19,7 @@ export interface ConsoleCommodoreSummary {
   readonly theaters: readonly CommodoreTheaterSummary[];
   readonly active: boolean;
   readonly run: CommodoreRunStatus;
+  readonly last?: CommodoreLastMessage;
 }
 export interface CommodoreListResponse { readonly commodores: readonly ConsoleCommodoreSummary[] }
 export interface CommodoreOrderInput { readonly commodoreIds: readonly string[] }

@@ -31,8 +31,8 @@ import { ledgerObjectiveId, openLedger } from "../../../../../features/execution
 import "../../styles/mobile.css";
 
 /**
- * 모바일 배치의 틀: 상단 막대 · 화면(라우트) · 하단 시트. 탭 막대와 드로어는 없다 — 홈(대화 목록)이 루트이고, 목적지는 홈의
- * 바로가기 칩이 연다. 「확인 필요」를 여기서 한 번 계산해 홈 맨 위 묶음·전체 화면·요청 배너가 같은 행을 읽게 한다.
+ * 모바일 배치의 틀: 상단 막대 · 화면(라우트) · 하단 시트. 탭 막대와 드로어는 없다 — 홈(사령관 목록)이 루트이고, 목적지는 홈의
+ * 바로가기 시트가 연다. 「확인 필요」를 여기서 한 번 계산해 바로가기 건수·전체 화면·요청 배너가 같은 행을 읽게 한다.
  */
 export function MobileFrame({ state, bands, onDeferredDeletion, children }: { readonly state: ConsoleState; readonly bands: ReactNode; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void; readonly children: ReactNode }) {
   const navigate = useNavigate();

@@ -85,7 +85,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     if (!state) throw new CommodoreStoreError("commodore_unavailable");
     const theaters = ownership.theaterSummaries(commodoreId);
     const active = board !== null && commodoreActive(context, store, commodoreId);
-    return { commodoreId, ...(state.alias ? { alias: state.alias } : {}), label: state.alias ?? theaters[0]?.label ?? "Commodore", theaters, active, run: { ...(supervisor.status(commodoreId) ?? { phase: active ? "idle" : "off" }), totals: state.run ?? EMPTY_RUN_TOTALS } };
+    const last = store.transcriptLast(commodoreId);
+    return { commodoreId, ...(state.alias ? { alias: state.alias } : {}), label: state.alias ?? theaters[0]?.label ?? "Commodore", theaters, active, run: { ...(supervisor.status(commodoreId) ?? { phase: active ? "idle" : "off" }), totals: state.run ?? EMPTY_RUN_TOTALS }, ...(last ? { last } : {}) };
   };
   const orderedIds = (): readonly string[] => {
     const ids = entities.ids();

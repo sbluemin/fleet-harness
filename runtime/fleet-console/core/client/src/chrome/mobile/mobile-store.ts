@@ -34,7 +34,7 @@ export function subscribeMobileState(listener: () => void): () => void { return 
 // ── /objectives 안의 목적지 ──────────────────────────────────────────────
 
 /**
- * `home`은 대화 목록(열린 Objective이 있으면 그 Objective 화면)이다. 나머지는 홈의 바로가기 칩·검색·확인 필요가 여는 전체 화면이다.
+ * `home`은 사령관 목록(열린 Objective이 있으면 그 Objective 화면)이다. 나머지는 홈의 바로가기 시트·검색·사령관 행이 여는 전체 화면이다.
  * Theater·설정은 라우트라 여기 없다.
  */
 export type MobileDestination =
