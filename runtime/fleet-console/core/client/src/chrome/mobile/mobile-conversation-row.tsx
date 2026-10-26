@@ -45,7 +45,7 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "objectiveReco
     const members = layout ? layout.cluster.members.filter((member) => !member.pending && member.objectiveId !== objectiveRecord.id) : [];
     return {
       objectiveRecord,
-      // 완료 지휘관은 활동만 읽으면 「쉼/휴면」이다 — 묶음 줄의 「완료」를 임무 완료 사실로 넘겨 홈 「끝남」·검색·대화 머리가 같은 낱말을 쓴다.
+      // 완료 지휘관은 활동만 읽으면 「쉼/휴면」이다 — 묶음 줄의 「완료」를 임무 완료 사실로 넘겨 지휘관 목록·검색·대화 머리가 같은 낱말을 쓴다.
       face: mongleStateOfMark(mark, { ...clusterFaceFacts(clusters, objectiveRecord.id), ...(isFinishedConversation(index, objectiveRecord.id) ? { workDone: true } : {}) }),
       minis: layout ? clusterWorkingMembers(layout.cluster, objectiveRecord.id, { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime }) : [],
       memberCount: members.length,
@@ -56,8 +56,8 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "objectiveReco
 }
 
 /**
- * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Objective이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
- * 남의 줄에 fold로 든 Objective은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
+ * 대화 얼굴에 완료 사실을 더할지 — 그 Objective이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
+ * 남의 줄에 fold로 든 Objective은 거른다.
  */
 export function isFinishedConversation(index: ClusterIndex, objectiveId: string): boolean {
   const layout = index.rowOf.get(objectiveId);

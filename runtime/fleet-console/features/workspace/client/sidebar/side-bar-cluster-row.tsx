@@ -161,13 +161,9 @@ interface SideBarClusterRowProps {
   readonly selected: boolean;
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected }: SideBarClusterRowProps) {
-  const t = useT();
-  const locale = useConsoleLocale();
-  const registry = useFeatureRegistry();
-  const { layout, row, anchor } = item;
-  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Objective 칩과 같은 펄스로 줄 전체가 감싸인다.
-  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
+/** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
+export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t: ReturnType<typeof useT>) {
+  const { row, anchor } = item;
   const state = rowGlyphState(item);
   // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Objective 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
   const label = row.commodore && !anchor && item.fold.length === 0
@@ -179,8 +175,6 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
       : state === "done"
         ? t("sidebar.row.glyph.done")
         : objectiveRecordMarkLabel(state);
-  // 시작 전 줄도 세션 유무·목표 패널 열림이 아니라 옆 칸의 선택을 따른다.
-  const active = selected;
   // 제목 아래에는 상태 문구·진척 게이지·분모를 한 줄로 둔다.
   // 사람의 차례가 된 까닭은 접근 이름에 남기고, 보이는 줄은 결정 상태와 질문 수를 말한다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
@@ -190,6 +184,18 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
     ? `${t("commanderTab.status.awaiting")}${row.decisionQuestions ? ` ${row.decisionQuestions}` : ""}`
     : state === "review" ? t("commanderTab.status.review")
       : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
+  return { state, label, decisionNote, handlingStatus, conversationLine };
+}
+
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected }: SideBarClusterRowProps) {
+  const t = useT();
+  const locale = useConsoleLocale();
+  const registry = useFeatureRegistry();
+  const { layout, row, anchor } = item;
+  // Console Use — 에이전트가 이 목표를 읽거나 고치면 Objective 칩과 같은 펄스로 줄 전체가 감싸인다.
+  const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
+  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t);
+  const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
   const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
@@ -313,10 +319,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
         </span>
         <span className="side-bar-cluster-row-line" aria-hidden="true">
           <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
-          {progress ? <>
-            <span className={`side-bar-cluster-row-gauge${progress.done >= progress.total ? " is-complete" : ""}`}><span style={{ width: `${Math.max(0, Math.min(100, progress.done / progress.total * 100))}%` }} /></span>
-            <span className="side-bar-cluster-row-fraction">{progress.done}/{progress.total}</span>
-          </> : null}
+          <ClusterRowProgress progress={progress} />
         </span>
       </button>
       {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
@@ -327,15 +330,25 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
   );
 }
 
+/** 두 줄 행의 진척 — 두 화면이 같은 게이지와 분수를 쓴다. */
+export function ClusterRowProgress({ progress }: { readonly progress: ObjectiveClusterRow["progress"] | null }) {
+  if (!progress || progress.total <= 0) return null;
+  return <>
+    <span className={`side-bar-cluster-row-gauge${progress.done >= progress.total ? " is-complete" : ""}`}><span style={{ width: `${Math.max(0, Math.min(100, progress.done / progress.total * 100))}%` }} /></span>
+    <span className="side-bar-cluster-row-fraction">{progress.done}/{progress.total}</span>
+  </>;
+}
+
 /**
  * 줄 앞 표식 — 지휘관 아바타와, 지금 일하는(진행·부름·안 본 답) 구성원 미니 아바타 최대 셋. 지휘관의 얼굴은 자기 상태를 말하고
  * (플러그인 글리프·결정 요청이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
  */
-function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
+export function ClusterRowAvatar({ item, rowState, label, decorative = false, size: full = 30 }: {
   readonly item: SideBarRowItem;
   readonly rowState: ObjectiveClusterRowGlyph | ObjectiveMarkVisual;
   readonly label: string;
   readonly decorative?: boolean;
+  readonly size?: number;
 }) {
   const { row, anchor, layout } = item;
   // 지휘관의 얼굴은 다른 표면과 같은 기준(`mongleStateOf`)을 지난다 — 줄의 글리프는 시작 전·검토 대기·완료라는 사실로,
@@ -352,9 +365,8 @@ function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
   const { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime } = useConsoleState();
   const foldMarks = new Map(item.fold.map((entry) => [entry.objectiveRecord.id, entry.mark ?? entry.status ?? "idle"] as const));
   const working = clusterWorkingMembers(layout.cluster, anchor?.objectiveRecord?.id ?? layout.cluster.root, { objectiveRecords, nestedObjectiveRecords, objectiveRecordRuntime }, foldMarks);
-  // 대화 행의 지휘관 아바타는 30px 이다 — 제목·진행 두 줄을 함께 받친다. 일반 Objective 칩(22px)은 그대로다.
-  const full = 30;
-  const size = working.length > 0 ? 26 : full;
+  // 폰도 같은 얼굴·구성원을 쓰되 행 크기에 맞춰 키운다.
+  const size = working.length > 0 ? Math.round(full * 26 / 30) : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
   const commander = row.commodore && !anchor
     ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
