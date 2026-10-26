@@ -98,6 +98,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   };
   const deletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
     protectedDirectories: () => [...entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)), ...(deps.paths.listTheaterIds?.() ?? []).flatMap((id) => { const root = deps.paths.resolveTheaterPath(id); return root ? [root] : []; })],
+    removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
     removed: (commodoreId, ids) => { emit({ op: "removed", commodoreId, theaterIds: ids }); deps.identityChanged?.(ids); },
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {

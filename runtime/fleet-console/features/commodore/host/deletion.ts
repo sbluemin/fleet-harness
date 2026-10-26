@@ -27,6 +27,7 @@ export function createCommodoreDeletion(deps: {
   consoleDataDir: string;
   summary: (id: string) => ConsoleCommodoreSummary;
   protectedDirectories?: () => readonly string[];
+  removing: (id: string, theaterIds: readonly string[]) => void;
   removed: (id: string, theaterIds: readonly string[]) => void;
 }) {
   const confirmationAlias = (id: string, language?: "en" | "ko") => {
@@ -74,6 +75,8 @@ export function createCommodoreDeletion(deps: {
         const bestEffort = (code: string, run: () => void) => {
           try { run(); } catch { warnings.push(code); console.warn(`[commodore] deletion ${id}: ${code}`); }
         };
+        // 되돌릴 수 없는 rename 뒤, 목표 제거 방송 전에 모든 창의 수신자를 먼저 비운다.
+        bestEffort("removing_event_failed", () => deps.removing(id, theaterIds));
         bestEffort("objective_cleanup_failed", detached.committed);
         // rename이 커밋점이다. 정리 실패도 응답에 싣고, 중단된 rm은 다음 기동이 재시도한다.
         try { await fs.promises.rm(staging, { recursive: true, force: true }); }

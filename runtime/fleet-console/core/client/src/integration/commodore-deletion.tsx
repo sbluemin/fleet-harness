@@ -26,6 +26,7 @@ export function CommodoreDeletionHost() {
   const [notice, setNotice] = useState<CommodoreDeletionNotice | null>(null);
   useEffect(() => {
     const offRemoved = subscribeCommodoreLifecycle((event) => {
+      if (event.op === "removing") { prepareCommodoreRemovalStage(event.commodoreId); return; }
       if (event.op !== "removed" || isCommodoreDeletionOpen(event.commodoreId)) return;
       removeCommodoreViews(event.commodoreId);
     });
@@ -39,6 +40,18 @@ export function CommodoreDeletionHost() {
   }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 7000); return () => clearTimeout(timer); }, [notice]);
   return <Toast open={notice !== null} tone={notice?.warning ? "warn" : "info"} title={notice?.message ?? ""} message={notice?.warning} onDismiss={() => setNotice(null)} />;
+}
+
+/** 목표 레코드가 지워지기 전의 소유자를 판정한다. 완료 알림·모바일 history 정리는 아직 하지 않는다. */
+export function prepareCommodoreRemovalStage(id: string): void {
+  if (getViewModeSnapshot().effective !== "desktop") return;
+  const state = getState();
+  if (state.newSession !== null) return;
+  const surface = getConversationSurface();
+  const objectiveId = surface ? surface.params.objectiveId : state.activeObjectiveId;
+  const subject = state.objectiveRecords.find((row) => row.id === objectiveId) ?? (surface === null ? getConversationSubject() : null);
+  if (surface?.params.commodoreId !== id && subject?.commodoreId !== id) return;
+  clearConversationStage(); setActiveObjective(null); selectObjective(null);
 }
 
 function removeCommodoreViews(id: string, done: () => void = () => {}) {

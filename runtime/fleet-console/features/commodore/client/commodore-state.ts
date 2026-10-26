@@ -310,6 +310,8 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
     const event = payload as CommodoreEvent | null;
     if (!event || typeof event.commodoreId !== "string" || !Array.isArray(event.theaterIds)) return;
+    // 목표 제거는 다른 채널에서 즉시 온다. 프레임 배치로 미루면 그 사이 기본 선택이 다른 수신자를 연다.
+    if (event.op === "removing") { publishCommodoreLifecycle(event); return; }
     if (event.op === "live" && !theaters.get(event.commodoreId)?.transcriptLoaded) return;
     stream.push(event);
   });

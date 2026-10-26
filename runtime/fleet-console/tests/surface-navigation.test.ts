@@ -8,7 +8,8 @@ import { createHostCapabilities, createHostPaneTargetPorts } from "../core/clien
 import { landPaneTarget, type PaneTargetBinding } from "../core/client/src/chrome/pane/pane-target.js";
 import { getPaneStoreSnapshot, __resetPaneStoreForTests } from "../core/client/src/chrome/pane/pane-store.js";
 import { getRailStoreSnapshot } from "../core/client/src/chrome/rail/rail-store.js";
-import { getState, setState, setActiveObjective } from "../core/client/src/integration/store.js";
+import { getState, setState, setActiveObjective, applyObjectiveRemoved } from "../core/client/src/integration/store.js";
+import { prepareCommodoreRemovalStage } from "../core/client/src/integration/commodore-deletion.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
 import { searchRailPanels } from "../core/client/src/integration/objective-search.js";
 
@@ -93,9 +94,9 @@ it("keeps a deleted conversation's stage empty until an explicit conversation is
   const before = getState();
   setViewModePreference("desktop");
   try {
+    setState({ newSession: null });
     openConversationSurface("commodore", { commodoreId: "deleted-owner" });
-    clearConversationStage();
-    setActiveObjective(null);
+    prepareCommodoreRemovalStage("deleted-owner");
     expect(getConversationSurface()).toBeNull();
     expect(isConversationStageEmpty()).toBe(true);
     // 이전 render의 effect나 기본 선택은 명시적으로 비운 무대를 다시 채우지 못한다.
@@ -113,6 +114,28 @@ it("keeps a deleted conversation's stage empty until an explicit conversation is
     setActiveObjective(null);
     setActiveObjective("remaining-objective", { fromStage: true });
     expect(getState().activeObjectiveId).toBe("remaining-objective");
+
+    const target = { id: "target-objective", commodoreId: "deleted-owner", theaterId: "a", title: "Target", ts: { createdAt: 1, updatedAt: 1 } };
+    const other = { ...target, id: "other-objective", commodoreId: "other-owner", title: "Other" };
+    setState({ objectiveRecords: [target, other] });
+    setActiveObjective(target.id);
+    prepareCommodoreRemovalStage(other.commodoreId);
+    expect(getState().activeObjectiveId).toBe(target.id);
+    expect(isConversationStageEmpty()).toBe(false);
+    // removing는 목표 제거 전 들어온다. 삭제 버튼을 누른 창이 아니어도 소유자를 잃기 전에 비운다.
+    prepareCommodoreRemovalStage(target.commodoreId);
+    applyObjectiveRemoved(target.id);
+    setActiveObjective(other.id, { fromStage: true });
+    expect(getState().objectiveRecords).toEqual([other]);
+    expect(getState().activeObjectiveId).toBeNull();
+    expect(isConversationStageEmpty()).toBe(true);
+    // 사령관 삭제 신호 없는 보통 목표 제거는 기존 기본 선택을 그대로 허용한다.
+    setState({ objectiveRecords: [target, other] });
+    setActiveObjective(target.id);
+    applyObjectiveRemoved(target.id);
+    setActiveObjective(other.id, { fromStage: true });
+    expect(getState().activeObjectiveId).toBe(other.id);
+    expect(isConversationStageEmpty()).toBe(false);
   } finally { resumeConversationStage(); setState(before); }
 });
 

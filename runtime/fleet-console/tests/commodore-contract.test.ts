@@ -137,12 +137,12 @@ it("holds deletion admission until writers stop and preserves the owner on stop 
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const stop = vi.fn(async (): Promise<void> => { await gate; throw new Error("archive_stop_failed"); });
-  const rollback = vi.fn(), committed = vi.fn(), removed = vi.fn();
+  const rollback = vi.fn(), committed = vi.fn(), removing = vi.fn(), removed = vi.fn();
   const detach = vi.fn(() => ({ removedObjectives: 1, rollback, committed }));
   const deletion = createCommodoreDeletion({ ownership, store, consoleDataDir: dir,
     supervisor: { stopForDeletion: async () => {}, sync: () => {} } as never,
     summary: () => ({ commodoreId: id, alias: "Owned", label: "Owned", theaters: [], active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } } }) as never,
-    host: { preview: () => ({ objectives: { total: 1, active: 1, archived: 0 }, runningSessions: 1 }), stopObjectives: stop, detachObjectives: detach, cleanup: () => ["settings_cleanup_failed"], releaseKnowledge: () => {}, claudeProjectsDirectory: path.join(dir, "claude", "projects") }, removed,
+    host: { preview: () => ({ objectives: { total: 1, active: 1, archived: 0 }, runningSessions: 1 }), stopObjectives: stop, detachObjectives: detach, cleanup: () => ["settings_cleanup_failed"], releaseKnowledge: () => {}, claudeProjectsDirectory: path.join(dir, "claude", "projects") }, removing, removed,
   });
   const deleting = deletion.remove(id, "Owned");
   const failed = expect(deleting).rejects.toThrow("archive_stop_failed");
@@ -160,6 +160,9 @@ it("holds deletion admission until writers stop and preserves the owner on stop 
   expect(committed).not.toHaveBeenCalled();
   expect(ownership.entities.dirOf(id)).not.toBeNull();
   expect(removed).not.toHaveBeenCalled();
+  expect(removing).not.toHaveBeenCalled();
+  removing.mockImplementation(() => { expect(ownership.entities.dirOf(id)).toBeNull(); expect(committed).not.toHaveBeenCalled(); });
+  committed.mockImplementation(() => { expect(removing).toHaveBeenCalledWith(id, []); expect(removed).not.toHaveBeenCalled(); });
   expect(await deletion.remove(id, "Owned")).toEqual({ deleted: id, removedObjectives: 1, warnings: ["settings_cleanup_failed"] });
   expect(store.read(id)).toBeNull();
   expect(ownership.entities.ids()).toEqual([]);
