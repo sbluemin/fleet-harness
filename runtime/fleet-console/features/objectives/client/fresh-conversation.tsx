@@ -26,14 +26,17 @@ export function connectFreshConversation(next: ClientConversationCapability | un
 
 /**
  * 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다.
- * 목표의 Theater 를 함께 싣는다 — 호스트는 가운데 대화의 Theater 를 `params.theaterId` 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+ * 목표의 사령관을 함께 싣는다 — 목표의 `theaterId` 는 사령관 목표 폴더의 id 라 등록된 Theater 가 아니다. 호스트는 그 id 가 등록 Theater 가
+ * 아니면 `params.commodoreId` 의 Theater 로 머리 도구모음·오른쪽 패널을 연다(이것이 없으면 오른쪽 패널이 서지 않는다).
  * `theaterId` 를 주면 보관된 완료 목표를 찾을 Theater 도 된다 — 읽어 둔 끝난 목표에 없으면(그 뒤에 완료로 보관됐다) 다시 읽고, 다 읽기 전에는 칸이 서 있다.
  */
 export function openFreshConversation(objectiveId: string, theaterId?: string): boolean {
   if (!port || !port.isActive()) return false;
   void loadObjective(objectiveId).catch(() => {});
-  const target = theaterId ?? findObjective(objectiveId)?.theaterId;
-  return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}) });
+  const known = findObjective(objectiveId);
+  const target = theaterId ?? known?.theaterId;
+  const commodoreId = known?.commodoreId;
+  return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}), ...(commodoreId ? { commodoreId } : {}) });
 }
 
 /**
