@@ -1225,7 +1225,7 @@ export const withoutLegacyCriteria = (value: unknown): unknown => {
 };
 export type FollowupBodyInput = z.output<typeof followupBodySchema>;
 export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
-/** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */
+/** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 주거나 호스트가 선택에서 유도한 멱등 키(UUID). */
 export const followupSelectionSchema = z.object({
   batchId: z.string().uuid(),
   followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),

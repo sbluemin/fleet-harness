@@ -9,6 +9,9 @@ import type { ObjectiveGroupedEvent, ObjectiveRecord } from "../shared/records/t
 import type { ObjectivesFeatureDeps } from "../host/deps.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createDurableJsonStore } from "@fleet-console/infra";
+import { sanitizeDurableConsoleState } from "../../workspace/host/durable-state.js";
+import { createObjectiveStorage } from "../host/storage.js";
 import { createObjectivesFeature } from "../host/index.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
@@ -56,7 +59,8 @@ type Saved = {
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
 function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-"));
+  // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
   const theaterPath = path.join(dir, "project");
   const workspace = path.join(dir, "data", "workspaces", "project");
@@ -1296,7 +1300,7 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
-  it("keeps merge sources only in the receiving record and archives existing Objectives while deleting unlaunched objectives through Console Use", async () => {
+  it("keeps merge sources in the receiving record and archives all objectives restorably through Console Use until public purge", async () => {
     const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "objectiveRecord" as const, objectiveId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
@@ -1355,10 +1359,14 @@ describe("Objectives contract", () => {
     expect(reloaded.find(waiting.id)!.merged).toContainEqual(expect.objectContaining({ sourceId: duplicate.id, restorable: false }));
     const disk = JSON.parse(fs.readFileSync(path.join(workspace, "objectives", waiting.id, "objective.json"), "utf8"));
     expect(disk.merged[0].source).toMatchObject({ id: duplicate.id, note: "dup brief", criteria: expect.any(Array) });
-    // Objective이 없는 목표는 한 번에 삭제되고, restore로 되살릴 수 없다.
-    expect((await use({ action: "remove", objectiveIds: [stale.id] })).structuredContent).toMatchObject({ deleted: [stale.id], archived: [] });
-    expect(store.find(stale.id)).toBeNull();
-    expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(404);
+    // remove도 보관의 호환 이름이다 — 기동 전 목표를 지우거나 모델을 띄우지 않고, 같은 기록으로 복원한다.
+    const launchesBeforeArchive = launches.length;
+    expect((await use({ action: "remove", objectiveIds: [stale.id] })).structuredContent).toMatchObject({ deleted: [], archived: [stale.id] });
+    expect(store.find(stale.id)).toMatchObject({ archived: true, title: "Stale" });
+    expect(savedIds()).toContain(stale.id);
+    expect((await use({ action: "restore", objectiveIds: [stale.id] })).structuredContent).toMatchObject({ restored: [stale.id] });
+    expect(store.find(stale.id)).toMatchObject({ archived: false, title: "Stale" });
+    expect(launches).toHaveLength(launchesBeforeArchive);
     const live = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive me", groupId: null, note: "keep me" });
     await launch.requestPlan(live.id);
     expect((await use({ action: "remove", objectiveIds: [live.id] })).structuredContent).toMatchObject({ archived: [live.id], deleted: [] });
@@ -1381,10 +1389,11 @@ describe("Objectives contract", () => {
     expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasSession: true, note: "keep the brief" } });
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/restore", { objectiveId: shelved.id })).value.objective).toMatchObject({ archived: false, hasSession: true, note: "keep the brief" });
-    // 플래그 없는 보관(목표 머리의 두 번 확정 삭제)은 그대로 영구 삭제다.
-    const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Delete before starting", groupId: null });
-    expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: true });
-    expect(store.find(discarded.id)).toBeNull();
+    // 플래그가 없어도 보관만 한다. 영구 삭제는 이 라우트에서 할 수 없다.
+    const discarded = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Archive before starting", groupId: null });
+    expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: false });
+    expect(store.find(discarded.id)).toMatchObject({ archived: true });
+    expect((await route("objective/restore", { objectiveId: discarded.id })).status).toBe(200);
 
     // 보관함을 읽고 영구 삭제를 예약하는 같은 정리 경계 — Core의 타이머·파일 삭제 알고리즘은 재현하지 않는다.
     await launch.archive(shelved.id);
@@ -2027,7 +2036,7 @@ describe("Objectives contract", () => {
   });
 
   it("admits observable follow-ups and creates records once after hand-off without launching their Objectives", async () => {
-    const { store, route, call, launch, launches, objectiveRecords, savedObjective, objectiveFile, restart } = harness();
+    const { ctx, store, route, call, launch, launches, objectiveRecords, savedObjective, objectiveFile, restart, workspace, objectivesDir, objectiveRecordsHost } = harness();
     const source = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
@@ -2049,10 +2058,11 @@ describe("Objectives contract", () => {
     expect(reloaded.find(source.id)!.followupBatches[0]!.items[0]!.snapshot).not.toHaveProperty("criteria");
     expect(reloaded.find(source.id)!.followupBatches[0]!.items[0]!.snapshot.brief).toBe("Next brief");
     expect((await add(body)).error).toBe("too_many_followups");
-    for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
-    const candidate = store.find(source.id)!.followups[0]!;
+    for (const extra of store.find(source.id)!.followups.slice(2)) store.followupWithdraw(source.id, extra.id);
+    const candidates = store.find(source.id)!.followups;
+    const candidate = candidates[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev }] });
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: candidates.map(({ id, rev }) => ({ id, rev })) });
     // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
     expect((await pick()).value.error).toBe("not_in_review");
     expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
@@ -2073,13 +2083,31 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);
     expect(store.list("c1").filter((entry) => entry.id === targetId)).toHaveLength(1);
-    await launch.remove(targetId);
-    expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[1]!.state).toBe("created"));
+    const into = store.find(source.id)!.followupBatches[0]!.items[1]!.objectiveId!;
+    // 실제 파일 저장소까지 지난다 — 후속 두 개의 원본 배치와 병합 스냅샷을 함께 보존해야 한다.
+    fs.writeFileSync(path.join(objectivesDir, "archive.json"), JSON.stringify({ revision: 0, entries: [], deletions: [], events: [] }));
+    const persistence = createObjectiveStorage({ directory: workspace,
+      stateStore: createDurableJsonStore({ filePath: path.join(workspace, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState }),
+      owners: () => [{ ...documentContext("c1"), directory: objectivesDir }],
+    });
+    persistence.load();
+    expect(persistence.board.list("c1").map((entry) => entry.id)).toContain(targetId);
+    const durable = createObjectiveStore({ storage: persistence.board, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const durableLaunch = createLaunchService(ctx, durable);
+    launchServices.push(durableLaunch);
+    const tool = createCommodoreBoardTools(ctx, durable, durableLaunch, "c1")[0]!;
+    const merged = await tool.execute({ action: "merge", into, from: [targetId] }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
+    expect(merged.structuredContent).toMatchObject({ ok: true, objectiveId: into, merged: [targetId] });
+    expect(durable.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
+    expect(durable.find(targetId)).toBeNull();
+    persistence.load();
+    expect(createObjectiveStore({ storage: persistence.board, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(into)!.merged).toContainEqual(expect.objectContaining({ sourceId: targetId }));
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault } = harness(() => "http://console.invalid");
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid");
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -2249,8 +2277,10 @@ describe("Objectives contract", () => {
     expect(await refusal(commodore, { action: "steer", objectiveId: id, context: "x".repeat(MAX_REMARK + 1) })).toBe("invalid_arguments");
     // 사령관도 같은 위치 계약을 쓴다. 다른 Theater의 목표는 보관·삭제·복원하지 못한다.
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, { action: "remove", objectiveIds: [personal] })).toBe("other_theater");
-    expect(await board({ action: "remove", objectiveIds: [personal], reason: "duplicate" })).toMatchObject({ removed: [personal], deleted: [personal] });
-    expect(store.find(personal)).toBeNull();
+    expect(await board({ action: "archive", objectiveIds: [personal], reason: "duplicate" })).toMatchObject({ removed: [personal], archived: [personal], deleted: [] });
+    expect(store.find(personal)).toMatchObject({ archived: true, hasSession: true });
+    expect(await board({ action: "restore", objectiveIds: [personal] })).toMatchObject({ restored: [personal] });
+    expect(store.find(personal)).toMatchObject({ archived: false, hasSession: true });
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
     // 완료 목표 보관은 현재 턴의 사람 메시지가 권한이다. 미기동 완료 목표도 삭제하지 않고 완료 기록과 함께 보관한다.
     const completed = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Completed before launch", groupId: null });
@@ -2460,13 +2490,20 @@ describe("Objectives contract", () => {
     await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Opening new objectives is the person's call" });
     expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
     expect((await route("person-hold/return", { objectiveId: id, target: "followup" })).status).toBe(200);
-    await board({ action: "complete", objectiveId: id, batchId: "3f1c8f3e-1111-4a8b-9c0d-000000000003", followups: [{ id: candidate.id, rev: candidate.rev }] });
+    // 사령관은 배치 UUID 없이 고른다. 같은 요청이 겹쳐도 후보 목표와 배치는 한 번만 생긴다.
+    const completeSelection = { action: "complete", objectiveId: id, followups: [{ id: candidate.id, rev: candidate.rev }] };
+    await Promise.all([board(completeSelection), board(completeSelection)]);
     let nextId = "";
     await vi.waitFor(async () => {
       const completed = (await board({ action: "read", objectiveId: id })).objective as { followupBatches: readonly { items: readonly { objectiveId: string; state: string }[] }[] };
       expect(completed.followupBatches[0]!.items[0]!.state).toBe("created");
       nextId = completed.followupBatches[0]!.items[0]!.objectiveId;
     });
+    const restarted = restart();
+    const replay = createCommodoreBoardTools(ctx, restarted.store, restarted.launch, "c1")[1]!;
+    expect((await replay.execute(completeSelection, { cwd: workspace }) as { structuredContent: unknown }).structuredContent).toMatchObject({ ok: true });
+    expect(restarted.store.find(id)!.followupBatches).toHaveLength(1);
+    expect(restarted.store.list("c1").filter((entry) => entry.origin?.candidateId === candidate.id).map((entry) => entry.id)).toEqual([nextId]);
     expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
     expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
     // 사령관이 고른 후속은 따로 정하지 않아도 사람이 운영한다. 사람이 맡기면 사령관 운영이 된다(깨움과 같은 판정).

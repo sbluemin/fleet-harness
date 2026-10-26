@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import type { ObjectivesFeatureDeps } from "./deps.js";
@@ -99,8 +100,14 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     complete: holding((body: CompleteAction) => (body.undone ? [] : ["review", "followup", "decision"]), unlessBusy(async (body: CompleteAction) => {
       if (body.undone) return objective(await launch.reopen(body.objectiveId, options(body)));
       if (!body.followups?.length) return objective(await launch.complete(body.objectiveId, options(body)));
-      if (!body.batchId) throw new ObjectiveStoreError("invalid_request");
-      return objective(await launch.completeWithFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body)));
+      // 화면은 자기 UUID를 쓴다. 도구가 생략하면 목표·완료 회차·후보·rev로 정해 동시 재시도와 재시작 뒤에도 같은 배치를 가리킨다.
+      // 완료 회차는 완료를 푼 수(완료 해제·확장)다 — 버린 후보를 다음 회차에서 고르면 rev 가 같아도 새 배치가 된다.
+      const counts = store.find(body.objectiveId)?.actionCounts;
+      const round = (counts?.reopen ?? 0) + (counts?.extend ?? 0);
+      const selection = body.followups.map(({ id, rev }) => JSON.stringify([id, rev])).sort();
+      const hex = createHash("sha256").update(JSON.stringify(["objectives.followup-batch", body.objectiveId, round, selection])).digest("hex");
+      const batchId = body.batchId ?? `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+      return objective(await launch.completeWithFollowups(body.objectiveId, { batchId, followups: body.followups }, options(body)));
     }), true, (body: CompleteAction) => (body.undone ? [] : ["followup"])),
     extend: holding(() => ["review", "decision"], unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body)))),
     handOff: unlessBusy(({ objectiveId }: Ref) => objective(store.handOff(objectiveId, { by: actor }))),
