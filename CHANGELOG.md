@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.258.0] - 2026-10-26
+
+### fleet-console
+
+#### Changed
+- On the phone, Home now lists every commodore with its latest message, and each commodore's commander sessions live in a Commander sessions tab on its detail screen.
+
 ## [1.257.0] - 2026-10-25
 
 ### fleet-console

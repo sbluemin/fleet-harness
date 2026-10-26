@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.258.0] - 2026-10-26
+
+### fleet-console
+
+#### Changed
+- 휴대폰 홈에 모든 사령관이 마지막 메시지와 함께 나열되고, 각 사령관의 지휘관 세션은 사령관 세부 화면의 「지휘관 세션」 탭에서 볼 수 있습니다.
+
 ## [1.257.0] - 2026-10-25
 
 ### fleet-console
