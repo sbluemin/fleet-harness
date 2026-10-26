@@ -497,8 +497,10 @@ describe("Objectives contract", () => {
     const approvedSecond = store.proposalsApproveAll(id);
     expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
     expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
-    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다.
-    launch.continueExtension(id);
+    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다 — 그사이 Console 이 다시 서도 기록에서 되살린다.
+    const restarted = createLaunchService(h.ctx, store);
+    launchServices.push(restarted);
+    await restarted.resumeInProgress();
     await vi.waitFor(() => expect(store.find(id)!.planning).toBe(false));
     store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["second done"]));
     store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "second evidence"));

@@ -1209,7 +1209,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!current || !observed) return;
       const snapshot: ConsoleObjectiveObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
-      if (event.objectiveId === current.id) service.continueExtension(current.id, true);
+      // 사람이 멈췄거나 실패한 턴은 구상이 끝난 것이 아니다 — 확장 개시는 다음 정상 턴이나 기준 결정 때 다시 본다.
+      if (event.objectiveId === current.id && event.output.outcome !== "interrupted" && event.output.outcome !== "failed") service.continueExtension(current.id, true);
     }) ?? null;
     if (outcomeTimer) return;
     outcomeTimer = setTimeout(() => {
@@ -1449,6 +1450,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     },
 
     async resumeInProgress() {
+      // 메모리의 확장 자동 개시는 재시작과 함께 사라진다 — 마지막 구상 행위가 확장인 구상 중 회차를 기록에서 되살린다.
+      for (const current of store.all()) {
+        if (disposed || current.done || current.archived || !current.planning || !current.extensionActive || extensionStarts.has(current.id)) continue;
+        const last = (current.actions ?? []).findLast((entry) => entry.kind === "extend" || entry.kind === "plan" || entry.kind === "commence");
+        if (last?.kind !== "extend") continue;
+        extensionStarts.set(current.id, { actor: last.by, language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
+        service.continueExtension(current.id);
+      }
       for (const current of store.all()) {
         if (disposed || !resumable(current)) continue;
         try {
