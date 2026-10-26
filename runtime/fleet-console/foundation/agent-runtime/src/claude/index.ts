@@ -22,6 +22,7 @@ export type {
   ClaudeGatewayContextUsage,
   ClaudeGatewayEffort,
   ClaudeGatewayExternalMcpServer,
+  ClaudeGatewayLocalPlugin,
   ClaudeGatewayMcpServer,
   ClaudeGatewayMcpServerOptions,
   ClaudeGatewayMessage,

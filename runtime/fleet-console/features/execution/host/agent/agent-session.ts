@@ -1,6 +1,6 @@
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
-import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
+import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "../../../console-use/shared/tools.js";
 import { z } from "zod";
@@ -46,6 +46,8 @@ export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
 export interface AgentWorkspace {
   readonly additionalDirectories: readonly string[];
   readonly mcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
+  /** 사람이 고른 로컬 플러그인 디렉터리. 세션을 여는 순간의 목록이고, 바뀌면 다음 세션부터 실린다. */
+  readonly plugins?: readonly ClaudeGatewayLocalPlugin[];
 }
 
 type InternalTools = Omit<NonNullable<AgentSessionOptions["tools"]>, "builtins"> & { readonly builtins?: readonly (NonNullable<NonNullable<AgentSessionOptions["tools"]>["builtins"]>[number] | WorkspaceBuiltin)[] };
@@ -147,6 +149,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       allowedTools: allowed,
       mcpServers: servers,
       ...(options.workspace?.mcpServers ? { externalMcpServers: { ...options.workspace.mcpServers } } : {}),
+      ...(options.workspace?.plugins?.length ? { plugins: options.workspace.plugins.map((plugin) => ({ ...plugin })) } : {}),
       permissionMode: "dontAsk",
       includePartialMessages: true,
       ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),

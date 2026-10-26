@@ -1,3 +1,5 @@
+import type { ResolvedPlugin } from "./plugins.js";
+import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
@@ -35,6 +37,8 @@ export interface CommodoreSessionOptions {
   readonly boardTools: readonly ConsoleMcpTool[];
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
   readonly knowledgeTools?: readonly McpServerTools[];
+  /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
+  readonly plugins?: () => readonly ResolvedPlugin[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
@@ -202,7 +206,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       settlement: "result",
       cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
-      workspace: { additionalDirectories: [...new Set(theaters.map(({ root }) => root))], mcpServers: theaterMcpServers(theaters, reserved) },
+      workspace: (() => {
+        const selected = options.plugins?.() ?? [];
+        const servers: Record<string, ClaudeGatewayExternalMcpServer> = { ...theaterMcpServers(theaters, reserved) };
+        // 플러그인 MCP 는 strictMcpConfig 가 막으므로 호스트가 선언을 옮겨 연다. Theater·예약 이름과 겹치면 Theater 쪽이 남는다.
+        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) if (!(name in servers) && !reserved.has(name)) servers[name] = config;
+        return { additionalDirectories: [...new Set(theaters.map(({ root }) => root))], mcpServers: servers, ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
+      })(),
       tools: {
         builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
         browser: { scopeId: `commodore:${options.commodoreId}` },
