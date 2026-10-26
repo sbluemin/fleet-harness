@@ -14,6 +14,7 @@ export interface ConversationSurfaceSelection {
 }
 
 let selection: ConversationSurfaceSelection | null = null;
+let emptyStage = false;
 let nonce = 0;
 let layoutPort: { readonly onLeaveDesktop: (surface: ConversationSurfaceSelection) => void } | null = null;
 
@@ -41,8 +42,24 @@ export function useConversationSurface(): ConversationSurfaceSelection | null {
   return useSyncExternalStore(subscribeConversationSurface, getConversationSurface, () => null);
 }
 
+/** 삭제한 대화 대신 다른 수신자를 자동으로 고르지 않는다. 명시적인 대화 열기만 이 상태를 푼다. */
+export function clearConversationStage(): void {
+  emptyStage = true;
+  clear();
+}
+export function isConversationStageEmpty(): boolean { return emptyStage; }
+export function useConversationStageEmpty(): boolean {
+  return useSyncExternalStore(subscribeConversationSurface, isConversationStageEmpty, () => false);
+}
+export function resumeConversationStage(): void {
+  if (!emptyStage) return;
+  emptyStage = false;
+  emit();
+}
+
 export function openConversationSurface(surfaceId: string, params: Readonly<Record<string, unknown>> = {}): boolean {
   if (getViewModeSnapshot().effective !== "desktop") return false;
+  emptyStage = false;
   nonce += 1;
   selection = { surfaceId, params, nonce };
   watchLayout();

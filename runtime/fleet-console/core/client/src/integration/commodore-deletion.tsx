@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { isCommodoreDeletionOpen, leaveCommodore, subscribeCommodoreDeletionComplete, subscribeCommodoreLifecycle, type CommodoreDeletionNotice } from "../../../../features/commodore/client/commodore-delete-events.js";
 import { refreshCommodoreList, readMobileCommodoreId, readZoneCommodore, selectMobileCommodore, setZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
 import { forgetObjectiveOwner, objectiveIdsForRemovedOwner } from "../../../../features/objectives/client/objectives-state.js";
-import { closeConversationSurface, getConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { clearConversationStage, closeConversationSurface, getConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { forgetWorkbenchConversation } from "../../../../features/workspace/client/conversation/workbench/workbench-store.js";
 import { closeTheaterInbox, readTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { forgetTheaterGroupCollapse } from "../../../../features/workspace/client/sidebar/group-collapse-store.js";
@@ -17,7 +17,8 @@ import { getMobileDestination, getMobileSheetStack, setMobileDestination, syncMo
 import { runAfterSheetRelease } from "../chrome/mobile/mobile-sheet-host.js";
 import { showMobileToast } from "../chrome/mobile/mobile-toast.js";
 import { Toast } from "../chrome/components/toast.js";
-import { getState } from "./store.js";
+import { getState, setActiveObjective, selectObjective } from "./store.js";
+import { getConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
 
 /** 기능은 삭제 사실만 알리고, 호스트가 자기 화면·URL·history·초점을 정리한다. */
@@ -51,8 +52,12 @@ function removeCommodoreViews(id: string, done: () => void = () => {}) {
   const wikiOwned = lastResolvedCodexWorkspace()?.id === id;
   const inbox = readTheaterInbox();
   const inboxOwned = inbox?.theaterId === id || (inbox && getState().theaters.find((theater) => theater.id === inbox.theaterId)?.commodore?.id === id);
+  const stageOwned = surfaceOwned || (surface === null && getConversationSubject()?.commodoreId === id);
   const clean = () => {
-    if (surfaceOwned) closeConversationSurface();
+    if (!mobile && stageOwned) {
+      // 표면을 닫기 전에 기본 선택을 막는다. 이웃 섹션의 초점은 수신자 선택이 아니다.
+      clearConversationStage(); setActiveObjective(null); selectObjective(null);
+    } else if (surfaceOwned) closeConversationSurface();
     if (inboxOwned) closeTheaterInbox();
     if (wikiOwned) { closeCodexReader(); closeRailPanel("codex"); }
     for (const pane of getPaneStoreSnapshot().rail) if (pane.params.commodoreId === id || pane.params.workspaceId === id || pane.params.theaterId === id || objectiveIds.has(pane.params.objectiveId ?? "")) closePane(pane.paneId);
