@@ -3,7 +3,7 @@ import { useMemo, useLayoutEffect, useRef, useState } from "react";
 import type { Translate } from "@fleet-console/i18n";
 
 import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "../../objectives/shared/commodore-board-client.js";
-import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
+import { commodoreEn, getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { revealObjective, useObjectiveTheater } from "./board.js";
 
 type T = Translate<CommodoreMessageKey>;
@@ -23,6 +23,8 @@ export interface CommodoreTrailEntry {
   readonly word: string;
   /** 결정 줄의 선택 라벨. 길면 말줄임. */
   readonly label?: string;
+  /** 선택된 지휘관 행의 짧은 행위 이유. 폰 전체 기록의 표시는 바꾸지 않는다. */
+  readonly detail?: string;
   /** 툴팁. 문단으로는 그리지 않는다. */
   readonly title: string;
 }
@@ -80,6 +82,7 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
         at: objective.createdAt,
         family: "added",
         word: t("commodore.board.prov.addedByCommodore"),
+        ...(added.why ? { detail: added.why } : {}),
         title: tooltip([added.why], reveal),
       });
     }
@@ -91,6 +94,7 @@ export function commodoreTrail(t: T, theaterId: string, objectives: readonly Obj
         at: action.at,
         family: trailFamily(action.kind),
         word: actWord(t, action.kind),
+        ...(by.why ? { detail: by.why } : {}),
         title: tooltip([by.why], reveal),
       });
     }
@@ -258,4 +262,19 @@ export function CommodoreTrail({
       )}
     </section>
   );
+}
+
+/** 지휘관 탭에서 고른 목표 바로 아래의 최근 세 행위. 폰의 전체 기록과 같은 보드 사실을 읽는다. */
+export function CommodoreRecentActions({ commodoreId, objectiveId, language, onReveal }: {
+  readonly commodoreId: string; readonly objectiveId: string; readonly language: "en" | "ko"; readonly onReveal: (at: number) => void;
+}) {
+  const t = getT(language);
+  const { objectives } = useObjectiveTheater(commodoreId);
+  const entries = useMemo(() => commodoreTrail(t, commodoreId, objectives.filter((objective) => objective.id === objectiveId))[0]?.entries.slice(-3) ?? [], [t, commodoreId, objectiveId, objectives]);
+  if (entries.length === 0) return null;
+  return <div className="objectives-commodore-recent-actions">
+    {entries.map((entry) => <button key={entry.key} type="button" title={entry.title} onClick={() => onReveal(entry.at)}>
+      <b>{entry.word}</b><span>{entry.label ?? entry.detail ?? ""}</span><time dateTime={new Date(entry.at).toISOString()}>{when(entry.at, language)}</time>
+    </button>)}
+  </div>;
 }

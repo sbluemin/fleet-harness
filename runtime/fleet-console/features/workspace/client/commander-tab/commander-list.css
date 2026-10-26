@@ -105,3 +105,9 @@
   font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
+
+.commander-tab { padding: 10px 10px 16px; }
+.commander-tab-list.side-bar-group-chips { gap: 2px; }
+.commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
+.commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commander-tab-trail:empty { display: none; }

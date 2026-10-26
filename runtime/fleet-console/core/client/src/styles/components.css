@@ -3092,15 +3092,10 @@
   -webkit-touch-callout: none;
 }
 
-/* 호버는 행 배경 채움 하나만 쓴다. rim 테두리까지 얹으면 활성(테두리 없음)보다 강해져
-   "커서가 있는 곳"이 "지금 열려 있는 곳"을 덮는다 — focus-visible은 아래에서 자기 brass
-   테두리를 따로 지므로 여기서 테두리를 빼도 포커스 표식은 남는다.
-   [왜 ink-deep이 아니라 ink-mid인가] 테두리를 뺀 자리를 채움이 이어받아야 한다. ink-deep은
-   사이드바 바탕과 ΔL 0.035(대비 1.02:1)뿐이라 테두리가 사라지면 호버가 통째로 안 보였다
-   (실측). 활성이 배경 채널을 비웠으므로 이 한 단은 활성을 침범하지 않는다. */
+/* 머무름과 현재 대화는 서로 다른 중성 워시다. 키보드 포커스만 브래스 테두리를 쓴다. */
 .side-bar-theater-header:hover,
 .side-bar-theater-header:focus-visible {
-  background: var(--ink-mid);
+  background: var(--wash-hover);
   color: var(--text-secondary);
   outline: none;
 }
@@ -3110,12 +3105,12 @@
   background: var(--brass-glow);
 }
 
-/* 활성 헤더는 배경 채움을 호버에게 완전히 넘긴다. 위치(활성)와 순간(호버)이 같은 채널을
-   공유하는 한 어느 쪽을 올려도 다른 쪽이 뭉개지므로, 활성은 스파인·배지·이름 명도로만
-   말한다. 활성 행을 누르면 그 Theater 의 Inbox 가 열리므로 호버 채움은 다른 행과 같이 받는다. */
+/* 활성 Theater 문맥과 실제로 열린 사령관 대화(is-current)는 별도다. */
 .side-bar-theater-header.is-active {
   color: var(--text-secondary);
 }
+
+.side-bar-theater-header.is-current { background: var(--wash-selected); }
 
 /* 열린 Theater 메뉴의 대상 머리 — 어느 Theater 를 다루는지(위치)를 말하므로 focus-visible 과 같은 brass 테두리를 진다.
    메뉴는 활성이 아닌 머리에서도 열리고 전환하지 않으므로, 활성 표식과 따로 선다. */
@@ -3428,23 +3423,23 @@
 }
 
 .side-bar-cluster-row:hover {
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  background: var(--wash-hover);
   outline: none;
 }
 
 .side-bar-cluster-row:has(.side-bar-cluster-row-main:focus-visible) {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
 }
 
-/* active: brass highlight */
+/* 고름은 중성 면, 브래스는 키보드 포커스만 말한다. */
 .side-bar-cluster-row--active {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  background: var(--wash-selected);
+  border-color: transparent;
 }
 
 .side-bar-cluster-row--active .side-bar-cluster-row-title {
-  color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary));
+  color: var(--text-primary);
 }
 
 /* 사이드바 칩의 사용자 accent(정체성)는 캡션 제목과 같은 문법으로 이름 글자의 잉크만 소유한다 —

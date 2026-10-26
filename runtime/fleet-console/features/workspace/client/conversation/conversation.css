@@ -734,16 +734,22 @@
 .console-shell.is-objective-records-view .objective-records-side-bar { overflow: visible; }
 
 /* ── 사이드바 행: 대화 목록 문법 ───────────────────────────────────────── */
-/* 지휘관 행은 40px 이다 — 사령관 카드(52px)보다 낮아야 Theater 가 위, Objective 이 아래로 읽힌다(이전엔 행 50px > 머리 38px 로 뒤집혀 있었다). */
+/* 지휘관 행은 52px 두 줄이다 — 제목 아래 상태·게이지·분모가 한 줄로 선다. */
 .side-bar-cluster-row--conversation {
-  padding-block: 3px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 8px 10px 8px 8px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  margin: 0;
 }
 
-.side-bar-cluster-row--conversation {
-  grid-template-columns: 26px 1fr auto;
-}
 .side-bar-cluster-row--conversation .side-bar-cluster-row-title {
   font-weight: var(--weight-medium);
+  line-height: 1.4;
 }
 .console-shell.is-objective-records-view .side-bar-cluster-avatars-mini {
   background: var(--conversation-side);
@@ -800,13 +806,16 @@
   min-width: 0;
 }
 
-/* 상태 줄 — 단계가 상태 문구 앞에 같은 크기로 서고, 한 줄을 넘으면 상태 문구만 말줄인다. */
+/* 상태 줄 — 상태 문구 뒤 남는 폭을 게이지가 받고 분모는 줄 끝에 선다. */
 .side-bar-cluster-row-line {
   display: flex;
   grid-column: 1 / -1;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  margin-top: 3px;
+  font-size: var(--t-xs);
+  line-height: 1.4;
 }
 
 .side-bar-cluster-row-lead {
@@ -1522,3 +1531,17 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
   .conversation-stage,
   .conversation-band { transition: none; }
 }
+
+.side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 0 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }
+.side-bar-cluster-row-preview.is-running:not(.is-handling) { color: var(--aurora); }
+.side-bar-cluster-row-preview:is(.is-awaiting, .is-unseen):not(.is-handling) { color: var(--brass-ink); }
+.side-bar-cluster-row-preview.is-review:not(.is-handling) { color: var(--apex); }
+.side-bar-cluster-row-preview.is-done:not(.is-handling) { color: var(--positive); }
+.side-bar-cluster-row-gauge { flex: 1 0 28px; min-width: 28px; height: 3px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
+.side-bar-cluster-row-gauge > span { display: block; height: 100%; border-radius: inherit; background: var(--text-tertiary); }
+.side-bar-cluster-row-gauge.is-complete > span { background: var(--positive); }
+.side-bar-cluster-row-fraction { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.conversation-split-return { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: none; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer; }
+.conversation-split-return svg { width: 15px; height: 15px; }
+.conversation-split-return:hover { background: var(--wash-hover); color: var(--text-primary); }
+.conversation-split-return:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }

@@ -16,6 +16,8 @@ export interface ConversationSurfaceContext {
    * 없거나 구버전 호스트면 없다.
    */
   readonly composer?: () => ReactNode;
+  /** 대신하던 Objective 이 서면 이 칸 안에서 대화를 잇는다. 없으면 표면의 기본 전체 이동을 쓴다. */
+  readonly onObjectiveReady?: (objectiveId: string) => void;
 }
 
 

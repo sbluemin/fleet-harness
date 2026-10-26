@@ -1243,7 +1243,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/\.side-bar-theater-section--active::(before|after)/);
 
     // 호버는 배경 채움 하나만 쓴다. 테두리가 돌아오면 다시 활성보다 강해진다.
-    expect(headerHover).toContain("background: var(--ink-mid);");
+    expect(headerHover).toContain("background: var(--wash-hover);");
     expect(headerHover).not.toContain("border-color");
     // focus-visible은 자기 brass 테두리를 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
     // 지우면 안 된다.
