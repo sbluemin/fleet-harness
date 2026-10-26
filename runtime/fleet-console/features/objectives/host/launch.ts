@@ -453,7 +453,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
   /** 사람이 확인 시트에서 본 결과 — 대상마다 쓸 수 있는 결과가 있어야 한다. 그새 설명이 바뀌었거나 만료됐으면 시트가 다시 판단해야 한다. */
   const reviewedRouting = (current: Objective): Map<string, RoutingDecision> => {
-    const targets = routingTargets(current);
+    const targets = routingTargets(current, assignedMembers(current));
     const decisions = new Map<string, RoutingDecision>();
     for (const member of targets) {
       const entry = cachedRouting(current, targets, member);
@@ -467,9 +467,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 루프가 새로 띄울 라우팅 구성원 — Objective 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서
    * 멈춘다. 보관된 Objective(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
    */
-  const routingTargets = (current: Objective): ObjectiveMember[] => {
+  const routingTargets = (current: Objective, scope?: ReadonlySet<string>): ObjectiveMember[] => {
     const launching: ObjectiveMember[] = [];
     for (const member of current.members) {
+      if (scope && !scope.has(member.id)) continue;
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
       if (reference && reference.commodoreId !== current.commodoreId) break;
@@ -480,6 +481,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     return launching;
   };
+  /** 개시가 세울 구성원 — 임무를 하나라도 맡은 구성원만. 맡은 일이 없는 구성원은 지휘관이 muster 로 부를 때 선다. */
+  const assignedMembers = (current: Objective): ReadonlySet<string> => new Set(current.missions.flatMap((mission) => mission.member ? [mission.member] : []));
   /** 세션 좌표의 모델·강도를 그대로 이 값으로 — 강도가 없으면 그 모델의 기본으로 뜨도록 지운다. */
   const withSessionPreset = (payload: Record<string, unknown>, preset: MemberPreset): Record<string, unknown> => {
     const next = withObjectiveLaunchPreset(payload, preset);
@@ -606,14 +609,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     };
     tick();
   };
-  const muster = (objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
+  const muster = (objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>, scope?: (current: Objective) => ReadonlySet<string>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
     let current = objective(objectiveId);
     if (current.planning) throw new ObjectiveStoreError("planning_only");
     if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
     if (current.done) throw new ObjectiveStoreError("objective_done");
     await accessObjective(objectiveId);
     current = editableObjective(objectiveId);
-    const launching = routingTargets(current);
+    const only = scope?.(current);
+    const launching = routingTargets(current, only);
     // 사람이 확인한 결과로 띄운다 — 그사이 새로 끼었거나 바뀐 대상이 있으면 본 것과 다르게 뜨므로 띄우기 전에 멈춘다.
     if (reviewed && launching.some((member) => !reviewed.has(member.id))) throw new ObjectiveStoreError("routing_preview_stale");
     const routed = reviewed ?? (await routeMembers(current, launching, "route")).decisions;
@@ -621,6 +625,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const members: MusterMember[] = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
+      if (only && !only.has(member.id)) continue;
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
       if (reference && reference.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_objectiveRecord");
@@ -1474,7 +1479,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
       if (current.planning) current = store.setPlanning(objectiveId, false);
       if (current.criteriaOpen) current = store.setCriteriaOpen(objectiveId, false);
-      const failed = (await muster(objectiveId, reviewed)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
+      // 맡은 임무가 없는 구성원은 세우지 않는다 — 일 없이 떠 있는 세션을 만들지 않는다.
+      const failed = (await muster(objectiveId, reviewed, assignedMembers)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
       current = objective(objectiveId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
@@ -1496,7 +1502,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const current = objective(objectiveId);
         if (current.done) throw new ObjectiveStoreError("objective_done");
         if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-        const targets = routingTargets(current);
+        const targets = routingTargets(current, assignedMembers(current));
         const { decisions, judged } = await routeMembers(current, targets, options?.rejudge ? "none" : "any");
         // 판단을 기다리는 동안 지휘관 프리셋이 바뀌었을 수 있다 — 폴백이 뜰 모델은 지금 값으로 보인다.
         const latest = objective(objectiveId);

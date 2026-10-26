@@ -611,6 +611,9 @@ describe("Objectives contract", () => {
     const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
+    // 개시는 임무를 맡은 구성원만 세운다.
+    const assign = (memberId: string) => store.missionAdd(objective.id, { text: `work ${memberId}`, member: memberId });
+    assign(reviewer.id);
     await launch.startCommander(objective.id);
     objectiveRecordsHost.patch(reviewer.id, { chatMode: false });
     activity.set(reviewer.id, "dormant");
@@ -627,6 +630,7 @@ describe("Objectives contract", () => {
     // 그새 노출이 꺼졌다 — 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
     const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
     const routed = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
+    assign(late.id); assign(routed.id);
     hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
     expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }]);
@@ -746,6 +750,9 @@ describe("Objectives contract", () => {
     });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
     const analyst = store.memberAdd(objective.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
+    store.missionAdd(objective.id, { text: "read", member: analyst.id });
+    // 맡은 임무가 없는 구성원은 개시 판단에도, 기동에도 들지 않는다.
+    const idle = store.memberAdd(objective.id, { role: "idle" }, "human").members.at(-1)!;
 
     const first = await route("routing/preview", { objectiveId: objective.id });
     expect((first.value.preview as { judged: boolean; members: unknown[] })).toMatchObject({ judged: true, members: [{ id: analyst.id, via: "route", model: "sonnet", effort: "low", because: "Sonnet @low · AI model · difficulty low" }] });
@@ -762,6 +769,7 @@ describe("Objectives contract", () => {
     expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).status).toBe(200);
     expect(judgments).toBe(2);
     expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(objectiveRecords.get(idle.id)).toBeUndefined();
     expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
   });
 
@@ -2162,7 +2170,15 @@ describe("Objectives contract", () => {
     const lineup = { missions: [{ text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
-    await command("plan", { ...lineup, members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    await command("plan", { ...lineup, missions: [...lineup.missions, { text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    // 맡은 일 없는 구성원만 지휘관이 거둔다 — 임무를 맡은 구성원과 사람이 더한 구성원은 남는다.
+    await command("enlist", { members: [{ role: "spare" }] }, id);
+    expect((await call("discharge", { objectiveId: id, member: "reviewer" }, id)).structuredContent.error).toBe("member_has_missions");
+    const handPicked = store.memberAdd(id, { role: "personal" }, "human").members.at(-1)!;
+    expect((await call("discharge", { objectiveId: id, member: handPicked.id }, id)).structuredContent.error).toBe("member_person_added");
+    store.memberRemove(id, handPicked.id);
+    await command("discharge", { member: "spare" }, id);
+    expect(store.find(id)!.members.map((member) => member.role)).toEqual(["worker", "reviewer"]);
     // 개시 전에도 기존 구성원은 도구로 바뀐다 — 사람의 편집 흔적을 만들거나 지우지 않는다.
     const beforeLaunchEdit = { edited: store.find(id)!.edited, actions: store.find(id)!.actions };
     expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "unlisted" }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
@@ -2384,6 +2400,7 @@ describe("Objectives contract", () => {
     const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);
     const finished = await command("complete_mission", { missionId, summary: ["Verified"], results: [{ kind: "evidence", evidenceId: sealed.evidenceId }] }, id);
     const resultId = (finished.resultIds as readonly string[])[0]!;
+    await command("complete_mission", { missionId: executing.graph.missions[1]!.missionId, summary: ["Reviewed"] }, id);
     await command("mark_criterion", { n: 1, met: true, evidence: "Preserved" }, id);
     await command("mark_criterion", { n: 2, met: true, evidence: "Applied" }, id);
     await command("followup", { add: { title: "Next round", summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", evidence: [{ kind: "command", text: "verification" }] } }, id);

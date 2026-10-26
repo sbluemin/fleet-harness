@@ -331,6 +331,17 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
         return text({ members: (await launch.muster(objectiveId)).map(({ objectiveId: _objectiveId, ...member }) => member) });
       }),
+    // 맡은 일 없이 남은 구성원을 지휘관이 거둔다 — 사람이 더한 구성원과 임무를 맡은(맡았던) 구성원은 사람의 몫으로 남긴다.
+    commanderTool("discharge", "Remove a member that has no mission from the roster, named by id or role; its session ends. Refused for a member any mission names (member_has_missions) or one the person added (member_person_added).",
+      z.object({ objectiveId: ids, member: memberReference }).strict(),
+      async ({ member }, before) => {
+        const objective = find(before.id);
+        const memberId = resolveMember(objective, member);
+        if (objective.members.find((candidate) => candidate.id === memberId)?.by === "human") return refuse("member_person_added");
+        if (objective.missions.some((mission) => mission.member === memberId)) return refuse("member_has_missions");
+        await launch.memberRemoved(before.id, memberId);
+        return text({ ok: true, memberId });
+      }),
     commanderTool("complete_mission", `Mark a mission done with a text record and optional PR, sealed-file or Artifact-link results the person can open from the objective. A file mentioned in summary is not an attached result. Results are linked automatically to this mission, not to an individual record. Repeating completion appends a record and adds results; omitted or empty results preserve existing results. Duplicate normalized PR or Artifact URLs, or evidenceIds, within the request or already attached, are refused as result_exists. A refused result leaves this completion's record, results and mission state unchanged. The objective holds at most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files totaling at most ${RESULT_LIMITS.totalEvidenceBytes / 1024 / 1024} MiB. Calls that add results return their new resultIds in input order. Results alone do not establish that a success criterion is met. Once the person completes the objective, calls with or without results are refused as objective_done.`,
       z.object({ ...missionRef,
         summary: z.array(z.string().max(2000)).min(1).max(20).describe(`The stored record is 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. Retained records are visible to the person; the latest is shown with the missions that follow.`),
