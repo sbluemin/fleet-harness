@@ -379,7 +379,7 @@ export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext
 /**
  * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)에서는 호스트 막대(`mobileBar`)에 제목·⋮ 동작을 선언하는 뿌리이고,
  * 대화 정보 화면의 「목표」 탭에서는 막대가 없어 같은 동작을 본문 맨 위 동작 줄로 그린다. 제목은 정보 화면 머리가 말하므로 본문에 다시 세우지 않는다.
- * 보관은 두 자리 모두 두지 않는다 — Objective 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Objective 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
+ * 보관은 목표 화면의 ⋮ 또는 대화 정보 화면 「정보」 탭에서 한다. 기동 전 목표도 복원할 수 있고, 영구 삭제는 보관함에서만 한다.
  */
 export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
   const t = getT(ctx.language, true);

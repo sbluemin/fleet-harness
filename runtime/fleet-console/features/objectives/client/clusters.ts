@@ -240,7 +240,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
 
 /**
  * 시작 전 목표의 「보관」 — 지우지 않고(restorable) 휴면 지휘관으로 보관함에 넣는다. 복원하면 휴면 지휘관 줄로 돌아온다. 보관 DTO(archived)는
- * upsert 가 활성 목록에서 거둔다. 목표 머리의 「영구 삭제」(두 번 확정)는 restorable 없이 같은 경로를 쓴다.
+ * upsert 가 활성 목록에서 거둔다. 영구 삭제는 보관함의 유예 있는 purge 경로만 쓴다.
  */
 function archiveObjective(objective: Objective): void {
   const api = objectivesApi();

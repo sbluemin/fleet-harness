@@ -1355,7 +1355,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           criteria.push(moved);
           criteriaIds.push(moved.id);
         }
-        merged.push({ sourceId: id, title, at, by: by.objectiveId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds, source: stored });
+        // 소유·Theater는 읽기 때 붙인 좌표다 — 중첩 스냅샷에도 파일 계약을 지켜 cwd와 원본 내용만 남긴다.
+        const { commodoreId: _owner, theaterId: _location, ...source } = stored;
+        merged.push({ sourceId: id, title, at, by: by.objectiveId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds, source });
       }
       if (note.length > MAX_NOTE) throw new ObjectiveStoreError("note_too_long", undefined, { limit: MAX_NOTE });
       if (criteria.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria", undefined, { limit: MAX_CRITERIA });

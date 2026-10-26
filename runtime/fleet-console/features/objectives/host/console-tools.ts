@@ -61,10 +61,10 @@ const HINTS: Readonly<Record<string, string>> = {
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: keep Objectives or done objectives; delete unlaunched. Commodore: done needs a person message this turn.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: restorable archive, including unstarted objectives. Commodore: done needs a person message this turn.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "The objective board list: groups, inbox, fleet, history, archived, models; add/tidy. purge: archived only; irreversible after 10-second undo grace. Console restart cancels pending purges.",
+  description: "Objective lists, groups, inbox, fleet, history, archive and models; add/tidy. archive/remove are restorable. purge: archived only, irreversible after 10s undo grace; restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
@@ -104,7 +104,7 @@ const detailTool = defineConsoleTool({
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
     criteria_reject: write({ proposalId: ids }),
     answer: write({ requestId: ids, answers }),
-    complete: write({ batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }),
+    complete: write({ batchId: followupSelectionSchema.shape.batchId.optional().describe("Optional retry key; the host derives one from the selection when omitted."), followups: followupSelectionSchema.shape.followups.optional() }),
     reopen: write({}),
     followup_retry: write(followupTarget),
     followup_abandon: write(followupTarget),
@@ -238,7 +238,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             });
             if (refusals.length) return refuse("tidy_refused", { refusals });
             const archived: string[] = [], deleted: string[] = [];
-            for (const found of targets) { const result = await launch.archive(found.id, { restorable: Boolean(found.done) }); (result.deleted ? deleted : archived).push(found.id); }
+            for (const found of targets) { const result = await launch.archive(found.id); (result.deleted ? deleted : archived).push(found.id); }
             return text({ ok: true, removed: targets.map((found) => found.id), archived, deleted });
           }
           if (call.action === "merge") { const target = store.tidyMerge(call.into, call.from, actor(call.reason)); touched(call.from); return text({ ok: true, objectiveId: target.id, merged: call.from, criteria: target.criteria.length }); }
@@ -323,7 +323,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         if (caller?.kind === "objectiveRecord" && roleIn(current, caller)) return refuse("own_objective", { hint: HINTS.own_objective });
         const actions = createObjectiveActions(ctx, store, launch, actor);
         const ref = { objectiveId: current.id, language: language(caller) };
-        if (call.action === "complete" && (call.batchId === undefined) !== (call.followups === undefined)) return refuse("invalid_arguments", { issues: [{ path: [call.batchId === undefined ? "batchId" : "followups"], code: "invalid_type" }] });
+        if (call.action === "complete" && call.batchId !== undefined && call.followups === undefined) return refuse("invalid_arguments", { issues: [{ path: ["followups"], code: "invalid_type" }] });
         const result = await (async () => {
           switch (call.action) {
             case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
@@ -332,7 +332,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
             case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
             case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers });
-            case "complete": return actions.complete({ ...ref, ...(call.batchId !== undefined && call.followups ? { batchId: call.batchId, followups: call.followups } : {}) });
+            case "complete": return actions.complete({ ...ref, ...(call.followups ? { batchId: call.batchId, followups: call.followups } : {}) });
             case "reopen": return actions.complete({ ...ref, undone: true });
             case "steer": return actions.steer({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
             case "message": return actions.message({ ...ref, text: call.text, ...(call.memberId !== undefined ? { memberId: call.memberId } : {}) });

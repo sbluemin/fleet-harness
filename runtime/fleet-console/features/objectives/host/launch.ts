@@ -50,11 +50,11 @@ export interface LaunchService {
   /** 후속으로 만든 Objective 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(sessionId: string): void;
   /**
-   * Objective이 있으면 보관, 없으면 기동 전 레코드를 영구 삭제한다. `restorable` 이면 기동 전 목표도 지우지 않고 보관한다 — 지휘관 Objective 을
-   * 휴면 메타데이터로 세운 뒤 보관하므로(기동·모델 없음) 보관함에서 복원하면 휴면 지휘관으로 돌아온다.
+   * 기동 전 목표도 복원 가능하게 보관한다 — 지휘관 Objective 을 휴면 메타데이터로 세운 뒤 보관하므로(기동·모델 없음)
+   * 보관함에서 복원하면 휴면 지휘관으로 돌아온다. 영구 삭제는 보관함의 purge만 맡는다.
    */
-  archive(objectiveId: string, options?: { readonly restorable?: boolean }): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
-  /** 옛 삭제 호출의 호환 경로 — 기동 목표는 반복 호출해도 보관만 한다. */
+  archive(objectiveId: string): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
+  /** 옛 삭제 호출의 호환 경로 — 기동 여부와 무관하게 보관만 한다. */
   remove(objectiveId: string): Promise<Objective>;
   /** 옛 removed 레코드를 같은 ID의 dormant Objective 보관으로 이관한다. */
   migrateRemoved(): Promise<void>;
@@ -1362,7 +1362,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
     },
 
-    archive: (objectiveId, options) => orderedObjectiveRequest(objectiveId, async () => {
+    archive: (objectiveId) => orderedObjectiveRequest(objectiveId, async () => {
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = objective(objectiveId);
       const config = store.pending(objectiveId);
@@ -1370,16 +1370,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (config && existing) {
         if (existing.commodoreId !== current.commodoreId || readObjectiveLaunch(existing).sessionName !== config.sessionName) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       }
-      // 옛 정리 데이터는 새 pending 삭제 정책보다 먼저 무손실 이관한다.
+      // 옛 정리 데이터도 같은 보관함으로 무손실 이관한다.
       if (current.removed) await migrateRemoval(objectiveId);
-      else if (!referenceNode(objectiveId) && options?.restorable) {
-        // 사람이 「보관」을 고른 기동 전 목표 — 지우지 않고 휴면 지휘관으로 보관한다. 복원하면 휴면 지휘관 줄로 돌아온다.
+      else if (!referenceNode(objectiveId)) {
+        // 기동 전 목표도 휴면 지휘관으로 보관한다. 사람·도구 어느 경로든 복원할 수 있다.
         await archiveCommanderRecord(objectiveId);
         store.launched(objectiveId);
-      } else if (!referenceNode(objectiveId)) {
-        store.removePending(objectiveId);
-        service.followupTargetChanged(objectiveId);
-        return { objective: current, deleted: true };
       } else {
         if (!ctx.objectiveRecords.archive) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
         await ctx.objectiveRecords.archive(objectiveId).catch(asStoreError);
