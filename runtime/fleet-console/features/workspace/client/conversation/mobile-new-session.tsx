@@ -134,7 +134,7 @@ export function MobileNewSession() {
     if (!opening) return;
     epochRef.current += 1;
     const remembered = readNewSessionSelection();
-    const opened = resolveNewSessionCommodoreId();
+    const opened = state.mobileNewSessionCommodoreId ?? resolveNewSessionCommodoreId();
     setCommodoreId(opened);
     setTheaterId(resolveNewSessionTheaterId(opened));
     setModel(remembered.model ?? LAUNCH_DEFAULT_MODEL);

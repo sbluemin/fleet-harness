@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 
 import type { ClientConsoleEventsCapability } from "../../workspace/shared/navigation-ports.js";
-import type { CommodoreTheaterSummary, ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
+import type { CommodoreLastMessage, CommodoreTheaterSummary, ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
+import type { CommodoreEvent } from "../shared/contracts/types.js";
+import { commodoreLastMessage } from "../shared/last-message.js";
 import { fetchCommodores } from "./theaters-api.js";
 
 /**
@@ -85,6 +87,19 @@ export function replaceCommodoreList(next: readonly ConsoleCommodoreSummary[]): 
   emit();
 }
 
+function noteLastMessage(commodoreId: string, last: CommodoreLastMessage | null): void {
+  if (!last) return;
+  let changed = false;
+  const next = commodores.map((row) => {
+    if (row.commodoreId !== commodoreId || (row.last && row.last.at > last.at)) return row;
+    changed = true;
+    return { ...row, last };
+  });
+  if (!changed) return;
+  commodores = next;
+  emit();
+}
+
 export function refreshCommodoreList(): Promise<void> {
   if (refreshFlight) {
     refreshAgain = true;
@@ -111,8 +126,10 @@ export function refreshCommodoreList(): Promise<void> {
 export function installCommodoreList(events: ClientConsoleEventsCapability): () => void {
   void refreshCommodoreList();
   const off = events.subscribe(COMMODORE_CHANNEL, (payload) => {
-    const event = payload as { readonly op?: string } | null;
+    const event = payload as CommodoreEvent | null;
     if (event?.op === "state" || event?.op === "run") void refreshCommodoreList();
+    // 대화의 마지막 말은 목록을 다시 읽지 않고 그 행만 갈아 끼운다 — 기록 줄은 턴마다 여럿 온다.
+    if (event?.op === "transcript") noteLastMessage(event.commodoreId, commodoreLastMessage(event.entry));
   });
   const offReconnect = events.onReconnect?.(() => { void refreshCommodoreList(); });
   return () => { off(); offReconnect?.(); };

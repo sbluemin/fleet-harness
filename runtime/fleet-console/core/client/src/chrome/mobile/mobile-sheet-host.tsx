@@ -538,7 +538,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
-      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openMobileNewSession)}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(() => openMobileNewSession())}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>

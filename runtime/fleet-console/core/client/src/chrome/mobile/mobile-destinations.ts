@@ -13,7 +13,7 @@ import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
- * 홈 바로가기 칩 줄이 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
+ * 홈 바로가기 시트가 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
  * 순수 계산이다 — 화면은 `useMobileDestinationBindings`로 `shown`의 갱신을 구독한다.
  */
 export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
@@ -25,15 +25,15 @@ export function mobileDestinationBindings(bindings: readonly RailEntryBinding[],
 }
 
 /**
- * 홈 대표 자리에 설 목적지 — 지금 보이는(shown) 칩 목적지(`chip: false`가 아닌 것) 가운데 order가 가장 앞선, 자기 상태 칸(`trailing`)을 선언한 것이다.
- * 상태를 말하는 목적지(Theater의 사령관처럼 자율 운영의 지금을 가진 것)만 대표가 될 수 있고, 플러그인 id는 읽지 않는다 — `RailEntryMobile.destination`의
- * 필드(order·shown·trailing·chip)만 소비한다. 없으면 null이고 홈은 Theater의 정체를 대표로 보인다.
+ * 상태를 말하는 목적지 — 지금 보이는(shown) 입구 목적지(`chip: false`가 아닌 것) 가운데 order가 가장 앞선, 자기 상태 칸(`trailing`)을 선언한 것이다
+ * (사령관처럼 자율 운영의 지금을 가진 것). 홈은 사령관 목록 자체가 그 입구라 바로가기 시트에서 뺀다. 플러그인 id는 읽지 않는다 —
+ * `RailEntryMobile.destination`의 필드(order·shown·trailing·chip)만 소비한다. 없으면 null.
  */
 export function featuredDestinationBinding(shown: readonly RailEntryBinding[]): RailEntryBinding | null {
   return shown.find((binding) => binding.entry.mobile?.destination?.trailing !== undefined && isChipDestination(binding)) ?? null;
 }
 
-/** 홈 입구(바로가기 칩·대표 자리)에 서는 목적지인가 — `destination.chip: false`는 화면만 목적지로 열리고 입구는 플러그인의 착지뿐이다. */
+/** 홈 입구(바로가기 시트)에 서는 목적지인가 — `destination.chip: false`는 화면만 목적지로 열리고 입구는 플러그인의 착지뿐이다. */
 export function isChipDestination(binding: RailEntryBinding): boolean {
   return binding.entry.mobile?.destination?.chip !== false;
 }
@@ -64,7 +64,7 @@ export function useMobileDestinationBindings(bindings: readonly RailEntryBinding
   return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
 }
 
-/** 바로가기 칩 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
+/** 바로가기 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
 export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
   const key = useSyncExternalStore(
     (listener) => {
@@ -101,7 +101,7 @@ export function mobilePluginRows(bindings: readonly RailEntryBinding[]): readonl
   return bindings.filter((binding) => binding.entry.mobile?.destination === undefined && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && visible(binding));
 }
 
-/** 잠시 닫아 둔 도구(entry.paused)는 폰의 바로가기 칩·「플러그인」 행에 서지 않는다 — 겨눔이 없는 폰에서는 까닭을 말할 말풍선이 없다. */
+/** 잠시 닫아 둔 도구(entry.paused)는 폰의 바로가기·「플러그인」 행에 서지 않는다 — 겨눔이 없는 폰에서는 까닭을 말할 말풍선이 없다. */
 function visible(binding: RailEntryBinding): boolean {
   return binding.entry.visible?.() !== false && binding.entry.paused !== true;
 }
@@ -113,14 +113,16 @@ export type MobileAttentionRow =
   | { readonly kind: "plugin"; readonly key: string; readonly entryId: string; readonly item: RailEntryAttentionItem; readonly clusterId?: string };
 
 /**
- * 「확인 필요」의 행: 지금 Theater에서 사람을 기다리는 Objective(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
+ * 「확인 필요」의 행: 범위 안에서 사람을 기다리는 Objective(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
  * 플러그인이 `attention.items`로 올린 일. 플러그인 항목의 갱신은 각 엔트리의 `attention.subscribe`를 따른다.
+ * 범위는 기본이 지금 Theater이고, `commodoreId`를 주면 그 사령관이 소유한 Objective이다 — 플러그인에는 사령관 UUID를 문맥으로 넘긴다.
  */
-export function useMobileAttention(state: ConsoleState): { readonly rows: readonly MobileAttentionRow[]; readonly pluginCounts: ReadonlyMap<string, number> } {
+export function useMobileAttention(state: ConsoleState, commodoreId?: string): { readonly rows: readonly MobileAttentionRow[]; readonly pluginCounts: ReadonlyMap<string, number> } {
   const bindings = useRailEntries();
   const locale = useConsoleLocale();
   const useRequests = useAllObjectiveUseRequests();
-  const theaterId = getViewedTheaterId();
+  const viewedTheaterId = getViewedTheaterId();
+  const theaterId = commodoreId ?? viewedTheaterId;
   // 엔트리마다 구독을 모아 하나의 틱으로 묶는다 — 갱신 신호가 오면 아래 스냅샷을 다시 읽는다.
   const tick = useSyncExternalStore(
     (listener) => {
@@ -132,7 +134,7 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
   );
   return useMemo(() => {
     // 허용 요청이 걸린 Objective이 먼저(남은 시간이 짧은 순), 그다음 그 밖의 입력 대기.
-    const inTheater = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId);
+    const inTheater = state.objectiveRecords.filter((objectiveRecord) => commodoreId === undefined ? objectiveRecord.theaterId === theaterId : objectiveRecord.commodoreId === commodoreId);
     const requested = inTheater
       .map((objectiveRecord) => ({ objectiveRecord, request: useRequests.filter((item) => item.objectiveId === objectiveRecord.id).sort((a, b) => a.expiresAt - b.expiresAt)[0] }))
       .filter((item): item is { objectiveRecord: ObjectiveRecord; request: ObjectiveUseRequest } => item.request !== undefined)
@@ -157,7 +159,7 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
     }
     return { rows, pluginCounts };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick는 플러그인 상태 변화를 알리는 신호다.
-  }, [bindings, locale, state.objectiveRecordRuntime, state.objectiveRecords, theaterId, tick, useRequests]);
+  }, [bindings, commodoreId, locale, state.objectiveRecordRuntime, state.objectiveRecords, theaterId, tick, useRequests]);
 }
 
 /** 플러그인이 올린 수와 행(제목·사유까지)을 한 문자열로 접는다 — 스냅샷이 값이라 같은 상태면 다시 그리지 않는다. */

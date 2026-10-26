@@ -29,6 +29,7 @@ import {
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
   commodoreLanguage,
+  commodoreMobileSessionsRenderer,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
@@ -181,6 +182,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
+  const SessionsList = commodoreMobileSessionsRenderer();
+  const sessionsRenderer = SessionsList !== null;
   const board = useObjectiveTheater(commodoreId);
   const [panel, setPanel] = useState(false);
   const openPanel = useCallback(() => setPanel(true), []);
@@ -200,9 +203,10 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
       title,
       ...(pillStatus ? { subtitle: pillStatus } : {}),
       depth: 0,
-      pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => setPanel(true) },
+      // 세부는 늘 「지휘관 세션」에서 연다(시안 확정) — 다른 구역은 탭으로 옮긴다.
+      pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setCommodoreMobileTab(sessionsRenderer ? "sessions" : "log"); setPanel(true); } },
     });
-  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, commodoreId, t]);
+  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, commodoreId, sessionsRenderer, t]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -217,6 +221,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
   const run = view?.run;
   const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
+    ...(sessionsRenderer ? [{ id: "sessions" as const, label: t("commodore.tabs.sessions") }] : []),
     { id: "log", label: t("commodore.tabs.log") },
     { id: "goals", label: t("commodore.trail.title") },
     { id: "directive", label: t("commodore.tabs.directive") },
@@ -249,7 +254,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
             <CommodoreStatusRow t={t} commodoreId={commodoreId ?? ""} view={view} />
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
-          {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
+          {tab === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} /></div> : null}
+          {tab === "log" || (tab === "sessions" && !SessionsList) ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}

@@ -28,7 +28,7 @@ export const commodoreMobilePane: PaneDescriptor = {
 };
 
 /**
- * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 홈 대표 자리(바로가기 칩)에 「사령관」 목적지로 선다.
+ * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때 「사령관」 목적지로 선다. 폰 홈의 사령관 행이 그 화면을 연다(바로가기 시트에는 서지 않는다).
  * 데스크톱 레일에는 오르지 않는다(`mobile.desktop: false`) — 팔레트의 사령관 행은 호스트가 Theater Inbox 섹션(`commodoreInboxSection`)에서 세운다.
  */
 export const commodoreEntry: RailEntryDescriptor = {

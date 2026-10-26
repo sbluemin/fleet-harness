@@ -66,8 +66,8 @@ export const fileExplorerEntry: RailEntryDescriptor = {
   // 사령관 개편 동안 잠시 닫아 둔다 — 레일·단축키·팔레트·모바일 입구가 함께 닫힌다.
   paused: true,
   panes: ["file-explorer", DOCUMENT_PANE_ID],
-  // 모바일 홈 바로가기 칩 — 목표 다음 파일.
-  // 모바일 바로가기 칩·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
+  // 모바일 홈 바로가기 — 목표 다음 파일.
+  // 모바일 바로가기·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
   mobile: { destination: { order: 20, label: (locale) => getT(locale)("fileExplorer.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></svg> },
   handles: {
     openFile: async (request) => {

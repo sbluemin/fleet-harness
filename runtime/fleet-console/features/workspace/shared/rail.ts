@@ -217,7 +217,7 @@ export interface RailEntryMobile {
    */
   readonly description?: LocalizedText;
   /**
-   * 모바일 홈 바로가기 칩과 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
+   * 모바일 홈 바로가기 시트와 「플러그인」 화면 행에 쓸 아이콘(데스크톱 레일 아이콘과 다른 모양이 필요할 때). 24×24 격자에 선 1.7·둥근 끝이고
    * 색은 글자색(`currentColor`)을 따른다. 생략하면 엔트리의 `icon`을 쓴다.
    */
   readonly icon?: ReactNode | (() => ReactNode);
@@ -250,7 +250,7 @@ export interface RailEntryMobile {
    */
   readonly finished?: RailEntryMobileFinished;
   /**
-   * 홈의 바로가기 칩으로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
+   * 홈의 바로가기로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
    *
@@ -277,7 +277,7 @@ export interface RailEntryMobile {
      */
     readonly label?: LocalizedText;
     /**
-     * `false`면 이 목적지는 홈 바로가기 칩·대표 자리에 서지 않는다 — 화면은 그대로 목적지로 열리지만(`rail.open`이 도구 시트가 아니라 이 화면을 세운다)
+     * `false`면 이 목적지는 홈 바로가기에 서지 않는다 — 화면은 그대로 목적지로 열리지만(`rail.open`이 도구 시트가 아니라 이 화면을 세운다)
      * 입구는 플러그인이 정한 착지뿐이다. 목적지라 「더보기」의 「플러그인」 화면 행에도 서지 않는다. 생략하면 칩으로 선다.
      */
     readonly chip?: false;
@@ -328,20 +328,20 @@ export interface RailEntryConversationPane {
   };
 }
 
-/** 모바일 바로가기 칩 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
+/** 모바일 바로가기 행 오른쪽 끝 칸의 내용. 문자열은 이미 현지화되어 있다. */
 export interface RailEntryDestinationTrailingValue {
   readonly text: string;
   /** 낱말의 톤 — 기본 `muted`, 꺼짐처럼 가라앉은 상태는 `faint`, 오류는 `danger`. */
   readonly tone?: "muted" | "faint" | "danger";
 }
 
-/** 모바일 바로가기 칩 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
+/** 모바일 바로가기 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
 export interface RailEntryDestinationTrailing {
   readonly subscribe: (listener: () => void) => () => void;
   readonly get: (theaterId: string | null) => RailEntryDestinationTrailingValue | null;
 }
 
-/** 모바일 바로가기 칩의 보임 공급원 — `RailEntryMobile.destination.shown`. */
+/** 모바일 바로가기의 보임 공급원 — `RailEntryMobile.destination.shown`. */
 export interface RailEntryDestinationShown {
   readonly subscribe: (listener: () => void) => () => void;
   /** 지금 이 목적지 행을 둘지. */
