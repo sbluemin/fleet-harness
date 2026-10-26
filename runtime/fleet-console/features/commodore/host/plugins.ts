@@ -205,7 +205,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const errorCode = (result: CliResult): MarketplaceErrorCode => {
     const text = `${result.failureCode ?? ""} ${result.message ?? ""}`.toLowerCase();
     if (result.failureCode === "invalid_source") return "invalid_source";
-    if (/auth|permission denied|could not read username|publickey|403|401/.test(text)) return "auth_failed";
+    if (/auth|permission denied|could not read username|publickey|host key verification|could not read from remote repository|403|401/.test(text)) return "auth_failed";
     if (/marketplace\.json|manifest/.test(text)) return "no_manifest";
     if (result.failureCode === "not_found" || /not found|404|does not exist/.test(text)) return "not_found";
     return "fetch_failed";
@@ -332,10 +332,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       hooks: hooks.length,
       mcp: Object.keys(mcp).length,
     };
+    // 사람의 신뢰가 필요한 것은 이 컴퓨터에서 실행되는 것뿐이다 — 훅 명령과 stdio MCP. 원격(http·sse) MCP 는 실행이 아니라 접속이다.
     const runs = [
       ...hooks.map(([event, command]) => ({ kind: "hook" as const, label: event!, command: command! })),
-      ...Object.entries(mcp).map(([name, config]) => ({ kind: "mcp" as const, label: name, command: typeof config.command === "string" ? [config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])].join(" ") : typeof config.url === "string" ? config.url : name })),
-    ].filter((run) => run.kind === "hook" || !/^https?:/.test(run.command));
+      ...Object.entries(mcp).flatMap(([name, config]) => typeof config.command === "string" && config.command.trim()
+        ? [{ kind: "mcp" as const, label: name, command: [config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])].join(" ") }]
+        : []),
+    ];
     const version = typeof manifest.version === "string" ? manifest.version : installed()[id]?.[0]?.version;
     return { components, ...(runs.length ? { runs } : {}), ...(version ? { version } : {}) };
   };
@@ -372,7 +375,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     }
     const name = result.marketplace;
     const isPresetName = PRESET_MARKETPLACES.some((item) => item.name === name);
-    if (!preset && isPresetName) { await runCli(["marketplace", "remove", name]).catch(() => undefined); throw new CommodoreStoreError("preset_name"); }
+    if (!preset && isPresetName) {
+      // CLI 는 같은 이름의 마켓플레이스 출처를 바꿔 쓴다 — 기본 제공의 출처를 되돌려 놓고 거절한다.
+      const original = PRESET_MARKETPLACES.find((item) => item.name === name)!;
+      await runCli(["marketplace", "remove", name]).catch(() => undefined);
+      await runCli(["marketplace", "add", original.repo]).catch(() => undefined);
+      throw new CommodoreStoreError("preset_name");
+    }
     if (expected && expected !== name) { patchMarketplace(expected, { status: "failed", error: "no_manifest" }); throw new CommodoreStoreError("no_manifest"); }
     const row: RegistryMarketplace = { name, kind: source.kind, locator: source.locator, ...(source.ref ? { ref: source.ref } : {}), preset, enabled: true, status: "ready", updatedAt: now() };
     const registry = update((current) => {
@@ -490,7 +499,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
           const type = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
           if (type === "stdio" && typeof config.command === "string") {
             mcpServers[name] = { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) };
-          } else if (type !== "stdio" && typeof config.url === "string") {
+          } else if (type !== "stdio" && typeof config.url === "string" && /^https?:\/\/\S+$/i.test(config.url)) {
             mcpServers[name] = { type, url: config.url, ...(isRecord(config.headers) ? { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, String(value)])) } : {}) };
           }
         }
