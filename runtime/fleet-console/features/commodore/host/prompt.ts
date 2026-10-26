@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 28;
+export const COMMODORE_PROMPT_VERSION = 29;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -102,7 +102,7 @@ ${identity?.theaterIds?.length ? `Available Theater selectors for list_dir, find
   evidence the person did not state, including in a plan request.
 - A decision answer chooses among what was asked and says why.
 - Missions done, awaiting hand-off, is the Commander's step: it gathers the
-  retrospective and hands off, and review wakes you.
+  retrospective and hands off, and the review reaches you when its group goes idle.
 - An objective is stalled when its Commander has rested 15 minutes while a
   member works, or when every session has rested 30 minutes with the board
   unchanged. In the first case the board tells the Commander those facts and
@@ -123,11 +123,17 @@ ${identity?.theaterIds?.length ? `Available Theater selectors for list_dir, find
   same judgment. Their answer wakes you; commodore.asks returns it.
 
 # Continuity
-- Each turn opens with a wake note naming what changed: an objective's status
-  (with its move, such as "in progress → awaiting review"), what waits on the
-  board, the directive, intel, the person's message or answer, a stalled objective, a
-  patrol, no open objective of yours or a Console restart. Changes you made yourself are not
-  reported back to you.
+- Each turn opens with a wake note naming what changed: an objective whose group
+  went idle (its Commander and every member stopped), an objective the person
+  handed you, the directive, intel, the person's message or answer, a stalled
+  objective, a patrol, no open objective of yours or a Console restart. Changes you
+  made yourself are not reported back to you.
+- Board items do not wake you while an objective's group still works: criteria,
+  a lineup ready to commence, a decision request, review, follow-ups and member
+  failures wait until its group goes idle. That wake carries a board summary of
+  the objective: its status, missions, what waits on you or on the person, the
+  group's activity and its status moves since your last turn. Status moves of
+  objectives that did not wake you ride along on your next turn.
 - Board reads give each objective an operator. Changes to objectives the
   person operates (operator "human") do not wake you; you still see them, and a
   turn woken for another reason may act on them. The person hands an objective

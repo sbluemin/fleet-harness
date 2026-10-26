@@ -1,5 +1,6 @@
 import type { ConsoleObjectiveObservation } from "../../console-use/shared/control.js";
 import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
+import { liftNestedActivity } from "./records/activity.js";
 
 export const STALL_MS = 30 * 60_000;
 /** 구성원이 일하는 동안 지휘관이 이만큼 쉬면 정체다. */
@@ -117,6 +118,23 @@ export function stalledObjectives(objectives: readonly Objective[], observe: Boa
 }
 const workingWhileCommanderRests = (commander: BoardObservation, members: readonly (BoardObservation | null | undefined)[], now: number): boolean =>
   commander.restingSince !== undefined && now - commander.restingSince >= COMMANDER_REST_MS && members.some((observation) => !!observation && working(observation));
+
+/**
+ * 그룹 대화가 대기 중인가 — 화면의 대화 행이 「대기 중」이라 부르는 그 끌어올림(`liftNestedActivity`)이 idle 이다: 지휘관과 띄운
+ * 구성원 누구도 일하거나(running·background) 허용을 기다리지(awaiting) 않는다. 휴면한 지휘관은 쉬는 것이다. 지휘관을 관측할 수
+ * 없으면(세션이 없거나 모름) 그룹이 없는 것이라 대기 중이 아니다.
+ */
+export function groupIdle(objective: Pick<Objective, "id" | "members">, observe: BoardObserver): boolean {
+  const commander = observe(objective.id);
+  if (!commander) return false;
+  const own = commander.lifecycle === "dormant" ? "idle" : commander.lifecycle === "live" ? commander.activity : "unknown";
+  if (own !== "idle" && own !== "ended") return false;
+  const members = objective.members.filter((member) => member.sessionName !== null).flatMap((member) => {
+    const observation = observe(member.id);
+    return observation?.lifecycle === "live" ? [observation.activity] : [];
+  });
+  return liftNestedActivity("idle", members) === "idle";
+}
 
 /** 지휘관이 쉬는 동안 일하는 구성원과 그 휴식의 분 — 정체 통지가 싣는 사실. 그 갈래의 정체가 아니면 null. */
 export function commanderRestFacts(objective: Objective, observe: BoardObserver, now = Date.now()): { readonly roles: readonly string[]; readonly minutes: number } | null {
