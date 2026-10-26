@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -502,7 +503,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         const { plugin } = splitPluginId(id);
         const mcpServers: Record<string, ClaudeGatewayExternalMcpServer> = {};
         for (const [server, config] of Object.entries(mcpDeclarations(dir))) {
-          const name = `plugin_${plugin}_${server}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+          // 마켓플레이스가 달라도 플러그인 이름은 같을 수 있다 — 전체 식별자의 짧은 해시로 서버 이름을 가른다(잘라도 유일하게).
+          const name = `${`plugin_${plugin}_${server}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40)}_${createHash("sha256").update(`${id}\0${server}`).digest("hex").slice(0, 7)}`;
           const type = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" && config.command === undefined ? "http" : "stdio";
           if (type === "stdio" && typeof config.command === "string") {
             mcpServers[name] = { type: "stdio", command: config.command, ...(Array.isArray(config.args) ? { args: config.args.map(String) } : {}), ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}) };

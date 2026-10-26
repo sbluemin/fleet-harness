@@ -167,14 +167,17 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/marketplaces/remove", method: "POST", summary: "Remove a custom marketplace; presets can only be turned off.", handler: json(marketplaceNameRefSchema, ({ name }) => plugins().remove(name)) },
     { name: "commodore/plugins/inspect", method: "POST", summary: "Fetch a plugin into Console's plugin home and report its components and the commands it would run.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().inspect(pluginId) })) },
     { name: "commodore/plugins/set", method: "POST", summary: "Install or remove a plugin for one Commodore; applies from its next turn and to its objectives' next sessions.", handler: json(commodorePluginSetSchema, async ({ commodoreId, pluginId, installed, trusted }) => {
-      const state = read(commodoreId);
-      const current = state.plugins ?? [];
+      const selected = () => read(commodoreId).plugins ?? [];
       if (installed) {
-        if (!current.includes(pluginId) && current.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+        const before = selected();
+        if (!before.includes(pluginId) && before.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
         await plugins().prepareInstall(pluginId, trusted === true);
-        return view(commodoreId, store.setPlugins(commodoreId, [...current, pluginId]));
+        // 받는 동안 같은 사령관의 다른 설치·제거가 끝났을 수 있다 — 저장 직전의 목록에 더한다.
+        const latest = selected();
+        if (!latest.includes(pluginId) && latest.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+        return view(commodoreId, store.setPlugins(commodoreId, [...latest, pluginId]));
       }
-      return view(commodoreId, store.setPlugins(commodoreId, current.filter((id) => id !== pluginId)));
+      return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
