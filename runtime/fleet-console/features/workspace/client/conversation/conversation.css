@@ -169,8 +169,31 @@
 }
 .conversation-split > .conversation-column { min-width: 0; }
 .conversation-split[data-split] > .conversation-column:first-child { flex: 0 0 var(--commander-split-left, 50%); }
-/* 맨 위 줄을 도구 분할 폭만큼 더 뻗는 것은 맨 오른쪽 칸의 몫이다 — 사령관 칸이 뻗으면 그 pill 이 지휘관 칸 위로 밀린다. */
-.conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row { right: 0; }
+/* 맨 위 줄을 도구 분할 폭만큼 더 뻗는 것은 맨 오른쪽 칸의 몫이다 — 사령관 칸이 뻗으면 그 pill 이 지휘관 칸 위로 밀린다.
+   도구 캡슐은 맨 위 줄 오른쪽 끝(지휘관 칸 위)에 선다. 그래서 그 몫만큼 비우는 것은 지휘관 칸의 오른쪽뿐이고, 나머지 가장자리는
+   좁은 칸에서도 제목이 접히지 않게 작은 여백만 둔다. */
+.conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row { right: 0; padding: 0 var(--space-3); }
+.conversation-split[data-split] > .conversation-column:last-child > .conversation-pill-row { padding-left: var(--space-3); }
+/* 좁은 창에서 지휘관 칸만 설 때 — 사령관 칸은 자리를 비키되 마운트된 채 남는다(다시 서면 그 탭이 연 사이드바가 걷힌다). */
+.conversation-split[data-split-narrow] > .conversation-column:first-child { display: none; }
+.conversation-split-back {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+.conversation-split-back:hover,
+.conversation-split-back:focus-visible {
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
+  outline: none;
+}
 .conversation-split-divider {
   position: relative;
   flex: 0 0 9px;

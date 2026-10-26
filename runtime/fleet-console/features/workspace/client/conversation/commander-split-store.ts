@@ -21,6 +21,11 @@ export interface CommanderSplitState {
   readonly ratio: number;
   /** 사령관 UUID → 그 사령관에서 마지막으로 세운 지휘관 Objective id. */
   readonly picked: Readonly<Record<string, string>>;
+  /**
+   * 두 칸이 들어가지 않는 좁은 창에서 보이는 한 칸 — 지휘관을 고르면 지휘관 칸, 「← 사령관」을 누르면 사령관 칸이다. 저장하지 않는
+   * 화면 상태라 창을 넓히면 다시 두 칸이 선다.
+   */
+  readonly narrowPane: "commander" | "commodore";
 }
 
 function readStorage(key: string): string | null {
@@ -68,6 +73,7 @@ function readInitial(): CommanderSplitState {
     open: readStorage(OPEN_KEY) === "1",
     ratio: readStorage(RATIO_KEY) === null ? DEFAULT_RATIO : clampCommanderSplitRatio(ratio),
     picked: readPicked(),
+    narrowPane: "commander",
   };
 }
 
@@ -98,8 +104,14 @@ export function openCommanderSplit(commodoreId: string, objectiveId: string): vo
   const picked = state.picked[commodoreId] === objectiveId ? state.picked : { ...state.picked, [commodoreId]: objectiveId };
   if (picked !== state.picked) writeStorage(PICKED_KEY, JSON.stringify(picked));
   if (!state.open) writeStorage(OPEN_KEY, "1");
-  if (state.open && picked === state.picked) return;
-  setState({ ...state, open: true, picked });
+  if (state.open && picked === state.picked && state.narrowPane === "commander") return;
+  setState({ ...state, open: true, picked, narrowPane: "commander" });
+}
+
+/** 좁은 창에서 지휘관 칸 대신 사령관 칸을 보인다 — 분할의 열림 기억은 그대로다. */
+export function showCommodoreInNarrowSplit(): void {
+  if (state.narrowPane === "commodore") return;
+  setState({ ...state, narrowPane: "commodore" });
 }
 
 /** 분할을 닫는다 — 모든 사령관에서 닫힌 채 남는다. 고른 지휘관은 기억에 남겨 다시 열 때 그대로 선다. */

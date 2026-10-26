@@ -45,8 +45,8 @@ import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
-import { CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit } from "./commander-split.js";
-import { closeCommanderSplit, useCommanderSplit } from "./commander-split-store.js";
+import { clampToCommanderSplitBounds, commanderSplitBounds, CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit } from "./commander-split.js";
+import { closeCommanderSplit, showCommodoreInNarrowSplit, useCommanderSplit } from "./commander-split-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
@@ -784,10 +784,16 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   }, []);
   useEffect(() => () => regionObserverRef.current?.disconnect(), []);
   const regionWidth = regionSize?.width ?? Math.max(0, viewport.width - insets.left - insets.right);
-  // 두 칸이 읽을 폭을 남기지 못하는 좁은 창에서는 나누지 않는다 — 열림 기억은 그대로라 창을 넓히면 돌아온다.
   const regionHeight = regionSize?.height ?? viewport.height;
   const geometry = useMemo(() => computeWorkbenchGeometry(layout, regionWidth, regionHeight), [layout, regionWidth, regionHeight]);
-  const splitShown = splitCommodoreId !== null && commanderSplit.open && regionWidth - geometry.conversationRight >= COMMANDER_SPLIT_MIN_STAGE_PX;
+  // 두 칸이 최소 폭을 남기지 못하는 좁은 창에서는 한 칸만 선다 — 고른 지휘관 칸이 먼저고 「← 사령관」으로 사령관 칸에 돌아간다.
+  // 열림 기억은 그대로라 창을 넓히면 두 칸이 돌아온다. 넓은 창에서도 저장된 비율은 두 칸의 최소 폭 안으로 묶어 그린다.
+  const splitStageWidth = regionWidth - geometry.conversationRight;
+  const splitOpen = splitCommodoreId !== null && commanderSplit.open;
+  const splitShown = splitOpen && splitStageWidth >= COMMANDER_SPLIT_MIN_STAGE_PX;
+  const splitNarrowCommander = splitOpen && !splitShown && splitRecord !== null && commanderSplit.narrowPane === "commander";
+  const splitBounds = commanderSplitBounds(splitStageWidth);
+  const splitRatio = clampToCommanderSplitBounds(commanderSplit.ratio, splitBounds);
   const workbenchConversation = useMemo<WorkbenchConversation>(() => {
     if (surfaceDescriptor) {
       return {
@@ -846,7 +852,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           key={surface.surfaceId}
           className="conversation-split"
           data-split={splitShown || undefined}
-          style={splitShown ? { "--commander-split-left": `${(commanderSplit.ratio * 100).toFixed(2)}%` } as CSSProperties : undefined}
+          data-split-narrow={splitNarrowCommander || undefined}
+          style={splitShown ? { "--commander-split-left": `${(splitRatio * 100).toFixed(2)}%` } as CSSProperties : undefined}
         >
           <ConversationSurfaceColumn
             descriptor={surfaceDescriptor}
@@ -858,8 +865,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
             sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
             browserSplitOpen={browserOpen}
           />
-          {splitShown ? <CommanderSplitDivider ratio={commanderSplit.ratio} /> : null}
-          {splitShown ? (splitRecord ? (
+          {splitShown ? <CommanderSplitDivider ratio={splitRatio} bounds={splitBounds} /> : null}
+          {splitShown || splitNarrowCommander ? (splitRecord ? (
             <ConversationColumn
               key={splitRecord.id}
               state={state}
@@ -870,7 +877,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
               onClose={onClose}
               browserSplitOpen={false}
               tools={noTools}
-              split={{ onExpand: () => expandCommanderSplit(splitRecord.id), onClose: closeCommanderSplit }}
+              split={{ onExpand: () => expandCommanderSplit(splitRecord.id), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }}
             />
           ) : <CommanderSplitPlaceholder onClose={closeCommanderSplit} />) : null}
         </div>
@@ -1289,7 +1296,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
    * 사령관 대화 옆 칸에 선 지휘관 대화 — 가운데 칸의 주인은 여전히 사령관이라 활성 Objective 를 바꾸지 않고, pill 은 크게 보기다.
    * 머리 줄 도구 캡슐 대신 크게 보기·닫기 단추가 선다.
    */
-  readonly split?: { readonly onExpand: () => void; readonly onClose: () => void };
+  readonly split?: { readonly onExpand: () => void; readonly onClose: () => void; readonly onBack?: () => void };
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
@@ -1449,6 +1456,11 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {split ? (
           <span className="conversation-split-controls">
+            {split.onBack ? (
+              <button type="button" className="conversation-split-back" onClick={split.onBack}>
+                {t("conversation.commanderSplit.back")}
+              </button>
+            ) : null}
             <button type="button" className="conversation-split-control" onClick={split.onExpand} aria-label={t("conversation.commanderSplit.expandAria", { title: objectiveRecord.title })} title={t("conversation.commanderSplit.expand")}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
