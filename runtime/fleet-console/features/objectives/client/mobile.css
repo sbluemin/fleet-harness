@@ -63,6 +63,8 @@
 .objectives-m-grp > .objectives-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .objectives-m-grp > .objectives-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
 .objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 임무 줄의 상세 — 이름이 있는 임무에서만 이름 아래에 한 단계 작고 옅게 선다. */
+.objectives-m-detail { display: block; margin-top: 2px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 /* 행 머리의 몽글 아바타 — 임무 줄은 맡은 사람. 끝난 임무는 줄 끝 체크가 말하고 글이 물러선다. */
 .objectives-m .objectives-m-row > .objectives-avatar { width: 28px; height: 28px; }
 .objectives-m .objectives-m-row.is-mission > .objectives-avatar { width: 24px; height: 24px; }

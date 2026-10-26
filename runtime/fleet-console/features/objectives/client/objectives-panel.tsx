@@ -8,7 +8,7 @@ import type { OpenLinkHandler } from "@fleet-console/link/core";
 import type { StatusGlyphState } from "./components/status-glyph.js";
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../shared/signals.js";
-import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { commanderMode, extensionOf, missionReady, missionTitle, unseenRecords, MAX_MISSION_TEXT, MAX_MISSION_TITLE, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { DecisionGlyph, DecisionList } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
@@ -1535,13 +1535,15 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     const children = objective.missions.filter(m => m.prerequisites.includes(mission.id));
     const patch = (value: Record<string, unknown>) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: value });
     const edgeRow = (other: ObjectiveMission, from: string, to: string) => <div className="objectives-popup-edge-row" key={other.id}>
-      <span className="objectives-popup-edge-icon"><MissionNodeIcon state={missionStates.get(other.id)!} number={numberOf(other.id)} /></span><button type="button" aria-label={`${t("objectives.graph.detail", { n: numberOf(other.id) })}. ${other.text}. ${t(`objectives.graph.state.${missionStates.get(other.id)!}`)}`} onClick={() => select(other.id)}>{other.text}</button>
+      <span className="objectives-popup-edge-icon"><MissionNodeIcon state={missionStates.get(other.id)!} number={numberOf(other.id)} /></span><button type="button" aria-label={`${t("objectives.graph.detail", { n: numberOf(other.id) })}. ${missionTitle(other)}. ${t(`objectives.graph.state.${missionStates.get(other.id)!}`)}`} onClick={() => select(other.id)}>{missionTitle(other)}</button>
       <button type="button" className="objectives-popup-cut" disabled={!canEditMission(to)} aria-label={t("objectives.graph.edgeAria", { from: numberOf(from), to: numberOf(to) })} title={canEditMission(to) ? t("objectives.graph.cut") : t("objectives.graph.locked")} onClick={() => void onToggleEdge(from, to, false)}>×</button>
       {mission.why[other.id] && mission.why[other.id] !== "human" ? <small>{mission.why[other.id]}</small> : null}
     </div>;
     return <>
       <div className="objectives-popup-head"><span>{t("objectives.graph.detail", { n: index })}</span><ExtensionChip n={missionExtension(mission.id)} t={t} /><span className={`objectives-popup-state is-${state}`}><i />{t(`objectives.graph.state.${state}`)}</span><button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} onClick={close}><CloseGlyph /></button></div>
-      <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
+      {/* 이름 — 비우면 저장된 이름을 지우고 상세 앞부분(자리표시)으로 돌아간다. 상세 — 무엇을 할지, 비울 수 없다. */}
+      <WrapText key={`${mission.id}:title:${mission.title ?? ""}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.title ?? ""} placeholder={missionTitle(mission)} readOnly={!allowed} maxLength={MAX_MISSION_TITLE} onEscape={close} onCommit={value => { if (!value) { if (mission.title) patch({ title: null }); return true; } if (value !== mission.title) patch({ title: value }); return true; }} />
+      <WrapText key={`${mission.id}:text:${mission.text}`} className="objectives-popup-title objectives-popup-detail" label={t("objectives.graph.detailInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!allowed} maxLength={MAX_MISSION_TEXT} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
       {!allowed ? <p className="objectives-popup-hint">{t("objectives.graph.locked")}</p> : null}
       {!mission.done && state === "blocked" ? <p className="objectives-popup-hint">{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter(id => !objective.missions.find(m => m.id === id)?.done).map(numberOf).join("·") })}</p> : null}
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.owner")}<span title={mission.objectiveId ? objectiveRecordTitle(mission.objectiveId) : undefined}>{member?.role ?? t("objectives.graph.commander")} · {stateLabel(objectiveRecordOwnState(member?.id ?? objective.id))}</span></div>

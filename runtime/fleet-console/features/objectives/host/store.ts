@@ -877,6 +877,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
           id: mission.id,
+          ...(mission.title ? { title: mission.title } : {}),
           text: mission.text,
           done: mission.done === true,
           prerequisites: mission.prerequisites.map((edge) => edge.id),
@@ -1524,7 +1525,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
       const unplaced = addOptions?.unplaced === true && input.prerequisites === undefined;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
-      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member, assignmentTs: now() } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
+      const mission: StoredMission = { id: randomUUID(), ...(input.title ? { title: input.title } : {}), text: input.text, prerequisites, ...(input.member ? { member: input.member, assignmentTs: now() } : {}), ...(addOptions?.by && input.member !== undefined ? { memberBy: addOptions.by } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by ? { by: addOptions.by } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, missions: [...stored.missions, mission] });
       });
@@ -1550,6 +1551,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...base,
         prerequisites,
         ...(input.text !== undefined ? { text: input.text } : {}),
+        ...(input.title !== undefined ? { title: input.title ?? undefined } : {}),
         ...(input.done !== undefined ? { done: input.done ? true as const : undefined } : {}),
         ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by } : {}),
       };
@@ -1763,7 +1765,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           prerequisites.push({ id: targetId, ...(edge.why ? { why: edge.why } : {}) });
         }
         const member = resolve(mission.member);
-        return { id: freshIds[ix]!, text: mission.text, prerequisites, ...(member ? { member, assignmentTs: now() } : {}) };
+        return { id: freshIds[ix]!, ...(mission.title ? { title: mission.title } : {}), text: mission.text, prerequisites, ...(member ? { member, assignmentTs: now() } : {}) };
       });
       return withoutMet({ ...stored, members, criteriaProposals: proposals, missions: [...kept.map((mission) => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
       });

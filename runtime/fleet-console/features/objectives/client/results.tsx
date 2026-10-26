@@ -6,7 +6,7 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 
-import type { Objective, ObjectiveMission, ObjectiveResult, PrObservation } from "../shared/types.js";
+import { missionTitle, type Objective, type ObjectiveMission, type ObjectiveResult, type PrObservation } from "../shared/types.js";
 import { AttachmentView } from "./attachments.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
@@ -114,12 +114,12 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
     const key = resultGroupKey(objective.id, mission?.id);
     const open = groupOpen(key);
     const bodyId = `objectives-result-body-${objective.id}-${mission?.id ?? "loose"}`;
-    const name = mission ? `${t("objectives.graph.detail", { n })} · ${mission.text}` : t("objectives.results.loose");
+    const name = mission ? `${t("objectives.graph.detail", { n })} · ${missionTitle(mission)}` : t("objectives.results.loose");
     const groupImages = results.filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
     return <section key={mission?.id ?? "loose"} data-result-mission={mission?.id} className={`objectives-result-group${mission ? "" : " is-loose"}${highlightMission === mission?.id ? " is-highlight" : ""}`}>
       <div className="objectives-result-group-bar">
         <button type="button" className="objectives-result-group-head" aria-label={`${name} · ${t("objectives.results.title")} ${t("objectives.results.count", { count: results.length })}`} aria-expanded={open} aria-controls={bodyId} onClick={() => onToggleGroup(key)}>
-          <span className="objectives-result-mission-n" aria-hidden="true">{mission ? n : "—"}</span><span className="objectives-result-mission-title">{mission?.text ?? t("objectives.results.loose")}</span>
+          <span className="objectives-result-mission-n" aria-hidden="true">{mission ? n : "—"}</span><span className="objectives-result-mission-title">{mission ? missionTitle(mission) : t("objectives.results.loose")}</span>
           <span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })}</span>
           <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
         </button>
