@@ -292,6 +292,8 @@ function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
   boards.set(commodoreId, { ...(boards.get(commodoreId) ?? EMPTY), ...next });
   notify();
   describeMissingObjectiveRecords();
+  // 보드에 없어 미뤄 둔 선택 — 기다리던 목표가 이번에 들어왔으면 고른다(아직이면 다시 미룬다).
+  awaitedSelection?.();
 }
 
 /** Theater가 없거나 공유된 사령관도 UUID 목록으로 읽고, 구형 문맥·관측 기록은 보완한다. */
@@ -856,6 +858,11 @@ export function useOwnerView(commodoreId: string | null): ObjectiveViewState {
 
 let latestSelectionToken = 0;
 let pendingSelectionObjectiveId: string | null = null;
+/**
+ * 보드에 아직 없는 목표를 고르려던 선택 — 새 세션이 첫 메시지로 선 직후처럼 Objective 이 목표보다 먼저 도착하면, 그 목표가 보드에
+ * 들어오는(사건·재조회) setBoard 에서 마저 고른다. 이것이 없으면 사령관 보기 상태의 예전 선택(다른 목표)이 패널에 남는다.
+ */
+let awaitedSelection: (() => void) | null = null;
 
 function isObjectiveEditing(element: EventTarget | null = typeof document === "undefined" ? null : document.activeElement): boolean {
   return typeof HTMLElement !== "undefined" && element instanceof HTMLElement
@@ -875,6 +882,7 @@ let selectionTheater: { readonly contextTheaterId: string | null; readonly commo
 
 function clearSelectionTheater(): void {
   pendingSelectionObjectiveId = null;
+  awaitedSelection = null;
   selectionTheater = null;
   latestSelectionToken += 1;
   notify();
@@ -935,6 +943,7 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
 
   const theaterId = targetTheaterId;
   selectionTheater = { contextTheaterId: viewedTheaterId(), commodoreId: theaterId };
+  awaitedSelection = null;
   const select = () => {
     if (token !== latestSelectionToken || !shown()) return;
     if (selectionTheater?.commodoreId !== theaterId) return;
@@ -943,7 +952,16 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
     const matchingObjective = boards.get(theaterId)?.objectives.find(
       (objective) => objective.id === objectiveId || objective.members.some((member) => member.id === objectiveId && member.sessionName !== null),
     );
-    if (!matchingObjective) return;
+    if (!matchingObjective) {
+      // 목표가 될 최상위 에이전트 Objective 이면 그 목표가 도착할 때 마저 고르고, 그동안 같은 사령관의 다른 목표를 보이지 않게 자리를 비운다.
+      // 서버가 목표가 아니라고 답한 Objective(미연결)은 보던 자리를 그대로 둔다.
+      if (op?.type === "agent" && !op.parentObjectiveId && !unknownToServer.has(objectiveId)) {
+        patchOwnerView(theaterId, () => ({ selected: null, externalSelectionId: null }));
+        // 기다리는 사이 사람이 패널에서 다른 목표를 고르면 그 선택이 이긴다.
+        awaitedSelection = () => { awaitedSelection = null; if (readOwnerView(theaterId).selected === null) select(); };
+      }
+      return;
+    }
     patchOwnerView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
   };
   if (boards.get(theaterId)?.loaded) select();
