@@ -272,6 +272,13 @@ export interface ClientMobileBarCapability {
    * 내용이 바뀔 때마다 다시 부르면 된다(보통 effect 안에서).
    */
   set(bar: MobileBarSpec): void;
+  /**
+   * 깊이를 쌓은 채 다른 목적지로 옮기는 동작(`run`)을 감싼다. 쌓아 둔 history 항목이 있으면 `fold`로 상세를 먼저 접게 하고
+   * (상세 상태를 닫는 일은 플러그인이 안다 — 깊이가 0이 되도록), 그 항목이 걷혀 브라우저 뒤로가 내려앉은 뒤에 `run`을 부른다.
+   * 항목이 없으면 곧바로 `run`이다. 접지 않고 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 옛 목적지로
+   * 돌아가고 화면은 남는다. 같은 목적지 안에서 깊이를 바꾸는 동작에는 쓰지 않는다.
+   */
+  leave(fold: () => void, run: () => void): void;
 }
 
 export interface MobileBarSpec {

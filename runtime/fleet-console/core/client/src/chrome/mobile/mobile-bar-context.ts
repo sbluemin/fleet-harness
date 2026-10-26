@@ -105,6 +105,23 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       if (depth === 0 && layerRef.current !== null) { layerRef.current(); layerRef.current = null; }
       publish(specRef.current);
     },
+    leave(fold, run) {
+      if (pushedRef.current <= 0) { run(); return; }
+      // 홈 시트의 「닫고 나서 연다」와 같은 순서 — 접기가 깊이를 내리면 위 `set`이 쌓은 항목을 걷고(`history.go`), 그 뒤로(trusted popstate)가
+      // 내려앉은 뒤에 옮긴다. 옮기는 쪽의 동기 흐름(목적지 → 대화 열기 등)은 그대로 둔다. 걷을 것이 오지 않으면 짧은 시간 뒤에 옮긴다.
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("popstate", landed);
+        window.clearTimeout(timer);
+        run();
+      };
+      const landed = (event: PopStateEvent) => { if (event.isTrusted) finish(); };
+      window.addEventListener("popstate", landed);
+      const timer = window.setTimeout(finish, 400);
+      fold();
+    },
   }), []);
 }
 

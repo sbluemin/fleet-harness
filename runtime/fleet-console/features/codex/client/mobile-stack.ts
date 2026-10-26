@@ -9,6 +9,18 @@ export function setWikiSearchOpen(open: boolean): void {
   searchOpen = open;
 }
 
+// 목록이 서 있는 동안 검색을 닫는 길 — 리더 열이 다른 목적지로 떠나기 전에 검색 단까지 함께 접는다(깊이 0이 되도록).
+let closeSearch: (() => void) | null = null;
+
+export function holdWikiSearchClose(close: () => void): () => void {
+  closeSearch = close;
+  return () => { if (closeSearch === close) closeSearch = null; };
+}
+
+export function closeWikiSearch(): void {
+  if (searchOpen) closeSearch?.();
+}
+
 /** 리더 열이 막대에 선언할 깊이 — 목록 위 1단, 검색에서 열었으면 1단 더. */
 export function wikiReaderDepth(): number {
   return searchOpen ? 2 : 1;
