@@ -18,6 +18,7 @@ import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow } from "../../settings/client/preferences-context.js";
 import { TheaterSubagentsSection, useTheaterPromptController, useTheaterPromptModeNames } from "../../settings/client/theater-prompt-editor.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
+import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
@@ -287,6 +288,7 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   return (
     <div className="objectives-commodore-settings">
       <CommodoreTheaters commodoreId={theaterId} />
+      <CommodorePlugins t={t} commodoreId={theaterId} />
       <SettingsRow
         label={t("commodore.settings.model")}
         hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
