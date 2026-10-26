@@ -21,7 +21,6 @@ interface SideBarState {
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.objectiveRecords.side-width";
-const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.objectiveRecords.theater-collapsed";
 export const MIN_EXPANDED_PX = 280;
 /** 브라우저·비-macOS의 좁은 사령관 열 폭. macOS Desktop은 네이티브 신호등 양옆 여백을 맞춘다. */
 const COMPACT_SIDE_BAR_PX = 72;
@@ -41,7 +40,6 @@ function readCompact(): boolean {
 const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
-const collapsedTheaterListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
@@ -62,7 +60,6 @@ if (typeof window !== "undefined") {
     notifyListeners();
   });
 }
-let collapsedTheaterIds = readInitialCollapsedTheaters();
 // 활동 전이 추적 — 직전 활동과 처음 관측한 라이브 Objective. 출발·도착 표식은 전이 순간에만 붙는다.
 let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
@@ -74,10 +71,6 @@ export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);
 }
 
-export function useCollapsedTheaters(): readonly string[] {
-  return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
-}
-
 export function setSideBarWidth(width: number): void {
   const clamped = Math.max(MIN_EXPANDED_PX, Math.min(getMaxPx(), width));
   if (sideBarState.width === clamped) return;
@@ -86,19 +79,6 @@ export function setSideBarWidth(width: number): void {
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_WIDTH, String(clamped));
   } catch { /* ignore */ }
   notifyListeners();
-}
-
-export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void {
-  const current = new Set(collapsedTheaterIds);
-  if (collapsed) current.add(theaterId);
-  else current.delete(theaterId);
-  const next = Array.from(current);
-  if (next.join("\0") === collapsedTheaterIds.join("\0")) return;
-  collapsedTheaterIds = next;
-  try {
-    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_THEATER_COLLAPSED, JSON.stringify(next));
-  } catch { /* ignore */ }
-  notifyCollapsedTheaterListeners();
 }
 
 /** 카드가 실제로 차지하는 폭 — 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
@@ -190,15 +170,6 @@ function readInitialWidth(): number {
   return DEFAULT_WIDTH;
 }
 
-function readInitialCollapsedTheaters(): readonly string[] {
-  try {
-    if (typeof window === "undefined") return [];
-    const raw = localStorage.getItem(STORAGE_KEY_THEATER_COLLAPSED);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
-  } catch { return []; }
-}
-
 function notifyListeners(): void {
   for (const listener of sideBarListeners) listener();
 }
@@ -210,17 +181,4 @@ export function getSideBarState(): SideBarState {
 export function subscribeSideBarState(listener: () => void): () => void {
   sideBarListeners.add(listener);
   return () => sideBarListeners.delete(listener);
-}
-
-function notifyCollapsedTheaterListeners(): void {
-  for (const listener of collapsedTheaterListeners) listener();
-}
-
-function getCollapsedTheatersSnapshot(): readonly string[] {
-  return collapsedTheaterIds;
-}
-
-function subscribeCollapsedTheaters(listener: () => void): () => void {
-  collapsedTheaterListeners.add(listener);
-  return () => collapsedTheaterListeners.delete(listener);
 }

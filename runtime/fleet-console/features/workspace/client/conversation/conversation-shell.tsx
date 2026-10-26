@@ -38,15 +38,15 @@ import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/capti
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
-import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
+import { commanderObjectiveId, useClusterIndex, useObjectiveClusters } from "../objective-clusters.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
-import { clampToCommanderSplitBounds, commanderSplitBounds, CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit } from "./commander-split.js";
-import { closeCommanderSplit, setCommanderSplitVisibleObjective, showCommodoreInNarrowSplit, useCommanderSplit } from "./commander-split-store.js";
+import { clampToCommanderSplitBounds, commanderSplitBounds, CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit, CommanderSplitFreshColumn, CommanderSplitControls, CommanderSplitReturn } from "./commander-split.js";
+import { closeCommanderSplit, setCommanderSplitVisibleObjective, showCommodoreInNarrowSplit, setExpandedCommanderSplit, useCommanderSplit } from "./commander-split-store.js";
 import { acknowledgeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
@@ -651,8 +651,9 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
-  // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Objective 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
-  const newSession = state.newSession;
+  // 전역 새 세션은 전체 칸, 사령관의 새 세션은 그 대화를 남긴 채 옆 칸에 선다.
+  const splitNewSession = state.newSession?.placement === "commander-split" ? state.newSession : null;
+  const newSession = splitNewSession ? null : state.newSession;
   // 오른쪽 패널·분할 칸이 읽는 대상 — 새 세션 화면 동안은 보던 대화를 대상으로 삼지 않는다.
   const stageSubject = newSession ? null : subject;
   useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : stageSubject); }, [stageSubject, surfaceDescriptor]);
@@ -694,6 +695,18 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const splitPickedId = splitCommodoreId === null ? null : commanderSplit.picked[splitCommodoreId] ?? null;
   const splitRecord = splitPickedId === null ? null
     : state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === splitPickedId && objectiveRecord.commodoreId === splitCommodoreId) ?? null;
+  const splitClusters = useClusterIndex();
+  const splitCluster = splitPickedId === null ? null
+    : splitClusters.clusters.find((cluster) => commanderObjectiveId(cluster) === splitPickedId && cluster.commodoreId === splitCommodoreId) ?? null;
+  const splitSession = splitNewSession?.commodoreId === splitCommodoreId ? splitNewSession : null;
+  useEffect(() => {
+    if (splitNewSession && splitNewSession.commodoreId !== splitCommodoreId) closeNewSession();
+  }, [splitNewSession, splitCommodoreId]);
+  useEffect(() => {
+    if (!commanderSplit.expanded) return;
+    const shown = surfaceDescriptor ? standInId : stageSubject?.id;
+    if (shown !== commanderSplit.expanded.objectiveId) setExpandedCommanderSplit(null);
+  }, [commanderSplit.expanded, surfaceDescriptor, standInId, stageSubject?.id]);
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
@@ -792,11 +805,11 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const splitStageWidth = regionWidth - geometry.conversationRight;
   const splitOpen = splitCommodoreId !== null && commanderSplit.open;
   const splitShown = splitOpen && splitStageWidth >= COMMANDER_SPLIT_MIN_STAGE_PX;
-  const splitNarrowCommander = splitOpen && !splitShown && splitRecord !== null && commanderSplit.narrowPane === "commander";
+  const splitNarrowCommander = splitOpen && !splitShown && (splitRecord !== null || splitCluster !== null || splitSession !== null) && commanderSplit.narrowPane === "commander";
   const splitBounds = commanderSplitBounds(splitStageWidth);
   const splitRatio = clampToCommanderSplitBounds(commanderSplit.ratio, splitBounds);
   // 옆 칸에 보이는 지휘관은 사람이 읽고 있는 대화다 — 설 때 그 도착 표식을 확인 처리하고, 보이는 동안 도착하는 응답은 안 읽음으로 남기지 않는다.
-  const splitVisibleId = (splitShown || splitNarrowCommander) && splitRecord !== null && !newSession ? splitRecord.id : null;
+  const splitVisibleId = (splitShown || splitNarrowCommander) && splitRecord !== null && !newSession && !splitSession ? splitRecord.id : null;
   useEffect(() => {
     setCommanderSplitVisibleObjective(splitVisibleId);
     if (splitVisibleId !== null) acknowledgeIdleArrival(splitVisibleId);
@@ -874,19 +887,24 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
             browserSplitOpen={browserOpen}
           />
           {splitShown ? <CommanderSplitDivider ratio={splitRatio} bounds={splitBounds} /> : null}
-          {splitShown || splitNarrowCommander ? (splitRecord ? (
+          {splitShown || splitNarrowCommander ? (splitSession ? (
+            <NewSessionColumn state={state} target={splitSession} tools={<CommanderSplitControls onClose={() => { closeNewSession(); closeCommanderSplit(); }} {...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {})} />} />
+          ) : splitRecord ? (
             <ConversationColumn
               key={splitRecord.id}
               state={state}
               objectiveRecord={splitRecord}
               language={language}
               objectiveRecordKinds={objectiveRecordKinds}
-              onToggleDetails={() => expandCommanderSplit(splitRecord.id)}
+              onToggleDetails={() => expandCommanderSplit(splitCommodoreId!, splitRecord.id)}
               onClose={onClose}
               browserSplitOpen={false}
               tools={noTools}
-              split={{ onExpand: () => expandCommanderSplit(splitRecord.id), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }}
+              split={{ onExpand: () => expandCommanderSplit(splitCommodoreId!, splitRecord.id), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }}
             />
+          ) : splitCluster && splitCommodoreId && splitPickedId ? (
+            <CommanderSplitFreshColumn key={splitCluster.id} commodoreId={splitCommodoreId} objectiveId={splitPickedId} theaterId={splitCluster.theaterId} language={language} theme={state.activeTheme}
+              controls={{ onExpand: () => expandCommanderSplit(splitCommodoreId, splitPickedId, false), onClose: closeCommanderSplit, ...(splitNarrowCommander ? { onBack: showCommodoreInNarrowSplit } : {}) }} />
           ) : <CommanderSplitPlaceholder onClose={closeCommanderSplit} />) : null}
         </div>
       ) : subject ? (
@@ -1280,6 +1298,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
           </button>
           {hasActions ? <span className="conversation-pill-controls"><FeatureErrorBoundary fallback={null}>{actions}</FeatureErrorBoundary></span> : null}
         </div>
+        {standInId ? <CommanderSplitReturn objectiveId={standInId} /> : null}
         {tools(browser)}
       </div>
       <div className="conversation-body is-surface">
@@ -1480,7 +1499,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
             </button>
           </span>
-        ) : tools(toolsLead)}
+        ) : <><CommanderSplitReturn objectiveId={objectiveRecord.id} />{tools(toolsLead)}</>}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}

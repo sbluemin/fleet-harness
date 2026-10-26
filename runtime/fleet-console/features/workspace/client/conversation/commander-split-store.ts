@@ -26,6 +26,8 @@ export interface CommanderSplitState {
    * 화면 상태라 창을 넓히면 다시 두 칸이 선다.
    */
   readonly narrowPane: "commander" | "commodore";
+  /** 옆 칸에서 크게 보기로 넘어온 대화만 돌아가기 단추를 가진다. 저장하지 않는다. */
+  readonly expanded: { readonly commodoreId: string; readonly objectiveId: string } | null;
 }
 
 function readStorage(key: string): string | null {
@@ -74,6 +76,7 @@ function readInitial(): CommanderSplitState {
     ratio: readStorage(RATIO_KEY) === null ? DEFAULT_RATIO : clampCommanderSplitRatio(ratio),
     picked: readPicked(),
     narrowPane: "commander",
+    expanded: null,
   };
 }
 
@@ -104,8 +107,8 @@ export function openCommanderSplit(commodoreId: string, objectiveId: string): vo
   const picked = state.picked[commodoreId] === objectiveId ? state.picked : { ...state.picked, [commodoreId]: objectiveId };
   if (picked !== state.picked) writeStorage(PICKED_KEY, JSON.stringify(picked));
   if (!state.open) writeStorage(OPEN_KEY, "1");
-  if (state.open && picked === state.picked && state.narrowPane === "commander") return;
-  setState({ ...state, open: true, picked, narrowPane: "commander" });
+  if (state.open && picked === state.picked && state.narrowPane === "commander" && state.expanded === null) return;
+  setState({ ...state, open: true, picked, narrowPane: "commander", expanded: null });
 }
 
 /** 좁은 창에서 지휘관 칸 대신 사령관 칸을 보인다 — 분할의 열림 기억은 그대로다. */
@@ -140,4 +143,15 @@ export function setCommanderSplitRatio(ratio: number): void {
   if (next === state.ratio) return;
   writeStorage(RATIO_KEY, String(next));
   setState({ ...state, ratio: next });
+}
+
+/** 새 세션은 아직 Objective id가 없으므로 마지막 선택을 덮지 않고 옆 칸만 연다. */
+export function revealCommanderSplit(): void {
+  writeStorage(OPEN_KEY, "1");
+  setState({ ...state, open: true, narrowPane: "commander", expanded: null });
+}
+
+export function setExpandedCommanderSplit(expanded: CommanderSplitState["expanded"]): void {
+  if (state.expanded === expanded) return;
+  setState({ ...state, expanded });
 }

@@ -111,6 +111,12 @@ export interface ClusterIndex {
 
 const EMPTY_INDEX: ClusterIndex = { clusters: [], layouts: new Map(), rootOf: new Map(), rows: [], rowOf: new Map() };
 
+/** 호스트 정준 cluster.id와 다른 지휘관 Objective id. 시작 전에도 곧 뿌리가 될 avatarObjectiveId를 같은 열쇠로 쓴다. */
+export function commanderObjectiveId(cluster: ObjectiveCluster): string | null {
+  if (cluster.row?.commodore) return null;
+  return cluster.root ?? cluster.avatarObjectiveId ?? null;
+}
+
 export function indexClusters(clusters: readonly ObjectiveCluster[]): ClusterIndex {
   if (clusters.length === 0) return EMPTY_INDEX;
   const layouts = new Map<string, ClusterLayout>();

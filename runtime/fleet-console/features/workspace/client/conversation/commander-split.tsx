@@ -1,9 +1,16 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent, type PointerEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../../core/client/src/integration/store.js";
+import { freshConversationSurface, openFreshConversation } from "../../../objectives/client/fresh-conversation.js";
+import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { presentRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { KeyedAvatar } from "../avatars.js";
+import { useConversationStandInComposer } from "./conversation-slots.js";
+import type { ConversationSurfaceContext } from "../../shared/conversation-surfaces.js";
 import { closeConversationSurface } from "./conversation-surface-store.js";
-import { COMMANDER_SPLIT_MAX_RATIO, COMMANDER_SPLIT_MIN_RATIO, setCommanderSplitRatio } from "./commander-split-store.js";
+import { COMMANDER_SPLIT_MAX_RATIO, COMMANDER_SPLIT_MIN_RATIO, setCommanderSplitRatio, openCommanderSplit, setExpandedCommanderSplit, useCommanderSplit } from "./commander-split-store.js";
 
 /** 칸마다 남길 최소 폭과 손잡이 폭. 둘을 다 담지 못하는 창에서는 한 칸만 선다. */
 const COMMANDER_SPLIT_PANE_MIN_PX = 320;
@@ -29,7 +36,9 @@ export function clampToCommanderSplitBounds(ratio: number, bounds: CommanderSpli
 }
 
 /** 옆 칸의 지휘관을 가운데 칸 전체로 연다 — 사이드바에서 지휘관을 고르던 기존 길과 같다. 분할의 열림 기억은 그대로다. */
-export function expandCommanderSplit(objectiveId: string): void {
+export function expandCommanderSplit(commodoreId: string, objectiveId: string, hasRecord = true): void {
+  setExpandedCommanderSplit({ commodoreId, objectiveId });
+  if (!hasRecord) { openFreshConversation(objectiveId); return; }
   revealObjectiveStage();
   closeConversationSurface();
   setActiveObjective(objectiveId);
@@ -115,4 +124,68 @@ export function CommanderSplitPlaceholder({ onClose }: { readonly onClose: () =>
       </div>
     </div>
   );
+}
+
+export interface CommanderSplitControlsProps {
+  readonly onClose: () => void;
+  readonly onExpand?: () => void;
+  readonly onBack?: () => void;
+}
+
+export function CommanderSplitControls({ onClose, onExpand, onBack }: CommanderSplitControlsProps) {
+  const t = useT();
+  return <span className="conversation-split-controls">
+    {onBack ? <button type="button" className="conversation-split-back" onClick={onBack}>{t("conversation.commanderSplit.back")}</button> : null}
+    {onExpand ? <button type="button" className="conversation-split-control" onClick={onExpand} aria-label={t("conversation.commanderSplit.expand")} title={t("conversation.commanderSplit.expand")}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </button> : null}
+    <button type="button" className="conversation-split-control" onClick={onClose} aria-label={t("conversation.commanderSplit.close")} title={t("conversation.commanderSplit.close")}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+    </button>
+  </span>;
+}
+
+/** 시작 전·보관된 목표도 같은 시작 화면과 그룹 입력창을 쓰되 전역 대화나 오른쪽 탭은 바꾸지 않는다. */
+export function CommanderSplitFreshColumn({ commodoreId, objectiveId, theaterId, language, theme, controls }: {
+  readonly commodoreId: string; readonly objectiveId: string; readonly theaterId: string;
+  readonly language: "en" | "ko"; readonly theme: ConversationSurfaceContext["theme"]; readonly controls: CommanderSplitControlsProps;
+}) {
+  const composer = useConversationStandInComposer();
+  const [, redraw] = useReducer((value: number) => value + 1, 0);
+  useEffect(() => freshConversationSurface.subscribe?.(redraw), []);
+  const context = useMemo<ConversationSurfaceContext>(() => ({
+    params: { objectiveId, commodoreId, theaterId }, language, theme, close: controls.onClose,
+    onObjectiveReady: (id) => openCommanderSplit(commodoreId, id),
+    ...(composer ? { composer: () => composer(objectiveId, language) } : {}),
+  }), [commodoreId, objectiveId, theaterId, language, theme, controls.onClose, composer]);
+  const avatar = freshConversationSurface.avatar?.(context);
+  return <div className="conversation-column">
+    <div className="conversation-pill-row">
+      <div className="conversation-pill"><button type="button" className="conversation-pill-details" onClick={controls.onExpand}>
+        {avatar ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "fresh"} size={20} label={avatar.label} decorative /> : null}
+        <span className="conversation-pill-title">{freshConversationSurface.title(context)}</span>
+        <span className="conversation-pill-sub">· {freshConversationSurface.subtitle?.(context)}</span>
+      </button></div>
+      <CommanderSplitControls {...controls} />
+    </div>
+    <div className="conversation-body is-surface">{freshConversationSurface.render(context)}</div>
+  </div>;
+}
+
+/** 크게 보기로 넘어온 바로 그 대화에서만 같은 자리의 돌아가기를 제공한다. */
+export function CommanderSplitReturn({ objectiveId }: { readonly objectiveId: string }) {
+  const t = useT();
+  const { expanded } = useCommanderSplit();
+  const commodores = useCommodoreList();
+  if (!expanded || expanded.objectiveId !== objectiveId) return null;
+  const owner = commodores.find((commodore) => commodore.commodoreId === expanded.commodoreId);
+  const name = owner ? commodoreSectionLabel(owner, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
+  return <button type="button" className="conversation-split-return" title={t("conversation.commanderSplit.returnTip", { commodore: name })} onClick={() => {
+    if (!openCommodoreConversation(expanded.commodoreId)) return;
+    openCommanderSplit(expanded.commodoreId, objectiveId);
+    presentRailPanel("commodore-commanders");
+  }}>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M8 3v10" stroke="currentColor" strokeWidth="1.3" /></svg>
+    {t("conversation.commanderSplit.return")}
+  </button>;
 }

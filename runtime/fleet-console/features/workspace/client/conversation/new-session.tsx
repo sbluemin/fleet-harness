@@ -561,6 +561,7 @@ export function NewSessionColumn({ state, target, tools }: {
     requestLaunch({
       theaterId: theater.id,
       ...(commodoreId ? { commodoreId } : {}),
+      ...(target.placement ? { placement: target.placement } : {}),
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
@@ -574,7 +575,7 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    requestLaunch({ theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
+    requestLaunch({ ...(target.placement ? { placement: target.placement } : {}), theaterId: theater.id, ...(commodoreId ? { commodoreId } : {}), pluginId, kind, variant: {} });
   };
 
   // 거절은 starting 을 풀어 이 타이머를 취소한다. 응답이 전혀 없을 때만 닫아, 시작하는 중에 가두지 않는다.

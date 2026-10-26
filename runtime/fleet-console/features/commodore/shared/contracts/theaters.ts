@@ -20,6 +20,8 @@ export interface ConsoleCommodoreSummary {
   readonly active: boolean;
   readonly run: CommodoreRunStatus;
   readonly last?: CommodoreLastMessage;
+  /** Latest commodore reply, independent of the person’s most recent message. */
+  readonly lastResponse?: CommodoreLastMessage;
 }
 export interface CommodoreListResponse { readonly commodores: readonly ConsoleCommodoreSummary[] }
 export interface CommodoreOrderInput { readonly commodoreIds: readonly string[] }

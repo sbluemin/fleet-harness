@@ -100,7 +100,7 @@ const theaterIdOf = (params: Readonly<Record<string, unknown>>): string | null =
 /** 지휘관 Objective 이 목록에 섰다 — 보관 describe 요약(완료로 보관된 지휘관)은 세지 않는다. */
 const commanderLive = (objectiveId: string): boolean => listedObjectiveSummaries().some((summary) => summary.id === objectiveId);
 
-function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, composer }: { readonly objectiveId: string; readonly theaterId: string | null; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined }) {
+function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, composer, onObjectiveReady }: { readonly objectiveId: string; readonly theaterId: string | null; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined; readonly onObjectiveReady?: ((objectiveId: string) => void) | undefined }) {
   const t = getT(language);
   const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
   const live = useSyncExternalStore(subscribeObjective, () => commanderLive(objectiveId), () => commanderLive(objectiveId));
@@ -119,9 +119,9 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   // 개시·범위 넓히기·완료 뒤 메시지로 지휘관 Objective 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   // 읽는 중인지는 렌더 값이 아니라 지금 값으로 본다 — 바로 위 효과가 같은 커밋에서 다시 읽기를 시작했을 수 있다.
   useEffect(() => {
-    if (live) focusObjective(objectiveId);
+    if (live) (onObjectiveReady ?? focusObjective)(objectiveId);
     else if ((objective === null && !waiting() && !failedNow()) || objective?.removed) onClose();
-  }, [live, objective, objectiveId, onClose, pending, failed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [live, objective, objectiveId, onClose, onObjectiveReady, pending, failed]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!objective) {
     if (!failed || theaterId === null) return null;
     return (
@@ -173,6 +173,6 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
   commodoreId: (ctx) => findObjective(objectiveIdOf(ctx.params))?.commodoreId ?? null,
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
-    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} theaterId={theaterIdOf(ctx.params)} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;
+    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} theaterId={theaterIdOf(ctx.params)} language={ctx.language} onClose={ctx.close} composer={ctx.composer} onObjectiveReady={ctx.onObjectiveReady} /> : null;
   },
 };

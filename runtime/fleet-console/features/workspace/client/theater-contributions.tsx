@@ -14,27 +14,6 @@ interface TheaterContributionProps {
 
 }
 
-/**
- * 플러그인이 Theater 머리 바로 아래에 세우는 줄. 한 기여의 실패가 Theater 목록을 비우지 않도록 각각 경계로 감싸고,
- * 아무도 그리지 않으면 자리도 없다.
- */
-export function TheaterContributionRows({ theater }: TheaterContributionProps) {
-  const { theaterContributions } = useFeatureRegistry();
-  const language = useConsoleLocale();
-  const rows = theaterContributions.filter((contribution) => contribution.row);
-  if (rows.length === 0) return null;
-  const base = { theater: { id: theater.id, label: theater.label }, active: true, language };
-  return (
-    <div className="side-bar-theater-contributions" data-theater-id={theater.id}>
-      {rows.map((contribution) => (
-        <FeatureErrorBoundary key={contribution.id} fallback={<></>}>
-          {contribution.row?.({ ...base, theaterInbox: scopedTheaterInbox(contribution.id) })}
-        </FeatureErrorBoundary>
-      ))}
-    </div>
-  );
-}
-
 /** Theater 동작(우클릭·Shift+F10) 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */
 export function TheaterContributionMenuItems({ theater, onClose }: TheaterContributionProps & { readonly onClose: () => void }) {
   const { theaterContributions } = useFeatureRegistry();

@@ -16,11 +16,10 @@ import { useInlineRename } from "../../../../core/client/src/integration/use-inl
 import { subscribeSideBarObjectiveAction } from "./interaction.js";
 import { pointOnText } from "./objective-records-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import type { ClusterIndex, ClusterLayout } from "../objective-clusters.js";
+import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../objective-clusters.js";
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
-import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사령관 「지휘관」 탭에 서는 한 줄.
@@ -159,9 +158,10 @@ interface SideBarClusterRowProps {
   readonly accentValue?: string | null;
   /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관 「지휘관」 탭은 대화 옆 칸에 세운다. */
   readonly onFocus: (objectiveId: string) => void;
+  readonly selected: boolean;
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -179,20 +179,17 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBar
       : state === "done"
         ? t("sidebar.row.glyph.done")
         : objectiveRecordMarkLabel(state);
-  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Objective 이 대화 화면에서 활성일 때만 선다. 목표 화면의 선택만으로는
-  // 서지 않는다(패널과 목표 화면이 서로 다른 줄을 가리키는 이중 하이라이트가 없게). 활성이 될 수 없는 뿌리 없는 줄만 화면의 선택을 따른다.
-  const active = anchor ? anchor.active || item.fold.some((entry) => entry.active) : row.selected === true;
-  // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
-  const rowPreview = useConversationRowPreview(anchor?.objectiveRecord?.id ?? "");
-  // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
+  // 시작 전 줄도 세션 유무·목표 패널 열림이 아니라 옆 칸의 선택을 따른다.
+  const active = selected;
+  // 제목 아래에는 상태 문구·진척 게이지·분모를 한 줄로 둔다.
+  // 사람의 차례가 된 까닭은 접근 이름에 남기고, 보이는 줄은 결정 상태와 질문 수를 말한다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
   // 맡은 이가 처리 중인 동안(`delegated`)은 그 상태 문구가 미리보기 자리를 차지하고 명도 물결로 흐른다 — 미리보기가 가려지는 것은 알고 고른 비용이다.
   const handlingStatus = row.decisionRequestedAt === undefined && row.delegated ? resolveLocalizedText(row.delegated.status, locale) : "";
-  const conversationLine = (decisionNote || handlingStatus || null)
-      ?? rowPreview?.text
-      ?? (row.decisionRequestedAt !== undefined
-        ? t("conversation.row.decision")
-        : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
+  const conversationLine = handlingStatus || (row.decisionRequestedAt !== undefined
+    ? `${t("commanderTab.status.awaiting")}${row.decisionQuestions ? ` ${row.decisionQuestions}` : ""}`
+    : state === "review" ? t("commanderTab.status.review")
+      : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
   const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
@@ -227,7 +224,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBar
   if (row.decisionRequestedAt !== undefined && row.decisionQuestions !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions }), tone: "req" });
   else if (row.decisionRequestedAt === undefined && row.delegated) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.delegated.questions }) }, { key: "handling", text: handlingStatus });
   if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
-  if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
+  if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
   row.provenance?.forEach((part, index) => {
@@ -238,10 +235,8 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBar
     const text = resolveLocalizedText(note.text, locale);
     if (text) meta.push({ key: `note-${index}`, text, ...(note.tone ? { tone: note.tone } : {}) });
   });
-  // 대화 중심 화면의 줄은 제목과 상태 한 줄, 두 줄이다 — 단계만 상태 문구 앞에 서고, 기한(짧은 표기)·주의 메모는 대화 목록의 시각
-  // 자리처럼 제목 줄 끝에 선다. 둘째 줄이 상태 문구(다음 행동)를 끝까지 싣게 하려는 자리 나눔이다. 결정 수·후속·출처·맡은 이 메모는
-  // 접근 이름(아래 aria-label 의 meta 전부)으로만 말한다. 결정 요청은 상태 문구가 이미 말한다.
-  const leadMeta = meta.filter((part) => part.key === "progress");
+  // 제목 끝에는 짧은 기한·주의 메모, 둘째 줄에는 상태·게이지·분모가 선다. 나머지 메타는 접근 이름이 보존한다.
+  const progress = row.progress && row.progress.total > 0 ? row.progress : null;
   const headMeta = meta.flatMap((part) => (
     part.key === "due" && row.due ? [{ ...part, text: t("sidebar.row.dueShort", { date: formatDueShort(row.due.date) }) }]
       : part.key.startsWith("note-") && part.tone === "warn" ? [part]
@@ -249,16 +244,12 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBar
   ));
   const rowRef = useRef<HTMLLIElement | null>(null);
   const pointerTypeRef = useRef("mouse");
-  // 뿌리가 선 줄은 그 지휘관으로 간다(onFocus). 플러그인 표면은 열지 않고, 이미 열려 있으면 선택 알림으로 따라오게 한다.
-  // 갈 지휘관이 없는 줄(Objective 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
+  // 목표 줄은 세션 유무와 무관하게 옆 칸으로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
   const open = () => {
-    if (!anchor) {
-      layout.cluster.open?.();
-      return;
-    }
-    const objectiveId = anchor.objectiveRecord.id;
+    const objectiveId = commanderObjectiveId(layout.cluster);
+    if (objectiveId === null) { layout.cluster.open?.(); return; }
     onFocus(objectiveId);
-    registry.objectives.objectiveRecordSelected(objectiveId);
+    if (anchor) registry.objectives.objectiveRecordSelected(anchor.objectiveRecord.id);
   };
   // 제목 글자 위 더블클릭은 이름 변경이다 — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로 판정한다. 이름 변경이면 dblclick 이
   // 버튼까지 번지지 않게 여기서 멈춘다. 터치의 더블 탭은 이름 변경으로 읽지 않는다.
@@ -320,14 +311,13 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus }: SideBar
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}
         </span>
-        {leadMeta.length > 0 || conversationLine ? (
-          <span className="side-bar-cluster-row-line" aria-hidden="true">
-            {leadMeta.map((part) => (
-              <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")}>{part.text}</span>
-            ))}
-            {conversationLine ? <span className={["side-bar-chip-preview side-bar-cluster-row-preview", handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span> : null}
-          </span>
-        ) : null}
+        <span className="side-bar-cluster-row-line" aria-hidden="true">
+          <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+          {progress ? <>
+            <span className={`side-bar-cluster-row-gauge${progress.done >= progress.total ? " is-complete" : ""}`}><span style={{ width: `${Math.max(0, Math.min(100, progress.done / progress.total * 100))}%` }} /></span>
+            <span className="side-bar-cluster-row-fraction">{progress.done}/{progress.total}</span>
+          </> : null}
+        </span>
       </button>
       {/* 표식이 토글이면 칸 안에 버튼이 서므로 칸 전체를 숨기지 않는다 — 장식인 표식만 숨긴다. */}
       <span className="side-bar-cluster-row-aside" {...(row.mark?.toggle ? {} : { "aria-hidden": true })}>

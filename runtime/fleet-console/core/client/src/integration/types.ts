@@ -22,6 +22,8 @@ export interface LaunchRequest {
   readonly theaterId: string;
   /** 사이드바 섹션이 지정한 사령관. 같은 Theater 를 여러 사령관이 가져도 이 섹션으로 만든다. */
   readonly commodoreId?: string;
+  /** 새 지휘관을 사령관 대화 옆 칸에 세우는 데스크톱 진입. */
+  readonly placement?: "commander-split";
   readonly pluginId: string | null;
   readonly kind: ObjectiveLaunchKind;
   readonly variant: Readonly<Record<string, string>>;
@@ -39,6 +41,8 @@ export interface NewSessionTarget {
   readonly theaterId: string | null;
   /** 이 새 세션의 사령관 — 열 때 정해 고정한다. 섹션 「+」는 그 섹션의 사령관, 팔레트·단축키는 지금 보는 사령관, 없으면 목록 첫 사령관을 싣는다. */
   readonly commodoreId?: string;
+  /** 새 지휘관을 사령관 대화 옆 칸에 세우는 데스크톱 진입. */
+  readonly placement?: "commander-split";
 }
 
 /**

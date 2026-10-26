@@ -6,7 +6,6 @@ import { clearConversationStage, closeConversationSurface, getConversationSurfac
 import { forgetWorkbenchConversation } from "../../../../features/workspace/client/conversation/workbench/workbench-store.js";
 import { closeTheaterInbox, readTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { forgetTheaterGroupCollapse } from "../../../../features/workspace/client/sidebar/group-collapse-store.js";
-import { setTheaterCollapsed } from "../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
 import { refreshAvatarBook } from "../../../../features/workspace/client/avatar-events.js";
 import { closeCodexReader } from "../../../../features/codex/client/reader-store.js";
 import { forgetCodexWorkspace, lastResolvedCodexWorkspace } from "../../../../features/codex/client/workspace-store.js";
@@ -78,7 +77,7 @@ function removeCommodoreViews(id: string, done: () => void = () => {}) {
     forgetCodexWorkspace(id);
     forgetWorkbenchConversation(`session:commodore:commodore:${id}`);
     for (const objectiveId of objectiveIds) forgetWorkbenchConversation(`operation:${objectiveId}`);
-    forgetTheaterGroupCollapse(id); setTheaterCollapsed(id, false);
+    forgetTheaterGroupCollapse(id);
     if (readZoneCommodore() === id) setZoneCommodore(null);
     if (readMobileCommodoreId() === id) selectMobileCommodore(null);
     if (destinationOwned) { setMobileDestination({ kind: "home" }); syncMobileDestinationUrl(); }

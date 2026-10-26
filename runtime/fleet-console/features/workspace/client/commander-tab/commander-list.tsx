@@ -1,19 +1,22 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { objectiveRecordOrderFromNodes } from "../../../../core/client/src/integration/store.js";
-import { useClusterIndex } from "../objective-clusters.js";
+import { closeNewSession, objectiveRecordOrderFromNodes } from "../../../../core/client/src/integration/store.js";
+import { commanderObjectiveId, useClusterIndex } from "../objective-clusters.js";
 import { buildTheaterEntries, SideBarClusterRow, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { openCommanderSplit, useCommanderSplit } from "../conversation/commander-split-store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
+import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
+import { CommodoreRecentActions } from "../../../commodore/client/commodore-trail.js";
+import { revealCommodoreTurn } from "../../../commodore/client/commodore-conversation.js";
+import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import "./commander-list.css";
 
 /*
- * 사령관 오른쪽 사이드바 「지휘관」 탭 — 그 사령관(UUID)이 가진 지휘관 세션을 구역 없이 한 목록으로 보인다. 상태는 줄 안의 글리프와
- * 상태 문구가 말하고, 시작 전·완료를 따로 접지 않는다. 순서는 사람이 고른 정렬 하나와 방향이다. 줄을 누르면 사령관 대화 옆 칸에 그
- * 지휘관의 그룹 대화가 선다(아직 세션이 없는 시작 전 목표는 지금처럼 그 목표의 시작 화면을 연다).
+ * 사령관 오른쪽 「지휘관」 탭 — 시작 전·진행 중·완료 목표를 같은 두 줄 문법으로 보인다. 정렬과 그룹 묶기 선호는 전역이다.
+ * 목표를 고르면 옆 칸에 시작 화면 또는 그룹 대화가 서고, 선택한 행 아래에 최근 사령관 행위가 펼쳐진다.
  */
 
 type SortKey = "activity" | "progress" | "remaining" | "due" | "created" | "name" | "manual";
@@ -24,6 +27,7 @@ interface SortPreference {
   readonly direction: SortDirection;
   /** 사람의 답을 기다리는 줄을 정렬과 상관없이 맨 위에 둔다. */
   readonly answerFirst: boolean;
+  readonly grouped: boolean;
 }
 
 const SORTS: readonly { readonly key: SortKey; readonly label: CoreMessageKey; readonly direction: SortDirection }[] = [
@@ -38,7 +42,7 @@ const SORTS: readonly { readonly key: SortKey; readonly label: CoreMessageKey; r
 
 // 정렬은 브라우저에 하나 — 모든 사령관이 함께 쓴다(사이드바 닫힘·분할 기억과 같은 전역 규칙).
 const SORT_KEY = "fleet-console.commanderTab.sort";
-const DEFAULT_SORT: SortPreference = { key: "activity", direction: "desc", answerFirst: true };
+const DEFAULT_SORT: SortPreference = { key: "activity", direction: "desc", answerFirst: true, grouped: false };
 
 function readSort(): SortPreference {
   try {
@@ -47,7 +51,7 @@ function readSort(): SortPreference {
     const parsed = JSON.parse(raw) as Partial<SortPreference>;
     const key = SORTS.some((sort) => sort.key === parsed.key) ? parsed.key! : DEFAULT_SORT.key;
     const direction = parsed.direction === "asc" || parsed.direction === "desc" ? parsed.direction : DEFAULT_SORT.direction;
-    return { key, direction, answerFirst: parsed.answerFirst !== false };
+    return { key, direction, answerFirst: parsed.answerFirst !== false, grouped: parsed.grouped === true };
   } catch {
     return DEFAULT_SORT;
   }
@@ -138,7 +142,8 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
   const preference = useSortPreference();
   // 도착 표식은 줄의 마크다 — 옆 칸에서 읽어 확인 처리되면(활성 Objective 은 그대로) 그 자리에서 줄이 다시 그려져야 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const shownId = split.open ? split.picked[commodoreId] ?? null : null;
+  const language = useConsoleLocale();
+  const shownId = split.open && state.newSession?.placement !== "commander-split" ? split.picked[commodoreId] ?? null : null;
   const items = useMemo(() => {
     const records = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId);
     const entries = buildTheaterEntries({
@@ -153,6 +158,13 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
     return sideBarRowItems(entries, clusterIndex, new Set(records.map((objectiveRecord) => objectiveRecord.id)), commodoreId);
   }, [clusterIndex, commodoreId, idleArrivalIds, shownId, state.objectiveRecordNotifications, state.objectiveRecordRuntime, state.objectiveRecords]);
   const sorted = useMemo(() => sortCommanderRows(items, preference), [items, preference]);
+  const groups = [...state.groups].filter((group) => group.commodoreId === commodoreId).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  const groupIdOf = (item: SideBarRowItem) => item.anchor ? item.anchor.objectiveRecord.groupId ?? null : item.row.groupId;
+  const groupIds = new Set(groups.map((group) => group.id));
+  const sections = preference.grouped
+    ? [...groups.map((group) => ({ id: group.id, title: group.name, rows: sorted.filter((item) => groupIdOf(item) === group.id) })),
+      { id: "ungrouped", title: t("commanderTab.ungrouped"), rows: sorted.filter((item) => !groupIds.has(groupIdOf(item) ?? "")) }].filter((group) => group.rows.length > 0)
+    : [{ id: "all", title: null, rows: sorted }];
 
   return (
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
@@ -172,17 +184,27 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
               : <path d="M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
           </svg>
         </button>
+        <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={() => openCommodoreNewSession(commodoreId)}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
       </div>
       {sorted.length === 0 ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : (
-        <ol className="commander-tab-list side-bar-group-chips">
-          {sorted.map((item) => (
-            <SideBarClusterRow
-              key={item.layout.cluster.id}
-              item={item}
-              onFocus={(objectiveId) => openCommanderSplit(commodoreId, objectiveId)}
-            />
-          ))}
-        </ol>
+        <div className="commander-tab-groups">
+          {sections.map((group) => <section key={group.id}>
+            {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+            <ol className="commander-tab-list side-bar-group-chips">
+              {group.rows.map((item) => {
+                const objectiveId = commanderObjectiveId(item.layout.cluster);
+                const selected = objectiveId !== null && shownId === objectiveId;
+                return <Fragment key={item.layout.cluster.id}>
+                  <SideBarClusterRow item={item} selected={selected}
+                    onFocus={(id) => { closeNewSession(); openCommanderSplit(commodoreId, id); }} />
+                  {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
+                </Fragment>;
+              })}
+            </ol>
+          </section>)}
+        </div>
       )}
     </section>
   );
@@ -252,6 +274,9 @@ function SortMenu({ preference }: { readonly preference: SortPreference }) {
           >
             <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? "✓" : ""}</span>
             {t("commanderTab.sort.answerFirst")}
+          </button>
+          <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
+            <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? "✓" : ""}</span>{t("commanderTab.sort.grouped")}
           </button>
         </div>
       ) : null}

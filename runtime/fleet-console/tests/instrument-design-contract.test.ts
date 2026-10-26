@@ -1207,23 +1207,11 @@ describe("Instrument core design contract", () => {
     expect(row).toContain("mark: resolveObjectiveMarkVisual({ activity, objectiveId: objectiveRecord.id, idleArrivalIds }),");
     expect(row).toContain("      status: activity,");
     expect(row).not.toContain("status: resolveObjectiveDisplayActivity({");
-    // 사령관 머리 조작부 — 접기·「+」는 같은 공통 링으로 hover 에 응답하고, 포커스는 brass 다.
     const theaterActivate = components.match(/\.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
     const theaterDraggingActivate = components.match(/\.side-bar-theater-header--dragging \.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
-    const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn \{[^}]*\}/)?.[0] ?? "";
-    const theaterCollapseChevron = components.match(/\.side-bar-theater-collapse-btn \.side-bar-theater-chevron \{[^}]*\}/)?.[0] ?? "";
-    // 홀로 선 포커스 규칙 — hover 와 함께 묶인 규칙(앞 줄이 쉼표로 끝난다)은 아래 sharedIconHover 가 읽는다.
-    const theaterRowFocus = components.match(/(?<!,\n)^\.side-bar-theater-row-btn:focus-visible \{[^}]*\}/m)?.[0] ?? "";
-    const sharedIconHover = components.match(/\.side-bar-theater-row-btn:hover,\n\.side-bar-theater-row-btn:focus-visible \{[^}]*\}/)?.[0] ?? "";
     expect(theaterActivate).toContain("cursor: pointer;");
     expect(theaterActivate).not.toContain("cursor: inherit;");
     expect(theaterDraggingActivate).toContain("cursor: grabbing;");
-    expect(theaterCollapse).toContain("width: 22px;");
-    expect(theaterCollapseChevron).toContain("width: 16px;");
-    expect(theaterCollapseChevron).toContain("height: 16px;");
-    expect(theaterRowFocus).toContain("outline: 2px solid var(--brass);");
-    expect(theaterRowFocus).not.toContain("--aurora");
-    expect(sharedIconHover).toContain("border-color: var(--hairline-strong);");
     // 미확인 도착 전용 표면은 없다 — 상태 마크가 그 사실을 혼자 나르고, 그 공유 점등 모션은 유지한다.
     expect(components).not.toContain(".side-bar-chip-unseen");
     expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
@@ -1255,7 +1243,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/\.side-bar-theater-section--active::(before|after)/);
 
     // 호버는 배경 채움 하나만 쓴다. 테두리가 돌아오면 다시 활성보다 강해진다.
-    expect(headerHover).toContain("background: var(--ink-mid);");
+    expect(headerHover).toContain("background: var(--wash-hover);");
     expect(headerHover).not.toContain("border-color");
     // focus-visible은 자기 brass 테두리를 따로 진다 — 호버에서 테두리를 뺀 것이 포커스 표식을
     // 지우면 안 된다.
