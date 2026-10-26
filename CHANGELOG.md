@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.259.0] - 2026-10-26
+
+### fleet-console
+
+#### Changed
+- On the phone, creating a commodore now opens a full-screen sheet with a larger preview, a roomy name field, and a single Create button, and the back gesture closes it.
+- On the phone, a commodore's details now open as a profile page with its avatar, name, and an Edit button, and list commander sessions, log, objectives, directive, memory, and settings as rows that show their current status at a glance.
+- On a phone, the working status and quota line above the message box now step aside while you scroll up to read earlier messages, as they already do on desktop, and return when you reach the bottom or start typing.
+
+#### Fixed
+- The Commodore's Log tab in the conversation view shows the Commodore's work on objectives again instead of staying empty.
+- On the phone, the + button stays beside the message field and the send button stays inside it, even with long text or attached images.
+
 ## [1.258.0] - 2026-10-26
 
 ### fleet-console
