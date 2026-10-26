@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode } from "react";
 
 import { useT } from "../../i18n/index.js";
 import { MobileIcon } from "./mobile-icons.js";
@@ -12,8 +12,11 @@ const DRAG_CLOSE = 110;
  * 시트 종류마다 본문과 발만 채운다. 시트에서 다른 시트를 열면(`pushMobileSheet`) 쌓이고, 닫기·스크림·끌어내리기는
  * 앞 시트로 돌아간다 — 동작을 끝내는 버튼은 `closeMobileSheets`로 모두 닫는다.
  */
-export function MobileSheet({ title, onClose, full = false, footer, children, className, focusInputOnTouch = true }: {
+export function MobileSheet({ title, onClose, full = false, footer, children, className, focusInputOnTouch = true, dismissible = true, scrimDismissible = true, describedBy }: {
   readonly title: string;
+  readonly dismissible?: boolean;
+  readonly scrimDismissible?: boolean;
+  readonly describedBy?: string;
   /** 닫기·스크림·끌어내리기·뒤로가 부른다. 호출자는 보통 `popMobileSheet`를 넘긴다. */
   readonly onClose: () => void;
   readonly full?: boolean;
@@ -31,7 +34,13 @@ export function MobileSheet({ title, onClose, full = false, footer, children, cl
   closeRef.current = onClose;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const finish = () => { setLeaving(true); window.setTimeout(() => closeRef.current(), 220); };
+  const titleId = useId();
+  const dismissibleRef = useRef(dismissible); dismissibleRef.current = dismissible;
+  const finish = () => {
+    if (!dismissibleRef.current) return;
+    setLeaving(true);
+    window.setTimeout(() => { if (dismissibleRef.current) closeRef.current(); else setLeaving(false); }, 220);
+  };
 
   // 열리면 첫 입력(없으면 첫 버튼)으로, 닫히면 연 손가락이 있던 곳으로 초점을 돌려 준다.
   // (뒤로 가기의 history 항목은 시트 하나하나가 아니라 호스트가 쌓인 시트 전체에 대해 하나만 든다.)
@@ -44,12 +53,13 @@ export function MobileSheet({ title, onClose, full = false, footer, children, cl
   }, []);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); finish(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!event.isComposing && event.keyCode !== 229) finish(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!dismissibleRef.current) return;
     dragRef.current = { pointerId: event.pointerId, startY: event.clientY, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -71,19 +81,20 @@ export function MobileSheet({ title, onClose, full = false, footer, children, cl
 
   return (
     <>
-      <div className={`mobile-sheet-scrim${leaving ? " is-leaving" : ""}`} onClick={finish} />
+      <div className={`mobile-sheet-scrim${leaving ? " is-leaving" : ""}`} onClick={() => { if (scrimDismissible) finish(); }} />
       <div
         ref={panelRef}
         className={`mobile-sheet${full ? " is-full" : ""}${leaving ? " is-leaving" : ""}${dragY !== null ? " is-dragging" : ""}${className ? ` ${className}` : ""}`}
         style={dragY !== null ? { transform: `translateY(${dragY}px)` } : undefined}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        aria-describedby={describedBy}
       >
         <div className="mobile-sheet-handle" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}><i /></div>
         <div className="mobile-sheet-title">
-          {title}
-          <button type="button" className="mobile-sheet-close" onClick={finish} aria-label={t("mobile.sheet.close")}><MobileIcon name="x" size={20} /></button>
+          <span id={titleId}>{title}</span>
+          <button type="button" className="mobile-sheet-close" disabled={!dismissible} onClick={finish} aria-label={t("mobile.sheet.close")}><MobileIcon name="x" size={20} /></button>
         </div>
         <div className="mobile-sheet-body">{children}</div>
         {footer ? <div className="mobile-sheet-foot">{footer}</div> : null}

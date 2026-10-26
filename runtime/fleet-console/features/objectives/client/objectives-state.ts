@@ -43,6 +43,9 @@ export interface RevealTarget {
 
 const EMPTY: OwnerState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
 const boards = new Map<string, OwnerState>();
+const removedOwners = new Set<string>();
+const removedOwnerObjectiveIds = new Map<string, ReadonlySet<string>>();
+export const objectiveIdsForRemovedOwner = (id: string): ReadonlySet<string> => removedOwnerObjectiveIds.get(id) ?? new Set();
 const listeners = new Set<() => void>();
 /** 대화 중심 화면 가운데 칸의 시작 전 목표 화면(fresh-conversation.tsx 의 conversationSurface). */
 export const FRESH_SURFACE_ID = "objective-fresh";
@@ -203,6 +206,7 @@ function describeMissingObjectiveRecords(): void {
     describing.add(id);
     void describeObjective(id)
       .then((description) => {
+        if (description && removedOwners.has(description.objectiveRecord.commodoreId)) return;
         described.set(id, description === null ? null : {
           id: description.objectiveRecord.id,
           commodoreId: description.objectiveRecord.commodoreId, theaterId: description.objectiveRecord.theaterId,
@@ -284,6 +288,7 @@ function notify(): void {
 }
 
 function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
+  if (removedOwners.has(commodoreId)) return;
   boards.set(commodoreId, { ...(boards.get(commodoreId) ?? EMPTY), ...next });
   notify();
   describeMissingObjectiveRecords();
@@ -316,6 +321,10 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   refreshAfterReconnect.clear();
   degraded = null;
   clearRetryTimer();
+  const offOwnerRemoved = ctx.consoleEvents.subscribe("commodore", (payload) => {
+    const event = payload as { op?: string; commodoreId?: string } | null;
+    if (event?.op === "removed" && typeof event.commodoreId === "string") forgetObjectiveOwner(event.commodoreId);
+  });
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
     // 스트림 프레임은 살아 있는 세션에서만 온다.
     noteAlive();
@@ -427,7 +436,7 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
-    offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offOwners(); offConsole();
+    offOwnerRemoved(); offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offOwners(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
@@ -441,6 +450,7 @@ const isClosedObjective = (id: string): boolean => objectiveRecordLocations.get(
 
 /** 목표 사건과 응답은 같은 활성 위치 규칙으로 반영한다. 레코드 삭제와 보관은 서버가 구별한다. */
 export function upsertObjectiveLocally(objective: Objective, order?: readonly string[]): void {
+  if (removedOwners.has(objective.commodoreId)) return;
   unknownToServer.delete(objective.id);
   const location = objectiveRecordLocations.get(objective.id);
   // 복원 후 도착한 옛 보관 DTO도, 보관 후 도착한 옛 활성 DTO도 최신 위치 사건을 뒤집지 못한다.
@@ -527,6 +537,7 @@ function apiErrorCode(error: unknown): string | null {
 
 /** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침과 재연결 뒤 다시 읽기가 쓴다. */
 export function loadBoard(api: ClientApiCapability, commodoreId: string, force = false): Promise<void> {
+  if (removedOwners.has(commodoreId)) return Promise.resolve();
   const current = boards.get(commodoreId);
   if (current?.loaded && !force) return Promise.resolve();
   const pending = inflight.get(commodoreId);
@@ -535,6 +546,7 @@ export function loadBoard(api: ClientApiCapability, commodoreId: string, force =
   const retry = loadRetries.get(commodoreId);
   if (retry && !force && Date.now() < retry.nextAt) return Promise.resolve();
   const fail = (permanent: boolean) => {
+    if (removedOwners.has(commodoreId)) return;
     if (!permanent) noteTransient();
     // 확정 실패는 다시 물어도 같은 답이다 — 재연결 표시도 거둔다. 일시 실패는 게이트가 내려간 뒤 다시 묻도록 남긴다.
     else refreshAfterReconnect.delete(commodoreId);
@@ -613,17 +625,18 @@ function invalidateFinishedFor(commodoreId: string, objectiveId: string, objecti
 /** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
 export function loadFinishedObjectives(commodoreId: string): void {
   const api = objectivesApi();
-  if (!api || !commodoreId || finishedInflight.has(commodoreId)) return;
+  if (!api || !commodoreId || removedOwners.has(commodoreId) || finishedInflight.has(commodoreId)) return;
   finishedInflight.add(commodoreId);
   finishedFailed.delete(commodoreId);
   noteFinished();
   void post<{ objectives: Objective[] }>(api, "/finished", { commodoreId })
     .then((result) => {
+      if (removedOwners.has(commodoreId)) return;
       if (!Array.isArray(result?.objectives)) throw new Error("finished_unreadable");
       finishedByOwner.set(commodoreId, result.objectives);
       finishedRevision += 1;
     })
-    .catch(() => { finishedFailed.add(commodoreId); })
+    .catch(() => { if (!removedOwners.has(commodoreId)) finishedFailed.add(commodoreId); })
     .finally(() => {
       finishedInflight.delete(commodoreId);
       noteFinished();
@@ -691,6 +704,7 @@ export function loadObjective(objectiveId: string): Promise<Objective> {
   const api = objectivesApi();
   if (!api) return Promise.reject(new Error("console_unavailable"));
   const task = post<{ objective: Objective }>(api, "/objective/get", { objectiveId }).then(({ objective }) => {
+    if (removedOwners.has(objective.commodoreId)) throw new Error("unknown_objective");
     if (objective.archived) {
       const previous = finishedByOwner.get(objective.commodoreId) ?? [];
       finishedByOwner.set(objective.commodoreId, [...previous.filter((row) => row.id !== objective.id), objective]);
@@ -707,6 +721,21 @@ export function subscribeObjectiveOrFinished(listener: () => void): () => void {
   const off = subscribeObjective(listener);
   finishedListeners.add(listener);
   return () => { off(); finishedListeners.delete(listener); };
+}
+
+export function forgetObjectiveOwner(commodoreId: string): void {
+  removedOwners.add(commodoreId);
+  const ids = new Set([...(removedOwnerObjectiveIds.get(commodoreId) ?? []), ...[...(boards.get(commodoreId)?.objectives ?? []), ...(finishedByOwner.get(commodoreId) ?? [])].flatMap((objective) => [objective.id, ...objective.members.map((member) => member.id)]), ...objectiveRecordsSnapshot.filter((row) => row.commodoreId === commodoreId).map((row) => row.id)]);
+  boards.delete(commodoreId); inflight.delete(commodoreId); loadRetries.delete(commodoreId); refreshAfterReconnect.delete(commodoreId);
+  finishedByOwner.delete(commodoreId); finishedInflight.delete(commodoreId); finishedFailed.delete(commodoreId); finishedDirty.delete(commodoreId); views.delete(commodoreId);
+  for (const [id, row] of described) if (row?.commodoreId === commodoreId) { described.delete(id); ids.add(id); }
+  for (const id of ids) { objectiveRequests.delete(id); fetching.delete(id); describing.delete(id); unknownToServer.delete(id); objectiveRecordLocations.set(id, "deleted"); }
+  removedOwnerObjectiveIds.set(commodoreId, ids);
+  objectiveRecordsSnapshot = objectiveRecordsSnapshot.filter((row) => row.commodoreId !== commodoreId);
+  if (selectionTheater?.commodoreId === commodoreId) selectionTheater = null;
+  if (reveal && ids.has(reveal.objectiveId)) reveal = null;
+  finishedRevision += 1; describedRevision += 1; noteFinished(); notify();
+  for (const listener of [...viewListeners]) listener();
 }
 
 export function readBoard(commodoreId: string | null): OwnerState {
@@ -795,7 +824,7 @@ export function readOwnerView(commodoreId: string | null): ObjectiveViewState {
   return (commodoreId ? views.get(commodoreId) : undefined) ?? VIEW_DEFAULT;
 }
 export function patchOwnerView(commodoreId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void {
-  if (!commodoreId) return;
+  if (!commodoreId || removedOwners.has(commodoreId)) return;
   const current = readOwnerView(commodoreId);
   const next = { ...current, ...patch(current) };
   if (

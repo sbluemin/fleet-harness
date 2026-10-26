@@ -681,3 +681,60 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-theaters-add:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-hint.is-error { color: var(--coral-ink); }
 .commodore-prompt-body { min-height: 120px; margin-top: 8px; }
+
+/* 사령관 삭제 — 두 안내 패널은 같은 프레임 안에서 바뀐다. */
+.commodore-delete .commodore-create-body { align-items: stretch; gap: 16px; padding: 20px 24px 24px; }
+.commodore-delete-who { display: flex; align-items: center; gap: 12px; }
+.commodore-delete-who .mongle-avatar { flex: none; }
+.commodore-delete-question { margin: 0; font-size: var(--t-lg); font-weight: var(--weight-bold); line-height: 1.35; }
+.commodore-delete-lead { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; }
+.commodore-delete-irreversible { color: var(--coral-ink); font-weight: var(--weight-medium); }
+.commodore-delete-warn { margin: 0; padding: 10px 12px; list-style: none; display: grid; gap: 4px; color: var(--warn-ink); font-size: var(--t-md); line-height: 1.45; background: color-mix(in oklch, var(--warn) 10%, transparent); border: 1px solid color-mix(in oklch, var(--warn) 28%, transparent); border-radius: var(--radius-md); }
+.commodore-delete-warn li { display: flex; gap: 8px; }
+.commodore-delete-warn li::before { content: ""; flex: none; width: 5px; height: 5px; margin-top: 0.55em; border-radius: 50%; background: currentColor; }
+.commodore-delete-group { display: grid; gap: 6px; }
+.commodore-delete-group h3 { display: flex; justify-content: space-between; margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.commodore-delete-group h3 span { font-variant-numeric: tabular-nums; }
+.commodore-delete-list { margin: 0; padding: 0; list-style: none; display: grid; border: 1px solid var(--hairline); border-radius: var(--radius-md); }
+.commodore-delete-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 12px; font-size: var(--t-md); }
+.commodore-delete-list li + li { border-top: 1px solid var(--hairline); }
+.commodore-delete-list li > span:last-child { color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; text-align: right; }
+.commodore-delete-keep { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; }
+.commodore-delete-keep small { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: var(--t-sm); }
+.commodore-delete-skeleton { display: grid; gap: 8px; }
+.commodore-delete-skeleton i { display: block; height: 14px; border-radius: 6px; background: color-mix(in oklch, var(--text-primary) 8%, transparent); animation: commodore-delete-pulse 1.2s ease-in-out infinite; }
+.commodore-delete-skeleton i:nth-child(2) { width: 82%; } .commodore-delete-skeleton i:nth-child(3) { width: 64%; }
+@keyframes commodore-delete-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .commodore-delete-skeleton i { animation: none; } }
+.commodore-delete-status { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
+.commodore-delete-failed { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 10px 12px; color: var(--coral-ink); font-size: var(--t-md); background: var(--coral-glow); border-radius: var(--radius-md); }
+.commodore-delete-failed button { flex: none; padding: 4px 10px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); background: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); cursor: pointer; }
+.commodore-delete-prompt { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; }
+.commodore-delete-prompt strong { color: var(--text-primary); user-select: all; }
+.commodore-delete .commodore-create-name.commodore-delete-input { text-align: left; }
+.commodore-delete-input[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 60%, var(--hairline-strong)); }
+.fc-btn.commodore-delete-confirm { color: var(--coral-ink); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
+.fc-btn.commodore-delete-confirm:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }
+.fc-btn.commodore-delete-confirm { white-space: nowrap; }
+.commodore-delete-setting { margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--hairline); }
+.commodore-delete-setting .fc-settings-row__label { color: var(--coral-ink); }
+.commodore-delete-setting .fc-settings-row__control { flex: none; }
+/* 폰 시트는 모바일 토큰으로 같은 정보 위계를 유지한다. */
+.commodore-delete-sheet .mobile-sheet-body { display: flex; flex-direction: column; gap: 14px; padding-bottom: 4px; }
+.commodore-delete-sheet .commodore-delete-question { font-size: var(--m-fs-heading, 19px); font-weight: var(--weight-medium); }
+.commodore-delete-sheet .commodore-delete-lead, .commodore-delete-sheet .commodore-delete-prompt, .commodore-delete-sheet .commodore-delete-keep { color: var(--m-text-muted); font-size: var(--t-md); }
+.commodore-delete-sheet .commodore-delete-irreversible { color: var(--m-danger); }
+.commodore-delete-sheet .commodore-delete-prompt strong { color: var(--m-text); }
+.commodore-delete-sheet .commodore-delete-group h3 { color: var(--m-text-muted); }
+.commodore-delete-sheet .commodore-delete-list { border-color: var(--m-hairline-strong, var(--m-hairline)); background: var(--m-surface); border-radius: 16px; }
+.commodore-delete-sheet .commodore-delete-list li { padding: 11px 14px; color: var(--m-text); }
+.commodore-delete-sheet .commodore-delete-list li + li { border-top-color: var(--m-hairline); }
+.commodore-delete-sheet .commodore-delete-list li > span:last-child { color: var(--m-text-muted); }
+.commodore-delete-sheet .commodore-delete-failed { color: var(--m-danger); background: color-mix(in srgb, var(--m-danger) 12%, transparent); }
+.commodore-delete-sheet .commodore-delete-failed button { color: var(--m-text); border-color: var(--m-hairline-strong, var(--m-hairline)); }
+.commodore-delete-sheet .mobile-pill-secondary.is-danger:disabled { opacity: 0.4; }
+.commodore-delete-row { width: 100%; font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+.fc-settings-card .fc-settings-row.commodore-delete-row, .fc-settings-card .fc-settings-row.commodore-delete-row .fc-settings-row__label, .fc-settings-card .fc-settings-row.commodore-delete-row .fc-settings-row__icon { color: var(--m-danger); }
+
+.commodore-delete-question, .commodore-delete-prompt { overflow-wrap: anywhere; }
+.commodore-delete-who > div { min-width: 0; }

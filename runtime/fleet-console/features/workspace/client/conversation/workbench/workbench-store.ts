@@ -48,6 +48,7 @@ const NON_CONVERSATION_KEY = "console";
 
 const listeners = new Set<Listener>();
 let layouts = new Map<string, WorkbenchLayout>();
+const forgottenKeys = new Set<string>();
 let currentKey: string = NON_CONVERSATION_KEY;
 let focusedTileId: string | null = null;
 let loadState: "idle" | "loading" | "loaded" = "idle";
@@ -99,11 +100,20 @@ export function useWorkbenchFocusedTileId(): string | null {
 
 /** 대화 칸이 보이는 대화를 알린다. 대화가 아닌 화면(새 세션·빈 칸)은 null — 그 자리의 Console 도구는 한 배치를 함께 쓴다. */
 export function setWorkbenchConversation(key: string | null): void {
-  const next = key ?? NON_CONVERSATION_KEY;
+  const next = key && !forgottenKeys.has(key) ? key : NON_CONVERSATION_KEY;
   if (next === currentKey) return;
   currentKey = next;
   focusedTileId = null;
   pendingClose = null;
+  notify();
+}
+
+/** 삭제된 대화의 읽기·보류 저장도 폐기한다. 서버 삭제를 빈 배치 쓰기로 흉내 내지 않는다. */
+export function forgetWorkbenchConversation(key: string): void {
+  forgottenKeys.add(key); layouts.delete(key); dirty.delete(key);
+  for (let index = pendingChanges.length - 1; index >= 0; index -= 1) if (pendingChanges[index]!.key === key) pendingChanges.splice(index, 1);
+  for (const [id, value] of pendingTileIds) if (value.key === key) pendingTileIds.delete(id);
+  if (currentKey === key) { currentKey = NON_CONVERSATION_KEY; focusedTileId = null; pendingClose = null; }
   notify();
 }
 
@@ -120,7 +130,7 @@ export function loadWorkbenchLayouts(): void {
     })
     .then((body) => {
       const book = sanitizeLayoutBook(body !== null && typeof body === "object" ? (body as { readonly layouts?: unknown }).layouts : null);
-      layouts = new Map(Object.entries(book).map(([key, stored]) => [key, stored.layout]));
+      layouts = new Map(Object.entries(book).filter(([key]) => !forgottenKeys.has(key)).map(([key, stored]) => [key, stored.layout]));
       loadState = "loaded";
       const activeKey = currentKey;
       const focusByKey = new Map<string, string | null>([[activeKey, focusedTileId]]);
@@ -162,6 +172,7 @@ function resolvedTileId(tileId: string): string {
 }
 
 function scheduleSave(key: string): void {
+  if (forgottenKeys.has(key)) return;
   dirty.add(key);
   if (saveTimer !== null) return;
   saveTimer = setTimeout(flushWorkbenchSaves, SAVE_DELAY_MS);
@@ -191,6 +202,7 @@ function persistable(layout: WorkbenchLayout): WorkbenchLayout {
 
 function commit(next: WorkbenchLayout, options: { readonly persist?: boolean } = {}): void {
   const key = currentKey;
+  if (forgottenKeys.has(key)) return;
   const previous = layouts.get(key) ?? EMPTY_WORKBENCH_LAYOUT;
   if (next === previous) return;
   const map = new Map(layouts);
@@ -756,6 +768,7 @@ export function revealWorkbenchConversation(): void {
 
 /** 테스트·핫 리로드 전용 — 모듈 상태를 비운다. */
 export function resetWorkbenchForTest(): void {
+  forgottenKeys.clear();
   layouts = new Map();
   currentKey = NON_CONVERSATION_KEY;
   focusedTileId = null;

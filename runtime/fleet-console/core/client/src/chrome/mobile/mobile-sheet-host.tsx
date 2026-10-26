@@ -9,6 +9,8 @@ import { createCommodoreGroup, forgetTheaterCompletely, registerTheaterFromPath 
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
+import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
 import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -33,7 +35,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
+import { getMobileSheetStack, closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -51,11 +53,18 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
       return;
     }
     // 시트가 열려 있는 동안은 하드웨어 뒤로가 맨 위 시트를 먼저 닫는다.
-    const releaseLayer = pushBackLayer(() => popMobileSheet());
-    // 한 항목이 쌓인 모든 시트를 든다 — 뒤로가 시트를 하나 닫으면 남은 시트를 위해 이 효과가 항목을 다시 세운다.
-    if (historyIdRef.current === null) {
-      historyIdRef.current = pushOverlayHistory(() => { historyIdRef.current = null; popMobileSheet(); });
-    }
+    const back = () => {
+      const current = getMobileSheetStack().at(-1);
+      if (current?.kind === "custom" && current.onBack) current.onBack(); else popMobileSheet();
+    };
+    const releaseLayer = pushBackLayer(back);
+    // 확인 패널의 뒤로·busy 무시는 스택 깊이를 바꾸지 않는다. 이미 걷힌 history 항목도 다시 받친다.
+    const fromHistory = () => {
+      historyIdRef.current = null;
+      back();
+      if (getMobileSheetStack().length) historyIdRef.current = pushOverlayHistory(fromHistory);
+    };
+    if (historyIdRef.current === null) historyIdRef.current = pushOverlayHistory(fromHistory);
     return releaseLayer;
   }, [depth]);
 
@@ -185,6 +194,7 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
     setZoneCommodore(commodoreId);
     runAfterSheetRelease(() => openCommodoreMobile("settings", commodoreId, true));
   };
+  useDismissRemovedCommodore(commodoreId, onClose);
   const openAppearance = () => openCommodoreLookSheet(commodoreId, label, alias);
   return (
     <MobileSheet title={label} onClose={onClose}>
@@ -196,16 +206,41 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
         <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.appearance")}</strong></span>
       </button>
+      <div className="mobile-sheet-sep" role="separator" />
+      <button type="button" className="mobile-sheet-row is-danger" onClick={() => openCommodoreDeleteSheet(commodoreId)}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="trash" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.commodore.delete")}</strong></span>
+      </button>
     </MobileSheet>
   );
 }
 
-/** 사령관의 「이름·모양 바꾸기」 시트 — 홈 행 동작 시트와 폰 사령관 세부의 「편집」(호스트 주입 포트)이 같은 시트를 연다. */
+function useDismissRemovedCommodore(commodoreId: string, onClose: () => void): void {
+  useEffect(() => {
+    if (wasCommodoreRemoved(commodoreId)) { onClose(); return; }
+    return subscribeCommodoreLifecycle((event) => { if (event.op === "removed" && event.commodoreId === commodoreId) onClose(); });
+  }, [commodoreId, onClose]);
+}
+
+/** 삭제 확인 시트의 두 단계는 하나의 history 항목을 함께 쓴다. */
+export function openCommodoreDeleteSheet(commodoreId: string): void {
+  const control = { back: () => {} };
+  pushMobileSheet({ kind: "custom", onBack: () => control.back(), render: (dismiss) => <CommodoreDeleteSheet commodoreId={commodoreId} dismiss={dismiss} control={control} /> });
+}
+function CommodoreDeleteSheet({ commodoreId, dismiss, control }: { readonly commodoreId: string; readonly dismiss: () => void; readonly control: { back: () => void } }) {
+  const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  return <CommodoreDeleteFlow commodoreId={commodoreId} language={language} mobile onClose={dismiss} onBackHandler={(back) => { control.back = back; }}
+    onComplete={(notice) => runAfterSheetRelease(() => announceCommodoreDeletion(notice))}
+    renderFrame={(frame) => <MobileSheet title={frame.title} onClose={frame.close} full className="commodore-delete-sheet" focusInputOnTouch={false}
+      dismissible={!frame.busy} scrimDismissible={frame.step === 1} describedBy={frame.questionId} footer={frame.footer}>{frame.body}</MobileSheet>} />;
+}
+
 export function openCommodoreLookSheet(commodoreId: string, label: string, alias: string): void {
   pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
 }
 
 function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {
+  useDismissRemovedCommodore(commodoreId, onClose);
   const t = useT();
   const locale = useConsoleLocale() === "ko" ? "ko" : "en";
   const look = useMongleLook(commodoreAvatarKey(commodoreId));
