@@ -12,8 +12,9 @@ const DRAG_CLOSE = 110;
  * 시트 종류마다 본문과 발만 채운다. 시트에서 다른 시트를 열면(`pushMobileSheet`) 쌓이고, 닫기·스크림·끌어내리기는
  * 앞 시트로 돌아간다 — 동작을 끝내는 버튼은 `closeMobileSheets`로 모두 닫는다.
  */
-export function MobileSheet({ title, onClose, full = false, footer, children, className, focusInputOnTouch = true, dismissible = true, scrimDismissible = true, describedBy }: {
+export function MobileSheet({ title, ariaLabel, onClose, full = false, footer, children, className, focusInputOnTouch = true, dismissible = true, scrimDismissible = true, describedBy }: {
   readonly title: string;
+  readonly ariaLabel?: string;
   readonly dismissible?: boolean;
   readonly scrimDismissible?: boolean;
   readonly describedBy?: string;
@@ -88,7 +89,8 @@ export function MobileSheet({ title, onClose, full = false, footer, children, cl
         style={dragY !== null ? { transform: `translateY(${dragY}px)` } : undefined}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabel ? undefined : titleId}
         aria-describedby={describedBy}
       >
         <div className="mobile-sheet-handle" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}><i /></div>

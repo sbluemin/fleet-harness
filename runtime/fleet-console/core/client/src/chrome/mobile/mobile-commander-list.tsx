@@ -1,8 +1,7 @@
 import { useId, useState } from "react";
 
 import { CommodoreRecentActions } from "../../../../../features/commodore/client/commodore-trail.js";
-import { useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
-import { SORTS, activityOf, setSort, useSortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
+import { SORTS, activityOf, setSort, useSortPreference, type SortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
 import { commanderObjectiveId } from "../../../../../features/workspace/client/objective-clusters.js";
 import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../../../../../features/workspace/client/sidebar/side-bar-cluster-row.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -16,10 +15,19 @@ import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 type Leave = (run: () => void) => void;
 
 /** 첫 탭은 고르기, 펼친 행의 버튼은 열기 — 시작 전·진행 중·완료가 같은 목록에 선다. */
-export function MobileCommanderList({ commodoreId, leave, hasAttention }: { readonly commodoreId: string; readonly leave: Leave; readonly hasAttention: boolean }) {
+export function MobileCommanderList({ commodoreId, rows, leave, hasAttention }: {
+  readonly commodoreId: string;
+  readonly rows: {
+    readonly sorted: readonly SideBarRowItem[];
+    readonly sections: readonly { readonly id: string; readonly title: string | null; readonly rows: readonly SideBarRowItem[] }[];
+    readonly preference: SortPreference;
+  };
+  readonly leave: Leave;
+  readonly hasAttention: boolean;
+}) {
   const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
-  const { sorted, sections, preference } = useCommanderRows(commodoreId, selected);
+  const { sorted, sections, preference } = rows;
   const current = SORTS.find((sort) => sort.key === preference.key) ?? SORTS[0]!;
   return (
     <section className="mobile-commander-list" aria-label={t("commanderTab.aria")}>
@@ -83,7 +91,7 @@ function CommanderSortSheet({ onClose }: { readonly onClose: () => void }) {
   const t = useT();
   const preference = useSortPreference();
   const name = useId();
-  return <MobileSheet title={t("commanderTab.sort.menu")} onClose={onClose} focusInputOnTouch={false} className="mobile-commander-sort">
+  return <MobileSheet title={t("commanderTab.sort.menu")} ariaLabel={t("commanderTab.sort.menu")} onClose={onClose} focusInputOnTouch={false} className="mobile-commander-sort">
     <div role="radiogroup" aria-label={t("commanderTab.sort.menu")}>
       {SORTS.map((sort) => <label key={sort.key} className="mobile-sheet-row mobile-commander-sort-option">
         <span>{t(sort.label)}</span>

@@ -1,5 +1,6 @@
 import { useClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
+import { useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
 import { openMobileNewSession } from "../../integration/store.js";
@@ -27,7 +28,16 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
   const bindings = useRailEntries();
   const clusterIndex = useClusterIndex();
   const { rows } = useMobileAttention(state, commodoreId);
-  const attention = rows.filter((row) => row.kind !== "objectiveRecord");
+  const commanderRows = useCommanderRows(commodoreId, null);
+  // 폰은 두 입구를 나눈다 — 사령관의 직접 질문은 띠에만, 지휘관의 결정 요청은 뿌리 유무와 관계없이 목록에만 선다.
+  // 요청도 플러그인 행으로 오므로 kind만으로 가르지 않고 실제 명단의 묶음 id를 쓴다. 데스크톱 명단은 바꾸지 않는다.
+  const sorted = commanderRows.sorted.filter((item) => !item.row.commodore);
+  const commanderClusterIds = new Set(sorted.map((item) => item.layout.cluster.id));
+  const sections = commanderRows.sections
+    .map((section) => ({ ...section, rows: section.rows.filter((item) => commanderClusterIds.has(item.layout.cluster.id)) }))
+    .filter((section) => section.rows.length > 0);
+  const attention = rows.filter((row) => row.kind !== "objectiveRecord")
+    .filter((row) => !row.clusterId || !commanderClusterIds.has(row.clusterId));
   // 지휘관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   // 새 세션의 주인은 이 사령관이다. 세부를 먼저 접고 홈 자리에 연다.
@@ -48,7 +58,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
           </MobileMarkedRow>)}
         </div>
       </> : null}
-      <MobileCommanderList key={commodoreId} commodoreId={commodoreId} leave={leave} hasAttention={attention.length > 0} />
+      <MobileCommanderList key={commodoreId} commodoreId={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
       <MobileArchivedFinished commodoreId={commodoreId} leave={leave} />
       <div className="mobile-commodore-sessions-foot">
         <button type="button" data-press="r3" className="mobile-pill" onClick={startSession}><MobileIcon name="plus" size={18} />{t("mobile.commodore.sessions.new")}</button>
