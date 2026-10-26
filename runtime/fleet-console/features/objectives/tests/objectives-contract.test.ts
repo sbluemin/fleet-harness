@@ -59,7 +59,8 @@ type Saved = {
 const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId: "t1", legacyCwd: path.resolve(".fleet/isolated/fixture"), theaterIdOf: () => "t1" });
 
 function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number }) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-"));
+  // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
   const theaterPath = path.join(dir, "project");
   const workspace = path.join(dir, "data", "workspaces", "project");
