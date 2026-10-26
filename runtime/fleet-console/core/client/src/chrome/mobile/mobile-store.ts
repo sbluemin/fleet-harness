@@ -5,6 +5,7 @@ import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
 import { mobileCommodoreTarget } from "../../../../../features/commodore/client/commodore-list.js";
+import { releaseMobileHistory } from "./mobile-history.js";
 
 
 /**
@@ -126,11 +127,15 @@ export function setMobileDestination(next: MobileDestination): void {
   const leaked = depthHolder?.pushed() ?? 0;
   if (leaked > 0 && depthHolder && !sameDestinationRoot(destination, next) && typeof window !== "undefined") {
     depthHolder.drop();
-    // 걷기가 끝난(popstate) 뒤에 옮긴다 — 그 사이에 다음 화면이 항목을 쌓으면 걷기와 뒤엉킨다. 걷을 항목이 이미 없으면 짧은 시간 뒤에 옮긴다.
-    const apply = () => { window.removeEventListener("popstate", apply); window.clearTimeout(timer); applyMobileDestination(next); };
-    const timer = window.setTimeout(apply, 400);
-    window.addEventListener("popstate", apply);
-    window.history.go(-leaked);
+    // 같은 동작이 이어서 주소를 적을 수 있다(예: 목적지를 홈으로 두고 곧바로 Objective를 연다) — 그 동기 흐름이 끝난 뒤의 주소를 들고 걷고,
+    // 내려앉은 항목에 그 주소를 다시 적은 다음 옮긴다. 걷는 사이 다음 화면이 항목을 쌓으면 걷기와 뒤엉키므로 목적지는 그 뒤에 바꾼다.
+    window.setTimeout(() => {
+      const latest = window.location.href;
+      releaseMobileHistory(leaked, () => {
+        window.history.replaceState(window.history.state, "", latest);
+        applyMobileDestination(next);
+      });
+    }, 0);
     return;
   }
   applyMobileDestination(next);

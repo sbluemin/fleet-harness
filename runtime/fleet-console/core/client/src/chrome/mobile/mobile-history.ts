@@ -40,6 +40,24 @@ function onPop(event: PopStateEvent): void {
   window.history.go(1);
 }
 
+/**
+ * 루트 위에 남은 항목 `count`칸을 걷고 `after`를 부른다. 걷는 popstate는 가드처럼 캡처에서 삼킨다 — 라우터·`?op=` 읽기·막대가
+ * 걷힌 항목의 옛 주소를 읽어 열린 화면을 닫지 않게. 배치가 서 있지 않거나 popstate가 오지 않으면 짧은 시간 뒤에 `after`만 부른다.
+ */
+export function releaseMobileHistory(count: number, after: () => void): void {
+  let done = false;
+  const finish = () => { if (done) return; done = true; after(); };
+  if (!installed || count <= 0) { window.setTimeout(finish, 0); return; }
+  swallowNext += 1;
+  afterSwallow = finish;
+  window.setTimeout(() => {
+    if (done) return;
+    if (afterSwallow === finish) { afterSwallow = null; swallowNext = Math.max(0, swallowNext - 1); }
+    finish();
+  }, 400);
+  window.history.go(-count);
+}
+
 /** 모바일 배치가 서는 순간 한 번 — 지금 항목을 가드로 두고 그 위에 루트를 쌓는다. `onGuard`는 뒤로가 가드에 닿았을 때 부른다. */
 export function installMobileHistory(onGuard: () => void): () => void {
   handler = onGuard;
