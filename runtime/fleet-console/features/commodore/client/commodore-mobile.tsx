@@ -14,6 +14,7 @@ import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
@@ -30,7 +31,7 @@ import {
   commodoreConversationRenderer,
   commodoreLanguage,
   commodoreMobileActions,
-  commodoreMobileSessionsRenderer,
+  commodoreMobileSessions,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
@@ -205,7 +206,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
   const requested = useCommodoreMobileTab();
   const online = useCommodoreOnline();
-  const SessionsList = commodoreMobileSessionsRenderer();
+  const sessionsPort = commodoreMobileSessions();
+  const SessionsList = sessionsPort?.List ?? null;
   const actions = commodoreMobileActions();
   const board = useObjectiveTheater(commodoreId);
   const [panel, setPanel] = useState(false);
@@ -299,7 +301,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       ) : null}
       {panel ? (
         <>
-          {section === null && commodoreId ? <CommodoreMobileProfile t={t} commodoreId={commodoreId} view={view} name={title} sessions={SessionsList !== null} onOpen={openSection} onEdit={editLook} /> : null}
+          {section === null && commodoreId ? <CommodoreMobileProfile t={t} commodoreId={commodoreId} view={view} name={title} sessions={sessionsPort} onOpen={openSection} onEdit={editLook} /> : null}
           {section === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
           {section === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
           {section === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
@@ -331,6 +333,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
 
 /* ── 세부(프로필) ─────────────────────────────────────────────────────── */
 
+const noAttentionCount = (_commodoreId: string): number => 0;
 const isLive = (objective: { readonly done: object | null; readonly removed: object | null }) => objective.done === null && objective.removed === null;
 
 /**
@@ -342,7 +345,7 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   readonly commodoreId: string;
   readonly view: CommodoreView | null;
   readonly name: string;
-  readonly sessions: boolean;
+  readonly sessions: CommodoreMobileSessions | null;
   readonly onOpen: (section: CommodoreMobileTab) => void;
   readonly onEdit: (() => void) | null;
 }) {
@@ -350,8 +353,9 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   const memory = useCommodoreMemory(commodoreId);
   const objectives = board.objectives.filter(isLive);
   const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : commodorePillStatus(t, view);
-  // 지휘관 세션 — 사람의 확인을 기다리는 목표가 먼저, 없으면 진행 중인 목표 수.
-  const attention = objectives.filter((objective) => objective.decisionRequest !== null || objective.awaitingReview || objective.awaitingHandoff).length;
+  // 지휘관 세션 — 그 화면 머리의 「확인 필요 N」과 같은 수(호스트의 확인 필요 요약)가 먼저, 없으면 진행 중인 목표 수.
+  const useAttentionCount = sessions?.useAttentionCount ?? noAttentionCount;
+  const attention = useAttentionCount(commodoreId);
   const running = objectives.filter(isRunningObjective).length;
   const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" } : running > 0 ? { text: t("commodore.mobile.running", { n: running }) } : null;
   const run = view?.run;
