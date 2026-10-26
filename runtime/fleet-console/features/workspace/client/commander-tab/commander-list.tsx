@@ -7,6 +7,7 @@ import { objectiveRecordOrderFromNodes } from "../../../../core/client/src/integ
 import { useClusterIndex } from "../objective-clusters.js";
 import { buildTheaterEntries, SideBarClusterRow, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { openCommanderSplit, useCommanderSplit } from "../conversation/commander-split-store.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/objective-marks.js";
 import "./commander-list.css";
 
 /*
@@ -135,6 +136,8 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
   const clusterIndex = useClusterIndex();
   const split = useCommanderSplit();
   const preference = useSortPreference();
+  // 도착 표식은 줄의 마크다 — 옆 칸에서 읽어 확인 처리되면(활성 Objective 은 그대로) 그 자리에서 줄이 다시 그려져야 한다.
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const shownId = split.open ? split.picked[commodoreId] ?? null : null;
   const items = useMemo(() => {
     const records = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId);
@@ -148,7 +151,7 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
       objectiveRecordRuntime: state.objectiveRecordRuntime,
     });
     return sideBarRowItems(entries, clusterIndex, new Set(records.map((objectiveRecord) => objectiveRecord.id)), commodoreId);
-  }, [clusterIndex, commodoreId, shownId, state.objectiveRecordNotifications, state.objectiveRecordRuntime, state.objectiveRecords]);
+  }, [clusterIndex, commodoreId, idleArrivalIds, shownId, state.objectiveRecordNotifications, state.objectiveRecordRuntime, state.objectiveRecords]);
   const sorted = useMemo(() => sortCommanderRows(items, preference), [items, preference]);
 
   return (
