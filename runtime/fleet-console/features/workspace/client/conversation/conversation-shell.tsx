@@ -597,8 +597,10 @@ function usePanelSections(): {
   return { list, activeId, filter, open };
 }
 
-/** 머리 pill 이름의 하한 — 도구가 모두 「⋯」로 걷힌 다음에야 이름이 이 폭까지 줄어든다(이름이 더 짧으면 그 폭). */
+/** 머리 pill 이름의 우선 하한 — 도구를 모두 「⋯」로 걷은 뒤 이 폭까지 줄이고, 그래도 모자라면 하한을 풀어 말줄임한다(짧은 이름은 그 폭). */
 const TITLE_FLOOR = 120;
+/** 말줄임한 이름을 남길 최소 폭 — 한글 서너 글자 자리도 없을 때만 표식으로 접는다(이름이 더 짧으면 그 폭). */
+const TITLE_COMPACT_MIN = 48;
 /** 머리 pill 부제(「· 구성원 n」 등)의 하한 — 줄이 모자라면 부제가 가장 먼저 이 폭까지 말줄임으로 줄어든다. */
 const SUB_FLOOR = 28;
 /** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
@@ -1023,10 +1025,11 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
     };
     // 줄이 넘치지 않고, 이름이 자리 때문에(620px 상한 때문이 아니라) 잘리지 않으면 들어간 것이다. 실제 배치를 읽는다 — 원래 폭을
     // 셈으로만 맞추면 글꼴이 늦게 와 이름이 길어지는 것처럼 셈 밖의 변화에 이름이 먼저 잘린다.
+    // 도구를 다 걷은 뒤에는 이름의 말줄임을 허용하고 실제 배치만 검사한다.
     // 정수로 반올림한 clientWidth·scrollWidth 는 1px 밑의 말줄임을 놓친다 — 이름은 글자 범위의 실제 폭과, 줄은 상자의 실제 폭과 견준다.
     const range = typeof document === "undefined" ? null : document.createRange();
-    const fits = (row: HTMLElement, pill: HTMLElement | null, title: HTMLElement | null) => {
-      if (title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
+    const fits = (row: HTMLElement, pill: HTMLElement | null, title: HTMLElement | null, allowTitleEllipsis = false) => {
+      if (!allowTitleEllipsis && title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
         range.selectNodeContents(title);
         if (range.getBoundingClientRect().width > title.getBoundingClientRect().width + 0.01) return false;
       }
@@ -1091,9 +1094,9 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
         const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
         if (titleElement !== null) resize.observe(titleElement);
       }
-      // 줄이 모자랄 때 줄어드는 순서 — 부제(「· 구성원 n」 등)가 먼저 말줄임으로 SUB_FLOOR 까지, 그다음 도구가 「⋯」로, 마지막에
-      // 이름이 TITLE_FLOOR(이름이 그보다 짧으면 그 폭)까지. 도구가 남아 있는 동안 이름은 원래 폭에 묶어 둔다. pill 내용이 상자 밖으로
-      // 흐르면(부제·이름이 하한에 닿은 뒤) 들어가지 않은 것으로 보고 도구를 더 걷는다(fits).
+      // 줄이 모자랄 때 줄어드는 순서 — 부제는 SUB_FLOOR 까지, 도구는 「⋯」로, 이름은 TITLE_FLOOR 까지 줄인다.
+      // 그래도 모자라면 이름의 하한을 풀어 남은 자리에 말줄임하고, TITLE_COMPACT_MIN 조차 남지 않을 때만 표식으로 접는다.
+      // 도구가 남아 있는 동안 이름은 원래 폭에 묶고, pill 내용이 상자 밖으로 흐르면 도구를 더 걷는다(fits).
       const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
       pill?.removeAttribute("data-compact");
       const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
@@ -1125,11 +1128,14 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
           reserve();
           if (fits(row, pill, title)) break;
         }
-        // 도구를 다 걷어도 모자라면 이름을 하한까지 풀어 준다.
-        if (title !== null && !fits(row, pill, title)) title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
-        // 하한으로도 모자라면 이름을 걷고 표식(아바타)만 원형 칩 가운데에 남긴다 — 상자가 내용을 자르면 표식이 한쪽으로 쏠린다.
-        // 표식이 없는 pill 은 이름이 유일한 단서라 그대로 둔다.
-        if (pill !== null && title !== null && !fits(row, pill, title)
+        // 도구를 다 걷어도 모자라면 이름을 우선 하한까지 풀어 준다. 이 단계부터는 글자 전체가 아니라 실제 배치가 들어가는지 본다.
+        if (title !== null && !fits(row, pill, title)) {
+          title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
+          // 하한을 지킬 수 없으면 남은 폭을 모두 써서 말줄임한다 — 몇 px 부족하다고 읽을 수 있는 이름까지 걷지 않는다.
+          if (!fits(row, pill, title, true)) title.style.minWidth = "0px";
+        }
+        // 말줄임한 이름이 읽을 수 없을 만큼 좁아질 때만 표식(아바타)으로 접는다. 표식이 없으면 유일한 단서인 이름은 남긴다.
+        if (pill !== null && title !== null && title.getBoundingClientRect().width + 0.01 < Math.min(TITLE_COMPACT_MIN, titleNatural)
           && pill.querySelector(".conversation-pill-details > .conversation-pill-mark, .conversation-pill-details > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
