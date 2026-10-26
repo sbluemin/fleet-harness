@@ -94,7 +94,7 @@ function noteLastMessage(commodoreId: string, last: CommodoreLastMessage | null)
   const next = commodores.map((row) => {
     if (row.commodoreId !== commodoreId || (row.last && row.last.at > last.at)) return row;
     changed = true;
-    return { ...row, last };
+    return { ...row, last, ...(last.from === "commodore" ? { lastResponse: last } : {}) };
   });
   if (!changed) return;
   commodores = next.filter((row) => !wasCommodoreRemoved(row.commodoreId));
@@ -156,6 +156,7 @@ export interface SidebarCommodore {
   readonly label: string;
   readonly alias?: string;
   readonly theaters: readonly CommodoreTheaterSummary[];
+  readonly lastResponse?: CommodoreLastMessage;
 }
 
 /**
@@ -175,6 +176,7 @@ export function sidebarCommodores(
       label: commodoreSectionLabel(commodore, fallbackLabel),
       ...(commodore.alias ? { alias: commodore.alias } : {}),
       theaters: commodore.theaters,
+      ...(commodore.lastResponse ? { lastResponse: commodore.lastResponse } : {}),
     });
   }
   const orphans: string[] = [];

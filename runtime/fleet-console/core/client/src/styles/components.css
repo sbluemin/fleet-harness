@@ -3333,29 +3333,6 @@
   flex: none;
 }
 
-.side-bar-theater-collapse-btn {
-  width: 22px;
-  height: 22px;
-}
-
-.side-bar-theater-chevron {
-  width: 16px;
-  height: 16px;
-  transition: transform var(--duration-fast) ease;
-}
-
-.side-bar-theater-chevron.is-collapsed {
-  transform: rotate(-90deg);
-}
-
-.side-bar-theater-row-controls {
-  display: flex;
-  align-items: center;
-  flex: none;
-  gap: var(--space-1);
-  margin-left: 2px;
-}
-
 /* 대기 틱은 Theater 정체성 표식 위에 선다 — 어느 Theater가 기다리는지가 이 신호의 내용이고,
    전역 축 스위치 위에서는 그 사실이 "어딘가"로 뭉개진다. */
 .side-bar-status-axis-live-tick {
@@ -3388,50 +3365,6 @@
 @keyframes status-call-glow {
   0%, 100% { opacity: 0; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1); }
-}
-
-.side-bar-theater-row-btn {
-  display: grid;
-  place-items: center;
-  flex: none;
-  height: 22px;
-  padding: 0;
-  /* 축 스트립 세그먼트와 동일한 보더 링 hover 문법 — 채움형 사각 hover 금지. */
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.side-bar-theater-row-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.side-bar-theater-collapse-btn .side-bar-theater-chevron {
-  width: 16px;
-  height: 16px;
-}
-
-.side-bar-theater-row-btn:hover,
-.side-bar-theater-row-btn:focus-visible {
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
-}
-
-.side-bar-theater-row-btn:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
-}
-
-/* 플러그인이 Theater 머리 아래에 세우는 줄. 상자는 없다 — 줄이 구역의 2px 간격을 그대로 따르고,
-   아무도 그리지 않으면 간격 한 칸도 남기지 않는다. */
-.side-bar-theater-contributions {
-  display: contents;
 }
 
 /* 베이스 .theater-menu의 left/right:0(구 GNB 240px 컨테이너 전제)을 해제 —
@@ -3635,9 +3568,6 @@
 
   
 
-  .side-bar-theater-chevron {
-    transition: none;
-  }
 
   .side-bar-status-axis-live-tick {
     animation: none;
@@ -11903,7 +11833,7 @@ kbd { font-variant-numeric: tabular-nums; }
    새로 넣는 요소도 그 조건을 지켜야 이 transition 이 제 전이를 덮지 않는다. 모바일 배치는 자기 누름 문법(mobile-press.css)을
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
+  .conversation-round, .fc-composer-circle,
   .new-session-send,
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
@@ -11915,7 +11845,7 @@ kbd { font-variant-numeric: tabular-nums; }
     transform var(--duration-fast) var(--ease-spring);
 }
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
+  .conversation-round, .fc-composer-circle,
   .new-session-send):active:not(:disabled) {
   transform: scale(0.94);
   transition-duration: var(--motion-tap);
@@ -11931,7 +11861,7 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
-    .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
+    .conversation-round, .fc-composer-circle,
     .new-session-send,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip

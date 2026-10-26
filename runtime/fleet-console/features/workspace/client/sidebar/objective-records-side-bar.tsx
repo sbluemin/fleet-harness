@@ -23,7 +23,7 @@ import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { KeyedAvatar } from "../avatars.js";
 import { consumeSideBarAddTheater, openOnboarding } from "../../../../core/client/src/integration/store.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterHeaderSelected } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, useTheaterContributionMark, useTheaterHeaderLive, useTheaterHeaderSelected } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
@@ -32,13 +32,11 @@ import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { setTheaterCollapsed, useCollapsedTheaters, useSideBarState } from "./objective-records-side-bar-store.js";
-import { sideBarRowItems } from "./side-bar-cluster-row.js";
-import { useClusterIndex } from "../objective-clusters.js";
+import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 /*
- * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·지휘관 수와 답을 기다리는 수) 하나와 그 사령관의 기여 줄이 선다.
+ * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
  * 지휘관 세션은 사령관 대화의 오른쪽 사이드바 「지휘관」 탭에 있다(commander-tab) — 여기서는 사령관을 고르고 옮기고 다룬다.
  */
 
@@ -80,12 +78,6 @@ interface TheaterDragState {
   readonly dropIndex: number;
 }
 
-/** 사령관 카드 둘째 줄의 요약 — 그 사령관의 지휘관(Objective) 수와 답을 기다리는 수. */
-interface TheaterSummary {
-  readonly commanders: number;
-  readonly waiting: number;
-}
-
 /** 머리의 별칭 편집 — 한 번에 한 머리만 그 자리에서 편집한다. 끝낼 때 undefined 는 취소, null 은 해제다. */
 interface TheaterAliasEditing {
   readonly clampAlias: (value: string) => string;
@@ -97,21 +89,18 @@ interface TheaterAliasEditing {
 interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly theater: TheaterInfo;
   readonly active: boolean;
-  readonly collapsed: boolean;
-  readonly summary: TheaterSummary;
+  readonly lastResponse: string | undefined;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
   /** 머리를 눌렀을 때 — 그 사령관의 대화를 연다. */
   readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
-  readonly onToggleCollapsed: (theaterId: string) => void;
   /** 이 머리의 사령관 메뉴를 연다 — 우클릭은 커서 자리(atCursor), 키·길게 누르기는 앵커 아래. */
   readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
   /** 열린 사령관 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 사령관에서도 열리므로 머리가 대상을 말한다. */
   readonly menuTarget: boolean;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
-  readonly onNewSession?: () => void;
 }
 
 interface TheaterActionsMenuProps {
@@ -166,11 +155,9 @@ export function ObjectiveRecordsSideBar({
   const [orderError, setOrderError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
-  const collapsedTheaters = useCollapsedTheaters();
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups } = useConsoleState();
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
-  const clusterIndex = useClusterIndex();
   const registry = useFeatureRegistry();
 
   // 사이드바 행은 사령관(UUID)이다 — 등록 Theater 목록이 아니라 사령관 목록에서 선다.
@@ -336,10 +323,6 @@ export function ObjectiveRecordsSideBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
 
-  const toggleTheaterSectionCollapsed = (theaterId: string) => {
-    setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
-  };
-
   const startAliasEdit = (theaterId: string) => {
     setActiveContextMenu(null);
     setAliasEditingTheaterId(theaterId);
@@ -381,10 +364,6 @@ export function ObjectiveRecordsSideBar({
         {orderedFaces.map((theater, theaterIndex) => {
           const commanderRecords = objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === theater.id);
           const waitingCount = countAwaitingObjectiveRecords(commanderRecords, objectiveRecordRuntime);
-          // 지휘관 수는 「지휘관」 탭의 줄 수와 같은 기준이다 — 아직 세션이 서지 않은 시작 전 목표도 그 사령관의 지휘관이다.
-          const commanderCount = sideBarRowItems([], clusterIndex, new Set(commanderRecords.map((objectiveRecord) => objectiveRecord.id)), theater.id).length;
-          const summary: TheaterSummary = { commanders: commanderCount, waiting: waitingCount };
-          const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.sourceTheaterId === theater.id && drag.dragging;
           const theaterDragOffsetY = isTheaterDragging ? drag.currentY - drag.startY : 0;
           const theaterDropBefore = drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id && drag.dropIndex === theaterIndex;
@@ -404,21 +383,17 @@ export function ObjectiveRecordsSideBar({
               <TheaterSectionHeader
                 theater={theater}
                 active={theater.id === viewedTheaterId}
-                collapsed={theaterCollapsed}
-                summary={summary}
+                lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 dragging={isTheaterDragging}
                 dropTarget={theaterDropBefore}
                 dragOffsetY={theaterDragOffsetY}
-                onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenInbox={openTheaterHeaderInbox}
                 onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
-                onNewSession={() => openCommodoreNewSession(theater.id)}
               />
-              {!theaterCollapsed && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(theater.id) ? <TheaterContributionRows theater={theater} /> : null}
             </li>
           );
         })}
@@ -501,8 +476,7 @@ function countAwaitingObjectiveRecords(
 function TheaterSectionHeader({
   theater,
   active,
-  collapsed,
-  summary,
+  lastResponse,
   editingAlias,
   clampAlias,
   showStatusLiveTick,
@@ -510,16 +484,14 @@ function TheaterSectionHeader({
   dropTarget,
   dragOffsetY,
   onOpenInbox,
-  onToggleCollapsed,
   onContextMenu,
   menuTarget,
   onStartAliasEdit,
   onFinishAliasEdit,
   onPointerDragStart,
-  onNewSession,
 }: TheaterSectionHeaderProps) {
   const t = useT();
-  // 대화 중심 화면의 머리는 사령관 카드다 — 큰 아바타, 둘째 줄 요약. 머리 제어(접기·「+」)는 머무를 때·활성일 때 선다(CSS).
+  // 사령관 카드 — 아바타와 이름 아래에 사령관의 마지막 응답만 싣는다.
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
   // Console Use — 에이전트가 이 사령관의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. 지휘관 줄은 「지휘관」 탭에 있으므로 목록 읽기도 머리가 말한다.
@@ -542,14 +514,7 @@ function TheaterSectionHeader({
     wasEditingRef.current = editingAlias;
   }, [editingAlias]);
   const displayName = theater.commodore?.alias ?? theater.label;
-  const summaryText = summary.commanders === 0
-    ? t("sidebar.theater.summary.none")
-    : [
-        t(summary.commanders === 1 ? "sidebar.theater.summary.commanders_one" : "sidebar.theater.summary.commanders_other", { count: summary.commanders }),
-        ...(summary.waiting > 0 ? [t("sidebar.theater.summary.waiting", { count: summary.waiting })] : []),
-      ].join(" · ");
-  // 둘째 줄 — 별칭이 있으면 원래 Theater 이름이 먼저 선다(어느 폴더인지 늘 보인다). 사령관 카드는 그 뒤에 요약을 잇는다.
-  const subline = summaryText;
+  const summaryText = live ? t("sidebar.commodore.responding") : lastResponse ?? t("sidebar.commodore.noConversation");
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
@@ -592,10 +557,10 @@ function TheaterSectionHeader({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // 행 컨트롤(접기·새 Objective)과 표식 안의 단추(자율 운영 끄기), 별칭 입력에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 표식 안의 단추(자율 운영 끄기)와 별칭 입력에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
     // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-row-controls") || event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input"))) return;
     longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
@@ -605,7 +570,7 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // 이름은 Theater 를 전환하고 그 Theater 의 대화를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
+  // 이름은 사령관의 대화를 연다.
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
@@ -613,9 +578,6 @@ function TheaterSectionHeader({
     }
     onOpenInbox(theater, activateRef.current);
   };
-  const collapseLabel = collapsed
-    ? t("sidebar.theater.expand", { theater: displayName })
-    : t("sidebar.theater.collapse", { theater: displayName });
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
@@ -672,24 +634,11 @@ function TheaterSectionHeader({
           {mark === null ? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
             <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
-            {subline ? <span className="side-bar-theater-sub">{subline}</span> : null}
+            <span className={`side-bar-theater-sub${live ? " is-responding" : ""}`}>{summaryText}</span>
           </span>
         </button>
       )}
-      <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
-        {onNewSession ? <button type="button" className="side-bar-theater-row-btn" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession}><PlusIcon /></button> : null}
-        {/* 사령관 동작은 머리의 우클릭·키·길게 누르기 메뉴에 있다(handleContextMenu). */}
-        <button
-          type="button"
-          className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
-          aria-expanded={!collapsed}
-          aria-label={collapseLabel}
-          title={collapseLabel}
-          onClick={() => onToggleCollapsed(theater.id)}
-        >
-          <ChevronIcon collapsed={collapsed} />
-        </button>
-      </span>
+
     </div>
   );
 }
@@ -853,14 +802,6 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
   } else if (clientY > rect.bottom - AUTO_SCROLL_EDGE_PX) {
     chipsElement.scrollTop += AUTO_SCROLL_STEP_PX;
   }
-}
-
-function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
-  return (
-    <svg className={`side-bar-theater-chevron${collapsed ? " is-collapsed" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function PlusIcon() {
