@@ -45,6 +45,8 @@ export class DesktopEngine implements CdpClient {
   private shortcuts: readonly string[] | null = null;
   private nextCommandId = 1;
   private generation = 0;
+  /** 이 프로세스의 수명 표 — generation·명령 id 가 0 부터 다시 시작했음을 셸이 알아보게 한다. */
+  private readonly epoch = crypto.randomUUID();
   private host: string | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private closedResolve: (() => void) | null = null;
@@ -106,6 +108,7 @@ export class DesktopEngine implements CdpClient {
     });
     return {
       generation: this.generation,
+      epoch: this.epoch,
       views,
       commands: [...this.pending.values()].map((entry) => entry.command),
       ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
@@ -119,7 +122,7 @@ export class DesktopEngine implements CdpClient {
   }
 
   /** 호스트가 아닌 셸이 받는 스냅샷 — 그 창에는 아무 뷰도 없다. */
-  emptySnapshot(): DesktopBrowserSnapshot { return { generation: this.generation, views: [], commands: [] }; }
+  emptySnapshot(): DesktopBrowserSnapshot { return { generation: this.generation, epoch: this.epoch, views: [], commands: [] }; }
 
   /**
    * Companion 자리. `null` 은 presentation 만 내린다 — 마지막 양수 bounds 는 남겨 실행 크기와 자리를 분리한다.

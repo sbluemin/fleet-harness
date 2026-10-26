@@ -295,6 +295,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
   let session = 0;
   let generation = -1;
+  /** 마지막 스냅샷을 낸 Console 프로세스의 수명 표. 싣지 않는 옛 Console 이면 null. */
+  let epoch: string | null = null;
   let registeredShortcuts = new Set<string>();
   let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -574,7 +576,16 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
-    if (snapshot.generation < generation) return;
+    const next = snapshot.epoch ?? null;
+    /**
+     * 원격 Console 이 재기동하면 이 셸에는 같은 origin 의 스트림이 다시 붙는 것으로만 보이는데, 새 프로세스는 generation 과
+     * 명령 id 를 처음부터 다시 센다. 옛 수명의 표를 들고 있으면 새 스냅샷을 모두 낡은 것으로 버려 뷰를 만들지 못하고,
+     * 겹친 명령 id 는 실행한 것으로 건너뛴다. 수명 표가 바뀌었거나, 표가 없는 옛 Console 에서 generation 이 뒤로 갔으면
+     * 새 수명으로 보고 처음 붙은 것처럼 다시 시작한다.
+     */
+    if (generation >= 0 && (next !== epoch || (next === null && snapshot.generation < generation))) restartLifetime();
+    else if (snapshot.generation < generation) return;
+    epoch = next;
     generation = snapshot.generation;
     if (snapshot.shortcuts !== undefined) {
       registeredShortcuts = new Set(snapshot.shortcuts);
@@ -615,17 +626,30 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   function stop(): void {
-    session += 1;
-    for (const task of [...captureTasks]) task.expire();
     stream.stop();
-    for (const id of [...live.keys()]) drop(id, false);
+    resetLifetime();
     for (const browserSession of markedSessions) browserSession.webRequest.onBeforeSendHeaders(null);
     markedSessions.clear();
-    executed.clear();
     registeredShortcuts.clear();
+    origin = null;
+  }
+
+  /** 한 Console 프로세스에 묶인 것 — 그 프로세스의 뷰, 실행한 명령 id, generation, 보내지 못한 relay. */
+  function resetLifetime(): void {
+    session += 1;
+    for (const task of [...captureTasks]) task.expire();
+    for (const id of [...live.keys()]) drop(id, false);
+    executed.clear();
     generation = -1;
+    epoch = null;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
-    origin = null;
+  }
+
+  /** 같은 origin 의 새 Console 프로세스. 스트림과 origin 은 그대로 두고, 새 프로세스가 모르는 이 셸을 다시 알린다. */
+  function restartLifetime(): void {
+    log("browser views: console process changed; resetting native views");
+    resetLifetime();
+    if (origin) void send(origin, { hello: { product: deps.product(), userAgent: deps.userAgent() } });
   }
 }
