@@ -5,7 +5,7 @@ export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<A
 
 export type CommodorePersonMessageReader = () => boolean;
 
-export type CommodoreBoardWakeCode = "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "answered" | "returned";
+export type CommodoreBoardWakeCode = "settled" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "answered" | "returned";
 
 export interface CommodoreWakeScope {
   readonly woke: readonly CommodoreScopeItem[];
@@ -31,6 +31,11 @@ export interface CommodoreBoardWatch {
   recount(): ReadonlyMap<CommodoreBoardWakeCode, number>;
   scope(pending: ReadonlyMap<string, readonly string[]>): CommodoreWakeScope | null;
   emptyOperated(): boolean;
+  /**
+   * 이번 턴에 모델이 읽을 보드 요약 — 깨운 목표마다 단계·임무·대기·그룹 활동과 지난 턴 뒤의 단계 이동, 그리고 깨우지 않은 목표의
+   * 단계 이동. 이동 기록은 이 호출이 비운다. 실을 것이 없으면 null.
+   */
+  brief(objectiveIds: readonly string[]): string | null;
   attribute(tool: ConsoleMcpTool, turn: CommodoreTurnBindings): ConsoleMcpTool;
   dispose(): void;
 }

@@ -88,7 +88,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "patrol-started" | "retry" | "rotated" | "answered" | "returned";
+export type WakeCode = "settled" | "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "patrol-started" | "retry" | "rotated" | "answered" | "returned";
 
 const STATUS_DETAILS = 8;
 
@@ -114,6 +114,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
   const plural = (noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
   const tail = reason.details.length ? `: ${reason.details.join("; ")}` : "";
   switch (code) {
+    case "settled": return `${plural("objective group")} went idle${tail}`;
     case "patrol": return `patrol${tail}`;
     case "directive": return `directive changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
@@ -512,6 +513,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const reasons = pending.map(([code, reason]) => wakeToken(code, reason.count));
       const sentences = pending.map(([code, reason]) => wakeSentence(code, reason));
       const scope = runner.board?.scope(new Map(pending.map(([code, reason]) => [code, [...(reason.ids?.keys() ?? [])]])));
+      // 깨운 목표(대기 중·정체·맡김)의 보드 요약과 깨우지 않고 모은 단계 이동 — 모델이 이 턴에 읽는다.
+      const board = runner.board?.brief([...new Set(pending.flatMap(([, reason]) => [...(reason.ids?.keys() ?? [])]))]) ?? null;
       setPhase(runner, "turn");
       runner.patrolSet = false;
       // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
@@ -520,7 +523,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.turnMessages = messages;
       let outcome: CommodoreTurnOutcome;
       try {
-        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}) });
+        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}) });
       } finally { runner.turnMessages = []; }
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
