@@ -11,7 +11,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "../shared/results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, missionTitleSchema, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
@@ -61,7 +61,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   const added = <T extends { readonly id: string }>(before: readonly T[], after: readonly T[]): T | undefined => after.find((entry) => !before.some((prior) => prior.id === entry.id));
   const storedMission = (objectiveId: string, missionId: string) => {
     const stored = store.find(objectiveId)?.missions.find((entry) => entry.id === missionId);
-    return stored ? { stored: { text: storedText(stored.text) } } : {};
+    return stored ? { stored: { ...(stored.title ? { title: storedText(stored.title) } : {}), text: storedText(stored.text) } } : {};
   };
   const find = (objectiveId: string): Objective => {
     const objective = store.find(objectiveId);
@@ -171,7 +171,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   // 임무가 있으면 편성이다. 기준만이면 임무·명단을 받지 않는다. 둘 다 없거나 명단만이면 거절한다.
   const planArgs = z.object({
     objectiveId: ids,
-    missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
+    missions: z.array(z.object({ title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
     members: z.array(rosterMember).max(40).optional(),
     criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
   }).strict().check((ctx) => {
@@ -190,7 +190,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
           // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Objective 이 지휘관인 목표).
           commander: { session: assigned.objective.commander.sessionName, ...(assigned.objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) },
           member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
-          missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, text: mission.text, done: mission.done, ...(mission.done ? {} : { ready: missionReady(assigned.objective.missions, mission) }) }] : []),
+          missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text, done: mission.done, ...(mission.done ? {} : { ready: missionReady(assigned.objective.missions, mission) }) }] : []),
           objective: objectiveView(assigned.objective) });
       }
       const own = store.find(caller.objectiveId);
@@ -235,22 +235,22 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
         const missions = args.missions;
         const repeated = missions === undefined ? [] : objective.missions.filter((mission) => (mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || mission.records.length > 0 || (mission.memberBy !== undefined && mission.memberBy !== "commander")) && missions.some((planned) => same(planned.text) === same(mission.text)));
-        if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
+        if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, ...(mission.title ? { title: mission.title } : {}), text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
         const planned = launch.planApplied(objective.id, { ...(missions !== undefined ? { missions } : {}), ...(roster ? { members: roster } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
         renumber(planned);
         const stored = store.find(objective.id) ?? planned;
-        return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: storedText(mission.text) })),
+        return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, ...(mission.title ? { title: storedText(mission.title) } : {}), text: storedText(mission.text) })),
           ...(args.criteria !== undefined || args.members ? { stored: {
             ...(args.criteria !== undefined ? { criteria: stored.criteriaProposals.map(({ id, kind, target, text: proposed, reason }) => ({ id, kind, ...(target ? { target } : {}), ...(proposed !== undefined ? { text: storedText(proposed) } : {}), ...(reason ? { reason: storedText(reason) } : {}) })) } : {}),
             ...(args.members ? { members: stored.members.map(({ id, role, brief, launch }) => ({ id, role, ...(brief ? { brief: storedText(brief) } : {}), launch })) } : {}),
           } } : {}) });
       }),
     commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read. " + BOARD_REFERENCES,
-      z.object({ objectiveId: ids, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
+      z.object({ objectiveId: ids, title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
         const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
         const known = numbered.get(objective.id);
-        const next = launch.missionAdded(objective.id, { text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
+        const next = launch.missionAdded(objective.id, { title: args.title, text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
         const mission = added(objective.missions, next.missions);
         if (!mission) return text({ ok: true });
         if (!known) return text({ ok: true, missionId: mission.id, ...storedMission(objective.id, mission.id) });

@@ -6,7 +6,7 @@ import type { ObjectiveCluster, ObjectiveClusterMember, ObjectiveClusterProgress
 
 import { inboxReasons, livePersonHold, stalledObjectives, type BoardObservation, type BoardObserver } from "../shared/board-state.js";
 import { memberFailureReason } from "../shared/signals.js";
-import { latestRecord, missionReady, type Objective } from "../shared/types.js";
+import { latestRecord, missionReady, missionTitle, type Objective } from "../shared/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
 import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
@@ -335,7 +335,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
         ...(name ? { name } : {}),
         ...(member ? { tone: memberToneOf(objective, member.id) } : {}),
         ...(memberIndex >= 0 ? { order: memberIndex } : {}),
-        label: `${byMission.get(mission.id)}. ${mission.text}`,
+        label: `${byMission.get(mission.id)}. ${missionTitle(mission)}`,
         missionNumber: byMission.get(mission.id)!,
         after: mission.prerequisites.map(idOf),
         progress: pending ? (mission.done ? "done" : missionReady(objective.missions, mission) ? "open" : "blocked") : progressOf(objective, mission.id, id, activity),
