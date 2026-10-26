@@ -175,7 +175,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       if (model === null && effort) throw new CommodoreStoreError("invalid_request");
       return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
-    { name: "commodore/patrol", method: "POST", summary: "Set the Commodore patrol interval, or off to disable automatic wakes including Console restart. Off is the default.", handler: json(commodoreRef.extend({ minutes: commodorePatrolSchema }).strict(), ({ commodoreId, minutes }) => {
+    { name: "commodore/patrol", method: "POST", summary: "Set the Commodore patrol interval, or off to disable automatic wakes. Off is the default.", handler: json(commodoreRef.extend({ minutes: commodorePatrolSchema }).strict(), ({ commodoreId, minutes }) => {
       read(commodoreId);
       if (minutes !== "off" && !experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
       if (minutes !== "off" && hooks.boardReady && !hooks.boardReady()) throw new CommodoreStoreError("commodore_inactive");

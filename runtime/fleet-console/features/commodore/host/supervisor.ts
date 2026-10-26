@@ -88,7 +88,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "settled" | "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "patrol-started" | "retry" | "rotated" | "answered" | "returned";
+export type WakeCode = "settled" | "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "patrol-started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
 
 const STATUS_DETAILS = 8;
 
@@ -137,6 +137,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "stalled": return `${plural("stalled objective")}${tail}`;
     case "empty": return "the board has no open objective you operate";
     case "restart": return "Console restarted";
+    case "resume-failed": return `${plural("objective")} could not continue on its own (after a Console restart or an extension's criteria were settled)${tail}`;
     case "patrol-started": return "automatic patrol started";
     case "retry": return "retry requested by the person";
     case "rotated": return "your session was replaced";
@@ -643,7 +644,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return;
     }
     requeueUndelivered(runner);
-    wake(runner, reason);
+    // 재시작만으로는 깨우지 않는다 — 진행 중 목표는 스스로 이어 가고, 잇지 못한 목표는 보드 감시가 resume-failed 로 깨운다. 순찰만 다시 건다.
+    if (reason === "restart") {
+      const interval = patrolInterval(commodoreId);
+      if (interval !== null) schedulePatrol(runner, now() + interval, "");
+    } else wake(runner, reason);
     if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(commodoreId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });

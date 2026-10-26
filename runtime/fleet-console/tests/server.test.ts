@@ -195,7 +195,9 @@ describe("console terminal observability", () => {
     const { commodoreId } = await post("commodore/create", { alias: "No Theater" });
     const { objective } = await post("objectives/objective/create", { commodoreId, title: "Owned objective" });
     await post("objectives/plan/request", { objectiveId: objective.id });
-    await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
+    const added = await post("objectives/member/add", { objectiveId: objective.id, member: { role: "Verifier" } });
+    // 개시는 임무를 맡은 구성원만 세운다.
+    await post("objectives/mission/add", { objectiveId: objective.id, mission: { text: "Verify", member: added.objective.members[0].id } });
     await post("objectives/commander/start", { objectiveId: objective.id });
     const { objectiveRecords } = await (await fetch(new URL("api/v1/objectives/records", fixture.endpoint))).json();
     const commander = objectiveRecords.find((record: { id: string }) => record.id === objective.id);

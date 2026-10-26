@@ -494,10 +494,17 @@ describe("Objectives contract", () => {
     expect(h.sent.at(-1)!.text).toContain("> add second scope");
     const second = launch.planApplied(id, { missions: [{ text: "second extension" }], criteria: [{ text: "second criterion" }] });
     expect(second.criteria.every((criterion) => !!criterion.met)).toBe(true);
+    // 그사이 Console 이 다시 서도 확장 자동 개시는 기록에서 되살아난다 — 되살리기만으로는 개시하지 않는다.
+    const restarted = createLaunchService(h.ctx, store);
+    launchServices.push(restarted);
+    await restarted.resumeInProgress();
+    expect(store.find(id)!.planning).toBe(true);
     const approvedSecond = store.proposalsApproveAll(id);
     expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
     expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
-    await launch.startCommander(id);
+    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다.
+    restarted.continueExtension(id);
+    await vi.waitFor(() => expect(store.find(id)!.planning).toBe(false));
     store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["second done"]));
     store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "second evidence"));
     store.handOff(id, { by: "human" });
@@ -515,6 +522,30 @@ describe("Objectives contract", () => {
     store.missionAdd(id, { text: "ordinary later edit" });
     expect(store.find(id)!.criteria.every((criterion) => !criterion.met)).toBe(true);
     launch.dispose(); h.launch.dispose();
+  });
+
+  // 재시작 이어가기 — 진행 중 목표는 지휘관에게 이어 가라는 턴이 가고, 사람이 멈춘 목표는 그대로다. 잇지 못한 목표만 사령관 몫으로 남는다.
+  it("resumes in-progress objectives after a Console restart and leaves only failed resumes for the Commodore", async () => {
+    const { store, launch, sent, hostFault } = harness();
+    const started = async (title: string) => {
+      const created = await launch.create({ commodoreId: "c1", theaterId: "t1", title, groupId: null, note: "brief" });
+      store.missionAdd(created.id, { text: "work" });
+      await launch.startCommander(created.id);
+      return created.id;
+    };
+    const first = await started("First");
+    const second = await started("Second");
+    const paused = await started("Paused");
+    store.setStopped(paused, true);
+    const before = sent.length;
+    hostFault.sendError = "chat_unavailable";
+    await launch.resumeInProgress();
+    const failures = launch.takeResumeFailures("c1");
+    expect(failures).toEqual([expect.objectContaining({ error: "chat_unavailable" })]);
+    const resumedTo = sent.slice(before).map((entry) => entry.objectiveId);
+    expect(new Set([...resumedTo, failures[0]!.objectiveId])).toEqual(new Set([first, second]));
+    expect(sent.at(-1)!.text).toContain("Console restarted");
+    expect(launch.takeResumeFailures("c1")).toEqual([]);
   });
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
@@ -611,6 +642,9 @@ describe("Objectives contract", () => {
     const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events } = harness();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
+    // 개시는 임무를 맡은 구성원만 세운다.
+    const assign = (memberId: string) => store.missionAdd(objective.id, { text: `work ${memberId}`, member: memberId });
+    assign(reviewer.id);
     await launch.startCommander(objective.id);
     objectiveRecordsHost.patch(reviewer.id, { chatMode: false });
     activity.set(reviewer.id, "dormant");
@@ -627,6 +661,7 @@ describe("Objectives contract", () => {
     // 그새 노출이 꺼졌다 — 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
     const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
     const routed = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
+    assign(late.id); assign(routed.id);
     hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
     expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }]);
@@ -746,6 +781,9 @@ describe("Objectives contract", () => {
     });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
     const analyst = store.memberAdd(objective.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
+    store.missionAdd(objective.id, { text: "read", member: analyst.id });
+    // 맡은 임무가 없는 구성원은 개시 판단에도, 기동에도 들지 않는다.
+    const idle = store.memberAdd(objective.id, { role: "idle" }, "human").members.at(-1)!;
 
     const first = await route("routing/preview", { objectiveId: objective.id });
     expect((first.value.preview as { judged: boolean; members: unknown[] })).toMatchObject({ judged: true, members: [{ id: analyst.id, via: "route", model: "sonnet", effort: "low", because: "Sonnet @low · AI model · difficulty low" }] });
@@ -762,6 +800,7 @@ describe("Objectives contract", () => {
     expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).status).toBe(200);
     expect(judgments).toBe(2);
     expect(objectiveRecords.get(analyst.id)!.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(objectiveRecords.get(idle.id)).toBeUndefined();
     expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
   });
 
@@ -2162,7 +2201,15 @@ describe("Objectives contract", () => {
     const lineup = { missions: [{ title: "verify", text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
-    await command("plan", { ...lineup, members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    await command("plan", { ...lineup, missions: [...lineup.missions, { title: "review", text: "review", member: "reviewer" }], members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    // 맡은 일 없는 구성원만 지휘관이 거둔다 — 임무를 맡은 구성원과 사람이 더한 구성원은 남는다.
+    await command("enlist", { members: [{ role: "spare" }] }, id);
+    expect((await call("discharge", { objectiveId: id, member: "reviewer" }, id)).structuredContent.error).toBe("member_has_missions");
+    const handPicked = store.memberAdd(id, { role: "personal" }, "human").members.at(-1)!;
+    expect((await call("discharge", { objectiveId: id, member: handPicked.id }, id)).structuredContent.error).toBe("member_person_added");
+    store.memberRemove(id, handPicked.id);
+    await command("discharge", { member: "spare" }, id);
+    expect(store.find(id)!.members.map((member) => member.role)).toEqual(["worker", "reviewer"]);
     // 개시 전에도 기존 구성원은 도구로 바뀐다 — 사람의 편집 흔적을 만들거나 지우지 않는다.
     const beforeLaunchEdit = { edited: store.find(id)!.edited, actions: store.find(id)!.actions };
     expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "unlisted" }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
@@ -2384,6 +2431,7 @@ describe("Objectives contract", () => {
     const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);
     const finished = await command("complete_mission", { missionId, summary: ["Verified"], results: [{ kind: "evidence", evidenceId: sealed.evidenceId }] }, id);
     const resultId = (finished.resultIds as readonly string[])[0]!;
+    await command("complete_mission", { missionId: executing.graph.missions[1]!.missionId, summary: ["Reviewed"] }, id);
     await command("mark_criterion", { n: 1, met: true, evidence: "Preserved" }, id);
     await command("mark_criterion", { n: 2, met: true, evidence: "Applied" }, id);
     await command("followup", { add: { title: "Next round", summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", evidence: [{ kind: "command", text: "verification" }] } }, id);

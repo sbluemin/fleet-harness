@@ -6,7 +6,7 @@ import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPrese
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
-import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -63,6 +63,20 @@ export interface LaunchService {
   complete(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   reopen(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   extend(objectiveId: string, context: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string }>;
+  /**
+   * 확장 회차는 이어서 하라는 뜻이다 — 지휘관의 계획이 서고 기준 제안이 모두 정리되면 따로 개시하지 않아도 그 회차를 시작한다.
+   * 기준 결정 뒤와 지휘관 턴이 끝날 때 부른다. 조건이 아직 안 맞으면 아무것도 하지 않는다.
+   */
+  continueExtension(objectiveId: string, idle?: boolean): void;
+  /**
+   * Console 이 다시 선 뒤 진행 중이던 목표를 잇는다 — 지휘관에게 보드를 다시 읽고 이어 가라는 턴을 보낸다. 사람이 멈춘 목표, 구상·검토·
+   * 결정·기준 대기는 건드리지 않는다. 잇지 못한 목표는 사령관이 알도록 남긴다(`takeResumeFailures`).
+   */
+  resumeInProgress(): Promise<void>;
+  /** 이 사령관 몫의 재개 실패를 꺼낸다 — 한 번 꺼낸 것은 다시 주지 않는다. */
+  takeResumeFailures(commodoreId: string): readonly { readonly objectiveId: string; readonly title: string; readonly error: string }[];
+  /** 재개 실패가 새로 생기면 그 사령관 id 로 알린다. */
+  subscribeResumeFailures(listener: (commodoreId: string) => void): () => void;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeObjectiveIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Promise<Objective>;
@@ -453,7 +467,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
   /** 사람이 확인 시트에서 본 결과 — 대상마다 쓸 수 있는 결과가 있어야 한다. 그새 설명이 바뀌었거나 만료됐으면 시트가 다시 판단해야 한다. */
   const reviewedRouting = (current: Objective): Map<string, RoutingDecision> => {
-    const targets = routingTargets(current);
+    const targets = routingTargets(current, assignedMembers(current));
     const decisions = new Map<string, RoutingDecision>();
     for (const member of targets) {
       const entry = cachedRouting(current, targets, member);
@@ -463,13 +477,30 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     return decisions;
   };
   const previewTasks = new Map<string, Promise<RoutingPreview>>();
+  /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
+  const extensionStarts = new Map<string, LaunchOptions | undefined>();
+  /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
+  const resumeFailures = new Map<string, { readonly commodoreId: string; readonly title: string; readonly error: string }>();
+  const resumeFailureListeners = new Set<(commodoreId: string) => void>();
+  /** 스스로 잇지 못한 목표 — 사령관이 꺼내 가도록 남기고 듣는 쪽에 알린다. */
+  const resumeFailed = (current: Objective, error: unknown) => {
+    const code = error instanceof ObjectiveStoreError ? error.code : error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "resume_failed";
+    resumeFailures.set(current.id, { commodoreId: current.commodoreId, title: current.title, error: code });
+    console.warn(`[objectives] Objective did not continue on its own: ${code}`);
+    for (const listener of resumeFailureListeners) { try { listener(current.commodoreId); } catch { /* 듣는 쪽의 오류는 재개와 무관하다. */ } }
+  };
+  /** 재시작 때 이어 갈 목표 — 개시됐고 사람이 멈추지 않았으며, 남은 임무가 있거나 인계만 남았고, 사람·기준을 기다리지 않는다. */
+  const resumable = (current: Objective): boolean => !!current.commenced && !current.done && !current.removed && !current.archived && !current.planning
+    && current.stoppedAt === null && !current.awaitingReview && !current.decisionRequest && !current.criteriaProposals.length
+    && (current.missions.some((mission) => !mission.done) || current.awaitingHandoff);
   /**
    * 루프가 새로 띄울 라우팅 구성원 — Objective 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서
    * 멈춘다. 보관된 Objective(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
    */
-  const routingTargets = (current: Objective): ObjectiveMember[] => {
+  const routingTargets = (current: Objective, scope?: ReadonlySet<string>): ObjectiveMember[] => {
     const launching: ObjectiveMember[] = [];
     for (const member of current.members) {
+      if (scope && !scope.has(member.id)) continue;
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
       if (reference && reference.commodoreId !== current.commodoreId) break;
@@ -480,6 +511,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     return launching;
   };
+  /** 개시가 세울 구성원 — 임무를 하나라도 맡은 구성원만. 맡은 일이 없는 구성원은 지휘관이 muster 로 부를 때 선다. */
+  const assignedMembers = (current: Objective): ReadonlySet<string> => new Set(current.missions.flatMap((mission) => mission.member ? [mission.member] : []));
   /** 세션 좌표의 모델·강도를 그대로 이 값으로 — 강도가 없으면 그 모델의 기본으로 뜨도록 지운다. */
   const withSessionPreset = (payload: Record<string, unknown>, preset: MemberPreset): Record<string, unknown> => {
     const next = withObjectiveLaunchPreset(payload, preset);
@@ -606,14 +639,15 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     };
     tick();
   };
-  const muster = (objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
+  const muster = (objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>, scope?: (current: Objective) => ReadonlySet<string>): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
     let current = objective(objectiveId);
     if (current.planning) throw new ObjectiveStoreError("planning_only");
     if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
     if (current.done) throw new ObjectiveStoreError("objective_done");
     await accessObjective(objectiveId);
     current = editableObjective(objectiveId);
-    const launching = routingTargets(current);
+    const only = scope?.(current);
+    const launching = routingTargets(current, only);
     // 사람이 확인한 결과로 띄운다 — 그사이 새로 끼었거나 바뀐 대상이 있으면 본 것과 다르게 뜨므로 띄우기 전에 멈춘다.
     if (reviewed && launching.some((member) => !reviewed.has(member.id))) throw new ObjectiveStoreError("routing_preview_stale");
     const routed = reviewed ?? (await routeMembers(current, launching, "route")).decisions;
@@ -621,6 +655,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const members: MusterMember[] = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
+      if (only && !only.has(member.id)) continue;
       const sessionId = member.id;
       const reference = sessionId ? referenceNode(sessionId) : null;
       if (reference && reference.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_objectiveRecord");
@@ -988,6 +1023,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const language = languageOf(options);
     let current = objective(objectiveId);
     if (current.done) throw new ObjectiveStoreError("objective_done");
+    // 따로 청한 구상은 계획만 하라는 뜻이다 — 확장의 자동 개시를 거둔다.
+    if (recordAs) extensionStarts.delete(objectiveId);
     await ensureCommander(objectiveId);
     rememberLanguage(objectiveId, language);
     store.recordStage(objectiveId, "planned");
@@ -996,7 +1033,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     current = store.setCriteriaOpen(objectiveId, true);
     const firstWake = neverStarted(objectiveId);
     if (firstWake) current = store.setEdited(objectiveId, null);
-    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
+    if (!(await send(objectiveId, planTurn(current, language, options?.actor, !recordAs), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
@@ -1179,6 +1216,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!current || !observed) return;
       const snapshot: ConsoleObjectiveObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
+      // 사람이 멈췄거나 실패한 턴은 구상이 끝난 것이 아니다 — 확장 개시는 다음 정상 턴이나 기준 결정 때 다시 본다.
+      if (event.objectiveId === current.id && event.output.outcome !== "interrupted" && event.output.outcome !== "failed") service.continueExtension(current.id, true);
     }) ?? null;
     if (outcomeTimer) return;
     outcomeTimer = setTimeout(() => {
@@ -1397,9 +1436,62 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return claim(objectiveId, async () => {
         store.extend(objectiveId, context, intent, options?.actor);
         await applyObjectiveIntent(objectiveId);
-        return requestPlan(objectiveId, options, false);
+        const planned = await requestPlan(objectiveId, options, false);
+        extensionStarts.set(objectiveId, { ...(options?.actor ? { actor: options.actor } : {}), language: languageOf(options) });
+        return planned;
       }, "plan");
     }),
+
+    continueExtension(objectiveId, idle = false) {
+      if (!extensionStarts.has(objectiveId)) return;
+      const current = store.find(objectiveId);
+      if (!current || current.done || !current.extensionActive || !current.planning) { extensionStarts.delete(objectiveId); return; }
+      // 기준 제안·사람에게 물은 결정이 남았거나 할 임무가 없으면 아직이다. 지휘관이 일하는 중이면 그 턴이 끝날 때 다시 본다.
+      if (current.criteriaProposals.length || current.decisionRequest || !current.missions.some((mission) => !mission.done)) return;
+      if (!idle && stoppable(objectiveId)) return;
+      const options = extensionStarts.get(objectiveId);
+      extensionStarts.delete(objectiveId);
+      // 스스로 서지 못한 회차는 재시작 이어가기 실패와 같은 길로 사령관에게 알린다 — 개시된 목표의 구상 중은 inbox 에 서지 않는다.
+      void service.startCommander(objectiveId, options).catch((error: unknown) => resumeFailed(current, error));
+    },
+
+    async resumeInProgress() {
+      // 메모리의 확장 자동 개시는 재시작과 함께 사라진다 — 마지막 구상 행위가 확장인 구상 중 회차를 기록에서 되살린다. 되살리기만 하고
+      // 개시하지 않는다: 끊긴 구상이 다 짜였는지 모르므로 다음 기준 결정이나 정상으로 끝난 지휘관 턴이 개시를 판단한다.
+      for (const current of store.all()) {
+        if (disposed || current.done || current.archived || !current.planning || !current.extensionActive || extensionStarts.has(current.id)) continue;
+        const last = (current.actions ?? []).findLast((entry) => entry.kind === "extend" || entry.kind === "plan" || entry.kind === "commence");
+        if (last?.kind !== "extend") continue;
+        extensionStarts.set(current.id, { actor: last.by, language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
+      }
+      for (const current of store.all()) {
+        if (disposed || !resumable(current)) continue;
+        try {
+          await orderedObjectiveRequest(current.id, async () => {
+            // 기다리는 동안 사람이 멈췄거나 끝냈으면 잇지 않는다.
+            const latest = objective(current.id);
+            if (!resumable(latest)) return;
+            await accessObjective(latest.id);
+            await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en"), "");
+          });
+        } catch (error) { resumeFailed(current, error); }
+      }
+    },
+
+    takeResumeFailures(commodoreId) {
+      const taken: { objectiveId: string; title: string; error: string }[] = [];
+      for (const [objectiveId, failure] of resumeFailures) {
+        if (failure.commodoreId !== commodoreId) continue;
+        resumeFailures.delete(objectiveId);
+        taken.push({ objectiveId, title: failure.title, error: failure.error });
+      }
+      return taken;
+    },
+
+    subscribeResumeFailures(listener) {
+      resumeFailureListeners.add(listener);
+      return () => { resumeFailureListeners.delete(listener); };
+    },
 
     async resumeObjectiveIntents() {
       for (const current of store.all()) {
@@ -1407,7 +1499,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (!intent) continue;
         try { await orderedObjectiveRequest(current.id, async () => {
           await applyObjectiveIntent(current.id);
-          if (intent.extensionContext !== undefined) await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
+          if (intent.extensionContext !== undefined) {
+            await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
+            extensionStarts.set(current.id, { ...(intent.by ? { actor: intent.by } : {}), language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
+          }
         }); }
         catch (error) { console.warn(`[objectives] Objective request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
@@ -1462,6 +1557,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }),
 
     startCommander: (objectiveId, options) => claim(objectiveId, async () => {
+      extensionStarts.delete(objectiveId);
       const language = languageOf(options);
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
@@ -1474,7 +1570,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
       if (current.planning) current = store.setPlanning(objectiveId, false);
       if (current.criteriaOpen) current = store.setCriteriaOpen(objectiveId, false);
-      const failed = (await muster(objectiveId, reviewed)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
+      // 맡은 임무가 없는 구성원은 세우지 않는다 — 일 없이 떠 있는 세션을 만들지 않는다.
+      const failed = (await muster(objectiveId, reviewed, assignedMembers)).flatMap((member) => (member.state === "failed" ? [{ id: member.id, role: member.role, error: member.error ?? "launch_failed" }] : []));
       current = objective(objectiveId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
@@ -1496,7 +1593,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const current = objective(objectiveId);
         if (current.done) throw new ObjectiveStoreError("objective_done");
         if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-        const targets = routingTargets(current);
+        const targets = routingTargets(current, assignedMembers(current));
         const { decisions, judged } = await routeMembers(current, targets, options?.rejudge ? "none" : "any");
         // 판단을 기다리는 동안 지휘관 프리셋이 바뀌었을 수 있다 — 폴백이 뜰 모델은 지금 값으로 보인다.
         const latest = objective(objectiveId);

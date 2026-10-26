@@ -975,14 +975,14 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(10);
       expect(hasPersonMessage!()).toBe(false);
 
-      // Console 재시작 — 새 대화의 첫 턴은 제품 기록의 최근 결과 요약과 restart·empty 깨움이다.
+      // Console 재시작 — 재시작만으로는 깨우지 않는다. 새 대화의 첫 턴은 제품 기록의 최근 결과 요약과 empty 깨움이다.
       await supervisor.dispose();
       supervisor = make();
       supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(2);
       expect(sessions[1]!.sent).toHaveLength(1);
-      expect(sessions[1]!.sent[0]).toContain("Console restarted");
+      expect(sessions[1]!.sent[0]).not.toContain("Console restarted");
       expect(sessions[1]!.sent[0]).toContain("2026-10-17T12:");
       expect(sessions[1]!.sent[0]).toContain("board actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);
@@ -1195,18 +1195,19 @@ describe("commodore supervisor", () => {
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
       const sessionEvents = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "session" ? [entry.event] : []);
 
-      // 등록 복원 — 켜진 Theater 는 「재시작」 턴으로 깨어나고, 사령관이 운영하는 열린 목표가 없는 보드도 이유가 된다.
+      // 등록 복원 — 재시작 자체는 깨움이 아니다. 사령관이 운영하는 열린 목표가 없는 보드는 이유가 된다.
       supervisor.sync("restart");
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.options).toMatchObject({ model: "claude-sonnet-installed", effort: "medium" });
       expect(sessions[0]!.options.systemPrompt).toContain("The person reads the log in Korean.");
-      expect(tokens()).toEqual([["restart", "empty"]]);
+      expect(tokens()).toEqual([["empty"]]);
       expect(sessionEvents()).toEqual(["restarted"]);
       expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "session")).toMatchObject({ reason: "fallback:model_off:sonnet[1m]" });
       expect(h.store.read("t1")?.model).toBe("codex--gpt-6-luna");
-      expect(sessions[0]!.sent[0]).toContain("Console restarted; the board has no open objective you operate");
+      expect(sessions[0]!.sent[0]).toContain("the board has no open objective you operate");
+      expect(sessions[0]!.sent[0]).not.toContain("Console restarted");
       const patrolAt = supervisor.status("t1")!.nextWakeAt!;
       expect(supervisor.status("t1")!.phase).toBe("idle");
       expect(patrolAt).toBeGreaterThan(Date.now() + TEST_PATROL_MS - COALESCE_MS - 100);
