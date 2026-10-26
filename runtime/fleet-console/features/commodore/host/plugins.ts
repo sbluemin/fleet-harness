@@ -464,7 +464,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       const names = name ? [requireRow(name).name] : readRegistry().marketplaces.map((row) => row.name);
       await serial(async () => {
         for (const target of names) {
-          patchMarketplace(target, { status: "syncing" });
+          patchMarketplace(target, { status: "syncing", attemptedAt: now() });
+          // 한 번도 받지 못한 기본 제공(예: 오프라인 첫 기동)은 CLI 가 모르므로 갱신이 아니라 추가로 받는다.
+          const preset = PRESET_MARKETPLACES.find((item) => item.name === target);
+          if (preset && !known()[target]) {
+            await fetchMarketplace({ kind: "github", locator: preset.repo, cliSource: preset.repo }, true, target).catch(() => undefined);
+            continue;
+          }
           const result = await runCli(["marketplace", "update", target]);
           patchMarketplace(target, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: "failed", error: errorCode(result) }, result.outcome === "ok");
         }
