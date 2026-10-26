@@ -36,30 +36,6 @@
   border-right: 1px solid var(--hairline-column);
 }
 
-/* 좁은 창 — 사이드바가 사령관 열로 물러난다(macOS는 네이티브 컨트롤 폭, 그 밖은 72px). 원격 칩·Theater 사령관·계정만 가운데에 남기고,
-   Objective·상태·그룹 목록과 조작을 걷는다. 창을 넓히면 사람이 정한 폭과 목록으로 돌아온다. */
-.console-body.is-conversation .objective-records-side-bar.is-compact :is(
-  .side-bar-top-strip,
-  .side-bar-chip,
-  .side-bar-cluster-row,
-  .side-bar-theater-groups,
-  .side-bar-theater-contributions,
-  .side-bar-status-section,
-  .side-bar-status-recovery-shelves,
-  .side-bar-group-section,
-  .side-bar-ungrouped-section,
-  .side-bar-starter,
-  .side-bar-theater-text,
-  .side-bar-theater-row-controls,
-  .side-bar-theater-chevron,
-  .side-bar-status-header,
-  .side-bar-group-header,
-  .side-bar-ungrouped-label,
-  .objective-records-side-bar-resize-handle
-) {
-  display: none;
-}
-
 /* 아래 줄은 계정 아바타만 남긴다 — 보관함·보기 단추는 창을 넓히면 돌아온다. */
 .console-body.is-conversation .objective-records-side-bar.is-compact .conversation-dock > :not(.conversation-dock-host) {
   display: none;
@@ -182,6 +158,64 @@
   display: flex;
   flex-direction: column;
 }
+
+/* 사령관 대화 칸과 그 옆의 지휘관 대화 칸. 나뉘지 않은 동안에도 사령관 칸은 이 틀 안에 남는다 — 칸이 다시 서면 그 탭이 연 사이드바가
+   걷히기 때문이다. 나뉘면 사령관 칸이 저장된 비율을 갖고 지휘관 칸이 나머지를 갖는다. */
+.conversation-split {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.conversation-split > .conversation-column { min-width: 0; }
+.conversation-split[data-split] > .conversation-column:first-child { flex: 0 0 var(--commander-split-left, 50%); }
+/* 맨 위 줄을 도구 분할 폭만큼 더 뻗는 것은 맨 오른쪽 칸의 몫이다 — 사령관 칸이 뻗으면 그 pill 이 지휘관 칸 위로 밀린다. */
+.conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row { right: 0; }
+.conversation-split-divider {
+  position: relative;
+  flex: 0 0 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.conversation-split-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--hairline);
+}
+.conversation-split-divider:hover::before,
+.conversation-split-divider[data-dragging]::before,
+.conversation-split-divider:focus-visible::before { background: var(--brass); }
+.conversation-split-divider:focus-visible { outline: none; }
+.conversation-split-controls {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.conversation-split-control {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.conversation-split-control svg { width: 16px; height: 16px; }
+.conversation-split-control:hover,
+.conversation-split-control:focus-visible {
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+.conversation-split-empty > .conversation-pill-row { justify-content: flex-end; }
 
 /* 가운데 열의 맨 위 줄 — 레이아웃에서 자리를 차지하지 않는 투명 오버레이다. pill 과 단추만 그 위에 떠 있고, 대화는 창 맨 위(0px)부터
    그 밑으로 흘러 올라간다(Grok Bot). 빈 자리는 클릭을 내용에 넘긴다 — Desktop 에서는 그 빈 자리가 창을 끄는 영역이다.
@@ -678,20 +712,13 @@
 
 /* ── 사이드바 행: 대화 목록 문법 ───────────────────────────────────────── */
 /* 지휘관 행은 40px 이다 — 사령관 카드(52px)보다 낮아야 Theater 가 위, Objective 이 아래로 읽힌다(이전엔 행 50px > 머리 38px 로 뒤집혀 있었다). */
-.side-bar-chip--conversation,
 .side-bar-cluster-row--conversation {
   padding-block: 3px;
 }
 
-/* 대화 행의 아바타는 22px 이다 — 칩의 표식 칸과 목표 줄의 첫 칸을 같은 폭으로 넓혀 제목이 같은 x 에서 시작한다. */
-.side-bar-chip--conversation .side-bar-chip-beacon-button {
-  width: 26px;
-  height: 26px;
-}
 .side-bar-cluster-row--conversation {
   grid-template-columns: 26px 1fr auto;
 }
-.side-bar-chip--conversation .side-bar-chip-name,
 .side-bar-cluster-row--conversation .side-bar-cluster-row-title {
   font-weight: var(--weight-medium);
 }
@@ -711,22 +738,9 @@
   white-space: nowrap;
 }
 
-/* 지휘관 칩의 상태 줄 — 목표 줄과 같이 단계(✓ N/N, .side-bar-cluster-row-lead)가 상태 문구 앞에 선다. 단계는 잘리지 않는다. */
-.side-bar-chip-status-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-.side-bar-chip-status-line > .side-bar-chip-preview {
-  flex: 1 1 auto;
-}
-
 /* 대화 행의 제목은 Theater 이름과 같은 최고 명도 잉크다 — 활성·고름은 면 워시·점선이 말하고 이름 잉크를
    바꾸지 않는다. 사용자 accent 는 정체성 채널이라 그대로 이름을 칠한다. */
-.side-bar-cluster-row--conversation:not([style*="--user-accent"]) .side-bar-cluster-row-title,
-.side-bar-chip--conversation:not([style*="--user-accent"]) .side-bar-chip-name {
+.side-bar-cluster-row--conversation:not([style*="--user-accent"]) .side-bar-cluster-row-title {
   color: var(--text-primary);
 }
 
@@ -1263,12 +1277,6 @@
 .side-bar-top-strip.is-compact > * { flex: none; }
 .side-bar-top-strip.is-compact > .side-bar-top-strip-spacer { flex: 1 1 0; min-width: 0; }
 
-.console-shell.is-objective-records-view .side-bar-top-strip :is(.side-bar-status-view-toggle, .side-bar-view-menu-button) {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-pill);
-}
-
 /* 브랜드(앰블럼 = 환경 진단, 워드마크 = 홈)는 밴드 왼쪽과 같은 한 벌이 사이드바 맨 위 줄 왼쪽에 선다. */
 
 .console-shell.is-objective-records-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close) {
@@ -1332,16 +1340,7 @@
 .console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-header.is-card {
   margin-block: 0;
 }
-.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-header.is-card:has(
-  ~ .side-bar-theater-contributions,
-  ~ .side-bar-theater-groups > :not(.side-bar-ungrouped-section),
-  ~ .side-bar-theater-groups > .side-bar-ungrouped-section > :not(.side-bar-group-chips:empty)
-) {
-  margin-bottom: 2px;
-}
-.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-groups:is(:empty, :has(> .side-bar-ungrouped-section:only-child > .side-bar-group-chips:only-child:empty)) {
-  display: none;
-}
+
 /* 재정렬 선은 줄어든 카드 사이의 중앙인 섹션 경계에 둔다. */
 .console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-theater-section--drop-before::before {
   top: -1px;
@@ -1350,25 +1349,8 @@
   bottom: -1px;
 }
 
-
-.console-shell.is-objective-records-view .side-bar-top-strip .side-bar-view-menu-button {
-  background: color-mix(in oklch, var(--conversation-side) 80%, transparent);
-}
-
 .console-body.is-conversation .right-rail-panel-header {
   background: var(--conversation-surface);
-}
-
-/* ── 사이드바 행: Grok 처럼 한 리듬, 선택은 면 워시만 ─────────────────────────────── */
-.console-shell.is-objective-records-view :is(.side-bar-chip--conversation, .side-bar-cluster-row) {
-  border-radius: 10px;
-}
-
-/* 열린 행은 면 하나로 말한다 — 테두리·왼쪽 띠를 두지 않는다. 면은 --surface-row-selected 다: 기본은 brass 위치 채널의 워시이고,
-   대화 다크는 사람이 고른 레퍼런스대로 중립 회색 면(#202020)이다. 이름 잉크는 위의 대화 행 규칙이 지킨다. */
-.console-shell.is-objective-records-view :is(.side-bar-cluster-row--active, .side-bar-chip--active, .side-bar-theater-header.is-current) {
-  border-color: transparent;
-  background: var(--surface-row-selected);
 }
 
 /* ── 사이드바 Theater 머리: 사령관 카드 ─────────────────────────────────────────────
@@ -1420,8 +1402,7 @@
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
-.console-shell.is-objective-records-view .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls > button,
-.console-shell.is-objective-records-view .side-bar-theater-header.is-card .side-bar-theater-row-controls > .side-bar-status-view-toggle[aria-pressed="true"] {
+.console-shell.is-objective-records-view .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls > button {
   opacity: 1;
 }
 @media (hover: none) {
@@ -1439,97 +1420,6 @@
   font: inherit;
   font-weight: var(--weight-bold);
   outline: none;
-}
-.console-shell.is-objective-records-view .side-bar-theater-groups {
-  padding-left: 14px;
-}
-
-/* ── 사이드바 그룹: 구분선 라벨 ─────────────────────────────────────────────────
-   그룹은 소리를 줄인 20px 라벨이다 — 배경 워시·3px 레일·숫자 배지 없이 5px 그룹색 표식, 이름, 헤어라인, 개수. 라벨을 누르면 접고(머무를 때
-   ⌄ 가 표식 자리에 선다), 「이 그룹에 Objective 추가」는 머무르거나 포커스가 들어오면 개수 자리에 「+」로 선다. 이름·색·해제는 우클릭.
-   「미분류」도 같은 라벨 형식이다. */
-.console-shell.is-objective-records-view .side-bar-group-section {
-  margin: 4px 0 0;
-  padding: 0;
-  border-left: 0;
-  border-radius: 0;
-  background: none;
-}
-.console-shell.is-objective-records-view :is(.side-bar-group-header, .side-bar-ungrouped-label.is-label-row) {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 20px;
-  box-sizing: border-box;
-  margin: 0 var(--space-1);
-  padding: 0 6px 0 var(--space-2);
-  border-radius: var(--radius-xs);
-  background: transparent;
-  opacity: 1;
-  letter-spacing: normal;
-  text-transform: none;
-}
-.console-shell.is-objective-records-view .side-bar-group-header {
-  cursor: pointer;
-}
-.console-shell.is-objective-records-view .side-bar-ungrouped-section:has(> .side-bar-ungrouped-label.is-label-row) {
-  margin-top: 4px;
-}
-.console-shell.is-objective-records-view .side-bar-group-header--collapsed {
-  background: transparent;
-}
-.side-bar-group-header__mark {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--grp-color, transparent);
-}
-.console-shell.is-objective-records-view :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__name {
-  flex: 0 1 auto;
-  max-width: 60%;
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--text-tertiary);
-}
-.console-shell.is-objective-records-view .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__name {
-  color: var(--text-secondary);
-}
-.side-bar-group-header__rule {
-  flex: 1 1 auto;
-  min-width: 8px;
-  height: 1px;
-  background: var(--hairline);
-}
-.console-shell.is-objective-records-view :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__count,
-.console-shell.is-objective-records-view .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
-  min-width: 0;
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  color: var(--text-tertiary);
-}
-/* ⌄ 는 표식 자리에 겹쳐 선다 — 머무르거나 포커스가 들어오거나 접혀 있을 때만 보이고, 그동안 표식은 물러난다. 키보드 포커스는 늘 이 단추가 받는다. */
-.console-shell.is-objective-records-view .side-bar-group-header__toggle {
-  position: absolute;
-  top: 0;
-  left: 3px;
-  width: 15px;
-  height: 20px;
-  border: 0;
-  opacity: 0;
-}
-.console-shell.is-objective-records-view .side-bar-group-header__arrow {
-  width: 10px;
-  height: 10px;
-}
-.console-shell.is-objective-records-view :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__toggle {
-  opacity: 1;
-}
-.console-shell.is-objective-records-view :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__mark {
-  visibility: hidden;
 }
 
 /* 활성 Theater 구역의 2px brass 스파인(components.css)도 이 배치에서는 걷는다 — 사이드바가 창 가장자리에 붙으므로

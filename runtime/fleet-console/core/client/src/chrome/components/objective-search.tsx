@@ -61,7 +61,6 @@ import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcu
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { presentRailPanel } from "../rail/rail-store.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
-import { toggleTheaterStatusAxis } from "../../../../../features/workspace/client/sidebar/group-collapse-store.js";
 import { requestSideBarObjectiveAction, type SideBarObjectiveAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
 import {
   closeObjectiveSearch,
@@ -440,11 +439,6 @@ export function ObjectiveSearch({
       case "open-archive": {
         previousFocusRef.current = null;
         openArchiveSheet();
-        break;
-      }
-      case "toggle-status-axis": {
-        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
-        toggleTheaterStatusAxis(getViewedTheaterId());
         break;
       }
       case "open-rail-panel": {

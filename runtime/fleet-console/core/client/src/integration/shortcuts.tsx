@@ -56,7 +56,6 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
       title: t("shortcuts.group.map"),
       entries: [
         { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
-        { combos: bound("objectives.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
       ],
     },

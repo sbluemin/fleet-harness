@@ -186,7 +186,6 @@ export function ShortcutsCard({ state, saving }: {
 
   const groups: readonly { readonly group: ShortcutCommandGroup; readonly title: string }[] = [
     { group: "console", title: t("settings.shortcuts.groupConsole") },
-    { group: "objectiveRecords", title: t("settings.shortcuts.groupObjectiveRecords") },
     { group: "companion", title: t("settings.shortcuts.groupCompanion") },
   ];
   const disabled = saving || state === null;
