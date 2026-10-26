@@ -1042,8 +1042,9 @@ export function openObjectiveFromCluster(theaterId?: string, objectiveId?: strin
   if (installed && theaterId && viewed !== theaterId) {
     if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
       // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다. 보이는 Theater 는 같은 커밋의 더 이른 effect 에서 바뀌므로,
-      // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다.
-      whenViewing(theaterId, () => { setTimeout(openObjectivePanel, 0); });
+      // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다. 목표의 theaterId 는 사령관 목표 폴더의 해시라 보이는 Theater 와
+      // 같아질 일이 없다 — 보이는 Theater 가 움직였는지, 움직이지 않아도(같은 사령관) 다음 커밋이 지났는지를 기다린다.
+      whenViewMoves(viewed, () => { setTimeout(openObjectivePanel, 0); });
       return;
     }
     installed.consoleState.viewTheater?.(theaterId);
@@ -1059,26 +1060,24 @@ function openObjectivePanel(): void {
   installed?.rail.open(OBJECTIVE_PANEL_ID);
 }
 
-/** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */
-function whenViewing(theaterId: string, run: () => void): void {
+/**
+ * 보이는 대화의 Theater 가 from 에서 움직이면 한 번 부른다. 움직이지 않으면(같은 사령관의 대화로 옮긴 경우) 호스트의 다음 커밋이
+ * 끝난 뒤 — 다음 프레임 — 에 그대로 부른다. 호스트의 대화 이동은 다음 렌더 안에 끝난다.
+ */
+function whenViewMoves(from: string | null, run: () => void): void {
   const host = installed;
   if (!host) return;
-  const viewing = () => host.consoleState.getViewedTheaterId?.() === theaterId;
-  if (viewing()) { run(); return; }
   let done = false;
   const finish = () => {
     if (done) return;
     done = true;
     off();
-    clearTimeout(timer);
     run();
   };
-  const off = host.consoleState.subscribe(() => { if (viewing()) finish(); });
-  const timer = setTimeout(finish, VIEWING_WAIT_MS);
+  const off = host.consoleState.subscribe(() => { if ((host.consoleState.getViewedTheaterId?.() ?? null) !== from) finish(); });
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => { setTimeout(finish, 0); });
+  else setTimeout(finish, 0);
 }
-
-/** 대화 이동을 기다리는 상한 — 호스트의 이동은 다음 렌더 안에 끝난다. */
-const VIEWING_WAIT_MS = 1000;
 
 /**
  * 대화 중심 화면 — 그 목표의 대화를 가운데 칸에 세운다. 지휘관 Objective 이 목록에 있으면 그 대화로 옮기고(보관된 지휘관은 복원하지

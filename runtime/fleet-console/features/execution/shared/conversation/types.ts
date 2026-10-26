@@ -139,8 +139,9 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * 이유(`text`)가 없으면 접지 않는다 — 열 목표(`id`)가 있으면 줄 전체가 그 목표를 여는 단추이고, 없으면(id 없는 추가·정리·병합,
    * 보드에 없는 목표) 글자 줄이다. 없으면 한 목표 안의 줄(그룹 대화)이라 이유를 펼치는 지금의 줄이다.
    * `status` — 행위 낱말·이름 뒤에 따로 서는 결말(답을 기다림·실패 사유). `failed` 면 신호 잉크다.
+   * `voicedAs` — 이 행위에 덧붙인 말이 있으면 그 말이 이 `via` 의 말풍선으로 따로 선다. 그 말풍선이 있으면 이 줄은 비켜선다(같은 행위를 두 번 세우지 않는다).
    */
-  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true } }
+  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true }; readonly voicedAs?: ConversationMessageVia }
   /**
    * 사람이 결정 요청에 보낸 답 — 요청 하나에 한 줄, 답한 시각(`at`)의 자리에 선다. 질문마다 머리말(있으면)·질문·답(고른 선택지와 쓴 말).
    * 보드가 결정으로 남긴 답만 싣는다. 사람의 말과 같은 오른쪽 말풍선으로, 받는 이는 대화의 지휘관이다.

@@ -1,10 +1,11 @@
 import type { ObjectiveActivityVisual } from "../../../execution/client/objective-activity.js";
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
 
-import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival, resetDepartureForTests, resetIdleArrivalForTests } from "../../../execution/client/objective-marks.js";
+import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival } from "../../../execution/client/objective-marks.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
+import { getCommanderSplitVisibleObjective } from "../conversation/commander-split-store.js";
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { getDesktopZoomFactor, subscribeDesktopZoomFactor, getState, subscribe } from "../../../../core/client/src/integration/store.js";
 import type { ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
@@ -41,7 +42,6 @@ const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
-const statusSectionCollapseListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
@@ -63,17 +63,11 @@ if (typeof window !== "undefined") {
   });
 }
 let collapsedTheaterIds = readInitialCollapsedTheaters();
-// STATUS 섹션 안쪽 접힘은 비영속 상태다. 빈 섹션의 기본 접힘과 사용자가 명시한
-// 접기/펼치기를 구분하려고 두 집합을 유지하며 localStorage에는 기록하지 않는다.
-let userCollapsedStatusSections = new Set<string>();
-let userExpandedStatusSections = new Set<string>();
-let statusTransitionCounter = 0;
-let statusTransitionTicks = new Map<string, number>();
+// 활동 전이 추적 — 직전 활동과 처음 관측한 라이브 Objective. 출발·도착 표식은 전이 순간에만 붙는다.
 let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
-let pendingStatusLandingIds = new Set<string>();
 
-// Objective의 활동 상태 — buildStatusSectionOrder의 상태 축이 이 값을 순회한다.
+// Objective의 활동 상태 — 전이 추적이 이 값끼리 비교한다.
 export type SideBarStatus = "awaiting" | "running" | "idle" | "ended";
 
 export function useSideBarState(): SideBarState {
@@ -82,18 +76,6 @@ export function useSideBarState(): SideBarState {
 
 export function useCollapsedTheaters(): readonly string[] {
   return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
-}
-
-export function useSideBarStatusSectionCollapsed(
-  theaterId: string,
-  status: SideBarStatus,
-  empty: boolean,
-): boolean {
-  const getSnapshot = useCallback(
-    () => getSideBarStatusSectionCollapsed(theaterId, status, empty),
-    [theaterId, status, empty],
-  );
-  return useSyncExternalStore(subscribeStatusSectionCollapse, getSnapshot, getSnapshot);
 }
 
 export function setSideBarWidth(width: number): void {
@@ -123,82 +105,6 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
 export function sideBarOccupiedWidth(state: SideBarState): number {
   if (state.compact) return state.compactWidth;
   return state.width;
-}
-
-export function getSideBarStatusSectionCollapsed(
-  theaterId: string,
-  status: SideBarStatus,
-  empty: boolean,
-): boolean {
-  const key = statusSectionKey(theaterId, status);
-  if (userCollapsedStatusSections.has(key)) return true;
-  if (userExpandedStatusSections.has(key)) return false;
-  return empty;
-}
-
-export function toggleSideBarStatusSectionCollapsed(
-  theaterId: string,
-  status: SideBarStatus,
-  empty: boolean,
-): void {
-  const key = statusSectionKey(theaterId, status);
-  if (getSideBarStatusSectionCollapsed(theaterId, status, empty)) {
-    userCollapsedStatusSections = new Set(userCollapsedStatusSections);
-    userCollapsedStatusSections.delete(key);
-    userExpandedStatusSections = new Set(userExpandedStatusSections).add(key);
-  } else {
-    userExpandedStatusSections = new Set(userExpandedStatusSections);
-    userExpandedStatusSections.delete(key);
-    userCollapsedStatusSections = new Set(userCollapsedStatusSections).add(key);
-  }
-  for (const listener of statusSectionCollapseListeners) listener();
-}
-
-export function subscribeStatusSectionCollapse(listener: () => void): () => void {
-  statusSectionCollapseListeners.add(listener);
-  return () => statusSectionCollapseListeners.delete(listener);
-}
-
-// 그룹별 「시작 전 N」·「완료 N」 접기의 펼침 — 비영속 표시 상태다. 새 페이지 로드마다 모두 접힌 채 시작하고,
-// Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 접기 종류와 Theater 와 그룹(미분류는 빈 문자열)이며, 같은 그룹에서는 한 종류만 펼친다.
-export type SideBarRowFoldKind = "fresh" | "done";
-
-const rowFoldListeners = new Set<() => void>();
-let expandedRowFolds: ReadonlySet<string> = new Set();
-
-export const rowFoldKey = (kind: SideBarRowFoldKind, theaterId: string, groupId: string | null): string => `${kind}\0${theaterId}\0${groupId ?? ""}`;
-
-export function useSideBarRowFolds(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribeRowFolds, getRowFolds, getRowFolds);
-}
-
-function getRowFolds(): ReadonlySet<string> {
-  return expandedRowFolds;
-}
-
-function subscribeRowFolds(listener: () => void): () => void {
-  rowFoldListeners.add(listener);
-  return () => rowFoldListeners.delete(listener);
-}
-
-export function setSideBarRowFoldExpanded(kind: SideBarRowFoldKind, theaterId: string, groupId: string | null, expanded: boolean): void {
-  const key = rowFoldKey(kind, theaterId, groupId);
-  if (expandedRowFolds.has(key) === expanded) return;
-  const next = new Set(expandedRowFolds);
-  if (expanded) {
-    next.add(key);
-    next.delete(rowFoldKey(kind === "fresh" ? "done" : "fresh", theaterId, groupId));
-  } else next.delete(key);
-  expandedRowFolds = next;
-  for (const listener of rowFoldListeners) listener();
-}
-
-export function recordStatusTransitions(ids: readonly string[]): void {
-  for (const id of ids) statusTransitionTicks.set(id, ++statusTransitionCounter);
-}
-
-export function getStatusTransitionTick(id: string): number | undefined {
-  return statusTransitionTicks.get(id);
 }
 
 export function trackObjectiveActivityTransitions(input: {
@@ -231,17 +137,16 @@ export function trackObjectiveActivityTransitions(input: {
     })
     .map((objectiveRecord) => objectiveRecord.id);
 
-  recordStatusTransitions(movedIds);
-  movedIds.forEach((id) => pendingStatusLandingIds.add(id));
   for (const objectiveRecord of input.objectiveRecords) {
     if (!movedIds.includes(objectiveRecord.id)) continue;
     // 확인 처리가 정지된 동안에는 어떤 활성도 "이미 확인됨"으로 치지 않는다. 정지는 그 사이 완료를
     // 도착 마크로 남기지 않으며, 마크는 전이 순간에만 붙는다. 판정만 정지에 맞추고
     // activeObjectiveAcknowledged 자체는 두어야 한다 — 그 값을 내리면 종료 복구(setActiveObjective)가
     // 전부터 있던 도착 마크까지 확인 처리해 지운다.
-    const focusedAndAcknowledged = objectiveRecord.id === input.activeObjectiveId
-      && input.activeObjectiveAcknowledged === true
-      && !isIdleArrivalAcknowledgementSuspended();
+    // 사령관 대화 옆 칸에 보이는 지휘관도 사람이 보고 있는 대화다 — 그 칸에 도착한 응답은 안 본 채 끝난 것이 아니다.
+    const watched = (objectiveRecord.id === input.activeObjectiveId && input.activeObjectiveAcknowledged === true)
+      || objectiveRecord.id === getCommanderSplitVisibleObjective();
+    const focusedAndAcknowledged = watched && !isIdleArrivalAcknowledgementSuspended();
     if (nextStatuses.get(objectiveRecord.id) === "running") {
       if (!focusedAndAcknowledged) markDeparture(objectiveRecord.id);
     } else {
@@ -257,12 +162,6 @@ export function trackObjectiveActivityTransitions(input: {
   return movedIds;
 }
 
-export function consumeStatusLandings(): readonly string[] {
-  const landedIds = Array.from(pendingStatusLandingIds);
-  pendingStatusLandingIds = new Set();
-  return landedIds;
-}
-
 export function subscribeObjectiveActivityTracking(): () => void {
   return subscribe(() => {
     const state = getState();
@@ -273,25 +172,6 @@ export function subscribeObjectiveActivityTracking(): () => void {
       activeObjectiveAcknowledged: state.activeObjectiveAcknowledged,
     });
   });
-}
-
-export function resetSideBarStatusSectionCollapseForTests(): void {
-  userCollapsedStatusSections = new Set();
-  userExpandedStatusSections = new Set();
-}
-
-export function resetSideBarStatusRecencyForTests(): void {
-  statusTransitionCounter = 0;
-  statusTransitionTicks = new Map();
-  resetDepartureForTests();
-  resetIdleArrivalForTests();
-  previousActivityById = new Map();
-  baselinedLiveActivityIds = new Set();
-  pendingStatusLandingIds = new Set();
-}
-
-function statusSectionKey(theaterId: string, status: SideBarStatus): string {
-  return `${theaterId}:${status}`;
 }
 
 function getMaxPx(): number {

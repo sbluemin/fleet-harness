@@ -203,7 +203,8 @@
 .group-chat-line-who { flex: none; color: var(--text-secondary); white-space: nowrap; }
 .group-chat-line-arrow,
 .group-chat-line-sep { flex: none; color: var(--hairline-strong); }
-.group-chat-line-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 행위 내용의 첫 줄 — 행위 낱말 뒤에 이어 서고, 좁으면 이것부터 말줄임으로 준다. */
+.group-chat-line-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .group-chat-line-status { flex: none; white-space: nowrap; }
 /* 노트 줄 — 누구의 말도 아닌 사건(세션 교대·실패 알림). 플러그인 대화(사령관 기록)만 쓴다. 실패는 신호 잉크다. */
 .group-chat-note { display: flex; align-items: baseline; justify-content: center; gap: var(--space-1); padding: 2px var(--space-2); text-align: center; }
@@ -473,8 +474,6 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
   background: var(--surface-panel);
   color: var(--text-primary);
 }
-.group-chat-line-label { font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
-.group-chat-line-label:not(:first-child) { margin-top: var(--space-2); }
 .group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
 
 /* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */

@@ -79,7 +79,6 @@ export const pagesEn = {
   "settings.shortcuts.title": "Keyboard shortcuts",
   "settings.shortcuts.help": "Click a shortcut, then press the keys you want. Changes apply to every window of this Console.",
   "settings.shortcuts.groupConsole": "Console",
-  "settings.shortcuts.groupObjectiveRecords": "Objectives view",
   "settings.shortcuts.groupCompanion": "Companion panels",
   "settings.shortcuts.resetAll": "Reset all",
   "settings.shortcuts.resetRowAria": "Reset {title} to its default shortcut",
@@ -357,7 +356,6 @@ export const pagesEn = {
   "objectiveRecords.mutation.failed": "Could not save that change.",
   "objectiveRecords.mutation.retry": "Try again",
   "palette.archiveObjective": "Archive · {title}",
-  "palette.toggleStatusAxis": "View current Theater by status",
   "palette.renameObjective": "Rename objective…",
   "palette.assignGroup": "Assign group…",
   "palette.setAccent": "Set accent…",
@@ -386,7 +384,6 @@ export const pagesEn = {
   "shortcuts.objectiveRecords.menuNav": "Move between Theater, Theme, and launch menu items",
   "shortcuts.group.map": "Focus",
   "shortcuts.map.focusPrevNext": "Focus the previous / next Objective",
-  "shortcuts.map.sortByStatus": "Sort the current Theater by objective status",
   "shortcuts.map.contextMenu": "Open the objective menu",
 
   // whatsnew tabs (catalog labels owned by pages; chrome owns modal chrome)
@@ -680,7 +677,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.shortcuts.title": "키보드 단축키",
   "settings.shortcuts.help": "조합을 누른 뒤 원하는 키를 눌러 주세요. 이 콘솔의 모든 창에 함께 적용돼요.",
   "settings.shortcuts.groupConsole": "Console",
-  "settings.shortcuts.groupObjectiveRecords": "목표 보기",
   "settings.shortcuts.groupCompanion": "Companion 패널",
   "settings.shortcuts.resetAll": "모두 기본값으로",
   "settings.shortcuts.resetRowAria": "{title} 단축키를 기본값으로",
@@ -957,7 +953,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "objectiveRecords.mutation.failed": "그 변경을 저장하지 못했어요.",
   "objectiveRecords.mutation.retry": "다시 시도",
   "palette.archiveObjective": "보관 · {title}",
-  "palette.toggleStatusAxis": "현재 Theater 상태별 보기 전환",
   "palette.renameObjective": "목표 이름 변경…",
   "palette.assignGroup": "그룹 지정…",
   "palette.setAccent": "액센트 설정…",
@@ -985,7 +980,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "shortcuts.objectiveRecords.menuNav": "Theater·테마·실행 메뉴 항목 이동",
   "shortcuts.group.map": "포커스",
   "shortcuts.map.focusPrevNext": "이전/다음 목표에 포커스",
-  "shortcuts.map.sortByStatus": "현재 Theater를 목표 상태로 정렬",
   "shortcuts.map.contextMenu": "목표 메뉴 열기",
 
   "whatsnew.tab.overview": "개요",

@@ -224,6 +224,8 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...(done ? {} : { ...(objective.today || overdue ? { today: true } : {}), ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}) }),
     ...decisionZoneOf(objective, board),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
+    createdAt: objective.createdAt,
+    activityAt: objective.boardUpdatedAt ?? objective.createdAt,
     ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
     ...(provenance.length ? { provenance } : {}),
     ...(mark ? { mark } : {}),

@@ -118,6 +118,9 @@ export interface ObjectiveClusterRow {
    */
   readonly delegated?: { readonly questions: number; readonly status: LocalizedText };
   readonly progress?: { readonly done: number; readonly total: number };
+  /** 목표를 만든 시각(ms)과 보드가 마지막으로 움직인 시각(ms) — 사령관 「지휘관」 탭이 만든 날·최근 활동으로 줄을 정렬한다. */
+  readonly createdAt?: number;
+  readonly activityAt?: number;
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
   /**

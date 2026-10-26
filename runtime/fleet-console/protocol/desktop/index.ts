@@ -202,6 +202,12 @@ export interface DesktopBrowserSnapshot {
    * 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
    */
   readonly shortcuts?: readonly string[];
+  /**
+   * 이 스냅샷을 낸 Console 프로세스의 수명 표. generation 과 명령 id 는 프로세스마다 처음부터 다시 세므로, 셸은 이 값이
+   * 바뀌면(같은 origin 에 스트림만 다시 붙은 원격 Console 의 재기동) 옛 수명의 뷰·실행 기록·generation 을 버린다.
+   * 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이를 무시한다.
+   */
+  readonly epoch?: string;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -240,7 +246,8 @@ export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowser
 export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowserSnapshot {
   return isRecord(value) && isFiniteNumber(value.generation) && Array.isArray(value.views) && value.views.every(isDesktopBrowserView)
     && Array.isArray(value.commands) && value.commands.every(isDesktopBrowserCommand)
-    && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")));
+    && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")))
+    && (value.epoch === undefined || typeof value.epoch === "string");
 }
 
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {

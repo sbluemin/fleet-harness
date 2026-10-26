@@ -1,7 +1,5 @@
-import { useSyncExternalStore } from "react";
-
 /**
- * 사이드바 그룹 접힘과 Objective 액센트.
+ * 그룹 접힘(대화 순환 순서가 읽는다)과 Objective 액센트(제목 잉크).
  * 영속 키는 예전 캔버스 저장(`fleet-console.canvas.<theaterId>`)을 유지하고,
  * 그 JSON의 다른 필드는 지우지 않는다 — 퇴역한 최소화 필드만 첫 로드에 걷는다.
  */
@@ -14,36 +12,14 @@ dropLegacyMinimizedState();
 export interface GroupCollapseSlice {
   readonly collapsedGroups: readonly string[];
   readonly objectiveRecordAccent: Readonly<Record<string, string>>;
-  readonly statusAxis: boolean;
 }
 
-const EMPTY_SLICE: GroupCollapseSlice = { collapsedGroups: [], objectiveRecordAccent: {}, statusAxis: false };
-
-const listeners = new Set<() => void>();
-let revision = 0;
-function emit(): void { revision += 1; for (const listener of listeners) listener(); }
-function subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; }
-export function useStoredTheaterRevision(): number { return useSyncExternalStore(subscribe, () => revision, () => revision); }
+const EMPTY_SLICE: GroupCollapseSlice = { collapsedGroups: [], objectiveRecordAccent: {} };
 
 /** Theater마다 분리된 표시 상태를 읽는다. */
 export function getTheaterGroupCollapse(theaterId: string): GroupCollapseSlice { return readSlice(theaterId); }
 export function forgetTheaterGroupCollapse(theaterId: string): void {
   try { window.localStorage.removeItem(storageKey(theaterId)); } catch { /* 보기 선호의 실패는 삭제를 막지 않는다. */ }
-  emit();
-}
-
-/** 상태별 보기는 Theater 의 표시 선호다. 다른 접힘·액센트·알 수 없는 JSON 필드를 보존한다. */
-export function toggleTheaterStatusAxis(theaterId: string | null): void {
-  if (theaterId === null) return;
-  const stored = readSlice(theaterId);
-  writeSlice(theaterId, { ...stored, statusAxis: !stored.statusAxis });
-  emit();
-}
-
-export function toggleTheaterGroupCollapsed(theaterId: string, groupId: string): void {
-  const stored = readSlice(theaterId);
-  writeSlice(theaterId, { ...stored, collapsedGroups: toggleId(stored.collapsedGroups, groupId) });
-  emit();
 }
 
 /** 사라진 Objective의 액센트만 해당 Theater의 저장에서 걷는다. */
@@ -52,11 +28,6 @@ export function pruneObjectiveAccents(theaterId: string, validIds: ReadonlySet<s
   const objectiveRecordAccent = Object.fromEntries(Object.entries(stored.objectiveRecordAccent).filter(([id]) => validIds.has(id)));
   if (Object.keys(objectiveRecordAccent).length === Object.keys(stored.objectiveRecordAccent).length) return;
   writeSlice(theaterId, { ...stored, objectiveRecordAccent });
-  emit();
-}
-
-function toggleId(ids: readonly string[], id: string): readonly string[] {
-  return ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id];
 }
 
 function storageKey(theaterId: string): string {
@@ -69,7 +40,6 @@ function readSlice(theaterId: string): GroupCollapseSlice {
   return {
     collapsedGroups: normalizeStringArray(parsed.collapsedGroups),
     objectiveRecordAccent: normalizeObjectiveAccent(parsed.objectiveRecordAccent),
-    statusAxis: parsed.statusAxis === true,
   };
 }
 
@@ -93,7 +63,6 @@ function writeSlice(theaterId: string, next: GroupCollapseSlice): void {
       ...existing,
       collapsedGroups: next.collapsedGroups,
       objectiveRecordAccent: next.objectiveRecordAccent,
-      statusAxis: next.statusAxis,
     }));
   } catch {
     // 저장 실패는 접힘 복구성만 낮추므로 런타임 흐름을 막지 않는다.

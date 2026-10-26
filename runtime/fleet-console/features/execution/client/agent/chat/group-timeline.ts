@@ -3,6 +3,8 @@ import { isPersonQueueEntry, type AgentChatJournalEvent, type AgentChatQueueEntr
 
 const ENTRY_CAP = 600;
 const TEXT_CAP = 60_000;
+/** 보드 행위와 그 행위에 덧붙인 말풍선을 같은 행위로 읽는 간격 — 말은 전달 뒤, 행위 기록은 그 앞뒤에 남는다. */
+const VOICED_ACT_WINDOW_MS = 60_000;
 export interface ConversationJournal {
   readonly entries: readonly GroupTimelineEntry[];
   readonly draftId: string | null;
@@ -250,7 +252,15 @@ export function composeGroupTimeline(input: {
     const recipient = item.recipient ? resolve(item.recipient) : undefined;
     entries.set(item.id, resolvedEntry(item, recipient ? [speaker, recipient] : [speaker], () => ({ ...item, speaker, ...(recipient ? { recipient } : {}) })));
   }
-  for (const item of input.board?.events ?? []) entries.set(item.id, item);
+  // 덧붙인 말이 제 말풍선(`via`)으로 선 보드 행위는 그 말풍선이 행위를 말한다 — 같은 행위의 빈 줄을 겹쳐 세우지 않는다.
+  const voiced = [...entries.values()].flatMap((entry) => (entry.kind === "message" && entry.via && entry.at !== null ? [{ via: entry.via, kind: entry.speaker.kind, at: entry.at }] : []));
+  for (const item of input.board?.events ?? []) {
+    if (item.kind === "board-action" && item.voicedAs && item.at !== null) {
+      const { voicedAs, at } = item;
+      if (voiced.some((message) => message.via === voicedAs && message.kind === item.speaker.kind && Math.abs(message.at - at) <= VOICED_ACT_WINDOW_MS)) continue;
+    }
+    entries.set(item.id, item);
+  }
   // 시각을 모르는 대기 말은 대화 맨 아래에 선다. 지난 말 사이로 올라가면 "이미 처리된 말"로 읽힌다.
   const orderKey = (entry: GroupTimelineEntry): number => entry.kind === "message" && entry.pending && entry.at === null ? Number.MAX_SAFE_INTEGER : (entry.at ?? -Infinity);
   const ordered = [...entries.values()].sort((a, b) => orderKey(a) - orderKey(b) || a.id.localeCompare(b.id));
