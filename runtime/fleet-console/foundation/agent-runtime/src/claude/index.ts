@@ -21,6 +21,7 @@ export type {
   ClaudeGatewayContextCategory,
   ClaudeGatewayContextUsage,
   ClaudeGatewayEffort,
+  ClaudeGatewayExternalMcpServer,
   ClaudeGatewayMcpServer,
   ClaudeGatewayMcpServerOptions,
   ClaudeGatewayMessage,

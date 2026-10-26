@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { createLaunchAttachmentStore } from "../features/execution/host/agent/launch-attachments.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../features/commodore/shared/contracts/attachment-budget.js";
-import type { AgentEvent, AgentInput, AgentSessionOptions } from "../features/execution/shared/agent.js";
+import type { AgentEvent, AgentInput } from "../features/execution/shared/agent.js";
 import { CONVERSATION_REFERENCE_MARK as MARK } from "../features/execution/shared/conversation/references.js";
 import { resolveRosterCoordinate, type ModelCoordinate } from "../features/ai-gateway/shared/models.js";
 import { defineConsoleTool } from "../features/console-use/shared/actions.js";
@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
-import type { ConsoleResidentAgentHost as AgentHost } from "../features/execution/host/agent/console-resident.js";
+import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
@@ -530,16 +530,10 @@ describe("commodore session", () => {
   it("opens a plugin-owned session with the base prompt only, wakes with reasons only, and keeps a redacted log", async () => {
     const h = harness();
     const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
-    fs.mkdirSync(path.join(theaterRoot, "src"), { recursive: true });
-    fs.writeFileSync(path.join(theaterRoot, "src", "a.ts"), "export const a = 1;\n");
-    fs.writeFileSync(path.join(theaterRoot, "secret.bin"), Buffer.from([0x00, 0x01]));
+    fs.mkdirSync(theaterRoot, { recursive: true });
+    // Theater 의 프로젝트 MCP 서버 — 예약된 이름(보드 도구 묶음)은 건너뛴다.
+    fs.writeFileSync(path.join(theaterRoot, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "node", args: ["./mcp.js"] }, console: { command: "node" } } }));
     const outside = path.join(h.objectivesDir, "..", "..", "..", "outside.txt");
-    fs.writeFileSync(outside, "outside");
-    fs.symlinkSync(outside, path.join(theaterRoot, "link.txt"));
-    const outsideDir = path.join(h.objectivesDir, "..", "..", "..", "outside-dir");
-    fs.mkdirSync(outsideDir);
-    fs.writeFileSync(path.join(outsideDir, "leak.ts"), "export const leak = 1;\n");
-    fs.symlinkSync(outsideDir, path.join(theaterRoot, "linked"));
     h.store.setDirective("t1", "Fix remote first.");
     h.store.addIntel("t1", { text: "older" });
     const newest = h.store.addIntel("t1", { text: "newest" }).item;
@@ -549,12 +543,13 @@ describe("commodore session", () => {
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
       commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
+      theaters: () => [{ theaterId: "th1", label: "fleet-harness", root: theaterRoot }, { theaterId: "th2", label: "gone", root: null }],
       coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [
         defineConsoleTool({ name: "console_objectives", description: "list", actions: { inbox: { kind: "read", input: z.object({}) } } }).plugin({ execute: async () => ({ content: [] }) }),
         defineConsoleTool({ name: "console_objectives_detail", description: "objective", actions: { complete: { kind: "write", input: z.object({ objectiveId: z.string() }) } } })
           .plugin({ execute: async (args) => (args as { action?: unknown }).action === "complete" ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }),
       ], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
-      execute: async (file, args) => { commands.push({ file, args }); return file === "git" ? { stdout: "abc1234\x1f2026-10-03\x1fme\x1ffix: thing\n", stderr: "" } : { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
+      execute: async (file, args) => { commands.push({ file, args }); return { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
     });
 
     stub.setScript(async () => {
@@ -572,7 +567,7 @@ describe("commodore session", () => {
       stub.emit({ kind: "tool-end", id: "u3", isError: false });
       stub.emit({ kind: "tool-start", id: "u4", name: "Read", input: { file_path: outside } });
       stub.emit({ kind: "tool-end", id: "u4", isError: false });
-      stub.emit({ kind: "tool-start", id: "u5", name: "mcp__commodore__find_files", input: { path: outside, pattern: "*" } });
+      stub.emit({ kind: "tool-start", id: "u5", name: "Glob", input: { pattern: `${outside}/**` } });
       stub.emit({ kind: "tool-end", id: "u5", isError: true });
       stub.emit({ kind: "result", isError: false, source: "message", usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.25 } });
     });
@@ -585,11 +580,14 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read"], browser: { scopeId: "commodore:t1" } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"], browser: { scopeId: "commodore:t1" } });
+    // Theater 들은 추가 폴더로(그 프로젝트 스킬), 그 .mcp.json 서버는 Theater 루트에서 뜨는 좌표로 건넨다.
+    expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
+    expect(Object.keys(options.workspace?.mcpServers ?? {})).toEqual(["docs"]);
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "read_file", "list_dir", "find_files", "search_text", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
-    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\]$/);
+    expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]$/);
     expect(stub.sent[0]).not.toContain("newest");
 
     // 기록 — 사고·텍스트는 블록으로, 보드 행위는 action·objectiveId·title 만, 도구 입력의 나머지는 없다.
@@ -601,15 +599,16 @@ describe("commodore session", () => {
     expect(log[3]).toMatchObject({ kind: "tool", name: "directive", ok: true });
     expect(log[5]).toMatchObject({ kind: "tool", name: "console_objectives_detail", action: "complete", objectiveId: "o1", title: "Remote pairing", ok: true });
     expect(JSON.stringify(log)).not.toContain("secret");
-    // 내장 Read의 Theater 밖 경로, Theater 도구에 넘긴 절대 경로는 기록 요약에도 싣지 않는다.
+    // 내장 Read의 경로, Glob 에 넘긴 절대 경로는 기록 요약에도 싣지 않는다.
     expect(log[7]).toMatchObject({ kind: "tool", name: "Read", ok: true });
     expect(log[7]).not.toHaveProperty("summary");
-    expect(log[8]).toMatchObject({ kind: "tool", name: "find_files", summary: "*", ok: false });
+    expect(log[8]).toMatchObject({ kind: "tool", name: "Glob", ok: false });
+    expect(log[8]).not.toHaveProperty("summary");
     expect(JSON.stringify(log)).not.toContain(outside);
     expect(log[9]).toMatchObject({ kind: "result", outcome: "ok", costUsd: 0.25, inputTokens: 1200 });
     expect(h.store.read("t1")!.run).toEqual({ session: 0, costUsd: 0.25, actions: 1 });
 
-    // 사령관 전용 도구 — 지시·정보는 저장소에서, 읽기 도구는 Theater 안에서만.
+    // 사령관 전용 도구 — 지시·정보는 저장소에서.
     const tools = Object.fromEntries(options.tools!.custom![0]!.tools.map((tool) => [tool.name, tool]));
     const call = async (name: string, args: Record<string, unknown>) => await tools[name]!.execute(args, { cwd: theaterRoot }) as { isError: boolean; structuredContent: Record<string, unknown> };
     expect((await call("directive", {})).structuredContent).toMatchObject({ text: "Fix remote first.", rev: 1 });
@@ -629,21 +628,6 @@ describe("commodore session", () => {
     // 사람이 고른 순찰 간격(이 시나리오는 60분)을 넘는 예약은 거절하지 않고 간격으로 줄인다.
     expect((await call("next_wake", { inMinutes: 90, reason: "too far" })).structuredContent).toMatchObject({ patrolIntervalMinutes: 60, shortened: true });
     expect(wakes.at(-1)).toEqual({ at: 10_000 + 60 * 60_000, reason: "too far" });
-    expect((await call("read_file", { path: "src/a.ts" })).structuredContent).toMatchObject({ text: "export const a = 1;\n", truncated: false });
-    expect((await call("read_file", { path: "link.txt" })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("read_file", { path: "../outside.txt" })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("read_file", { path: outside })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("read_file", { path: "secret.bin" })).structuredContent).toMatchObject({ error: "binary_file" });
-    // 둘러보기 도구 — 같은 담김 경계: 루트 목록은 되고, 밖으로 가는 링크는 표시만 하고 따라가지 않는다.
-    expect((await call("list_dir", {})).structuredContent).toMatchObject({ path: ".", entries: [{ name: "src", type: "dir" }, { name: "link.txt", type: "link", outside: true }, { name: "linked", type: "link", outside: true }, { name: "secret.bin", type: "file", size: 2 }], truncated: false });
-    expect((await call("list_dir", { path: "../" })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("list_dir", { path: "linked" })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("find_files", { pattern: "*.ts" })).structuredContent).toMatchObject({ files: ["src/a.ts"], truncated: false });
-    expect((await call("search_text", { query: "EXPORT CONST" })).structuredContent).toMatchObject({ matches: [{ path: "src/a.ts", line: 1, text: "export const a = 1;" }], skipped: 1 });
-    expect((await call("search_text", { query: "x", path: outside })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("git_log", { path: "--output=/tmp/x" })).structuredContent).toMatchObject({ error: "unsafe_path" });
-    expect((await call("git_log", { limit: 5, path: "src" })).structuredContent).toMatchObject({ commits: [{ hash: "abc1234", subject: "fix: thing" }] });
-    expect(commands.at(-1)).toEqual({ file: "git", args: ["log", "--no-decorate", "--date=short", "--format=%h%x1f%ad%x1f%an%x1f%s", "-n", "5", "--", "src"] });
     const sources = h.store.read("t1")!.sources;
     expect((await call("issue_list", { sourceId: sources[0]!.id })).structuredContent).toMatchObject({ issues: [{ number: 7, labels: ["bug"] }] });
     expect(commands.at(-1)).toMatchObject({ file: "gh", args: ["issue", "list", "-R", "acme/fleet", "--state", "open", "--limit", "30", "--json", "number,title,state,updatedAt,labels,url"] });
