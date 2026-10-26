@@ -2,14 +2,13 @@ import type { ResolvedPlugin } from "./plugins.js";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
-import { AGENT_RESERVED_TOOL_GROUPS, type ConsoleResidentAgentHost, type ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
+import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
 import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { theaterMcpServers } from "./theater-mcp.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
@@ -191,10 +190,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
 
   const open = async () => {
-    // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣고, 그 `.mcp.json` 서버를 건넨다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
-    const theaters = (options.theaters?.() ?? []).flatMap(({ theaterId, root }) => (root ? [{ theaterId, root }] : []));
+    // 세션을 여는 순간의 Theater 들 — 추가 폴더로 주어 그 프로젝트 스킬을 싣는다. 뒤에 더한 Theater 는 다음 세션부터 실린다.
+    // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
+    const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
     const knowledge = (options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP);
-    const reserved = new Set([COMMODORE_TOOL_GROUP, BOARD_TOOL_GROUP, ...AGENT_RESERVED_TOOL_GROUPS, ...(options.knowledgeTools ?? []).map((group) => group.name)]);
     const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
@@ -207,11 +206,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       workspace: (() => {
+        // 사람이 이 사령관에 고른 플러그인 — Theater 의 `.mcp.json` 과 달리 사령관 자신의 도구다. 플러그인 MCP 는 strictMcpConfig 가
+        // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin_…_<해시>` 라 호스트의 예약 도구 묶음과 겹치지 않는다.
         const selected = options.plugins?.() ?? [];
-        const servers: Record<string, ClaudeGatewayExternalMcpServer> = { ...theaterMcpServers(theaters, reserved) };
-        // 플러그인 MCP 는 strictMcpConfig 가 막으므로 호스트가 선언을 옮겨 연다. Theater·예약 이름과 겹치면 Theater 쪽이 남는다.
-        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) if (!(name in servers) && !reserved.has(name)) servers[name] = config;
-        return { additionalDirectories: [...new Set(theaters.map(({ root }) => root))], mcpServers: servers, ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
+        const servers: Record<string, ClaudeGatewayExternalMcpServer> = {};
+        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) if (!(name in servers)) servers[name] = config;
+        return { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
       })(),
       tools: {
         builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
