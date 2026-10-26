@@ -109,7 +109,7 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
         </header>
         <div className="commodore-create-body">
           <div className="commodore-create-hero">
-            <MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={sheet ? 136 : 112} label={alias || t("sidebar.commodore.createTitle")} decorative />
+            <MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={sheet ? 124 : 112} label={alias || t("sidebar.commodore.createTitle")} decorative />
           </div>
           <MonglePreviewStates previewState={preview} label={t("avatar.editor.preview")} states={states} onPreviewState={setPreview} showLabel={false} />
           <input

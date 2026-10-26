@@ -143,7 +143,7 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
             </div>
           );
         })}
-        <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(requestCommodoreCreate)}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
         </button>
@@ -534,7 +534,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
-      <button type="button" className="mobile-sheet-row" onClick={() => { popMobileSheet(); requestCommodoreCreate(); }}>
+      <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(requestCommodoreCreate)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
