@@ -9,6 +9,7 @@ import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { featuredDestinationBinding, isChipDestination, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileSheet } from "./mobile-sheet.js";
+import { runAfterSheetRelease } from "./mobile-sheet-host.js";
 import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
 
 interface ShortcutRow {
@@ -51,7 +52,7 @@ export function MobileShortcutSheet({ onClose }: { readonly onClose: () => void 
   return (
     <MobileSheet title={t("mobile.list.shortcutsAria")} onClose={onClose} focusInputOnTouch={false}>
       {rows.map((row) => (
-        <button type="button" key={row.key} className="mobile-sheet-row" onClick={() => { onClose(); row.run(); }}>
+        <button type="button" key={row.key} className="mobile-sheet-row" onClick={() => runAfterSheetRelease(row.run)}>
           <span className="mobile-sheet-row-glyph" aria-hidden="true">{"name" in row.icon ? <MobileIcon name={row.icon.name} /> : row.icon.node}</span>
           <span className="mobile-sheet-row-copy"><strong>{row.label}</strong></span>
           {row.trailing ? (

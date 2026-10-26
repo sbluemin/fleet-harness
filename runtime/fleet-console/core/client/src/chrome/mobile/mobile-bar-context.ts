@@ -3,7 +3,7 @@ import { createContext, createElement, Fragment, useContext, useEffect, useMemo,
 import type { ClientMobileBarCapability, MobileBarSpec } from "../../../../../features/workspace/shared/pane.js";
 
 import { pushBackLayer } from "./mobile-back.js";
-import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
+import { claimMobileBar, releaseMobileBar, syncMobileDestinationUrl, type MobileBarState } from "./mobile-store.js";
 
 /**
  * 모바일 목적지 화면이 페인에 건네는 상단 막대 창구. 컨텍스트로 두는 이유는 이 값이 있고 없음이 곧
@@ -74,6 +74,16 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       layerRef.current?.();
       layerRef.current = null;
       releaseMobileBar(owner);
+      // 깊이를 쌓은 채 다른 목적지로 떠났다 — 남은 항목을 걷는다. 걷기 전에 다음 목적지가 맨 위 항목에 주소를 적었으므로,
+      // 내려앉은 항목에 지금 목적지의 주소를 다시 적는다. 남겨 두면 뒤로가 그 항목을 걷으며 주소만 옛 목적지로 돌아간다.
+      const leaked = pushedRef.current;
+      if (leaked > 0) {
+        pushedRef.current = 0;
+        entriesRef.current = [];
+        const landed = () => { window.removeEventListener("popstate", landed); syncMobileDestinationUrl(); };
+        window.addEventListener("popstate", landed);
+        window.history.go(-leaked);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

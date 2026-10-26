@@ -516,7 +516,7 @@ function ProfileSheet() {
  * 항목과 뒤엉킨다: 목적지는 `?dest=`가 걷히는 항목에 쓰여 새로고침이 목록으로 돌아가고, 새 작업 시트는 자기 항목이 걷기에 밀려 표식 없이
  * 열려 브라우저 뒤로가 시트를 닫지 않고 페이지를 떠난다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 한다.
  */
-function runAfterSheetRelease(action: () => void): void {
+export function runAfterSheetRelease(action: () => void): void {
   const run = () => { window.removeEventListener("popstate", run); window.clearTimeout(timer); action(); };
   const timer = window.setTimeout(run, 400);
   window.addEventListener("popstate", run);

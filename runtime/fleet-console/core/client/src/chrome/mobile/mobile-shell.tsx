@@ -110,7 +110,8 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
   } else if (destination.kind === "plugins") {
     content = <MobileTools theme={theme} language={language} />;
   } else if (destination.kind === "plugin") {
-    content = <MobilePluginScreen entryId={destination.entryId} theme={theme} language={language} />;
+    // 목적지마다 화면을 새로 세운다 — 앞 목적지의 막대 깊이·history 항목을 다음 목적지가 물려받지 않게(떠나는 막대가 자기 항목을 걷는다).
+    content = <MobilePluginScreen key={destination.entryId} entryId={destination.entryId} theme={theme} language={language} />;
   } else if (selectedObjective) {
     const infoOpen = destination.kind === "info";
     content = (
