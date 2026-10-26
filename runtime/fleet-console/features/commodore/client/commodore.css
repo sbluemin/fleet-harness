@@ -626,6 +626,47 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-failed { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); }
 .commodore-create-foot { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--hairline); }
 .commodore-create-button { min-width: 72px; padding: 8px 18px; border-radius: var(--radius-pill); }
+/*
+ * 폰 — 화면 전체를 덮는 시트(.is-sheet). 왼쪽 위 둥근 닫기와 제목, 큰 미리보기, 크고 둥근 흰 이름 칸,
+ * 고른 모양은 그 몸 둘레를 따라 도는 윤곽선, 고른 색은 바깥 고리, 맨 아래 폭 전체 「만들기」 하나다. 색은 모바일 토큰(--m-*)만 쓴다.
+ */
+.commodore-create-scrim.is-sheet { --commodore-create-ring: color-mix(in srgb, var(--m-text-muted) 70%, var(--m-bg)); z-index: 52; padding: 0; place-items: stretch; background: var(--m-bg); }
+.is-sheet .commodore-create { width: 100%; height: 100%; max-height: none; color: var(--m-text); background: var(--m-bg); border: 0; border-radius: 0; box-shadow: none; animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+.is-sheet .commodore-create-head { justify-content: flex-start; gap: 14px; padding: max(12px, env(safe-area-inset-top)) 16px 4px; border-bottom: 0; }
+.is-sheet .commodore-create-head h2 { font-size: var(--m-fs-title); font-weight: var(--weight-medium); }
+.is-sheet .commodore-create-close { order: -1; width: 44px; height: 44px; color: var(--m-text); background: var(--m-surface); box-shadow: 0 2px 10px rgb(0 0 0 / 0.08); }
+.is-sheet .commodore-create-close svg { width: 18px; height: 18px; stroke-width: 1.7; }
+.is-sheet .commodore-create-close:hover { background: var(--m-surface); }
+.is-sheet .commodore-create-body { gap: 18px; padding: 4px 20px 20px; scrollbar-width: none; }
+.is-sheet .commodore-create-body::-webkit-scrollbar { display: none; }
+/* 본문이 넘치면 줄이지 않고 스크롤한다 — 이름 칸·격자가 눌려 얇아지지 않게. */
+.is-sheet .commodore-create-body > * { flex-shrink: 0; }
+.is-sheet .commodore-create-hero { height: 132px; }
+.is-sheet .commodore-create-body .mongle-picker-preview { margin-top: -14px; }
+.is-sheet .commodore-create-name { height: 56px; padding: 0 20px; font-size: var(--m-fs-heading); font-weight: var(--weight-medium); background: var(--m-surface); border: 1px solid var(--m-hairline); border-radius: 20px; }
+.is-sheet .commodore-create-name::placeholder { color: var(--m-text-faint); opacity: 0.7; }
+.is-sheet .commodore-create-name:focus { border-color: var(--m-hairline-strong); }
+.is-sheet .commodore-create-body .mongle-picker-bases { width: 100%; grid-template-columns: repeat(5, minmax(0, 1fr)); justify-items: center; gap: 6px 4px; }
+.is-sheet .commodore-create-body .mongle-picker-base { padding: 5px; background: none; border: 0; }
+.is-sheet .commodore-create-body .mongle-picker-base:hover { background: none; }
+/* 고른 모양 — 몸 실루엣을 바탕색으로 2px 벌린 뒤 옅은 선으로 한 번 더 두른다. 상자나 면은 깔지 않는다. */
+.is-sheet .commodore-create-body .mongle-picker-base[aria-checked="true"] { background: none; }
+.is-sheet .commodore-create-body .mongle-picker-base[aria-checked="true"] .mongle-avatar {
+  --commodore-create-gap: var(--m-bg);
+  filter:
+    drop-shadow(2px 0 0 var(--commodore-create-gap)) drop-shadow(-2px 0 0 var(--commodore-create-gap))
+    drop-shadow(0 2px 0 var(--commodore-create-gap)) drop-shadow(0 -2px 0 var(--commodore-create-gap))
+    drop-shadow(1.5px 0 0 var(--commodore-create-ring)) drop-shadow(-1.5px 0 0 var(--commodore-create-ring))
+    drop-shadow(0 1.5px 0 var(--commodore-create-ring)) drop-shadow(0 -1.5px 0 var(--commodore-create-ring));
+}
+.is-sheet .commodore-create-body .mongle-picker-tones { gap: 12px 30px; }
+.is-sheet .commodore-create-body .mongle-picker-tone { padding: 4px; border: 2px solid transparent; }
+.is-sheet .commodore-create-body .mongle-picker-tone:hover { background: none; }
+.is-sheet .commodore-create-body .mongle-picker-tone i { width: 32px; height: 32px; }
+.is-sheet .commodore-create-body .mongle-picker-tone[aria-checked="true"] { border-color: var(--commodore-create-ring); }
+.is-sheet .commodore-create-foot { padding: 10px 16px max(16px, env(safe-area-inset-bottom)); border-top: 0; }
+.is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
+@media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
 .commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
 /* 설정 맨 위의 Theater — 지시 탭 정보 목록과 같은 줄 문법(작은 제목 · 옅은 행 · 글자 단추 · 「+」 추가 줄). 아래 설정과는 머리카락 선으로 나뉜다. */
 .objectives-commodore-settings > .commodore-theaters { padding-bottom: 18px; border-bottom: 1px solid var(--surface-rim); }
