@@ -46,7 +46,8 @@ import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeo
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { clampToCommanderSplitBounds, commanderSplitBounds, CommanderSplitDivider, CommanderSplitPlaceholder, COMMANDER_SPLIT_MIN_STAGE_PX, expandCommanderSplit } from "./commander-split.js";
-import { closeCommanderSplit, showCommodoreInNarrowSplit, useCommanderSplit } from "./commander-split-store.js";
+import { closeCommanderSplit, setCommanderSplitVisibleObjective, showCommodoreInNarrowSplit, useCommanderSplit } from "./commander-split-store.js";
+import { acknowledgeIdleArrival } from "../../../execution/client/objective-marks.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
@@ -794,6 +795,13 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const splitNarrowCommander = splitOpen && !splitShown && splitRecord !== null && commanderSplit.narrowPane === "commander";
   const splitBounds = commanderSplitBounds(splitStageWidth);
   const splitRatio = clampToCommanderSplitBounds(commanderSplit.ratio, splitBounds);
+  // 옆 칸에 보이는 지휘관은 사람이 읽고 있는 대화다 — 설 때 그 도착 표식을 확인 처리하고, 보이는 동안 도착하는 응답은 안 읽음으로 남기지 않는다.
+  const splitVisibleId = (splitShown || splitNarrowCommander) && splitRecord !== null && !newSession ? splitRecord.id : null;
+  useEffect(() => {
+    setCommanderSplitVisibleObjective(splitVisibleId);
+    if (splitVisibleId !== null) acknowledgeIdleArrival(splitVisibleId);
+  }, [splitVisibleId]);
+  useEffect(() => () => setCommanderSplitVisibleObjective(null), []);
   const workbenchConversation = useMemo<WorkbenchConversation>(() => {
     if (surfaceDescriptor) {
       return {
@@ -1338,7 +1346,11 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   }, []);
 
   const inSplit = split !== undefined;
-  const activate = useCallback(() => { if (!inSplit) setActiveObjective(objectiveRecord.id); }, [inSplit, objectiveRecord.id]);
+  // 옆 칸의 지휘관은 가운데 칸의 주인을 바꾸지 않는다 — 누르면 그 칸에서 읽은 것으로 도착 표식만 확인 처리한다.
+  const activate = useCallback(() => {
+    if (inSplit) acknowledgeIdleArrival(objectiveRecord.id);
+    else setActiveObjective(objectiveRecord.id);
+  }, [inSplit, objectiveRecord.id]);
 
   // ── 브라우저 — 이 대화의 Objective 브라우저는 오른쪽 분할 칸에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;

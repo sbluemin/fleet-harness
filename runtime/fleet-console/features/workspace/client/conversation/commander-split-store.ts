@@ -121,6 +121,20 @@ export function closeCommanderSplit(): void {
   setState({ ...state, open: false });
 }
 
+/**
+ * 지금 사령관 대화 옆 칸에 보이는 지휘관 — 가운데 칸의 주인(활성 Objective)과 따로, 사람이 읽고 있는 지휘관이다. 도착 표식의
+ * 확인과 활동 전이 추적이 활성 Objective 처럼 이 지휘관도 「보고 있음」으로 읽는다. 화면 상태라 저장하지 않는다.
+ */
+let visibleObjectiveId: string | null = null;
+
+export function setCommanderSplitVisibleObjective(objectiveId: string | null): void {
+  visibleObjectiveId = objectiveId;
+}
+
+export function getCommanderSplitVisibleObjective(): string | null {
+  return visibleObjectiveId;
+}
+
 export function setCommanderSplitRatio(ratio: number): void {
   const next = clampCommanderSplitRatio(ratio);
   if (next === state.ratio) return;
