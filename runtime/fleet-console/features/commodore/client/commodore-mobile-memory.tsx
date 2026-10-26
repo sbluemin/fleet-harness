@@ -15,12 +15,14 @@ const MemoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="n
 const StaleDot = ({ t }: { readonly t: T }) => <span className="objectives-cm-memory-dot" role="img" aria-label={t("commodore.memory.stale")} />;
 
 /** 폰 기억은 같은 스토어를 읽되, 항목 이동과 뒤로 가기는 호스트 막대의 깊이에 싣는다. */
-export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
+export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim, leave }: {
   readonly t: T;
   readonly theaterId: string;
   readonly trail: readonly string[];
   readonly onOpen: (ref: string) => void;
   readonly onTrim: (length: number) => void;
+  /** 출처 목표를 열 때 세부(기억 단계 포함)를 먼저 접는다 — 사령관 화면의 `leave`. */
+  readonly leave: (run: () => void) => void;
 }) {
   const [query, setQuery] = useState("");
   const [closed, setClosed] = useState<ReadonlySet<MemoryBranch>>(() => new Set());
@@ -80,7 +82,7 @@ export function CommodoreMobileMemory({ t, theaterId, trail, onOpen, onTrim }: {
           {entry.sources.length ? <>
             <h4 className="objectives-cm-glab">{t("commodore.memory.sources")}</h4>
             <div className="objectives-cm-grp">
-              {entry.sources.map((source) => <button key={source.objectiveId} type="button" data-press="r2" className="objectives-cm-gr objectives-cm-memory-jump is-source" aria-label={`${t("commodore.trail.open")}: ${source.title}`} onClick={() => openObjectiveOnPhone(source.objectiveId, theaterId)}>
+              {entry.sources.map((source) => <button key={source.objectiveId} type="button" data-press="r2" className="objectives-cm-gr objectives-cm-memory-jump is-source" aria-label={`${t("commodore.trail.open")}: ${source.title}`} onClick={() => leave(() => openObjectiveOnPhone(source.objectiveId, theaterId))}>
                 <span className="objectives-cm-memory-glyph" aria-hidden="true">◎</span><span className="objectives-cm-gr-tx">{source.title}</span><Chevron />
               </button>)}
             </div>

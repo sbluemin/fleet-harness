@@ -6,7 +6,7 @@ import type { SearchEntry } from "../shared/contracts.js";
 import { fetchSearch } from "./codex/api.js";
 import { CODEX_READER_PANE_ID } from "./codex-reader-pane.js";
 import { getT } from "./i18n/index.js";
-import { enterMobileWiki, setWikiSearchOpen } from "./mobile-stack.js";
+import { enterMobileWiki, holdWikiSearchClose, setWikiSearchOpen } from "./mobile-stack.js";
 import { openCodexReader, useReaderState } from "./reader-store.js";
 import { publishResolvedWorkspace, resolveCodexWorkspace } from "./workspace-store.js";
 import "./mobile.css";
@@ -53,6 +53,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   }, [visible, reader, panes]);
   useEffect(() => { setWikiSearchOpen(searching); }, [searching]);
   useEffect(() => () => setWikiSearchOpen(false), []);
+  useEffect(() => holdWikiSearchClose(() => { setSearching(false); setQuery(""); setResults(null); }), []);
   useEffect(() => {
     if (!visible || !mobileBar) return;
     if (searching) { mobileBar.set({ title: "", depth: 1, onBack: () => { setSearching(false); setQuery(""); setResults(null); } }); return; }

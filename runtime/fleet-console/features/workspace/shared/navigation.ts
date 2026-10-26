@@ -11,6 +11,12 @@ export interface OpenFileRequest {
 export interface OpenWikiEntryRequest {
   readonly theaterId: string;
   readonly entryId: string;
+  /**
+   * true면 문서를 여는 주소 이동이 history 항목을 새로 쌓지 않는다. 폰 목적지 화면은 루트끼리 옮길 때 history를 늘리지 않으므로
+   * (호스트 모바일 뒤로 계약), 다른 목적지에서 위키로 옮겨 가는 쪽이 싣는다. 쌓으면 그 항목이 떠나 온 목적지의 주소를 품고 남아,
+   * 뒤로가 그것을 걷으며 주소만 옛 목적지로 돌아간다. 생략하면 쌓는다(데스크톱의 뒤로로 이전 문맥에 돌아간다).
+   */
+  readonly replace?: boolean;
 }
 
 export type OpenResult = { readonly ok: true } | {

@@ -25,6 +25,8 @@ import "./mobile.css";
  */
 
 const TOAST_MS = 6_000;
+// 파일 열기 착지(`filePaneTarget`)가 문서 좌표로 싣는 params — 트리 자신의 문맥(theaterId·objectiveId·directory)은 남긴다.
+const DOCUMENT_ADDRESS_KEYS: ReadonlySet<string> = new Set(["path", "pathKind", "requestId", "preview", "line", "column", "anchor"]);
 
 const Icon = ({ children, size = 20 }: { readonly children: ReactNode; readonly size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
@@ -87,10 +89,19 @@ export function MobileFileTree(ctx: PaneContext) {
     for (const relativePath of ["", ...openRef.current]) load(relativePath, true);
   }, [theaterId, load]);
   const wasVisible = useRef(visible);
+  const params = ctx.params;
   useEffect(() => {
-    if (visible && !wasVisible.current) revalidate();
+    if (visible && !wasVisible.current) {
+      revalidate();
+      // 다른 곳에서 파일을 열면(`navigate.openFile`) 호스트가 문서의 좌표를 이 목적지의 주소(트리 params)에 싣는다 — 새로고침이 문서를 되살리게.
+      // 문서를 닫고 트리로 돌아왔으면 그 좌표를 걷는다. 남겨 두면 화면은 트리인데 주소는 문서를 가리킨다.
+      if (params.path !== undefined) {
+        const kept = Object.fromEntries(Object.entries(params).filter(([key]) => !DOCUMENT_ADDRESS_KEYS.has(key)));
+        panes.replaceParams(kept);
+      }
+    }
     wasVisible.current = visible;
-  }, [visible, revalidate]);
+  }, [visible, revalidate, params, panes]);
   useEffect(() => {
     const onVisibility = () => { if (document.visibilityState === "visible") revalidate(); };
     document.addEventListener("visibilitychange", onVisibility);
@@ -164,6 +175,21 @@ export function MobileFileDocument(ctx: PaneContext) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // 문서의 위키 링크는 다른 목적지(위키)로 옮겨 간다 — 그 전에 문서를 접어 막대가 쌓은 깊이 항목을 걷고(`mobileBar.leave`), 그 뒤에 연다.
+  // 다른 파일 열기는 같은 목적지 안이라 그대로 둔다.
+  const viewerNavigate = useMemo<typeof navigate>(() => {
+    if (!mobileBar) return navigate;
+    return {
+      openFile: (request) => navigate.openFile(request),
+      openWikiEntry: (request) => new Promise((resolve, reject) => {
+        mobileBar.leave(
+          () => { if (theaterId) setDocumentPaneOpen(theaterId, false); panes.close(); },
+          () => { navigate.openWikiEntry({ ...request, replace: true }).then(resolve, reject); },
+        );
+      }),
+    };
+  }, [mobileBar, navigate, panes, theaterId]);
+
   const latest = useRef({ theaterId, path, t });
   latest.current = { theaterId, path, t };
   const openShell = useCallback(() => {
@@ -214,7 +240,7 @@ export function MobileFileDocument(ctx: PaneContext) {
         {viewState.kind === "error" ? <p className="fexp-m-note is-error">{viewState.message}</p> : null}
         {isCode && isMarkdown && !source ? (
           <div className="fexp-m-reading">
-            <MarkdownViewer content={viewState.content} navigate={navigate} resolveWikiLink={resolveFileExplorerWikiLink} relativePath={viewState.relativePath} theaterId={theaterId} truncated={viewState.truncated} language={language} />
+            <MarkdownViewer content={viewState.content} navigate={viewerNavigate} resolveWikiLink={resolveFileExplorerWikiLink} relativePath={viewState.relativePath} theaterId={theaterId} truncated={viewState.truncated} language={language} />
           </div>
         ) : null}
         {isCode && (!isMarkdown || source) ? (

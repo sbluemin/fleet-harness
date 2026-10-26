@@ -15,7 +15,7 @@ import {
   subscribeCodexReaderHistory,
 } from "./codex-host.js";
 import { getT } from "./i18n/index.js";
-import { wikiReaderDepth } from "./mobile-stack.js";
+import { closeWikiSearch, wikiReaderDepth } from "./mobile-stack.js";
 import { resolvedCodexWorkspaceIdFor, subscribeCodexWorkspace } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, useConsoleLocale, useReaderState } from "./reader-store.js";
 
@@ -85,6 +85,24 @@ function documentTitle(ctx: PaneContext): string {
   return ctx.params.title || t("chrome.codexReading.eyebrow");
 }
 
+/**
+ * 리더가 쓰는 이동 창구. 모바일 목적지 화면에서 파일을 열면 다른 목적지(파일)로 옮겨 간다 — 그 전에 문서와 검색 단을 접어
+ * 막대가 쌓은 깊이 항목을 걷고(`mobileBar.leave`), 그 뒤에 연다. 위키 항목 열기는 같은 목적지 안이라 그대로 둔다.
+ */
+function leavingNavigate(ctx: PaneContext): PaneContext["navigate"] {
+  const { mobileBar, navigate, panes } = ctx;
+  if (!mobileBar) return navigate;
+  return {
+    openWikiEntry: (request) => navigate.openWikiEntry(request),
+    openFile: (request) => new Promise((resolve, reject) => {
+      mobileBar.leave(
+        () => { closeWikiSearch(); closeCodexReader(); panes.close(); },
+        () => { navigate.openFile(request).then(resolve, reject); },
+      );
+    }),
+  };
+}
+
 function CodexReaderPane(ctx: PaneContext) {
   const t = getT(ctx.language);
   const locale = useConsoleLocale();
@@ -128,7 +146,7 @@ function CodexReaderPane(ctx: PaneContext) {
       theaterId: workspaceId,
       sessionTheaterId: theaterId,
       fileTheaterId: theaterId,
-      navigate: ctx.navigate,
+      navigate: leavingNavigate(ctx),
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
       onClose: () => closeCodexReader(),
       onTagClick: (tag) => setNavigatorTagFilter(tag),

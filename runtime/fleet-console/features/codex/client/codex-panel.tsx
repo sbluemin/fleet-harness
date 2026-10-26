@@ -53,7 +53,7 @@ export const codexEntry: RailEntryDescriptor = {
   handles: {
     openWikiEntry: (request, host) => {
       if (!host.consoleState.getTheaters().some(theater => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
-      host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: false });
+      host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: request.replace === true });
       return { ok: true };
     },
   },

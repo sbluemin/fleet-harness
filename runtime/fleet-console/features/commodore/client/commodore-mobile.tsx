@@ -219,23 +219,12 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
   const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
-  // 세부에서 다른 화면으로 옮기는 동작 — 세부를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다.
+  // 세부에서 다른 화면으로 옮기는 동작 — 세부를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다(`mobileBar.leave`).
   // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
   const leave = useCallback((run: () => void) => {
-    if (!panel) { run(); return; }
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      window.removeEventListener("popstate", landed);
-      window.clearTimeout(timer);
-      run();
-    };
-    const landed = (event: PopStateEvent) => { if (event.isTrusted) finish(); };
-    window.addEventListener("popstate", landed);
-    const timer = window.setTimeout(finish, 400);
-    setPanel(false);
-  }, [panel]);
+    if (!bar) { run(); return; }
+    bar.leave(() => setPanel(false), run);
+  }, [bar]);
   const run = view?.run;
   const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
     ...(sessionsRenderer ? [{ id: "sessions" as const, label: t("commodore.tabs.sessions") }] : []),
@@ -272,10 +261,10 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
             <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
           {tab === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
-          {tab === "log" || (tab === "sessions" && !SessionsList) ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} /> : null}
+          {tab === "log" || (tab === "sessions" && !SessionsList) ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
+          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} /> : null}
           {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
@@ -451,7 +440,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
 
 /* ── 기록 탭(CM-2b) ───────────────────────────────────────────────────── */
 
-function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear }: {
+function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear, leave }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly theaterId: string;
@@ -464,6 +453,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   readonly failure: string | null;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
+  /** 기록 탭은 세부 안에 있다 — 목표 참조·질문 카드로 다른 화면을 열 때 세부를 먼저 접는다. */
+  readonly leave: (run: () => void) => void;
 }) {
   // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
   const Transcript = commodoreTranscriptRenderer();
@@ -471,7 +462,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const asks = view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
   const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
-  const openReference = useCallback((objectiveId: string) => openOwnedObjectiveOnPhone(theaterId, objectiveId), [theaterId]);
+  const openReference = useCallback((objectiveId: string) => leave(() => openOwnedObjectiveOnPhone(theaterId, objectiveId)), [theaterId, leave]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
@@ -566,7 +557,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
     <div ref={fillRef} className="objectives-cm-fill">
       <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>
         {body}
-        <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />
+        <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone leave={leave} onEnded={onFail} />
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
