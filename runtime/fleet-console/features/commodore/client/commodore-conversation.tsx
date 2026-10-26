@@ -16,6 +16,7 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
+import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
@@ -406,8 +407,14 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
-  // 기록은 가운데 칸이다. 목표 흔적(CommodoreTrail)은 Inbox 기록 곁과 폰 「목표」에만 남긴다.
-  if (tab === "goals") return null;
+  // 「기록」 탭은 사령관이 목표에 남긴 흔적이다 — 대화(가운데 칸)와 따로, 사령관이 일한 자취가 여기 쌓인다.
+  if (tab === "goals") {
+    return (
+      <div className="objectives-commodore-conversation-tab is-goals">
+        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
+      </div>
+    );
+  }
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
