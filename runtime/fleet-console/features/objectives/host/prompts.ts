@@ -45,7 +45,8 @@ const visualBlocks = `\n\n${OPENUI_GUIDE}`;
  * 구상 — 한 줄: 목표 id 와 「구상」. 편성은 보드에 올리고(plan·place_mission) 임무는 수행하지 않는다 — 「계획만」을 보드에
  * 쓰지 말라는 뜻으로 읽으면 사람이 개시 전에 계획을 보지 못한다. 사람이 함께 준 맥락이 있으면 그 아래 인용으로.
  */
-export function planTurn(objective: Objective, language: PromptLanguage, by: ObjectiveActor = "human"): string {
+/** `continues` — 확장 요청의 구상이다. 기준이 정리되면 그 회차가 따로 개시 없이 시작된다. */
+export function planTurn(objective: Objective, language: PromptLanguage, by: ObjectiveActor = "human", continues = false): string {
   const word = language === "ko"
     ? `목표 \`${objective.id}\` 을 구상하세요 — 편성(구성원·임무·선행·담당)을 보드에 올리고, 임무는 수행하지 마세요.`
     : `Plan objective \`${objective.id}\` — lay the lineup (members, missions, prerequisites and assignments) out on the board; do not carry out any mission.`;
@@ -54,8 +55,8 @@ export function planTurn(objective: Objective, language: PromptLanguage, by: Obj
   const notice = annotated.length ? (language === "ko" ? ` 제안 ${annotated.length}건에 ${annotators}의 어노테이션이 있습니다 — 보드에서 읽으세요.` : ` ${annotated.length} proposals have annotations from ${annotators} — read them on the board.`) : "";
   const round = objective.extensionActive ? objective.extensions.at(-1) : undefined;
   const extension = !round ? "" : language === "ko"
-    ? ` 확장 ${round.n} 회차입니다 — 끝난 임무와 기존 기준은 두고 더할 것만 구상하세요. 충족한 옛 기준을 다시 확인해야 하면 criteria에 {recheck: 기준 번호 또는 id, reason}으로 제안하세요. 승인된 기준만 충족 표시가 풀립니다.`
-    : ` This is extension ${round.n} — keep finished missions and existing criteria and plan only the added scope. Propose any old met criterion that needs rechecking in criteria with {recheck: criterion number or id, reason}; only an approved recheck clears its met evidence.`;
+    ? ` 확장 ${round.n} 회차입니다 — 끝난 임무와 기존 기준은 두고 더할 것만 구상하세요. 충족한 옛 기준을 다시 확인해야 하면 criteria에 {recheck: 기준 번호 또는 id, reason}으로 제안하세요. 승인된 기준만 충족 표시가 풀립니다.${continues ? " 편성이 보드에 서고 기준 제안이 모두 정리되면 이 회차는 따로 개시하지 않아도 시작됩니다 — 개시를 청하지 말고 턴을 마치세요." : ""}`
+    : ` This is extension ${round.n} — keep finished missions and existing criteria and plan only the added scope. Propose any old met criterion that needs rechecking in criteria with {recheck: criterion number or id, reason}; only an approved recheck clears its met evidence.${continues ? " Once the lineup is on the board and every criterion proposal is settled, this round starts on its own; end your turn without asking anyone to commence." : ""}`;
   const request = quoted(round?.context ?? objective.planRequest);
   const replanning = round && objective.planRequest?.trim() && objective.planRequest.trim() !== round.context ? quoted(objective.planRequest) : "";
   return `${word}${requestedBy(by, language)}${extension}${notice}${visualBlocks}${request}${replanning}`;

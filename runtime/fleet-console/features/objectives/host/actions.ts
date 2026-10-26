@@ -71,6 +71,10 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     ...(patch.prerequisites !== undefined || patch.why !== undefined ? ["lineup" as const] : []),
     ...(patch.member !== undefined ? ["member" as const] : []),
   ];
+  const criteriaSettled = (objectiveId: string, settled: Objective) => {
+    launch.continueExtension(objectiveId);
+    return objective(settled);
+  };
   return {
     // 첨부 등 바이트를 받는 경계도 같은 실행 중 편집 규칙과 귀속을 쓴다.
     unlessBusy, steerable, edited, markEdited,
@@ -148,9 +152,10 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     criterionAdd: steerable(() => true, ({ objectiveId, criterion }: Ref & { criterion: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionAdd(objectiveId, criterion.text, actor))),
     criterionPatch: steerable(() => true, ({ objectiveId, criterionId, patch }: Ref & { criterionId: string; patch: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text))),
     criterionRemove: steerable(() => true, ({ objectiveId, criterionId }: Ref & { criterionId: string }) => edited(objectiveId, ["criteria"], () => store.criterionRemove(objectiveId, criterionId))),
-    approve: holding(() => ["criteria", "decision"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor))),
-    approveAll: holding(() => ["criteria", "decision"], ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor))),
-    reject: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalReject(objectiveId, proposalId, actor))),
+    // 기준이 정리되면 확장 회차는 따로 개시하지 않아도 이어진다.
+    approve: holding(() => ["criteria", "decision"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => criteriaSettled(objectiveId, store.proposalApprove(objectiveId, proposalId, actor))),
+    approveAll: holding(() => ["criteria", "decision"], ({ objectiveId }: Ref) => criteriaSettled(objectiveId, store.proposalsApproveAll(objectiveId, actor))),
+    reject: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => criteriaSettled(objectiveId, store.proposalReject(objectiveId, proposalId, actor))),
     // 사령관이 넘기기 — 사령관 행위자만. 사람에게는 돌려주기(`personHoldReturn`)가 있다.
     handToPerson: ({ objectiveId, target, reason }: Ref & { target: PersonHoldTarget; reason: string }) => {
       if (typeof actor !== "object" || actor.kind !== "commodore") throw new ObjectiveStoreError("commodore_caller_required");

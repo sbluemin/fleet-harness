@@ -63,6 +63,11 @@ export interface LaunchService {
   complete(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   reopen(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   extend(objectiveId: string, context: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string }>;
+  /**
+   * 확장 회차는 이어서 하라는 뜻이다 — 지휘관의 계획이 서고 기준 제안이 모두 정리되면 따로 개시하지 않아도 그 회차를 시작한다.
+   * 기준 결정 뒤와 지휘관 턴이 끝날 때 부른다. 조건이 아직 안 맞으면 아무것도 하지 않는다.
+   */
+  continueExtension(objectiveId: string, idle?: boolean): void;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeObjectiveIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Promise<Objective>;
@@ -463,6 +468,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     return decisions;
   };
   const previewTasks = new Map<string, Promise<RoutingPreview>>();
+  /** 확장을 청한 손과 말 — 그 회차의 개시를 그 손으로 남긴다. 메모리에만 둔다. */
+  const extensionStarts = new Map<string, LaunchOptions | undefined>();
   /**
    * 루프가 새로 띄울 라우팅 구성원 — Objective 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서
    * 멈춘다. 보관된 Objective(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
@@ -993,6 +1000,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const language = languageOf(options);
     let current = objective(objectiveId);
     if (current.done) throw new ObjectiveStoreError("objective_done");
+    // 따로 청한 구상은 계획만 하라는 뜻이다 — 확장의 자동 개시를 거둔다.
+    if (recordAs) extensionStarts.delete(objectiveId);
     await ensureCommander(objectiveId);
     rememberLanguage(objectiveId, language);
     store.recordStage(objectiveId, "planned");
@@ -1001,7 +1010,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     current = store.setCriteriaOpen(objectiveId, true);
     const firstWake = neverStarted(objectiveId);
     if (firstWake) current = store.setEdited(objectiveId, null);
-    if (!(await send(objectiveId, planTurn(current, language, options?.actor), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
+    if (!(await send(objectiveId, planTurn(current, language, options?.actor, !recordAs), humanWords(current.planRequest), true, authoredWords(current.planRequest, "plan", current.planRequestBy ?? options?.actor)))) throw new ObjectiveStoreError("launch_failed");
     if (firstWake) announceStarted(objectiveId);
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
@@ -1184,6 +1193,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!current || !observed) return;
       const snapshot: ConsoleObjectiveObservation = { ...observed, activity: "idle", lifecycle: "live", generation: event.generation ?? observed.generation, output: event.output };
       if (syncOutcome(current.id, event.objectiveId, snapshot)) store.refresh(current.id);
+      if (event.objectiveId === current.id) service.continueExtension(current.id, true);
     }) ?? null;
     if (outcomeTimer) return;
     outcomeTimer = setTimeout(() => {
@@ -1402,9 +1412,25 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return claim(objectiveId, async () => {
         store.extend(objectiveId, context, intent, options?.actor);
         await applyObjectiveIntent(objectiveId);
-        return requestPlan(objectiveId, options, false);
+        const planned = await requestPlan(objectiveId, options, false);
+        extensionStarts.set(objectiveId, { ...(options?.actor ? { actor: options.actor } : {}), language: languageOf(options) });
+        return planned;
       }, "plan");
     }),
+
+    continueExtension(objectiveId, idle = false) {
+      if (!extensionStarts.has(objectiveId)) return;
+      const current = store.find(objectiveId);
+      if (!current || current.done || !current.extensionActive || !current.planning) { extensionStarts.delete(objectiveId); return; }
+      // 기준 제안·사람에게 물은 결정이 남았거나 할 임무가 없으면 아직이다. 지휘관이 일하는 중이면 그 턴이 끝날 때 다시 본다.
+      if (current.criteriaProposals.length || current.decisionRequest || !current.missions.some((mission) => !mission.done)) return;
+      if (!idle && stoppable(objectiveId)) return;
+      const options = extensionStarts.get(objectiveId);
+      extensionStarts.delete(objectiveId);
+      void service.startCommander(objectiveId, options).catch((error: unknown) => {
+        console.warn(`[objectives] Extension did not start: ${error instanceof Error ? error.message : "unexpected_failure"}`);
+      });
+    },
 
     async resumeObjectiveIntents() {
       for (const current of store.all()) {
@@ -1412,7 +1438,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (!intent) continue;
         try { await orderedObjectiveRequest(current.id, async () => {
           await applyObjectiveIntent(current.id);
-          if (intent.extensionContext !== undefined) await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
+          if (intent.extensionContext !== undefined) {
+            await claim(current.id, () => requestPlan(current.id, { actor: intent.by }, false), "plan");
+            extensionStarts.set(current.id, { ...(intent.by ? { actor: intent.by } : {}), language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
+          }
         }); }
         catch (error) { console.warn(`[objectives] Objective request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
@@ -1467,6 +1496,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }),
 
     startCommander: (objectiveId, options) => claim(objectiveId, async () => {
+      extensionStarts.delete(objectiveId);
       const language = languageOf(options);
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
