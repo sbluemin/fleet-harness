@@ -1,3 +1,5 @@
+import type { ResolvedPlugin } from "./plugins.js";
+import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { CommodoreToolTheater } from "./tools.js";
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentUsage } from "../../execution/shared/agent.js";
 import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../execution/host/agent/console-resident.js";
@@ -34,6 +36,8 @@ export interface CommodoreSessionOptions {
   readonly boardTools: readonly ConsoleMcpTool[];
   /** 호스트가 이 사령관에 묶어 준 플러그인 MCP 서버(`ctx.host.admiralMcp.bindCommodore`) — 서버 이름 그대로 도구 그룹이 된다. */
   readonly knowledgeTools?: readonly McpServerTools[];
+  /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
+  readonly plugins?: () => readonly ResolvedPlugin[];
   readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
@@ -201,7 +205,14 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       settlement: "result",
       cwd: options.cwd,
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
-      workspace: { additionalDirectories: roots },
+      workspace: (() => {
+        // 사람이 이 사령관에 고른 플러그인 — Theater 의 `.mcp.json` 과 달리 사령관 자신의 도구다. 플러그인 MCP 는 strictMcpConfig 가
+        // 막으므로 호스트가 선언을 옮겨 연다. 서버 이름은 `plugin_…_<해시>` 라 호스트의 예약 도구 묶음과 겹치지 않는다.
+        const selected = options.plugins?.() ?? [];
+        const servers: Record<string, ClaudeGatewayExternalMcpServer> = {};
+        for (const plugin of selected) for (const [name, config] of Object.entries(plugin.mcpServers)) if (!(name in servers)) servers[name] = config;
+        return { additionalDirectories: roots, ...(Object.keys(servers).length ? { mcpServers: servers } : {}), ...(selected.length ? { plugins: selected.map((plugin) => ({ path: plugin.path, skipMcp: true })) } : {}) };
+      })(),
       tools: {
         builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
         browser: { scopeId: `commodore:${options.commodoreId}` },

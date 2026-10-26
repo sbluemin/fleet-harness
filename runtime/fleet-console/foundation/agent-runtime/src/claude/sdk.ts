@@ -140,6 +140,9 @@ export async function createClaudeGatewaySdk(
     ...(request.mcpServers === undefined && request.servedMcpServers === undefined && request.externalMcpServers === undefined
       ? {}
       : { mcpServers: vendorMcpServers(request) }),
+    ...(request.plugins === undefined || request.plugins.length === 0
+      ? {}
+      : { plugins: request.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, ...(plugin.skipMcp ? { skipMcpDiscovery: true } : {}) })) }),
     ...(request.includePartialMessages === undefined
       ? {}
       : { includePartialMessages: request.includePartialMessages }),

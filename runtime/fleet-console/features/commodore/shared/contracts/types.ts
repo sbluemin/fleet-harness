@@ -2,6 +2,7 @@ import { AGENT_EFFORTS, type AgentEffort } from "../../../ai-gateway/shared/mode
 import { isExperimentModelId, type ExperimentAideSelection } from "../../../settings/shared/experiments.js";
 import { z } from "zod";
 import { normalizeCommodoreAlias } from "../alias.js";
+import { commodorePluginsSchema } from "./plugins.js";
 
 import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "./questions.js";
 
@@ -122,6 +123,8 @@ export const commodoreStateSchema = z.object({
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
   commanderEffort: z.string().trim().min(1).max(32).optional(),
+  /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관과 그 목표의 지휘관·구성원 세션이 다음 턴(새 세션)부터 싣는다. */
+  plugins: commodorePluginsSchema.optional(),
   /** 순찰 간격(분) 또는 안 함. 없으면 기본 안 함이다. */
   patrolMinutes: commodorePatrolSchema.optional(),
   /** 순찰 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 안 함으로 바꾸면 함께 지운다. */
@@ -302,7 +305,7 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
-export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
 /** 순찰 간격(ms) — 미설정·안 함은 null이며 자동 깨움 타이머를 만들지 않는다. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number | null {

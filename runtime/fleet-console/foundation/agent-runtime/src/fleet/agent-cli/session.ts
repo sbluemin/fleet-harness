@@ -47,6 +47,8 @@ export interface ClaudeSessionSdkRequest {
   readonly systemPrompt?: ClaudeGatewaySystemPrompt;
   /** 옵트아웃한 내장 서브에이전트의 `Agent(<name>)` 규칙. 비어 있으면 키를 싣지 않는다. */
   readonly disallowedTools?: readonly string[];
+  /** 사람이 고른 로컬 플러그인 디렉터리. CLI 표면의 `--plugin-dir`과 같은 목록이다. */
+  readonly plugins?: readonly { readonly path: string }[];
 }
 
 export interface ClaudeSessionSdkProjection {
@@ -67,6 +69,8 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeDisabledTools?: readonly string[];
   /** 이 세션에서 auto-memory를 끄는가. 생략은 사용자·프로젝트 설정을 따른다는 뜻이다. */
   readonly disableAutoMemory?: true;
+  /** 이 세션이 함께 실을 로컬 플러그인 디렉터리. 생략은 없다는 뜻이다. */
+  readonly pluginDirs?: readonly string[];
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
 }
@@ -113,6 +117,11 @@ export interface PrepareClaudeSessionOptions {
    * CLI는 `--settings`의 `autoMemoryEnabled: false`, SDK는 flag settings의 같은 키로 실린다.
    */
   readonly disableAutoMemory?: boolean;
+  /**
+   * 함께 실을 로컬 플러그인 디렉터리(사람이 사령관에 고른 것). 두 표면이 같은 목록을 받는다 — CLI는 `--plugin-dir`,
+   * SDK는 `plugins`로. 이 세션들은 ambient MCP 를 열어 두므로 플러그인의 MCP 선언도 그대로 실린다.
+   */
+  readonly pluginDirs?: readonly string[];
 }
 
 /**
@@ -133,6 +142,7 @@ export async function prepareClaudeSession(
   const denyRules = buildClaudeDenyRules(claudeCodeDisabledAgents, claudeCodeDisabledTools);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
   const pluginUrl = await options.plugin.url();
+  const pluginDirs = [...new Set(options.pluginDirs ?? [])];
   return {
     sessionId: coordinate.sessionId,
     coordinate,
@@ -142,6 +152,7 @@ export async function prepareClaudeSession(
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
     ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
     ...(options.disableAutoMemory ? { disableAutoMemory: true as const } : {}),
+    ...(pluginDirs.length > 0 ? { pluginDirs } : {}),
     sdk: {
       options: {
         pluginUrl,
@@ -163,6 +174,7 @@ export async function prepareClaudeSession(
         // 옵트아웃한 내장 서브에이전트와 뺀 도구는 SDK 표면에서도 같은 목록으로 빠진다. 실측(SDK 0.3.269):
         // `canUseTool`이 대화형 도구를 싣더라도 여기 적힌 `AskUserQuestion`은 init 도구 목록에서 빠진다.
         ...(denyRules.length > 0 ? { disallowedTools: denyRules } : {}),
+        ...(pluginDirs.length > 0 ? { plugins: pluginDirs.map((dir) => ({ path: dir })) } : {}),
       },
     },
   };

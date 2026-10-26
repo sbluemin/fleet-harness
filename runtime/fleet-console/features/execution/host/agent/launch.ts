@@ -52,6 +52,8 @@ export interface TerminalLaunchResolverDeps {
   readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
+  /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
+  readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -124,6 +126,7 @@ export async function prepareChatClaudeSession(
     readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly disableAutoMemory?: boolean;
+    readonly pluginDirs?: readonly string[];
   },
 ): Promise<ClaudeSessionHandle> {
   const gatewaySelection = deps.readAiGatewaySettings
@@ -133,6 +136,7 @@ export async function prepareChatClaudeSession(
     cliId: CHAT_PLUGIN_CLI_ID,
     cwd: deps.cwd,
     plugin: deps.plugin,
+    ...(deps.pluginDirs?.length ? { pluginDirs: deps.pluginDirs } : {}),
     origin: deps.origin,
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
@@ -210,6 +214,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       ...(deps.promptDirectories ? { promptDirectories: deps.promptDirectories } : {}),
       infraServices,
       ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
+      ...(deps.commodorePluginDirs ? { commodorePluginDirs: deps.commodorePluginDirs } : {}),
       theaterId: context?.theaterId,
       commodoreId: context?.commodoreId,
       additionalDirectories: context?.additionalDirectories,
@@ -255,6 +260,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly promptDirectories?: LaunchPromptDirectoryAllocator;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
   readonly commodoreSystemPrompts?: CommodoreSystemPromptService;
+  /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
+  readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (objectiveId: string, providerSessionId: string) => WorkspaceHookBinding;
@@ -341,8 +348,10 @@ async function createAgentCliLaunchSpec(options: {
       sessionName: options.sessionName,
     });
     const theaterPrompt = options.commodoreSystemPrompts?.read(options.commodoreId);
+    const pluginDirs = options.commodoreId ? options.commodorePluginDirs?.(options.commodoreId) ?? [] : [];
     const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
+      ...(pluginDirs.length ? { pluginDirs } : {}),
       ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),

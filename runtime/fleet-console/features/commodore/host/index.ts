@@ -22,6 +22,8 @@ import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
+import { createCommodorePlugins } from "./plugins.js";
+import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
 
@@ -43,6 +45,8 @@ export interface CommodoreFeatureDeps {
   readonly agent: ConsoleResidentAgentDeps;
   /** 이 사령관에 묶은 지식 도구(`admiralMcp.bindCommodore`). */
   readonly knowledgeTools: (commodoreId: string) => readonly McpServerTools[];
+  /** 마켓플레이스 받기·설치에 쓰는 `claude` CLI 를 Console 수명에 묶어 띄운다. */
+  readonly processes?: OwnedProcessPort;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -58,6 +62,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     deps.events.publish(COMMODORE_CHANNEL, event);
     if (event.op === "state" && event.change === "alias") deps.identityChanged?.(event.theaterIds);
   };
+  const plugins = createCommodorePlugins({ root: path.join(deps.paths.consoleDataDir, "commodore-plugins"), executable: deps.agent.resolveExecutablePath, ...(deps.processes ? { processes: deps.processes } : {}) });
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
   const supervisor = createCommodoreSupervisor({
     store, agent, board: () => board, theaterIds, cwd: entities.dirOf, isDeleting: ownership.isDeleting,
@@ -67,6 +72,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.models ? { models: deps.models } : {}),
     theater: (theaterId) => { const root = deps.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
     knowledgeTools: deps.knowledgeTools,
+    plugins: (ids) => plugins.resolve(ids),
     emit,
   });
   const host: CommodoreBoardHost = {
@@ -103,7 +109,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     removed: (commodoreId, ids) => { emit({ op: "removed", commodoreId, theaterIds: ids }); deps.identityChanged?.(ids); },
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
-    deletion, assertWritable: ownership.assertWritable,
+    plugins, deletion, assertWritable: ownership.assertWritable,
     resolve, resolveAll, theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");
@@ -156,6 +162,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     routes,
     active: (theaterId: string) => { const id = resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
     sync: () => { ownership.recoverKnowledge(); restored = true; supervisor.sync("restart"); },
+    /** 이 사령관이 고른 플러그인의 로컬 경로 — 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
+    pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(store.read(commodoreId)?.plugins ?? []).map((plugin) => plugin.path),
     async dispose() {
       if (disposed) return;
       disposed = true;

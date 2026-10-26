@@ -83,6 +83,12 @@ export interface ClaudeGatewayServedMcpServer {
  * 값의 `${VAR}`는 자식이 자기 환경으로 펼친다(CLI 2.1.310 실측). stdio 서버는 자식의 작업 폴더에서 뜬다 — 다른
  * 폴더에서 떠야 하면 호출자가 command를 그 폴더로 옮겨 실행하는 런처로 감싼다. 내부 세션 토큰은 여기에 싣지 않는다.
  */
+/** 세션에 싣는 로컬 플러그인 하나. `skipMcp`면 그 플러그인의 MCP 선언은 읽지 않는다(vendor `skipMcpDiscovery`). */
+export interface ClaudeGatewayLocalPlugin {
+  readonly path: string;
+  readonly skipMcp?: boolean;
+}
+
 export type ClaudeGatewayExternalMcpServer =
   | { readonly type: "stdio"; readonly command: string; readonly args?: readonly string[]; readonly env?: Readonly<Record<string, string>> }
   | { readonly type: "http" | "sse"; readonly url: string; readonly headers?: Readonly<Record<string, string>> };
@@ -382,6 +388,12 @@ export interface ClaudeGatewayTurn {
   readonly servedMcpServers?: readonly ClaudeGatewayServedMcpServer[];
   /** 호출자가 지목한 외부 MCP 서버. 이름이 `mcpServers`·`servedMcpServers`와 겹치면 거부한다. */
   readonly externalMcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
+  /**
+   * 이 세션에 싣는 로컬 플러그인 디렉터리(vendor `plugins`의 `type: 'local'`). `pluginUrl`처럼 호출자가 지목한 것이라
+   * ambient가 아니다. 스킬·에이전트·커맨드·훅이 실린다. 플러그인의 MCP 선언은 `strictMcpConfig`가 막으므로(SDK 0.3.306
+   * 실측) MCP를 쓰려면 호출자가 그 선언을 `externalMcpServers`로 옮기고 `skipMcp`로 중복 탐색을 끈다.
+   */
+  readonly plugins?: readonly ClaudeGatewayLocalPlugin[];
   readonly includePartialMessages?: boolean;
   readonly abortController?: AbortController;
   readonly stderr?: (data: string) => void;
@@ -419,6 +431,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "mcpServers",
   "servedMcpServers",
   "externalMcpServers",
+  "plugins",
   "includePartialMessages",
   "abortController",
   "stderr",

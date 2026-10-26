@@ -68,6 +68,8 @@ export interface CommodoreStore {
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
+  /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). */
+  setPlugins(commodoreId: string, plugins: readonly string[]): CommodoreState;
   /** 순찰 간격 — 안 함은 자동 깨움과 종료 예약을 해제한다. 같으면 아무 일도 없다. */
   setPatrol(commodoreId: string, minutes: CommodorePatrolMinutes): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
@@ -308,6 +310,13 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(commodoreId);
       const { commanderModel: _model, commanderEffort: _effort, ...rest } = current;
       return commit(commodoreId, commander ? { ...rest, commanderModel: commander.model, ...(commander.effort ? { commanderEffort: commander.effort } : {}) } : rest, "commander");
+    },
+    setPlugins(commodoreId, plugins) {
+      const current = load(commodoreId);
+      const next = [...new Set(plugins)];
+      if (isDeepStrictEqual(current.plugins ?? [], next)) return current;
+      const { plugins: _plugins, ...rest } = current;
+      return commit(commodoreId, next.length ? { ...rest, plugins: next } : rest, "plugins");
     },
     setPatrol(commodoreId, minutes) {
       const current = load(commodoreId);

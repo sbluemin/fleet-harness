@@ -595,6 +595,24 @@ async function write(commodoreId: string, path: string, body: Record<string, unk
   if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
 }
 
+/**
+ * 사령관 플러그인 설치·제거 — 응답 상태로 화면을 곧바로 고친다. 이 라우트의 스키마는 strict 라 언어를 싣지 않는다.
+ * 실행 명령이 있는 플러그인을 처음 설치할 때는 사람이 확인한 뒤에만 `trusted` 를 싣는다.
+ */
+export async function setCommodorePlugin(commodoreId: string, pluginId: string, installed: boolean, trusted = false): Promise<void> {
+  const client = api();
+  if (!client || !commodoreId) throw new Error("not_installed");
+  const view = await post<CommodoreStateView>(client, "/commodore/plugins/set", { commodoreId, pluginId, installed, ...(trusted ? { trusted: true } : {}) });
+  if (view && typeof view === "object" && "state" in view) setTheater(commodoreId, { view });
+}
+
+/** 마켓플레이스 등록부·카탈로그 라우트 — 사령관 하나에 묶이지 않는 Console 전역 요청이다. */
+export async function postCommodorePlugins<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const client = api();
+  if (!client) throw new Error("not_installed");
+  return post<T>(client, path, body);
+}
+
 export const saveCommodoreDirective = (theaterId: string, text: string) => write(theaterId, "/commodore/directive", { text });
 export const addCommodoreIntel = (theaterId: string, text: string) => write(theaterId, "/commodore/intel/add", { text });
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });

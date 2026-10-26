@@ -2718,7 +2718,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) });
+      }), consoleActions, consoleFeaturePorts.storage, commodoreSystemPrompts, { canUseShellKey: (key) => !key.startsWith("session:commodore:commodore:") || writableCommodore(key.slice("session:commodore:commodore:".length)) }, (commodoreId) => commodore?.pluginDirs(commodoreId) ?? []);
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
@@ -2832,6 +2832,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         attachments: attachmentsForPlugin?.("commodore"),
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         knowledgeTools: (commodoreId) => consoleFeaturePorts.admiralMcp.bindCommodore?.(commodoreId) ?? [],
+        processes: { spawnOwned: (request) => {
+          const child = ownedProcesses.spawn({
+            command: request.command, args: request.args,
+            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:commodore",
+          });
+          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
+        } },
         agent: {
           baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
           consoleUse: consoleUse.forPlugin("commodore"), computerUseMcp,

@@ -54,6 +54,8 @@ export interface CommodoreSupervisorDeps {
   readonly board: () => CommodoreBoardAdapter | null;
   /** 호스트가 이 사령관에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
   readonly knowledgeTools?: (commodoreId: string) => readonly McpServerTools[];
+  /** 사령관이 고른 플러그인을 세션을 여는 순간 푼다. */
+  readonly plugins?: (pluginIds: readonly string[]) => readonly import("./plugins.js").ResolvedPlugin[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -353,6 +355,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       commodoreId: runner.commodoreId, cwd, theaterLabel: deps.store.read(runner.commodoreId)?.alias ?? "Commodore", language, theaterRoot: cwd, theaters: () => deps.theaterIds(runner.commodoreId).map((theaterId) => { const theater = deps.theater(theaterId); return { theaterId, label: theater?.label ?? theaterId, root: theater?.root ?? null }; }), agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: boardTools(runner), now,
       ...(deps.knowledgeTools ? { knowledgeTools: deps.knowledgeTools(runner.commodoreId) } : {}),
+      ...(deps.plugins ? { plugins: () => deps.plugins!(deps.store.read(runner.commodoreId)?.plugins ?? []) } : {}),
       objective: (objectiveId) => { const objective = deps.board()?.objective(runner.commodoreId, objectiveId); return objective && !objective.removed ? objective : null; },
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), live }),
@@ -763,7 +766,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const edited = new Set(runner.pending.get("intel-edited")?.details).add(event.intelId);
         wake(runner, "intel-edited", { count: edited.size, detail: event.intelId });
       }
-      else if (event.change === "coordinates") { runner.rotateNext ??= "replaced"; }
+      else if (event.change === "coordinates" || event.change === "plugins") { runner.rotateNext ??= "replaced"; }
       return;
     }
     // 사람이 사령관의 질문에 답했다 — 답은 asks 도구로 읽는다(깨움 문장에는 싣지 않는다).

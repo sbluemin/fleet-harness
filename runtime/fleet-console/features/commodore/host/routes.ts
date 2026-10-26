@@ -20,6 +20,7 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
+import { commodorePluginSetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginInspectSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, patrolIntervalMs, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
@@ -44,6 +45,8 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {
+  /** 마켓플레이스 등록부와 카탈로그. 없으면 플러그인 라우트는 commodore_unavailable 로 거절한다. */
+  readonly plugins?: import("./plugins.js").CommodorePlugins;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
   readonly assertWritable?: (commodoreId: string) => void;
   readonly resolve?: (theaterId: string) => string | null;
@@ -108,6 +111,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     const code = error instanceof Error ? error.message : "commodore_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "commodore_failed" });
   };
+  const plugins = () => { if (!hooks.plugins) throw new CommodoreStoreError("commodore_unavailable"); return hooks.plugins; };
   const read = (commodoreId: string): CommodoreState => {
     const state = store.read(commodoreId);
     if (!state) throw new CommodoreStoreError("theater_unavailable");
@@ -156,6 +160,25 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       hooks.changeTheater(commodoreId, theaterId, action === "add");
       return { commodore: hooks.summary(commodoreId) };
     }) })),
+    { name: "commodore/marketplaces/list", method: "POST", summary: "List marketplaces and the plugin catalog of enabled ones; registers the Anthropic presets in the background.", handler: json(z.object({}).strict(), () => plugins().catalog()) },
+    { name: "commodore/marketplaces/add", method: "POST", summary: "Add a custom marketplace from a GitHub owner/repo, a git https or ssh address, or a marketplace.json URL.", handler: json(marketplaceAddSchema, async ({ source, ref }) => ({ marketplace: await plugins().add(source, ref) })) },
+    { name: "commodore/marketplaces/update", method: "POST", summary: "Fetch one marketplace again, or all when no name is given.", handler: json(marketplaceUpdateSchema, ({ name }) => plugins().refresh(name)) },
+    { name: "commodore/marketplaces/enable", method: "POST", summary: "Turn a marketplace on or off; off hides its plugins and blocks new installs, installed ones stay.", handler: json(marketplaceEnableSchema, ({ name, enabled }) => plugins().enable(name, enabled)) },
+    { name: "commodore/marketplaces/remove", method: "POST", summary: "Remove a custom marketplace; presets can only be turned off.", handler: json(marketplaceNameRefSchema, ({ name }) => plugins().remove(name)) },
+    { name: "commodore/plugins/inspect", method: "POST", summary: "Fetch a plugin into Console's plugin home and report its components and the commands it would run.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().inspect(pluginId) })) },
+    { name: "commodore/plugins/set", method: "POST", summary: "Install or remove a plugin for one Commodore; applies from its next turn and to its objectives' next sessions.", handler: json(commodorePluginSetSchema, async ({ commodoreId, pluginId, installed, trusted }) => {
+      const selected = () => read(commodoreId).plugins ?? [];
+      if (installed) {
+        const before = selected();
+        if (!before.includes(pluginId) && before.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+        await plugins().prepareInstall(pluginId, trusted === true);
+        // 받는 동안 같은 사령관의 다른 설치·제거가 끝났을 수 있다 — 저장 직전의 목록에 더한다.
+        const latest = selected();
+        if (!latest.includes(pluginId) && latest.length >= MAX_COMMODORE_PLUGINS) throw new CommodoreStoreError("limit");
+        return view(commodoreId, store.setPlugins(commodoreId, [...latest, pluginId]));
+      }
+      return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
+    }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDirective(commodoreId, text)); }) },
