@@ -12,6 +12,11 @@ import type { CommodoreTheaterSummary } from "../shared/contracts/theaters.js";
 export function createCommodoreOwnership(paths: WorkspacePaths) {
   const migration = migrateCommodoreData(paths.consoleDataDir);
   const entities = createCommodoreEntities(path.join(paths.consoleDataDir, "commodore"), paths.workspaceHash);
+  const deleting = new Set<string>();
+  const assertWritable = (id: string) => {
+    if (deleting.has(id)) throw new CommodoreStoreError("commodore_deleting");
+    if (!entities.dirOf(id)) throw new CommodoreStoreError("unknown_commodore");
+  };
   const resolveAll = (theaterId: string): readonly string[] => {
     const root = paths.resolveTheaterPath(theaterId);
     return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
@@ -44,8 +49,8 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   };
   recoverKnowledge();
   const knowledge = {
-    directory: entities.dirOf,
-    root: (id: string) => { const dir = entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
+    directory: (id: string) => deleting.has(id) ? null : entities.dirOf(id),
+    root: (id: string) => { const dir = deleting.has(id) ? null : entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
     ids: () => entities.ids().filter((id) => entities.dirOf(id) !== null),
     forContext(contextId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
       if (entities.dirOf(contextId)) return { ok: true, commodoreId: contextId };
@@ -61,6 +66,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   };
   const objectiveDirectory = (id: string): string => {
     const dir = entities.dirOf(id);
+    assertWritable(id);
     if (!dir) throw new CommodoreStoreError("commodore_unavailable");
     const cwd = path.join(dir, "objectives");
     fs.mkdirSync(cwd, { recursive: true, mode: 0o700 });
@@ -69,6 +75,10 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
   };
   return {
     entities, resolve, resolveAll, theaterIds, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
+    assertWritable,
+    isDeleting: (id: string) => deleting.has(id),
+    beginDeletion(id: string) { assertWritable(id); deleting.add(id); },
+    endDeletion: (id: string) => { deleting.delete(id); },
     create: () => entities.create(),
     objectiveDirectory,
     theaterSummaries(id: string): readonly CommodoreTheaterSummary[] {
@@ -92,6 +102,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       return { commodoreId, cwd: objectiveDirectory(commodoreId) };
     },
     sessionCreation(commodoreId: string, theaterId: string) {
+      assertWritable(commodoreId);
       if (!entities.dirOf(commodoreId)) throw new Error("objective_owner_unavailable");
       const cwd = paths.resolveTheaterPath(theaterId);
       if (!cwd) throw new Error("objective_location_unavailable");

@@ -14,8 +14,18 @@ export interface CodexWorkspaceState {
 let lastCodexContextKey: string | null = null;
 let lastResolvedWorkspace: CodexWorkspaceState | null = null;
 const workspaceListeners = new Set<() => void>();
+const removedWorkspaces = new Set<string>();
+export function forgetCodexWorkspace(id: string): void {
+  removedWorkspaces.add(id);
+  if (lastResolvedWorkspace?.id === id) {
+    if (lastCodexContextKey === lastResolvedWorkspace.contextKey) lastCodexContextKey = null;
+    lastResolvedWorkspace = null;
+    for (const listener of workspaceListeners) listener();
+  }
+}
 
 export function publishResolvedWorkspace(next: CodexWorkspaceState): void {
+  if (next.id && removedWorkspaces.has(next.id)) return;
   lastResolvedWorkspace = next;
   for (const listener of workspaceListeners) listener();
 }

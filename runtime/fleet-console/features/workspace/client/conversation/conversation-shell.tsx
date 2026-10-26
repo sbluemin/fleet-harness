@@ -44,7 +44,7 @@ import { publishConversationClusters, publishConversationStandIn, publishConvers
 import { useConversationPillTakeover } from "./conversation-slots.js";
 import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
-import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
+import { closeConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
@@ -629,6 +629,8 @@ interface ConversationStageProps {
  */
 function useStageSubject(state: ConsoleState): ObjectiveRecord | null {
   const lastRef = useRef<string | null>(null);
+  const empty = useConversationStageEmpty();
+  if (empty) { lastRef.current = null; return null; }
   const objectiveRecordOf = (id: string | null) => id === null ? null : state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null;
   const active = objectiveRecordOf(state.activeObjectiveId);
   const latest = () => state.objectiveRecords
@@ -701,7 +703,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       return;
     }
     if (subject === null || activeObjectiveId === subject.id) return;
-    setActiveObjective(subject.id);
+    setActiveObjective(subject.id, { fromStage: true });
   }, [activeObjectiveId, newSession, subject, surfaceDescriptor]);
   useEffect(() => () => { publishConversationSubject(null); publishConversationStandIn(null); }, []);
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.

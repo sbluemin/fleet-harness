@@ -151,7 +151,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     const releaseConsoleTools = deps.consoleUse.contribute?.(createObjectiveConsoleTools(deps, store, launch));
     if (releaseConsoleTools) registerCleanup(releaseConsoleTools);
     registerCleanup(deps.registerMcp(OBJECTIVES_MCP_SERVER, createObjectiveMcpTools(deps, store, launch, prStatus)));
-    return { routes, board, dispose };
+    return { routes, board, dispose, listAll: store.all, forgetOwner: store.forgetOwner };
   } catch (error) {
     dispose();
     throw error;

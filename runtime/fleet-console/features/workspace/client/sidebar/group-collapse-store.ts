@@ -27,6 +27,10 @@ export function useStoredTheaterRevision(): number { return useSyncExternalStore
 
 /** Theater마다 분리된 표시 상태를 읽는다. */
 export function getTheaterGroupCollapse(theaterId: string): GroupCollapseSlice { return readSlice(theaterId); }
+export function forgetTheaterGroupCollapse(theaterId: string): void {
+  try { window.localStorage.removeItem(storageKey(theaterId)); } catch { /* 보기 선호의 실패는 삭제를 막지 않는다. */ }
+  emit();
+}
 
 /** 상태별 보기는 Theater 의 표시 선호다. 다른 접힘·액센트·알 수 없는 JSON 필드를 보존한다. */
 export function toggleTheaterStatusAxis(theaterId: string | null): void {

@@ -21,7 +21,7 @@ import type { CommodoreSystemPromptService } from "../../../features/settings/ho
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("../../../features/quota/host/storage.js").QuotaSettingsHost, commodoreSystemPrompts: CommodoreSystemPromptService, admission: { readonly canUseShellKey: (key: string) => boolean }) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -67,7 +67,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
    */
   const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
-  registerShellRoutes(ctx, runtime);
+  const shells = registerShellRoutes(ctx, runtime, { canUseKey: admission.canUseShellKey });
   registerTerminalCwdRoute(ctx);
   registerExperimentRoutes(ctx);
   const agent = await registerAgentRoutes(ctx, runtime, {
@@ -108,10 +108,13 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,
-    stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord) => {
+    listSessions: agent.listSessions,
+    stopShellForKey: shells.stopForKey,
+    stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord, preserveState = true) => {
       runtime.invalidateTicketsForSession(objectiveRecord.id);
       {
-        await agent.stopForArchive(objectiveRecord.id);
+        await agent.stopForArchive(objectiveRecord.id, preserveState);
+        if (!preserveState && !await runtime.awaitWriterExit(objectiveRecord.id, 10_000)) throw new Error("archive_stop_failed");
       }
       await ctx.host.browserMcp?.revokeObjective(objectiveRecord.id);
       ctx.host.computerUseMcp?.revokeObjective(objectiveRecord.id);

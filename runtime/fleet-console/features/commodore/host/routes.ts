@@ -44,6 +44,8 @@ import type { CommodoreStateView } from "../shared/contracts/types.js";
 
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
 export interface CommodoreRouteHooks {
+  readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
+  readonly assertWritable?: (commodoreId: string) => void;
   readonly resolve?: (theaterId: string) => string | null;
   readonly create?: (alias: string) => string;
   readonly resolveAll?: (theaterId: string) => readonly string[];
@@ -82,7 +84,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     }));
     return { commodoreId, theaterIds: hooks.theaterIds?.(commodoreId) ?? [], state, boardReady, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS }, asks: { open: asks.filter((ask) => !ask.settled).length, objectives } };
   };
-  const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
+  const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown, persistLanguage = true): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     const body = await ctx.host.http.readJsonBody<unknown>(req);
@@ -90,7 +92,8 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
       const { commodoreId, language } = parsed.data as { readonly commodoreId?: string; readonly language?: "en" | "ko" };
-      if (commodoreId && language && store.read(commodoreId)) store.setLanguage(commodoreId, language);
+      if (commodoreId) hooks.assertWritable?.(commodoreId);
+      if (persistLanguage && commodoreId && language && store.read(commodoreId)) store.setLanguage(commodoreId, language);
       const value = await run(parsed.data);
       ctx.host.http.writeJson(res, 200, value ?? { ok: true });
     } catch (error) { fail(res, error); }
@@ -98,7 +101,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof CommodoreStoreError) {
-      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
+      const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -126,6 +129,14 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
 
   return [
+    { name: "commodore/delete-preview", method: "POST", summary: "Preview the impact of permanently deleting a Commodore; Theaters are preserved.", handler: json(commodoreRef.strict(), ({ commodoreId, language }) => {
+      if (!hooks.deletion) throw new CommodoreStoreError("commodore_unavailable");
+      return hooks.deletion.preview(commodoreId, language);
+    }, false) },
+    { name: "commodore/delete", method: "POST", summary: "Permanently delete a Commodore after explicit confirmation and an exact alias match.", handler: json(commodoreRef.extend({ confirm: z.literal(true), alias: z.string() }).strict(), ({ commodoreId, alias, language }) => {
+      if (!hooks.deletion) throw new CommodoreStoreError("commodore_unavailable");
+      return hooks.deletion.remove(commodoreId, alias, language);
+    }, false) },
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
     { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [] })) },
     { name: "commodore/order", method: "POST", summary: "Save the display order of Commodore sections.", handler: json(z.object({ commodoreIds: z.array(ids) }).strict(), ({ commodoreIds }) => {

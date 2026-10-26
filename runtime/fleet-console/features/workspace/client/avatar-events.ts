@@ -72,6 +72,12 @@ function load(force = false): Promise<void> {
   return loading;
 }
 
+export async function refreshAvatarBook(): Promise<void> {
+  await loading;
+  await writeChain.catch(() => undefined);
+  await load(true);
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };

@@ -58,7 +58,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
     } catch { return null; }
   };
   for (const entry of fs.readdirSync(base, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.name.startsWith(".new-") && COMMODORE_ID.test(entry.name.slice(5))) {
+    if ((entry.name.startsWith(".new-") && COMMODORE_ID.test(entry.name.slice(5))) || (entry.name.startsWith(".removing-") && COMMODORE_ID.test(entry.name.slice(10)))) {
       if (entry.isDirectory() && !entry.isSymbolicLink()) fs.rmSync(path.join(base, entry.name), { recursive: true, force: true });
       else warn(entry.name, "invalid_staging_directory");
       continue;
@@ -89,6 +89,17 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
   const unique = (ids: readonly string[]): string | null => ids.length === 1 ? ids[0]! : null;
   return {
     dirOf,
+    remove(id: string): string {
+      const dir = dirOf(id);
+      if (!dir || path.dirname(dir) !== base || fs.realpathSync.native(base) !== base) throw new CommodoreStoreError("commodore_unavailable");
+      const staging = path.join(base, `.removing-${id}`);
+      if (fs.existsSync(staging)) throw new CommodoreStoreError("commodore_deleting");
+      // rename과 색인 교체 사이에는 await가 없다. 실패하면 기존 색인을 보존한다.
+      fs.renameSync(dir, staging);
+      replaceTheatersInIndex(id, []);
+      links.delete(id);
+      return staging;
+    },
     ids: () => [...links.keys()],
     locateAll,
     locate: (candidate: string) => unique(locateAll(candidate)),

@@ -1,3 +1,4 @@
+import { isConversationStageEmpty, resumeConversationStage } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
@@ -618,8 +619,10 @@ export function applyGroupRemoved(groupId: string): void {
 // 판정은 스토어의 구성원 목록 하나라 다른 셸(모바일)에서도 같다.
 export function setActiveObjective(
   requestedObjectiveId: string | null,
-  options?: { readonly acknowledged?: boolean },
+  options?: { readonly acknowledged?: boolean; readonly fromStage?: boolean },
 ): void {
+  if (options?.fromStage && isConversationStageEmpty()) return;
+  if (requestedObjectiveId !== null && !options?.fromStage) resumeConversationStage();
   const nested = requestedObjectiveId === null ? null : nestedTarget(requestedObjectiveId);
   const objectiveId = nested ? nested.parentObjectiveId! : requestedObjectiveId;
   const acknowledged = objectiveId === null
@@ -783,6 +786,7 @@ export function focusObjective(requestedObjectiveId: string, options?: { readonl
   const objectiveId = nested ? nested.parentObjectiveId! : requestedObjectiveId;
   const objectiveRecord = state.objectiveRecords.find((item) => item.id === objectiveId);
   if (!objectiveRecord) return;
+  resumeConversationStage();
   revealObjectiveStage();
   noteObjectiveFocused(objectiveId);
   const activeObjectiveAcknowledged = acknowledgeIdleArrival(objectiveId);

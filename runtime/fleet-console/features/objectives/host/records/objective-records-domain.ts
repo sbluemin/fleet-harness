@@ -162,6 +162,7 @@ export interface ObjectiveRecordsStoreDeps {
   readonly resolveCreation?: (input: ObjectiveRecordCreateInput) => { readonly commodoreId: string; readonly cwd: string };
   readonly isReserved?: (id: string) => boolean;
   readonly assertRelationMutable?: (id: string) => void;
+  readonly assertOwnerMutable?: (commodoreId: string) => void;
   /**
    * Objective 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·Console Use·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
@@ -222,6 +223,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     deps.assertRelationMutable?.(input.parentObjectiveId);
     deps.assertRelationMutable?.(input.childSessionId);
     const parent = nodes.get(input.parentObjectiveId);
+    if (parent) deps.assertOwnerMutable?.(parent.commodoreId);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.childSessionId)) throw new Error("invalid_child_session_id");
     if (!parent || parent.id === input.childSessionId || getChild(parent.id)) throw new Error("invalid_parent_objectiveRecord");
     const existing = getChild(input.childSessionId);
@@ -240,6 +242,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function deleteChild(id: string, requesterPluginId?: string): boolean {
     const found = getChild(id);
     if (!found) return false;
+    deps.assertOwnerMutable?.(found.parent.commodoreId);
     deps.assertRelationMutable?.(found.parent.id);
     deps.assertRelationMutable?.(id);
     if (requesterPluginId) {
@@ -256,6 +259,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function create(input: ObjectiveRecordCreateInput): ObjectiveRecord {
     const id = input.id ?? crypto.randomUUID();
     if (nodes.has(id) || getChild(id) || deps.isReserved?.(id)) throw new Error("objectiveRecord_exists");
+    deps.assertOwnerMutable?.(input.commodoreId);
     const node = normalizeCreateInput({ ...input, ...deps.resolveCreation?.(input) }, id, now());
     nodes.set(node.id, node);
     return node;
@@ -264,12 +268,15 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function upsert(input: ObjectiveRecordCreateInput): ObjectiveRecord {
     const existing = input.id ? nodes.get(input.id) : null;
     if (!existing) return create(input);
+    deps.assertOwnerMutable?.(existing.commodoreId);
     const updated = normalizePatch(existing, input, now());
     nodes.set(existing.id, updated);
     return updated;
   }
 
   function patch(id: string, input: ObjectiveRecordPatchInput): ObjectiveRecord | null {
+    const owner = get(id)?.commodoreId;
+    if (owner) deps.assertOwnerMutable?.(owner);
     const existing = nodes.get(id);
     if (!existing) {
       const found = getChild(id);
@@ -288,6 +295,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
 
   function reorder(theaterId: string, orderedIds: readonly string[]): readonly ObjectiveRecord[] {
     const inSection = (node: ObjectiveRecord) => node.commodoreId === theaterId || node.theaterId === theaterId;
+    for (const node of nodes.values()) if (inSection(node)) deps.assertOwnerMutable?.(node.commodoreId);
     const positions = new Map<string, number>();
     for (const id of orderedIds) {
       const node = nodes.get(id);
@@ -310,11 +318,13 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function deleteNode(id: string): boolean {
     if (getChild(id)) return deleteChild(id);
     if (!nodes.has(id)) return false;
+    deps.assertOwnerMutable?.(nodes.get(id)!.commodoreId);
     nodes.delete(id);
     return true;
   }
 
   function deleteByTheater(theaterId: string): number {
+    for (const node of nodes.values()) if (node.theaterId === theaterId) deps.assertOwnerMutable?.(node.commodoreId);
     let deleted = 0;
     for (const node of Array.from(nodes.values())) {
       if (node.theaterId !== theaterId) continue;
@@ -341,6 +351,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function createGroup(input: ObjectiveGroupCreateInput): ObjectiveGroup {
+    deps.assertOwnerMutable?.(input.commodoreId);
     const theaterId = deps.resolveGroupCreation?.(input.commodoreId) ?? input.theaterId ?? `commodore:${input.commodoreId}`;
     const id = input.id ?? crypto.randomUUID();
     if (groups.has(id)) throw new Error("group_exists");
@@ -361,6 +372,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function updateGroup(id: string, input: ObjectiveGroupPatchInput): ObjectiveGroup | null {
     const existing = groups.get(id);
     if (!existing) return null;
+    deps.assertOwnerMutable?.(existing.commodoreId);
     const updated: ObjectiveGroup = {
       ...existing,
       ...(input.name !== undefined ? { name: input.name.trim().slice(0, MAX_GROUP_NAME_LENGTH) || existing.name } : {}),
@@ -374,6 +386,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   function deleteGroup(id: string): boolean {
     const removed = groups.get(id);
     if (!removed) return false;
+    deps.assertOwnerMutable?.(removed.commodoreId);
     groups.delete(id);
     const ungrouped: [ObjectiveRecord, ObjectiveRecord][] = [];
     for (const [nodeId, node] of nodes.entries()) {
@@ -402,6 +415,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
   }
 
   function deleteGroupsByTheater(theaterId: string): number {
+    for (const group of groups.values()) if (group.theaterId === theaterId) deps.assertOwnerMutable?.(group.commodoreId);
     let deleted = 0;
     for (const [id, group] of Array.from(groups.entries())) {
       if (group.theaterId !== theaterId) continue;

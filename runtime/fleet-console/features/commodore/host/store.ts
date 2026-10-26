@@ -50,6 +50,7 @@ export interface CommodoreTranscriptPage {
 }
 
 export interface CommodoreStore {
+  forget(commodoreId: string): void;
   /** Theater 를 모르거나 폴더를 읽을 수 없으면 null. 없는 파일은 빈 상태다. */
   read(commodoreId: string): CommodoreState | null;
   setTheaters(commodoreId: string, rows: readonly { readonly path: string }[]): CommodoreState;
@@ -224,6 +225,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   });
 
   return {
+    forget(commodoreId) { states.delete(commodoreId); lastSeq.delete(commodoreId); lastMessages.delete(commodoreId); },
     read(commodoreId) {
       try { return load(commodoreId); }
       catch (error) {

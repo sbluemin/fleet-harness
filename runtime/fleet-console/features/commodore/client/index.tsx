@@ -1,3 +1,4 @@
+import { subscribeCommodoreLifecycle } from "./commodore-delete-events.js";
 import { commodoreName } from "./commodore-name.js";
 import type { CommodoreClientDeps } from "./deps.js";
 import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
@@ -77,12 +78,13 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     renderRowGlyph: (_commodoreId, operated = true) => operated ? renderCommodoreRowGlyph() : renderCommodoreRowGlyphOff(),
   };
   const install = (ctx: CommodoreClientDeps): (() => void) => {
+      const offRemoved = subscribeCommodoreLifecycle((event) => { if (event.op === "removed") snapshots.delete(event.commodoreId); });
       const offBoard = installCommodoreBoard(board);
       const offState = installCommodoreState(ctx);
       const offList = installCommodoreList(ctx.consoleEvents);
       const offConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
       const offQuotes = ctx.composer.receiveQuotes?.("commodore", { targets: commodoreQuoteTargets, receive: receiveCommodoreQuote, subscribe: subscribeCommodoreQuoteTargets });
-      return () => { offQuotes?.(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
+      return () => { offRemoved(); offQuotes?.(); offConversation(); offList(); offState(); offBoard(); snapshots.clear(); };
 
   };
   const plugin: ClientFeatureDescriptor = {

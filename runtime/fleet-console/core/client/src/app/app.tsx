@@ -43,6 +43,8 @@ import { MobileNewSession } from "../../../../features/workspace/client/conversa
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { CommodoreDeletionHost } from "../integration/commodore-deletion.js";
+import { CommodoreDeleteModal } from "../../../../features/commodore/client/commodore-delete-modal.js";
 import { CommodoreCreateModal } from "../../../../features/commodore/client/commodore-create-modal.js";
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
@@ -600,6 +602,7 @@ function ConnectedApp() {
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
         <CommodoreCreateModal />
+        <CommodoreDeleteModal />
         {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
         <SettingsModalHost visible={desktopObjectiveRecordsVisible} mobile={mobileLayout} />
         <TheaterInboxHost />
@@ -614,6 +617,7 @@ function ConnectedApp() {
         />
         <ControlCurtain />
         <ToastHost>
+          <CommodoreDeletionHost />
           <Toast
             open={themeNotice !== null}
             tone="info"

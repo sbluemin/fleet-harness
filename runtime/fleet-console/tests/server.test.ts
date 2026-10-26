@@ -207,6 +207,92 @@ describe("console terminal observability", () => {
     expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json()).theaters).toEqual([]);
   });
 
+  it("deletes only a confirmed Commodore and never recreates its owner through durable saves or restart", async () => {
+    let owner = "", keptOwner = "", theater = "", claudeHome = "";
+    const activeId = "10000000-0000-4000-8000-000000000001", archivedId = "10000000-0000-4000-8000-000000000002";
+    const closedId = "10000000-0000-4000-8000-000000000003", keptId = "10000000-0000-4000-8000-000000000004", childId = "10000000-0000-4000-8000-000000000005";
+    const previousClaudeHome = process.env.CLAUDE_CONFIG_DIR;
+    const layout = { columns: [{ tiles: [{ id: "files", kind: "entry", entryId: "file-explorer" }], weights: [1] }], columnWeights: [1], below: { tiles: [], weights: [] }, splitRatio: null, belowRatio: null, expandedTileId: null };
+    const write = (file: string, value: unknown) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(value)); };
+    try {
+      const fixture = await startFixture({ compactPaths: true, beforeCreateServer: ({ fleetDataDir }) => {
+        const directory = path.join(fleetDataDir, "console");
+        theater = path.join(fleetDataDir, "theater"); fs.mkdirSync(theater, { recursive: true }); theater = fs.realpathSync.native(theater);
+        claudeHome = path.join(fleetDataDir, "claude-home"); process.env.CLAUDE_CONFIG_DIR = claudeHome;
+        const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
+        owner = entities.create(theater); keptOwner = entities.create();
+        const stateFile = path.join(entities.dirOf(owner)!, "state.json");
+        write(stateFile, { ...JSON.parse(fs.readFileSync(stateFile, "utf8")), alias: "Delete exactly" });
+        const records = (id: string, commodoreId = owner): ObjectiveRecord => ({ id, commodoreId, theaterId: workspaceHash(theater), cwd: theater, title: id, ts: { createdAt: 1, updatedAt: 1 }, restoredDormant: true, session: { harness: "claude-code" } });
+        const active = { ...records(activeId), sessions: [{ id: childId, ts: { createdAt: 1, updatedAt: 1 }, restoredDormant: true, session: { harness: "claude-code" } }] };
+        const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
+        const storage = createObjectiveStorage({ directory, stateStore, owners: () => [owner, keptOwner].map((id) => ({ commodoreId: id, directory: path.join(entities.dirOf(id)!, "objectives"), legacyCwd: theater, legacyTheaterId: workspaceHash(theater), theaterIdOf: workspaceHash })) });
+        storage.load();
+        storage.save({ version: STATE_VERSION, theaters: [{ id: workspaceHash(theater), path: theater, realpath: theater, label: "Kept Theater", registeredAt: "2026-10-26T00:00:00.000Z", lastOpenedAt: "2026-10-26T00:00:00.000Z" }], objectiveRecords: [active, records(keptId, keptOwner)],
+          groups: [{ id: "owned-group", commodoreId: owner, theaterId: workspaceHash(theater), name: "Owned", color: "blue", order: 0, createdAt: 1 }],
+          deletionTombstones: [{ deletionId: "closed-tombstone", kind: "objectiveRecord", targetId: closedId, objectiveRecord: records(closedId), deletedAt: Date.now(), expiresAt: Date.now() + 60_000 }],
+        }, [{ archiveId: "archived-entry", archivedAt: 2, objectiveRecord: records(archivedId) }]);
+        write(path.join(directory, "settings.json"), { version: 1, commodoreOrder: [owner, keptOwner], agent: { claudeCodeCommodoreSubagents: { [owner]: true, [keptOwner]: true }, commodoreSettingsMigrated: { [owner]: true, [keptOwner]: true } } });
+        const look = { base: 1, origin: 1, tone: null };
+        write(path.join(directory, "avatars.json"), { version: 1, avatars: Object.fromEntries([`theater:commodore:${owner}`, `theater:commodore:${keptOwner}`, ...[activeId, archivedId, closedId, childId, keptId].map((id) => `objective:${id}`)].map((key) => [key, look])) });
+        write(path.join(directory, "conversation-workbench.json"), { version: 1, layouts: Object.fromEntries([`session:commodore:commodore:${owner}`, `operation:${activeId}`, `session:commodore:commodore:${keptOwner}`].map((key) => [key, { layout, updatedAt: 1 }])) });
+        write(path.join(theater, ".fleet", "worktrees", "kept", "marker"), "keep worktree");
+        fs.symlinkSync(theater, path.join(entities.dirOf(owner)!, "outside-link"));
+        for (const dir of [entities.dirOf(owner)!, `${entities.dirOf(owner)!}/objectives`, entities.dirOf(keptOwner)!, theater]) write(path.join(claudeHome, "projects", dir.replace(/[^a-zA-Z0-9]/g, "-"), "record.json"), "history");
+      } });
+      const directory = path.join(fixture.fleetDataDir, "console");
+      const ownerDirectory = path.join(fs.realpathSync.native(directory), "commodore", owner);
+      const post = async (route: string, body: unknown, expected = 200) => {
+        const response = await fetch(new URL(`api/v1/${route}`, fixture.endpoint), { method: "POST", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const value = await response.json(); expect(response.status, JSON.stringify(value)).toBe(expected); return value;
+      };
+      await post("objectives/objective/create", { commodoreId: owner, title: "Pending" });
+      const before = fs.readFileSync(path.join(ownerDirectory, "state.json"), "utf8");
+      await post("commodore/delete", { commodoreId: owner, alias: "Delete exactly", language: "ko" }, 400);
+      await post("commodore/delete", { commodoreId: owner, confirm: true, alias: "Delete exactly ", language: "ko" }, 409);
+      expect(fs.readFileSync(path.join(ownerDirectory, "state.json"), "utf8")).toBe(before);
+      const preview = await post("commodore/delete-preview", { commodoreId: owner });
+      expect(preview).toMatchObject({ confirmationAlias: "Delete exactly", objectives: { total: 4, archived: 1 }, activeTurn: false, patrol: false });
+      expect(preview.diskBytes).toBeGreaterThan(0);
+      const keptFile = path.join(directory, "commodore", keptOwner, "objectives", keptId, "objective.json");
+      const keptBefore = fs.readFileSync(keptFile, "utf8");
+      expect(await post("commodore/delete", { commodoreId: owner, confirm: true, alias: preview.confirmationAlias })).toMatchObject({ deleted: owner, removedObjectives: 4, warnings: [] });
+      expect(fs.existsSync(ownerDirectory)).toBe(false);
+      expect(fs.readFileSync(path.join(theater, ".fleet", "worktrees", "kept", "marker"), "utf8")).toBe(JSON.stringify("keep worktree"));
+      expect(fs.readFileSync(keptFile, "utf8")).toBe(keptBefore);
+      const settings = JSON.parse(fs.readFileSync(path.join(directory, "settings.json"), "utf8"));
+      expect(settings.commodoreOrder).toEqual([keptOwner]);
+      expect(settings.agent.claudeCodeCommodoreSubagents).toEqual({ [keptOwner]: true });
+      const avatars = JSON.parse(fs.readFileSync(path.join(directory, "avatars.json"), "utf8")).avatars;
+      expect(Object.keys(avatars).sort()).toEqual([`objective:${keptId}`, `theater:commodore:${keptOwner}`].sort());
+      expect(Object.keys(JSON.parse(fs.readFileSync(path.join(directory, "conversation-workbench.json"), "utf8")).layouts)).toEqual([`session:commodore:commodore:${keptOwner}`]);
+      const put = (route: string, body: unknown) => fetch(new URL(`api/v1/${route}`, fixture.endpoint), { method: "PUT", headers: { Origin: new URL(fixture.endpoint).origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const lateAvatar = await put("avatars", { mode: "claim", entries: [{ key: `theater:commodore:${owner}`, base: 1 }, { key: `objective:${activeId}`, base: 1 }] });
+      expect((await lateAvatar.json()).avatars).toEqual(avatars);
+      expect((await put("conversation-workbench", { key: `session:commodore:commodore:${owner}`, layout })).status).toBe(404);
+      const projects = fs.readdirSync(path.join(claudeHome, "projects"));
+      expect(projects.some((name) => name.includes(owner))).toBe(false);
+      expect(projects).toContain(theater.replace(/[^a-zA-Z0-9]/g, "-"));
+      await post("commodore/delete-preview", { commodoreId: owner }, 404);
+      expect(await post("commodore/delete", { commodoreId: owner, confirm: true, alias: "Delete exactly" }, 404)).toEqual({ error: "unknown_commodore" });
+      await post("objectives/objective/create", { commodoreId: keptOwner, title: "After deletion" });
+      expect(fs.existsSync(ownerDirectory)).toBe(false);
+      expect((await post("commodore/list", {})).commodores.map((row: { commodoreId: string }) => row.commodoreId)).toEqual([keptOwner]);
+      await fixture.server.stop();
+      write(path.join(directory, "commodore", `.removing-${owner}`, "interrupted"), "leftover");
+      const restarted = createConsoleServer({ port: 0, dataDir: fixture.fleetDataDir, version: "test" }); servers.push(restarted);
+      await restarted.start({ dir: fixture.dir, lockFile: fixture.lockFile });
+      expect(fs.existsSync(ownerDirectory)).toBe(false);
+      expect(fs.existsSync(path.join(directory, "commodore", `.removing-${owner}`))).toBe(false);
+      const restored = JSON.parse(fs.readFileSync(keptFile, "utf8")), kept = JSON.parse(keptBefore);
+      // 재기동의 휴면 복원은 updatedAt을 갱신하지만 다른 소유자의 본문은 유지한다.
+      expect({ ...restored, ts: { ...restored.ts, updatedAt: kept.ts.updatedAt } }).toEqual(kept);
+      await restarted.stop();
+    } finally {
+      if (previousClaudeHome === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previousClaudeHome;
+    }
+  });
+
   it("injects dormant durable objectives without exposing server-only provider data", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-store-"));
     tempDirs.push(dir);
@@ -1123,9 +1209,10 @@ async function startFixture(options: {
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
   readonly lifecycle?: ConsoleServerDeps["lifecycle"];
   readonly useDefaultPort?: boolean;
+  readonly compactPaths?: boolean;
 } = {}): Promise<ServerFixture> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
-  const fleetDataDir = path.join(dir, "fleet-home");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), options.compactPaths ? "d" : "fleet-console-server-"));
+  const fleetDataDir = path.join(dir, options.compactPaths ? "f" : "fleet-home");
   options.beforeCreateServer?.({ fleetDataDir });
   const terminalHooks = globalThis as {
     __fleetTerminalLaunch?: typeof options.terminalLaunch;

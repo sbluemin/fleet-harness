@@ -35,6 +35,7 @@ export function createConversationWorkbenchStore(dataDir: string): DurableJsonSt
 }
 
 export function createConversationWorkbenchRouter(deps: {
+  readonly canWrite?: (key: string) => boolean;
   readonly store: DurableJsonStore<WorkbenchStoreData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
@@ -65,6 +66,7 @@ export function createConversationWorkbenchRouter(deps: {
       deps.writeJson(res, 400, { error: "invalid_workbench_write" });
       return true;
     }
+    if (write.layout !== null && deps.canWrite && !deps.canWrite(write.key)) { deps.writeJson(res, 404, { error: "workbench_owner_unavailable" }); return true; }
     deps.store.update((current) => ({ version: 1, layouts: applyWorkbenchWrite(current.layouts, write, now()) }));
     // 응답은 짧게 — 쓴 쪽은 자기 상태를 이미 들고 있다.
     deps.writeJson(res, 200, { ok: true });
