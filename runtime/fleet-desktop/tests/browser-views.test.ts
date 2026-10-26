@@ -17,18 +17,23 @@ function view(id: string): DesktopBrowserSnapshot["views"][number] {
 function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[] }>): WebContentsView {
   const record = { partition, closed: false, commands: [] as string[] };
   created.push(record);
+  // 페이지 이동은 뷰가 닫힐 때까지 끝나지 않다가 닫히면 거부된다 — 재기동 순간에 걸려 있던 명령.
+  let rejectPending: (error: Error) => void = () => {};
   const contents = Object.assign(new EventEmitter(), {
     session: { webRequest: { onBeforeSendHeaders: () => {} } },
     debugger: Object.assign(new EventEmitter(), {
       attach: () => {},
       detach: () => {},
       isAttached: () => true,
-      sendCommand: async (method: string) => { record.commands.push(method); return {}; },
+      sendCommand: (method: string) => {
+        record.commands.push(method);
+        return method === "Page.navigate" ? new Promise((_resolve, reject) => { rejectPending = reject; }) : Promise.resolve({});
+      },
     }),
     setWindowOpenHandler: () => {},
     loadURL: async () => {},
     isFocused: () => false,
-    close: () => { record.closed = true; },
+    close: () => { record.closed = true; rejectPending(new Error("target closed")); },
   });
   return { webContents: contents, setBorderRadius: () => {}, setBounds: () => {}, setVisible: () => {} } as unknown as WebContentsView;
 }
@@ -42,7 +47,7 @@ describe("desktop native browser views across a Console restart", () => {
   it("rebuilds views and runs commands from a restarted Console on the same origin", async () => {
     let lifetime: DesktopBrowserSnapshot = {
       generation: 58, epoch: "before", views: [view("view-old")],
-      commands: [{ id: 1, viewId: "view-old", method: "Runtime.evaluate", params: {} }],
+      commands: [{ id: 1, viewId: "view-old", method: "Page.navigate", params: {} }],
     };
     const relays: DesktopBrowserRelay[] = [];
     const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
@@ -72,7 +77,7 @@ describe("desktop native browser views across a Console restart", () => {
     });
 
     await views.start(REMOTE);
-    await vi.waitFor(() => expect(created[0]?.commands).toContain("Runtime.evaluate"));
+    await vi.waitFor(() => expect(created[0]?.commands).toContain("Page.navigate"));
 
     // 재기동: 옛 스트림이 끝나고, 같은 origin 의 새 프로세스가 generation 1·명령 id 1 로 다시 센다.
     lifetime = { generation: 1, epoch: "after", views: [view("view-new")], commands: [{ id: 1, viewId: "view-new", method: "Runtime.evaluate", params: {} }] };
@@ -87,6 +92,9 @@ describe("desktop native browser views across a Console restart", () => {
     // 새 프로세스는 이 셸을 모른다 — 부착과 자기소개가 그쪽으로 다시 간다.
     await vi.waitFor(() => expect(relays.some((relay) => relay.attached?.includes("view-new"))).toBe(true));
     expect(relays.filter((relay) => relay.hello).length).toBe(hellosBefore + 1);
+    // 옛 프로세스의 명령 1 이 뷰와 함께 거부돼도 그 답은 같은 id 를 쓰는 새 프로세스의 명령 1 을 풀지 않는다.
+    await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1 && result.error === undefined)).toBe(true));
+    expect(relays.flatMap((relay) => relay.results ?? []).filter((result) => result.error !== undefined)).toEqual([]);
     views.stop();
   });
 });

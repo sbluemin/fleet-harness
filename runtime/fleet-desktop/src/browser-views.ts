@@ -570,9 +570,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
     const capture = command.method === "Page.captureScreenshot" && deps.composeCapture ? viewportCapture(command.params) : null;
     if (capture && deps.composeCapture) { enqueueCapture(command.id, entry, capture, deps.composeCapture); return; }
+    // 걸려 있는 사이 수명이 바뀌면(뷰가 닫혀 거부되는 것 포함) 이 답은 옛 프로세스의 것이다 — 명령 id 는 새 프로세스에서
+    // 다시 세므로, 올리면 새 프로세스의 엉뚱한 명령을 풀어 버린다.
+    const token = session;
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
-      .then((result) => push({ results: [{ id: command.id, result }] }))
-      .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
+      .then((result) => { if (session === token) push({ results: [{ id: command.id, result }] }); })
+      .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
