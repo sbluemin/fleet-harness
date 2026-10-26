@@ -494,13 +494,16 @@ describe("Objectives contract", () => {
     expect(h.sent.at(-1)!.text).toContain("> add second scope");
     const second = launch.planApplied(id, { missions: [{ text: "second extension" }], criteria: [{ text: "second criterion" }] });
     expect(second.criteria.every((criterion) => !!criterion.met)).toBe(true);
-    const approvedSecond = store.proposalsApproveAll(id);
-    expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
-    expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
-    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다 — 그사이 Console 이 다시 서도 기록에서 되살린다.
+    // 그사이 Console 이 다시 서도 확장 자동 개시는 기록에서 되살아난다 — 되살리기만으로는 개시하지 않는다.
     const restarted = createLaunchService(h.ctx, store);
     launchServices.push(restarted);
     await restarted.resumeInProgress();
+    expect(store.find(id)!.planning).toBe(true);
+    const approvedSecond = store.proposalsApproveAll(id);
+    expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
+    expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
+    // 확장 회차는 기준이 정리되면 따로 개시하지 않아도 시작된다.
+    restarted.continueExtension(id);
     await vi.waitFor(() => expect(store.find(id)!.planning).toBe(false));
     store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["second done"]));
     store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "second evidence"));

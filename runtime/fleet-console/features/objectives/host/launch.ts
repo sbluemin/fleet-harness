@@ -482,6 +482,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
   const resumeFailures = new Map<string, { readonly commodoreId: string; readonly title: string; readonly error: string }>();
   const resumeFailureListeners = new Set<(commodoreId: string) => void>();
+  /** 스스로 잇지 못한 목표 — 사령관이 꺼내 가도록 남기고 듣는 쪽에 알린다. */
+  const resumeFailed = (current: Objective, error: unknown) => {
+    const code = error instanceof ObjectiveStoreError ? error.code : error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "resume_failed";
+    resumeFailures.set(current.id, { commodoreId: current.commodoreId, title: current.title, error: code });
+    console.warn(`[objectives] Objective did not continue on its own: ${code}`);
+    for (const listener of resumeFailureListeners) { try { listener(current.commodoreId); } catch { /* 듣는 쪽의 오류는 재개와 무관하다. */ } }
+  };
   /** 재시작 때 이어 갈 목표 — 개시됐고 사람이 멈추지 않았으며, 남은 임무가 있거나 인계만 남았고, 사람·기준을 기다리지 않는다. */
   const resumable = (current: Objective): boolean => !!current.commenced && !current.done && !current.removed && !current.archived && !current.planning
     && current.stoppedAt === null && !current.awaitingReview && !current.decisionRequest && !current.criteriaProposals.length
@@ -1444,19 +1451,18 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!idle && stoppable(objectiveId)) return;
       const options = extensionStarts.get(objectiveId);
       extensionStarts.delete(objectiveId);
-      void service.startCommander(objectiveId, options).catch((error: unknown) => {
-        console.warn(`[objectives] Extension did not start: ${error instanceof Error ? error.message : "unexpected_failure"}`);
-      });
+      // 스스로 서지 못한 회차는 재시작 이어가기 실패와 같은 길로 사령관에게 알린다 — 개시된 목표의 구상 중은 inbox 에 서지 않는다.
+      void service.startCommander(objectiveId, options).catch((error: unknown) => resumeFailed(current, error));
     },
 
     async resumeInProgress() {
-      // 메모리의 확장 자동 개시는 재시작과 함께 사라진다 — 마지막 구상 행위가 확장인 구상 중 회차를 기록에서 되살린다.
+      // 메모리의 확장 자동 개시는 재시작과 함께 사라진다 — 마지막 구상 행위가 확장인 구상 중 회차를 기록에서 되살린다. 되살리기만 하고
+      // 개시하지 않는다: 끊긴 구상이 다 짜였는지 모르므로 다음 기준 결정이나 정상으로 끝난 지휘관 턴이 개시를 판단한다.
       for (const current of store.all()) {
         if (disposed || current.done || current.archived || !current.planning || !current.extensionActive || extensionStarts.has(current.id)) continue;
         const last = (current.actions ?? []).findLast((entry) => entry.kind === "extend" || entry.kind === "plan" || entry.kind === "commence");
         if (last?.kind !== "extend") continue;
         extensionStarts.set(current.id, { actor: last.by, language: ctx.objectiveRecords.get(current.id)?.objectiveLanguage === "ko" ? "ko" : "en" });
-        service.continueExtension(current.id);
       }
       for (const current of store.all()) {
         if (disposed || !resumable(current)) continue;
@@ -1468,12 +1474,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
             await accessObjective(latest.id);
             await requestSend(latest.id, restartTurn(latest, ctx.objectiveRecords.get(latest.id)?.objectiveLanguage === "ko" ? "ko" : "en"), "");
           });
-        } catch (error) {
-          const code = error instanceof ObjectiveStoreError ? error.code : error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "resume_failed";
-          resumeFailures.set(current.id, { commodoreId: current.commodoreId, title: current.title, error: code });
-          console.warn(`[objectives] Objective did not resume after restart: ${code}`);
-          for (const listener of resumeFailureListeners) { try { listener(current.commodoreId); } catch { /* 듣는 쪽의 오류는 재개와 무관하다. */ } }
-        }
+        } catch (error) { resumeFailed(current, error); }
       }
     },
 
