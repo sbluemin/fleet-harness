@@ -185,7 +185,7 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
     setZoneCommodore(commodoreId);
     runAfterSheetRelease(() => openCommodoreMobile("settings", commodoreId, true));
   };
-  const openAppearance = () => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
+  const openAppearance = () => openCommodoreLookSheet(commodoreId, label, alias);
   return (
     <MobileSheet title={label} onClose={onClose}>
       <button type="button" className="mobile-sheet-row" onClick={openSettings}>
@@ -198,6 +198,11 @@ export function CommodoreRowActions({ commodoreId, label, alias, onClose }: { re
       </button>
     </MobileSheet>
   );
+}
+
+/** 사령관의 「이름·모양 바꾸기」 시트 — 홈 행 동작 시트와 폰 사령관 세부의 「편집」(호스트 주입 포트)이 같은 시트를 연다. */
+export function openCommodoreLookSheet(commodoreId: string, label: string, alias: string): void {
+  pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreAliasSheet commodoreId={commodoreId} label={label} alias={alias} onClose={dismiss} /> });
 }
 
 function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly commodoreId: string; readonly label: string; readonly alias: string; readonly onClose: () => void }) {

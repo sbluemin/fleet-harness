@@ -9,7 +9,7 @@ import type { ConversationParticipant, ConversationSpeaker } from "../../executi
 import type { Translate } from "@fleet-console/i18n";
 import type { ClientMobileBarCapability, PaneContext } from "../../workspace/shared/pane.js";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "../../workspace/shared/rail.js";
-import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/ui/react";
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
 
@@ -29,6 +29,7 @@ import {
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
   commodoreLanguage,
+  commodoreMobileActions,
   commodoreMobileSessionsRenderer,
   commodoreTranscriptRenderer,
   loadCommodore,
@@ -41,7 +42,6 @@ import {
   saveCommodoreDirective,
   setCommodoreCommander,
   setCommodoreCoordinates,
-  setCommodoreMobileTab,
   setCommodorePatrol,
   subscribeCommodore,
   useCommodore,
@@ -50,6 +50,7 @@ import {
   useCommodoreExperimentKnown,
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
+  useCommodoreMemory,
   useCommodoreMobileTab,
   useCommodoreMobilePanelRequest,
   useCommodoreOnline,
@@ -57,7 +58,7 @@ import {
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./defaults.js";
-import { openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
+import { isRunningObjective, openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
 import "./commodore-mobile.css";
 
 /**
@@ -81,6 +82,14 @@ const SparkIcon = () => <Icon><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.
 const ClockIcon = () => <Icon><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5V13l2.6 1.7M9.5 2.8h5" /></Icon>;
 const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></Icon>;
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
+/* 세부 구역 행 · ⋮ 메뉴 — 같은 문법. 연필·톱니·더하기·Theater 는 호스트 폰 아이콘과 같은 경로, 책갈피는 기억 탭의 빈 화면 아이콘이다. */
+const LogIcon = () => <Icon><path d="M5 6h14M5 10h14M5 14h10M5 18h7" /></Icon>;
+const DirectiveIcon = () => <Icon><path d="M4 20h4L19 9l-4-4L4 16z" /></Icon>;
+const BookmarkIcon = () => <Icon><path d="M6 3h12v18l-6-4-6 4Z" /></Icon>;
+const GearIcon = () => <Icon><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" /></Icon>;
+const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
+const TheaterIcon = () => <Icon><path d="M5 5h14M4 9h16v10H4z" /></Icon>;
+const ChevronIcon = () => <Icon size={16}><path d="m9 5 7 7-7 7" /></Icon>;
 
 function failWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
@@ -148,7 +157,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   if (known && !enabled) return <CommodoreDisabled t={t} />;
   if (!commodoreId) return <div className="objectives-cm" />;
   const scopeTheaterId = row?.theaters[0]?.theaterId ?? "";
-  return <CommodoreScreen key={commodoreId} t={t} theaterId={scopeTheaterId} commodoreId={commodoreId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={named} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
+  return <CommodoreScreen key={commodoreId} t={t} theaterId={scopeTheaterId} commodoreId={commodoreId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={named} alias={row?.alias ?? ""} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
 }
 
 /** 실험 기능이 꺼진 채 들어온 화면 — 보던 중 꺼지면 호스트가 홈으로 돌려보내므로, 옛 주소로 들어온 순간에만 잠깐 선다. */
@@ -174,39 +183,90 @@ function commodorePillStatus(t: T, view: CommodoreView | null): string {
   return run.nextWakeAt ? `${mode} · ${t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) })}` : mode;
 }
 
+/** 세부 하위 화면의 막대 제목 — 지금 탭 이름과 같은 말이다. */
+function sectionTitle(t: T, section: CommodoreMobileTab): string {
+  switch (section) {
+    case "sessions": return t("commodore.tabs.sessions");
+    case "log": return t("commodore.tabs.log");
+    case "goals": return t("commodore.trail.title");
+    case "directive": return t("commodore.tabs.directive");
+    case "memory": return t("commodore.tabs.memory");
+    case "settings": return t("commodore.tabs.settings");
+  }
+}
+
 /**
- * 화면은 두 장이다. 기본은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 한 단 깊은 칩 화면
- * — 맨 위 사령관 상태 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
+ * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 깊이 1의 세부
+ * — 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 지시·기억·설정) — 가 선다. 행을 누르면 그 구역 본문이 깊이 2의
+ * 하위 화면으로 서고, 기억 항목은 그 위에 한 단씩 쌓인다. ‹·시스템 뒤로·`__fleetMobileBack`은 모두 막대의 `onBack` 하나로 한 단씩 돌아온다.
+ * 깊은 링크(`openCommodoreMobile(tab, id, true)`)와 대화의 원장 열기는 세부와 그 구역을 한 번에 세운다(깊이 0 → 2) — 뒤로는 구역 → 세부 → 대화다.
  */
-function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly commodoreId: string | null; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
+function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias, panelRequest }: { readonly t: T; readonly theaterId: string; readonly commodoreId: string | null; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly alias: string; readonly panelRequest: string | undefined }) {
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
-  const tab = useCommodoreMobileTab();
+  const requested = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const SessionsList = commodoreMobileSessionsRenderer();
-  const sessionsRenderer = SessionsList !== null;
+  const actions = commodoreMobileActions();
   const board = useObjectiveTheater(commodoreId);
   const [panel, setPanel] = useState(false);
-  const openPanel = useCallback(() => setPanel(true), []);
-  useCommodoreMobilePanelRequest(panelRequest, openPanel);
+  // 세부 안에서 연 구역. null이면 세부(프로필) 자체다. 세션 본문을 호스트가 주지 않으면 그 자리는 기록이다.
+  const [section, setSection] = useState<CommodoreMobileTab | null>(null);
+  const openSection = useCallback((next: CommodoreMobileTab) => { setSection(next === "sessions" && !SessionsList ? "log" : next); setPanel(true); }, [SessionsList]);
+  const openRequested = useCallback(() => openSection(requested), [openSection, requested]);
+  useCommodoreMobilePanelRequest(panelRequest, openRequested);
   const [memoryTrail, setMemoryTrail] = useState<readonly string[]>([]);
   const openMemory = useCallback((ref: string) => setMemoryTrail((trail) => [...trail, ref]), []);
   const trimMemory = useCallback((length: number) => setMemoryTrail((trail) => trail.slice(0, length)), []);
-  useEffect(() => { if (!panel || tab !== "memory") setMemoryTrail([]); }, [panel, tab]);
+  useEffect(() => { if (!panel || section !== "memory") setMemoryTrail([]); }, [panel, section]);
   const [failure, setFailure] = useState<string | null>(null);
   const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
   const pillStatus = commodorePillStatus(t, view);
+  // 세부에서 다른 화면으로 옮기는 동작 — 세부(구역·기억 단계 포함)를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다(`mobileBar.leave`).
+  // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
+  const leave = useCallback((run: () => void) => {
+    if (!bar) { run(); return; }
+    bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
+  }, [bar]);
+  const newSession = useMemo(() => (actions && commodoreId ? () => leave(() => actions.newSession(commodoreId)) : null), [actions, commodoreId, leave]);
   useEffect(() => {
     if (!bar) return;
-    if (panel) bar.set({ title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), depth: 1 + (tab === "memory" ? memoryTrail.length : 0), onBack: () => { if (tab === "memory" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setPanel(false); } });
-    else bar.set({
-      title,
-      ...(pillStatus ? { subtitle: pillStatus } : {}),
-      depth: 0,
-      // 세부는 늘 「지휘관 세션」에서 연다(시안 확정) — 다른 구역은 탭으로 옮긴다.
-      pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setCommodoreMobileTab(sessionsRenderer ? "sessions" : "log"); setPanel(true); } },
+    if (!panel) {
+      bar.set({
+        title,
+        ...(pillStatus ? { subtitle: pillStatus } : {}),
+        depth: 0,
+        // pill 은 세부(프로필)를 연다 — 구역은 세부의 행에서 고른다.
+        pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
+      });
+      return;
+    }
+    if (section === null) {
+      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 세션 · Theater… 를 옮긴 것이다.
+      bar.set({
+        title: "",
+        round: true,
+        depth: 1,
+        onBack: () => setPanel(false),
+        menu: {
+          label: t("commodore.mobile.more"),
+          caption: title,
+          items: [
+            ...(newSession ? [{ id: "new-session", label: t("commodore.mobile.newSession"), icon: <PlusIcon />, disabled: !online, run: newSession }] : []),
+            { id: "theaters", label: t("commodore.mobile.theaters"), icon: <TheaterIcon />, run: () => setSection("settings") },
+          ],
+        },
+      });
+      return;
+    }
+    bar.set({
+      title: sectionTitle(t, section),
+      subtitle: title,
+      round: true,
+      depth: 2 + (section === "memory" ? memoryTrail.length : 0),
+      onBack: () => { if (section === "memory" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, commodoreId, sessionsRenderer, t]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -214,36 +274,19 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
     void loadCommodore(commodoreId);
     if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId, enabled]);
-  useEffect(() => { setFailure(null); }, [tab, panel]);
+  useEffect(() => { setFailure(null); }, [section, panel]);
 
   const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
-  const openLog = useCallback(() => { setCommodoreMobileTab("log"); setPanel(true); }, []);
-  // 세부에서 다른 화면으로 옮기는 동작 — 세부를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다(`mobileBar.leave`).
-  // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
-  const leave = useCallback((run: () => void) => {
-    if (!bar) { run(); return; }
-    bar.leave(() => setPanel(false), run);
-  }, [bar]);
+  const openLog = useCallback(() => openSection("log"), [openSection]);
   const run = view?.run;
-  const tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[] = [
-    ...(sessionsRenderer ? [{ id: "sessions" as const, label: t("commodore.tabs.sessions") }] : []),
-    { id: "log", label: t("commodore.tabs.log") },
-    { id: "goals", label: t("commodore.trail.title") },
-    { id: "directive", label: t("commodore.tabs.directive") },
-    { id: "memory", label: t("commodore.tabs.memory") },
-    { id: "settings", label: t("commodore.tabs.settings") },
-  ];
+  const editLook = actions && commodoreId ? () => actions.editLook({ commodoreId, label: title, alias }) : null;
 
-  // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비우고, 칩 화면은 사령관 상태 행과
-  // 탭이 막대와 한 덩어리로 떠 있는 머리가 되어 탭 본문이 막대 몫에 머리의 제 높이(--objectives-cm-head)를 더해 비운다. 재시도·오류 띠는 알림 띠라
-  // 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
+  // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이, 세부와 하위 화면은 제 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다.
+  // 재시도·오류 띠는 알림 띠라 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
   const flow = !(run?.phase === "retrying" || run?.phase === "error");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const headRef = useRef<HTMLDivElement>(null);
-  useChromeHeightProperty(headRef, rootRef, "--objectives-cm-head", chromeRowHeight);
   return (
-    <div ref={rootRef} className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
+    <div className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
       {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (
@@ -256,16 +299,13 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
       ) : null}
       {panel ? (
         <>
-          <div ref={headRef} className="objectives-cm-chrome">
-            <CommodoreStatusRow t={t} commodoreId={commodoreId ?? ""} view={view} />
-            <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
-          </div>
-          {tab === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
-          {tab === "log" || (tab === "sessions" && !SessionsList) ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
-          {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
-          {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} /> : null}
-          {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {section === null && commodoreId ? <CommodoreMobileProfile t={t} commodoreId={commodoreId} view={view} name={title} sessions={SessionsList !== null} onOpen={openSection} onEdit={editLook} /> : null}
+          {section === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
+          {section === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
+          {section === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
+          {section === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {section === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} /> : null}
+          {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
         <CommodoreMobileChat
@@ -289,61 +329,79 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, theat
   );
 }
 
-/** 넘친 탭 줄만 가로로 민다 — scrollIntoView 는 바깥 세로 스크롤도 움직이므로 쓰지 않는다. */
-function CommodoreMobileTabs({ t, tabs, selected, onSelect }: {
+/* ── 세부(프로필) ─────────────────────────────────────────────────────── */
+
+const isLive = (objective: { readonly done: object | null; readonly removed: object | null }) => objective.done === null && objective.removed === null;
+
+/**
+ * 세부 첫 화면 — 큰 아바타 · 이름 · 상태 한 줄 · 「편집」(이름·모양 시트), 그 아래 둥근 카드 두 장의 구역 행이다. 행 오른쪽 회색 값은
+ * 이미 읽는 스토어에서만 얻는다(보드 목표 · 사령관 상태 · 기억). 값이 없으면 칸을 비우고 › 만 둔다.
+ */
+function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, onEdit }: {
   readonly t: T;
-  readonly tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[];
-  readonly selected: CommodoreMobileTab;
-  readonly onSelect: (tab: CommodoreMobileTab) => void;
+  readonly commodoreId: string;
+  readonly view: CommodoreView | null;
+  readonly name: string;
+  readonly sessions: boolean;
+  readonly onOpen: (section: CommodoreMobileTab) => void;
+  readonly onEdit: (() => void) | null;
 }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    const edges = () => {
-      row.classList.toggle("is-scroll", row.scrollWidth > row.clientWidth + 0.5);
-      row.classList.toggle("is-start", row.scrollLeft <= 0.5);
-      row.classList.toggle("is-end", row.scrollLeft >= row.scrollWidth - row.clientWidth - 0.5);
-    };
-    const fit = () => {
-      const active = row.querySelector<HTMLElement>(".is-on");
-      if (active) {
-        const left = active.offsetLeft - 16;
-        const right = active.offsetLeft + active.offsetWidth + 16 - row.clientWidth;
-        if (row.scrollLeft > left) row.scrollLeft = left;
-        else if (row.scrollLeft < right) row.scrollLeft = right;
-      }
-      edges();
-    };
-    fit();
-    row.addEventListener("scroll", edges, { passive: true });
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
-    observer?.observe(row);
-    for (const child of Array.from(row.children)) observer?.observe(child);
-    return () => { row.removeEventListener("scroll", edges); observer?.disconnect(); };
-  }, [selected, t]);
-  return <div ref={rowRef} className="objectives-cm-tabs" role="tablist" aria-label={t("commodore.tabs.aria")}>
-    {tabs.map((item) => <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={selected === item.id} className={selected === item.id ? "is-on" : undefined} onClick={() => onSelect(item.id)}>{item.label}</button>)}
-  </div>;
+  const board = useObjectiveTheater(commodoreId);
+  const memory = useCommodoreMemory(commodoreId);
+  const objectives = board.objectives.filter(isLive);
+  const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : commodorePillStatus(t, view);
+  // 지휘관 세션 — 사람의 확인을 기다리는 목표가 먼저, 없으면 진행 중인 목표 수.
+  const attention = objectives.filter((objective) => objective.decisionRequest !== null || objective.awaitingReview || objective.awaitingHandoff).length;
+  const running = objectives.filter(isRunningObjective).length;
+  const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" } : running > 0 ? { text: t("commodore.mobile.running", { n: running }) } : null;
+  const run = view?.run;
+  const logValue: ProfileValue = !run ? null
+    : run.phase === "turn" ? { text: t("commodore.meta.turn") }
+    : run.phase === "error" ? { text: t("commodore.meta.error"), tone: "danger" }
+    : run.phase === "retrying" && run.nextWakeAt ? { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) }
+    : run.totals.actions > 0 ? { text: t("commodore.meta.handled", { n: run.totals.actions }) } : null;
+  const goalsValue: ProfileValue = objectives.length > 0 ? { text: t("commodore.mobile.count", { n: objectives.length }) } : null;
+  const directive = view?.state.directive.text.trim() ?? "";
+  const directiveValue: ProfileValue = !view ? null : directive ? { text: t("commodore.mobile.intelCount", { n: view.state.intel.length }) } : { text: t("commodore.mobile.directiveEmpty") };
+  const memoryValue: ProfileValue = memory.loaded && memory.entries.length > 0 ? { text: t("commodore.mobile.count", { n: memory.entries.length }) } : null;
+  const patrol = view ? view.state.patrolMinutes ?? DEFAULT_PATROL : null;
+  const settingsValue: ProfileValue = patrol === null ? null : { text: patrol === "off" ? t("commodore.meta.patrolOff") : t("commodore.patrol.title", { interval: patrolWord(t, patrol) }) };
+  const usage = run ? [t("commodore.mobile.usage"), t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ") : "";
+  return (
+    <div className="objectives-cm-profile">
+      <div className="objectives-cm-hero">
+        <CommodoreAvatar theaterId={commodoreId} state={commodoreMongleState(view, board.objectives)} size={104} label="" decorative />
+        <h2 className="objectives-cm-hero-name">{name}</h2>
+        {status ? <p className="objectives-cm-hero-status">{status}</p> : null}
+        {onEdit ? <button type="button" data-press="r3" className="objectives-cm-pill objectives-cm-edit" aria-label={t("commodore.mobile.editAria", { name })} onClick={onEdit}>{t("commodore.mobile.edit")}</button> : null}
+      </div>
+      <nav className="objectives-cm-cards" aria-label={t("commodore.mobile.sections")}>
+        <div className="objectives-cm-card">
+          {sessions ? <ProfileRow section="sessions" icon={<TargetIcon />} label={t("commodore.tabs.sessions")} value={sessionsValue} onOpen={onOpen} /> : null}
+          <ProfileRow section="log" icon={<LogIcon />} label={t("commodore.tabs.log")} value={logValue} onOpen={onOpen} />
+          <ProfileRow section="goals" icon={<PennantIcon />} label={t("commodore.trail.title")} value={goalsValue} onOpen={onOpen} />
+        </div>
+        <div className="objectives-cm-card">
+          <ProfileRow section="directive" icon={<DirectiveIcon />} label={t("commodore.tabs.directive")} value={directiveValue} onOpen={onOpen} />
+          <ProfileRow section="memory" icon={<BookmarkIcon />} label={t("commodore.tabs.memory")} value={memoryValue} onOpen={onOpen} />
+          <ProfileRow section="settings" icon={<GearIcon />} label={t("commodore.tabs.settings")} value={settingsValue} onOpen={onOpen} />
+        </div>
+      </nav>
+      {usage ? <p className="objectives-cm-profile-foot">{usage}</p> : null}
+    </div>
+  );
 }
 
-/* ── 사령관 상태 행 ─────────────────────────────────────────────────── */
+type ProfileValue = { readonly text: string; readonly tone?: "awaiting" | "danger" } | null;
 
-function CommodoreStatusRow({ t, commodoreId, view }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView | null }) {
-  const board = useObjectiveTheater(commodoreId);
-  const name = useCommodoreOwnerName(commodoreId, t);
-  const { meta, patrol } = commodoreSummary(t, view, board.objectives);
-  const status = view && !view.boardReady ? t("commodore.failed.boardUnavailable") : [...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ");
+function ProfileRow({ section, icon, label, value, onOpen }: { readonly section: CommodoreMobileTab; readonly icon: ReactNode; readonly label: string; readonly value: ProfileValue; readonly onOpen: (section: CommodoreMobileTab) => void }) {
   return (
-    <div className="objectives-cm-top">
-      <div className="objectives-cm-trow">
-        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={commodoreId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
-        <span className="objectives-cm-trow-tx">
-          <b>{name}</b>
-          <span className="objectives-cm-trow-ds">{status}</span>
-        </span>
-      </div>
-    </div>
+    <button type="button" data-press="r2" className="objectives-cm-prow" data-section={section} onClick={() => onOpen(section)}>
+      <span className="objectives-cm-prow-ic">{icon}</span>
+      <span className="objectives-cm-prow-lb">{label}</span>
+      {value ? <span className={`objectives-cm-prow-val${value.tone ? ` is-${value.tone}` : ""}`}>{value.text}</span> : null}
+      <span className="objectives-cm-prow-caret"><ChevronIcon /></span>
+    </button>
   );
 }
 
@@ -498,7 +556,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
     if (pinned.current) scrollToBottom(node);
   }, [chat, pending, turn, loaded, scrollToBottom]);
 
-  // 부모(CommodoreScreen)의 useLayoutEffect 가 --objectives-cm-head 를 적은 직후와, 독(--m-dock-h)·전사 자식이 자랄 때도 바닥 고정을 유지한다.
+  // 막대 몫(--m-chrome-top)이 정해진 직후와, 독(--m-dock-h)·전사 자식이 자랄 때도 바닥 고정을 유지한다.
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
