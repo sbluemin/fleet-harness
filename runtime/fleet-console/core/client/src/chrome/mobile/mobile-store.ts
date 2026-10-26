@@ -106,7 +106,37 @@ export function useMobileDestination(): MobileDestination {
 
 export function getMobileDestination(): MobileDestination { return destination; }
 
+/**
+ * 깊이를 쌓은 목적지 화면의 막대(`useMobilePluginBar`) — 상세에서 다른 목적지로 곧장 옮기면 그 깊이 항목이 history에 남아,
+ * 뒤로가 그 항목을 걷으며 주소만 옛 목적지로 돌아가고 화면은 남는다. 그래서 다른 목적지로 옮기기 전에 그 항목을 먼저 걷고, 내려앉은 뒤에 옮긴다.
+ */
+interface MobileDepthHolder { readonly pushed: () => number; readonly drop: () => void }
+let depthHolder: MobileDepthHolder | null = null;
+
+export function holdMobileDepth(holder: MobileDepthHolder): () => void {
+  depthHolder = holder;
+  return () => { if (depthHolder === holder) depthHolder = null; };
+}
+
+function sameDestinationRoot(left: MobileDestination, right: MobileDestination): boolean {
+  return left.kind === right.kind && (left as { entryId?: string }).entryId === (right as { entryId?: string }).entryId;
+}
+
 export function setMobileDestination(next: MobileDestination): void {
+  const leaked = depthHolder?.pushed() ?? 0;
+  if (leaked > 0 && depthHolder && !sameDestinationRoot(destination, next) && typeof window !== "undefined") {
+    depthHolder.drop();
+    // 걷기가 끝난(popstate) 뒤에 옮긴다 — 그 사이에 다음 화면이 항목을 쌓으면 걷기와 뒤엉킨다. 걷을 항목이 이미 없으면 짧은 시간 뒤에 옮긴다.
+    const apply = () => { window.removeEventListener("popstate", apply); window.clearTimeout(timer); applyMobileDestination(next); };
+    const timer = window.setTimeout(apply, 400);
+    window.addEventListener("popstate", apply);
+    window.history.go(-leaked);
+    return;
+  }
+  applyMobileDestination(next);
+}
+
+function applyMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;
