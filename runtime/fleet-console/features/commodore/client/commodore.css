@@ -721,7 +721,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-delete-setting .fc-settings-row__control { flex: none; }
 /* 폰 시트는 모바일 토큰으로 같은 정보 위계를 유지한다. */
 .commodore-delete-sheet .mobile-sheet-body { display: flex; flex-direction: column; gap: 14px; padding-bottom: 4px; }
-.commodore-delete-sheet .commodore-delete-question { font-size: var(--m-fs-heading, 19px); font-weight: var(--weight-medium); }
+.commodore-delete-sheet .commodore-delete-question { font-size: var(--m-fs-heading); font-weight: var(--weight-medium); }
 .commodore-delete-sheet .commodore-delete-lead, .commodore-delete-sheet .commodore-delete-prompt, .commodore-delete-sheet .commodore-delete-keep { color: var(--m-text-muted); font-size: var(--t-md); }
 .commodore-delete-sheet .commodore-delete-irreversible { color: var(--m-danger); }
 .commodore-delete-sheet .commodore-delete-prompt strong { color: var(--m-text); }
