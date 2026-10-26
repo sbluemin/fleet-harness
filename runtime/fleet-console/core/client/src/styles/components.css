@@ -10217,8 +10217,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-composer-capsule.has-attachments { flex-wrap: wrap; }
 /* 인용 칩 줄도 첨부 줄처럼 캡슐 맨 위 한 줄을 차지한다 — 입력·원은 그 아래 줄에 남는다. */
 .fc-composer-capsule:has(> .fc-composer-quotes) { flex-wrap: wrap; }
+/* 기준 폭 0 — 첨부·인용 줄로 캡슐이 줄바꿈될 때, 내용만큼 넓어지는 입력(field-sizing)이 긴 글에 원들을 다른 줄로 밀어내지 않는다. */
 .fc-composer-input {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   min-height: var(--fc-composer-circle);
   max-height: 160px;

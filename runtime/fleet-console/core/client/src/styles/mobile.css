@@ -1343,6 +1343,44 @@ html[data-view-mode="mobile"] .app-toast-action {
 /* 떠 있는 입력 캡슐은 비활성이어도 면이 불투명하다 — 뒤로 흐르는 본문이 비치지 않게 면은 그대로 두고 안의 내용만 흐리게 한다. */
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled { opacity: 1; }
 :root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled > * { opacity: var(--control-disabled-opacity); }
+/* 폰의 「+」는 입력 필드 바깥 왼쪽의 독립 원이고, 보내기 원은 필드 안 오른쪽 끝에 남는다. 캡슐 자신은 테두리 없는 줄이 되고
+   필드 면(테두리·바탕)은 ::before 가 「+」 자리 오른쪽에 그린다 — 두 대화(사령관·그룹)의 마크업은 그대로다. 「+」 원은 한 줄 필드와
+   같은 높이로 아래에 붙어, 글이 길어지거나 첨부·인용 줄이 생겨도 보내기 원과 같은 줄 높이에 머문다. 「+」 메뉴는 캡슐 왼쪽 끝 위로 뜬다. */
+:root[data-view-mode="mobile"] .fc-composer-capsule {
+  --fc-composer-outer: calc(var(--fc-composer-circle) + 16px);
+  --fc-composer-field-x: calc(var(--fc-composer-outer) + var(--space-2));
+  position: relative;
+  isolation: isolate;
+  padding: 8px 8px 8px calc(var(--fc-composer-field-x) + 8px);
+  border: 0;
+  background: none;
+}
+:root[data-view-mode="mobile"] .fc-composer-capsule::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 var(--fc-composer-field-x);
+  z-index: -1;
+  border: 1px solid var(--surface-capsule-rim);
+  border-radius: inherit;
+  background: var(--surface-capsule);
+  transition: border-color var(--duration-fast);
+}
+:root[data-view-mode="mobile"] .fc-composer-capsule:focus-within::before { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
+:root[data-view-mode="mobile"] .fc-composer-capsule.is-dragover::before { border-color: var(--brass); }
+/* 「+」를 감싼 칸은 줄에서 자리를 차지하지 않는다(간격 하나가 남지 않게). */
+:root[data-view-mode="mobile"] .fc-composer-capsule > :has(> .fc-composer-plus) { display: contents; }
+:root[data-view-mode="mobile"] .fc-composer-capsule .fc-composer-plus {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--fc-composer-outer);
+  height: var(--fc-composer-outer);
+  box-sizing: border-box;
+  border: 1px solid var(--surface-capsule-rim);
+  background: var(--surface-capsule);
+}
+:root[data-view-mode="mobile"] .fc-composer-capsule .fc-composer-plus svg { width: 20px; height: 20px; }
+:root[data-view-mode="mobile"] .fc-composer-capsule .fc-composer-plus:is([aria-expanded="true"], :focus-visible) { background: var(--brass-glow); }
 .mobile-conv-head, .mobile-conv-searchbar { display: flex; flex: none; align-items: center; gap: 8px; min-height: 60px; padding: 8px 14px 6px; }
 .mobile-conv-gap { flex: 1; min-width: 0; }
 .mobile-conv-round { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; color: var(--m-text-nav); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; --pr-r: 50%; }
