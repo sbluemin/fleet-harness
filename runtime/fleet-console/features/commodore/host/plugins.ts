@@ -433,9 +433,16 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   });
 
   return {
-    /** Console 이 뜰 때 한 번 — 기본 제공 등록·갱신을 배경에서 시작한다. */
-    start(): void { void ensurePresets(); },
-    catalog(): PluginCatalogView { void ensurePresets(); return catalog(); },
+    /**
+     * 목록을 처음 읽을 때 기본 제공 행을 받는 중으로 세우고 등록·갱신을 배경에서 시작한다. Console 기동에서 하지 않는 이유:
+     * 화면을 열지 않는 Console(테스트·원격 전용 등)까지 네트워크로 저장소를 받게 되기 때문이다.
+     */
+    catalog(): PluginCatalogView {
+      const missing = PRESET_MARKETPLACES.filter((preset) => !readRegistry().marketplaces.some((row) => row.name === preset.name));
+      if (missing.length) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, ...missing.map((preset): RegistryMarketplace => ({ name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: true, status: "syncing" }))] }));
+      void ensurePresets();
+      return catalog();
+    },
     async add(rawSource: string, ref?: string): Promise<MarketplaceView> {
       const source = detectMarketplaceSource(rawSource, ref);
       if (!source) throw new CommodoreStoreError("invalid_source");
