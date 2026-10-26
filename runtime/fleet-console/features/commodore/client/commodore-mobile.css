@@ -30,6 +30,8 @@
 .objectives-cm-card { display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; background: var(--m-surface); }
 .objectives-cm .objectives-cm-prow { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 56px; padding: 0 14px 0 18px; color: var(--m-text); font-size: var(--m-fs-list); --pr-r: 0px; }
 .objectives-cm-prow + .objectives-cm-prow::before { content: ""; position: absolute; top: 0; right: 0; left: 54px; border-top: 1px solid var(--m-hairline); }
+/* 어두운 면(--m-surface)에서는 --m-hairline이 면과 거의 같은 색이라 선이 사라진다 — 한 단 진한 헤어라인을 쓴다(말풍선의 밝음 전용 테두리와 같은 문법). */
+:root[data-mobile-scheme="dark"] .objectives-cm-prow + .objectives-cm-prow::before { border-top-color: var(--m-hairline-strong); }
 .objectives-cm-prow-ic { display: grid; flex: none; place-items: center; width: 22px; color: var(--m-text-nav); }
 .objectives-cm-prow-lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-cm-prow-val { flex: none; max-width: 52%; overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
