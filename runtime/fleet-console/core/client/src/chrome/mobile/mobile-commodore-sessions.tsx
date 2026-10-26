@@ -14,6 +14,11 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
 
+/** 「지휘관 세션」 본문 머리의 「확인 필요 N」 수 — 사령관 세부 첫 화면의 행이 같은 원천을 읽어 두 화면의 수가 어긋나지 않는다. */
+export function useMobileCommodoreAttentionCount(commodoreId: string): number {
+  return useMobileAttention(useConsoleState(), commodoreId).rows.length;
+}
+
 /**
  * 사령관 화면 「지휘관 세션」 탭의 본문 — 그 사령관이 소유한 지휘관 세션(최상위 Objective 대화)만 모은다.
  * 맨 위 「확인 필요 N」(사람을 기다리는 세션과 그 사령관 문맥의 플러그인 항목), 「진행 중」, 끝에 「시작 전 N」·「완료 N」 접기(`MobileHomeSections`).

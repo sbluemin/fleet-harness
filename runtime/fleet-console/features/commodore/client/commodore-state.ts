@@ -1,4 +1,4 @@
-import type { CommodoreClientDeps, CommodoreMobileActions, CommodoreMobileSessionsProps } from "./deps.js";
+import type { CommodoreClientDeps, CommodoreMobileActions, CommodoreMobileSessions } from "./deps.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "../../execution/client/composer-primitives/attachments.js";
 import { createConversationStream } from "../../execution/shared/conversation/stream.js";
@@ -405,8 +405,8 @@ export function commodoreDecisionCardRenderer(): ComponentType<AgentDecisionCard
   return installed?.chat.DecisionCard ?? null;
 }
 
-/** 폰 「지휘관 세션」 탭 본문(호스트 `mobileSessions`). 설치 전이거나 호스트가 주지 않으면 null — 탭이 서지 않는다. */
-export function commodoreMobileSessionsRenderer(): ComponentType<CommodoreMobileSessionsProps> | null {
+/** 폰 「지휘관 세션」 탭의 본문과 확인 필요 수(호스트 `mobileSessions`). 설치 전이거나 호스트가 주지 않으면 null — 탭이 서지 않는다. */
+export function commodoreMobileSessions(): CommodoreMobileSessions | null {
   return installed?.mobileSessions ?? null;
 }
 

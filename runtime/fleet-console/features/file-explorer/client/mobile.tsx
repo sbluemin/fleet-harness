@@ -90,6 +90,18 @@ export function MobileFileTree(ctx: PaneContext) {
   }, [theaterId, load]);
   const wasVisible = useRef(visible);
   const params = ctx.params;
+  // 새로고침·주소 다시 열기는 트리만 세운다 — 주소에 문서 좌표가 남아 있고 문서 칸이 아직 없으면 그 문서를 다시 연다(데스크톱 트리의 세션 복원과 같은 길).
+  // 다른 곳에서 연 파일은 호스트가 문서 칸을 먼저 열어 두므로 건드리지 않는다. 마운트마다 한 번만 — 닫고 돌아온 트리가 다시 열지 않게.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !theaterId) return;
+    restoredRef.current = true;
+    const path = params.path;
+    if (!path || params.directory !== undefined || panes.isOpen(DOCUMENT_PANE_ID)) return;
+    const scope = params.theaterId || theaterId;
+    activateStoredDocument(scope, { relativePath: path, name: nameOfPath(path), preview: params.preview !== "false" });
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path, theaterId: scope } });
+  }, [theaterId, params, panes]);
   useEffect(() => {
     if (visible && !wasVisible.current) {
       revalidate();
