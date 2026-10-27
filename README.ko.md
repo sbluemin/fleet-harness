@@ -57,7 +57,7 @@ fleet console
 
 | 공급자 | 로그인 | 모델 |
 |---|---|---|
-| **Codex** | ChatGPT 구독 | GPT-6.1 Sol · Terra, GPT-6 Astra · Sol · Luna. 각각 272K·524K·1M 컨텍스트, 그리고 각각의 Fast 쌍둥이 |
+| **Codex** | ChatGPT 구독 | GPT-6.1 Sol과 GPT-6 Astra · Sol · Luna. 각각 272K·524K·1M 컨텍스트와 Fast 쌍둥이. GPT-6.1 Terra는 500K에서 시작하고 524K·1M 변형과 Fast 쌍둥이가 있습니다 |
 | **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 4 Argon |
 | **xAI** | Grok 구독 | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 | **Cursor** | Cursor 구독 | Grok 4.7 · Grok 4.7 Fast. 각각 256K·500K 컨텍스트 |

@@ -57,7 +57,7 @@ The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps
 
 | Provider | Sign-in | Models |
 |---|---|---|
-| **Codex** | ChatGPT subscription | GPT-6.1 Sol · Terra, GPT-6 Astra · Sol · Luna, each at 272K, 524K or 1M context, with a Fast twin |
+| **Codex** | ChatGPT subscription | GPT-6.1 Sol and GPT-6 Astra · Sol · Luna, each at 272K, 524K or 1M context, with a Fast twin. GPT-6.1 Terra opens at 500K, with 524K and 1M variants and a Fast twin |
 | **Antigravity** | Google subscription | Gemini 3.8 Flash · Gemini 4 Argon |
 | **xAI** | Grok subscription | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 | **Cursor** | Cursor subscription | Grok 4.7 · Grok 4.7 Fast, each at 256K or 500K context |
