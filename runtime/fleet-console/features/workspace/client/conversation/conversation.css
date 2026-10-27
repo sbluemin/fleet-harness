@@ -159,87 +159,6 @@
   flex-direction: column;
 }
 
-/* 사령관 대화 칸과 그 옆의 지휘관 대화 칸. 나뉘지 않은 동안에도 사령관 칸은 이 틀 안에 남는다 — 칸이 다시 서면 그 탭이 연 사이드바가
-   걷히기 때문이다. 나뉘면 사령관 칸이 저장된 비율을 갖고 지휘관 칸이 나머지를 갖는다. */
-.conversation-split {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-.conversation-split > .conversation-column { min-width: 0; }
-.conversation-split[data-split] > .conversation-column:first-child { flex: 0 0 var(--commander-split-left, 50%); }
-/* 맨 위 줄을 도구 분할 폭만큼 더 뻗는 것은 맨 오른쪽 칸의 몫이다 — 사령관 칸이 뻗으면 그 pill 이 지휘관 칸 위로 밀린다.
-   도구 캡슐은 맨 위 줄 오른쪽 끝(지휘관 칸 위)에 선다. 그래서 그 몫만큼 비우는 것은 지휘관 칸의 오른쪽뿐이고, 나머지 가장자리는
-   좁은 칸에서도 제목이 접히지 않게 작은 여백만 둔다. */
-.conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row { right: 0; padding: 0 var(--space-3); }
-.conversation-split[data-split] > .conversation-column:last-child > .conversation-pill-row { padding-left: var(--space-3); }
-/* 좁은 창에서 지휘관 칸만 설 때 — 사령관 칸은 자리를 비키되 마운트된 채 남는다(다시 서면 그 탭이 연 사이드바가 걷힌다). */
-.conversation-split[data-split-narrow] > .conversation-column:first-child { display: none; }
-.conversation-split-back {
-  flex: none;
-  height: 28px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  cursor: pointer;
-}
-.conversation-split-back:hover,
-.conversation-split-back:focus-visible {
-  background: var(--control-rest-hover);
-  color: var(--text-primary);
-  outline: none;
-}
-.conversation-split-divider {
-  position: relative;
-  flex: 0 0 9px;
-  cursor: col-resize;
-  touch-action: none;
-}
-.conversation-split-divider::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 4px;
-  width: 1px;
-  background: var(--hairline);
-}
-.conversation-split-divider:hover::before,
-.conversation-split-divider[data-dragging]::before,
-.conversation-split-divider:focus-visible::before { background: var(--brass); }
-.conversation-split-divider:focus-visible { outline: none; }
-.conversation-split-controls {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.conversation-split-control {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.conversation-split-control svg { width: 16px; height: 16px; }
-.conversation-split-control:hover,
-.conversation-split-control:focus-visible {
-  background: var(--control-rest-hover);
-  color: var(--text-primary);
-  outline: none;
-}
-.conversation-split-empty > .conversation-pill-row { justify-content: flex-end; }
-
 /* 가운데 열의 맨 위 줄 — 레이아웃에서 자리를 차지하지 않는 투명 오버레이다. pill 과 단추만 그 위에 떠 있고, 대화는 창 맨 위(0px)부터
    그 밑으로 흘러 올라간다(Grok Bot). 빈 자리는 클릭을 내용에 넘긴다 — Desktop 에서는 그 빈 자리가 창을 끄는 영역이다.
    도구 분할은 맨 위 줄 아래만 쓰므로(workbench.css) 이 줄은 칸이 비킨 분할 폭만큼 오른쪽으로 더 뻗어 작업 영역 맨 위 줄(.conversation-band)
@@ -1465,12 +1384,6 @@ html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conver
   padding-right: max(0px, var(--conversation-caption-reserve) - var(--conversation-quota-space));
 }
 
-/* 분할의 왼쪽 사령관 칸 위에는 도구가 없다. Desktop 의 drag 예약도 오른쪽 칸만 맡고, 왼쪽은 자기 칸 끝에서 멈춘다. */
-html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-split[data-split] > .conversation-column:first-child > .conversation-pill-row {
-  right: 0;
-  padding-right: var(--space-3);
-}
-
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-tools,
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
@@ -1552,7 +1465,3 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
 .side-bar-cluster-row-gauge + .side-bar-cluster-row-fraction { margin-left: -2px; }
 @container (max-width: 300px) { .side-bar-cluster-row-gauge { width: 32px; } }
 @container (max-width: 260px) { .side-bar-cluster-row-gauge { display: none; } }
-.conversation-split-return { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: none; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer; }
-.conversation-split-return svg { width: 15px; height: 15px; }
-.conversation-split-return:hover { background: var(--wash-hover); color: var(--text-primary); }
-.conversation-split-return:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }

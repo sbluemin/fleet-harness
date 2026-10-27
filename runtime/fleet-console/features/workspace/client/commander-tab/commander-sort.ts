@@ -24,7 +24,7 @@ export const SORTS: readonly { readonly key: SortKey; readonly label: CoreMessag
   { key: "manual", label: "commanderTab.sort.manual", direction: "asc" },
 ];
 
-// 정렬은 브라우저에 하나 — 모든 사령관이 함께 쓴다(사이드바 닫힘·분할 기억과 같은 전역 규칙).
+// 정렬은 브라우저에 하나 — 모든 사령관이 함께 쓴다(사이드바 닫힘과 같은 전역 규칙).
 const SORT_KEY = "fleet-console.commanderTab.sort";
 const DEFAULT_SORT: SortPreference = { key: "activity", direction: "desc", answerFirst: true, grouped: false };
 

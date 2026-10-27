@@ -47,7 +47,7 @@ export function mongleStateOfMark(mark: ObjectiveMarkVisual | undefined, facts: 
 }
 
 /**
- * Objective 하나의 얼굴 — 사이드바 밖 표면(지휘관 탭 레일·대화 머리·그룹 구성원 탭)이 쓴다. 활동은 Console 의 공개 축이라
+ * Objective 하나의 얼굴 — 사이드바 밖 표면(지휘관 레일·대화 머리·그룹 구성원 탭)이 쓴다. 활동은 Console 의 공개 축이라
  * 지휘관은 구성원 활동을 끌어올린 값, 구성원은 자기 값이다. Objective 이 없으면 시작 전이다. 안 본 답은 읽지 않는다.
  */
 export function objectiveRecordMongleState(

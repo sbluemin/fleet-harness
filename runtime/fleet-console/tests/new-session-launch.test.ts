@@ -80,7 +80,7 @@ describe("resolveMentionEntry", () => {
 });
 
 // 대표 데스크톱 경로: 레지스트리가 정준 id를 붙인 뒤 행 선택·시작 화면·행위·세션 승계까지 같은 로컬 목표를 가리켜야 한다.
-it("keeps a registry goal in its commander pane before and after its session arrives", async () => {
+it("opens a registry goal as a full conversation before and after its session arrives", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   // jsdom 은 글자 범위의 기하를 제공하지 않는다. 이 테스트는 세션 승계를 보고, 머리 줄 배치는 실앱에서 검증한다.
@@ -92,7 +92,8 @@ it("keeps a registry goal in its commander pane before and after its session arr
   const { ConversationStage } = await import("../features/workspace/client/conversation/conversation-shell.js");
   const { useConsoleState } = await import("../core/client/src/hooks/use-store.js");
   const { openConversationSurface, getConversationSurface, closeConversationSurface } = await import("../features/workspace/client/conversation/conversation-surface-store.js");
-  const { openCommanderSplit, getCommanderSplit, closeCommanderSplit } = await import("../features/workspace/client/conversation/commander-split-store.js");
+  const { connectFreshConversation, freshConversationSurface } = await import("../features/objectives/client/fresh-conversation.js");
+  const { useConversationSurface, subscribeConversationSurface } = await import("../features/workspace/client/conversation/conversation-surface-store.js");
   const { setConversationBodyRenderer, setConversationStandInComposer } = await import("../features/workspace/client/conversation/conversation-slots.js");
   const { upsertObjectiveLocally, removeObjectiveLocally } = await import("../features/objectives/client/objectives-state.js");
   const { installCommodoreBoard } = await import("../features/commodore/client/board.js");
@@ -122,8 +123,8 @@ it("keeps a registry goal in its commander pane before and after its session arr
     get: () => localClusters, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   } }]);
   const registry = { ...await loadFeatureRegistry(), objectiveRecordClusters: clusters, conversationSurfaces: [{
-    id: "test-commodore", title: () => "Owner conversation", render: () => h("p", null, "Owner conversation"), commanderSplit: () => owner,
-  }] };
+    id: "test-commodore", title: () => "Owner conversation", render: () => h("p", null, "Owner conversation"), commodoreId: () => owner,
+  }, freshConversationSurface] };
   const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false }] };
   const offBoard = installCommodoreBoard({
     read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {}, railEntryIds: [],
@@ -136,15 +137,16 @@ it("keeps a registry goal in its commander pane before and after its session arr
   setState({ objectiveRecords: [], nestedObjectiveRecords: [], activeObjectiveId: null, newSession: null, groups: [] });
   upsertObjectiveLocally(goal);
   expect(clusters.get()[0]?.id).toBe(`objectives:${id}`);
-  // 기존에 저장한 선택은 호스트 묶음 id가 아니라 로컬 Objective id다.
-  openCommanderSplit(owner, id);
+  const offFresh = connectFreshConversation({ isActive: () => true, open: openConversationSurface, close: closeConversationSurface, current: getConversationSurface, subscribe: subscribeConversationSurface });
   openConversationSurface("test-commodore", { commodoreId: owner });
   const node = document.createElement("div"); document.body.append(node);
   const root = createRoot(node);
   function Screen() {
     const state = useConsoleState();
+    const surface = useConversationSurface();
+    const selectedId = typeof surface?.params.objectiveId === "string" ? surface.params.objectiveId : state.activeObjectiveId;
     return h(FeatureRegistryProvider, { value: registry },
-      h(CommodoreCommanderList, { commodoreId: owner }),
+      h(CommodoreCommanderList, { commodoreId: owner, selectedId }),
       h(ConversationStage, { state, insets: { top: 0, right: 0, bottom: 0, left: 0 }, language: "en", objectiveRecordKinds: [], onClose() {},
         toolContext: { theaterId: null, pathContext: { kind: "root", relPath: null, label: "" }, language: "en", api: {} } as Parameters<typeof ConversationStage>[0]["toolContext"] }),
     );
@@ -152,13 +154,12 @@ it("keeps a registry goal in its commander pane before and after its session arr
   try {
     await act(async () => root.render(h(Screen)));
     const row = () => node.querySelector<HTMLButtonElement>(`[data-cluster-row-id="objectives:${id}"] .side-bar-cluster-row-main`)!;
+    await act(async () => row().click());
     expect(row().getAttribute("aria-current")).toBe("true");
     expect(node.querySelector(".objectives-fresh-title")?.textContent).toBe(goal.title);
     expect(node.querySelector("[data-pane-composer]")?.getAttribute("data-pane-composer")).toBe(id);
     expect(node.querySelector(".objectives-commodore-recent-actions")?.textContent).toContain("Keep the goal beside its owner");
-    await act(async () => { closeCommanderSplit(); });
-    await act(async () => row().click());
-    expect(getCommanderSplit().picked[owner]).toBe(id);
+    expect(getConversationSurface()?.params.objectiveId).toBe(id);
     expect(node.querySelector(".objectives-fresh-title")?.textContent).toBe(goal.title);
     await act(async () => {
       localClusters = [{ ...localClusters[0]!, root: id, avatarObjectiveId: undefined, row: { groupId: null, order: 0, fold: [id] } }, question];
@@ -169,14 +170,14 @@ it("keeps a registry goal in its commander pane before and after its session arr
     expect(node.querySelector("[data-pane-session]")?.getAttribute("data-pane-session")).toBe(id);
     expect(node.querySelector(".objectives-fresh-title")).toBeNull();
     expect(row().getAttribute("aria-current")).toBe("true");
-    expect(getCommanderSplit().picked[owner]).toBe(id);
-    expect(getConversationSurface()?.surfaceId).toBe("test-commodore");
+    expect(getState().activeObjectiveId).toBe(id);
+    expect(getConversationSurface()).toBeNull();
     await act(async () => node.querySelector<HTMLButtonElement>('[data-cluster-row-id="objectives:commodore-ask:question"] .side-bar-cluster-row-main')!.click());
     expect(openQuestion).toHaveBeenCalledOnce();
-    expect(getCommanderSplit().picked[owner]).toBe(id);
+    expect(getState().activeObjectiveId).toBe(id);
   } finally {
     await act(async () => root.unmount());
-    node.remove(); closeConversationSurface(); closeCommanderSplit(); offComposer(); offBody(); offBoard();
+    node.remove(); closeConversationSurface(); offFresh(); offComposer(); offBody(); offBoard();
     removeObjectiveLocally(id); setState(previous); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
   }
 });

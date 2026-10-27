@@ -1,4 +1,4 @@
-import type { CommodoreClientDeps, CommodoreCommanderSessions, CommodoreMobileActions, CommodoreMobileSessions } from "./deps.js";
+import type { CommodoreClientDeps, CommodoreMobileActions, CommodoreMobileSessions } from "./deps.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "../../execution/client/composer-primitives/attachments.js";
 import { createConversationStream } from "../../execution/shared/conversation/stream.js";
@@ -428,10 +428,7 @@ export function commodoreMobileSessions(): CommodoreMobileSessions | null {
   return installed?.mobileSessions ?? null;
 }
 
-/** 데스크톱 「지휘관」 탭의 본문(호스트 `commanderSessions`). 설치 전이거나 호스트가 주지 않으면 null — 탭이 서지 않는다. */
-export function commodoreCommanderSessions(): CommodoreCommanderSessions | null {
-  return installed?.commanderSessions ?? null;
-}
+
 
 /** 폰 사령관 세부의 호스트 동작(호스트 `mobileActions`). 설치 전이거나 호스트가 주지 않으면 null — 그 동작이 서지 않는다. */
 export function commodoreMobileActions(): CommodoreMobileActions | null {

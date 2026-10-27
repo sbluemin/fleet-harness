@@ -37,7 +37,7 @@ import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 /*
  * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
- * 지휘관 세션은 사령관 대화의 오른쪽 사이드바 「지휘관」 탭에 있다(commander-tab) — 여기서는 사령관을 고르고 옮기고 다룬다.
+ * 지휘관 세션은 사령관 대화의 고스트 목록에 있다(commander-tab) — 여기서는 사령관을 고르고 옮기고 다룬다.
  */
 
 interface ObjectiveRecordsSideBarProps {

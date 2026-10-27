@@ -1,0 +1,126 @@
+/* 얼굴은 거터 안에서만 커진다. 본문과 입력창의 배치·폭은 레일이 소유하지 않는다. */
+.commander-ghost {
+  position: absolute;
+  z-index: 5;
+  top: 60px;
+  right: 6px;
+  bottom: 116px;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0.74;
+  transition: opacity 160ms ease;
+  outline: none;
+}
+.commander-ghost:is(:hover, :focus-within, [data-expanded]) { opacity: 1; }
+.commander-ghost-item {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.commander-ghost-item:hover { background: var(--wash-hover); }
+.commander-ghost-item[aria-current="true"] { background: var(--wash-hover); box-shadow: inset 0 0 0 1px var(--hairline); }
+.commander-ghost-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-ghost-face { display: flex; transform: scale(var(--ghost-scale, 1)); transform-origin: center; transition: transform 80ms ease-out; }
+.commander-ghost-rule { flex: none; width: 18px; height: 1px; margin: 5px 0 3px; background: var(--hairline-strong); }
+@property --commander-fade-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --commander-fade-bottom { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.commander-ghost-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  --commander-fade-top: 0px;
+  --commander-fade-bottom: 0px;
+  transition: --commander-fade-top 180ms ease, --commander-fade-bottom 180ms ease;
+  mask-image: linear-gradient(transparent, #000 var(--commander-fade-top), #000 calc(100% - var(--commander-fade-bottom)), transparent);
+}
+.commander-ghost-scroll::-webkit-scrollbar { display: none; }
+.commander-ghost-scroll[data-more-top="true"] { --commander-fade-top: 16px; }
+.commander-ghost-scroll[data-more-bottom="true"] { --commander-fade-bottom: 16px; }
+.commander-ghost-open, .commander-ghost-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-lg);
+  cursor: pointer;
+}
+.commander-ghost-open { margin-top: 4px; }
+.commander-ghost-open:hover, .commander-ghost-close:hover { background: var(--wash-hover); }
+.commander-ghost-close:focus-visible { outline: 2px solid var(--control-focus-ring); }
+.commander-ghost-tip {
+  position: absolute;
+  z-index: 7;
+  right: 50px;
+  transform: translateY(-50%);
+  max-width: 260px;
+  width: max-content;
+  padding: 5px 10px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  pointer-events: none;
+}
+.commander-ghost-tip strong, .commander-ghost-tip small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-ghost-tip strong { font-weight: var(--weight-medium); }
+.commander-ghost-tip small { color: var(--text-tertiary); font-size: var(--t-xs); }
+.commander-ghost-list {
+  position: absolute;
+  z-index: 6;
+  top: -4px;
+  right: 0;
+  width: 312px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-xl);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  container-type: inline-size;
+}
+.commander-ghost-list-head { display: flex; align-items: center; padding: 6px; flex: none; }
+.commander-ghost-list-head .commander-list-owner { flex: 1; min-width: 0; }
+.commander-ghost-list .commander-tab { min-height: 0; }
+.commander-ghost-list .commander-tab-bar { flex: none; }
+.commander-ghost-list .commander-tab-groups { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* 목록은 dock가 아니다 — 기존 행에는 확대 없이 면 워시만 남긴다. */
+.commander-ghost-list .side-bar-cluster-row:hover { transform: none; }
+:root[data-view-mode="mobile"] .commander-ghost { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .commander-ghost, .commander-ghost-scroll, .commander-ghost-face { transition: none; }
+  .commander-ghost-face { transform: none; }
+}
+
+.commander-ghost-progress { position: absolute; bottom: 3px; display: flex; height: 2px; }
+.commander-ghost-progress .side-bar-cluster-row-gauge { display: block; width: 18px; height: 2px; }
+.commander-ghost-progress .side-bar-cluster-row-fraction { display: none; }
+.commander-ghost-questions { position: absolute; top: 2px; right: 1px; color: var(--brass-ink); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }

@@ -1302,3 +1302,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 :root[data-view-mode="mobile"] .group-relay-pill { gap: 8px; }
 :root[data-view-mode="mobile"] .group-relay-pill-party { gap: 7px; min-height: 36px; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 :root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { width: 28px; height: 28px; }
+
+/* 고스트 레일은 열이 아니라 거터에 선다. 입력창은 원래 폭을 유지한다. */
+.conversation-stage[data-commander-rail] .group-chat-log { padding-right: max(clamp(var(--space-4), 4cqi, 48px), 54px); }

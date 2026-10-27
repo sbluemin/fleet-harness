@@ -1,4 +1,3 @@
-import { openCommanderSplit } from "./conversation/commander-split-store.js";
 import type { CommodoreAliasEditor } from "../shared/console-state.js";
 import { getViewedTheaterId, useViewedTheaterId } from "../../../core/client/src/integration/viewed-theater.js";
 import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
@@ -28,7 +27,7 @@ import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-stor
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleObjectiveRecordsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { closeNewSession, cancelAddTheater, consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -235,14 +234,8 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
   useEffect(() => {
     const request = state.pendingLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
-    const launchTarget = state.newSession;
     consumeLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId, request.placement === "commander-split" && request.commodoreId ? (objectiveId) => {
-      const current = getState().newSession;
-      if (current !== launchTarget || current?.placement !== "commander-split" || current.commodoreId !== request.commodoreId) return;
-      openCommanderSplit(request.commodoreId!, objectiveId);
-      closeNewSession();
-    } : undefined)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
@@ -505,9 +498,8 @@ async function launchViaPlugin(
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
   commodoreId?: string,
-  onCreated?: (objectiveId: string) => void,
 ): Promise<void> {
-  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId, commodoreId, onCreated);
+  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId, commodoreId);
 }
 
 async function createLaunchedObjective(
@@ -519,7 +511,6 @@ async function createLaunchedObjective(
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
   commodoreId?: string,
-  onCreated?: (objectiveId: string) => void,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {}); };
@@ -542,6 +533,5 @@ async function createLaunchedObjective(
   await fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {});
   if (!newObjectiveId) return;
   const objectiveRecordHydrated = getState().objectiveRecords.some((objectiveRecord) => objectiveRecord.id === newObjectiveId);
-  if (onCreated) onCreated(newObjectiveId);
-  else if (objectiveRecordHydrated) focusObjective(newObjectiveId);
+  if (objectiveRecordHydrated) focusObjective(newObjectiveId);
 }

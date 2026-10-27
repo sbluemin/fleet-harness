@@ -5,7 +5,6 @@ import type { ObjectiveRuntimeState } from "../../../execution/shared/client-con
 
 import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival } from "../../../execution/client/objective-marks.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
-import { getCommanderSplitVisibleObjective } from "../conversation/commander-split-store.js";
 import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { getDesktopZoomFactor, subscribeDesktopZoomFactor, getState, subscribe } from "../../../../core/client/src/integration/store.js";
 import type { ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
@@ -123,9 +122,7 @@ export function trackObjectiveActivityTransitions(input: {
     // 도착 마크로 남기지 않으며, 마크는 전이 순간에만 붙는다. 판정만 정지에 맞추고
     // activeObjectiveAcknowledged 자체는 두어야 한다 — 그 값을 내리면 종료 복구(setActiveObjective)가
     // 전부터 있던 도착 마크까지 확인 처리해 지운다.
-    // 사령관 대화 옆 칸에 보이는 지휘관도 사람이 보고 있는 대화다 — 그 칸에 도착한 응답은 안 본 채 끝난 것이 아니다.
-    const watched = (objectiveRecord.id === input.activeObjectiveId && input.activeObjectiveAcknowledged === true)
-      || objectiveRecord.id === getCommanderSplitVisibleObjective();
+    const watched = objectiveRecord.id === input.activeObjectiveId && input.activeObjectiveAcknowledged === true;
     const focusedAndAcknowledged = watched && !isIdleArrivalAcknowledgementSuspended();
     if (nextStatuses.get(objectiveRecord.id) === "running") {
       if (!focusedAndAcknowledged) markDeparture(objectiveRecord.id);

@@ -16,7 +16,7 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreCommanderSessions, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
@@ -35,7 +35,7 @@ type T = Translate<CommodoreMessageKey>;
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { commanders: "commodore-commanders", directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
+const TAB_IDS = { directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
@@ -406,11 +406,6 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
-  // 「지휘관」 탭은 이 사령관의 지휘관 세션 목록이다 — 줄을 고르면 그 지휘관이 이 대화 옆 칸에 선다. 목록은 호스트가 그린다.
-  if (tab === "commanders") {
-    const sessions = commodoreCommanderSessions();
-    return sessions ? <sessions.List commodoreId={commodoreId} /> : null;
-  }
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
@@ -431,7 +426,6 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
 const TAB_INBOX_PAGES = { directive: "directive", memory: "memory", settings: "settings" } as const;
 
 const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
-  commanders: "commodore.tabs.commanders",
   directive: "commodore.tabs.directive",
   memory: "commodore.tabs.memory",
   settings: "commodore.tabs.settings",
@@ -473,8 +467,8 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   },
   // 등록 Theater가 0개여도 이 대화의 탭은 오른쪽 패널에 선다. 레일 범위는 Theater 그대로다.
   opensWithoutTheater: true,
-  // 「지휘관」 탭에서 고른 지휘관의 그룹 대화가 이 대화 옆에 선다 — 읽기 전용(보관) 대화는 나누지 않는다.
-  commanderSplit: (ctx) => {
+  // 소유 사령관의 도구 문맥과 대화 탐색 목록을 함께 쓴다.
+  commodoreId: (ctx) => {
     const params = readParams(ctx.params);
     return params && !params.readOnly ? params.commodoreId : null;
   },
@@ -485,21 +479,19 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   },
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
-    ...(tab === "commanders" ? {} : { inboxPage: TAB_INBOX_PAGES[tab] }),
-    ...(tab === "commanders" ? { layout: "fill" as const } : {}),
+    inboxPage: TAB_INBOX_PAGES[tab],
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);
       return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
   })),
-  // 사령관에게서는 지휘관들이 먼저다 — 오른쪽 사이드바가 열려 있으면 「지휘관」 탭이 선다.
-  defaultTab: TAB_IDS.commanders,
+  // 사령관 대화의 기본 문맥은 지시다.
+  defaultTab: TAB_IDS.directive,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);
     if (!target || target.readOnly) return;
     const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
-    // 「지휘관」은 폰의 「지휘관 세션」이다. 폰의 「목표」 탭은 독립적으로 유지한다.
-    openCommodoreMobile(tab === "commanders" ? "sessions" : tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
+    openCommodoreMobile(tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
   },
 };
