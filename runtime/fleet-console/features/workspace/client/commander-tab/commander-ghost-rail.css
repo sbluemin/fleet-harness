@@ -3,14 +3,21 @@
    인셋을 보간하는 훅이라 여기선 쓰지 않는다 — 칸과 여백이 같은 길이 토큰을 직접 쓴다. */
 .conversation-stage[data-commander-rail] { --commander-list-span: 312px; }
 .commander-ghost {
-  /* 접힌 펼치기 단추의 맨 위. 펼친 머리도 이 높이를 쓴다 — 그 위는 작업 영역 맨 위 줄(GNB)이다. */
+  /* 접힌 펼치기 단추의 맨 위. 그 위는 작업 영역 맨 위 줄(GNB)이다. */
   --commander-rail-clearance: 60px;
+  /* 접힌 열은 가장자리에서 거터만큼 떨어져 있고, 32px 단추는 그 44px 열의 가운데다.
+     펼친 칸은 거터가 0이라, 접기 단추는 바깥에서 같은 합만큼 들여야 펼치기와 x가 같다. */
+  --commander-rail-gutter: 6px;
+  --commander-rail-column: 44px;
+  --commander-rail-toggle: 32px;
+  --commander-rail-toggle-inset: calc(var(--commander-rail-gutter) + (var(--commander-rail-column) - var(--commander-rail-toggle)) / 2);
+  --commander-rail-head-pad: 6px;
   position: absolute;
   z-index: 5;
   top: var(--commander-rail-clearance);
-  right: 6px;
+  right: var(--commander-rail-gutter);
   bottom: max(116px, calc(var(--conversation-dock-height, 0px) + 8px));
-  width: 44px;
+  width: var(--commander-rail-column);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -70,7 +77,7 @@
 .commander-ghost-scroll {
   flex: 1;
   min-height: 0;
-  width: 44px;
+  width: var(--commander-rail-column);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -86,12 +93,12 @@
 .commander-ghost-scroll::-webkit-scrollbar { display: none; }
 .commander-ghost-scroll[data-more-top="true"] { --commander-fade-top: 16px; }
 .commander-ghost-scroll[data-more-bottom="true"] { --commander-fade-bottom: 16px; }
-.commander-ghost[data-side="left"] { right: auto; left: 6px; }
+.commander-ghost[data-side="left"] { right: auto; left: var(--commander-rail-gutter); }
 .commander-ghost-open, .commander-ghost-close {
   flex: none;
   display: grid;
   place-items: center;
-  width: 32px;
+  width: var(--commander-rail-toggle);
   height: 28px;
   padding: 0;
   border: 0;
@@ -136,8 +143,24 @@
   background: transparent;
   container-type: inline-size;
 }
-.commander-ghost-list-head { display: flex; align-items: center; padding: 6px; flex: none; }
+.commander-ghost-list-head { display: flex; align-items: center; padding: var(--commander-rail-head-pad); flex: none; }
 .commander-ghost-list-head .commander-list-owner { flex: 1; min-width: 0; }
+/* 접기는 머리 줄의 끝이 아니라 접힌 펼치기 단추와 같은 칸이다. 목록이 clearance 아래에서 시작하므로 top 0 이 그 y다.
+   사령관 행은 그 칸(inset+단추 폭)을 비워 겹치지 않는다. */
+.commander-ghost[data-expanded] .commander-ghost-close {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: var(--commander-rail-toggle-inset);
+}
+.commander-ghost[data-side="left"][data-expanded] .commander-ghost-close { right: auto; left: var(--commander-rail-toggle-inset); }
+.commander-ghost[data-expanded] .commander-ghost-list-head {
+  padding-right: calc(var(--commander-rail-toggle-inset) + var(--commander-rail-toggle));
+}
+.commander-ghost[data-side="left"][data-expanded] .commander-ghost-list-head {
+  padding-right: var(--commander-rail-head-pad);
+  padding-left: calc(var(--commander-rail-toggle-inset) + var(--commander-rail-toggle));
+}
 .commander-ghost-list .commander-tab { min-height: 0; }
 .commander-ghost-list .commander-tab-bar { flex: none; }
 /* 메뉴는 정렬 칩이 아니라 막대 너비에 맞춘다. 칩의 오른쪽에 붙이면 312px 칸 밖으로 나가 overflow에 잘리고 사이드바와 겹친다. */
