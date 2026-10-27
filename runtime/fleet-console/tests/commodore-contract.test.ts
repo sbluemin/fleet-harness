@@ -489,6 +489,29 @@ describe("commodore theater state", () => {
     declare("./notes.html");
     expect((await icon()).status).toBe(404);
   });
+  it("settles marketplace fetches as failed instead of fetching forever when the Claude Code CLI is missing", async () => {
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
+    fs.mkdirSync(path.join(root, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", owner: { name: "Team" }, plugins: [{ name: "tool", source: "./plugins/tool" }] }));
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
+    const plugins = createCommodorePlugins({ root, executable: async () => { throw new Error("agent_cli_unavailable"); } });
+    const rows = () => new Map(plugins.catalog().marketplaces.map((row) => [row.name, row]));
+
+    // 목록을 처음 읽으면 기본 제공을 받는 중으로 세우고 배경에서 받는다 — CLI 가 없으면 받는 중에 남지 않고 실패로 끝나야 한다.
+    expect(rows().get("claude-plugins-official")?.status).toBe("syncing");
+    const refreshed = await plugins.refresh("team");
+    expect(refreshed.marketplaces.find((row) => row.name === "team")).toMatchObject({ status: "failed", error: "cli_unavailable" });
+    expect([...rows().values()].filter((row) => row.status === "syncing")).toEqual([]);
+    expect(rows().get("claude-plugins-official")).toMatchObject({ status: "failed", error: "cli_unavailable" });
+    // 지우기·설치 확인도 CLI 없이는 등록부를 바꾸지 않고 같은 이유로 거절한다.
+    await expect(plugins.remove("team")).rejects.toMatchObject({ code: "cli_unavailable" });
+    expect(rows().has("team")).toBe(true);
+    await expect(plugins.inspect("tool@team")).rejects.toMatchObject({ code: "cli_unavailable" });
+  });
 });
 
 describe("commodore fleet-memory", () => {

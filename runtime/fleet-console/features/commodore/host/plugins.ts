@@ -233,7 +233,10 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   }));
 
   const runCli = async (args: readonly string[]): Promise<CliResult> => {
-    const command = await options.executable();
+    // Claude Code CLI 를 찾지 못한 것도 CLI 실패 하나로 돌려준다 — 던지면 받는 중(syncing)으로 적어 둔 상태가 그대로 남고,
+    // 화면은 받는 중인 동안 2초마다 목록을 다시 읽으며 그때마다 기본 제공 받기를 또 시도한다.
+    let command: string;
+    try { command = await options.executable(); } catch { return { outcome: "failed", failureCode: "cli_unavailable" }; }
     fs.mkdirSync(home, { recursive: true });
     const env: NodeJS.ProcessEnv = { ...(options.env?.() ?? process.env), CLAUDE_CONFIG_DIR: home, GIT_TERMINAL_PROMPT: "0" };
     for (const key of Object.keys(env)) if (key.startsWith("FLEET_CONSOLE_")) delete env[key];
@@ -260,6 +263,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const errorCode = (result: CliResult): MarketplaceErrorCode => {
     const text = `${result.failureCode ?? ""} ${result.message ?? ""}`.toLowerCase();
     if (result.failureCode === "invalid_source") return "invalid_source";
+    if (result.failureCode === "cli_unavailable") return "cli_unavailable";
     // CLI 의 보호 거부 — 네트워크 문제가 아니므로 원인을 그대로 알린다(CLI 2.1.310 실측 문구·코드).
     if (/reserved for official anthropic marketplaces/.test(text)) return "reserved_name";
     if (result.failureCode === "declared" || /doesn't match its extraknownmarketplaces entry/.test(text)) {
@@ -507,7 +511,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         else patchMarketplace(preset.name, { status: "syncing", attemptedAt: now() });
         if (known()[preset.name]) {
           const result = await runCli(["marketplace", "update", preset.name]);
-          patchMarketplace(preset.name, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: known()[preset.name] ? "ready" : "failed", ...(result.outcome === "ok" ? {} : { error: errorCode(result) }) }, result.outcome === "ok");
+          // CLI 가 없으면 실패로 남겨 재시도 간격(PRESET_RETRY_MS)을 따르게 한다 — 받아 둔 이전 목록은 실패여도 그대로 보인다.
+          const unavailable = result.failureCode === "cli_unavailable";
+          patchMarketplace(preset.name, result.outcome === "ok" ? { status: "ready", updatedAt: now() } : { status: known()[preset.name] && !unavailable ? "ready" : "failed", ...(result.outcome === "ok" ? {} : { error: errorCode(result) }) }, result.outcome === "ok");
         } else {
           await fetchMarketplace({ kind: "github", locator: preset.repo, cliSource: preset.repo }, true, preset.name).catch(() => undefined);
         }
@@ -530,7 +536,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     if (!entry) throw new CommodoreStoreError("plugin_not_found");
     if (!installed()[id] || !loadDirOf(id)) {
       const result = await runCli(["install", id]);
-      if (result.outcome !== "ok") throw new CommodoreStoreError("install_failed");
+      if (result.outcome !== "ok") throw new CommodoreStoreError(result.failureCode === "cli_unavailable" ? "cli_unavailable" : "install_failed");
     }
     const dir = loadDirOf(id);
     if (!dir) throw new CommodoreStoreError("install_failed");
@@ -600,7 +606,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       const row = requireRow(name);
       if (row.preset) throw new CommodoreStoreError("preset_locked");
       await serial(async () => {
-        await runCli(["marketplace", "remove", name]);
+        // CLI 가 없으면 지우지 않는다 — 받아 둔 마켓플레이스와 그 플러그인이 Claude 홈에 남은 채 등록부에서만 사라지면 다시 찾을 길이 없다.
+        const result = await runCli(["marketplace", "remove", name]);
+        if (result.failureCode === "cli_unavailable") throw new CommodoreStoreError("cli_unavailable");
         update((registry) => ({ ...registry, marketplaces: registry.marketplaces.filter((item) => item.name !== name) }));
       });
       return catalog();

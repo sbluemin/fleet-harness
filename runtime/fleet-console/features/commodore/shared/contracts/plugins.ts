@@ -121,7 +121,9 @@ export type MarketplaceErrorCode =
   | "plugin_not_found"
   | "install_failed"
   | "trust_required"
-  | "unavailable";
+  | "unavailable"
+  /** Console 이 Claude Code CLI 를 찾지 못했다 — 받기·설치·제거는 모두 그 CLI 로 한다. */
+  | "cli_unavailable";
 
 /**
  * 라우트 — 모두 POST + JSON, Console 동일 origin. 카탈로그 화면은 응답으로 갱신하고, 사령관 설치 목록은 `commodore` 채널의
