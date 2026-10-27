@@ -276,12 +276,13 @@ describe("quota service", () => {
       now += 300_000;
       const emptied = (await service.getSummary()).providers["muse-code"];
       expect(emptied).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
+        fetchedAt: now,
         windows: [{ id: "weekly", usedPercent: 30 }],
       });
       expect(JSON.stringify(emptied)).not.toMatch(/secret/);
+      expect(service.peekSummary()?.providers["muse-code"]).toMatchObject({ status: "ok", fetchedAt: now });
 
       // 추론 스트림이 알려 준 창은 그 뒤의 빈 key 성공이 리셋 전에 지우면 안 된다.
       const sessionReset = now + 5 * 3_600_000;
@@ -296,9 +297,9 @@ describe("quota service", () => {
       now += 300_000;
       const afterStream = (await service.getSummary()).providers["muse-code"];
       expect(afterStream).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
+        fetchedAt: now,
         windows: [
           { id: "session", usedPercent: 4 },
           { id: "weekly", usedPercent: 30 },
@@ -307,14 +308,20 @@ describe("quota service", () => {
 
       const restarted = (await open().getSummary()).providers["muse-code"];
       expect(restarted).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
+        fetchedAt: now,
         windows: [
           { id: "session", usedPercent: 4 },
           { id: "weekly", usedPercent: 30 },
         ],
       });
+
+      // 리셋이 모두 지나도 창 없는 성공은 저장값을 지우거나 0%로 꾸미지 않는다.
+      now = liveReset + 1;
+      const lapsed = (await open().getSummary({ force: true })).providers["muse-code"];
+      expect(lapsed).toMatchObject({ status: "ok", windows: [] });
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]?.status).toBe("ok");
 
       open().record("muse-code", { status: "not_connected" });
       expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]).toBeUndefined();
