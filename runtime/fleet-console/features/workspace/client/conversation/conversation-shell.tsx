@@ -994,7 +994,8 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
     const measure = () => {
       frame = 0;
       // 캡슐은 대화 머리 위에 선다. 사령관·지휘관 전환과 세션 교체 때마다 실제 줄을 다시 찾는다.
-      const row = stage.querySelector<HTMLElement>(":scope > .conversation-column:last-child > .conversation-pill-row");
+      // 칸은 하나뿐이고 그 뒤에 고스트 레일이 형제로 붙으므로 마지막 자식인지는 묻지 않는다.
+      const row = stage.querySelector<HTMLElement>(":scope > .conversation-column > .conversation-pill-row");
       if (row !== observedRow) {
         releaseRow();
         resize?.disconnect();
