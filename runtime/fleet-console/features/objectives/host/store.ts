@@ -394,12 +394,12 @@ const virtualRank = (node: Pick<ObjectiveRecord, "id" | "ts">): number => -(node
 function pendingPreset(stored: StoredObjective): PendingCommander | null {
   if (!stored.pending) return null;
   const session = stored.session ?? {};
-  return { commodoreId: stored.commodoreId ?? "", theaterId: stored.theaterId ?? "", cwd: stored.cwd ?? "", title: stored.title ?? stored.id, groupId: stored.groupId ?? null,
+  return { commodoreId: stored.commodoreId ?? "", theaterId: stored.theaterId ?? "", ...(stored.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: stored.cwd ?? "", title: stored.title ?? stored.id, groupId: stored.groupId ?? null,
     createdAt: stored.ts?.createdAt ?? 0, sessionName: typeof session.sessionName === "string" ? session.sessionName : stored.id,
     ...(typeof session.model === "string" ? { model: session.model } : {}), ...(typeof session.effort === "string" ? { effort: session.effort } : {}), viewMode: stored.chatMode ? "chat" : "terminal" };
 }
 function draftFields(preset: PendingCommander) {
-  return { pending: true as const, commodoreId: preset.commodoreId, theaterId: preset.theaterId, cwd: preset.cwd, title: preset.title, groupId: preset.groupId,
+  return { pending: true as const, commodoreId: preset.commodoreId, theaterId: preset.theaterId, ...(preset.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: preset.cwd, title: preset.title, groupId: preset.groupId,
     ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, model: preset.model, effort: preset.effort }, chatMode: preset.viewMode === "chat" };
 }
 const bareRecord = (objectiveId: string): StoredObjective => ({ id: objectiveId, rank: 0, note: "", enlisted: true, missions: [] });
@@ -810,7 +810,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       hasSession: node !== null,
       id: stored.id,
       commodoreId: node?.commodoreId ?? pending!.commodoreId,
-      theaterId: node?.theaterId ?? pending!.theaterId,
+      theaterId: stored.theaterIdExplicit && stored.theaterId ? stored.theaterId : (node?.theaterId ?? pending!.theaterId),
       groupId: node ? node.groupId ?? null : liveGroup(pending!.commodoreId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
@@ -1356,7 +1356,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           criteriaIds.push(moved.id);
         }
         // 소유·Theater는 읽기 때 붙인 좌표다 — 중첩 스냅샷에도 파일 계약을 지켜 cwd와 원본 내용만 남긴다.
-        const { commodoreId: _owner, theaterId: _location, ...source } = stored;
+        const { commodoreId: _owner, theaterId: _location, theaterIdExplicit: _explicit, ...source } = stored;
         merged.push({ sourceId: id, title, at, by: by.objectiveId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds, source });
       }
       if (note.length > MAX_NOTE) throw new ObjectiveStoreError("note_too_long", undefined, { limit: MAX_NOTE });

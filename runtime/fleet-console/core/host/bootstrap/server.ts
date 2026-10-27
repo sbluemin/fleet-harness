@@ -2860,6 +2860,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       objectives = createObjectivesFeature({
         resolveCreation: (commodoreId, theaterId) => { if (!ownership) throw new Error("objective_owner_unavailable"); if (archiveStorage.ownerRecoveryRequired(commodoreId)) throw new ObjectiveArchiveError(409, "objective_owner_recovery_required"); return ownership.creation(commodoreId, theaterId); },
+        ownedTheaterIds: (commodoreId) => ownership?.theaterSummaries(commodoreId).filter((theater) => theater.status === "available").map((theater) => theater.theaterId) ?? [],
         storage: archiveStorage.board,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         objectiveRecords: { ...consoleFeaturePorts.objectiveRecords, deleteChild: (id) => deleteChildForPlugin(id, "objectives") },

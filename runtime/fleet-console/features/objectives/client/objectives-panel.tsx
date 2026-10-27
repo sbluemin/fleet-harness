@@ -133,6 +133,9 @@ const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
 
 
+/** 이번 시작 전 표면에 이미 맞춘 목표. 패널이 다시 마운트돼도 사람이 고친 선택을 되돌리지 않는다. */
+let followedStandingId: string | null = null;
+
 export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const t = getT(ctx.language);
   const language = ctx.language === "ko" ? "ko" : "en";
@@ -178,9 +181,20 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 가운데 칸이 보관된 완료 목표의 완료 화면이면 그 목표는 목록에 없어도 남는다 — 보드는 읽어 둔 끝난 목표 레코드를 보인다(완료라 고칠 수 없다).
   const standingId = useSyncExternalStore(subscribeFreshConversation, freshConversationObjectiveId, freshConversationObjectiveId);
   const shownDone = useSyncExternalStore(subscribeShownFinished, shownFinishedObjective, shownFinishedObjective);
+  // 시작 전 표면이 새로 서거나 그 목표가 보드에 늦게 들어올 때 한 번만 맞춘다. 사람이 고친 선택은 표면이 바뀔 때까지 둔다.
   useEffect(() => {
     if (!state.loaded) return;
-    if (selected && selected !== standingId && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
+    const standingOnBoard = standingId !== null && state.objectives.some((objective) => objective.id === standingId);
+    if (standingId !== followedStandingId) {
+      if (!standingOnBoard) {
+        if (standingId === null) followedStandingId = null;
+      } else {
+        followedStandingId = standingId;
+        if (selected !== standingId) setSelected(standingId);
+        return;
+      }
+    }
+    if (selected && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
   }, [state.loaded, state.objectives, selected, setSelected, standingId]);
 
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다(행·비콘·목록). 호출부는 남겨 두되 아무것도 띄우지 않는다.

@@ -35,7 +35,7 @@ export interface CompactTarget {
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
-  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
+  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
@@ -712,7 +712,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
-      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: ctx.paths.resolveObjectivePath?.(current.id) ?? store.pending(current.id)?.cwd, theaterId: current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
+      const memberCwd = ctx.paths.resolveObjectivePath?.(current.id) ?? store.pending(current.id)?.cwd;
+      // 구성원 레코드의 theaterId는 실행 위치의 해시를 유지한다. 보드에 저장한 등록 Theater id를 세션 목록 키로 쓰지 않는다.
+      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: memberCwd, theaterId: memberCwd ? ctx.paths.workspaceHash(memberCwd) : current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
       let launchedId: string;
       try { launchedId = await spawn(preset); }
       catch (error) {
@@ -1316,11 +1318,21 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
       const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.commodoreId) ?? null : null;
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
-      const location = (() => { try { return input.cwd ? { cwd: input.cwd } : ctx.resolveCreation(input.commodoreId, input.theaterId); } catch (error) { return asStoreError(error); } })();
+      const requested = typeof input.theaterId === "string" ? input.theaterId : "";
+      const owned = ctx.ownedTheaterIds?.(input.commodoreId);
+      const known = requested !== "" && (!owned || owned.includes(requested));
+      const bound = known;
+      // 없는 사령관은 극장 거절보다 앞선다. creation은 theaterId를 cwd에 쓰지 않는다.
+      const location = (() => { try { return input.cwd ? { cwd: input.cwd } : ctx.resolveCreation(input.commodoreId, known ? requested : (owned?.[0] ?? "")); } catch (error) { return asStoreError(error); } })();
+      if (requested !== "" && owned && !known && input.theaterIdSpecified === true) throw new ObjectiveStoreError("theater_not_owned");
+      const cwd = input.cwd ?? location.cwd;
+      // 배치하지 않은 목표도 기동은 theaterId가 있어야 한다. 빈 문자열은 기동 스키마가 거절해, 등록 Theater 없는 소유 디렉터리 개시가 막힌다.
+      // 그 값은 목표 폴더의 해시다. 등록 id가 아니고 문서의 placementTheaterId로 쓰지 않는다.
       return store.adopt(id, { ...init, by: actor }, {
         commodoreId: input.commodoreId,
-        theaterId: ctx.paths.workspaceHash(input.cwd ?? location.cwd),
-        cwd: input.cwd ?? location.cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
+        theaterId: bound ? requested : ctx.paths.workspaceHash(cwd),
+        ...(bound ? { theaterIdExplicit: true as const } : {}),
+        cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });
     },

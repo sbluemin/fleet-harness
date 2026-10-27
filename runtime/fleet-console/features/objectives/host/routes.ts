@@ -151,7 +151,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     // 따로 만든 Objective 도 목표다 — 화면이 처음 보는 에이전트 Objective 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Objective of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표 레코드만 만든다 — 같은 ID의 지휘관 Objective은 첫 「구상」·「시작」 때 선다.
-    { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander session.", handler: json(createObjectiveSchema, async ({ language, commodoreId, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ commodoreId, theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
+    { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander session.", handler: json(createObjectiveSchema, async ({ language, commodoreId, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ commodoreId, theaterId, theaterIdSpecified: theaterId !== "", title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
     { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Objective's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.

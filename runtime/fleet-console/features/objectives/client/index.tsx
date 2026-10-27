@@ -57,6 +57,8 @@ export const objectivesEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("objectives.panel.title"),
   icon: () => <ObjectiveIcon />,
   scope: "theater",
+  // 목표 보드는 사령관의 것이다. Theater가 없거나 여러 개여서 하나를 고르지 않아도 이 탭은 열린다.
+  opensWithoutTheater: true,
   // primary 가 맨 앞이어야 한다 — 레일 표면은 첫 primary 를 세운다. 상세는 폰 대화 정보 화면의 탭 본문이다.
   panes: [OBJECTIVE_SURFACE_ID, OBJECTIVE_MOBILE_DETAIL_PANE],
   activate: (ctx) => toggleObjectivePanel(ctx.rail),
