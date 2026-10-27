@@ -71,8 +71,6 @@ export interface ObjectiveArchiveRestoreResult {
 export interface ObjectiveArchiveChangedEvent {
   readonly revision: number;
   readonly total: number;
-  /** total은 전체 수이며, 입구는 활성 Theater의 수만 읽는다. */
-  readonly totalsByTheater?: Readonly<Record<string, number>>;
 }
 
 export interface ObjectiveClusterChangedEvent {

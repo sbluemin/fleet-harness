@@ -41,7 +41,7 @@ import { commodoreAliasEditor } from "../integration/commodore-identity.js";
 import { ObjectiveRecords } from "../../../../features/workspace/client/objective-records.js";
 import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
-import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
+import { ArchiveSheetHost } from "../integration/archive-sheet-host.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { CommodoreDeletionHost } from "../integration/commodore-deletion.js";
 import { CommodoreDeleteModal } from "../../../../features/commodore/client/commodore-delete-modal.js";
@@ -599,7 +599,7 @@ function ConnectedApp() {
         />
         <MobileNewSession />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
-        <ArchiveSheet />
+        <ArchiveSheetHost />
         <TheaterSystemPromptSheet />
         <CommodoreCreateModal />
         <CommodoreDeleteModal />

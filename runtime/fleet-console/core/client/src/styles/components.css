@@ -11297,7 +11297,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   inset: 0;
   z-index: 80;
   display: grid;
-  place-items: center;
+  align-items: start;
+  justify-items: center;
+  padding-block: 32px;
   background: var(--dialog-scrim);
 }
 
@@ -11305,7 +11307,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-sheet {
   display: flex;
   flex-direction: column;
-  width: min(720px, calc(100vw - 32px));
+  container-type: inline-size;
+  width: min(780px, calc(100vw - 32px));
   max-height: min(84vh, calc(100dvh - 64px));
   border: 1px solid var(--popover-rim);
   border-radius: var(--radius-xl);
@@ -11407,20 +11410,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   min-width: 0;
 }
 
-/* 좁은 시트에서는 여백열이 항목 제목을 너무 깎는다 — 날짜를 그날 항목 위 한 줄로 올린다. */
+/* 좁은 시트도 날짜는 사령관 안의 여백열에 남긴다. */
 @container (max-width: 480px) {
-  .archive-sheet-day {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--space-1);
-  }
-
-  .archive-sheet-day-date {
-    position: static;
-    flex-direction: row;
-    align-items: baseline;
-    gap: var(--space-2);
-    padding-top: 0;
-  }
+  .archive-sheet-day { grid-template-columns: 58px minmax(0, 1fr); }
 }
 
 /* 플러그인 칸 — 보관한 Objective 목록 아래, 날짜 묶음과 같은 가는 선으로 나뉜다. 본문은 플러그인이 그린다. */
@@ -11469,12 +11461,13 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   text-align: center;
 }
 
-/* 한 줄 항목 — 왼쪽 이름·메타, 오른쪽 끝 복원·영구 삭제. */
+/* 두 줄 항목 — 첫 줄 제목·행동, 둘째 줄 시각·선택적 Theater·그룹. */
 .archive-sheet-item {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: 2px var(--space-2);
   min-height: var(--popover-row-dense);
   padding: 6px 12px;
   border: 0;
@@ -11482,13 +11475,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   min-width: 0;
 }
 
-.archive-sheet-item-main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
+.archive-sheet-item-main { display: contents; }
+.archive-sheet-item-title { grid-area: 1 / 1; }
+.archive-sheet-item-meta { grid-area: 2 / 1 / 3 / -1; }
 
 .archive-sheet-item-title {
   margin: 0;
@@ -11536,10 +11525,16 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 
 .archive-sheet-actions {
   display: flex;
-  flex: none;
+  grid-area: 1 / 2;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1);
+  opacity: 0;
+  pointer-events: none;
 }
+/* 투명한 행동도 키보드로 초점을 받으면 드러난다. 복원·삭제 보류의 결과는 숨기지 않는다. */
+.archive-sheet-item:is(:hover, :focus-within, .is-selected, .is-restored, .is-pending) .archive-sheet-actions,
+.archive-sheet-item:has(.is-armed) .archive-sheet-actions { opacity: 1; pointer-events: auto; }
+.archive-sheet-actions :is(.archive-sheet-restore, .archive-sheet-purge, .archive-sheet-open, .archive-sheet-undo) { height: 24px; min-height: 24px; }
 
 .archive-sheet-restore,
 .archive-sheet-purge {
@@ -11583,7 +11578,10 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 /* 자동 정리 — 빈 보관함에서도 서는 정책 줄. 펼치면 영구 삭제 안내, 기간 초안, 명시적 적용이 이어진다. */
 .archive-retention {
   flex-shrink: 0;
-  padding: 8px 20px 0;
+  padding: 8px 20px;
+  border-top: 1px solid var(--surface-rim);
+  max-height: 40dvh;
+  overflow-y: auto;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
 }
@@ -11678,33 +11676,52 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 .archive-sheet-search::placeholder { color: var(--text-tertiary); }
 .archive-sheet-search:focus { border-bottom-color: var(--brass-ink); }
-.archive-sheet-scope {
+.archive-sheet-tabs {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
+  flex-shrink: 0;
+  align-items: center;
+  gap: 18px;
+  padding: 6px 20px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
-.archive-sheet-scope button {
-  max-width: 180px;
-  min-width: 0;
-  height: 32px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.archive-sheet-tab {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  max-width: 220px;
   border: none;
   border-bottom: 1px solid transparent;
   border-radius: 0;
   padding: 0;
   background: none;
   color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  white-space: nowrap;
 }
-.archive-sheet-scope button[aria-pressed="true"] {
+.archive-sheet-tab-label { overflow: hidden; text-overflow: ellipsis; }
+.archive-sheet-tab-count { color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; font-weight: var(--weight-regular); }
+.archive-sheet-tab.is-empty { opacity: 0.45; }
+.archive-sheet-tab[aria-pressed="true"] {
   color: var(--text-primary);
   font-weight: var(--weight-bold);
   border-bottom-color: var(--text-primary);
 }
+.archive-sheet-commodore + .archive-sheet-commodore,
+.archive-sheet-other-archives { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--surface-rim); }
+.archive-sheet-commodore-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+.archive-sheet-commodore-head > span:not(.archive-sheet-section-count) { min-width: 0; overflow-wrap: anywhere; }
 .archive-sheet-item + .archive-sheet-item::before {
   content: "";
   position: absolute;
@@ -11729,8 +11746,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-sheet-actions { color: var(--text-tertiary); font-size: var(--t-xs); }
 .archive-sheet-open,
 .archive-sheet-undo,
-.archive-sheet-old button,
-.archive-sheet-other button {
+.archive-sheet-old button {
   min-height: 32px;
   padding: 0 8px;
   border: none;
@@ -11763,10 +11779,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-sheet-empty { line-height: 1.7; padding: 0 12px; }
 .archive-sheet-empty strong { color: var(--text-secondary); }
 .archive-sheet-empty p { margin: 8px 0 0; }
-.archive-sheet-old,
-.archive-sheet-other {
-  margin: 0;
-  padding: 4px 8px;
+.archive-sheet-old {
+  margin-left: auto;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
 }
@@ -11795,14 +11809,15 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .archive-sheet button[aria-disabled="true"] { cursor: progress; opacity: 0.6; }
 .archive-sheet :is(button, .archive-sheet-item):focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 @container (max-width: 480px) {
-  .archive-sheet-item { flex-wrap: wrap; gap: 4px 12px; }
-  .archive-sheet-item-main { flex-basis: 100%; }
-  .archive-sheet-actions { margin-left: auto; max-width: 100%; flex-wrap: wrap; gap: 4px 12px; }
-}
-@media (max-width: 480px) {
+  .archive-sheet-tab[aria-pressed="false"] .archive-sheet-tab-label { display: none; }
+  .archive-sheet-tabs { gap: 12px; }
+  .archive-sheet-item { grid-template-columns: minmax(0, 1fr); min-height: 48px; }
+  /* 좁은 행은 행동을 첫 줄 위에 얹어 메타와 날짜 여백열을 밀지 않는다. */
+  .archive-sheet-actions { position: absolute; top: 4px; right: 4px; max-width: calc(100% - 8px); background: var(--dialog-face); gap: 0; }
+  .archive-sheet-actions :is(button, span) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .archive-sheet-selection-summary { flex-basis: 100%; }
   .archive-sheet-tools { gap: 8px; }
-  .archive-sheet-search { flex-basis: 100%; }
-  .archive-sheet-scope { width: 100%; }
+  .archive-retention-summary { flex-basis: 80px; }
 }
 .objective-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }
 

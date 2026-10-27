@@ -14,7 +14,7 @@ export interface ArchiveSectionCount {
 }
 
 /**
- * 플러그인 보관함 칸과 활성 Theater에서의 수. 칸마다 자기 저장소를 구독하므로, 수가 바뀔 때만 다시 그린다 —
+ * 제공자 보관함 칸과 전달한 Theater들의 수. 칸마다 자기 저장소를 구독하므로, 수가 바뀔 때만 다시 그린다 —
  * 스냅숏은 수의 나열이라 같은 수면 같은 문자열이다.
  */
 export function useArchiveSections(query = "", theaterIds?: readonly string[]): readonly ArchiveSectionCount[] {
@@ -36,9 +36,9 @@ export function useArchiveSections(query = "", theaterIds?: readonly string[]): 
 
 /** 보관함 전체 수 — 보관한 Objective과 플러그인 칸의 수를 더한다. */
 function useArchiveTotal(): { readonly total: number; readonly sections: readonly ArchiveSectionCount[] } {
-  const { totalsByTheater } = useObjectiveArchive();
+  const { total } = useObjectiveArchive();
   const sections = useArchiveSections();
-  return { total: Object.values(totalsByTheater).reduce((sum, count) => sum + count, 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
+  return { total: total + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
 }
 
 /** 아바타 메뉴의 보관함 입구 — 공급자별 보관함을 포함한 전체 수를 배지 없이 오른쪽에 둔다. */
