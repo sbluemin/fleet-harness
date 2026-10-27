@@ -60,6 +60,23 @@ export function useObjectiveUse(objectiveId: string) {
     turnOnly: { console: activity.grants.console.includes(objectiveId), computer: activity.grants.computer.includes(objectiveId) },
   };
 }
+export type ObjectiveUseTool = "computer" | "browser" | "console";
+/**
+ * 여러 Objective(지휘관 목록 줄의 뿌리와 구성원) 가운데 지금 도구를 쓰는 하나. 한 줄에 여럿이면 컴퓨터 → 브라우저 → 콘솔 순으로 하나만 말한다.
+ * `actor` 는 쓰는 참가자 — 컴퓨터는 조작자(공유 컨텍스트면 루트와 다르다), 나머지는 걸린 id 다.
+ */
+export function useObjectivesToolUse(objectiveIds: readonly string[]): { readonly tool: ObjectiveUseTool; readonly actor: string | null } | null {
+  const activity = useContext(ObjectiveUseContext);
+  const first = (ids: readonly string[]) => objectiveIds.find((id) => ids.includes(id)) ?? null;
+  if (activity.computer.length > 0) {
+    const actor = activity.computerActor !== null && objectiveIds.includes(activity.computerActor) ? activity.computerActor : first(activity.computer);
+    if (actor !== null) return { tool: "computer", actor };
+  }
+  const browser = first(activity.browser);
+  if (browser !== null) return { tool: "browser", actor: browser };
+  const consoleUse = first(activity.console);
+  return consoleUse !== null ? { tool: "console", actor: consoleUse } : null;
+}
 /** 이 Objective 이 답을 기다리는 허용 요청(도구군마다 하나). */
 export function useObjectiveUseRequests(objectiveId: string, childSessionIds: readonly string[] = []): readonly ObjectiveUseRequest[] {
   const activity = useContext(ObjectiveUseContext);

@@ -782,6 +782,112 @@
   }
 }
 
+/* 지휘관이나 구성원이 브라우저·콘솔·컴퓨터를 쓰는 동안 — 상태 줄 자리에 도구 글리프와 문구가 서고, 문구 위로 결정 처리 물결과 같은
+   박자(4초)·잉크의 명도 물결이 지나간다. 배경을 칠하지 않는다: 밝은 사본을 비추는 창(가장자리는 고정 마스크)이 transform 으로만
+   지나가고 안의 사본은 반대로 움직여 제자리에 서므로, 쓰는 줄마다 합성만 하고 다시 칠하지 않는다. 비활성 창·숨긴 표면·동작 줄이기에서는
+   --state-motion 이 반복을 끄고 창은 글자 밖에 머물러 글리프와 문구만 남는다. 색은 채널 잉크(글리프)뿐이고 점·고리는 두지 않는다. */
+.side-bar-cluster-row-swap {
+  display: grid;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.side-bar-cluster-row-swap > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.side-bar-cluster-row-swap > .side-bar-cluster-row-preview {
+  transition: opacity var(--duration-fast) ease;
+}
+
+.side-bar-cluster-row.is-tool-using .side-bar-cluster-row-swap > .side-bar-cluster-row-preview {
+  opacity: 0;
+  animation: none;
+}
+
+.side-bar-cluster-row-use {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--live-sweep-trough);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  animation: side-bar-row-use-enter var(--duration-fast) ease-out both;
+}
+
+.side-bar-cluster-row-use.is-leaving {
+  animation: side-bar-row-use-leave var(--duration-fast) ease-in both;
+}
+
+@keyframes side-bar-row-use-enter { from { opacity: 0; } }
+@keyframes side-bar-row-use-leave { to { opacity: 0; } }
+
+.side-bar-cluster-row-use-glyph {
+  display: inline-flex;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--agent-control-badge);
+}
+
+.side-bar-cluster-row-use.is-console .side-bar-cluster-row-use-glyph {
+  color: var(--text-console-use);
+}
+
+.side-bar-cluster-row-use-glyph > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.side-bar-cluster-row-use-text {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-bar-cluster-row-use-crest {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: color-mix(in oklch, var(--live-sweep-crest) 72%, var(--live-sweep-trough));
+  -webkit-mask-image: linear-gradient(90deg, transparent 30%, #000 45% 55%, transparent 70%);
+  mask-image: linear-gradient(90deg, transparent 30%, #000 45% 55%, transparent 70%);
+  pointer-events: none;
+  transform: translateX(-70%);
+  animation: side-bar-row-use-crest 4s ease-in-out infinite;
+  animation-name: var(--state-motion, side-bar-row-use-crest);
+}
+
+.side-bar-cluster-row-use-crest > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(70%);
+  animation: side-bar-row-use-crest-text 4s ease-in-out infinite;
+  animation-name: var(--state-motion, side-bar-row-use-crest-text);
+}
+
+.side-bar-cluster-row-use.is-leaving .side-bar-cluster-row-use-crest,
+.side-bar-cluster-row-use.is-leaving .side-bar-cluster-row-use-crest > span {
+  animation: none;
+}
+
+@keyframes side-bar-row-use-crest {
+  0% { transform: translateX(-70%); }
+  55%, 100% { transform: translateX(70%); }
+}
+
+@keyframes side-bar-row-use-crest-text {
+  0% { transform: translateX(70%); }
+  55%, 100% { transform: translateX(-70%); }
+}
+
 /* ── 오른쪽 세부 정보 머리: Grok Bot 세부 정보와 같은 구성 ─────────────────────────────
    맨 위 줄(52px, Desktop 에서 창을 끄는 자리)에 작전구역 도구 글리프와 닫기 원형 단추, 그 아래 가운데에 지금 대상의 표식·이름,
    그 아래 대상의 글자 탭(Grok 의 세부 정보 세그먼트 자리). 바탕은 대화와 같은 면이고 경계·그라디언트를 두지 않는다. */
