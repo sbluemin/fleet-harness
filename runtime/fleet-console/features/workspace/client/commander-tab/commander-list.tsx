@@ -20,11 +20,13 @@ import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlac
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬·최근 행위를 쓴다. */
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, sortNameOnly = false }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
   readonly onNewSession?: () => void;
+  /** 사이드바처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 채팅 레일과 폰은 접두어를 유지한다. */
+  readonly sortNameOnly?: boolean;
 }) {
   const t = useT();
   const language = useConsoleLocale();
@@ -34,7 +36,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
       <div className="commander-tab-bar">
         <span className="commander-tab-count">{t("commanderTab.count", { count: sorted.length })}</span>
-        <SortMenu preference={preference} />
+        <SortMenu preference={preference} nameOnly={sortNameOnly} />
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
@@ -103,7 +105,7 @@ function CommanderPlacementGlyphs() {
   );
 }
 
-function SortMenu({ preference }: { readonly preference: SortPreference }) {
+function SortMenu({ preference, nameOnly }: { readonly preference: SortPreference; readonly nameOnly: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -150,7 +152,7 @@ function SortMenu({ preference }: { readonly preference: SortPreference }) {
   const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
   return (
     <span className="commander-tab-sort">
-      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>{sortLabel}</button>
+      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>{nameOnly ? t(current.label) : sortLabel}</button>
       {open ? <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
         {SORTS.map((sort) => {
           const label = t(sort.label);

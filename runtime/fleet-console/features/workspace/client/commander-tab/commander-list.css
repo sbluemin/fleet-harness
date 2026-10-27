@@ -67,6 +67,7 @@
 .side-bar-commander-list .commander-tab { min-height: 0; }
 .side-bar-commander-list .commander-tab-groups { min-height: 0; max-height: min(38vh, 360px); overflow-y: auto; }
 /* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 칩 모양은 두고 한 줄로 말줄임한다. */
+.side-bar-commander-list .commander-tab-count { flex: none; white-space: nowrap; }
 .side-bar-commander-list .commander-tab-bar,
 .side-bar-commander-list .commander-tab-sort { min-width: 0; }
 .side-bar-commander-list .commander-tab-sort { flex: 0 1 auto; overflow: hidden; }

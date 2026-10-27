@@ -410,6 +410,7 @@ export function ObjectiveRecordsSideBar({
               {placement.place === "sidebar" && theater.id === owningCommodoreId ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <CommodoreCommanderList
+                    sortNameOnly
                     commodoreId={theater.id}
                     selectedId={
                       typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
