@@ -16,6 +16,7 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
+import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
@@ -37,7 +38,7 @@ type T = Translate<CommodoreMessageKey>;
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
+const TAB_IDS = { goals: "commodore-goals", directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
@@ -416,6 +417,14 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
+  // 「기록」 탭은 사령관이 목표에 남긴 흔적이다 — 대화(가운데 칸)와 따로, 사령관이 일한 자취가 여기 쌓인다.
+  if (tab === "goals") {
+    return (
+      <div className="objectives-commodore-conversation-tab is-goals">
+        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
+      </div>
+    );
+  }
   if (!view) return null;
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
@@ -432,10 +441,11 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   );
 }
 
-/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. 「지휘관」은 대신하는 칸이 없다. */
-const TAB_INBOX_PAGES = { directive: "directive", memory: "memory", settings: "settings" } as const;
+/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. */
+const TAB_INBOX_PAGES = { goals: "log", directive: "directive", memory: "memory", settings: "settings" } as const;
 
 const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
+  goals: "commodore.tabs.log",
   directive: "commodore.tabs.directive",
   memory: "commodore.tabs.memory",
   settings: "commodore.tabs.settings",
@@ -490,6 +500,8 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
     inboxPage: TAB_INBOX_PAGES[tab],
+    // 「기록」의 목표 흔적은 스스로 스크롤하며 바닥에 붙는다 — 칸 전체를 받는다. 나머지 탭은 호스트 읽기 열에 선다.
+    ...(tab === "goals" ? { layout: "fill" as const } : {}),
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);
@@ -502,6 +514,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const target = readParams(params);
     if (!target || target.readOnly) return;
     const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
-    openCommodoreMobile(tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
+    // 「기록」 탭은 목표 흔적이다 — 폰에는 같은 흔적을 그리는 「목표」 탭이 따로 있다(기록은 가운데 대화).
+    openCommodoreMobile(tab === "goals" ? "goals" : tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
   },
 };

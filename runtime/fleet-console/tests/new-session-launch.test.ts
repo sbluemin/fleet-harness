@@ -171,7 +171,6 @@ it("opens a registry goal as a full conversation before and after its session ar
     expect(row().getAttribute("aria-current")).toBe("true");
     expect(node.querySelector(".objectives-fresh-title")?.textContent).toBe(goal.title);
     expect(node.querySelector("[data-pane-composer]")?.getAttribute("data-pane-composer")).toBe(id);
-    expect(node.querySelector(".objectives-commodore-recent-actions")?.textContent).toContain("Keep the goal beside its owner");
     expect(getConversationSurface()?.params.objectiveId).toBe(id);
     expect(node.querySelector(".objectives-fresh-title")?.textContent).toBe(goal.title);
     await act(async () => {

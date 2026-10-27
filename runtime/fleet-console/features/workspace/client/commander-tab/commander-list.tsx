@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -13,16 +13,13 @@ import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
-import { CommodoreRecentActions } from "../../../commodore/client/commodore-trail.js";
-import { revealCommodoreTurn } from "../../../commodore/client/commodore-conversation.js";
-import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
 import "./commander-list.css";
 
-/** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬·최근 행위를 쓴다. */
+/** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. */
 export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, sortNameOnly = false }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
@@ -32,7 +29,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly sortNameOnly?: boolean;
 }) {
   const t = useT();
-  const language = useConsoleLocale();
   const desktop = useViewMode().effective !== "mobile";
   const foldDomId = useId();
   const folds = useCommanderFolds();
@@ -62,12 +58,9 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
-                return <Fragment key={item.layout.cluster.id}>
-                  <SideBarClusterRow item={item} selected={selected}
-                    onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
-                    onContextMenu={desktop ? (item, anchor, returnFocus) => openCommanderRowMenu({ item, anchor, returnFocus }) : undefined} />
-                  {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
-                </Fragment>;
+                return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected}
+                  onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
+                  onContextMenu={desktop ? (row, anchor, returnFocus) => openCommanderRowMenu({ item: row, anchor, returnFocus }) : undefined} />;
               })}
             </ol>}
           </section>;

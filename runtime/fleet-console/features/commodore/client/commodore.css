@@ -586,6 +586,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 「행위 기록」 탭의 목표 흔적은 Inbox 곁 칸의 고정 폭(260px·이음매)이 아니라 이 탭의 가용 폭을 채운다.
    좌우 여백은 읽기 열과 같은 거터다. 흔적 상자의 가로 패딩은 여기서만 거터와 겹치지 않게 걷는다. Inbox 곁 칸의 패딩은 그대로다.
    높이는 내용만큼이라 짧으면 제목 바로 아래에서 시작하고, 탭보다 길면 탭 높이에서 멈춰 흔적 스크롤이 바닥 붙기·「새 흔적」 단추를 쓴다. */
+.objectives-commodore-conversation-tab.is-goals { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 12px var(--conversation-panel-gutter, 16px); overflow: hidden; }
+.objectives-commodore-conversation-tab.is-goals .objectives-commodore-trail { flex: 0 1 auto; box-sizing: border-box; width: 100%; max-inline-size: none; margin-inline: 0; padding-inline: 0; }
 
 /* 대화 중심 화면의 사령관 — Objective 대화와 같은 화면(호스트 대화 렌더러)이다. 그 화면이 이 칸을 채우고, 입력 캡슐은 그 화면의
    입력 자리(진행 줄 아래)에 그룹 입력창과 같은 좌우 여백·아래 여백으로 선다. */
@@ -751,15 +753,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 
 .commodore-delete-question, .commodore-delete-prompt { overflow-wrap: anywhere; }
 .commodore-delete-who > div { min-width: 0; }
-
-.objectives-commodore-recent-actions { display: grid; gap: 2px; margin: -2px 0 4px 48px; padding-left: 10px; border-left: 1px solid var(--hairline); min-width: 0; }
-.objectives-commodore-recent-entry { display: flex; align-items: baseline; gap: 6px; width: 100%; min-width: 0; padding: 2px 4px; border: 0; border-radius: 5px; background: none; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-align: left; }
-button.objectives-commodore-recent-entry { cursor: pointer; }
-.objectives-commodore-recent-actions > button:hover { background: var(--wash-hover); color: var(--text-secondary); }
-.objectives-commodore-recent-actions > button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-.objectives-commodore-recent-actions b { flex: none; color: var(--text-secondary); font-weight: var(--weight-regular); }
-.objectives-commodore-recent-entry > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-recent-actions time { margin-left: auto; flex: none; font-family: var(--font-code); font-size: var(--t-2xs); }
 
 /* ── 사령관 플러그인 — 설정 칸 목록(Theater 목록과 같은 줄 문법)과 추가 팔레트, Console 설정 「마켓플레이스」 ──
    색은 채널 규칙을 따른다: 상태(받는 중·실패·설치함·꺼짐)만 signal 잉크, 추가·선택·포커스는 brass, 마켓플레이스·플러그인에 정체성 색을 입히지 않는다. */

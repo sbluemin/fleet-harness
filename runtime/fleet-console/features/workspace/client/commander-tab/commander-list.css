@@ -29,17 +29,17 @@
   align-items: center;
   justify-content: center;
   height: 26px;
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: none;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
 }
 
-.commander-tab-sort-button { padding: 0 10px; }
-.commander-tab-direction { width: 28px; padding: 0; }
+.commander-tab-sort-button { padding: 0 4px; }
+.commander-tab-direction { width: 26px; padding: 0; }
 .commander-place { display: inline-flex; gap: 2px; }
 .commander-place-button {
   display: grid;
@@ -67,7 +67,7 @@
 }
 .side-bar-commander-list .commander-tab { min-height: 0; padding: 0 10px 0; gap: 2px; }
 .side-bar-commander-list .commander-tab-groups { min-height: 0; }
-/* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 칩 모양은 두고 한 줄로 말줄임한다. */
+/* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 한 줄로 말줄임한다. */
 .side-bar-commander-list .commander-tab-count { flex: none; white-space: nowrap; }
 .side-bar-commander-list .commander-tab-bar,
 .side-bar-commander-list .commander-tab-sort { min-width: 0; }
@@ -86,13 +86,18 @@
 }
 /* 메뉴는 칩이 아니라 막대 너비에 맞춘다. 칩에 맞추면 280px에서 왼쪽으로 잘린다. */
 .side-bar-commander-list .commander-tab-menu { left: 0; right: 0; width: auto; min-width: 0; }
-.commander-tab-direction svg { width: 14px; height: 14px; }
+.commander-tab-direction svg { width: 15px; height: 15px; }
 
 .commander-tab-sort-button:hover,
-.commander-tab-direction:hover,
-.commander-tab-sort-button[aria-expanded="true"] {
+.commander-tab-direction:hover {
   background: var(--wash-hover);
   color: var(--text-primary);
+}
+
+.commander-tab-sort-button[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: var(--wash-selected);
+  border-color: var(--hairline);
 }
 
 .commander-tab-sort-button:focus-visible,
@@ -199,7 +204,6 @@
 .commander-tab-fold[aria-expanded="true"] { color: var(--text-secondary); }
 .commander-tab-fold:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-tab-fold:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-.commander-tab-trail:empty { display: none; }
 .commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }
 .commander-list-owner:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }

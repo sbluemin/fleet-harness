@@ -1,9 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { CommodoreRecentActions } from "../../../../../features/commodore/client/commodore-trail.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "../../../../../features/workspace/client/commander-tab/commander-folds.js";
 import { SORTS, activityOf, setSort, useSortPreference, type SortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
-import { commanderObjectiveId } from "../../../../../features/workspace/client/objective-clusters.js";
 import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../../../../../features/workspace/client/sidebar/side-bar-cluster-row.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusObjective } from "../../integration/store.js";
@@ -16,8 +14,7 @@ import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 type Leave = (run: () => void) => void;
 
 /** 첫 탭은 고르기, 펼친 행의 버튼은 열기. 시작 전·완료는 이름만 있는 구역으로 접힌다. */
-export function MobileCommanderList({ commodoreId, rows, leave, hasAttention }: {
-  readonly commodoreId: string;
+export function MobileCommanderList({ rows, leave, hasAttention }: {
   readonly rows: {
     readonly sorted: readonly SideBarRowItem[];
     readonly sections: readonly { readonly id: string; readonly title: string | null; readonly rows: readonly SideBarRowItem[]; readonly fold?: CommanderFold | null }[];
@@ -46,7 +43,7 @@ export function MobileCommanderList({ commodoreId, rows, leave, hasAttention }: 
         {section.fold != null ? <button type="button" className="mobile-conv-section" aria-expanded={!collapsed} onClick={() => toggleFold(section.fold!)}><span>{section.title}</span><span>{section.rows.length}</span></button>
           : section.title !== null ? <h3 className="mobile-conv-section"><span>{section.title}</span><span>{section.rows.length}</span></h3> : null}
         {collapsed ? null : <ol className="mobile-commander-rows">
-          {section.rows.map((item) => <CommanderRow key={item.layout.cluster.id} item={item} commodoreId={commodoreId} selected={selected === item.layout.cluster.id} onSelect={() => setSelected(selected === item.layout.cluster.id ? null : item.layout.cluster.id)} leave={leave} />)}
+          {section.rows.map((item) => <CommanderRow key={item.layout.cluster.id} item={item} selected={selected === item.layout.cluster.id} onSelect={() => setSelected(selected === item.layout.cluster.id ? null : item.layout.cluster.id)} leave={leave} />)}
         </ol>}
       </section>;
       })}
@@ -54,7 +51,7 @@ export function MobileCommanderList({ commodoreId, rows, leave, hasAttention }: 
   );
 }
 
-function CommanderRow({ item, commodoreId, selected, onSelect, leave }: { readonly item: SideBarRowItem; readonly commodoreId: string; readonly selected: boolean; readonly onSelect: () => void; readonly leave: Leave }) {
+function CommanderRow({ item, selected, onSelect, leave }: { readonly item: SideBarRowItem; readonly selected: boolean; readonly onSelect: () => void; readonly leave: Leave }) {
   const t = useT();
   const language = useConsoleLocale();
   const time = useConversationTime();
@@ -62,7 +59,6 @@ function CommanderRow({ item, commodoreId, selected, onSelect, leave }: { readon
   const { layout, row } = item;
   const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, language, t);
   const activity = activityOf(item);
-  const objectiveId = commanderObjectiveId(layout.cluster);
   const open = () => leave(() => {
     // 뿌리 없는 목표는 시작 화면으로 — 가짜 세션 id로 focus하지 않는다.
     if (!layout.cluster.root) { layout.cluster.open?.(); return; }
@@ -83,8 +79,6 @@ function CommanderRow({ item, commodoreId, selected, onSelect, leave }: { readon
       </button>
     </MobileMarkedRow>
     {selected ? <div id={detailId} className="mobile-commander-detail">
-      {/* reveal 신호는 폰의 사령관 대화로 이동하지 않는다 — 여기서는 누를 수 없는 최근 기록이다. */}
-      {objectiveId !== null ? <CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} /> : null}
       <button type="button" data-press="r3" className="mobile-pill" onClick={open}>{t("mobile.commodore.sessions.open")}<MobileIcon name="right" size={16} /></button>
     </div> : null}
   </li>;

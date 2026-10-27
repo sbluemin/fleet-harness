@@ -58,7 +58,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
           </MobileMarkedRow>)}
         </div>
       </> : null}
-      <MobileCommanderList key={commodoreId} commodoreId={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
+      <MobileCommanderList key={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
       <MobileArchivedFinished commodoreId={commodoreId} leave={leave} />
       <div className="mobile-commodore-sessions-foot">
         <button type="button" data-press="r3" className="mobile-pill" onClick={startSession}><MobileIcon name="plus" size={18} />{t("mobile.commodore.sessions.new")}</button>
