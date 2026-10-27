@@ -7,6 +7,7 @@ import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "
 import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
 import { findAgentObjectiveKind } from "../../../execution/shared/objective-kind.js";
 import type { RailEntryDescriptor } from "../../shared/rail.js";
+import { EMPTY_WORKBENCH_LAYOUT } from "../../shared/conversation-workbench.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -778,7 +779,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   useEffect(() => () => regionObserverRef.current?.disconnect(), []);
   const regionWidth = regionSize?.width ?? Math.max(0, viewport.width - insets.left - insets.right);
   const regionHeight = regionSize?.height ?? viewport.height;
-  const geometry = useMemo(() => computeWorkbenchGeometry(layout, regionWidth, regionHeight), [layout, regionWidth, regionHeight]);
   const workbenchConversation = useMemo<WorkbenchConversation>(() => {
     if (surfaceDescriptor) {
       return {
@@ -805,6 +805,12 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     () => ({ ...toolContext, theaterId: scopeTheaterId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
     [conversationKey, toolContext, workLocation, scopeTheaterId],
   );
+  // 대화의 작업 위치를 모르면(예: 등록 Theater 가 둘 이상인데 고른 것이 없음) 칸을 세우지 않는다. 판정은 여기 하나다 — 칸을 숨기는
+  // 것과 대화 칸이 오른쪽·아래로 비키는 것이 같은 빈 배치의 geometry 에서 함께 나온다. 저장된 배치는 건드리지 않으므로 작업 위치가
+  // 다시 서면 그대로 돌아온다.
+  const workbenchSuspended = (conversationKey !== null || standInId !== null) && workLocation === null;
+  const shownLayout = workbenchSuspended ? EMPTY_WORKBENCH_LAYOUT : layout;
+  const geometry = useMemo(() => computeWorkbenchGeometry(shownLayout, regionWidth, regionHeight), [shownLayout, regionWidth, regionHeight]);
   // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
   // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 Shell·문서로 착각한다.
   const workbenchKey = useSyncExternalStore(subscribeWorkbench, getWorkbenchKey, getWorkbenchKey);
@@ -876,7 +882,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       layerRef={workbenchLayerRef}
       insets={insets}
       geometry={geometry}
-      layout={layout}
+      layout={shownLayout}
       focusedTileId={focusedTileId}
       bindings={railBindings}
       toolContext={workbenchToolContext}
@@ -884,7 +890,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       state={state}
       language={language}
       objectiveRecordKinds={objectiveRecordKinds}
-      suspended={(conversationKey !== null || standInId !== null) && workLocation === null}
     />
     </>
   );

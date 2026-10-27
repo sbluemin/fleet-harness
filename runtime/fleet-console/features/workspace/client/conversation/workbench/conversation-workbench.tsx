@@ -82,8 +82,6 @@ export interface ConversationWorkbenchProps {
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
-  /** 대화의 작업 위치를 아직 모른다 — 칸을 세우지 않는다(자리는 비켜 둔 채). 도구가 엉뚱한 자리에서 서지 않게. */
-  readonly suspended?: boolean;
 }
 
 const KEY_STEP = 16;
@@ -94,7 +92,7 @@ function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds, suspended = false }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, objectiveRecordKinds }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -218,7 +216,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
       {expandedId === null ? geometry.gutters.map((gutter) => (
         <WorkbenchGutter key={gutterKey(gutter)} gutter={gutter} geometry={geometry} layout={layout} onResizingChange={setResizing} />
       )) : null}
-      {(suspended ? [] : geometry.tiles).map((entry) => {
+      {geometry.tiles.map((entry) => {
         const hidden = expandedId !== null && entry.tile.id !== expandedId;
         const rect = expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect;
         return (
