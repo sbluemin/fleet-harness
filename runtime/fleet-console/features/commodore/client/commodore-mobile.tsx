@@ -93,6 +93,8 @@ const GearIcon = () => <Icon><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v
 const TrashIcon = () => <Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>;
 const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
 const TheaterIcon = () => <Icon><path d="M5 5h14M4 9h16v10H4z" /></Icon>;
+/** 지휘관 목록 시트 — 호스트 `MobileIcon` `commanders`와 같은 경로. */
+const CommandersIcon = () => <Icon><circle cx="9" cy="8" r="2.2" /><path d="M4.2 18.2v-.6a3.4 3.4 0 0 1 3.4-3.4h2.8a3.4 3.4 0 0 1 3.4 3.4v.6" /><circle cx="16.2" cy="9" r="1.8" /><path d="M15.2 14.2a3.2 3.2 0 0 1 3.1 2.4" /></Icon>;
 const ChevronIcon = () => <Icon size={16}><path d="m9 5 7 7-7 7" /></Icon>;
 
 function failWord(t: T, error: unknown): string {
@@ -200,8 +202,8 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
 }
 
 /**
- * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 은 지휘관 시트를 열고, 메뉴에서 깊이 1의 세부
- * — 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 지시·기억·설정) — 가 선다. 행을 누르면 그 구역 본문이 깊이 2의
+ * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 은 세부(깊이 1)를 열고, 오른쪽 글리프는 지휘관 시트를 연다.
+ * 세부는 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 지시·기억·설정)다. 행을 누르면 그 구역 본문이 깊이 2의
  * 하위 화면으로 서고, 기억 항목은 그 위에 한 단씩 쌓인다. ‹·시스템 뒤로·`__fleetMobileBack`은 모두 막대의 `onBack` 하나로 한 단씩 돌아온다.
  * 깊은 링크(`openCommodoreMobile(tab, id, true)`)와 대화의 원장 열기는 세부와 그 구역을 한 번에 세운다(깊이 0 → 2) — 뒤로는 구역 → 세부 → 대화다.
  */
@@ -242,9 +244,9 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
-        // 제목은 사령관·지휘관 전환 시트, 세부는 메뉴로 연다. 기존 「지휘관 세션」도 세부에서 유지한다.
-        pill: { label: t("commodore.tabs.sessions"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { if (actions && commodoreId) actions.commanders(commodoreId); else { setSection(null); setPanel(true); } } },
-        menu: { label: t("commodore.mobile.more"), caption: title, items: [{ id: "conversation-info", label: t("commodore.mobile.openPanel"), run: () => { setSection(null); setPanel(true); } }] },
+        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 세션·Theater·삭제)는 깊이 1에 그대로 둔다.
+        pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
+        ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
       return;
     }
