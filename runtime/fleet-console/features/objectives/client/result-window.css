@@ -1,0 +1,80 @@
+/* 결과물 창 — 배경을 덮지 않는다. 다이어그램·브리핑 모달보다 아래, 채팅·레일보다 위에 선다. */
+.objectives-result-window { position: fixed; z-index: 59; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 1px solid var(--popover-rim); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--popover-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; container: objectives-result / inline-size; }
+.objectives-result-window:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-result-window.is-dragging { user-select: none; }
+.objectives-result-window.is-dragging * { user-select: none; }
+.objectives-result-window .objectives-result-resize { z-index: 3; }
+.objectives-rw-head { display: flex; flex: none; align-items: center; gap: 8px; height: 38px; min-width: 0; padding: 0 8px 0 12px; border-bottom: 1px solid var(--hairline); border-radius: inherit; border-bottom-left-radius: 0; border-bottom-right-radius: 0; touch-action: none; cursor: grab; }
+.objectives-result-window.is-dragging .objectives-rw-head { cursor: grabbing; }
+.objectives-rw-heading { flex: none; font-weight: var(--weight-bold); }
+.objectives-rw-objective { flex: 1; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-rw-head button { display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
+.objectives-rw-head button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
+.objectives-result-window :is(button, select, a):focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-rw-switch { flex: 1; min-width: 0; max-width: 100%; }
+.objectives-rw-switch .fc-select__trigger { display: flex; width: 100%; height: 26px; padding: 0 8px; background: var(--control-rest); color: var(--text-primary); }
+.objectives-rw-switch .fc-select__value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.objectives-rw-menu { z-index: 61; }
+.objectives-rw-body { flex: 1; display: grid; grid-template-columns: 170px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.objectives-rw-missions { min-width: 0; overflow: auto; padding: 8px 6px; border-right: 1px solid var(--hairline); overscroll-behavior: contain; }
+.objectives-rw-missions button { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: center; width: 100%; min-height: 32px; padding: 4px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
+.objectives-rw-missions button:hover { background: var(--control-rest); }
+.objectives-rw-missions button[aria-pressed=true] { background: var(--control-rest-hover); color: var(--text-primary); }
+.objectives-rw-mission-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.objectives-rw-missions button[aria-pressed=true] .objectives-rw-mission-title { color: var(--text-primary); }
+.objectives-rw-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.objectives-rw-mission-head { display: flex; flex-direction: column; flex: none; gap: 2px; padding: 10px 14px 8px; min-width: 0; }
+.objectives-rw-mission-head b { font-weight: var(--weight-medium); }
+.objectives-rw-mission-head > :is(b, span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-rw-mission-head > span { color: var(--text-tertiary); font-size: var(--t-2xs); }
+.objectives-rw-stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; margin: 0 12px; overflow: hidden; border-radius: var(--radius-md); background: var(--canvas-abyss); }
+.objectives-rw-image { display: block; width: 100%; height: 100%; object-fit: contain; padding: 8px; box-sizing: border-box; }
+.objectives-rw-stage .objectives-result-markdown.markdown-body { max-height: none; height: 100%; overscroll-behavior: contain; }
+.objectives-rw-caption { flex: none; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 14px 0; font-size: var(--t-xs); }
+.objectives-rw-caption > :is(b, span) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-rw-caption > b { font-weight: var(--weight-medium); }
+.objectives-rw-caption > span { color: var(--text-secondary); }
+.objectives-rw-caption > span:last-child { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-rw-strip { flex: none; display: flex; gap: 8px; min-width: 0; padding: 8px 12px 12px; overflow-x: auto; overscroll-behavior: contain; }
+.objectives-rw-strip-group { display: flex; flex: none; align-items: center; gap: 6px; }
+.objectives-rw-strip-group + .objectives-rw-strip-group { border-left: 1px solid var(--hairline); padding-left: 8px; }
+.objectives-rw-strip-n { font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-rw-strip button { display: grid; place-items: center; flex: none; width: 54px; height: 38px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--canvas-abyss); color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); overflow: hidden; cursor: pointer; }
+.objectives-rw-strip button:hover, .objectives-rw-strip button[aria-current=true] { border-color: var(--brass); }
+.objectives-rw-strip button[aria-current=true] { box-shadow: inset 0 0 0 1px var(--brass); }
+.objectives-rw-strip img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.objectives-rw-link-card { display: grid; place-items: center; box-sizing: border-box; width: 100%; overflow: auto; padding: 16px; }
+.objectives-rw-link-card > :is(.objectives-result-row, .objectives-rw-artifact) { box-sizing: border-box; width: 100%; max-width: 440px; padding: 16px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); }
+.objectives-rw-link-card .objectives-result-row { flex-wrap: wrap; gap: 10px; }
+.objectives-rw-link-card .objectives-result-body { min-width: 120px; }
+.objectives-rw-artifact { display: flex; flex-direction: column; gap: 10px; font-size: var(--t-sm); overflow-wrap: anywhere; }
+.objectives-rw-artifact b { font-weight: var(--weight-medium); }
+.objectives-rw-artifact p, .objectives-rw-artifact > span { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-rw-artifact a { align-self: flex-start; color: var(--text-primary); text-underline-offset: 3px; }
+.objectives-rw-artifact a:hover { text-decoration-color: var(--brass); }
+.objectives-result-window.is-narrow .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
+.objectives-result-window.is-narrow :is(.objectives-rw-missions, .objectives-rw-heading, .objectives-rw-objective, .objectives-rw-mission-head > b) { display: none; }
+.objectives-result-window-open { margin: 8px 12px; padding: 5px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.objectives-result-window-open:hover { color: var(--text-primary); background: var(--control-rest); }
+.objectives-result-window-open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+
+@container objectives-result (width < 400px) {
+  .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-child) { display: none; }
+  .objectives-rw-strip button { width: 44px; height: 32px; }
+}
+
+/* 폰은 기존 전체 화면 읽기를 유지하고 임무 칩을 더한다. 데스크톱의 기하 기억은 건드리지 않는다. */
+.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top, 0px); background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+.objectives-result-window.is-mobile .objectives-rw-head { height: 56px; padding: 0 12px 0 16px; border: 0; cursor: default; touch-action: auto; }
+.objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border-radius: 50%; background: var(--m-chip); color: var(--m-text); }
+.objectives-result-window.is-mobile .objectives-rw-body { display: flex; flex-direction: column; border-radius: 0; }
+.objectives-result-window.is-mobile .objectives-rw-missions { display: flex; flex: none; gap: 6px; padding: 4px 12px 10px; overflow-x: auto; border: 0; }
+.objectives-result-window.is-mobile .objectives-rw-missions button { display: flex; width: auto; max-width: 220px; flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--m-hairline); border-radius: var(--radius-pill); background: var(--m-chip); color: var(--m-text-muted); }
+.objectives-result-window.is-mobile .objectives-rw-missions button[aria-pressed=true] { background: var(--m-text); color: var(--m-bg); }
+.objectives-result-window.is-mobile .objectives-rw-mission-title { color: inherit; }
+.objectives-result-window.is-mobile .objectives-rw-main { flex: 1; }
+.objectives-result-window.is-mobile .objectives-rw-mission-head { display: none; }
+.objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.objectives-result-window.is-mobile .objectives-rw-strip button { width: 60px; height: 44px; }
+.objectives-result-window.is-mobile .objectives-rw-stage { margin: 0 10px; }
+.objectives-result-window.is-mobile .objectives-rw-stage .objectives-result-markdown { padding: 16px; }
