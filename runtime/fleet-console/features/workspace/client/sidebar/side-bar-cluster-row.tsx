@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -15,6 +15,7 @@ import { sortObjectiveRecordsByOrder } from "../../../../core/client/src/integra
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { subscribeSideBarObjectiveAction } from "./interaction.js";
 import { pointOnText } from "./objective-records-side-bar-hit-test.js";
+import { useLongPress } from "../long-press.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../objective-clusters.js";
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
@@ -159,6 +160,11 @@ interface SideBarClusterRowProps {
   /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관의 지휘관 목록은 그룹 대화로 전환한다. */
   readonly onFocus: (objectiveId: string) => void;
   readonly selected: boolean;
+  /**
+   * 우클릭·ContextMenu·Shift+F10·길게 누르기. 데스크톱 목록만 넘긴다.
+   * 사이드바 aside 가 빈 영역 우클릭을 새 세션으로 읽으므로, 행은 이벤트를 삼켜야 한다.
+   */
+  readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. */
@@ -187,7 +193,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, accentValue = null, onFocus, selected }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, accentValue = null, onFocus, selected, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -250,6 +256,25 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
   ));
   const rowRef = useRef<HTMLLIElement | null>(null);
   const pointerTypeRef = useRef("mouse");
+  const returnFocus = () => rowRef.current?.querySelector<HTMLElement>(".side-bar-cluster-row-main") ?? rowRef.current;
+  // 우클릭은 커서 자리, 키와 길게 누르기는 행 아래. 사령관 머리와 같다.
+  const longPress = useLongPress<HTMLLIElement>((row) => {
+    onContextMenu?.(item, row.getBoundingClientRect(), returnFocus());
+  });
+  const openAtCursor = (event: MouseEvent<HTMLLIElement>) => {
+    if (!onContextMenu) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (longPress.claimContextMenu(event)) return;
+    onContextMenu(item, new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus());
+  };
+  const openFromKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!onContextMenu) return;
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onContextMenu(item, event.currentTarget.getBoundingClientRect(), event.currentTarget);
+  };
   // 목표 줄은 세션 유무와 무관하게 그 대화로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
   const open = () => {
     const objectiveId = commanderObjectiveId(layout.cluster);
@@ -280,7 +305,14 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.objectiveRecord.id } : {})}
       style={style}
-      onPointerDown={(event) => { pointerTypeRef.current = event.pointerType; }}
+      onContextMenu={onContextMenu ? openAtCursor : undefined}
+      onPointerDown={(event) => {
+        pointerTypeRef.current = event.pointerType;
+        if (onContextMenu) longPress.onPointerDown(event);
+      }}
+      onPointerMove={onContextMenu ? longPress.onPointerMove : undefined}
+      onPointerUp={onContextMenu ? longPress.onPointerUp : undefined}
+      onPointerCancel={onContextMenu ? longPress.onPointerCancel : undefined}
     >
       {state === "review" && row.review ? (
         <button
@@ -301,10 +333,13 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
+        aria-haspopup={onContextMenu ? "menu" : undefined}
         aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
         aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
         onClick={open}
         onKeyDown={(event) => {
+          openFromKey(event);
+          if (event.defaultPrevented) return;
           if (renameRow && event.key === "F2") {
             event.preventDefault();
             rename.begin();

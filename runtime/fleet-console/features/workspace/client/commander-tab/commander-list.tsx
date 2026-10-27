@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { openCommanderConversation } from "./commander-navigation.js";
+import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
@@ -30,6 +32,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
 }) {
   const t = useT();
   const language = useConsoleLocale();
+  const desktop = useViewMode().effective !== "mobile";
   const { sorted, sections, preference } = useCommanderRows(commodoreId, selectedId);
 
   return (
@@ -52,7 +55,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                 const selected = objectiveId !== null && selectedId === objectiveId;
                 return <Fragment key={item.layout.cluster.id}>
                   <SideBarClusterRow item={item} selected={selected}
-                    onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }} />
+                    onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
+                    onContextMenu={desktop ? (item, anchor, returnFocus) => openCommanderRowMenu({ item, anchor, returnFocus }) : undefined} />
                   {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
                 </Fragment>;
               })}
