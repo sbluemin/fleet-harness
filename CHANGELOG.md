@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.263.0] - 2026-10-27
+
+### fleet-console
+
+#### Changed
+- Show a commodore's commanders under that commodore in the sidebar while its conversation is open, and move the same list to either side of the chat from icons in the list. The commodore stays highlighted, and the in-chat list stays open when you switch commanders or after you open it with the arrow.
+
+#### Fixed
+- Wide tables and cards in commodore and commander chats use the full bubble width, and anything wider scrolls inside the bubble instead of being cut off.
+
 ## [1.262.0] - 2026-10-27
 
 ### fleet-console
