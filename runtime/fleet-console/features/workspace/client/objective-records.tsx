@@ -14,6 +14,7 @@ import { blocksObjectiveRecordsShortcutWhileEditing, isBlockingDialogOpen, resol
 import { archiveObjectiveFromUi, resumeDormantOnOpen, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
+import { CommanderRowMenuLayer } from "./commander-tab/commander-row-menu.js";
 import { objectiveRecordAccentFromNode } from "./objective-accent.js";
 import { getTheaterGroupCollapse, pruneObjectiveAccents } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/feature-capabilities.js";
@@ -438,6 +439,12 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
       {toastRegion}
       <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchObjective={handleRailLaunchObjective} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       {objectiveRecordMenuLayer}
+      <CommanderRowMenuLayer
+        onSetAccent={handleSetAccent}
+        onSetGroupId={handleSetGroupId}
+        onCreateGroup={handleCreateGroup}
+        onArchiveObjective={handleClose}
+      />
     </div>
   );
   const shell = viewMode.effective === "mobile" ? (

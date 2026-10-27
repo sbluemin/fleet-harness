@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
+import { commanderRowMenuIsOpen, openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
+import { useLongPress } from "../long-press.js";
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { openCommanderConversation } from "./commander-navigation.js";
@@ -57,6 +59,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     if (pinned.current) return;
     clearDwell(); clearLeave(); resetFaces(); setTip(null);
     leave.current = setTimeout(() => {
+      if (commanderRowMenuIsOpen()) return;
       if (keyboardExpanded.current && panel.current?.contains(document.activeElement)) return;
       collapse(false);
     }, 220);
@@ -134,6 +137,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     if (!expanded) return;
     const outside = (event: PointerEvent) => {
       if (pinned.current) return;
+      if (event.target instanceof Element && event.target.closest(".group-context-menu-overlay")) return;
       if (event.target instanceof Node && !nav.current?.contains(event.target)) collapse(false);
     };
     document.addEventListener("pointerdown", outside);
@@ -182,7 +186,11 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     onKeyDownCapture={() => { if (expanded) keyboardExpanded.current = true; }}
     onPointerEnter={clearLeave}
     onFocus={clearLeave}
-    onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !event.currentTarget.matches(":hover")) scheduleCollapse(); }}
+    onBlur={(event) => {
+      const next = event.relatedTarget;
+      if (next instanceof Element && next.closest(".group-context-menu-overlay")) return;
+      if (!event.currentTarget.contains(next) && !event.currentTarget.matches(":hover")) scheduleCollapse();
+    }}
     onPointerMove={(event) => {
       clearLeave();
       if (expanded || event.pointerType === "touch") return;
@@ -212,13 +220,13 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       {rows.map((item, index) => {
         const summary = clusterRowSummary(item, locale, t);
         const position = index + 1;
-        return <button key={item.layout.cluster.id} id={itemId(position)} data-ghost-index={position} data-ghost-commander={commanderObjectiveId(item.layout.cluster) ?? item.layout.cluster.id}
-          type="button" tabIndex={Math.min(cursor, rows.length) === position ? 0 : -1} className="commander-ghost-item" aria-label={`${item.layout.cluster.title}, ${summary.conversationLine}${item.row.progress ? `, ${item.row.progress.done}/${item.row.progress.total}` : ""}`}
-          aria-current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId ? "true" : undefined} data-cursor={cursor === position || undefined} onClick={() => select(position)}>
-          <span className="commander-ghost-face"><ClusterRowAvatar item={item} rowState={summary.state} label={summary.label} size={26} decorative /></span>
-          <span className="commander-ghost-progress" aria-hidden="true"><ClusterRowProgress progress={item.row.progress ?? null} /></span>
-          {item.row.decisionRequestedAt !== undefined && item.row.decisionQuestions ? <span className="commander-ghost-questions" aria-hidden="true">{item.row.decisionQuestions}</span> : null}
-        </button>;
+        return <CommanderGhostFace key={item.layout.cluster.id} item={item} id={itemId(position)} index={position}
+          tabIndex={Math.min(cursor, rows.length) === position ? 0 : -1}
+          label={`${item.layout.cluster.title}, ${summary.conversationLine}${item.row.progress ? `, ${item.row.progress.done}/${item.row.progress.total}` : ""}`}
+          current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId}
+          cursor={cursor === position}
+          summary={summary}
+          onSelect={() => select(position)} />;
       })}
     </div>
     <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t(expanded ? "commanderRail.collapse" : "commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(true, event.detail === 0)}>{side === "left" ? "›" : "‹"}</button>
@@ -230,4 +238,53 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onSelect={selectRow} />
     </div> : null}
   </nav>;
+}
+
+function CommanderGhostFace({
+  item,
+  id,
+  index,
+  tabIndex,
+  label,
+  current,
+  cursor,
+  summary,
+  onSelect,
+}: {
+  readonly item: SideBarRowItem;
+  readonly id: string;
+  readonly index: number;
+  readonly tabIndex: number;
+  readonly label: string;
+  readonly current: boolean;
+  readonly cursor: boolean;
+  readonly summary: ReturnType<typeof clusterRowSummary>;
+  readonly onSelect: () => void;
+}) {
+  const longPress = useLongPress<HTMLButtonElement>((button) => {
+    openCommanderRowMenu({ item, anchor: button.getBoundingClientRect(), returnFocus: button });
+  });
+  const openAtCursor = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (longPress.claimContextMenu(event)) return;
+    openCommanderRowMenu({ item, anchor: new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus: event.currentTarget });
+  };
+  const openFromKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openCommanderRowMenu({ item, anchor: event.currentTarget.getBoundingClientRect(), returnFocus: event.currentTarget });
+  };
+  return (
+    <button id={id} data-ghost-index={index} data-ghost-commander={commanderObjectiveId(item.layout.cluster) ?? item.layout.cluster.id}
+      type="button" tabIndex={tabIndex} className="commander-ghost-item" aria-label={label} aria-haspopup="menu"
+      aria-current={current ? "true" : undefined} data-cursor={cursor || undefined} onClick={onSelect}
+      onContextMenu={openAtCursor} onKeyDown={openFromKey}
+      onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}>
+      <span className="commander-ghost-face"><ClusterRowAvatar item={item} rowState={summary.state} label={summary.label} size={26} decorative /></span>
+      <span className="commander-ghost-progress" aria-hidden="true"><ClusterRowProgress progress={item.row.progress ?? null} /></span>
+      {item.row.decisionRequestedAt !== undefined && item.row.decisionQuestions ? <span className="commander-ghost-questions" aria-hidden="true">{item.row.decisionQuestions}</span> : null}
+    </button>
+  );
 }
