@@ -4,7 +4,7 @@ import type { CommodoreClientHost } from "../../commodore/shared/contracts/clien
 import type { PaneDescriptor } from "../../workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
-import { installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive, resolveContext } from "./board-commodore.js";
+import { installCommodoreHost, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./board-commodore.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { connectFreshConversation, freshConversationSurface, goToObjective } from "./fresh-conversation.js";
@@ -14,7 +14,7 @@ import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObject
 import { ObjectivePanel } from "./objectives-panel.js";
 import { ResultWindowHost, resetResultWindow } from "./result-window.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { viewedTheaterId, handleMapObjectiveSelected, installObjectiveState, loadTheater, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
+import { viewedCommodoreId, handleMapObjectiveSelected, installObjectiveState, loadBoard, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 const OBJECTIVES_ENTRY_ID = "objectives";
@@ -96,9 +96,10 @@ export const objectivesEntry: RailEntryDescriptor = {
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
     if (!api) return [];
-    const commodoreId = await resolveContext(theaterId);
+    // 팔레트 검색은 지금 화면이 가리키는 사령관의 보드에서 찾는다 — Theater 에서 주인을 찾지 않는다.
+    const commodoreId = viewedCommodoreId();
     if (!commodoreId) return [];
-    await loadTheater(api, theaterId);
+    await loadBoard(api, commodoreId);
     const response = await api.fetch("/objectives/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, query, limit }) });
     if (!response.ok) return [];
     const result = await response.json() as { objectives: { id: string; title: string; done?: boolean }[] };

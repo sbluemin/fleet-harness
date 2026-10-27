@@ -42,14 +42,14 @@ describe("workspace-prefixed routes", () => {
     if (rootDir) await rm(rootDir, { recursive: true, force: true });
   });
 
-  // 옛 `/w/<맥락 id>/` 주소는 그 맥락 사령관의 `/c/<uuid>/`로 넘어가고, 사령관마다 자기 위키만 본다.
+  // 사령관마다 자기 위키만 본다 — 주소는 사령관 UUID 의 `/c/<uuid>/` 이고, 같은 Theater 를 함께 써도 고른 사령관의 위키다.
   it("keeps Wiki reads with the selected commodore even when owners share a Theater", async () => {
-    const entryA = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsA}/api/entry/shared`);
-    const entryB = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsB}/api/entry/shared`);
+    const entryA = await fetchJson<{ frontmatter: { title: string } }>(`/c/${wsA}/api/entry/shared`);
+    const entryB = await fetchJson<{ frontmatter: { title: string } }>(`/c/${wsB}/api/entry/shared`);
     expect(entryA.frontmatter.title).toBe("Workspace A");
     expect(entryB.frontmatter.title).toBe("Workspace B");
 
-    // 브라우저의 상대 URL만 실제 격리 서버로 연결한다. 소유자 해석·본문 읽기는 제품 경로 그대로다.
+    // 브라우저의 상대 URL만 실제 격리 서버로 연결한다. 위키 해석·본문 읽기는 제품 경로 그대로다.
     const origin = new URL(baseUrl).origin;
     const nativeFetch = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
@@ -58,25 +58,27 @@ describe("workspace-prefixed routes", () => {
       return nativeFetch(typeof input === "string" ? new URL(input, origin) : input, { ...init, headers });
     });
     try {
-      const ownerA = (await resolveCodexWorkspace(wsA)).id!;
-      const ownerB = (await resolveCodexWorkspace(wsB)).id!;
+      const ownerA = wsA;
+      const ownerB = wsB;
+      const listed = await (await fetch("/api/v1/theaters")).json() as { readonly theaters: readonly { readonly id: string; readonly label: string }[] };
+      const theaterA = listed.theaters.find((theater) => theater.label === path.basename(workspaceA))!.id;
       const added = await fetch("/api/v1/commodore/theaters/add", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commodoreId: ownerB, theaterId: wsA }),
+        body: JSON.stringify({ commodoreId: ownerB, theaterId: theaterA }),
       });
       expect(added.status).toBe(200);
-      // 소유자 없는 옛 진입은 공유 Theater에서 임의의 사령관을 택하지 않는다.
-      expect(await resolveCodexWorkspace(wsA)).toEqual({ hasWiki: false, id: null });
+      // 사령관이 없으면 위키도 없다 — 공유 Theater 에서 임의의 사령관을 고르지 않고, 서버도 Theater 로는 묻지 않는다.
+      expect(await resolveCodexWorkspace(null)).toEqual({ hasWiki: false, id: null });
       for (const [owner, title, other] of [[ownerA, "Workspace A", ownerB], [ownerB, "Workspace B", ownerA], [ownerA, "Workspace A", ownerB]]) {
-        const workspace = await resolveCodexWorkspace(wsA, owner);
+        const workspace = await resolveCodexWorkspace(owner);
         expect(workspace).toEqual({ hasWiki: true, id: owner });
-        publishResolvedWorkspace({ contextKey: codexWorkspaceContextKey(wsA, owner), theaterId: wsA, ...workspace });
-        expect(resolvedCodexWorkspaceIdFor(wsA, other)).toBeNull();
-        const resolved = resolvedCodexWorkspaceIdFor(wsA, owner);
+        publishResolvedWorkspace({ contextKey: codexWorkspaceContextKey(owner), theaterId: theaterA, ...workspace });
+        expect(resolvedCodexWorkspaceIdFor(other)).toBeNull();
+        const resolved = resolvedCodexWorkspaceIdFor(owner);
         const entry = await fetchJson<{ frontmatter: { title: string } }>(`/c/${resolved}/api/entry/shared`);
         expect(entry.frontmatter.title).toBe(title);
       }
-    } finally {
+  } finally {
       vi.restoreAllMocks();
     }
   });

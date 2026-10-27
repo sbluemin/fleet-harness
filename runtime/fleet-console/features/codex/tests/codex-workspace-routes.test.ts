@@ -119,7 +119,7 @@ describe("Codex workspace route", () => {
   function routerFor(body: unknown, resolveWorkspace = vi.fn().mockReturnValue({ hasWiki: true, id: WORKSPACE_ID })) {
     const writeJson = vi.fn();
     const router = createCodexWorkspaceRouter({
-      resolveContext: () => ({ ok: true, commodoreId: WORKSPACE_ID }),
+      commodoreExists: () => true,
       isAuthorized: () => true,
       readJsonBody: async <T>() => body as T,
       resolveWorkspace,
@@ -128,13 +128,12 @@ describe("Codex workspace route", () => {
     return { router, resolveWorkspace, writeJson };
   }
 
-  // Theater가 경로에서 본문으로 옮겨 왔으므로 "빈 본문만 허용"은 더 이상 계약이 아니다.
-  // 남는 계약은 하나다: Theater를 말하지 않은 요청은 워크스페이스를 열지 않는다.
-  it.each([null, [], {}, { theaterId: "" }, { theaterId: 7 }])("refuses a body that names no Theater", async (body) => {
+  // 지식은 사령관의 것이다 — 사령관을 말하지 않은 요청은 워크스페이스를 열지 않는다(Theater 로 주인을 찾지 않는다).
+  it.each([null, [], {}, { commodoreId: "" }, { commodoreId: 7 }, { theaterId: "theater" }])("refuses a body that names no Commodore", async (body) => {
     const { router, resolveWorkspace, writeJson } = routerFor(body);
     await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/codex/workspace" });
     expect(resolveWorkspace).not.toHaveBeenCalled();
-    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_theater" });
+    expect(writeJson).toHaveBeenLastCalledWith(expect.anything(), 400, { error: "invalid_commodore" });
   });
 
 });

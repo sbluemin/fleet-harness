@@ -40,23 +40,6 @@ export function createAvatarStore(dataDir: string): DurableJsonStore<AvatarStore
   });
 }
 
-/** 옛 단일 Theater 모습은 목적 키가 없을 때만 복사한다. 원본과 사람이 고친 목적 값은 보존한다. */
-export function migrateCommodoreAvatars(store: DurableJsonStore<AvatarStoreData>, owners: readonly { readonly commodoreId: string; readonly theaterIds: readonly string[] }[]): void {
-  const candidates = owners.filter((owner) => owner.theaterIds.length === 1);
-  const current = store.load().avatars;
-  if (!candidates.some((owner) => !current[`theater:commodore:${owner.commodoreId}`] && current[`theater:${owner.theaterIds[0]}`])) return;
-  store.update((state) => {
-    const avatars = { ...state.avatars };
-    let changed = false;
-    for (const owner of candidates) {
-      const key = `theater:commodore:${owner.commodoreId}`;
-      const old = avatars[`theater:${owner.theaterIds[0]}`];
-      if (!avatars[key] && old) { avatars[key] = { ...old }; changed = true; }
-    }
-    return changed ? { ...state, avatars } : undefined;
-  });
-}
-
 export function createAvatarRouter(deps: {
   readonly canWrite?: (key: string) => boolean;
   readonly store: DurableJsonStore<AvatarStoreData>;

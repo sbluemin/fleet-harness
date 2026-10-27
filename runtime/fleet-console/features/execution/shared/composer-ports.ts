@@ -88,8 +88,11 @@ export interface ComposerQuoteTargetOption {
 
 
 export interface ComposerQuoteReceiver {
-  /** `current` 는 그 대상의 대화가 지금 화면에 서 있을 때만 true 로 싣는다(예: 가운데 칸에 연 사령관 대화). */
-  readonly targets: (theaterId: string) => readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[];
+  /**
+   * `current` 는 그 대상의 대화가 지금 화면에 서 있을 때만 true 로 싣는다(예: 가운데 칸에 연 사령관 대화).
+   * `commodoreId` 는 지금 화면이 가리키는 사령관이다(없으면 null) — 호스트가 건넨다.
+   */
+  readonly targets: (commodoreId: string | null) => readonly { readonly targetId: string; readonly label: string; readonly current?: boolean }[];
   readonly receive: (targetId: string, quote: ComposerQuote) => ComposerQuoteAttachResult;
   /** 대상 목록이 바뀌면 깨운다. */
   readonly subscribe?: (listener: () => void) => () => void;

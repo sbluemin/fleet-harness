@@ -1,4 +1,4 @@
-import { useCommodoreOwnerName } from "./commodore-name.js";
+import { useCommodoreName } from "./commodore-name.js";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
@@ -43,7 +43,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
   // 답이 받아들여진 질문은 상태가 다시 읽히기 전에도 내린다 — 그룹 대화의 결정 카드와 같은 규칙.
   const [answered, setAnswered] = useState<readonly string[]>([]);
   useEffect(() => setAnswered([]), [theaterId]);
-  const name = useCommodoreOwnerName(theaterId, t);
+  const name = useCommodoreName(theaterId, t);
   const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
@@ -57,7 +57,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
           decision={askDecision(ask, { theaterId, contextTheaterId: board.objectives.find((row) => row.id === ask.objectiveId)?.theaterId ?? contextTheaterId, t, phone, leave, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
           asker={asker}
           language={language}
-          theaterId={theaterId}
+          commodoreId={theaterId}
           mobile={phone}
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />

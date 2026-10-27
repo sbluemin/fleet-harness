@@ -17,8 +17,12 @@ export function objectiveConversationActions(objective: Objective): GroupConvers
   return {
     async send(target, text, attachmentIds) {
       if (target.kind === "commodore") {
-        await request("/commodore/message", { theaterId: objective.theaterId, objectiveId: objective.id, text, ...(attachmentIds?.length ? { attachmentIds } : {}) });
-        return { targets: [{ targetId: `commodore:${objective.theaterId}`, outcome: "sent" }] };
+        // 그 목표를 소유한 사령관에게 보낸다 — 사령관 라우트(`/commodore/message`)이고 목표 라우트 밑이 아니다. Theater 에서 주인을 찾지 않는다.
+        const api = objectivesApi();
+        if (!api) throw new Error("objectives_unavailable");
+        const response = await api.fetch("/commodore/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId: objective.commodoreId, objectiveId: objective.id, text, ...(attachmentIds?.length ? { attachmentIds } : {}), language: commodoreLanguage() ?? "en" }) });
+        if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `http_${response.status}`);
+        return { targets: [{ targetId: `commodore:${objective.commodoreId}`, outcome: "sent" }] };
       }
       if (target.kind === "all") return request<GroupWriteResult>("/conversation/broadcast", { objectiveId: objective.id, text });
       const memberId = target.kind === "member" ? target.objectiveId : null;

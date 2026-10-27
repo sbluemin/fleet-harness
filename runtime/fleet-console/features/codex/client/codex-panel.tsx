@@ -100,7 +100,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
   const commodoreId = ctx.commodoreId;
-  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
+  const contextKey = codexWorkspaceContextKey(commodoreId);
   const [workspace, setWorkspace] = useState<(CodexWorkspaceState & { readonly failed?: boolean }) | null>(() => {
     const known = lastResolvedCodexWorkspace();
     return known && known.contextKey === contextKey && known.hasWiki ? known : null;
@@ -135,7 +135,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
     }
     rememberCodexScope(contextKey);
     let stopped = false;
-    void resolveCodexWorkspace(theaterId, commodoreId).then((result) => {
+    void resolveCodexWorkspace(commodoreId).then((result) => {
       if (stopped || latestContextKeyRef.current !== contextKey) return;
       const nextWorkspace = { contextKey, theaterId, ...result };
       publishResolvedWorkspace(nextWorkspace);

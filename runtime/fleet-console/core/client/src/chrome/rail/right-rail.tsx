@@ -673,8 +673,10 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   const wrapClassName = consoleUseWrapClassName(wrap);
   // 사람의 손을 기다리는 수 — 표면이 닫혀 있어도 아이콘 모서리에 선다. 이름 뒤에 붙어 말풍선·스크린 리더도 같은 수를 읽는다.
   const attention = entry.attention;
-  const attentionTheaterId = entry.scope === "fleet" ? null : context.theaterId;
-  const readAttention = () => (attention ? Math.max(0, Math.floor(attention.count(attentionTheaterId))) : 0);
+  // 배지는 지금 화면이 가리키는 사령관의 것이다 — Theater 에서 주인을 찾지 않는다.
+  const viewedCommodoreId = useViewedCommodoreId();
+  const attentionCommodoreId = entry.scope === "fleet" ? null : viewedCommodoreId;
+  const readAttention = () => (attention ? Math.max(0, Math.floor(attention.count(attentionCommodoreId))) : 0);
   const attentionCount = useSyncExternalStore(attention?.subscribe ?? subscribeNothing, readAttention, readAttention);
   // activate 전용 entry의 켜짐 — 레일 패널·확대 표면이 아닌 표면이 서 있음을 entry가 직접 말한다.
   // 선언하지 않은 entry는 기존 판정 그대로다.

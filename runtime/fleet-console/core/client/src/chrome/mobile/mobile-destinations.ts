@@ -1,4 +1,5 @@
-import { getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { getViewedCommodoreId, getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { readCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
@@ -13,13 +14,22 @@ import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
+ * 폰 홈(사령관 목록·바로가기 시트·「확인 필요」)이 가리키는 사령관 — 화면이 명시한 사령관(`getViewedCommodoreId`), 없으면 「사령관」 칩이
+ * 열 사령관(목록의 첫 사령관)이다. 칩을 누르면 열리는 사령관(`openMobilePluginDestination`)과 같아, 칩의 상태 칸·배지가 연 화면과 어긋나지 않는다.
+ * 공용 규칙에는 이 대체를 두지 않는다 — 홈만 명시적으로 쓴다.
+ */
+export function mobileHomeCommodoreId(): string | null {
+  return getViewedCommodoreId() ?? readCommodoreList()[0]?.commodoreId ?? null;
+}
+
+/**
  * 홈 바로가기 시트가 목적지로 올리는 플러그인 엔트리 — `RailEntryDescriptor.mobile.destination`을 선언하고 `shown`이 허락한 것을 order 순으로.
  * 순수 계산이다 — 화면은 `useMobileDestinationBindings`로 `shown`의 갱신을 구독한다.
  */
-export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
+export function mobileDestinationBindings(bindings: readonly RailEntryBinding[], commodoreId: string | null): readonly RailEntryBinding[] {
   return bindings
     .map((binding, index) => ({ binding, index, order: binding.entry.mobile?.destination?.order }))
-    .filter((item): item is { binding: RailEntryBinding; index: number; order: number } => item.order !== undefined && visible(item.binding) && destinationShown(item.binding, theaterId))
+    .filter((item): item is { binding: RailEntryBinding; index: number; order: number } => item.order !== undefined && visible(item.binding) && destinationShown(item.binding, commodoreId))
     .sort((left, right) => left.order - right.order || left.index - right.index)
     .map((item) => item.binding);
 }
@@ -46,54 +56,54 @@ export function attentionMovesFirst(bindings: readonly RailEntryBinding[], entry
   return bindings.find((binding) => binding.entry.id === entryId)?.entry.mobile?.conversationPane === undefined;
 }
 
-function destinationShown(binding: RailEntryBinding, theaterId: string | null): boolean {
-  return binding.entry.mobile?.destination?.shown?.get(theaterId) !== false;
+function destinationShown(binding: RailEntryBinding, commodoreId: string | null): boolean {
+  return binding.entry.mobile?.destination?.shown?.get(commodoreId) !== false;
 }
 
-/** `mobileDestinationBindings`를 읽되, 엔트리가 `shown.subscribe`로 알리는 변화(실험 기능·Theater)에 맞춰 다시 그린다. */
-export function useMobileDestinationBindings(bindings: readonly RailEntryBinding[], theaterId: string | null): readonly RailEntryBinding[] {
+/** `mobileDestinationBindings`를 읽되, 엔트리가 `shown.subscribe`로 알리는 변화(실험 기능·사령관)에 맞춰 다시 그린다. `commodoreId`는 지금 화면이 가리키는 사령관이다. */
+export function useMobileDestinationBindings(bindings: readonly RailEntryBinding[], commodoreId: string | null): readonly RailEntryBinding[] {
   const key = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.mobile?.destination?.shown ? [binding.entry.mobile.destination.shown.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => shownVersion(bindings, theaterId),
-    () => shownVersion(bindings, theaterId),
+    () => shownVersion(bindings, commodoreId),
+    () => shownVersion(bindings, commodoreId),
   );
   // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 shown 상태가 바뀌었다는 신호다.
-  return useMemo(() => mobileDestinationBindings(bindings, theaterId), [bindings, theaterId, key]);
+  return useMemo(() => mobileDestinationBindings(bindings, commodoreId), [bindings, commodoreId, key]);
 }
 
 /** 바로가기 행 오른쪽 칸 — 엔트리 id별 값. `trailing.subscribe`의 변화에 맞춰 다시 그리고, 값(text·tone)이 같으면 다시 그리지 않는다. */
-export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], theaterId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
+export function useMobileDestinationTrailing(bindings: readonly RailEntryBinding[], commodoreId: string | null): ReadonlyMap<string, RailEntryDestinationTrailingValue> {
   const key = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.mobile?.destination?.trailing ? [binding.entry.mobile.destination.trailing.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => trailingVersion(bindings, theaterId),
-    () => trailingVersion(bindings, theaterId),
+    () => trailingVersion(bindings, commodoreId),
+    () => trailingVersion(bindings, commodoreId),
   );
   return useMemo(() => {
     const values = new Map<string, RailEntryDestinationTrailingValue>();
     for (const binding of bindings) {
-      const value = binding.entry.mobile?.destination?.trailing?.get(theaterId);
+      const value = binding.entry.mobile?.destination?.trailing?.get(commodoreId);
       if (value) values.set(binding.entry.id, value);
     }
     return values;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 trailing 값이 바뀌었다는 신호다.
-  }, [bindings, theaterId, key]);
+  }, [bindings, commodoreId, key]);
 }
 
-function trailingVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {
+function trailingVersion(bindings: readonly RailEntryBinding[], commodoreId: string | null): string {
   return bindings.map((binding) => {
-    const value = binding.entry.mobile?.destination?.trailing?.get(theaterId);
+    const value = binding.entry.mobile?.destination?.trailing?.get(commodoreId);
     return value ? `${binding.entry.id}:${value.text}\u0001${value.tone ?? ""}` : "";
   }).join("|");
 }
 
-function shownVersion(bindings: readonly RailEntryBinding[], theaterId: string | null): string {
-  return bindings.map((binding) => binding.entry.mobile?.destination?.shown ? `${binding.entry.id}:${binding.entry.mobile.destination.shown.get(theaterId) ? 1 : 0}` : "").join("|");
+function shownVersion(bindings: readonly RailEntryBinding[], commodoreId: string | null): string {
+  return bindings.map((binding) => binding.entry.mobile?.destination?.shown ? `${binding.entry.id}:${binding.entry.mobile.destination.shown.get(commodoreId) ? 1 : 0}` : "").join("|");
 }
 
 /** 「플러그인」 줄 — 고정 목적지가 아니고, 설정(프로필 시트가 따로 연다)이 아닌 보이는 엔트리 전부. */
@@ -115,22 +125,23 @@ export type MobileAttentionRow =
 /**
  * 「확인 필요」의 행: 범위 안에서 사람을 기다리는 Objective(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
  * 플러그인이 `attention.items`로 올린 일. 플러그인 항목의 갱신은 각 엔트리의 `attention.subscribe`를 따른다.
- * 범위는 기본이 지금 Theater이고, `commodoreId`를 주면 그 사령관이 소유한 Objective이다 — 플러그인에는 사령관 UUID를 문맥으로 넘긴다.
+ * 범위는 기본이 지금 Theater이고, `commodoreId`를 주면 그 사령관이 소유한 Objective이다. 플러그인에는 사령관 UUID를 문맥으로 넘긴다 —
+ * 주지 않으면 폰 홈이 가리키는 사령관(`mobileHomeCommodoreId`)이다.
  */
 export function useMobileAttention(state: ConsoleState, commodoreId?: string): { readonly rows: readonly MobileAttentionRow[]; readonly pluginCounts: ReadonlyMap<string, number> } {
   const bindings = useRailEntries();
   const locale = useConsoleLocale();
   const useRequests = useAllObjectiveUseRequests();
-  const viewedTheaterId = getViewedTheaterId();
-  const theaterId = commodoreId ?? viewedTheaterId;
+  const theaterId = getViewedTheaterId();
+  const pluginCommodoreId = commodoreId ?? mobileHomeCommodoreId();
   // 엔트리마다 구독을 모아 하나의 틱으로 묶는다 — 갱신 신호가 오면 아래 스냅샷을 다시 읽는다.
   const tick = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.attention ? [binding.entry.attention.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => attentionVersion(bindings, theaterId, locale),
-    () => attentionVersion(bindings, theaterId, locale),
+    () => attentionVersion(bindings, pluginCommodoreId, locale),
+    () => attentionVersion(bindings, pluginCommodoreId, locale),
   );
   return useMemo(() => {
     // 허용 요청이 걸린 Objective이 먼저(남은 시간이 짧은 순), 그다음 그 밖의 입력 대기.
@@ -149,27 +160,27 @@ export function useMobileAttention(state: ConsoleState, commodoreId?: string): {
     for (const binding of bindings) {
       const attention = binding.entry.attention;
       if (!attention) continue;
-      const scopeTheater = binding.entry.scope === "fleet" ? null : theaterId;
-      const count = Math.max(0, Math.floor(attention.count(scopeTheater)));
+      const scopeCommodore = binding.entry.scope === "fleet" ? null : pluginCommodoreId;
+      const count = Math.max(0, Math.floor(attention.count(scopeCommodore)));
       if (count > 0) pluginCounts.set(binding.entry.id, count);
-      for (const item of attention.items?.(scopeTheater, locale) ?? []) {
+      for (const item of attention.items?.(scopeCommodore, locale) ?? []) {
         const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? objectiveRecordClusterId(binding.pluginId, item.clusterId) : undefined;
         rows.push({ kind: "plugin", key: `plugin:${binding.entry.id}:${item.id}`, entryId: binding.entry.id, item, clusterId });
       }
     }
     return { rows, pluginCounts };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick는 플러그인 상태 변화를 알리는 신호다.
-  }, [bindings, commodoreId, locale, state.objectiveRecordRuntime, state.objectiveRecords, theaterId, tick, useRequests]);
+  }, [bindings, commodoreId, locale, pluginCommodoreId, state.objectiveRecordRuntime, state.objectiveRecords, theaterId, tick, useRequests]);
 }
 
 /** 플러그인이 올린 수와 행(제목·사유까지)을 한 문자열로 접는다 — 스냅샷이 값이라 같은 상태면 다시 그리지 않는다. */
-function attentionVersion(bindings: readonly RailEntryBinding[], theaterId: string | null, locale: ConsoleLocale): string {
+function attentionVersion(bindings: readonly RailEntryBinding[], commodoreId: string | null, locale: ConsoleLocale): string {
   return bindings.map((binding) => {
     const attention = binding.entry.attention;
     if (!attention) return "";
-    const scopeTheater = binding.entry.scope === "fleet" ? null : theaterId;
-    const items = attention.items?.(scopeTheater, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}\u0001${item.clusterId ?? ""}`).join("\u0002") ?? "";
-    return `${binding.entry.id}:${attention.count(scopeTheater)}:${items}`;
+    const scopeCommodore = binding.entry.scope === "fleet" ? null : commodoreId;
+    const items = attention.items?.(scopeCommodore, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}\u0001${item.clusterId ?? ""}`).join("\u0002") ?? "";
+    return `${binding.entry.id}:${attention.count(scopeCommodore)}:${items}`;
   }).join("|");
 }
 

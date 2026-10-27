@@ -77,16 +77,13 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
     wikiWorkspaceResolver,
     hasCommodore: (commodoreId) => knowledge?.root(commodoreId) != null,
     runWorkspace,
-    // 옛 주소의 id는 그때의 화면 맥락 id다 — 그 맥락의 사령관은 호스트가 찾는다.
-    resolveLegacyWorkspace: (legacyId) => {
-      const owner = knowledge?.commodoreForContext(legacyId);
-      return owner?.ok ? owner.commodoreId : null;
-    },
+    // 옛 주소는 그 id 가 사령관 UUID 일 때만 사령관 주소로 넘긴다 — Theater 맥락 id 에서 주인을 찾지 않는다.
+    resolveLegacyWorkspace: (legacyId) => (knowledge?.commodoreExists(legacyId) ? legacyId : null),
     onKnowledgeRootResolved: (workspaceId, knowledgeRoot) => watcher.watch(workspaceId, knowledgeRoot),
   });
 
   const workspaceRouter = createCodexWorkspaceRouter({
-    resolveContext: (contextId) => knowledge ? knowledge.commodoreForContext(contextId) : { ok: false, reason: "unavailable" },
+    commodoreExists: (commodoreId) => knowledge?.commodoreExists(commodoreId) ?? false,
     isAuthorized: (req) => ctx.host.security.isWriteAdmitted(req),
     readJsonBody: (req) => ctx.host.http.readJsonBody(req),
     resolveWorkspace: (commodoreId) => gateway.resolveWorkspace(commodoreId),

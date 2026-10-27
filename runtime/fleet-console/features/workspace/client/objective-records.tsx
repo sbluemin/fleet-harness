@@ -528,6 +528,7 @@ async function createLaunchedObjective(
     newObjectiveId = result.id;
   } else {
     const objectiveRecord = await capabilities.objectiveRecords.create({
+      ...(commodoreId ? { commodoreId } : {}),
       theaterId,
       type: kind.type,
       pluginId,

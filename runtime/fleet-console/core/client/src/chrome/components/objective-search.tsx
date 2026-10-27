@@ -801,10 +801,9 @@ export function ObjectiveSearch({
                 const activeGroup = !group.archived && group.theaterId === getViewedTheaterId();
                 return (
                   <section className="objective-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
-                    {/* 사이드바 머리처럼 별칭을 앞세우고 원래 이름을 곁에 둔다. */}
+                    {/* 묶음 머리는 Theater 다 — Theater 이름만 선다. */}
                     <h2 id={headingId} className="objective-search-section-heading">
-                      {highlightText(group.theaterAlias ?? group.theaterLabel, tokens)}
-                      {group.theaterAlias ? <span className="objective-search-section-note">{highlightText(group.theaterLabel, tokens)}</span> : null}
+                      {highlightText(group.theaterLabel, tokens)}
                       {activeGroup ? <span className="objective-search-section-note">{t("chrome.objectiveRecordSearch.current")}</span> : null}
                     </h2>
                     {group.sections.map((section) => {

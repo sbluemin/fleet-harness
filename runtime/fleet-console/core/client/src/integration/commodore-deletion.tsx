@@ -63,7 +63,7 @@ function removeCommodoreViews(id: string, done: () => void = () => {}) {
   const surfaceOwned = surface?.params.commodoreId === id || (typeof surface?.params.objectiveId === "string" && objectiveIds.has(surface.params.objectiveId));
   const wikiOwned = lastResolvedCodexWorkspace()?.id === id;
   const inbox = readTheaterInbox();
-  const inboxOwned = inbox?.theaterId === id || (inbox && getState().theaters.find((theater) => theater.id === inbox.theaterId)?.commodore?.id === id);
+  const inboxOwned = inbox?.theaterId === id;
   const stageOwned = surfaceOwned || (surface === null && getConversationSubject()?.commodoreId === id);
   const clean = () => {
     if (!mobile && stageOwned) {

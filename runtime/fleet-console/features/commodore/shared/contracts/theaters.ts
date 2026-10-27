@@ -30,12 +30,10 @@ export interface CommodoreCreateInput { readonly alias: string }
 export interface CommodoreCreateResponse { readonly commodoreId: string; readonly commodore: ConsoleCommodoreSummary }
 export interface CommodoreTheaterInput { readonly commodoreId: string; readonly theaterId: string }
 export interface CommodoreTheaterResponse { readonly commodore: ConsoleCommodoreSummary }
-export interface CommodoreResolveResponse { readonly commodoreIds: readonly string[]; readonly commodoreId: string | null }
 export const COMMODORE_ROUTES = {
   list: "/api/v1/commodore/list",
   order: "/api/v1/commodore/order",
   create: "/api/v1/commodore/create",
   addTheater: "/api/v1/commodore/theaters/add",
   removeTheater: "/api/v1/commodore/theaters/remove",
-  resolve: "/api/v1/commodore/resolve",
 } as const;

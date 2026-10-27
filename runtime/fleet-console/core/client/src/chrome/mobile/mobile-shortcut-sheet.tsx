@@ -6,7 +6,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
-import { featuredDestinationBinding, isChipDestination, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
+import { featuredDestinationBinding, isChipDestination, mobileHomeCommodoreId, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileSheet } from "./mobile-sheet.js";
 import { runAfterSheetRelease } from "./mobile-sheet-host.js";
@@ -32,8 +32,8 @@ export function MobileShortcutSheet({ onClose }: { readonly onClose: () => void 
   const locale = useConsoleLocale();
   const attention = useMobileAttentionRows();
   const bindings = useRailEntries();
-  const shown = useMobileDestinationBindings(bindings, getViewedTheaterId());
-  const trailing = useMobileDestinationTrailing(bindings, getViewedTheaterId());
+  const shown = useMobileDestinationBindings(bindings, mobileHomeCommodoreId());
+  const trailing = useMobileDestinationTrailing(bindings, mobileHomeCommodoreId());
 
   const featured = featuredDestinationBinding(shown);
   const rows: ShortcutRow[] = shown.filter((binding) => binding !== featured && isChipDestination(binding)).map((binding): ShortcutRow => ({

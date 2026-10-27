@@ -21,7 +21,6 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     const root = paths.resolveTheaterPath(theaterId);
     return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
   };
-  const resolve = (theaterId: string): string | null => { const ids = resolveAll(theaterId); return ids.length === 1 ? ids[0]! : null; };
   // 등록 Theater 의 realpath 는 레지스트리와 디스크가 그대로인 동안 같은 값을 돌려준다.
   // registeredFor 는 사령관 수 x 목표 복원 경로를 타고 기동 한 번에 수만 번 불리므로, 캐시가 없으면
   // 느린 마운트(WSL 의 /mnt 9p 등)에 올린 Theater 하나만으로 realpath 왕복이 이벤트 루프를 수십 초 막는다.
@@ -73,12 +72,8 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     directory: (id: string) => deleting.has(id) ? null : entities.dirOf(id),
     root: (id: string) => { const dir = deleting.has(id) ? null : entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
     ids: () => entities.ids().filter((id) => entities.dirOf(id) !== null),
-    forContext(contextId: string): { readonly ok: true; readonly commodoreId: string } | { readonly ok: false; readonly reason: "unknown_context" | "unavailable" } {
-      if (entities.dirOf(contextId)) return { ok: true, commodoreId: contextId };
-      if (!paths.resolveTheaterPath(contextId)) return { ok: false, reason: "unknown_context" };
-      const id = resolve(contextId);
-      return id ? { ok: true, commodoreId: id } : { ok: false, reason: "unavailable" };
-    },
+    /** 그 id 가 지금 있는 사령관인가. Theater 맥락에서 주인을 찾지 않는다 — 지식은 사령관 UUID 로만 가리킨다. */
+    exists: (commodoreId: string): boolean => !deleting.has(commodoreId) && entities.dirOf(commodoreId) !== null,
     legacySources: (id: string, resuming = false) => legacyKnowledgeSources(paths.consoleDataDir, entities.theatersOf(id).filter((row) => {
       if (resuming || entities.locateAll(row.path).length === 1) return true;
       if (hasLegacyKnowledge(paths.consoleDataDir, row.path)) console.warn(`[commodore] wiki migration ${id}: ambiguous_source; original preserved`);
@@ -95,7 +90,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return cwd;
   };
   return {
-    entities, resolve, resolveAll, theaterIds, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
+    entities, resolveAll, theaterIds, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
     assertWritable,
     isDeleting: (id: string) => deleting.has(id),
     beginDeletion(id: string) { assertWritable(id); deleting.add(id); },

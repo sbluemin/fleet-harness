@@ -11,14 +11,14 @@ import { readZoneCommodore } from "../../../../features/commodore/client/commodo
 import { openCommodoreMobile, useCommodoreEnabled } from "../../../../features/commodore/client/commodore-state.js";
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
-import { TheaterAvatar } from "../../../../features/workspace/client/theater-avatar.js";
+import { TheaterGlyph } from "../../../../features/workspace/client/components/theater-glyph.js";
 import type { ResolvedTheaterInboxSection } from "../../../../features/workspace/client/theater-inbox/section-states.js";
 
 /** 호스트의 「Theater 설정」 — 정준 id 는 `console:settings`. 플러그인 섹션은 그 뒤에 등록 순서로 선다. */
-// 「Theater 설정」의 표식은 사이드바 Theater 머리와 같은 사령관 아바타다 — settings feature 가 workspace 를 가져오지 않게 여기서 넘긴다.
+// 「Theater 설정」의 표식은 Theater 표식이다 — settings feature 가 workspace 를 가져오지 않게 여기서 넘긴다.
 const SETTINGS_SECTION: ResolvedTheaterInboxSection = {
   id: `console:${THEATER_SETTINGS_SECTION_ID}`,
-  descriptor: createTheaterSettingsInboxSection({ icon: ({ theater }) => <TheaterAvatar theaterId={theater.id} size={18} label="" decorative className="theater-inbox-avatar" /> }),
+  descriptor: createTheaterSettingsInboxSection({ icon: () => <TheaterGlyph size={18} /> }),
 };
 const THEATERS_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION.id, pageId: THEATER_MEMBERSHIP_PAGE_ID };
 /** 사령관이 켜져 있으면 Theater 목록은 사령관 「설정」 맨 위에 있다 — 옛 작전 구역 주소로 온 요청도 이 칸이 받는다. */

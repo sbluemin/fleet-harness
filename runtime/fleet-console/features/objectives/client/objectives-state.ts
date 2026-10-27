@@ -1,4 +1,4 @@
-import { commodoreIds, ownerOfContext, resolveContext, subscribeCommodore } from "./board-commodore.js";
+import { commodoreIds, subscribeCommodore } from "./board-commodore.js";
 import type { ObjectivesClientDeps } from "./deps.js";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -296,12 +296,9 @@ function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
   awaitedSelection?.();
 }
 
-/** Theater가 없거나 공유된 사령관도 UUID 목록으로 읽고, 구형 문맥·관측 기록은 보완한다. */
+/** 사령관 UUID 목록으로 보드를 읽고, 관측 기록(Objective 의 소유 사령관)은 보완한다. Theater 에서 주인을 찾지 않는다. */
 function loadRegisteredTheaters(api: ClientApiCapability): void {
-  for (const theater of installed?.consoleState.getTheaters() ?? []) {
-    if (!ownerOfContext(theater.id)) void resolveContext(theater.id).then((id: string | null) => { if (id && installed?.api === api) void loadBoard(api, id); }).catch(() => {});
-  }
-  const ids = [...new Set([...commodoreIds(), ...(installed?.consoleState.getTheaters() ?? []).flatMap((theater) => ownerOfContext(theater.id) ?? []), ...objectiveRecordsSnapshot.map((node) => node.commodoreId)])].filter(Boolean);
+  const ids = [...new Set([...commodoreIds(), ...objectiveRecordsSnapshot.map((node) => node.commodoreId)])].filter(Boolean);
   if (degraded) {
     if (Date.now() < degraded.until || inflight.size > 0) return;
     const probe = ids.find((id) => !boards.get(id)?.loaded || refreshAfterReconnect.has(id));
@@ -392,7 +389,7 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Objective 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadBoard 는 멱등이다.
   let lastContextObjective = contextObjectiveId(ctx);
-  let listedTheaters = new Set(ctx.consoleState.getTheaters().flatMap((theater) => ownerOfContext(theater.id) ?? []));
+  let listedCommodores = new Set(commodoreIds());
   let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   objectiveRecordsSnapshot = ctx.consoleState.getObjectiveRecords({ nested: true });
   loadRegisteredTheaters(ctx.api);
@@ -402,10 +399,10 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     const connection = ctx.consoleState.getConnection?.() ?? "live";
     if (connection === "live" && lastConnection !== "live") noteReconnected();
     lastConnection = connection;
-    // 등록·복원으로 다시 나타난 Theater 는 확정 실패를 풀고 처음부터 묻는다.
-    const theaterIds = new Set(ctx.consoleState.getTheaters().flatMap((theater) => ownerOfContext(theater.id) ?? []));
-    for (const [commodoreId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(commodoreId) && !listedTheaters.has(commodoreId)) unsettle(commodoreId);
-    listedTheaters = theaterIds;
+    // 목록에 다시 나타난 사령관은 확정 실패를 풀고 처음부터 묻는다.
+    const listed = new Set(commodoreIds());
+    for (const [commodoreId, retry] of [...loadRetries]) if (retry.permanent && listed.has(commodoreId) && !listedCommodores.has(commodoreId)) unsettle(commodoreId);
+    listedCommodores = listed;
     // 가장 마지막 선택이 이긴다 — 어느 경로로든 Objective 이 활성이 되거나 사이드바에서 열지 않고 골라지면 그 전에 줄·팔레트가
     // 남긴 reveal 은 버리고, 표면이 열려 있으면 그 Objective 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
     const contextObjective = contextObjectiveId(ctx);
@@ -510,11 +507,6 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
-  if (path === "/objective/create" && !!body && typeof body === "object" && "theaterId" in body && typeof body.theaterId === "string" && !("commodoreId" in body)) {
-    const commodoreId = await resolveContext(body.theaterId);
-    if (!commodoreId) throw new Error("commodore_unavailable");
-    body = { ...body, commodoreId };
-  }
   let response: Response;
   try {
     response = await api.fetch(`/objectives${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -784,6 +776,11 @@ export function viewedTheaterId(): string | null {
   return installed?.consoleState.getViewedTheaterId?.() ?? null;
 }
 
+/** 지금 화면이 가리키는 사령관 — 호스트의 공용 규칙(`getViewedCommodoreId`)이다. Theater 에서 주인을 찾지 않는다. 없으면 null. */
+export function viewedCommodoreId(): string | null {
+  return installed?.consoleState.getViewedCommodoreId?.() ?? null;
+}
+
 export function activeObjectiveId(): string | null {
   return installed?.consoleState.getActiveObjectiveId() ?? null;
 }
@@ -881,14 +878,6 @@ function isObjectiveEditing(element: EventTarget | null = typeof document === "u
     && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
 }
 
-/** Theater는 화면 입구에서만 사령관 UUID로 해석한다. 목표 자체는 readBoard(commodoreId)를 쓴다. */
-export function readTheater(theaterId: string | null): OwnerState { return readBoard(ownerOfContext(theaterId)); }
-export async function loadTheater(api: ClientApiCapability, theaterId: string, force = false): Promise<void> { const id = await resolveContext(theaterId); if (id) await loadBoard(api, id, force); }
-export function useObjectiveTheater(theaterId: string | null): OwnerState { return useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId)); }
-export function readObjectiveView(theaterId: string | null): ObjectiveViewState { return readOwnerView(ownerOfContext(theaterId)); }
-export function patchObjectiveView(theaterId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void { patchOwnerView(ownerOfContext(theaterId), patch); }
-export function useObjectiveView(theaterId: string | null): ObjectiveViewState { return useOwnerView(ownerOfContext(theaterId)); }
-
 let selectionTheater: { readonly contextTheaterId: string | null; readonly commodoreId: string; readonly surfaceObjectiveId: string | null } | null = null;
 
 function conversationSurfaceObjectiveId(): string | null {
@@ -918,7 +907,7 @@ export function objectiveDisplayOwnerId(contextTheaterId: string | null): string
   if (surfaceObjective && surfaceCommodore) return surfaceCommodore;
   const activeId = contextObjectiveId();
   const objectiveId = activeId ?? surfaceObjective;
-  return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? ownerOfContext(contextTheaterId) : ownerOfContext(contextTheaterId);
+  return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? viewedCommodoreId() : viewedCommodoreId();
 }
 export function useObjectiveDisplayOwner(contextTheaterId: string | null): string | null {
   const read = () => objectiveDisplayOwnerId(contextTheaterId);
@@ -961,7 +950,7 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
     }
   }
   if (!targetTheaterId) {
-    targetTheaterId = ownerOfContext(viewedTheaterId());
+    targetTheaterId = viewedCommodoreId();
   }
   if (!targetTheaterId) return;
 

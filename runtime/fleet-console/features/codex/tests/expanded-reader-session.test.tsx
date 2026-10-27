@@ -34,12 +34,14 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
   document.body.append(node);
   const root = createRoot(node);
   const params = { kind: "schema", templateId: "initial-template", theaterId: "theater-a" };
-  const ctx = { params, theaterId: "theater-a", close } as unknown as ExpandedSurfaceContext;
+  // 위키는 도구를 소유한 사령관의 것이다 — 해석은 Theater 가 아니라 이 사령관 UUID 로 묻는다.
+  const commodoreA = "6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00";
+  const ctx = { params, theaterId: "theater-a", commodoreId: commodoreA, close } as unknown as ExpandedSurfaceContext;
   try {
     expect(getReaderState().codexReader).toBeNull();
     await act(async () => { root.render(codexReadingSurface.render(ctx)); });
     expect(getReaderState()).toMatchObject({ codexReader: { kind: "schema", templateId: "initial-template" }, codexReaderExpanded: true });
-    expect(resolvedCodexWorkspaceIdFor("theater-a")).toBe("6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00");
+    expect(resolvedCodexWorkspaceIdFor(commodoreA)).toBe("6f1d0c2e-2b4a-4c1e-9a7d-0e5b3c2a1f00");
     expect(open).not.toHaveBeenCalled();
     expect(openRail).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
@@ -48,9 +50,9 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
     expandCodexReader();
     expect(open).toHaveBeenLastCalledWith({ surfaceId: "codex", params: { kind: "schema", templateId: "updated-template", theaterId: "theater-a" } });
 
-    // 다른 대화의 Theater로 따라갈 때 같은 도구는 남지만 옛 Theater 문서를 다시 해석하지 않는다.
+    // 다른 사령관의 대화로 따라갈 때 같은 도구는 남지만 앞 사령관의 위키 문서를 다시 해석하지 않는다.
     viewedTheater = "theater-b";
-    await act(async () => { root.render(codexReadingSurface.render({ ...ctx, theaterId: viewedTheater })); });
+    await act(async () => { root.render(codexReadingSurface.render({ ...ctx, theaterId: viewedTheater, commodoreId: "0b9c4d1e-7a2f-4e3b-8c5d-1f2a3b4c5d6e" })); });
     expect(getReaderState()).toMatchObject({ codexReader: null, codexReaderExpanded: true });
     expect(close).not.toHaveBeenCalled();
 

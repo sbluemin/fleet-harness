@@ -181,7 +181,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   >
     {expanded ? null : <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t("commanderRail.expand")} aria-expanded={false} aria-controls={`${id}-list`} onClick={(event) => reveal(event.detail === 0)}>{glyph}</button>}
     <button id={itemId(0)} data-ghost-index={0} data-ghost-owner="" type="button" tabIndex={Math.min(cursor, rows.length) === 0 ? 0 : -1} className="commander-ghost-item" aria-label={owner.name} aria-current={selectedId === null ? "true" : undefined} data-cursor={cursor === 0 || undefined} onClick={() => select(0)}>
-      <span className="commander-ghost-face"><CommodoreAvatar theaterId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
+      <span className="commander-ghost-face"><CommodoreAvatar commodoreId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
     </button>
     <div className="commander-ghost-rule" role="separator" />
     {/* 레일의 탭 정지는 roving 항목 하나뿐이다. 스크롤 영역이 브라우저 기본으로 따로 초점을 받지 않게 한다. */}

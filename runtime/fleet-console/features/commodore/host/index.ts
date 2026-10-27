@@ -55,7 +55,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   let restored = false;
   let disposed = false;
   const ownership = deps.ownership ?? createCommodoreOwnership(deps.paths);
-  const { entities, resolve, resolveAll, theaterIds, knowledge } = ownership;
+  const { entities, theaterIds, knowledge } = ownership;
   const releaseChannel = deps.events.registerSseChannel(COMMODORE_CHANNEL);
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => {
@@ -118,7 +118,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
     plugins, deletion, assertWritable: ownership.assertWritable,
-    resolve, resolveAll, theaterIds, summary, list: () => orderedIds().map(summary),
+    theaterIds, summary, list: () => orderedIds().map(summary),
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");
       const known = new Set(entities.ids());
@@ -160,15 +160,8 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   });
   return {
     host,
-    identity(theaterId: string): { readonly id: string; readonly alias?: string } | null {
-      const id = resolve(theaterId);
-      if (!id) return null;
-      const state = store.read(id);
-      return state ? { id, ...(state.alias ? { alias: state.alias } : {}) } : null;
-    },
     knowledge,
     routes,
-    active: (theaterId: string) => { const id = resolve(theaterId); return board !== null && id !== null && commodoreActive(context, store, id); },
     sync: () => { ownership.recoverKnowledge(); restored = true; supervisor.sync("restart"); },
     /** 이 사령관이 고른 플러그인의 로컬 경로 — 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(store.read(commodoreId)?.plugins ?? []).map((plugin) => plugin.path),

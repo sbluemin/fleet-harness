@@ -18,7 +18,7 @@ import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { isMentionSelectable, mentionTargetName, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
-import { TheaterAvatar } from "../theater-avatar.js";
+import { TheaterGlyph } from "../components/theater-glyph.js";
 import { KeyedAvatar } from "../avatars.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
@@ -184,7 +184,7 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
       <MobileSheet key="theater" title={t("chrome.launch.mobile.theater")} onClose={() => setSub(null)} className="mls-sheet">
         {theaters.map((candidate) => (
           <button key={candidate.id} type="button" className="mobile-sheet-row" aria-current={candidate.id === theaterId ? "true" : undefined} onClick={() => { props.onTheater(candidate.id); setSub(null); }}>
-            <TheaterAvatar theaterId={candidate.id} size={28} label={candidate.label} decorative />
+            <span className="mobile-sheet-row-glyph"><TheaterGlyph size={22} /></span>
             <span className="mobile-sheet-row-copy">{candidate.label}</span>
             {candidate.id === theaterId ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
           </button>
@@ -335,7 +335,7 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
           ) : null}
           {theater ? (
             <button type="button" className="mobile-pill-secondary mls-theater-chip" aria-label={t("chrome.launch.mobile.theaterChip", { name: theater.label })} onClick={() => setSub("theater")} data-mls-theater={theater.id}>
-              <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative />
+              <TheaterGlyph size={18} />
               <span className="mls-chip-name">{theater.label}</span>
             </button>
           ) : (

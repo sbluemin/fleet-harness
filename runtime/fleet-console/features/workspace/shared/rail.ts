@@ -265,7 +265,7 @@ export interface RailEntryMobile {
      * 이 목적지 칩을 지금 둘지. 상태(실험 기능 켜짐·활성 Theater)에 따라 줄이 서고 사라져야 할 때 쓴다 — 문서 단위의
      * `visible`은 정적이라 맞지 않다. 생략하면 늘 둔다. `get`이 false면 칩이 없고, 그 목적지를 보고 있던 중에
      * false가 되면 호스트가 홈으로 돌려보낸다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이
-     * 같은 상태에 같은 값을 돌려준다. 코어 호스트는 `theaterId`로 활성 Theater(없으면 null)를 건넨다.
+     * 같은 상태에 같은 값을 돌려준다. 코어 호스트는 `commodoreId`로 지금 화면이 가리키는 사령관(없으면 null)을 건넨다.
      */
     readonly shown?: RailEntryDestinationShown;
     /**
@@ -289,8 +289,8 @@ export interface RailEntryMobile {
 /** 폰 「보관한 완료 N」 접기의 공급원 — `RailEntryMobile.finished`. */
 export interface RailEntryMobileFinished {
   readonly subscribe: (listener: () => void) => () => void;
-  /** 지금 Theater(엔트리 `scope`가 `fleet`이면 null)의 끝난 일, 보일 순서대로. 호스트는 값(id·제목·둘째 줄)으로 비교하므로 매번 새 배열을 돌려줘도 된다. */
-  readonly items: (theaterId: string | null, locale: ConsoleLocale) => readonly RailEntryFinishedItem[];
+  /** 지금 화면이 가리키는 사령관(엔트리 `scope`가 `fleet`이면 null)의 끝난 일, 보일 순서대로. 호스트는 값(id·제목·둘째 줄)으로 비교하므로 매번 새 배열을 돌려줘도 된다. */
+  readonly items: (commodoreId: string | null, locale: ConsoleLocale) => readonly RailEntryFinishedItem[];
 }
 
 /** 끝난 일 하나. 문자열은 모두 이미 현지화되어 있다. */
@@ -340,14 +340,15 @@ export interface RailEntryDestinationTrailingValue {
 /** 모바일 바로가기 행 오른쪽 칸의 공급원 — `RailEntryMobile.destination.trailing`. 호스트는 값(text·tone)으로 비교하므로 매번 새 객체를 돌려줘도 된다. */
 export interface RailEntryDestinationTrailing {
   readonly subscribe: (listener: () => void) => () => void;
-  readonly get: (theaterId: string | null) => RailEntryDestinationTrailingValue | null;
+  /** `commodoreId`는 지금 화면이 가리키는 사령관이다(없으면 null). */
+  readonly get: (commodoreId: string | null) => RailEntryDestinationTrailingValue | null;
 }
 
 /** 모바일 바로가기의 보임 공급원 — `RailEntryMobile.destination.shown`. */
 export interface RailEntryDestinationShown {
   readonly subscribe: (listener: () => void) => () => void;
-  /** 지금 이 목적지 행을 둘지. */
-  readonly get: (theaterId: string | null) => boolean;
+  /** 지금 이 목적지 행을 둘지. `commodoreId`는 지금 화면이 가리키는 사령관이다(없으면 null). */
+  readonly get: (commodoreId: string | null) => boolean;
 }
 
 /**
@@ -396,12 +397,12 @@ export interface RailEntryConversationTabs {
 
 /**
  * 레일 아이콘 배지의 공급원. 호스트는 `useSyncExternalStore`로 읽으므로 `count`는 부작용 없이 같은 상태에 같은 수를 돌려준다.
- * Theater는 호스트가 건넨다 — 엔트리 범위가 `theater`면 활성 Theater, 없으면 null이다.
+ * 사령관은 호스트가 건넨다 — 엔트리 범위가 `theater`면 지금 화면이 가리키는 사령관(`ConsoleState.getViewedCommodoreId`), 아니면 null이다.
  */
 export interface RailEntryAttention {
   readonly subscribe: (listener: () => void) => () => void;
   /** 지금 기다리는 수. 0 이하면 배지를 거둔다. */
-  readonly count: (theaterId: string | null) => number;
+  readonly count: (commodoreId: string | null) => number;
   /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
   readonly label: (count: number, locale: ConsoleLocale) => string;
   /**
@@ -410,7 +411,7 @@ export interface RailEntryAttention {
    * 갱신은 위 `subscribe`로 한다. `count`처럼 부작용 없이 같은 상태에 같은 값을 돌려주고,
    * 상태가 바뀌지 않았으면 **같은 배열 참조**를 돌려준다(`useSyncExternalStore` 스냅샷이다).
    */
-  readonly items?: (theaterId: string | null, locale: ConsoleLocale) => readonly RailEntryAttentionItem[];
+  readonly items?: (commodoreId: string | null, locale: ConsoleLocale) => readonly RailEntryAttentionItem[];
 }
 
 /** 사람의 손을 기다리는 일 하나. 문자열은 모두 이미 현지화되어 있다. */

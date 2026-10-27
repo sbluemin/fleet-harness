@@ -46,8 +46,6 @@ import {
   discardCommodoreAttachment,
   noteCommodoreLanguage,
   openCommodoreMobile,
-  ownerOfContext,
-  resolveContext,
   readCommodore,
   transcriptNeeded,
   readCommodoreExperiment,
@@ -62,7 +60,6 @@ import {
   setCommodoreStopAt,
   subscribeCommodore,
   useCommodore,
-  useCommodoreOwner,
   type CommodoreTab,
 } from "./commodore-state.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -87,9 +84,19 @@ function cachedSectionState(state: TheaterInboxSectionState): TheaterInboxSectio
   return state;
 }
 
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Inbox 주소가 가리키는 사령관 — 사령관 섹션의 주소는 사령관 UUID 다(사이드바 사령관 줄·사령관 대화가 그렇게 연다).
+ * Theater 해시로 열린 Inbox 에는 사령관이 없다: 같은 폴더를 여러 사령관이 쓸 수 있으므로 주인을 거꾸로 찾지 않는다.
+ */
+function inboxCommodore(id: string | null | undefined): string | null {
+  return id && COMMODORE_UUID.test(id) ? id : null;
+}
+
 /** 사령관의 지금 한 줄 — 옛 「사령관 기록」 시트 왼쪽 머리에 있던 그 말(자율 운영 · 다음 순찰 …). */
-function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): string {
-  const view = readCommodore(ownerOfContext(theaterId)).view;
+function commodoreStatusLine(t: T, commodoreId: string, language: "en" | "ko"): string {
+  const view = readCommodore(commodoreId).view;
   if (!view) return t("commodore.inbox.scope");
   const on = view.active;
   const run = view.run;
@@ -109,7 +116,7 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   id: COMMODORE_INBOX_SECTION_ID,
-  title: (language, theaterId) => commodoreName(theaterId ?? "", getT(language)),
+  title: (language, theaterId) => commodoreName(inboxCommodore(theaterId) ?? "", getT(language)),
   icon: () => <CommodoreMentionGlyph className="objectives-commodore-inbox-glyph" />,
   pages: [
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
@@ -125,27 +132,30 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     const experiment = readCommodoreExperiment();
     if (!experiment.known) return cachedSectionState({ availability: "loading", scope: "" });
     if (!experiment.enabled) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("commodore.inbox.disabled") });
-    return cachedSectionState({ availability: "available", scope: commodoreStatusLine(t, theater.id, language) });
+    const commodoreId = inboxCommodore(theater.id);
+    if (!commodoreId) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("commodore.inbox.noCommodore") });
+    return cachedSectionState({ availability: "available", scope: commodoreStatusLine(t, commodoreId, language) });
   },
   subscribe: subscribeCommodore,
   render: (context) => <CommodoreInboxSection context={context} />,
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
-  onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id, true),
+  onLeaveDesktop: ({ theater, pageId }) => {
+    const commodoreId = inboxCommodore(theater.id);
+    if (commodoreId) openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", commodoreId, true);
+  },
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
-  // Theater 머리 착지는 이 칸을 연다. theater.id는 등록 해시라 UUID 자리에 넣지 않는다.
+  // 사령관 머리 착지는 이 칸을 연다. 주소가 사령관 UUID 가 아니면(Theater 해시) 대화를 세우지 않는다.
   openConversation: ({ theater, pageId }) => {
     if (pageId !== "log") return false;
-    const owner = ownerOfContext(theater.id);
-    if (owner) return openCommodoreConversation(owner);
-    void resolveContext(theater.id).then((id) => { if (id) openCommodoreConversation(id); });
-    return false;
+    const commodoreId = inboxCommodore(theater.id);
+    return commodoreId ? openCommodoreConversation(commodoreId) : false;
   },
 };
 
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {
   const { theater, language, pageId, visible, focusRequest, links, navigation } = context;
   const theaterId = theater.id;
-  const commodoreId = useCommodoreOwner(theaterId);
+  const commodoreId = inboxCommodore(theaterId);
   const t = getT(language);
   noteCommodoreLanguage(language);
   const tab: CommodoreTab = COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log";

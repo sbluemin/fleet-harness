@@ -1,4 +1,3 @@
-import { resolveOwnerForContext } from "../../../../features/commodore/shared/contracts/client-helpers.js";
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import { parseConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, ObjectiveGroup, ObjectiveRecord, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
@@ -98,8 +97,8 @@ export async function fetchTheaterBootstrap(signal?: AbortSignal | null): Promis
   return { theaters: payload.theaters.map((theater) => assertTheaterInfo(theater, response.status)) };
 }
 
-export async function fetchObserverStatus(theaterId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
-  const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
+export async function fetchObserverStatus(commodoreId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
+  const suffix = commodoreId ? `?commodoreId=${encodeURIComponent(commodoreId)}` : "";
   const response = await fetch(`/api/v1/status${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
@@ -307,7 +306,8 @@ export async function fetchGroups(commodoreId?: string | null, signal?: AbortSig
 }
 
 export async function createGroup(input: ObjectiveGroupCreateInput, signal?: AbortSignal): Promise<ObjectiveGroup> {
-  const commodoreId = input.commodoreId ?? (input.theaterId ? await resolveOwnerForContext(input.theaterId, signal) : null);
+  // 그룹은 사령관의 것이다 — 부르는 쪽이 자기 문맥의 사령관을 싣는다. Theater 에서 주인을 찾지 않는다.
+  const commodoreId = input.commodoreId ?? null;
   if (!commodoreId) throw new Error("commodore_required");
   const response = await fetch("/api/v1/objectives/records/groups", {
     method: "POST",
@@ -363,7 +363,8 @@ export async function createObjective(input: {
   readonly payload?: Record<string, unknown>;
   readonly geometry?: ObjectiveRecord["geometry"];
 }, signal?: AbortSignal): Promise<ObjectiveRecord> {
-  const commodoreId = input.commodoreId ?? (input.theaterId ? await resolveOwnerForContext(input.theaterId, signal) : null);
+  // Objective 은 사령관의 것이다 — 부르는 쪽이 자기 문맥의 사령관을 싣는다. Theater 에서 주인을 찾지 않는다.
+  const commodoreId = input.commodoreId ?? null;
   if (!commodoreId) throw new Error("commodore_required");
   const response = await fetch("/api/v1/objectives/records", {
     method: "POST",
@@ -470,7 +471,6 @@ function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
     createdAt: payload.createdAt,
     lastOpenedAt: payload.lastOpenedAt,
     ...(typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? { order: payload.order } : {}),
-    ...(payload.commodore && typeof payload.commodore === "object" && typeof payload.commodore.id === "string" ? { commodore: { id: payload.commodore.id, ...(typeof payload.commodore.alias === "string" && payload.commodore.alias ? { alias: payload.commodore.alias } : {}) } } : {}),
     hasWiki: payload.hasWiki,
     activeAdmiralCount: payload.activeAdmiralCount,
   };

@@ -144,7 +144,10 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
       expect(response!.status).toBe(status);
       return response!.value as Record<string, unknown>;
     };
-    const resolved = await call("commodore/resolve", { theaterId: workspaceHash(a.root) });
+    // 이주 결과는 소유 색인으로 읽는다 — 제품에는 Theater 에서 사령관을 찾는 길이 없다.
+    const owners = (theaterId: string): readonly string[] => createCommodoreOwnership(deps.paths).resolveAll(theaterId);
+    const ownerOf = (theaterId: string): string | null => { const ids = owners(theaterId); return ids.length === 1 ? ids[0]! : null; };
+    const resolved = { commodoreId: ownerOf(workspaceHash(a.root)) };
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
     expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { patrolMinutes: 60, directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
     // 등록 경로와 사령관 링크가 표기만 달라도 같은 사령관으로 풀리고 저장된다. 대소문자를 무시하는 파일 시스템은 등록 대소문자를 뒤집고, 구분하는 파일 시스템은 `/.`를 쓴다.
@@ -160,7 +163,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const spelled = notationOf(a.root);
     const spelledId = workspaceHash(spelled);
     roots.set(spelledId, spelled);
-    const same = await call("commodore/resolve", { theaterId: spelledId });
+    const same = { commodoreId: ownerOf(spelledId) };
     const saved = await call("commodore/alias", { commodoreId: same.commodoreId, alias: "Kept" });
     const created = await call("commodore/create", { alias: "New Commodore" });
     expect(created.commodoreId).not.toBe(resolved.commodoreId);
@@ -169,16 +172,16 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect({ distinct: spelledId !== workspaceHash(a.root), resolved: same.commodoreId, saved: saved.commodoreId, alias: (saved.state as { alias?: string }).alias, state: reread.commodoreId }).toEqual({ distinct: true, resolved: resolved.commodoreId, saved: resolved.commodoreId, alias: "Kept", state: resolved.commodoreId });
     expect(JSON.stringify(view)).not.toContain(a.root);
     expect(view.state).not.toHaveProperty("autonomy");
-    expect((await call("commodore/resolve", { theaterId: workspaceHash(stopped.root) })).commodoreId).toBe(stoppedId);
+    expect(ownerOf(workspaceHash(stopped.root))).toBe(stoppedId);
     expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { patrolMinutes: 120, directive: { text: stopped.text, rev: 1 } } });
-    expect((await call("commodore/resolve", { theaterId: workspaceHash(fresh) })).commodoreId).toBeNull();
+    expect(ownerOf(workspaceHash(fresh))).toBeNull();
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
-    expect(await call("commodore/resolve", { theaterId: workspaceHash(unknown.root) })).toEqual({ commodoreId: null, commodoreIds: [] });
+    expect(owners(workspaceHash(unknown.root))).toEqual([]);
     expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(unknown.root))).toThrow("commodore_migration_pending");
     // 실행 중 등록도 같은 방어를 쓴다. 이 원본은 옛 손실 변환 이름이므로 digest 쪽만 검사하면 놓친다.
     roots.set(workspaceHash(lateUnknown.root), lateUnknown.root);
     feature.sync();
-    expect(await call("commodore/resolve", { theaterId: workspaceHash(lateUnknown.root) })).toEqual({ commodoreId: null, commodoreIds: [] });
+    expect(owners(workspaceHash(lateUnknown.root))).toEqual([]);
     expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(lateUnknown.root))).toThrow("commodore_migration_pending");
     expect(fs.readFileSync(path.join(unknown.dir, "state.json"), "utf8")).toBe(state(unknown.text));
     expect(fs.readFileSync(path.join(lateUnknown.dir, "state.json"), "utf8")).toBe(state(lateUnknown.text));
@@ -186,11 +189,11 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     write(path.join(lateUnknown.workspace, "cwd.json"), JSON.stringify({ cwd: lateUnknown.root }));
     await feature.dispose();
     feature = createCommodoreFeature(deps);
-    const recovered = await call("commodore/resolve", { theaterId: workspaceHash(unknown.root) });
+    const recovered = { commodoreId: ownerOf(workspaceHash(unknown.root)) };
     expect(recovered.commodoreId).toEqual(expect.any(String));
     expect(await call("commodore/state", { commodoreId: recovered.commodoreId })).toMatchObject({ state: { directive: { text: unknown.text, rev: 1 } } });
     expect(await call("commodore/transcript", { commodoreId: recovered.commodoreId })).toMatchObject({ entries: [{ kind: "result", seq: 1, outcome: "ok" }] });
-    const recoveredLate = await call("commodore/resolve", { theaterId: workspaceHash(lateUnknown.root) });
+    const recoveredLate = { commodoreId: ownerOf(workspaceHash(lateUnknown.root)) };
     expect(recoveredLate.commodoreId).toEqual(expect.any(String));
     expect(await call("commodore/state", { commodoreId: recoveredLate.commodoreId })).toMatchObject({ state: { directive: { text: lateUnknown.text, rev: 1 } } });
     expect(fs.existsSync(unknown.dir)).toBe(false);
@@ -219,9 +222,9 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(migrateCommodoreData(data)).toMatchObject({ moved: 0, resumed: 0, unresolved: 0 });
     feature = createCommodoreFeature(deps);
     expect(fs.readdirSync(entities).sort()).toEqual(filesBefore);
-    expect((await call("commodore/resolve", { theaterId: workspaceHash(a.root) })).commodoreId).toBe(resolved.commodoreId);
+    expect(ownerOf(workspaceHash(a.root))).toBe(resolved.commodoreId);
 
-    // 이주 보류 중에는 Wiki 조회도 빈 UUID를 먼저 발급해 원본의 재시도 길을 막지 않는다.
+    // 이주 보류 중에는 빈 UUID를 먼저 발급해 원본의 재시도 길을 막지 않는다.
     await feature.dispose();
     const pendingRoot = theater("pending-with-wiki");
     const pending = seed(workspaceDirectoryNames(pendingRoot)[0], pendingRoot, "Keep the pending directive");
@@ -230,9 +233,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     roots.set(workspaceHash(pendingRoot), pendingRoot);
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
     feature = createCommodoreFeature(deps);
-    expect((await call("commodore/resolve", { theaterId: workspaceHash(pendingRoot) })).commodoreId).toBeNull();
-    expect(feature.knowledge.forContext(workspaceHash(pendingRoot))).toEqual({ ok: false, reason: "unavailable" });
-    expect(feature.knowledge.forContext("unregistered")).toEqual({ ok: false, reason: "unknown_context" });
+    expect(ownerOf(workspaceHash(pendingRoot))).toBeNull();
     expect(fs.readFileSync(path.join(pending.workspace, "knowledge", "wiki", "kept.md"), "utf8")).toBe("kept wiki\n");
     expect(fs.readFileSync(path.join(pending.dir, "state.json"), "utf8")).toBe(state(pending.text));
     // 별칭의 명시적 발급도 보류 가드를 탄다. 빈 엔티티를 만들지 않고 원본은 그대로다.
@@ -241,7 +242,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
     roots.set(workspaceHash(aliasRoot), aliasRoot);
     await feature.dispose(); feature = createCommodoreFeature(deps);
-    expect(await call("commodore/resolve", { theaterId: workspaceHash(aliasRoot) })).toEqual({ commodoreId: null, commodoreIds: [] });
+    expect(owners(workspaceHash(aliasRoot))).toEqual([]);
     expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(aliasRoot))).toThrow("commodore_migration_pending");
     expect(fs.readFileSync(path.join(aliasPending.dir, "state.json"), "utf8")).toBe(state(aliasPending.text));
     expect(warn).toHaveBeenCalled();

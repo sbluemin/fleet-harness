@@ -44,11 +44,11 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
 
 /**
  * 행 글리프 어휘. 모양이 종류를 말하고 색은 상태만 말한다 — 글리프는 한 잉크이고
- * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 그 Theater 의 사령관 아바타(`theater-avatar`),
+ * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 Theater 표식(`theater`)이고,
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater-avatar" | "theater-add" | "objective-new"
+  | "theater" | "theater-add" | "objective-new"
   | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group" | "objective-accent"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
@@ -92,8 +92,6 @@ export interface PaletteCommandEntry {
   readonly shortcut?: string;
   /** 대상이 있는 명령의 대상 이름 — 현재 Objective 구역의 행 아래 캡션. */
   readonly subject?: string;
-  /** 「Theater 아바타」 글리프의 재료 — 그 Theater. */
-  readonly theaterAvatar?: { readonly id: string; readonly label: string };
   /** 「레일 엔트리」 글리프의 재료 — 등록된 아이콘. */
   readonly railIcon?: ReactNode | (() => ReactNode);
   /** 빈 입력의 홈 구역에는 세우지 않고 질의 매칭에만 남는다(보고 있지 않은 Theater 의 섹션 행). */
@@ -175,24 +173,20 @@ export function buildPaletteCommands(
     push({ commandId: `archive-objectiveRecord:${activeObjective.id}`, label: t("palette.archiveObjective", { title: subject }), aliasLabel: alias("palette.archiveObjective", { title: subject }), action: { kind: "archive-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-archive", subject, undoable: true });
   }
   // Theater Inbox 섹션 행(사령관 등) — 보고 있는 Theater 의 행이 theater 구역 맨 앞에 서고, 다른 Theater 의 행은
-  // 홈에서 빠진 채 질의에만 맞는다. 이름은 사이드바 머리처럼 별칭을 앞세우고, 원래 이름으로도 찾아진다.
+  // 홈에서 빠진 채 질의에만 맞는다. 이름은 Theater 이름이다 — Theater 는 사령관을 정하지 않는다.
   const viewedTheaterId = getViewedTheaterId();
   const theaterSections = [...(options?.theaterSections ?? [])]
     .sort((left, right) => Number(right.theaterId === viewedTheaterId) - Number(left.theaterId === viewedTheaterId));
   for (const section of theaterSections) {
     const theater = current.theaters.find((candidate) => candidate.id === section.theaterId);
     if (!theater) continue;
-    const name = theater.commodore?.alias || theater.label;
+    const name = theater.label;
     const title = language === "ko" ? section.titles.ko : section.titles.en;
     const otherTitle = language === "ko" ? section.titles.en : section.titles.ko;
     push({
       commandId: `open-theater-section:${section.sectionId}@${section.theaterId}`,
       label: t("palette.openTheaterSection", { section: title, theater: name }),
       aliasLabel: alias("palette.openTheaterSection", { section: otherTitle, theater: name }),
-      ...(theater.commodore?.alias ? { extraAliases: [
-        t("palette.openTheaterSection", { section: title, theater: theater.label }),
-        alias("palette.openTheaterSection", { section: otherTitle, theater: theater.label }),
-      ] } : {}),
       action: { kind: "open-theater-section", theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId },
       group: "theater",
       glyph: "rail-entry",
@@ -201,17 +195,15 @@ export function buildPaletteCommands(
     });
   }
   for (const theater of current.theaters) {
-    const name = theater.commodore?.alias || theater.label;
+    const name = theater.label;
     push({
       commandId: `switch-theater:${theater.id}`,
       label: t("palette.switchTheater", { label: name }),
       aliasLabel: alias("palette.switchTheater", { label: name }),
-      ...(theater.commodore?.alias ? { extraAliases: [t("palette.switchTheater", { label: theater.label }), alias("palette.switchTheater", { label: theater.label })] } : {}),
       current: theater.id === viewedTheaterId,
       action: { kind: "switch-theater", theaterId: theater.id },
       group: "theater",
-      glyph: "theater-avatar",
-      theaterAvatar: { id: theater.id, label: name },
+      glyph: "theater",
     });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
