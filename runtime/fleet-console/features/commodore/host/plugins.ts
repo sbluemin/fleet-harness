@@ -557,7 +557,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     try {
       for (const preset of PRESET_MARKETPLACES) {
         const row = readRegistry().marketplaces.find((item) => item.name === preset.name);
-        if (row && !row.enabled) continue;
+        // 꺼진 곳은 받지 않으므로 받는 중으로 남은 표시(켰다가 바로 끈 경우 등)를 걷는다 — 남겨 두면 화면이 끝없이 다시 읽는다.
+        if (row && !row.enabled) { if (row.status === "syncing") patchMarketplace(preset.name, { status: "ready" }); continue; }
         if (row && row.status === "ready" && row.updatedAt && now() - row.updatedAt < PRESET_REFRESH_MS && known()[preset.name]) continue;
         if (row && row.status === "failed" && row.attemptedAt && now() - row.attemptedAt < PRESET_RETRY_MS) continue;
         if (!row) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, { name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: preset.enabled, status: preset.enabled ? "syncing" : "ready", ...(preset.enabled ? { attemptedAt: now() } : {}) }] }));
