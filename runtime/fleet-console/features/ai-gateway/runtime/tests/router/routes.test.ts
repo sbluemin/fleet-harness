@@ -109,7 +109,7 @@ describe("delegation assignment", () => {
   const MOD_TOKEN = "mod-token";
   const exposure = {
     delegationRoutingEnabled: true,
-    delegationModels: [requireGatewayModel("codex--gpt-5.6-terra")],
+    delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
   };
   const assigningRouter = () => createAiGatewayRouter({
     readAuth,
@@ -151,7 +151,7 @@ describe("delegation assignment", () => {
     const at = Date.now();
     let current: GatewayAssignmentExposure = {
       delegationRoutingEnabled: true, delegationRoutingMode: "model", distribution,
-      delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
       quota: { codex: { status: "ok", fetchedAt: at, windows: [] }, xai: { status: "ok", fetchedAt: at, windows: [] } },
     };
     let release!: () => void;
@@ -213,7 +213,7 @@ describe("delegation assignment", () => {
 
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
-      model: "claude-gateway--codex--gpt-5.6-terra",
+      model: "claude-gateway--codex--gpt-6.1-terra",
       because: "no model named → work",
     });
   });
@@ -227,7 +227,7 @@ describe("delegation assignment", () => {
       providerPlugin: "fleet",
     });
 
-    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-5.6-terra" });
+    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra" });
   });
 
   it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
@@ -237,7 +237,7 @@ describe("delegation assignment", () => {
     const spread = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       // xai는 소진 직전이다. 읽을 수 있는 대안이 있는 한 그쪽으로 보내지 않는다.
@@ -253,7 +253,7 @@ describe("delegation assignment", () => {
       spread,
     ).model);
 
-    expect(carried.every((model) => model === "claude-gateway--codex--gpt-5.6-terra")).toBe(true);
+    expect(carried.every((model) => model === "claude-gateway--codex--gpt-6.1-terra")).toBe(true);
     expect(providerLoad.get("codex")).toBe(4);
     expect(providerLoad.get("xai")).toBeUndefined();
   });
@@ -263,7 +263,7 @@ describe("delegation assignment", () => {
     const even = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       quota: {
@@ -291,7 +291,7 @@ describe("delegation assignment", () => {
     const reserved = "claude-gateway--xai--grok-4.6";
     const hostOnly = {
       delegationRoutingEnabled: true,
-      delegationModels: [requireGatewayModel("codex--gpt-5.6-terra")],
+      delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
     } satisfies GatewayAssignmentExposure;
 
     const decision = decideGatewayRoutingAssignment(
@@ -300,7 +300,7 @@ describe("delegation assignment", () => {
     );
 
     expect(decision.model).not.toBe(reserved);
-    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
     // Claude도 같다 — 저장 설정에서 호스트 전용으로 둔 Claude는 위임 후보(gateway_models)에 서지 않고, 켜 둔 Claude는 다른
     // 모델과 같은 정보(창·강도)로 선다. 구 200k 좌표(`claude--sonnet`)로 남은 저장값도 가족의 단일 1M 항목으로 선다.
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] });
@@ -318,7 +318,7 @@ describe("delegation assignment", () => {
     const exposure = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
@@ -429,7 +429,7 @@ describe("delegation assignment", () => {
       delegationRoutingEnabled: true,
       delegationRoutingMode: "jev",
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
@@ -503,7 +503,7 @@ describe("delegation assignment", () => {
     }, { choose: async ({ criteria }) => ({
       seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "high",
     }) });
-    expect(rated).toMatchObject({ model: "claude-gateway--codex--gpt-5.6-terra", effort: "high" });
+    expect(rated).toMatchObject({ model: "claude-gateway--codex--gpt-6.1-terra", effort: "high" });
     expect(rated.because).toContain("difficulty high");
     const unrated = await decideGatewayRoutingAssignmentWithJev(request, {
       ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
@@ -521,7 +521,7 @@ describe("delegation assignment", () => {
       },
     });
     const fallback = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: unsigned });
-    expect(fallback.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+    expect(fallback.model).toBe("claude-gateway--codex--gpt-6.1-terra");
     expect(fallback.because).toContain("fallback: routing decision failed: not signed in");
     expect(providerLoad.get("codex")).toBe(1);
     expect(providerLoad.get("xai")).toBe(1);
@@ -617,9 +617,9 @@ describe("delegation assignment", () => {
       let data: any;
       const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
         delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
-        delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+        delegationModels: [requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
       }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return { seat: "c0" }; } });
-      expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+      expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
       return data;
     };
     const quota = { status: "ok", fetchedAt: now, windows };
@@ -657,7 +657,7 @@ describe("delegation assignment", () => {
         delegationRoutingEnabled: true,
         delegationRoutingMode: "jev",
         delegationModels: [
-          requireGatewayModel("codex--gpt-5.6-terra"),
+          requireGatewayModel("codex--gpt-6.1-terra"),
           requireGatewayModel("xai--grok-composer-2.5-fast"),
         ],
         providerLoad,
@@ -672,7 +672,7 @@ describe("delegation assignment", () => {
       },
     );
 
-    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-6.1-terra");
     expect(decision.because).toContain("fallback: Workflow stage");
     expect(providerLoad.get("codex")).toBe(1);
   });
@@ -680,7 +680,7 @@ describe("delegation assignment", () => {
   it("puts quota ahead of the spend order: a critical provider yields unless every one is critical", () => {
     const reachable = [
       {
-        model: "claude-gateway--codex--gpt-5.6-terra",
+        model: "claude-gateway--codex--gpt-6.1-terra",
         provider: "codex" as const,
         label: "composer",
       },
@@ -693,7 +693,7 @@ describe("delegation assignment", () => {
     const exposure: GatewayAssignmentExposure = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerPriority: ["codex", "xai"],
@@ -725,7 +725,7 @@ describe("delegation assignment", () => {
       delegationRoutingEnabled: true,
       delegationRoutingMode: "jev",
       delegationModels: [
-        requireGatewayModel("codex--gpt-5.6-terra"),
+        requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
@@ -775,7 +775,7 @@ describe("delegation assignment", () => {
         seenSignal = options?.signal;
         await new Promise((resolve) => setTimeout(resolve, 50));
         return {
-          model: "claude-gateway--codex--gpt-5.6-terra",
+          model: "claude-gateway--codex--gpt-6.1-terra",
           label: "composer",
           because: "test · jev",
         };
@@ -807,7 +807,7 @@ describe("delegation assignment", () => {
 
       expect(resp.status).toBe(200);
       const data = (await resp.json()) as Record<string, unknown>;
-      expect(data.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+      expect(data.model).toBe("claude-gateway--codex--gpt-6.1-terra");
       expect(data.because).toBe("test · jev");
       expect(seenSignal?.aborted).toBe(false);
     } finally {
@@ -938,7 +938,7 @@ describe("oversized skill payloads", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-terra",
+      model: "claude-gateway--codex--gpt-6.1-terra",
       messages: [listingTurn, { role: "user", content: [{ type: "text", text: BODY }] }],
     }));
 
@@ -953,7 +953,7 @@ describe("oversized skill payloads", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-terra",
+      model: "claude-gateway--codex--gpt-6.1-terra",
       messages: [listingTurn],
     }));
 
