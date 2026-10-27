@@ -9,6 +9,7 @@ import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtim
 import { CommodoreStoreError } from "./errors.js";
 import {
   MAX_CUSTOM_MARKETPLACES,
+  MAX_PLUGIN_ICON_BYTES,
   PRESET_MARKETPLACES,
   splitPluginId,
   type MarketplaceErrorCode,
@@ -150,6 +151,49 @@ function inside(root: string, relative: unknown): string | null {
   return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
 }
 
+const ICON_TYPES: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml" };
+
+/** 확장자가 말하는 형식과 실제 바이트가 맞는가 — 이름만 그림인 파일을 그림으로 내주지 않는다. */
+function looksLike(mime: string, bytes: Buffer): boolean {
+  const starts = (...values: number[]) => values.every((value, index) => bytes[index] === value);
+  switch (mime) {
+    case "image/png": return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+    case "image/jpeg": return starts(0xff, 0xd8, 0xff);
+    case "image/gif": return bytes.subarray(0, 6).toString("latin1") === "GIF87a" || bytes.subarray(0, 6).toString("latin1") === "GIF89a";
+    case "image/webp": return bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP";
+    case "image/svg+xml": return /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(bytes.subarray(0, 4096).toString("utf8").replace(/^﻿/, ""));
+    default: return false;
+  }
+}
+
+/**
+ * plugin.json `icon` 이 가리키는 그림 파일. 어휘로 플러그인 폴더 안인지 본 뒤, 실제 경로(심볼릭 링크를 푼)로 다시 폴더 안인지 보고,
+ * 정해진 그림 형식·크기·바이트 머리만 받는다. 하나라도 어긋나면 아이콘이 없는 것으로 친다.
+ */
+function iconFileOf(dir: string, declared: unknown): { readonly file: string; readonly mime: string } | null {
+  const lexical = inside(dir, declared);
+  if (!lexical) return null;
+  const mime = ICON_TYPES[path.extname(lexical).toLowerCase()];
+  if (!mime) return null;
+  let realDir: string;
+  let realFile: string;
+  try { realDir = fs.realpathSync(dir); realFile = fs.realpathSync(lexical); } catch { return null; }
+  if (!realFile.startsWith(realDir + path.sep)) return null;
+  try {
+    const stat = fs.statSync(realFile);
+    if (!stat.isFile() || stat.size === 0 || stat.size > MAX_PLUGIN_ICON_BYTES) return null;
+  } catch { return null; }
+  return { file: realFile, mime };
+}
+
+const text = (value: unknown, max: number): string | undefined => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined);
+const personName = (value: unknown): string | undefined => text(typeof value === "string" ? value : isRecord(value) ? value.name : undefined, 120);
+const webAddress = (value: unknown): string | undefined => {
+  const raw = text(value, 2048);
+  if (!raw) return undefined;
+  try { const url = new URL(raw); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
+};
+
 export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const now = options.now ?? Date.now;
   const home = path.join(options.root, "claude");
@@ -237,15 +281,33 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return isRecord(raw) && isRecord(raw.plugins) ? raw.plugins as Record<string, readonly { readonly installPath?: string; readonly version?: string }[]> : {};
   };
 
+  /** marketplace.json 원문과, 받은 것이 디렉터리(git 출처)면 그 루트. url 출처는 파일 하나라 루트가 없다. */
+  const documentOf = (name: string): { readonly root: string | null; readonly raw: Record<string, unknown> } | null => {
+    const location = known()[name]?.installLocation;
+    if (!location) return null;
+    let file = location;
+    let root: string | null = null;
+    try { if (fs.statSync(location).isDirectory()) { root = location; file = path.join(location, ".claude-plugin", "marketplace.json"); } } catch { return null; }
+    const raw = readJson(file);
+    return isRecord(raw) ? { root, raw } : null;
+  };
   /** marketplace.json 의 플러그인 항목. 위치가 파일(url 출처)이든 디렉터리든 읽는다. */
   const entriesOf = (name: string): readonly MarketplaceEntry[] => {
-    const location = known()[name]?.installLocation;
-    if (!location) return [];
-    let file = location;
-    try { if (fs.statSync(location).isDirectory()) file = path.join(location, ".claude-plugin", "marketplace.json"); } catch { return []; }
-    const raw = readJson(file);
-    if (!isRecord(raw) || !Array.isArray(raw.plugins)) return [];
+    const raw = documentOf(name)?.raw;
+    if (!raw || !Array.isArray(raw.plugins)) return [];
     return raw.plugins.filter((entry): entry is MarketplaceEntry => isRecord(entry) && typeof entry.name === "string" && segment.test(entry.name));
+  };
+  /**
+   * 받기 전에도 읽을 수 있는 플러그인 폴더 — 마켓플레이스 저장소 안의 상대 경로 출처뿐이다(Claude Code 도 받기 전에는 이것만 읽는다).
+   * 외부 출처(github·git-subdir 등)는 받은 뒤 설치본에서만 읽힌다.
+   */
+  type MarketplaceDocument = ReturnType<typeof documentOf>;
+  const bundledDirOf = (document: MarketplaceDocument, entry: MarketplaceEntry): string | null => {
+    if (!document?.root || typeof entry.source !== "string") return null;
+    const pluginRoot = isRecord(document.raw.metadata) && typeof document.raw.metadata.pluginRoot === "string" ? document.raw.metadata.pluginRoot : null;
+    const relative = entry.source.startsWith("./") || entry.source === "." || !pluginRoot || entry.source.includes("/") ? entry.source : path.posix.join(pluginRoot, entry.source);
+    const dir = inside(document.root, relative);
+    return dir && fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
   };
   const entryOf = (id: string): MarketplaceEntry | undefined => {
     const { plugin, marketplace } = splitPluginId(id);
@@ -360,22 +422,47 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return { components, ...(runs.length ? { runs } : {}), ...(version ? { version } : {}) };
   };
 
-  const view = (row: RegistryMarketplace): MarketplaceView => ({
-    name: row.name, kind: row.kind, locator: row.locator, ...(row.ref ? { ref: row.ref } : {}),
-    preset: row.preset, enabled: row.enabled, status: row.status, ...(row.error ? { error: row.error } : {}),
-    ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}), pluginCount: entriesOf(row.name).length,
-  });
+  /**
+   * 카드에 보일 표시 필드. 항목 값이 먼저이고, 없으면 읽을 수 있는 폴더의 plugin.json 값이다. 아이콘은 plugin.json 에만 있다
+   * (marketplace 항목은 디렉터리 목록 필드를 받지 않는다).
+   */
+  const display = (entry: MarketplaceEntry, dir: string | null): Pick<PluginCatalogEntry, "description" | "displayName" | "category" | "author" | "homepage" | "icon"> => {
+    const manifest = dir ? manifestOf(dir) : {};
+    const description = text(entry.description, 600) ?? text(manifest.description, 600);
+    const displayName = text(entry.displayName, 120) ?? text(manifest.displayName, 120);
+    const category = text(entry.category, 60) ?? text(manifest.category, 60);
+    const author = personName(entry.author) ?? personName(manifest.author);
+    const homepage = webAddress(entry.homepage) ?? webAddress(manifest.homepage);
+    const icon = dir !== null && iconFileOf(dir, manifest.icon) !== null;
+    return { ...(description ? { description } : {}), ...(displayName ? { displayName } : {}), ...(category ? { category } : {}), ...(author ? { author } : {}), ...(homepage ? { homepage } : {}), ...(icon ? { icon: true as const } : {}) };
+  };
+  /** 표시에 쓸 폴더 — 받은 것은 설치본, 아니면 마켓플레이스 안의 상대 경로 폴더. */
+  const displayDirOf = (id: string, document: MarketplaceDocument, entry: MarketplaceEntry, installs: ReturnType<typeof installed>): string | null =>
+    (installs[id] ? loadDirOf(id) : null) ?? bundledDirOf(document, entry);
+
+  const view = (row: RegistryMarketplace): MarketplaceView => {
+    const raw = documentOf(row.name)?.raw;
+    const description = raw ? text(raw.description, 300) ?? (isRecord(raw.metadata) ? text(raw.metadata.description, 300) : undefined) : undefined;
+    const owner = raw ? personName(raw.owner) : undefined;
+    return {
+      name: row.name, kind: row.kind, locator: row.locator, ...(row.ref ? { ref: row.ref } : {}),
+      preset: row.preset, enabled: row.enabled, status: row.status, ...(row.error ? { error: row.error } : {}),
+      ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}), pluginCount: entriesOf(row.name).length,
+      ...(description ? { description } : {}), ...(owner ? { owner } : {}),
+    };
+  };
   const catalog = (): PluginCatalogView => {
     const registry = readRegistry();
     const installs = installed();
     const plugins: PluginCatalogEntry[] = [];
     for (const row of registry.marketplaces) {
       if (!row.enabled) continue;
+      const document = documentOf(row.name);
       for (const entry of entriesOf(row.name)) {
         const id = `${entry.name}@${row.name}`;
-        const dir = installs[id] ? loadDirOf(id) : null;
-        plugins.push({ id, name: entry.name, marketplace: row.name, ...(typeof entry.description === "string" ? { description: entry.description.slice(0, 600) } : {}),
-          ...(typeof entry.version === "string" ? { version: entry.version } : {}), ...(dir ? describe(id, dir) : {}) });
+        const dir = displayDirOf(id, document, entry, installs);
+        plugins.push({ id, name: entry.name, marketplace: row.name, ...display(entry, dir),
+          ...(typeof entry.version === "string" ? { version: entry.version } : {}), ...(dir && installs[id] ? describe(id, dir) : {}) });
       }
     }
     const order = new Map<string, number>(PRESET_MARKETPLACES.map((preset, index) => [preset.name, index]));
@@ -447,8 +534,23 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     }
     const dir = loadDirOf(id);
     if (!dir) throw new CommodoreStoreError("install_failed");
-    return { id, name: plugin, marketplace, ...(typeof entry.description === "string" ? { description: entry.description.slice(0, 600) } : {}), ...describe(id, dir) };
+    return { id, name: plugin, marketplace, ...display(entry, dir), ...describe(id, dir) };
   });
+
+  /** 아이콘 그림 — 등록된 마켓플레이스의 항목이고, 읽을 수 있는 폴더 안의 검사를 지난 그림일 때만. 플러그인 코드는 실행하지 않는다. */
+  const icon = (id: string): { readonly bytes: Buffer; readonly mime: string } | null => {
+    const { marketplace } = splitPluginId(id);
+    if (!readRegistry().marketplaces.some((row) => row.name === marketplace)) return null;
+    const entry = entryOf(id);
+    if (!entry) return null;
+    const dir = displayDirOf(id, documentOf(marketplace), entry, installed());
+    if (!dir) return null;
+    const found = iconFileOf(dir, manifestOf(dir).icon);
+    if (!found) return null;
+    let bytes: Buffer;
+    try { bytes = fs.readFileSync(found.file); } catch { return null; }
+    return bytes.byteLength <= MAX_PLUGIN_ICON_BYTES && looksLike(found.mime, bytes) ? { bytes, mime: found.mime } : null;
+  };
 
   return {
     /**
@@ -504,6 +606,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       return catalog();
     },
     inspect,
+    icon,
     /** 설치 전 확인 — 실행 명령이 있고 이 버전을 신뢰한 적이 없으면 trust_required. trusted 면 기록한다. */
     async prepareInstall(id: string, trusted: boolean): Promise<void> {
       const entry = await inspect(id);
