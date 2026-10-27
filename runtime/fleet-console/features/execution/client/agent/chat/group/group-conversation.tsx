@@ -13,7 +13,7 @@ import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, 
 import type { AgentConversationEntry } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
-import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -554,7 +554,7 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
   const detailId = React.useId();
   const latest = item.writing ?? item.notes[item.notes.length - 1];
   const live = item.writing !== null;
-  const speaker = item.speaker.kind === "commodore" ? { ...item.speaker, name: t("group.commodore") } : item.speaker;
+  const speaker = item.speaker.kind === "commodore" ? { ...item.speaker, name: commodoreDisplayName(item.speaker.name, t("group.commodore")) } : item.speaker;
   const ledger = onOpenLedger ? ledgerOf(speaker, participants) : null;
   const preview = latest ? tailExcerpt(latest.text, 80) : "";
   const shown = item.writing ? [...item.notes, item.writing] : item.notes;
@@ -804,8 +804,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     );
   }
   // 지휘관·구성원의 응답은 채팅과 같이 마크다운이다. 흐르는 동안에는 글자 단위로 자란다.
-  // 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다.
-  const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
+  // 역할 이름인 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다. 별칭은 그대로 둔다.
+  const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: commodoreDisplayName(entry.speaker.name, t("group.commodore")) } : entry.speaker;
   // 묶음 머리의 이름과 꼬리의 표식은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트
   // 영역이다. 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
   const target = (continued && !tail) || !onOpenLedger ? null : ledgerOf(speaker, participants);
