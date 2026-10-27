@@ -105,6 +105,12 @@ export function sortCommanderRows(items: readonly SideBarRowItem[], preference: 
       const waiting = Number(waitsForPerson(right)) - Number(waitsForPerson(left));
       if (waiting !== 0) return waiting;
     }
+    // 기본 활동 정렬은 최근 시각이 큰 완료 줄을 시작 전(만든 시각만 있는 줄)보다 앞에 둔다.
+    // 정렬 방향 전체를 뒤집지 않고, 완료만 나머지 뒤로 내려 시작 전이 완료보다 앞에 서게 한다.
+    if (preference.key === "activity" && preference.direction === "desc") {
+      const settled = Number(left.row.glyph === "done") - Number(right.row.glyph === "done");
+      if (settled !== 0) return settled;
+    }
     const a = sortValue(left, preference.key);
     const b = sortValue(right, preference.key);
     if (a !== undefined && b !== undefined) {

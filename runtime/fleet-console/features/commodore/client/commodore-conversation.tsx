@@ -18,7 +18,9 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { presentRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
-import { useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
+import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
+import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
+import { getState } from "../../../core/client/src/integration/store.js";
 import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
 import { setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -72,11 +74,17 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
   return port?.subscribe(listener) ?? (() => {});
 }
 
-/** 가운데 칸의 사령관 대화가 이 Theater 를 가리키는가 — 읽기 전용 기록도 같은 사령관 행을 강조한다. */
+/**
+ * 가운데 칸이 이 사령관을 가리키는가. 사령관 대화뿐 아니라 그 사령관의 지휘관 대화도 사이드바 줄을 강조한다.
+ * 다른 표면이 서 있으면 그 표면의 사령관만 보고, 표면이 없으면 열린 Objective 의 소유 사령관을 본다.
+ */
 export function isCommodoreConversationSelected(theaterId: string): boolean {
-  const surface = port?.current();
   const owner = ownerOfContext(theaterId);
-  return surface?.surfaceId === COMMODORE_SURFACE_ID && owner !== null && readParams(surface.params)?.commodoreId === owner;
+  if (owner === null) return false;
+  const surface = getConversationSurface();
+  if (surface) return readParams(surface.params)?.commodoreId === owner;
+  const subject = getConversationSubject() ?? getState().objectiveRecords.find((record) => record.id === getState().activeObjectiveId);
+  return subject?.commodoreId === owner;
 }
 
 /**

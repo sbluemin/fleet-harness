@@ -1450,7 +1450,6 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-commander-bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 16px; border-bottom: 1px solid var(--m-hairline); }
 .mobile-commander-bar > span { flex: 1; min-width: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mobile-commander-bar .mobile-pill-secondary { min-height: 44px; padding: 0 12px; font-size: var(--m-fs-caption); }
-.mobile-commander-direction { display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; color: var(--m-text); background: transparent; border: 0; border-radius: 12px; }
 .mobile-commander-rows { margin: 0; padding: 4px 8px; list-style: none; }
 .mobile-commander-item { min-width: 0; border-radius: 14px; }
 .mobile-commander-item.is-selected { background: var(--m-surface); }
@@ -1472,10 +1471,12 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-commander-detail .objectives-commodore-recent-entry time { color: var(--m-text-faint); font-family: inherit; font-size: var(--m-fs-small); }
 .mobile-commander-sort .mobile-sheet-row { min-height: 48px; }
 .mobile-commander-sort hr { margin: 8px 16px; border: 0; border-top: 1px solid var(--m-hairline-strong); }
-.mobile-commander-sort-option { position: relative; cursor: pointer; }
-.mobile-commander-sort-option > span:first-child { flex: 1; }
-.mobile-commander-sort-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.mobile-commander-sort-option:focus-within, .mobile-commander-direction:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.mobile-commander-sort-option { gap: 4px; }
+.mobile-commander-sort-name { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mobile-commander-sort-name > span:first-child { flex: 1; min-width: 0; }
+.mobile-commander-sort-name:focus-visible, .mobile-commander-sort-direction:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.mobile-commander-sort-direction { display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--m-text); cursor: pointer; }
+.mobile-commander-sort-direction[aria-pressed="true"] { background: var(--m-chip); }
 .mobile-commander-sort-check { display: grid; place-items: center; flex: none; width: 24px; color: var(--m-text); }
 
 .mobile-conv-searchfield { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 44px; padding: 0 14px; color: var(--m-text-muted); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }

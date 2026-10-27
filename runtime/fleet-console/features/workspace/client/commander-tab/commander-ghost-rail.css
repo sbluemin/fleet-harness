@@ -54,6 +54,7 @@
 .commander-ghost-scroll::-webkit-scrollbar { display: none; }
 .commander-ghost-scroll[data-more-top="true"] { --commander-fade-top: 16px; }
 .commander-ghost-scroll[data-more-bottom="true"] { --commander-fade-bottom: 16px; }
+.commander-ghost[data-side="left"] { right: auto; left: 6px; }
 .commander-ghost-open, .commander-ghost-close {
   flex: none;
   display: grid;
@@ -69,7 +70,7 @@
   font-size: var(--t-lg);
   cursor: pointer;
 }
-.commander-ghost-open { margin-top: 4px; }
+.commander-ghost-open { position: relative; z-index: 7; margin-top: 4px; }
 .commander-ghost-open:hover, .commander-ghost-close:hover { background: var(--wash-hover); }
 .commander-ghost-close:focus-visible { outline: 2px solid var(--control-focus-ring); }
 .commander-ghost-tip {
@@ -98,7 +99,8 @@
   right: 0;
   width: 312px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100% + 4px);
+  /* 하단 화살표는 목록 위에 남아 다시 눌러 닫을 수 있다. */
+  max-height: calc(100% - 32px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--popover-rim);
@@ -108,6 +110,8 @@
   container-type: inline-size;
 }
 .commander-ghost-list-head { display: flex; align-items: center; padding: 6px; flex: none; }
+.commander-ghost[data-side="left"] .commander-ghost-tip { right: auto; left: 50px; }
+.commander-ghost[data-side="left"] .commander-ghost-list { right: auto; left: 0; }
 .commander-ghost-list-head .commander-list-owner { flex: 1; min-width: 0; }
 .commander-ghost-list .commander-tab { min-height: 0; }
 .commander-ghost-list .commander-tab-bar { flex: none; }

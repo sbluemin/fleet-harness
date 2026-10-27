@@ -8,6 +8,7 @@ import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRo
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { openCommanderConversation } from "./commander-navigation.js";
+import { useEffectiveCommanderPlacement } from "./commander-placement.js";
 import "./commander-ghost-rail.css";
 
 /** 대화의 거터 위에만 선다. 사령관과 지휘관이 바뀌어도 이 탐색기의 소유 사령관은 같다. */
@@ -20,6 +21,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
   const [expanded, setExpanded] = useState(false);
+  const side = useEffectiveCommanderPlacement().side;
   const [tip, setTip] = useState<{ index: number; top: number } | null>(null);
   const nav = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -30,6 +32,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardExpanded = useRef(false);
+  const pinned = useRef(false);
   const reduced = useRef(false);
   const id = useId();
   const itemId = (index: number) => `${id}-${index}`;
@@ -37,16 +40,21 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const clearDwell = () => { if (dwell.current !== null) clearTimeout(dwell.current); dwell.current = null; };
   const clearLeave = () => { if (leave.current !== null) clearTimeout(leave.current); leave.current = null; };
   const resetFaces = () => nav.current?.querySelectorAll<HTMLElement>(".commander-ghost-face").forEach((face) => face.style.removeProperty("--ghost-scale"));
-  const reveal = (keyboard = false) => {
-    keyboardExpanded.current = keyboard;
+  // pin: 하단 화살표·키보드로 연 목록. 머물러 연 목록은 고정하지 않는다.
+  const reveal = (pin: boolean, focusList = false) => {
+    pinned.current = pin;
+    keyboardExpanded.current = focusList;
     clearLeave(); clearDwell(); resetFaces(); setTip(null); setExpanded(true);
-    if (keyboard) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
+    if (focusList) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
+    pinned.current = false;
+    keyboardExpanded.current = false;
     clearLeave(); clearDwell(); setExpanded(false); setTip(null);
     if (restore) nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${Math.min(cursor, rows.length)}"]`)?.focus({ preventScroll: true });
   };
   const scheduleCollapse = () => {
+    if (pinned.current) return;
     clearDwell(); clearLeave(); resetFaces(); setTip(null);
     leave.current = setTimeout(() => {
       if (keyboardExpanded.current && panel.current?.contains(document.activeElement)) return;
@@ -125,6 +133,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   useEffect(() => {
     if (!expanded) return;
     const outside = (event: PointerEvent) => {
+      if (pinned.current) return;
       if (event.target instanceof Node && !nav.current?.contains(event.target)) collapse(false);
     };
     document.addEventListener("pointerdown", outside);
@@ -149,12 +158,10 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       else openCommanderConversation(commodoreId, objectiveId);
     }
     center(index);
-    collapse(false);
   };
   const selectRow = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
     if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
-    collapse(false);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); collapse(); return; }
@@ -165,13 +172,13 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       setCursor(next); center(next);
       nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${next}"]`)?.focus({ preventScroll: true });
     } else if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); select(cursor); }
-    else if (event.key === "ArrowLeft" || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true); }
+    else if (event.key === (side === "left" ? "ArrowRight" : "ArrowLeft") || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true, true); }
   };
   const tipRow = tip && tip.index > 0 ? rows[tip.index - 1] : null;
   const tipSummary = tipRow ? clusterRowSummary(tipRow, locale, t) : null;
 
-  return <nav ref={nav} className="commander-ghost" aria-label={t("commanderTab.aria")}
-    data-expanded={expanded || undefined} onKeyDown={onKeyDown}
+  return <nav ref={nav} className="commander-ghost" data-keep-objective-active="" aria-label={t("commanderTab.aria")}
+    data-side={side} data-expanded={expanded || undefined} data-pinned={(expanded && pinned.current) || undefined} onKeyDown={onKeyDown}
     onKeyDownCapture={() => { if (expanded) keyboardExpanded.current = true; }}
     onPointerEnter={clearLeave}
     onFocus={clearLeave}
@@ -192,7 +199,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         if (distance < 24 && (!nearest || distance < nearest.distance)) nearest = { index: Number(button.dataset.ghostIndex), distance, top: middle - navTop };
       });
       setTip(nearest);
-      if (nearest) dwell.current = setTimeout(() => reveal(), 500);
+      if (nearest) dwell.current = setTimeout(() => reveal(false), 500);
     }}
     onPointerLeave={scheduleCollapse}
   >
@@ -214,7 +221,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         </button>;
       })}
     </div>
-    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t("commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(event.detail === 0)}>‹</button>
+    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t(expanded ? "commanderRail.collapse" : "commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(true, event.detail === 0)}>{side === "left" ? "›" : "‹"}</button>
     {!expanded && tip ? <span className="commander-ghost-tip" style={{ top: tip.top }} role="tooltip"><strong>{tipRow?.layout.cluster.title ?? owner.name}</strong><small>{tipSummary?.conversationLine ?? t("sidebar.commodore.fallback")}</small></span> : null}
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">
       <div className="commander-ghost-list-head"><CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => select(0)} />
