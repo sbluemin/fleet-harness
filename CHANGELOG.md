@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.263.1] - 2026-10-27
+
+### fleet-console
+
+#### Fixed
+- Right-click a commander in the sidebar or beside the chat to open, rename, group, or archive it again.
+
 ## [1.263.0] - 2026-10-27
 
 ### fleet-console

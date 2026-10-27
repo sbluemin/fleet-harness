@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.263.1] - 2026-10-27
+
+### fleet-console
+
+#### Fixed
+- 사이드바나 채팅 옆의 지휘관을 우클릭하면 다시 열고, 이름을 바꾸고, 그룹에 넣거나 보관할 수 있습니다.
+
 ## [1.263.0] - 2026-10-27
 
 ### fleet-console
