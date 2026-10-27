@@ -9,13 +9,17 @@ import { z } from "zod";
  * 입력한 저장소·URL 표기(`locator`)뿐이다.
  */
 
-/** Anthropic 이 운영하는 기본 제공 마켓플레이스 — 처음부터 등록되고 지울 수 없다(끌 수는 있다). 이름은 marketplace.json 의 name. */
+/**
+ * Anthropic 이 운영하는 기본 제공 마켓플레이스 — 처음부터 등록되고 지울 수 없다(끌 수는 있다). 이름은 marketplace.json 의 name.
+ * `enabled` 는 등록부가 아직 없을 때의 처음 켜짐이다. 이미 등록된 행은 이 값으로 매번 덮지 않는다.
+ */
 export const PRESET_MARKETPLACES = Object.freeze([
-  { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
-  { name: "knowledge-work-plugins", repo: "anthropics/knowledge-work-plugins" },
-  { name: "claude-for-financial-services", repo: "anthropics/financial-services" },
-  { name: "claude-for-legal", repo: "anthropics/claude-for-legal" },
-  { name: "life-sciences", repo: "anthropics/life-sciences" },
+  { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official", enabled: true },
+  { name: "claude-community", repo: "anthropics/claude-plugins-community", enabled: true },
+  { name: "knowledge-work-plugins", repo: "anthropics/knowledge-work-plugins", enabled: false },
+  { name: "claude-for-financial-services", repo: "anthropics/financial-services", enabled: false },
+  { name: "claude-for-legal", repo: "anthropics/claude-for-legal", enabled: false },
+  { name: "life-sciences", repo: "anthropics/life-sciences", enabled: false },
 ] as const);
 
 /** 사령관 하나가 설치할 수 있는 플러그인 수. */

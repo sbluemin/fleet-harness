@@ -62,8 +62,16 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     deps.events.publish(COMMODORE_CHANNEL, event);
     if (event.op === "state" && event.change === "alias") deps.identityChanged?.(event.theaterIds);
   };
-  const plugins = createCommodorePlugins({ root: path.join(deps.paths.consoleDataDir, "commodore-plugins"), executable: deps.agent.resolveExecutablePath, ...(deps.processes ? { processes: deps.processes } : {}) });
+  // 목록을 읽기 전에 연결한다. 등록부가 기본 켜짐을 정할 때 어느 사령관의 state.json `plugins` 든 본다.
+  let selectedPlugins = (): readonly string[] => [];
+  const plugins = createCommodorePlugins({
+    root: path.join(deps.paths.consoleDataDir, "commodore-plugins"),
+    executable: deps.agent.resolveExecutablePath,
+    selectedPlugins: () => selectedPlugins(),
+    ...(deps.processes ? { processes: deps.processes } : {}),
+  });
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
+  selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
   const supervisor = createCommodoreSupervisor({
     store, agent, board: () => board, theaterIds, cwd: entities.dirOf, isDeleting: ownership.isDeleting,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),

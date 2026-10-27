@@ -512,6 +512,71 @@ describe("commodore theater state", () => {
     expect(rows().has("team")).toBe(true);
     await expect(plugins.inspect("tool@team")).rejects.toMatchObject({ code: "cli_unavailable" });
   });
+  it("enables only the official and community presets on an empty registry, and keeps a default-off preset when a commodore already chose its plugin", async () => {
+    const h = harness();
+    const unavailable = async () => { throw new Error("agent_cli_unavailable"); };
+    const presetEnabled = (root: string): Record<string, boolean> => {
+      const raw = JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8")) as { version: number; marketplaces: { name: string; preset?: boolean; enabled: boolean }[] };
+      expect(raw.version).toBe(1);
+      return Object.fromEntries(raw.marketplaces.filter((row) => row.preset).map((row) => [row.name, row.enabled]));
+    };
+    const freshRoot = path.join(h.objectivesDir, "plugins-fresh");
+    const fresh = createCommodorePlugins({ root: freshRoot, executable: unavailable });
+    const first = fresh.catalog();
+    expect(presetEnabled(freshRoot)).toEqual({
+      "claude-plugins-official": true,
+      "claude-community": true,
+      "knowledge-work-plugins": false,
+      "claude-for-financial-services": false,
+      "claude-for-legal": false,
+      "life-sciences": false,
+    });
+    expect(first.marketplaces.find((row) => row.name === "claude-community")).toMatchObject({ preset: true, enabled: true, status: "syncing" });
+    expect(first.marketplaces.find((row) => row.name === "life-sciences")).toMatchObject({ preset: true, enabled: false, status: "ready" });
+    await expect(fresh.remove("claude-community")).rejects.toMatchObject({ code: "preset_locked" });
+    expect(fresh.catalog().marketplaces.some((row) => row.name === "claude-community" && row.preset)).toBe(true);
+    await fresh.refresh("claude-plugins-official");
+
+    // 옛 등록부: 기본 제공이 모두 켜져 있다. knowledge-work 만 사령관이 골랐고, legal 은 미리보기로 홈에 받아 둔 것이다.
+    const legacyRoot = path.join(h.objectivesDir, "plugins-legacy");
+    const chosen = ["brief@knowledge-work-plugins", "tool@team", "not a plugin"];
+    fs.mkdirSync(path.join(legacyRoot, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(legacyRoot, "claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "counsel@claude-for-legal": [{ version: "1.0.0" }] } }));
+    const previous = ["claude-plugins-official", "knowledge-work-plugins", "claude-for-financial-services", "claude-for-legal", "life-sciences"];
+    fs.writeFileSync(path.join(legacyRoot, "registry.json"), JSON.stringify({
+      version: 1,
+      marketplaces: previous.map((name) => ({ name, kind: "github", locator: `anthropics/${name}`, preset: true, enabled: true, status: "ready", updatedAt: 1 })),
+      trusted: {},
+    }));
+    const legacy = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
+    legacy.catalog();
+    const migrated = {
+      "claude-plugins-official": true,
+      "claude-community": true,
+      "knowledge-work-plugins": true,
+      "claude-for-financial-services": false,
+      "claude-for-legal": false,
+      "life-sciences": false,
+    };
+    expect(presetEnabled(legacyRoot)).toEqual(migrated);
+    legacy.enable("life-sciences", true);
+    await legacy.refresh("claude-plugins-official");
+    expect(presetEnabled(legacyRoot)["life-sciences"]).toBe(true);
+
+    // 옛 빌드가 registry 를 version·marketplaces·trusted 만 다시 써도 켜짐은 유지된다. 버전은 올리지 않는다.
+    const file = path.join(legacyRoot, "registry.json");
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { version: number; marketplaces: unknown; trusted: unknown };
+    fs.writeFileSync(file, JSON.stringify({ version: raw.version, marketplaces: raw.marketplaces, trusted: raw.trusted }));
+    const reopened = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
+    reopened.catalog();
+    expect(presetEnabled(legacyRoot)).toEqual({ ...migrated, "life-sciences": true });
+    reopened.enable("knowledge-work-plugins", false);
+    await reopened.refresh("knowledge-work-plugins");
+    const afterToggle = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
+    afterToggle.catalog();
+    expect(presetEnabled(legacyRoot)).toEqual({ ...migrated, "life-sciences": true, "knowledge-work-plugins": false });
+    await afterToggle.refresh("claude-plugins-official");
+  });
 });
 
 describe("commodore fleet-memory", () => {

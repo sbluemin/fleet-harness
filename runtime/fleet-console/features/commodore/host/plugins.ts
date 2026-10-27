@@ -11,6 +11,7 @@ import {
   MAX_CUSTOM_MARKETPLACES,
   MAX_PLUGIN_ICON_BYTES,
   PRESET_MARKETPLACES,
+  pluginIdSchema,
   splitPluginId,
   type MarketplaceErrorCode,
   type MarketplaceSourceKind,
@@ -43,6 +44,11 @@ export interface CommodorePluginsOptions {
   readonly now?: () => number;
   /** 자식에게 줄 기반 환경. 생략하면 Console 프로세스 환경이다. */
   readonly env?: () => NodeJS.ProcessEnv;
+  /**
+   * 사령관 state.json 의 `plugins`(`plugin@marketplace`)를 모두 모은 것. 기본 제공의 처음 켜짐을 한 번 정할 때만 읽는다.
+   * 미리보기(inspect)로 Fleet 홈에 받아 둔 플러그인은 여기 없다. 생략하면 고른 플러그인이 없는 것으로 친다.
+   */
+  readonly selectedPlugins?: () => readonly string[];
 }
 
 /** 세션이 싣는 플러그인 하나 — 로컬 경로와, 호스트가 대신 소유할 MCP 선언. */
@@ -89,6 +95,11 @@ interface MarketplaceEntry {
 }
 
 const PRESET_REFRESH_MS = 24 * 60 * 60_000;
+/**
+ * 기본 켜짐을 한 번 정했다는 표시. registry 의 version 이 아니다.
+ * 옛 빌드는 registry.json 을 `{ version, marketplaces, trusted }` 로만 다시 쓰지만 이 파일은 건드리지 않는다.
+ */
+const PRESET_ACTIVATION_FILE = "preset-activation.json";
 /** 실패한 기본 제공을 목록 읽기로 다시 받기까지의 간격. 「갱신」 단추는 이 간격과 무관하게 바로 받는다. */
 const PRESET_RETRY_MS = 10 * 60_000;
 const CLI_TIMEOUT_MS = 180_000;
@@ -231,6 +242,47 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       return { ...(clearError ? rest : row), ...patch };
     }),
   }));
+
+  const activationFile = path.join(options.root, PRESET_ACTIVATION_FILE);
+  const activationSettled = (): boolean => {
+    const raw = readJson(activationFile);
+    return isRecord(raw) && raw.settled === true;
+  };
+  const writeActivation = (): void => {
+    fs.mkdirSync(options.root, { recursive: true });
+    const tmp = `${activationFile}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({ settled: true })}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, activationFile);
+  };
+  /** 고른 플러그인이 가리키는 기본 제공 이름. 형식이 아닌 값과 기본 제공이 아닌 마켓은 설치로 치지 않는다. */
+  const selectedPresetNames = (): ReadonlySet<string> => {
+    const names = new Set<string>();
+    for (const id of options.selectedPlugins?.() ?? []) {
+      if (!pluginIdSchema.safeParse(id).success) continue;
+      const marketplace = splitPluginId(id).marketplace;
+      if (PRESET_MARKETPLACES.some((preset) => preset.name === marketplace)) names.add(marketplace);
+    }
+    return names;
+  };
+  /**
+   * 이미 있는 기본 제공 행의 켜짐을 한 번만 맞춘다. 기본으로 꺼 둘 마켓은, 어느 사령관이든 그 마켓 플러그인을 골랐으면
+   * 그대로 두고(켜져 있었으면 켜진 채), 아니면 끈다. 기본으로 켜 둘 마켓과 사람이 이미 끈 행은 건드리지 않는다.
+   * 표시를 남긴 뒤에는 다시 쓰지 않는다. 고른 목록을 읽지 못하면 표시도 남기지 않고 다음 목록 읽기에서 다시 본다.
+   */
+  const settlePresetActivation = (): void => {
+    if (activationSettled()) return;
+    let keep: ReadonlySet<string>;
+    try { keep = selectedPresetNames(); }
+    catch { return; }
+    const current = readRegistry();
+    const marketplaces = current.marketplaces.map((row) => {
+      const preset = PRESET_MARKETPLACES.find((item) => item.name === row.name);
+      if (!preset || preset.enabled || !row.enabled || keep.has(row.name)) return row;
+      return { ...row, enabled: false, ...(row.status === "syncing" ? { status: "ready" as const } : {}) };
+    });
+    if (marketplaces.some((row, index) => row !== current.marketplaces[index])) writeRegistry({ ...current, marketplaces });
+    writeActivation();
+  };
 
   const runCli = async (args: readonly string[]): Promise<CliResult> => {
     // Claude Code CLI 를 찾지 못한 것도 CLI 실패 하나로 돌려준다 — 던지면 받는 중(syncing)으로 적어 둔 상태가 그대로 남고,
@@ -500,14 +552,15 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return view(registry.marketplaces.find((item) => item.name === name)!);
   };
 
-  /** 기본 제공 다섯 곳을 등록하고, 하루 지난 것은 새로 받는다. 배경에서 돈다 — 실패는 그 행의 상태로 남는다. */
+  /** 켜진 기본 제공을 등록하고, 하루 지난 것은 새로 받는다. 꺼진 곳은 배경에서 받지 않는다 — 켜거나 「갱신」할 때 받는다. 실패는 그 행의 상태로 남는다. */
   const ensurePresets = (): Promise<void> => ensuring ??= serial(async () => {
     try {
       for (const preset of PRESET_MARKETPLACES) {
         const row = readRegistry().marketplaces.find((item) => item.name === preset.name);
+        if (row && !row.enabled) continue;
         if (row && row.status === "ready" && row.updatedAt && now() - row.updatedAt < PRESET_REFRESH_MS && known()[preset.name]) continue;
         if (row && row.status === "failed" && row.attemptedAt && now() - row.attemptedAt < PRESET_RETRY_MS) continue;
-        if (!row) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, { name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: true, status: "syncing", attemptedAt: now() }] }));
+        if (!row) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, { name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: preset.enabled, status: preset.enabled ? "syncing" : "ready", ...(preset.enabled ? { attemptedAt: now() } : {}) }] }));
         else patchMarketplace(preset.name, { status: "syncing", attemptedAt: now() });
         if (known()[preset.name]) {
           const result = await runCli(["marketplace", "update", preset.name]);
@@ -560,12 +613,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
 
   return {
     /**
-     * 목록을 처음 읽을 때 기본 제공 행을 받는 중으로 세우고 등록·갱신을 배경에서 시작한다. Console 기동에서 하지 않는 이유:
-     * 화면을 열지 않는 Console(테스트·원격 전용 등)까지 네트워크로 저장소를 받게 되기 때문이다.
+     * 목록을 처음 읽을 때 없는 기본 제공 행을 세운다. 켜진 곳만 받는 중으로 두고 배경에서 등록·갱신한다.
+     * Console 기동에서 하지 않는 이유: 화면을 열지 않는 Console(테스트·원격 전용 등)까지 네트워크로 저장소를 받게 되기 때문이다.
      */
     catalog(): PluginCatalogView {
+      settlePresetActivation();
       const missing = PRESET_MARKETPLACES.filter((preset) => !readRegistry().marketplaces.some((row) => row.name === preset.name));
-      if (missing.length) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, ...missing.map((preset): RegistryMarketplace => ({ name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: true, status: "syncing" }))] }));
+      if (missing.length) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, ...missing.map((preset): RegistryMarketplace => ({ name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: preset.enabled, status: preset.enabled ? "syncing" : "ready" }))] }));
       void ensurePresets();
       return catalog();
     },
@@ -598,8 +652,9 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       return catalog();
     },
     enable(name: string, enabled: boolean): PluginCatalogView {
-      requireRow(name);
-      patchMarketplace(name, { enabled });
+      const row = requireRow(name);
+      // 아직 받아 두지 않은 마켓을 켜면 받는 중으로 세워 화면이 끝날 때까지 다시 읽게 한다. 이미 받은 곳은 그대로 둔다.
+      patchMarketplace(name, { enabled, ...(enabled && !row.enabled && !known()[name] ? { status: "syncing" } : {}) });
       return catalog();
     },
     async remove(name: string): Promise<PluginCatalogView> {
