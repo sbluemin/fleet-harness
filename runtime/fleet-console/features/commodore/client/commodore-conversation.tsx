@@ -162,6 +162,13 @@ export function revealCommodoreTurn(commodoreId: string, at: number): void {
   for (const listener of revealListeners) listener();
 }
 
+/** 이 대화가 그 줄을 받은 요청만 지운다. 줄이 오기 전에 지우면 이전 쪽을 읽는 요청이 사라진다. */
+function consumeCommodoreReveal(nonce: number): void {
+  if (reveal?.nonce !== nonce) return;
+  reveal = null;
+  for (const listener of revealListeners) listener();
+}
+
 function useCommodoreReveal(theaterId: string) {
   const current = useSyncExternalStore(
     (listener) => { revealListeners.add(listener); return () => { revealListeners.delete(listener); }; },
@@ -294,6 +301,15 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   }, [reveal, hasMore, entries, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps -- readOlder 는 위 값만 읽는다.
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
   const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
+  // 모듈에 남은 요청은 본문이 다시 마운트될 때마다 새 대화가 처음 보는 nonce 가 되어 같은 자리로 다시 간다. 지휘관을 다녀오면
+  // 이 본문이 갈렸다가 서고, 다른 사령관으로 바꾸면 같은 인스턴스라 그 nonce 를 기억해 다시 가지 않는다. 줄을 받은 다음 프레임에
+  // 지운다 — StrictMode 의 해제→재설치가 첫 적용을 취소하지 않고, 줄이 아직 없으면(이전 쪽) 요청은 남는다.
+  useEffect(() => {
+    if (!reveal || target === null) return;
+    const nonce = reveal.nonce;
+    const frame = requestAnimationFrame(() => consumeCommodoreReveal(nonce));
+    return () => cancelAnimationFrame(frame);
+  }, [reveal, target]);
   const references = useCommodoreReferenceHost(t, commodoreId);
   const openUIOpen = useCommodoreOpenUIPort(commodoreId);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
