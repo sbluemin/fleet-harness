@@ -4,5 +4,5 @@ branch: fix/muse-quota-latest
 
 ### fleet-console
 #### Fixed
-- Muse Code usage is read like any other provider when assigning a model, including right after a check that finds no open 5-hour window.
-  ko: 진행 중인 5시간 창이 없는 조회 직후를 포함해, Muse Code 사용량이 모델을 배정할 때 다른 공급자와 같이 읽힙니다.
+- Muse Code no longer shows a "no usage window" notice in the quota panel or gets passed over when models are assigned; an idle subscription now reads as unused, alongside the last weekly reading.
+  ko: 쿼터 패널의 Muse Code에 "진행 중인 사용 창이 없어요" 안내가 더 이상 뜨지 않고, 모델 배정에서도 빠지지 않습니다. 쓰지 않은 구독은 미사용으로 보이고 마지막 주간 값도 함께 보입니다.
