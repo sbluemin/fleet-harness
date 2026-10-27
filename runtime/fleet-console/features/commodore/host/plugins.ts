@@ -9,7 +9,12 @@ import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtim
 import { CommodoreStoreError } from "./errors.js";
 import {
   MAX_CUSTOM_MARKETPLACES,
+  MAX_PLUGIN_CARD_DESCRIPTION,
+  MAX_PLUGIN_DETAIL_DESCRIPTION,
   MAX_PLUGIN_ICON_BYTES,
+  MAX_PLUGIN_KEYWORDS,
+  MAX_PLUGIN_PARTS,
+  MAX_PLUGIN_README_BYTES,
   PRESET_MARKETPLACES,
   pluginIdSchema,
   splitPluginId,
@@ -19,6 +24,8 @@ import {
   type PluginCatalogEntry,
   type PluginCatalogView,
   type PluginComponents,
+  type PluginContents,
+  type PluginDetail,
 } from "../shared/contracts/plugins.js";
 
 /**
@@ -162,6 +169,86 @@ function inside(root: string, relative: unknown): string | null {
   return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
 }
 
+/** 어휘로 안이어도, 링크를 푼 실제 경로가 폴더 밖이면 아니다. 없는 파일은 밖과 같다. */
+function staysInside(root: string, candidate: string): boolean {
+  let realRoot: string;
+  let realCandidate: string;
+  try { realRoot = fs.realpathSync(root); realCandidate = fs.realpathSync(candidate); } catch { return false; }
+  return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
+}
+
+/**
+ * 플러그인 폴더 안의 텍스트만 상한까지 읽는다. 링크가 폴더 밖을 가리키거나 널 바이트가 있으면 없는 파일로 친다.
+ * 반환 문자열에는 경로가 없다.
+ */
+function readContainedText(dir: string, relative: string, maxBytes: number): { readonly text: string; readonly truncated: boolean } | null {
+  const lexical = inside(dir, relative);
+  if (!lexical || !staysInside(dir, lexical)) return null;
+  let realFile: string;
+  try { realFile = fs.realpathSync(lexical); } catch { return null; }
+  let stat: fs.Stats;
+  try { stat = fs.statSync(realFile); } catch { return null; }
+  if (!stat.isFile() || stat.size <= 0) return null;
+  const truncated = stat.size > maxBytes;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(realFile, "r");
+    const bytes = Buffer.alloc(Math.min(stat.size, maxBytes));
+    const got = fs.readSync(fd, bytes, 0, bytes.length, 0);
+    const slice = bytes.subarray(0, got);
+    if (slice.includes(0)) return null;
+    const text = slice.toString("utf8").replace(/^﻿/, "").trim();
+    return text ? { text, truncated } : null;
+  } catch { return null; } finally { if (fd !== null) fs.closeSync(fd); }
+}
+
+const README_NAMES = ["README.md", "README.markdown"] as const;
+
+/** 선언된 상대 경로, 없으면 README 파일. URL·스킴은 받지 않는다 — 상세 조회는 네트워크로 읽지 않는다. */
+function readmeOf(dir: string, declared: readonly unknown[]): { readonly text: string; readonly truncated: boolean } | undefined {
+  const relatives: string[] = [];
+  const push = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const relative = value.trim();
+    if (!relative || /^[a-z][a-z0-9+.-]*:/i.test(relative) || relatives.includes(relative)) return;
+    relatives.push(relative);
+  };
+  for (const value of declared) push(value);
+  for (const name of README_NAMES) push(name);
+  for (const relative of relatives) {
+    const found = readContainedText(dir, relative, MAX_PLUGIN_README_BYTES);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** 폴더 안 이름만. 밖을 가리키는 링크는 건너뛴다. 경로는 이름에 넣지 않는다. */
+function partNames(root: string, dirs: readonly string[], accept: (name: string, full: string) => boolean): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const push = (name: string) => {
+    const label = name.replace(/\.md$/i, "").trim().slice(0, 120);
+    if (!label || seen.has(label) || names.length >= MAX_PLUGIN_PARTS) return;
+    seen.add(label);
+    names.push(label);
+  };
+  for (const dir of dirs) {
+    if (!staysInside(root, dir)) continue;
+    let stat: fs.Stats;
+    try { stat = fs.statSync(dir); } catch { continue; }
+    if (stat.isFile()) { if (accept(path.basename(dir), dir)) push(path.basename(dir)); continue; }
+    if (accept(path.basename(dir), dir) && fs.existsSync(path.join(dir, "SKILL.md"))) { push(path.basename(dir)); continue; }
+    let entries: string[];
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const name of entries) {
+      const full = path.join(dir, name);
+      if (!staysInside(root, full)) continue;
+      if (accept(name, full)) push(name);
+    }
+  }
+  return names;
+}
+
 const ICON_TYPES: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml" };
 
 /** 확장자가 말하는 형식과 실제 바이트가 맞는가 — 이름만 그림인 파일을 그림으로 내주지 않는다. */
@@ -203,6 +290,19 @@ const webAddress = (value: unknown): string | undefined => {
   const raw = text(value, 2048);
   if (!raw) return undefined;
   try { const url = new URL(raw); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
+};
+const licenseOf = (value: unknown): string | undefined => text(typeof value === "string" ? value : isRecord(value) ? value.type ?? value.name : undefined, 80);
+const repositoryOf = (value: unknown): string | undefined => webAddress(typeof value === "string" ? value : isRecord(value) ? value.url : undefined);
+const keywordsOf = (value: unknown): readonly string[] | undefined => {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  const words: string[] = [];
+  for (const item of list) {
+    const word = text(item, 40);
+    if (!word || words.includes(word)) continue;
+    words.push(word);
+    if (words.length >= MAX_PLUGIN_KEYWORDS) break;
+  }
+  return words.length ? words : undefined;
 };
 
 export function createCommodorePlugins(options: CommodorePluginsOptions) {
@@ -425,12 +525,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       if (!isRecord(table)) return;
       for (const [name, config] of Object.entries(table)) if (isRecord(config) && segment.test(name)) servers[name] = config;
     };
+    const readInside = (file: string | null) => file && staysInside(dir, file) ? readJson(file) : undefined;
     const declared = manifestOf(dir).mcpServers;
     for (const item of Array.isArray(declared) ? declared : [declared]) {
-      if (typeof item === "string") { const file = inside(dir, item); if (file) absorb(readJson(file)); }
+      if (typeof item === "string") absorb(readInside(inside(dir, item)));
       else absorb(item);
     }
-    absorb(readJson(path.join(dir, ".mcp.json")));
+    absorb(readInside(path.join(dir, ".mcp.json")));
     const expand = (text: string) => text.replaceAll("${CLAUDE_PLUGIN_ROOT}", dir);
     const deep = (value: unknown): unknown => typeof value === "string" ? expand(value) : Array.isArray(value) ? value.map(deep) : isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, deep(item)])) : value;
     return Object.fromEntries(Object.entries(servers).map(([name, config]) => [name, deep(config) as Record<string, unknown>]));
@@ -447,12 +548,13 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
         }
       }
     };
+    const readInside = (file: string | null) => file && staysInside(dir, file) ? readJson(file) : undefined;
     const declared = manifestOf(dir).hooks;
     for (const item of Array.isArray(declared) ? declared : [declared]) {
-      if (typeof item === "string") { const file = inside(dir, item); if (file) absorb(readJson(file)); }
+      if (typeof item === "string") absorb(readInside(inside(dir, item)));
       else absorb(item);
     }
-    absorb(readJson(path.join(dir, "hooks", "hooks.json")));
+    absorb(readInside(path.join(dir, "hooks", "hooks.json")));
     return commands;
   };
 
@@ -482,15 +584,38 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
    * 카드에 보일 표시 필드. 항목 값이 먼저이고, 없으면 읽을 수 있는 폴더의 plugin.json 값이다. 아이콘은 plugin.json 에만 있다
    * (marketplace 항목은 디렉터리 목록 필드를 받지 않는다).
    */
-  const display = (entry: MarketplaceEntry, dir: string | null): Pick<PluginCatalogEntry, "description" | "displayName" | "category" | "author" | "homepage" | "icon"> => {
+  const display = (entry: MarketplaceEntry, dir: string | null, descriptionMax = MAX_PLUGIN_CARD_DESCRIPTION): Pick<PluginCatalogEntry, "description" | "displayName" | "category" | "author" | "homepage" | "license" | "repository" | "keywords" | "icon"> => {
     const manifest = dir ? manifestOf(dir) : {};
-    const description = text(entry.description, 600) ?? text(manifest.description, 600);
+    const description = text(entry.description, descriptionMax) ?? text(manifest.description, descriptionMax);
     const displayName = text(entry.displayName, 120) ?? text(manifest.displayName, 120);
     const category = text(entry.category, 60) ?? text(manifest.category, 60);
     const author = personName(entry.author) ?? personName(manifest.author);
     const homepage = webAddress(entry.homepage) ?? webAddress(manifest.homepage);
+    const license = licenseOf(entry.license) ?? licenseOf(manifest.license);
+    const repository = repositoryOf(entry.repository) ?? repositoryOf(manifest.repository);
+    const keywords = keywordsOf(entry.keywords) ?? keywordsOf(manifest.keywords);
     const icon = dir !== null && iconFileOf(dir, manifest.icon) !== null;
-    return { ...(description ? { description } : {}), ...(displayName ? { displayName } : {}), ...(category ? { category } : {}), ...(author ? { author } : {}), ...(homepage ? { homepage } : {}), ...(icon ? { icon: true as const } : {}) };
+    return {
+      ...(description ? { description } : {}), ...(displayName ? { displayName } : {}), ...(category ? { category } : {}),
+      ...(author ? { author } : {}), ...(homepage ? { homepage } : {}), ...(license ? { license } : {}),
+      ...(repository ? { repository } : {}), ...(keywords ? { keywords } : {}), ...(icon ? { icon: true as const } : {}),
+    };
+  };
+  /** 구성 이름. 플러그인 코드는 실행하지 않고, 폴더 밖 링크는 이름에도 넣지 않는다. */
+  const contentsOf = (dir: string): PluginContents => {
+    const manifest = manifestOf(dir);
+    const events: string[] = [];
+    for (const [event] of hookCommands(dir)) {
+      if (!event || events.includes(event) || events.length >= MAX_PLUGIN_PARTS) continue;
+      events.push(event.slice(0, 120));
+    }
+    return {
+      skills: partNames(dir, declaredDirs(dir, manifest.skills, "skills"), (_name, full) => fs.existsSync(path.join(full, "SKILL.md"))),
+      commands: partNames(dir, declaredDirs(dir, manifest.commands, "commands"), (name) => name.endsWith(".md")),
+      agents: partNames(dir, declaredDirs(dir, manifest.agents, "agents"), (name) => name.endsWith(".md")),
+      hooks: events,
+      mcp: Object.keys(mcpDeclarations(dir)).slice(0, MAX_PLUGIN_PARTS),
+    };
   };
   /** 표시에 쓸 폴더 — 받은 것은 설치본, 아니면 마켓플레이스 안의 상대 경로 폴더. */
   const displayDirOf = (id: string, document: MarketplaceDocument, entry: MarketplaceEntry, installs: ReturnType<typeof installed>): string | null =>
@@ -597,6 +722,33 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     return { id, name: plugin, marketplace, ...display(entry, dir), ...describe(id, dir) };
   });
 
+  /**
+   * 상세. 받은 설치본이나 마켓 안 상대 경로 폴더가 있으면 그대로 읽고, 없으면 inspect 와 같이 Fleet 홈에 받은 뒤 읽는다.
+   * README·구성 이름은 그 폴더 안에서만. 플러그인 코드는 실행하지 않는다.
+   */
+  const detail = (id: string): Promise<PluginDetail> => serial(async () => {
+    const { plugin, marketplace } = splitPluginId(id);
+    const row = requireRow(marketplace);
+    if (!row.enabled) throw new CommodoreStoreError("disabled");
+    const entry = entryOf(id);
+    if (!entry) throw new CommodoreStoreError("plugin_not_found");
+    let dir = displayDirOf(id, documentOf(marketplace), entry, installed());
+    if (!dir) {
+      const result = await runCli(["install", id]);
+      if (result.outcome !== "ok") throw new CommodoreStoreError(result.failureCode === "cli_unavailable" ? "cli_unavailable" : "install_failed");
+      dir = loadDirOf(id);
+      if (!dir) throw new CommodoreStoreError("install_failed");
+    }
+    const described = describe(id, dir);
+    const version = described.version ?? (typeof entry.version === "string" ? entry.version : undefined);
+    const readme = readmeOf(dir, [manifestOf(dir).readme, entry.readme]);
+    return {
+      id, name: plugin, marketplace, ...display(entry, dir, MAX_PLUGIN_DETAIL_DESCRIPTION), ...described,
+      ...(version ? { version } : {}), contents: contentsOf(dir),
+      ...(readme ? { readme: readme.text, ...(readme.truncated ? { readmeTruncated: true as const } : {}) } : {}),
+    };
+  });
+
   /** 아이콘 그림 — 등록된 마켓플레이스의 항목이고, 읽을 수 있는 폴더 안의 검사를 지난 그림일 때만. 플러그인 코드는 실행하지 않는다. */
   const icon = (id: string): { readonly bytes: Buffer; readonly mime: string } | null => {
     const { marketplace } = splitPluginId(id);
@@ -670,6 +822,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
       return catalog();
     },
     inspect,
+    detail,
     icon,
     /** 설치 전 확인 — 실행 명령이 있고 이 버전을 신뢰한 적이 없으면 trust_required. trusted 면 기록한다. */
     async prepareInstall(id: string, trusted: boolean): Promise<void> {

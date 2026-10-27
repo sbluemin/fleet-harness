@@ -187,6 +187,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/marketplaces/enable", method: "POST", summary: "Turn a marketplace on or off; off hides its plugins and blocks new installs, installed ones stay.", handler: json(marketplaceEnableSchema, ({ name, enabled }) => plugins().enable(name, enabled)) },
     { name: "commodore/marketplaces/remove", method: "POST", summary: "Remove a custom marketplace; presets can only be turned off.", handler: json(marketplaceNameRefSchema, ({ name }) => plugins().remove(name)) },
     { name: "commodore/plugins/inspect", method: "POST", summary: "Fetch a plugin into Console's plugin home and report its components and the commands it would run.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().inspect(pluginId) })) },
+    { name: "commodore/plugins/detail", method: "POST", summary: "Read a plugin's component names, run commands and README from inside its folder without executing plugin code.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().detail(pluginId) })) },
     { name: "commodore/plugins/set", method: "POST", summary: "Install or remove a plugin for one Commodore; applies from its next turn and to its objectives' next sessions.", handler: json(commodorePluginSetSchema, async ({ commodoreId, pluginId, installed, trusted }) => {
       const selected = () => read(commodoreId).plugins ?? [];
       if (installed) {
