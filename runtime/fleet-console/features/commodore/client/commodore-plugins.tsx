@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
 
@@ -15,7 +15,7 @@ type T = Translate<CommodoreMessageKey>;
 /**
  * 사령관 플러그인 — Console 설정의 「마켓플레이스」 섹션(등록부, 사령관들이 함께 본다)과 사령관 설정 칸의 「플러그인」 목록·추가
  * 팔레트(사령관마다 고른다). 등록부·카탈로그는 Console 전역 하나라 이 모듈이 한 벌을 쥐고 두 표면이 함께 읽는다. 사령관이 고른
- * 목록은 사령관 상태(`state.plugins`)가 진다 — 설치·제거는 누르는 즉시 저장하고, 적용은 다음 턴(새 세션)부터다.
+ * 목록은 사령관 상태(`state.plugins`)가 진다 — 설치는 누르는 즉시, 제거는 한 번 더 확인한 뒤에 저장하고, 적용은 다음 턴(새 세션)부터다.
  */
 
 const MARKETPLACE_SECTION_ID = "marketplaces";
@@ -414,8 +414,9 @@ function MarketplaceAdd({ t }: { readonly t: T }) {
 /* ── 사령관 설정 「플러그인」 ───────────────────────────────────────────── */
 
 /**
- * 사령관 설정 칸에서 Theater 목록 바로 아래 — 이 사령관이 고른 플러그인. 「제거」는 바로 저장하고, 적용은 다음 턴부터라
- * 칸 아래 한 줄이 그 시점을 말한다. 데스크톱은 Theater 목록과 같은 줄 문법, 폰은 폰 묶음 문법이다.
+ * 사령관 설정 칸에서 Theater 목록 바로 아래 — 이 사령관이 고른 플러그인. 「제거」는 마켓플레이스 제거와 같이 한 번 더
+ * 확인한 뒤에 저장하고, 적용은 다음 턴부터라 칸 아래 한 줄이 그 시점을 말한다. 데스크톱은 Theater 목록과 같은 줄 문법,
+ * 폰은 폰 묶음 문법이다.
  */
 export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t: T; readonly commodoreId: string; readonly phone?: boolean }) {
   const { view } = useCommodore(commodoreId);
@@ -423,6 +424,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
   const [palette, setPalette] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const addRef = useRef<HTMLButtonElement | null>(null);
   if (!commodoreId || !view) return null;
   const installed = view.state.plugins ?? [];
@@ -453,11 +455,22 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
         <p className="objectives-cm-glab">{t("commodore.plugins.title")}</p>
         <div className="objectives-cm-grp">
           {rows.map(({ pluginId, plugin, title, marketplace, entry, mark }) => (
-            <div key={pluginId} className="objectives-cm-gr commodore-plugins-phone-row">
-              <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
-              <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></small> : null}</span>
-              <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => remove(pluginId)}>{t("commodore.plugins.remove")}</button>
-            </div>
+            <Fragment key={pluginId}>
+              <div className="objectives-cm-gr commodore-plugins-phone-row">
+                <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="phone" />
+                <span className="objectives-cm-gr-tx">{title}<small className="is-mono">@{marketplace}</small>{mark || entry?.components ? <small className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></small> : null}</span>
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => setConfirming(pluginId)}>{t("commodore.plugins.remove")}</button>
+              </div>
+              {confirming === pluginId ? (
+                <div className="commodore-market-detail-confirm" role="alert">
+                  <p>{t("commodore.plugins.removeConfirm", { plugin: title })}</p>
+                  <div className="commodore-market-detail-confirm-actions">
+                    <button type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirming(null)}>{t("commodore.plugins.removeCancel")}</button>
+                    <button type="button" className="fc-btn fc-btn--secondary commodore-market-detail-remove" disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
+                  </div>
+                </div>
+              ) : null}
+            </Fragment>
           ))}
           <button ref={addRef} type="button" data-press="r1" className="objectives-cm-gr commodore-theaters-phone-add" onClick={() => setPalette(true)}>
             <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
@@ -480,8 +493,15 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
             <li key={pluginId}>
               <PluginTile name={title} iconId={entry?.icon ? pluginId : undefined} size="row" />
               <span className="commodore-plugins-name" title={pluginId}>{title}<span className="commodore-plugins-at">@{marketplace}</span></span>
-              <button type="button" className="objectives-commodore-text-button" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => remove(pluginId)}>{t("commodore.plugins.remove")}</button>
+              <button type="button" className="objectives-commodore-text-button" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => setConfirming(pluginId)}>{t("commodore.plugins.remove")}</button>
               {mark || entry?.components ? <span className="commodore-plugins-meta">{mark}<Components t={t} components={entry?.components} /></span> : null}
+              {confirming === pluginId ? (
+                <span className="commodore-marketplaces-confirm" role="alert">
+                  <span>{t("commodore.plugins.removeConfirm", { plugin: title })}</span>
+                  <button type="button" className="commodore-plugins-text" onClick={() => setConfirming(null)}>{t("commodore.plugins.removeCancel")}</button>
+                  <button type="button" className="commodore-plugins-text is-danger" disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -614,7 +634,7 @@ function PluginPalette({ t, commodoreId, installed, onClose }: { readonly t: T; 
 
 /**
  * 팔레트 카드 — 머리(타일·이름·한 줄 부제·설치), 설명 두 줄, 칩(분류·구성 요소). 받은 뒤에 아이콘이 생기면 타일이 제자리에서 바뀐다.
- * 신뢰 확인이 필요하면 카드가 두 칸을 차지하며 펼치고 설명 전체를 보인다.
+ * 신뢰 확인이 필요하면 카드가 한 줄 전체를 차지하며 펼치고 설명 전체를 보인다.
  */
 function PaletteCard({ t, entry, installed, row, onInstall, onTrust, onCancel }: {
   readonly t: T;
