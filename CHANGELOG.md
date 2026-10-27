@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.264.0] - 2026-10-27
+
+### fleet-console
+
+#### Changed
+- The sidebar commander list sits tighter and scrolls with the sidebar, so every commander stays in reach.
+- Opening commanders beside the chat widens that column and narrows the chat, instead of covering the conversation. Hover no longer opens the list.
+- Not-started and finished commanders stay in their own sections, in the same order as the list, and each section remembers if you folded it.
+
 ## [1.263.1] - 2026-10-27
 
 ### fleet-console
