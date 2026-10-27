@@ -36,6 +36,12 @@
   border-right: 1px solid var(--hairline-column);
 }
 
+/* 좁은 창 — 사령관 행은 아바타만 남긴다. 이름·상태 문구는 창을 넓히면 돌아온다.
+   별칭 편집 중인 행은 활성화 단추가 입력으로 바뀌므로 숨기지 않는다 — 메뉴·F2 로 연 편집이 보이지 않으면 끝낼 수 없다. */
+.console-body.is-conversation .objective-records-side-bar.is-compact .side-bar-theater-activate .side-bar-theater-text {
+  display: none;
+}
+
 /* 아래 줄은 계정 아바타만 남긴다 — 보관함·보기 단추는 창을 넓히면 돌아온다. */
 .console-body.is-conversation .objective-records-side-bar.is-compact .conversation-dock > :not(.conversation-dock-host) {
   display: none;
