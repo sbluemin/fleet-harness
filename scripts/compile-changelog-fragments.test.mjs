@@ -31,13 +31,13 @@ test('rewrites historical copy without changing release structure and refuses st
 
 test('validates adjacent bilingual pairs and renders deterministic dual previews', () => {
   const fixture = createFixture();
-  writeFragment(fixture, '### fleet-console\n#### Added\n- Add an ASCII summary.\n  ko: 한글 요약을 추가합니다.');
+  writeFragment(fixture, '### fleet-console\n#### Added\n- Add an ASCII summary.\n  ko: ASCII 요약을 추가합니다.');
   const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^=== CHANGELOG\.md ===\n## \[1\.2\.3\] - 2026-07-10/m);
   assert.match(result.stdout, /### fleet-console\n\n#### Added/);
   assert.match(result.stdout, /- Add an ASCII summary\./);
-  assert.match(result.stdout, /=== CHANGELOG\.ko\.md ===[\s\S]*- 한글 요약을 추가합니다\./);
+  assert.match(result.stdout, /=== CHANGELOG\.ko\.md ===[\s\S]*- ASCII 요약을 추가합니다\./);
 });
 
 test('renders the four runtimes in exact order with nested sections', () => {
@@ -182,6 +182,14 @@ test('retains English ASCII and Korean Hangul validation', () => {
     const result = run(fixture, '--check');
     assert.notEqual(result.status, 0, body);
   }
+});
+
+test('rejects a Korean summary that drops a protected token from the English bullet', () => {
+  const fixture = createFixture();
+  writeFragment(fixture, '### fleet-console\n#### Added\n- Add a marketplace.json URL.\n  ko: marketplace.json 주소를 추가합니다.');
+  const result = run(fixture, '--check');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /drops protected tokens present in the English bullet: URL/);
 });
 
 test('rejects a bracket-leading Korean summary that would be read as a package tag', () => {
