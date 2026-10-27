@@ -25,13 +25,10 @@
   overflow: hidden;
   opacity: 1;
   background: var(--conversation-surface, var(--surface-panel));
-  border-left: 1px solid var(--hairline);
 }
 .commander-ghost[data-side="left"][data-expanded] {
   left: 0;
   right: auto;
-  border-left: 0;
-  border-right: 1px solid var(--hairline);
 }
 .conversation-stage[data-commander-rail] > .conversation-column {
   transition: margin-right var(--duration-base) ease, margin-left var(--duration-base) ease;
@@ -42,9 +39,7 @@
 .conversation-stage[data-commander-rail]:has(.commander-ghost[data-side="left"][data-expanded]) > .conversation-column {
   margin-left: var(--commander-list-span);
 }
-.commander-ghost[data-expanded] > :is(.commander-ghost-scroll, [data-ghost-owner], .commander-ghost-rule) { display: none; }
-.commander-ghost[data-expanded] .commander-ghost-open { align-self: flex-end; margin-top: 8px; margin-right: 6px; }
-.commander-ghost[data-side="left"][data-expanded] .commander-ghost-open { align-self: flex-start; margin-right: 0; margin-left: 6px; }
+.commander-ghost[data-expanded] > :is(.commander-ghost-scroll, [data-ghost-owner], .commander-ghost-rule, .commander-ghost-open) { display: none; }
 .commander-ghost:is(:hover, :focus-within, [data-expanded]) { opacity: 1; }
 .commander-ghost-item {
   position: relative;
@@ -103,6 +98,26 @@
   cursor: pointer;
 }
 .commander-ghost-open { position: relative; z-index: 7; margin-bottom: 4px; }
+.commander-ghost-tip {
+  position: absolute;
+  z-index: 7;
+  right: 50px;
+  transform: translateY(-50%);
+  max-width: 260px;
+  width: max-content;
+  padding: 5px 10px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  pointer-events: none;
+}
+.commander-ghost-tip strong, .commander-ghost-tip small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-ghost-tip strong { font-weight: var(--weight-medium); }
+.commander-ghost-tip small { color: var(--text-tertiary); font-size: var(--t-xs); }
+.commander-ghost[data-side="left"] .commander-ghost-tip { right: auto; left: 50px; }
 .commander-ghost-open:hover, .commander-ghost-close:hover { background: var(--wash-hover); }
 .commander-ghost-open:focus-visible, .commander-ghost-close:focus-visible { outline: 2px solid var(--control-focus-ring); }
 .commander-ghost-list {
@@ -120,6 +135,9 @@
 .commander-ghost-list-head .commander-list-owner { flex: 1; min-width: 0; }
 .commander-ghost-list .commander-tab { min-height: 0; }
 .commander-ghost-list .commander-tab-bar { flex: none; }
+/* 메뉴는 정렬 칩이 아니라 막대 너비에 맞춘다. 칩의 오른쪽에 붙이면 312px 칸 밖으로 나가 overflow에 잘리고 사이드바와 겹친다. */
+.commander-ghost-list .commander-tab-sort { position: static; }
+.commander-ghost-list .commander-tab-menu { left: 0; right: 0; width: auto; min-width: 0; }
 .commander-ghost-list .commander-tab-groups { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 /* 목록은 dock가 아니다 — 기존 행에는 확대 없이 면 워시만 남긴다. */
 .commander-ghost-list .side-bar-cluster-row:hover { transform: none; }

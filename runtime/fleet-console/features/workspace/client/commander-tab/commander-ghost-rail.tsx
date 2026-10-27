@@ -23,6 +23,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
   const [expanded, setExpanded] = useState(false);
+  const [tip, setTip] = useState<{ index: number; top: number } | null>(null);
   const side = useEffectiveCommanderPlacement().side;
   const nav = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -39,13 +40,13 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   // 펼친 칸은 사이드바처럼 남는다. 바깥 클릭·포인터 이탈로는 닫지 않고, 버튼·Escape·키보드만 닫는다.
   const reveal = (focusList = false) => {
     restoreFocus.current = null;
-    resetFaces(); setExpanded(true);
+    resetFaces(); setTip(null); setExpanded(true);
     if (focusList) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
     // 펼친 동안 얼굴은 display:none이다. setState 직후 focus는 아직 숨은 대상을 놓친다.
     restoreFocus.current = restore ? Math.min(cursor, rows.length) : null;
-    setExpanded(false);
+    setTip(null); setExpanded(false);
   };
   useLayoutEffect(() => {
     if (expanded || restoreFocus.current === null) return;
@@ -156,11 +157,15 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     } else if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); select(cursor); }
     else if (event.key === (side === "left" ? "ArrowRight" : "ArrowLeft") || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true); }
   };
-  const glyph = side === "left" ? (expanded ? "‹" : "›") : (expanded ? "›" : "‹");
+  const glyph = side === "left" ? "›" : "‹";
+  const tipRow = tip !== null && tip.index > 0 ? rows[tip.index - 1] : null;
+  const tipSummary = tipRow ? clusterRowSummary(tipRow, locale, t) : null;
   return <nav ref={nav} className="commander-ghost" data-keep-objective-active="" aria-label={t("commanderTab.aria")}
     data-side={side} data-expanded={expanded || undefined} onKeyDown={onKeyDown}
     onPointerMove={(event) => {
       if (expanded || event.pointerType === "touch") return;
+      let nearest: { index: number; distance: number; top: number } | null = null;
+      const navTop = event.currentTarget.getBoundingClientRect().top;
       event.currentTarget.querySelectorAll<HTMLElement>("[data-ghost-index]").forEach((button) => {
         const rect = button.getBoundingClientRect();
         const middle = rect.top + rect.height / 2;
@@ -168,10 +173,13 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         const proximity = Math.max(0, 1 - distance / 100);
         const scale = reduced.current ? 1 : 1 + 0.3 * proximity * proximity * (3 - 2 * proximity);
         button.querySelector<HTMLElement>(".commander-ghost-face")?.style.setProperty("--ghost-scale", String(scale));
+        if (distance < 24 && (!nearest || distance < nearest.distance)) nearest = { index: Number(button.dataset.ghostIndex), distance, top: middle - navTop };
       });
+      setTip(nearest);
     }}
+    onPointerLeave={() => { resetFaces(); setTip(null); }}
   >
-    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t(expanded ? "commanderRail.collapse" : "commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(event.detail === 0)}>{glyph}</button>
+    {expanded ? null : <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t("commanderRail.expand")} aria-expanded={false} aria-controls={`${id}-list`} onClick={(event) => reveal(event.detail === 0)}>{glyph}</button>}
     <button id={itemId(0)} data-ghost-index={0} data-ghost-owner="" type="button" tabIndex={Math.min(cursor, rows.length) === 0 ? 0 : -1} className="commander-ghost-item" aria-label={owner.name} aria-current={selectedId === null ? "true" : undefined} data-cursor={cursor === 0 || undefined} onClick={() => select(0)}>
       <span className="commander-ghost-face"><CommodoreAvatar theaterId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
     </button>
@@ -197,10 +205,10 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         </Fragment>;
       })}
     </div>
+    {!expanded && tip ? <span className="commander-ghost-tip" style={{ top: tip.top }} role="tooltip"><strong>{tipRow?.layout.cluster.title ?? owner.name}</strong><small>{tipSummary?.conversationLine ?? t("sidebar.commodore.fallback")}</small></span> : null}
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">
       <div className="commander-ghost-list-head"><CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => select(0)} />
-        <button type="button" className="commander-ghost-close" aria-label={t("commanderRail.collapse")} onClick={() => collapse()}>×</button></div>
-      <div className="commander-list-rule" role="separator" />
+        <button type="button" className="commander-ghost-close" aria-label={t("commanderRail.collapse")} aria-expanded={true} onClick={() => collapse()}>{side === "left" ? "‹" : "›"}</button></div>
       <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onSelect={selectRow} />
     </div> : null}
   </nav>;

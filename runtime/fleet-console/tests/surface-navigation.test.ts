@@ -17,13 +17,15 @@ import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settin
 import { clearConversationStage, closeConversationSurface, getConversationSurface, isConversationStageEmpty, openConversationSurface, resumeConversationStage } from "../features/workspace/client/conversation/conversation-surface-store.js";
 import { closeTheaterInbox, readTheaterInboxState } from "../features/workspace/client/theater-inbox/store.js";
 import { getViewedTheaterId } from "../core/client/src/integration/viewed-theater.js";
+import { replaceCommodoreList } from "../features/commodore/client/commodore-list.js";
+import { EMPTY_RUN_TOTALS } from "../features/commodore/shared/contracts/types.js";
 import { setViewModePreference } from "../core/client/src/integration/view-mode-store.js";
 import { getMobileDestination, registerMobileDestinationEntries, setMobileDestination } from "../core/client/src/chrome/mobile/mobile-store.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
 // 파일을 읽으려는 요청이 대화를 닫거나 설정 포커스 요청을 남기지 않는지도 같은 경계에서 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); replaceCommodoreList([]); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
@@ -87,6 +89,31 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     destinationHost.rail.open(address.entryId, address.params);
     expect(getPaneStoreSnapshot().rail.find((instance) => instance.paneId === destinationPane.id)?.params).toMatchObject({ theaterId: "b", page: "details" });
   } finally { unbind(); }
+});
+
+it("reads an unregistered objective theater as the owning commodore's registered Theater", () => {
+  const theater = (id: string) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 });
+  const commodore = (commodoreId: string, theaterIds: readonly string[]) => ({
+    commodoreId, label: commodoreId, theaters: theaterIds.map((theaterId) => ({ theaterId, label: theaterId, status: "available" as const })), active: false, run: { phase: "off" as const, totals: EMPTY_RUN_TOTALS },
+  });
+  setState({ theaters: [theater("shared"), theater("other")], activeObjectiveId: null, objectiveRecords: [] });
+  replaceCommodoreList([
+    commodore("owner-a", ["shared"]),
+    commodore("owner-b", ["shared"]),
+    commodore("owner-c", ["shared", "other"]),
+  ]);
+  openConversationSurface("objective-fresh", { objectiveId: "stored", theaterId: "9c56bd5e5148", commodoreId: "owner-a" });
+  expect(getViewedTheaterId()).toBe("shared");
+  openConversationSurface("objective-fresh", { objectiveId: "stored-b", theaterId: "9c56bd5e5148", commodoreId: "owner-b" });
+  expect(getViewedTheaterId()).toBe("shared");
+  openConversationSurface("objective-fresh", { objectiveId: "ambiguous", theaterId: "9c56bd5e5148", commodoreId: "owner-c" });
+  expect(getViewedTheaterId()).toBeNull();
+  openConversationSurface("new-session", { theaterId: "other", commodoreId: "owner-a" });
+  expect(getViewedTheaterId()).toBe("other");
+  closeConversationSurface();
+  const stored = { id: "stored-record", commodoreId: "owner-a", theaterId: "9c56bd5e5148", title: "Stored", ts: { createdAt: 1, updatedAt: 1 } };
+  setState({ objectiveRecords: [stored], activeObjectiveId: stored.id });
+  expect(getViewedTheaterId()).toBe("shared");
 });
 
 // 기존 이동 검사는 삭제 뒤 늦게 실행되는 기본 선택이 다른 수신자를 활성화하는 경계를 지나지 않는다.
