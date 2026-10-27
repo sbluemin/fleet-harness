@@ -806,8 +806,8 @@
   min-width: 0;
 }
 
-/* 상태 줄 — 상태 문구가 남는 폭을 받고, 줄 끝에 고정 길이 게이지와 바로 붙은 분수가 선다. 좁은 칸에서는 게이지가 먼저 짧아지고
-   더 좁으면 빠져 분수만 남는다(아래 @container). */
+/* 상태 줄 — 상태 문구 바로 뒤에 고정 길이 게이지와 바로 붙은 분수가 선다. 좁은 칸에서는 게이지가 먼저 짧아지고
+   더 좁으면 빠져 분수만 남는다(아래 @container). 상태 문구가 길면 문구만 말줄인다. */
 .side-bar-cluster-row-line {
   display: flex;
   grid-column: 1 / -1;
@@ -1539,7 +1539,7 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
   .conversation-band { transition: none; }
 }
 
-.side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 1 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }
+.side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 0 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }
 .side-bar-cluster-row-preview.is-running:not(.is-handling) { color: var(--aurora); }
 .side-bar-cluster-row-preview:is(.is-awaiting, .is-unseen):not(.is-handling) { color: var(--brass-ink); }
 .side-bar-cluster-row-preview.is-review:not(.is-handling) { color: var(--apex); }
@@ -1548,8 +1548,8 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
 .side-bar-cluster-row-gauge > span { display: block; height: 100%; border-radius: inherit; background: var(--text-tertiary); }
 .side-bar-cluster-row-gauge.is-complete > span { background: var(--positive); }
 .side-bar-cluster-row-fraction { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
-/* 분수는 게이지 바로 뒤에 붙고, 두 자리 분수까지 같은 폭을 잡아 행마다 게이지 시작점이 한 줄로 선다. */
-.side-bar-cluster-row-gauge + .side-bar-cluster-row-fraction { min-width: 5ch; margin-left: -2px; }
+/* 분수는 게이지 바로 뒤에 붙는다. */
+.side-bar-cluster-row-gauge + .side-bar-cluster-row-fraction { margin-left: -2px; }
 @container (max-width: 300px) { .side-bar-cluster-row-gauge { width: 32px; } }
 @container (max-width: 260px) { .side-bar-cluster-row-gauge { display: none; } }
 .conversation-split-return { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: none; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer; }

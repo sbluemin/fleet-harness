@@ -1459,7 +1459,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-commander-item .mobile-conv-row-copy { gap: 5px; }
 .mobile-commander-list .mobile-conv-section { margin: 0; font-weight: var(--weight-medium); }
 .mobile-commander-line { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--m-text-muted); font-size: var(--m-fs-meta); }
-.mobile-commander-line > .mobile-conv-state { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-commander-line > .mobile-conv-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-commander-line .side-bar-cluster-row-gauge { width: 56px; background: var(--m-hairline-strong); }
 .mobile-commander-line .side-bar-cluster-row-gauge > span { background: var(--m-text-muted); }
 .mobile-commander-line .side-bar-cluster-row-gauge.is-complete > span { background: var(--m-idle); }
