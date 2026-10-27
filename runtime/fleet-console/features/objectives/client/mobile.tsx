@@ -101,7 +101,8 @@ export type ObjectiveMobileRowValues = {
  */
 let rowValueCache: { readonly objective: Objective | null; readonly records: readonly ConsoleObjectiveSummary[]; readonly locale: ConsoleLocale; readonly id: string; readonly value: ObjectiveMobileRowValues } | null = null;
 function readObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale): ObjectiveMobileRowValues {
-  const objective = objectiveOfObjective(objectiveId);
+  // 보관된 완료 목표는 진행 보드에 없다 — 상세가 찾는 것과 같은 완료 저장소까지 본다.
+  const objective = objectiveOfObjective(objectiveId) ?? findAnyObjective(objectiveId);
   const records = objectiveRecordSummaries();
   const hit = rowValueCache;
   if (hit && hit.objective === objective && hit.records === records && hit.locale === locale && hit.id === objectiveId) return hit.value;
@@ -137,9 +138,9 @@ function readObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale
   return value;
 }
 
-/** 대화 정보 화면의 행 값 — 목표 스토어가 바뀔 때만 다시 읽는다. */
+/** 대화 정보 화면의 행 값 — 목표 스토어(완료 목표 포함)가 바뀔 때만 다시 읽는다. */
 export function useObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale): ObjectiveMobileRowValues {
-  return useSyncExternalStore(subscribeObjective, () => readObjectiveMobileRowValues(objectiveId, locale), () => readObjectiveMobileRowValues(objectiveId, locale));
+  return useSyncExternalStore(subscribeObjectiveOrFinished, () => readObjectiveMobileRowValues(objectiveId, locale), () => readObjectiveMobileRowValues(objectiveId, locale));
 }
 /** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
 const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
