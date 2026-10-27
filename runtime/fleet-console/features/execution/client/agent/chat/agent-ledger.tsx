@@ -11,7 +11,7 @@ import { TranscriptLines, useTranscriptReveal } from "./chat-transcript.js";
 import { MemberWidthButton, SessionCoordinate } from "./chat-view.js";
 import { GroupLedgerFrame } from "./group/group-conversation.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
-import { ConversationTheaterContext } from "./group/speaker-mark.js";
+import { ConversationTheaterContext, commodoreDisplayName } from "./group/speaker-mark.js";
 import { readAgentChatSessionCoordinates } from "./session-coordinates.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -37,9 +37,9 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
   const noTarget = React.useRef<HTMLElement | null>(null);
   useChromeHeightProperty(footRef, useMobileSurface() ? sectionRef : noTarget, "--m-dock-h");
   const follow = React.useRef(true);
-  // 사령관·사람은 화면 언어의 이름으로 부른다 — 대화 화면(`useLocalizedSnapshot`)과 같은 이름이다.
+  // 역할 이름인 사령관은 화면 언어로, 별칭은 그대로 — 대화 화면(`useLocalizedSnapshot`)과 같은 이름이다.
   const groupT = getGroupT(language);
-  const shown = speaker.kind === "commodore" ? { ...speaker, name: groupT("group.commodore") } : speaker;
+  const shown = speaker.kind === "commodore" ? { ...speaker, name: commodoreDisplayName(speaker.name, groupT("group.commodore")) } : speaker;
   // 세션이 실제로 도는 좌표만 그린다 — 모르는 세션에 「기본」을 지어 세우면 다른 모델로 도는 세션을 잘못 말한다.
   const session = React.useMemo(() => (coordinates?.model ? readAgentChatSessionCoordinates({
     session: { model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },

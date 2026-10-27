@@ -118,7 +118,19 @@ export function SpeakerName({ speaker, className = "" }: { readonly speaker: Con
 }
 
 /**
- * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 「사령관」으로, 사람은 「사람」으로 부른다.
+ * 역할 표지로만 쓰이는 사령관 이름. 원장·그룹 대화는 화면 언어를 모르는 「Commodore」를 싣고, 사령관 대화는 그 화면의
+ * 「사령관」/「Commodore」를 싣는다. 이 글자가 아니면 사람이 지정한 별칭이라 그대로 둔다.
+ */
+const COMMODORE_ROLE_LABELS = new Set(["Commodore", "사령관"]);
+
+/** 별칭이면 그대로, 역할 이름(또는 빈 이름)이면 이 화면 언어의 사령관으로. */
+export function commodoreDisplayName(name: string, localized: string): string {
+  const trimmed = name.trim();
+  return trimmed && !COMMODORE_ROLE_LABELS.has(trimmed) ? trimmed : localized;
+}
+
+/**
+ * 화면 언어로 발화자 이름을 고친다 — 역할 이름인 사령관은 이 화면의 「사령관」으로, 별칭이 있으면 그 별칭으로, 사람은 「사람」으로 부른다.
  * 스냅숏 하나를 한 번 고쳐 대화·진행 줄·구성원 탭이 같은 이름을 쓰게 한다. 플러그인 대화(SDK `ctx.chat.Conversation`)의 줄도
  * 같은 모양이라(노트 줄은 발화자가 없다) 같은 고침을 지난다.
  */
@@ -131,8 +143,12 @@ export function useLocalizedSnapshot<S extends LocalizableSnapshot>(snapshot: S,
     const names = { commodore: t("group.commodore"), human: t("group.you") };
     const localized = (speaker: ConversationSpeaker): boolean => speaker.kind === "commodore" || speaker.kind === "human";
     const fix = (speaker: ConversationSpeaker): ConversationSpeaker => {
-      if (speaker.kind !== "commodore" && speaker.kind !== "human") return speaker;
-      const name = names[speaker.kind];
+      if (speaker.kind === "human") {
+        const name = names.human;
+        return speaker.name === name ? speaker : { ...speaker, name };
+      }
+      if (speaker.kind !== "commodore") return speaker;
+      const name = commodoreDisplayName(speaker.name, names.commodore);
       return speaker.name === name ? speaker : { ...speaker, name };
     };
     const entries = snapshot.entries.map((entry): LocalizableEntry => {
