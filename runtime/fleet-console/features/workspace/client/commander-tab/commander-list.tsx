@@ -37,7 +37,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   return (
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
       <div className="commander-tab-bar">
-        <span className="commander-tab-count">{t("commanderTab.count", { count: sorted.length })}</span>
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>

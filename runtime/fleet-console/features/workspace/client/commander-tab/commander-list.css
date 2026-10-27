@@ -14,13 +14,6 @@
   padding: 2px 4px;
 }
 
-.commander-tab-count {
-  margin-right: auto;
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
 .commander-tab-sort { position: relative; display: inline-flex; }
 
 .commander-tab-sort-button,
@@ -40,7 +33,7 @@
 
 .commander-tab-sort-button { padding: 0 4px; }
 .commander-tab-direction { width: 26px; padding: 0; }
-.commander-place { display: inline-flex; gap: 2px; }
+.commander-place { display: inline-flex; gap: 2px; margin-left: auto; }
 .commander-place-button {
   display: grid;
   place-items: center;
@@ -68,7 +61,6 @@
 .side-bar-commander-list .commander-tab { min-height: 0; padding: 0 10px 0; gap: 2px; }
 .side-bar-commander-list .commander-tab-groups { min-height: 0; }
 /* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 한 줄로 말줄임한다. */
-.side-bar-commander-list .commander-tab-count { flex: none; white-space: nowrap; }
 .side-bar-commander-list .commander-tab-bar,
 .side-bar-commander-list .commander-tab-sort { min-width: 0; }
 .side-bar-commander-list .commander-tab-sort { position: static; flex: 0 1 auto; }
