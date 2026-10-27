@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.265.1] - 2026-10-27
+
+### fleet-console
+
+#### Changed
+- The desktop commander list no longer shows a count in its header: Sort and New session sit on the left, and the placement buttons stay on the right. The list opened inside a chat is narrower, so less empty space sits between a row's progress and the hand-off mark.
+
+#### Fixed
+- The narrow sidebar shows only each commodore's avatar again, without the name or status drawn on top of it.
+
 ## [1.265.0] - 2026-10-27
 
 ### fleet-console
