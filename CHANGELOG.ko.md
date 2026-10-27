@@ -10,7 +10,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### fleet-console
 
 #### Added
-- 설정에 「마켓플레이스」가 생겨 Anthropic의 Claude Code 플러그인 마켓플레이스들이 기본으로 들어 있고, GitHub 저장소·git 주소(https·ssh)·marketplace.json 주소로 직접 마켓플레이스를 추가할 수 있습니다.
+- 설정에 「마켓플레이스」가 생겨 Anthropic의 Claude Code 플러그인 마켓플레이스들이 기본으로 들어 있고, GitHub 저장소·git 주소(https·ssh)·marketplace.json URL로 직접 마켓플레이스를 추가할 수 있습니다.
 - 사령관마다 설정에서 그 마켓플레이스의 플러그인을 설치할 수 있습니다. 설치한 플러그인은 사령관의 다음 턴부터, 그리고 그 사령관 목표의 지휘관·구성원 세션에 실리며, 명령을 실행하는 플러그인은 먼저 확인을 받습니다.
 - Codex 모델 선별에서 GPT-6.1 Terra를 500K·524K·1M 컨텍스트 변형과 Fast 짝과 함께 제공합니다.
 

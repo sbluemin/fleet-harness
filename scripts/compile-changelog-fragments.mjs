@@ -104,6 +104,17 @@ function parseArgs(args) {
   return options;
 }
 
+// 복수형 acronym(APIs/CLIs)과 산문 슬래시(open/closed), 문장 마침표가 en/ko 사이에서
+// 비대칭 매칭되지 않도록 acronym은 trailing boundary 없이, 경로는 단어 뒤 슬래시를 제외하고 잡는다.
+export function protectedTokens(summary) {
+  return [...summary.matchAll(/`[^`]+`|https?:\/\/[^\s)]+|--[a-z][\w-]*|\b(?:v?\d+(?:\.\d+)+(?:-[\w.]+)?)\b|\b[A-Z][A-Z0-9_]{2,}|(?<![\w\p{L}])(?:~\/|\/)[\w./:@-]*[\w/]/gu)].map((match) => match[0]);
+}
+
+function droppedProtectedTokens(english, korean) {
+  const translated = new Set(protectedTokens(korean));
+  return protectedTokens(english).filter((token) => !translated.has(token));
+}
+
 // 명시적으로 요청한 문구 정리만 수행한다. 릴리스 구조와 원문 대조가 맞지 않으면 쓰지 않는다.
 export function rewriteHistory(options, edits) {
   if (!Array.isArray(edits) || edits.length === 0) throw new Error('Editorial rewrite requires a nonempty edit array.');
@@ -117,7 +128,6 @@ export function rewriteHistory(options, edits) {
   }
   const seen = new Set();
   const tags = (value) => /^((?:\[[^\]]+\]\s*)*)/.exec(value)[1];
-  const tokens = (value) => [...value.matchAll(/`[^`]+`|https?:\/\/[^\s)]+|--[a-z][\w-]*|\b(?:v?\d+(?:\.\d+)+(?:-[\w.]+)?)\b|\b[A-Z][A-Z0-9_]{2,}|(?<![\w\p{L}])(?:~\/|\/)[\w./:@-]*[\w/]/gu)].map((match) => match[0]);
   for (const edit of edits) {
     if (!Number.isSafeInteger(edit.line) || edit.line < 1 || seen.has(edit.line)) throw new Error('Invalid or duplicate historical line.');
     seen.add(edit.line);
@@ -131,8 +141,7 @@ export function rewriteHistory(options, edits) {
       if (links.some((link) => !after.includes(link))) throw new Error(`Historical links changed at line ${edit.line}.`);
       lines[index][edit.line - 1] = `- ${after}`;
     }
-    const translated = new Set(tokens(edit.ko));
-    if (tokens(edit.en).some((token) => !translated.has(token))) throw new Error(`Korean summary drops technical tokens at line ${edit.line}.`);
+    if (droppedProtectedTokens(edit.en, edit.ko).length > 0) throw new Error(`Korean summary drops technical tokens at line ${edit.line}.`);
   }
   const outputs = lines.map((rows) => rows.join('\n'));
   try { paths.forEach((file, index) => fs.writeFileSync(file, outputs[index])); }
@@ -270,6 +279,8 @@ function parseEntry(file, bullet, koSummary) {
   if (!/^\S(?:.*\S)?$/.test(summary)) throw new Error(`${file}: malformed bullet "${bullet}".`);
   if (!/^[\x09\x20-\x7e]+$/.test(summary)) throw new Error(`${file}: bullet summary must be English ASCII text.`);
   if (!/\p{Script=Hangul}/u.test(koSummary)) throw new Error(`${file}: Korean summary must contain Hangul.`);
+  const missingTokens = droppedProtectedTokens(summary, koSummary);
+  if (missingTokens.length > 0) throw new Error(`${file}: Korean summary drops protected tokens present in the English bullet: ${missingTokens.join(', ')}`);
   // A leading bracket is read as a package tag by the Console parser. If only one locale carries it, the two
   // documents parse to different structures and the Korean overlay silently falls back to English for the
   // entire release, so reject it on both sides rather than on the English line alone.
