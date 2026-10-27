@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
@@ -31,19 +31,28 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const target = useRef(0);
   const snap = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduced = useRef(false);
+  const restoreFocus = useRef<number | null>(null);
   const id = useId();
   const itemId = (index: number) => `${id}-${index}`;
 
   const resetFaces = () => nav.current?.querySelectorAll<HTMLElement>(".commander-ghost-face").forEach((face) => face.style.removeProperty("--ghost-scale"));
   // 펼친 칸은 사이드바처럼 남는다. 바깥 클릭·포인터 이탈로는 닫지 않고, 버튼·Escape·키보드만 닫는다.
   const reveal = (focusList = false) => {
+    restoreFocus.current = null;
     resetFaces(); setExpanded(true);
     if (focusList) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
+    // 펼친 동안 얼굴은 display:none이다. setState 직후 focus는 아직 숨은 대상을 놓친다.
+    restoreFocus.current = restore ? Math.min(cursor, rows.length) : null;
     setExpanded(false);
-    if (restore) nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${Math.min(cursor, rows.length)}"]`)?.focus({ preventScroll: true });
   };
+  useLayoutEffect(() => {
+    if (expanded || restoreFocus.current === null) return;
+    const index = restoreFocus.current;
+    restoreFocus.current = null;
+    nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${index}"]`)?.focus({ preventScroll: true });
+  }, [expanded]);
 
   // 휠·선택·키보드는 하나의 곡선을 쓴다. 줄 크기와 스크롤 상태를 레이아웃 애니메이션으로 바꾸지 않는다.
   const scrollTo = useCallback((value: number) => {
