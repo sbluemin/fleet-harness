@@ -173,6 +173,8 @@ export function EvidenceTextContent({ t, src, name }: { readonly t: T; readonly 
     neutralizeUntrustedDom(doc.body);
     return doc.body.innerHTML;
   }, [loaded, mode, t]);
+  // React는 이 객체의 참조로 innerHTML 갱신을 판단한다. 본문이 같으면 하이드레이터가 만든 SVG·클릭 대상을 보존한다.
+  const markup = useMemo(() => ({ __html: html }), [html]);
   useEffect(() => {
     const root = bodyRef.current;
     if (!root || !html) return;
@@ -208,7 +210,7 @@ export function EvidenceTextContent({ t, src, name }: { readonly t: T; readonly 
   return loaded === null ? <div className="objectives-result-textstate" role="status">{t("objectives.results.loading")}</div>
     : "error" in loaded ? <div className="objectives-result-textstate is-error" role="alert">{t("objectives.results.loadFailed", { code: loaded.error })}</div>
     : mode === "plain" ? <div className="markdown-body objectives-result-markdown" tabIndex={0}><pre className="objectives-result-plain"><code>{loaded.text}</code></pre></div>
-    : <div ref={bodyRef} className="markdown-body objectives-result-markdown" tabIndex={0} onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />;
+    : <div ref={bodyRef} className="markdown-body objectives-result-markdown" tabIndex={0} onClick={onCopy} dangerouslySetInnerHTML={markup} />;
 }
 
 const PrGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="4.5" cy="3.8" r="1.6" /><circle cx="4.5" cy="12.2" r="1.6" /><circle cx="11.5" cy="12.2" r="1.6" /><path d="M4.5 5.4v5.2M11.5 10.6V6.5a2 2 0 0 0-2-2H7.5M9 3l-1.5 1.5L9 6" /></svg>;
