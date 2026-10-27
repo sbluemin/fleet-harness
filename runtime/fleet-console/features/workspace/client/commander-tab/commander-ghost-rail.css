@@ -1,7 +1,10 @@
 /* 접히면 거터의 얼굴 열이다. 펼치면 같은 칸이 목록 너비로 넓어지고 대화 열은 그 몫만큼 좁아진다.
    폭 곡선은 사이드바 카드와 같은 --duration-base ease. side-bar-motion.ts는 카드 폭을 따라
    인셋을 보간하는 훅이라 여기선 쓰지 않는다 — 칸과 여백이 같은 길이 토큰을 직접 쓴다. */
-.conversation-stage[data-commander-rail] { --commander-list-span: 312px; }
+/* 채팅 안 펼친 칸. 사이드바 폭은 이 토큰을 쓰지 않는다.
+   228px: 32px 진척 막대·숫자·★를 남기고, 짧은 상태(시작 전)와 숫자 사이 빈 칸이 312px의 98px에서 약 38px로 준다.
+   머리의 「정렬 · 최근 활동」+ 새 세션 + 위치 버튼이 한 줄에 들어가는 너비(약 224px)에 조금 여유를 둔 값이다. */
+.conversation-stage[data-commander-rail] { --commander-list-span: 228px; }
 .commander-ghost {
   /* 접힌 펼치기 단추의 맨 위. 그 위는 작업 영역 맨 위 줄(GNB)이다. 펼친 목록도 이 높이에서 시작한다. */
   --commander-rail-clearance: 60px;
@@ -143,9 +146,18 @@
 .commander-ghost[data-expanded]:not([data-side="left"]) .commander-ghost-close { order: -1; }
 .commander-ghost-list .commander-tab { min-height: 0; }
 .commander-ghost-list .commander-tab-bar { flex: none; }
-/* 메뉴는 정렬 칩이 아니라 막대 너비에 맞춘다. 칩의 오른쪽에 붙이면 312px 칸 밖으로 나가 overflow에 잘리고 사이드바와 겹친다. */
-.commander-ghost-list .commander-tab-sort { position: static; }
+/* 메뉴는 정렬 칩이 아니라 막대 너비에 맞춘다. 칩의 오른쪽에 붙이면 칸 밖으로 나가 overflow에 잘리고 사이드바와 겹친다. */
+.commander-ghost-list .commander-tab-bar,
+.commander-ghost-list .commander-tab-sort { min-width: 0; }
+.commander-ghost-list .commander-tab-sort { position: static; flex: 0 1 auto; }
+.commander-ghost-list .commander-tab-direction,
+.commander-ghost-list .commander-place { flex: none; }
+.commander-ghost-list .commander-tab-sort-button { display: flex; min-width: 0; max-width: 100%; }
+.commander-ghost-list .commander-tab-sort-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commander-ghost-list .commander-tab-menu { left: 0; right: 0; width: auto; min-width: 0; }
+/* 이 칸은 260px 아래라 전역 @container 가 진척 막대를 지운다. 그러면 숫자와 ★ 사이가 다시 벌어진다.
+   사이드바는 이 컨테이너 밖이라 그대로다. 여기만 짧은 막대를 남긴다. */
+.commander-ghost-list .side-bar-cluster-row-gauge { display: block; width: 32px; }
 .commander-ghost-list .commander-tab-groups { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 /* 목록은 dock가 아니다 — 기존 행에는 확대 없이 면 워시만 남긴다. */
 .commander-ghost-list .side-bar-cluster-row:hover { transform: none; }
