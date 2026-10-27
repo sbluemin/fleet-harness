@@ -756,6 +756,7 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 .commodore-plugins-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .objectives-cm-gr-tx .commodore-plugins-meta { margin-top: 4px; }
 .commodore-plugins-list .commodore-plugins-meta { grid-column: 2 / -1; }
+.commodore-plugins-list > li > .commodore-marketplaces-confirm { grid-column: 1 / -1; margin-top: 0; }
 .commodore-plugins-phone-row { align-items: flex-start; }
 .commodore-plugins-comp { padding: 0 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 1.6; white-space: nowrap; }
 .commodore-plugins-state { color: var(--text-tertiary); font-size: var(--t-2xs); }
