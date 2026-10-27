@@ -917,8 +917,8 @@ describe("oversized skill payloads", () => {
     "- claude-api: Reference for the Claude API / Anthropic SDK.",
     "TRIGGER — read BEFORE opening the target file.",
   ].join("\n");
-  // 4 chars/token puts this at 150_000 tokens, past the 54_400 one skill may take
-  // from a 272_000-token window.
+  // 4 chars/token puts this at 150_000 tokens, past the 100_000 one skill may take
+  // from a 500_000-token window.
   const BODY = "Base directory for this skill: /tmp/bundled-skills/2.1.222/abc/claude-api\n\n"
     + "x".repeat(600_000);
 
