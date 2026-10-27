@@ -31,7 +31,7 @@
 .objectives-m-prow-val.is-danger { color: var(--m-danger); }
 .objectives-m-prow-caret { display: grid; flex: none; place-items: center; color: var(--m-text-faint); }
 .objectives-m-profile-foot { margin: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
-.objectives-m-profile .objectives-m-pad { padding: 0 0 16px; }
+.objectives-m-profile .objectives-m-profile-actions { padding: 16px 0 0; }
 /* 일정은 프로필·목표 구역 맨 위 글자 줄 — 테두리·배경·세로 띠 없이 잉크와 굵기만 상태를 말한다. */
 .objectives-m-schedule { display: flex; flex-wrap: wrap; align-items: center; column-gap: 22px; padding: 0 4px; }
 .objectives-m .objectives-m-schedule button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; color: var(--m-text-faint); font-size: var(--m-fs-meta); background: transparent; border: 0; }

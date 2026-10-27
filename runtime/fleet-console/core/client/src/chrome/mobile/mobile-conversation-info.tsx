@@ -19,11 +19,12 @@ import { useRegisteredConversationObjectiveTabs } from "../rail/objective-tabs.j
 import { useObjectiveMobileRowValues } from "../../../../../features/objectives/client/mobile.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { pushBackLayer } from "./mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "./mobile-overlay-history.js";
 import { ConversationAvatar, conversationStateWord, useMobileConversationOf } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
 import { mobileObjectiveMenuItems } from "./mobile-objective-menu.js";
-import { conversationTabId, pushMobileSheet, setMobileDestination, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
+import { conversationTabId, getMobileDestination, pushMobileSheet, setMobileDestination, syncMobileDestinationUrl, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
@@ -130,9 +131,38 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
       if (tabId !== selected.id) setTabId(selected.id);
     }
   }, [objectiveRecord.id, setTabId, tab, tabId, tabs]);
-  // 구역이 여럿이면 탭 없는 주소는 프로필이다. 행을 연 뒤의 ‹·시스템 뒤로는 그 구역만 걷고 프로필에 남는다.
+  // 구역이 여럿이면 탭 없는 주소는 프로필이다. ‹·하드웨어 뒤로는 닫기 함수가 프로필로 돌리고, 그 함수가 history 항목도 걷는다.
+  // 브라우저 뒤로는 그 항목의 popstate가 같은 닫기를 부른다. 프로필에서 한 번 더 뒤로 가면 대화다.
   const profile = tabs.length > 1 && destination.kind === "info" && destination.tab === undefined;
-  useEffect(() => (profile || tabs.length < 2 ? undefined : pushBackLayer(closeSection)), [closeSection, profile, tabs.length]);
+  const inSection = tabs.length > 1 && !profile;
+  const closeSectionRef = useRef(closeSection);
+  closeSectionRef.current = closeSection;
+  useEffect(() => (inSection ? pushBackLayer(() => closeSectionRef.current()) : undefined), [inSection]);
+  // 구역 하나당 history 항목 하나. 브라우저 뒤로의 popstate와 ‹·하드웨어 뒤로의 닫기가 같은 함수로 프로필에 닿는다.
+  const sectionHistory = useRef<number | null>(null);
+  useEffect(() => {
+    if (inSection && sectionHistory.current === null) {
+      // 지금 항목은 이미 구역 주소다. 그 아래에 프로필 주소를 남기고 구역 항목을 하나 쌓는다 — 뒤로가 가드(대화)에 닿지 않게.
+      const sectionUrl = window.location.href;
+      const profileUrl = new URL(sectionUrl);
+      const dest = profileUrl.searchParams.get("dest");
+      if (dest !== null && dest.startsWith("info:")) profileUrl.searchParams.set("dest", "info");
+      window.history.replaceState(window.history.state, "", profileUrl);
+      const id = pushOverlayHistory(() => closeSectionRef.current());
+      window.history.replaceState(window.history.state, "", sectionUrl);
+      sectionHistory.current = id;
+    }
+    return () => {
+      const held = sectionHistory.current;
+      if (held === null) return;
+      const now = getMobileDestination();
+      // 아직 구역이면 예행(StrictMode)이 효과를 다시 세우는 중이다 — 항목을 걷지 않는다.
+      if (now.kind === "info" && now.tab !== undefined) return;
+      sectionHistory.current = null;
+      if (now.kind === "info") releaseOverlayHistory(held);
+      else runAfterOverlayRelease(held, syncMobileDestinationUrl);
+    };
+  }, [inSection]);
   // 프로필에 실린 지금 할 일이 결과물로 보내면(넘긴 후보) 그 구역을 연다. 프로필에 들어온 순간의 선택은 기준이라 따라가지 않는다.
   const profileSelection = useRef<string | null>(null);
   useEffect(() => {
@@ -152,7 +182,6 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
     setMobileDestination({ kind: "home" });
   }, [commanderLedger, selection]);
 
-  const inSection = tabs.length > 1 && !profile;
   useClaimMobileBar({
     variant: "centered",
     title: inSection ? tab.title : "",
@@ -247,7 +276,6 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
             {statusWord ? <p className="mobile-info-status">{statusWord}</p> : null}
             <button type="button" data-press="r3" className="mobile-pill-secondary mobile-info-edit" aria-label={t("mobile.info.editAria", { name: objectiveRecord.title })} onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>{t("mobile.info.edit")}</button>
           </div>
-          {stripPane ? <MobileConversationPane paneId={stripPane.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} params={STRIP_PARAMS} /> : null}
           <nav className="mobile-info-rows" aria-label={t("mobile.info.tabsAria")}>
             {tabs.map((item) => {
               const value = sectionValue(item, infoModel, theater?.label ?? "", rowValues);
@@ -262,6 +290,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
             })}
           </nav>
           {rowValues.foot ? <p className="mobile-info-foot">{rowValues.foot}</p> : null}
+          {stripPane ? <div className="mobile-info-actions"><MobileConversationPane paneId={stripPane.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} params={STRIP_PARAMS} /></div> : null}
         </div>
       ) : (
         <>

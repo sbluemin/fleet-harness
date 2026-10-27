@@ -579,7 +579,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
   const embeddedActions = embedded ? personActions(actions) : [];
   const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
-  const showSchedule = strip || activeTab === null || activeTab === "goal";
+  // 오늘·마감은 목표 구역 맨 위에만. 프로필에는 두지 않는다 — 첫 화면에 행이 바로 보이게.
+  const showSchedule = activeTab === "goal";
   const rows = readObjectiveMobileRowValues(objective.id, locale);
   const heroStatus = fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : memberActivityWord(ownActivityOf(objectiveRecords, objective.id), t);
   const overlays = (
@@ -617,10 +618,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
             {heroStatus ? <p className="objectives-m-hero-status">{heroStatus}</p> : null}
             {tidy && settingsHost?.openInput ? <button type="button" data-press="r3" className="objectives-m-edit" aria-label={t("objectives.mobile.editAria", { name: objective.title })} onClick={rename}>{t("objectives.mobile.edit")}</button> : null}
           </div>
-          <div className="objectives-m-pad">
-            {schedule}
-            {attention}
-          </div>
           <nav aria-label={t("objectives.tabs.aria")}>
             <div className="objectives-m-rows">
               <DetailRow tab="goal" icon={<GoalIcon />} label={t("objectives.tabs.goal")} value={rows.goal} onOpen={pickTab} />
@@ -629,6 +626,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
             </div>
           </nav>
           {rows.foot ? <p className="objectives-m-profile-foot">{rows.foot}</p> : null}
+          <div className="objectives-m-pad objectives-m-profile-actions">{attention}</div>
         </div>
         {overlays}
       </div>

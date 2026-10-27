@@ -1525,6 +1525,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-info-prow-val.is-awaiting { color: var(--m-awaiting); }
 .mobile-info-prow-caret { flex: none; color: var(--m-text-faint); }
 .mobile-info-foot { margin: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
+.mobile-info-actions { margin-top: 16px; }
 .mobile-info-title { position: relative; display: grid; gap: 2px; width: 100%; padding: 14px 16px; color: var(--m-text); text-align: center; background: var(--m-surface); border: 0; border-radius: 18px; --pr-r: 18px; }
 .mobile-info-title strong { overflow: hidden; font-size: var(--m-fs-heading); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-info-title small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-meta); text-overflow: ellipsis; white-space: nowrap; }
