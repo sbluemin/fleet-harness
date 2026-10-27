@@ -18,6 +18,7 @@ import {
 } from "./codex-host.js";
 import { CODEX_READER_PANE_ID, shouldStandReaderColumn } from "./codex-reader-pane.js";
 import {
+  codexWorkspaceContextKey,
   lastCodexScope,
   lastResolvedCodexWorkspace,
   publishResolvedWorkspace,
@@ -98,17 +99,16 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   const navRef = useRef<HTMLDivElement>(null);
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
-  const contextKey = theaterId ?? "";
-  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(() => {
+  const commodoreId = ctx.commodoreId;
+  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
+  const [workspace, setWorkspace] = useState<(CodexWorkspaceState & { readonly failed?: boolean }) | null>(() => {
     const known = lastResolvedCodexWorkspace();
-    return known && known.contextKey === contextKey ? known : null;
+    return known && known.contextKey === contextKey && known.hasWiki ? known : null;
   });
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
-  const activeTheater = state.theaters.find((t) => t.id === theaterId) ?? null;
-  const hasTheaters = state.theaters.length > 0;
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
 
@@ -121,9 +121,9 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
     else panes.close(CODEX_READER_PANE_ID);
   }, [panes, state]);
 
-  // 실제 Theater가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
+  // Wiki 소유 스코프가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
   //
-  // "아직 Theater를 모른다"(빈 contextKey)에서 실제 Theater로 가는 것은 **바뀐 것이 아니라
+  // "아직 맥락을 모른다"(빈 contextKey)에서 실제 소유자로 가는 것은 **바뀐 것이 아니라
   // 정해진 것**이다. 그것을 변경으로 읽으면, 주소가 막 열어 둔 문서를 부팅 도중에 닫아
   // 버린다 — 공유 링크가 확대로 들어와도 축소로 되돌아가던 원인이 이것이었다.
   useEffect(() => {
@@ -134,24 +134,20 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       resetCodexReaderContext();
     }
     rememberCodexScope(contextKey);
-    if (!theaterId) {
-      const nextWorkspace = { contextKey, hasWiki: false, id: null };
-      publishResolvedWorkspace(nextWorkspace);
-      setWorkspace(nextWorkspace);
-      return;
-    }
-    void resolveCodexWorkspace(theaterId).then((result) => {
-      if (latestContextKeyRef.current !== contextKey) return;
-      const nextWorkspace = { contextKey, ...result };
+    let stopped = false;
+    void resolveCodexWorkspace(theaterId, commodoreId).then((result) => {
+      if (stopped || latestContextKeyRef.current !== contextKey) return;
+      const nextWorkspace = { contextKey, theaterId, ...result };
       publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     }).catch(() => {
-      if (latestContextKeyRef.current !== contextKey) return;
-      const nextWorkspace = { contextKey, hasWiki: false, id: null };
+      if (stopped || latestContextKeyRef.current !== contextKey) return;
+      const nextWorkspace = { contextKey, theaterId, hasWiki: false, id: null };
       publishResolvedWorkspace(nextWorkspace);
-      setWorkspace(nextWorkspace);
+      setWorkspace({ ...nextWorkspace, failed: true });
     });
-  }, [contextKey, theaterId]);
+    return () => { stopped = true; };
+  }, [contextKey, theaterId, commodoreId]);
 
   // 위키 없음이 확정된 경우에만 singleton을 정리한다. 다음 Theater를 해석하는 동안에는
   // destroy+remount하지 않고, 기존 host를 새 navigator 컨테이너로 relocate한다.
@@ -188,12 +184,12 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       // 자리를 비운 사이의 변화는 이벤트로도 오지 않았으므로 복귀는 곧 재검증이다.
       revalidateCodexNow();
       if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
-        const session = readReaderSession(theaterId);
+        const session = readReaderSession(contextKey);
         if (session) {
-          void validateReaderEntry(theaterId, workspaceId, session.entryId, controller.signal).then((exists) => {
+          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal).then((exists) => {
             if (!exists || controller.signal.aborted || latestContextKeyRef.current !== contextKey
               || getReaderState().codexReader || hasCodexEntryInUrl()) return;
-            const entryId = restoreCodexReaderSession(theaterId);
+            const entryId = restoreCodexReaderSession(contextKey);
             if (entryId !== session.entryId) return;
             openCodexReader({ kind: "entry", entryId });
             if (consumeRestoredReaderExpanded()) expandCodexReader();
@@ -204,7 +200,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       }
     }
     return () => controller.abort();
-  }, [shouldMountCodex, workspaceId, theaterId]);
+  }, [shouldMountCodex, workspaceId, theaterId, contextKey]);
 
   // 창으로 돌아왔을 때의 재검증 — SSE가 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다.
   useEffect(() => installCodexLiveRevalidation(), []);
@@ -222,34 +218,21 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <div className="codex-panel-body"><CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} /></div>;
+    const kind = !contextKey ? "none" : workspace?.contextKey !== contextKey ? "loading" : workspace.failed ? "failed" : "none";
+    return <div className="codex-panel-body"><CodexEmpty kind={kind} /></div>;
   }
 
   return <div className="codex-panel-body"><div ref={navRef} className="codex-rail-host" /></div>;
 }
 
-function CodexEmpty({
-  activeTheater,
-  hasTheaters,
-}: {
-  readonly activeTheater: { readonly label: string } | null;
-  readonly hasTheaters: boolean;
-}) {
+function CodexEmpty({ kind }: { readonly kind: "loading" | "none" | "failed" }) {
   const t = useT();
-  if (!hasTheaters) {
-    return (
-      <section className="codex-empty-state">
-        <p className="codex-empty-eyebrow">{t("rail.codex.emptyEyebrow")}</p>
-        <h1>{t("rail.codex.addTheater")}</h1>
-        <p>{t("rail.codex.addTheaterHint")}</p>
-      </section>
-    );
-  }
+  // hasWiki:false는 소유자를 못 정한 상태다. 항목이 없는 정상 위키는 카탈로그가 따로 안내한다.
   return (
-    <section className="codex-empty-state">
-      <p className="codex-empty-eyebrow">{t("rail.codex.unavailable")}</p>
-      <h1>{activeTheater?.label || t("rail.codex.thisTheater")}</h1>
-      <p>{t("rail.codex.wikiUnavailable")}</p>
+    <section className="codex-empty-state" role={kind === "failed" ? "alert" : "status"}>
+      <p className="codex-empty-eyebrow">{t(kind === "failed" ? "rail.codex.unavailable" : "rail.codex.emptyEyebrow")}</p>
+      <h1>{t(kind === "none" ? "rail.codex.chooseCommodore" : "rail.codex.thisCommodore")}</h1>
+      <p>{t(kind === "loading" ? "common.loading" : kind === "failed" ? "rail.codex.wikiUnavailable" : "rail.codex.chooseCommodoreHint")}</p>
     </section>
   );
 }

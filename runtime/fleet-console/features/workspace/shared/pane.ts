@@ -229,6 +229,8 @@ export interface PaneContext {
   readonly visible: boolean;
   readonly focused: boolean;
   readonly theaterId: string | null;
+  /** 이 도구를 소유한 사령관. 같은 Theater를 공유해도 소유자는 화면이 명시한다. */
+  readonly commodoreId?: string | null | undefined;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;

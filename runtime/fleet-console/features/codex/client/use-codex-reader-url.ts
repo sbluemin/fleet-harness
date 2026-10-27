@@ -105,10 +105,10 @@ export function useCodexReaderUrlSync(): void {
     // 축소 화면에서 아무것도 못 보여주고, 확대 링크는 null workspace로 영영 기다린다.
     openCodexRailPanel();
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
-      if (workspace?.contextKey !== theaterId) return;
+      if (!workspace || (workspace.theaterId ?? workspace.contextKey) !== theaterId) return;
       const controller = new AbortController();
       const discardTarget = () => {
-        clearReaderSession(theaterId, target.entryId);
+        clearReaderSession(workspace.contextKey, target.entryId);
         targetRef.current = null;
         writtenRef.current = "||";
         hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null }, { replace: true });
@@ -118,7 +118,7 @@ export function useCodexReaderUrlSync(): void {
         discardTarget();
         return;
       }
-      void validateReaderEntry(theaterId, workspace.id, target.entryId, controller.signal).then((exists) => {
+      void validateReaderEntry(workspace.contextKey, workspace.id, target.entryId, controller.signal).then((exists) => {
         if (controller.signal.aborted || targetRef.current !== target) return;
         if (!exists) {
           discardTarget();
@@ -126,7 +126,7 @@ export function useCodexReaderUrlSync(): void {
         }
         // 검증 뒤에만 기록을 옮긴다. 이미 읽던 문서는 재검증 때문에 닫지 않는다.
         if (!stepReaderHistoryTo(target.entryId)) {
-          prepareReaderSessionScroll(theaterId, target.entryId);
+          prepareReaderSessionScroll(workspace.contextKey, target.entryId);
           openCodexReader({ kind: "entry", entryId: target.entryId });
         }
         if (target.expanded) expandCodexReader();

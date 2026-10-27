@@ -4,7 +4,7 @@ import { getState, subscribe } from "./store.js";
 import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
 import { getMobileDestination, getMobileListTheaterId, subscribeMobileState } from "../chrome/mobile/mobile-store.js";
 import { readMobileObjectiveId } from "../chrome/mobile/mobile-objective-url.js";
-import { readCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { readCommodoreList, readMobileCommodoreId, readZoneCommodore, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { readTheaterInboxState, subscribeTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
@@ -67,6 +67,29 @@ export function getViewedTheaterId(): string | null {
   if (inbox !== null) return state.theaters.some((theater) => theater.id === inbox.theaterId) ? inbox.theaterId : null;
   const subjectId = getConversationSubject()?.id ?? state.activeObjectiveId;
   return visibleTheaterOf(state, state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subjectId));
+}
+
+/** 화면이 명시한 도구 소유자만 전달한다. Theater 공유 목록에서 임의로 고르지 않는다. */
+export function getViewedCommodoreId(): string | null {
+  const state = getState();
+  if (getViewModeSnapshot().effective === "mobile") {
+    const objectiveId = readMobileObjectiveId();
+    const objective = state.objectiveRecords.find((row) => row.id === objectiveId);
+    if (objective) return objective.commodoreId;
+    const destination = getMobileDestination();
+    if (destination.kind === "plugin" && destination.params?.commodoreId) return destination.params.commodoreId;
+    return readMobileCommodoreId();
+  }
+  if (state.newSession !== null) return state.newSession.commodoreId ?? null;
+  const surface = getConversationSurface();
+  if (surface !== null) return typeof surface.params.commodoreId === "string" ? surface.params.commodoreId : null;
+  if (readTheaterInboxState() !== null) return readZoneCommodore();
+  const subjectId = getConversationSubject()?.id ?? state.activeObjectiveId;
+  return state.objectiveRecords.find((row) => row.id === subjectId)?.commodoreId ?? null;
+}
+
+export function useViewedCommodoreId(): string | null {
+  return useSyncExternalStore(subscribeViewedTheater, getViewedCommodoreId, () => null);
 }
 
 export function subscribeViewedTheater(listener: () => void): () => void {

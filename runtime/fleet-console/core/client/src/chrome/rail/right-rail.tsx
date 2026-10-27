@@ -1,3 +1,4 @@
+import { useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -379,6 +380,7 @@ export function useRailPanelContext(
   onLaunchObjective?: (pluginId: string | null, kind: ObjectiveLaunchKind) => void,
 ): RailToolContext {
   const railCapabilities = useHostCapabilities();
+  const commodoreId = useViewedCommodoreId();
   const t = useT();
   const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
@@ -391,6 +393,7 @@ export function useRailPanelContext(
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   return useMemo(() => ({
     theaterId,
+    commodoreId,
     pathContext: { kind: "root", relPath: null, label: theaterLabel },
     api,
     language,
@@ -400,7 +403,7 @@ export function useRailPanelContext(
     launchObjective: onLaunchObjective,
     // 레일 패널의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
     openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
-  }), [theaterId, theaterLabel, api, language, theme, onLaunchObjective, railCapabilities]);
+  }), [theaterId, commodoreId, theaterLabel, api, language, theme, onLaunchObjective, railCapabilities]);
 }
 
 /**
@@ -606,6 +609,7 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
           binding={binding}
           overlayDetails={overlayDetails}
           theaterId={ctx.theaterId}
+          commodoreId={ctx.commodoreId}
           api={ctx.api}
           language={language}
           theme={ctx.theme}

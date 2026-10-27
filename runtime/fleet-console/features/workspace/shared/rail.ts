@@ -20,6 +20,8 @@ export interface RailPathContext {
 
 export interface RailPanelContext {
   readonly theaterId: string | null;
+  /** 도구의 사령관 소유권은 Theater 경로와 별개다. */
+  readonly commodoreId?: string | null | undefined;
   /** @deprecated Always the Theater-root context. */
   readonly pathContext: RailPathContext;
   /** @deprecated Path selection is no longer supported. */
@@ -273,7 +275,7 @@ export interface RailEntryMobile {
     readonly trailing?: RailEntryDestinationTrailing;
     /**
      * 칩과 화면 제목에 쓸 짧은 이름(`title`과 같은 현지화 문자열 — 로케일 함수도 된다). 생략하면 엔트리의 `title`을 쓴다.
-     * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 칩에는 「위키」가 서게 한다.
+     * 데스크톱 레일 제목이 「Codex — 사령관 위키」처럼 길어도 모바일 칩에는 「위키」가 서게 한다.
      */
     readonly label?: LocalizedText;
     /**

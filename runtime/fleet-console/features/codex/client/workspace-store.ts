@@ -7,6 +7,8 @@
  */
 export interface CodexWorkspaceState {
   readonly contextKey: string;
+  /** 주소·파일 참조의 Theater와 Wiki 소유 스코프를 분리한다. */
+  readonly theaterId?: string | null;
   readonly hasWiki: boolean;
   readonly id: string | null;
 }
@@ -30,6 +32,11 @@ export function publishResolvedWorkspace(next: CodexWorkspaceState): void {
   for (const listener of workspaceListeners) listener();
 }
 
+/** 소유자가 없는 옛 진입점만 Theater의 단일 소유자 해석을 유지한다. */
+export function codexWorkspaceContextKey(theaterId: string | null, commodoreId?: string | null): string {
+  return commodoreId ?? theaterId ?? "";
+}
+
 /**
  * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
  * 레일 패널이 해석해 둔 사령관 id여야 /console/codex/c/ 라우터가 인식한다.
@@ -39,8 +46,8 @@ export function publishResolvedWorkspace(next: CodexWorkspaceState): void {
  * 아무도 다시 부르지 않아 리더가 에러 화면에 머문다 — 그래서 해석 결과는 구독 가능한
  * 값이어야 하고, 소비자는 null인 동안 마운트를 미뤄야 한다.
  */
-export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | null {
-  const contextKey = theaterId ?? "";
+export function resolvedCodexWorkspaceIdFor(theaterId: string | null, commodoreId?: string | null): string | null {
+  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
   if (lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey && lastResolvedWorkspace.hasWiki) {
     return lastResolvedWorkspace.id;
   }
@@ -59,7 +66,7 @@ export function lastResolvedCodexWorkspace(): CodexWorkspaceState | null {
 }
 
 /**
- * 마지막으로 본 Theater 스코프. "아직 모른다"(빈 문자열)에서 실제 Theater로 가는 것은
+ * 마지막으로 본 Wiki 소유 스코프. "아직 모른다"(빈 문자열)에서 실제 소유자로 가는 것은
  * 바뀐 것이 아니라 **정해진 것**이다 — 그것을 변경으로 읽으면 주소가 막 열어 둔 문서를
  * 부팅 도중에 닫아 버린다.
  */
@@ -72,11 +79,14 @@ export function rememberCodexScope(contextKey: string): void {
 }
 
 /** 카탈로그를 열지 않고 복귀한 확대 표면도 같은 workspace 해석을 쓴다. */
-export async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorkspaceState, "contextKey">> {
+export async function resolveCodexWorkspace(theaterId: string | null, commodoreId?: string | null): Promise<Pick<CodexWorkspaceState, "hasWiki" | "id">> {
+  const contextId = codexWorkspaceContextKey(theaterId, commodoreId);
+  if (!contextId) return { hasWiki: false, id: null };
   const response = await fetch("/api/v1/codex/workspace", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId }),
+    // 기존 전송 필드명은 유지한다. 서버의 컨텍스트 해석은 사령관 UUID를 먼저 인정한다.
+    body: JSON.stringify({ theaterId: contextId }),
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   const value: unknown = await response.json();

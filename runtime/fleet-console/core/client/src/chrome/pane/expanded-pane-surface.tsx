@@ -124,6 +124,7 @@ function ExpandedPaneContent({
     focused: ctx.focused,
     width: ctx.paneWidth,
     theaterId: ctx.theaterId,
+    commodoreId: ctx.commodoreId,
     api: ctx.api,
     lifecycle: ctx.lifecycle,
     preferences: ctx.preferences,

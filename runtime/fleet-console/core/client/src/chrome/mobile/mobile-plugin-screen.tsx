@@ -1,4 +1,4 @@
-import { getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
@@ -28,6 +28,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const bindings = useRailEntries();
   const binding = bindings.find((item) => item.entry.id === entryId);
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
+  const commodoreId = useViewedCommodoreId();
   const activeRail = useRailActivePanelId();
   const title = binding ? resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, language) : "";
   const bar = useMobilePluginBar({ title });
@@ -100,7 +101,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
       <FeatureErrorBoundary>
         <MobileBarContext.Provider value={bar}>
           {activeRail === entryId ? (
-            <RailSurface key={entryId} binding={binding} singlePane theaterId={theaterId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} />
+            <RailSurface key={entryId} binding={binding} singlePane theaterId={theaterId} commodoreId={commodoreId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} />
           ) : null}
         </MobileBarContext.Provider>
       </FeatureErrorBoundary>
@@ -115,6 +116,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
 function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly surfaceId: string; readonly title: string; readonly theme: ConsoleTheme; readonly language: "ko" | "en" }) {
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
+  const commodoreId = useViewedCommodoreId();
   const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getViewedTheaterId())?.label ?? "");
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances } = useExpandedSurfaces();
@@ -159,6 +161,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
               paneWidth={width}
               focused
               theaterId={theaterId}
+              commodoreId={commodoreId}
               theme={theme}
               language={language}
               capabilities={capabilities}

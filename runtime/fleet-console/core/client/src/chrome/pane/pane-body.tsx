@@ -32,6 +32,7 @@ export interface PaneContextInput {
   readonly focused: boolean;
   readonly width: number;
   readonly theaterId: string | null;
+  readonly commodoreId?: string | null | undefined;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;
@@ -60,6 +61,7 @@ export function usePaneContext({
   focused,
   width,
   theaterId,
+  commodoreId,
   api,
   lifecycle,
   preferences,
@@ -132,6 +134,7 @@ export function usePaneContext({
     visible,
     focused,
     theaterId,
+    commodoreId,
     api,
     lifecycle,
     preferences,
@@ -151,7 +154,7 @@ export function usePaneContext({
     legacyLaunchObjective,
     ...(openLink === undefined ? {} : { openLink }),
     ...(conversation === undefined ? {} : { conversation }),
-  }), [opening, api, conversation, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchObjective, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+  }), [opening, api, commodoreId, conversation, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchObjective, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

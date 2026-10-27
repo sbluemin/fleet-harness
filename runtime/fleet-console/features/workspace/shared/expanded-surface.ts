@@ -113,6 +113,8 @@ export interface ExpandedSurfaceContext {
   readonly slotWidth: number;
   readonly focused: boolean;
   readonly theaterId: string | null;
+  /** 확대해도 원래 도구의 사령관 소유권을 유지한다. */
+  readonly commodoreId?: string | null | undefined;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly preferences: ClientPreferencesCapability;
