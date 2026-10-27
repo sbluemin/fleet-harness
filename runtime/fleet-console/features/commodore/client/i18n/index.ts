@@ -955,7 +955,7 @@ export const commodoreKo: Record<keyof typeof commodoreEn, string> = {
   "commodore.plugins.manage": "마켓플레이스 관리…",
   "commodore.plugins.remove": "제거",
   "commodore.plugins.removeAria": "이 사령관에서 {plugin} 제거",
-  "commodore.plugins.removeConfirm": "이 사령관에서 「{plugin}」을 지울까요? 다시 쓰려면 다시 추가해야 해요.",
+  "commodore.plugins.removeConfirm": "「{plugin}」 플러그인을 이 사령관에서 지울까요? 다시 쓰려면 다시 추가해야 해요.",
   "commodore.plugins.removeCancel": "취소",
   "commodore.plugins.marketplaceOff": "꺼진 마켓플레이스",
   "commodore.plugins.notListed": "목록에 없음",

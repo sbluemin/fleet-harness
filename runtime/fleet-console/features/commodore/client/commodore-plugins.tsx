@@ -466,7 +466,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
                   <p>{t("commodore.plugins.removeConfirm", { plugin: title })}</p>
                   <div className="commodore-market-detail-confirm-actions">
                     <button type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirming(null)}>{t("commodore.plugins.removeCancel")}</button>
-                    <button type="button" className="fc-btn fc-btn--secondary commodore-market-detail-remove" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
+                    <button type="button" className="fc-btn fc-btn--secondary commodore-market-detail-remove" disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
                   </div>
                 </div>
               ) : null}
@@ -499,7 +499,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
                 <span className="commodore-marketplaces-confirm" role="alert">
                   <span>{t("commodore.plugins.removeConfirm", { plugin: title })}</span>
                   <button type="button" className="commodore-plugins-text" onClick={() => setConfirming(null)}>{t("commodore.plugins.removeCancel")}</button>
-                  <button type="button" className="commodore-plugins-text is-danger" aria-label={t("commodore.plugins.removeAria", { plugin })} disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
+                  <button type="button" className="commodore-plugins-text is-danger" disabled={busy !== null} onClick={() => { setConfirming(null); remove(pluginId); }}>{t("commodore.plugins.remove")}</button>
                 </span>
               ) : null}
             </li>
