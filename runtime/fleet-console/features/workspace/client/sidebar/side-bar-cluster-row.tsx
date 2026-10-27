@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -21,6 +21,8 @@ import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { commodoreFaceKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
+import { useObjectivesToolUse, type ObjectiveUseTool } from "../../../computer-use/client/computer-screen-share.js";
+import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../components/caption-actions.js";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사령관의 지휘관 목록에 서는 한 줄.
@@ -200,6 +202,9 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
   const { layout, row, anchor } = item;
   // Console Use — 에이전트가 이 목표를 읽거나 고치면 Objective 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
+  // 지휘관이나 구성원이 브라우저·콘솔·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다.
+  const toolUse = useObjectivesToolUse(rowUseIds(item));
+  const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
   const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t);
   const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
@@ -299,6 +304,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
       className={[
         "side-bar-cluster-row",
         consoleUseWrapClassName(wrap),
+        toolUse ? "is-tool-using" : "",
         active ? "side-bar-cluster-row--active" : "",
         "side-bar-cluster-row--conversation",
       ].filter(Boolean).join(" ")}
@@ -335,7 +341,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         aria-current={active ? "true" : undefined}
         aria-haspopup={onContextMenu ? "menu" : undefined}
         aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
-        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
+        aria-label={[layout.cluster.title, label, toolUseLabel ?? "", ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : ""].filter(Boolean).join(", ")}
         onClick={open}
         onKeyDown={(event) => {
           openFromKey(event);
@@ -353,7 +359,10 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
             ))}
         </span>
         <span className="side-bar-cluster-row-line" aria-hidden="true">
-          <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+          <span className="side-bar-cluster-row-swap">
+            <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+            <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
+          </span>
           <ClusterRowProgress progress={progress} />
         </span>
       </button>
@@ -362,6 +371,52 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected,
         {row.mark ? (row.mark.toggle ? <ClusterRowMarkToggle mark={row.mark} toggle={row.mark.toggle} /> : <ClusterRowMark mark={row.mark} />) : null}
       </span>
     </li>
+  );
+}
+
+/** 줄이 대신하는 Objective — 뿌리(지휘관)와 구성원. 자리표시 구성원은 아직 세션이 없다. */
+function rowUseIds(item: SideBarRowItem): readonly string[] {
+  const { layout, anchor } = item;
+  const ids = [anchor?.objectiveRecord.id, layout.cluster.root, ...layout.cluster.members.filter((member) => !member.pending).map((member) => member.objectiveId)];
+  return ids.filter((id): id is string => typeof id === "string");
+}
+
+const ROW_TOOL_USE_KEY = { browser: "sidebar.row.use.browser", console: "sidebar.row.use.console", computer: "sidebar.row.use.computer" } as const;
+
+/** 쓰는 이가 구성원이면 그 이름을 앞에 단다. 지휘관 자신이면 도구만 말한다. */
+function rowToolUseLabel(item: SideBarRowItem, use: { readonly tool: ObjectiveUseTool; readonly actor: string | null }, t: ReturnType<typeof useT>): string {
+  const phrase = t(ROW_TOOL_USE_KEY[use.tool]);
+  const rootIds = new Set([item.anchor?.objectiveRecord.id, item.layout.cluster.root]);
+  const member = use.actor !== null && !rootIds.has(use.actor) ? item.layout.cluster.members.find((entry) => entry.objectiveId === use.actor) : undefined;
+  return member ? t("sidebar.row.use.byMember", { member: member.name ?? member.label, use: phrase }) : phrase;
+}
+
+/** 나감 페이드(--duration-fast 140ms)가 끝난 뒤 걷는다. */
+const ROW_TOOL_USE_LEAVE_MS = 160;
+
+/**
+ * 도구 사용 문구 — 상태 줄 자리에 글리프와 문구로 서고, 문구 위로 명도 물결이 지나간다. 끝나면 페이드하고 걷힌다.
+ * 물결은 밝은 사본을 비추는 창이 transform 으로만 지나가고 사본은 반대로 움직여 제자리에 선다(conversation.css).
+ */
+function RowToolUse({ tool, label }: { readonly tool: ObjectiveUseTool | null; readonly label: string | null }) {
+  const live = tool !== null && label !== null ? { tool, label } : null;
+  const [shown, setShown] = useState(live);
+  useEffect(() => {
+    if (tool !== null && label !== null) { setShown({ tool, label }); return undefined; }
+    const timer = setTimeout(() => setShown(null), ROW_TOOL_USE_LEAVE_MS);
+    return () => clearTimeout(timer);
+  }, [tool, label]);
+  const current = live ?? shown;
+  if (!current) return null;
+  const glyph = current.tool === "browser" ? <CaptionBrowserUseGlyph /> : current.tool === "console" ? <CaptionConsoleUseGlyph /> : <CaptionComputerUseGlyph />;
+  return (
+    <span className={`side-bar-cluster-row-use is-${current.tool}${live ? "" : " is-leaving"}`}>
+      <span className="side-bar-cluster-row-use-glyph">{glyph}</span>
+      <span className="side-bar-cluster-row-use-text">
+        {current.label}
+        <span className="side-bar-cluster-row-use-crest"><span>{current.label}</span></span>
+      </span>
+    </span>
   );
 }
 
