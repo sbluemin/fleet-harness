@@ -113,9 +113,9 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
     return closed.length > 0 && closed.every((id) => (runner.selfWrites.get(id) ?? 0) >= at);
   };
 
-  // 보드 사건 — 사령관이 운영하는 목표에 아직 듣지 못한 대기 상태가 생겨도, 그 목표에 그룹 대화가 있으면 혼자 깨우지 않는다. 그룹이
-  // 대기 중이 될 때 그 목표의 보드 요약으로 실린다. 그룹이 없는 사건(후속 생성 실패, 끝난 목표의 후속 후보)과 사람이 넘겨받은 항목의
-  // 마무리만 바로 깨운다. 착수 전 목표(pending)는 깨우지 않는다. 관측이 없는 호스트는 대기 항목마다 바로 깨운다.
+  // 보드 사건 — 결정 요청은 그룹이 일하는 중에도 바로 깨운다. 다른 대기 상태는 그 목표에 그룹 대화가 있으면 혼자 깨우지 않고,
+  // 그룹이 대기 중이 될 때 그 목표의 보드 요약으로 실린다. 그룹이 없는 사건(후속 생성 실패, 끝난 목표의 후속 후보)과 사람이 넘겨받은
+  // 항목의 마무리도 바로 깨운다. 착수 전 목표(pending)는 깨우지 않는다. 관측이 없는 호스트는 대기 항목마다 바로 깨운다.
   // 줄어든 항목은 조용히 잊어 같은 상태가 돌아오면 다시 본다. 사람이 운영하는 목표의 사건은 깨우지 않고 다음 턴의 범위 줄(held)에만 남는다.
   /** 대기 상태를 다시 보고 아직 듣지 못한 항목으로 깨운다. */
   const waitingChanged = (runner: Runner, objectives: readonly Objective[]) => {
@@ -129,7 +129,10 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       if (head === HUMAN_KEY) hold(runner, rest[1]!, rest[0]!);
       else if (head === PERSON_KEY) continue;
       else if (SETTLED_CODES.has(head as WakeCode)) settled.push({ code: head as WakeCode, id: rest[0]!, detail: `"${objectives.find((objective) => objective.id === rest[0])?.title ?? rest[0]}" ${rest[1]}` });
-      else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) freshCodes.add(head as WakeCode);
+      else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) {
+        freshCodes.add(head as WakeCode);
+        if (head === "decision") heard(runner, objectives, rest[0]!);
+      }
     }
     if (freshCodes.size) {
       const digest = new Map(inboxDigest(objectives, deps.observe));
@@ -142,7 +145,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const immediate = (code: WakeCode, objective: Objective | undefined): boolean => {
     const observe = deps.observe;
     if (!observe) return true;
-    if (code === "followup-failed") return true;
+    if (code === "decision" || code === "followup-failed") return true;
     if (code === "pending") return false;
     return !objective || !!objective.done || !observe(objective.id);
   };
