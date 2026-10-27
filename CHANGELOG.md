@@ -5,6 +5,33 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.265.0] - 2026-10-27
+
+### fleet-console
+
+#### Added
+- See in the commander list when a commander or its member is using Fleet Browser, Console Use, or Computer Use, shown with a quiet wave over that row's status line.
+- Console now includes the community plugin marketplace with the official one. A new setup turns on only those two; the other included marketplaces stay listed but start off. A marketplace you already chose a plugin from stays on.
+- Selecting a plugin in Add plugins now opens its details in the same window: the full description, included skills, commands, agents, hooks and MCP servers, the commands it runs, links, license and README. You can install or remove it there, and Back or Escape returns to the list where you left off.
+
+#### Changed
+- Once an older Console's objectives have moved to a commodore, Console removes their old copies; objectives it could not move are kept.
+- Browse and search archived objectives by Commodore, with clearer ownership when restoring or deleting a selection.
+- On a phone, the commodore and commander chips open that conversation's details, and the button beside them opens the commander list.
+- Browse results across missions in a movable, resizable window that stays open while you chat; on mobile, switch missions within the full-screen viewer.
+- The Commodore now picks up a criteria proposal, a lineup ready to commence or a review once the Commander has rested for a minute, even while members are still working, instead of waiting for the whole group to go idle.
+- The commodore Log tab is back to the left of Directive. Choosing an entry still jumps to that turn, and selecting a commander no longer unfolds a short activity list under the row.
+- When another device connects, the one that was disconnected can take control back without a new access link. On Desktop it can return to this computer's Console instead of opening the host list. A browser has no local Console to return to, so that action stays hidden.
+
+#### Fixed
+- Console no longer fails to start when two commodores share a Theater that held objectives from an older Console: those objectives move to one commodore only, and a Console already stuck this way starts again.
+- Opening a commander the commodore created now opens the right sidebar even when several commodores share a Theater or one commodore has more than one, without using another commodore's data.
+- The commander list in chat collapses with one chevron, shows a name when you hover a collapsed face, keeps the sort menu inside the list, and sits flush with the chat.
+- A commodore now shows the same avatar in its chat working line and messages as on its card and in the list.
+- Choosing a Log entry scrolls the commodore chat to that turn. Visiting another commander and coming back shows the latest message, and choosing the entry again jumps once more.
+- Choosing a goal title in the commodore Log opens that goal, the same way other goal links in the chat do.
+- Opening a new session keeps the commodore you were viewing selected, including when starting from an objective that has not launched yet.
+
 ## [1.264.0] - 2026-10-27
 
 ### fleet-console
