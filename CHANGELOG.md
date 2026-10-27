@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.266.0] - 2026-10-27
+
+### fleet-console
+
+#### Changed
+- On a phone, a commander session opens as a profile of sections (info, objective, members, and results) instead of a tab strip. Browser, button, and system back each return to that profile, and one more back leaves the session. Today and the due date stay on the objective section; decision and launch actions sit below the section list.
+- Theaters in the new session picker, the command palette, and the mobile sheets now show a Theater mark instead of a commodore face, and each commodore keeps its own face even when several commodores share the same folder. Palette Theater rows are found by the Theater name, not a commodore alias.
+
 ## [1.265.2] - 2026-10-27
 
 ### fleet-console
