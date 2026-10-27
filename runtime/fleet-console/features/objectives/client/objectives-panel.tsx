@@ -180,7 +180,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const shownDone = useSyncExternalStore(subscribeShownFinished, shownFinishedObjective, shownFinishedObjective);
   useEffect(() => {
     if (!state.loaded) return;
-    if (selected && selected !== standingId && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
+    if (standingId && state.objectives.some((objective) => objective.id === standingId)) {
+      if (selected !== standingId) setSelected(standingId);
+      return;
+    }
+    if (selected && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
   }, [state.loaded, state.objectives, selected, setSelected, standingId]);
 
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다(행·비콘·목록). 호출부는 남겨 두되 아무것도 띄우지 않는다.

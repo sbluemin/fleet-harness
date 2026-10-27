@@ -890,10 +890,13 @@ function clearSelectionTheater(): void {
 
 /** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
 export function objectiveDisplayOwnerId(contextTheaterId: string | null): string | null {
+  const surface = installed?.conversation?.current();
+  const surfaceCommodore = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
+  const surfaceObjective = typeof surface?.params.objectiveId === "string" ? surface.params.objectiveId : null;
+  if (surfaceObjective && surfaceCommodore) return surfaceCommodore;
   if (selectionTheater?.contextTheaterId === contextTheaterId) return selectionTheater.commodoreId;
   const activeId = contextObjectiveId();
-  const surfaceId = installed?.conversation?.current()?.params.objectiveId;
-  const objectiveId = activeId ?? (typeof surfaceId === "string" ? surfaceId : null);
+  const objectiveId = activeId ?? surfaceObjective;
   return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? ownerOfContext(contextTheaterId) : ownerOfContext(contextTheaterId);
 }
 export function useObjectiveDisplayOwner(contextTheaterId: string | null): string | null {
