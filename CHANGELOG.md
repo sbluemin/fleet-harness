@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.262.0] - 2026-10-27
+
+### fleet-console
+
+#### Added
+- Settings now has a Marketplaces section with Anthropic's Claude Code plugin marketplaces built in, and you can add your own marketplace from a GitHub repository, a git address (https or ssh) or a marketplace.json URL.
+- Each Commodore can install plugins from those marketplaces in its settings; they load from its next turn and in the Commanders and members of its objectives, and a plugin that runs commands asks for your confirmation first.
+- Offer GPT-6.1 Terra in the Codex model loadout, with 500K, 524K, and 1M context variants and a Fast twin.
+
+#### Changed
+- Switch between a commodore and its commanders from a compact list beside the conversation, with sorting and mission progress in the expanded list, instead of splitting the chat or opening a Commanders sidebar tab. On phones, tap the conversation title to open the same list.
+- Sort and group commander sessions on your phone, and expand a session to see the commodore's recent actions before opening it.
+
+#### Fixed
+- A Commodore with an alias is named by that alias on chat replies and activity lines; without an alias the label stays Commodore.
+- Changing or clearing a Commodore alias reaches the next turn, so an open session is not stuck with the name from when it started.
+- Decision requests now wake the Commodore without waiting for the Commander's turn to finish.
+- In a narrow window, the commander conversation opened beside the commodore now keeps its name readable in the title bar, folding the conversation tools into the More menu first instead of cutting the name to a letter or two.
+
+#### Removed
+- The Commodore no longer loads each Theater's MCP servers; it keeps the Theater's project skills and file access, and work that needs those servers runs in that Theater's objectives.
+- Remove GPT-5.6 Terra from Codex in favor of GPT-6.1 Terra. Objective members or settings that chose it need another model selected.
+
 ## [1.261.0] - 2026-10-26
 
 ### fleet-console
