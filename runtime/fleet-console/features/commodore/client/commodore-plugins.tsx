@@ -282,10 +282,13 @@ function MarketplaceRow({ t, marketplace, act, onOpen }: { readonly t: T; readon
   );
 }
 
-/** 폰 마켓플레이스 상세 하위 화면 — 열려 있는 동안 호스트가 다시 그리므로 카탈로그를 바로 읽는다. 지워진 뒤에는 그렇다고 말한다. */
+/**
+ * 폰 마켓플레이스 상세 하위 화면. 하위 화면은 설정 섹션을 대신 그려 목록(`MarketplaceSettings`)과 그 폴링이 내려가므로,
+ * 받는 중인 동안 상태·수·갱신 시각이 이어지도록 여기서도 카탈로그를 다시 읽는다. 지워진 뒤에는 그렇다고 말한다.
+ */
 function MarketplaceDetail({ name }: { readonly name: string }) {
   const t = getT(useConsoleLocale());
-  const { view } = usePluginCatalog();
+  const { view } = useLiveCatalog(true);
   const marketplace = view?.marketplaces.find((candidate) => candidate.name === name);
   if (!marketplace) return <SettingsGroup ariaLabel={name}><p className="global-settings-help">{t("commodore.marketplaces.detail.gone")}</p></SettingsGroup>;
   return <MarketplaceDetailBody t={t} marketplace={marketplace} />;
