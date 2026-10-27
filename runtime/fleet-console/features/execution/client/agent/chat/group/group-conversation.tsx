@@ -237,9 +237,10 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     void target.offsetWidth;
     target.classList.add("is-revealed");
     const timer = window.setTimeout(() => target.classList.remove("is-revealed"), 1_600);
-    // 줄을 찾은 뒤에만 알린다. StrictMode 해제→재설치는 이 프레임을 취소하고, 못 찾은 요청은 growth 로 다시 찾는다.
-    const frame = requestAnimationFrame(() => reveal.applied?.());
-    return () => { window.clearTimeout(timer); cancelAnimationFrame(frame); };
+    // 줄을 찾은 즉시 알린다. 다음 프레임으로 미루면 StrictMode 재실행이나 growth 변경이 그 예약을 취소하고,
+    // 재실행은 이미 기록한 nonce 에서 돌아와 소비가 영영 빠진다.
+    reveal.applied?.();
+    return () => window.clearTimeout(timer);
   }, [reveal, growth, setFollowing]);
 
   // 그룹 루트는 진행 칩과 말풍선 머리 보고로 접고, 플러그인 소유 대화는 원장 줄을 그대로 세운다.

@@ -440,7 +440,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   if (tab === "goals") {
     return (
       <div className="objectives-commodore-conversation-tab is-goals">
-        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} />
+        <CommodoreTrail t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} onOpenObjective={(objectiveId) => openReferencedObjective(commodoreId, objectiveId)} />
       </div>
     );
   }
