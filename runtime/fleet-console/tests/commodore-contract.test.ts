@@ -1319,6 +1319,7 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["decision:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("inbox: 1 decision request");
+      expect(sessions[0]!.sent.at(-1)).toContain('Board at wake:\n- o1 "Remote pairing"\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: commander running · no members\n  since your last turn: new → planning');
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 1);
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait * 2);

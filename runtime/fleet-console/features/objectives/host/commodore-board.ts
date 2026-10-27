@@ -129,10 +129,12 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       if (head === HUMAN_KEY) hold(runner, rest[1]!, rest[0]!);
       else if (head === PERSON_KEY) continue;
       else if (SETTLED_CODES.has(head as WakeCode)) settled.push({ code: head as WakeCode, id: rest[0]!, detail: `"${objectives.find((objective) => objective.id === rest[0])?.title ?? rest[0]}" ${rest[1]}` });
-      else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) {
-        freshCodes.add(head as WakeCode);
-        if (head === "decision") heard(runner, objectives, rest[0]!);
-      }
+      else if (head === "decision") {
+        // 미뤄 둔 대기 항목도 결정 턴의 보드 요약에 실은 뒤 같은 보드의 대기 중 깨움을 막는다.
+        const id = rest[0]!;
+        wake(runner, "decision", { objectiveId: id, detail: `"${objectives.find((objective) => objective.id === id)?.title ?? id}"` });
+        heard(runner, objectives, id);
+      } else if (immediate(head as WakeCode, objectives.find((objective) => objective.id === rest[0]))) freshCodes.add(head as WakeCode);
     }
     if (freshCodes.size) {
       const digest = new Map(inboxDigest(objectives, deps.observe));
@@ -145,7 +147,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const immediate = (code: WakeCode, objective: Objective | undefined): boolean => {
     const observe = deps.observe;
     if (!observe) return true;
-    if (code === "decision" || code === "followup-failed") return true;
+    if (code === "followup-failed") return true;
     if (code === "pending") return false;
     return !objective || !!objective.done || !observe(objective.id);
   };
