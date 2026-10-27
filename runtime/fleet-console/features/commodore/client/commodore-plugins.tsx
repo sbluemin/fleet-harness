@@ -64,7 +64,9 @@ function loadPluginCatalog(force = false): Promise<void> {
   return inflight;
 }
 async function applyCatalog(path: string, body: Record<string, unknown>): Promise<void> {
-  setCatalog({ view: await postCommodorePlugins<PluginCatalogView>(path, body), error: null });
+  const view = await postCommodorePlugins<PluginCatalogView>(path, body);
+  invalidatePluginDetails();
+  setCatalog({ view, error: null });
 }
 async function inspectPlugin(pluginId: string): Promise<PluginCatalogEntry> {
   const { plugin } = await postCommodorePlugins<{ readonly plugin: PluginCatalogEntry }>("/commodore/plugins/inspect", { pluginId });
@@ -73,20 +75,39 @@ async function inspectPlugin(pluginId: string): Promise<PluginCatalogEntry> {
   return plugin;
 }
 
-/** 상세 응답 캐시 — 같은 카드를 다시 열면 구성·README 를 다시 받지 않는다. 목록 항목 자체는 바꾸지 않는다. */
+/**
+ * 상세 응답 캐시 — 같은 카드를 다시 열면 구성·README 를 다시 받지 않는다. 목록 항목 자체는 바꾸지 않는다.
+ * 마켓을 갱신·추가·제거·켜고 끄면 세대를 올려 비운다. 받는 중 폴링은 세대를 올리지 않아 열려 있는 상세를 비우지 않는다.
+ * 세대가 바뀐 뒤에 끝나는 예전 요청은 캐시를 다시 채우지 않는다.
+ */
 const detailCache = new Map<string, PluginDetail>();
-const detailInflight = new Map<string, Promise<PluginDetail>>();
+const detailInflight = new Map<string, { readonly generation: number; readonly promise: Promise<PluginDetail> }>();
+let detailGeneration = 0;
+const detailGenerationListeners = new Set<() => void>();
+function invalidatePluginDetails(): void {
+  detailGeneration += 1;
+  detailCache.clear();
+  for (const listener of detailGenerationListeners) listener();
+}
+function useDetailGeneration(): number {
+  return useSyncExternalStore(
+    (listener) => { detailGenerationListeners.add(listener); return () => { detailGenerationListeners.delete(listener); }; },
+    () => detailGeneration,
+    () => detailGeneration,
+  );
+}
 function loadPluginDetail(pluginId: string): Promise<PluginDetail> {
+  const generation = detailGeneration;
   const cached = detailCache.get(pluginId);
   if (cached) return Promise.resolve(cached);
   const pending = detailInflight.get(pluginId);
-  if (pending) return pending;
-  const request = postCommodorePlugins<{ readonly plugin: PluginDetail }>("/commodore/plugins/detail", { pluginId }).then(({ plugin }) => {
-    detailCache.set(pluginId, plugin);
+  if (pending?.generation === generation) return pending.promise;
+  const promise = postCommodorePlugins<{ readonly plugin: PluginDetail }>("/commodore/plugins/detail", { pluginId }).then(({ plugin }) => {
+    if (generation === detailGeneration) detailCache.set(pluginId, plugin);
     return plugin;
-  }).finally(() => { detailInflight.delete(pluginId); });
-  detailInflight.set(pluginId, request);
-  return request;
+  }).finally(() => { if (detailInflight.get(pluginId)?.promise === promise) detailInflight.delete(pluginId); });
+  detailInflight.set(pluginId, { generation, promise });
+  return promise;
 }
 
 /** 등록부를 읽고, 받는 중인 마켓플레이스가 있는 동안에는 몇 초마다 다시 읽는다(카탈로그에는 사건 채널이 없다). */
@@ -387,6 +408,7 @@ function MarketplaceAdd({ t }: { readonly t: T }) {
     void postCommodorePlugins<{ readonly marketplace: MarketplaceView }>("/commodore/marketplaces/add", body).then(({ marketplace }) => {
       setSource(""); setRef("");
       setState({ kind: "done", name: marketplace.name });
+      invalidatePluginDetails();
       void loadPluginCatalog(true);
     }, (error) => setState({ kind: "failed", code: codeOf(error) }));
   };
@@ -568,6 +590,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const titleId = useId();
   const detailTitleId = useId();
   const name = commodoreName(commodoreId, t);
+  const detailEpoch = useDetailGeneration();
   const holdFocus = () => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -589,7 +612,7 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
       (reason) => { if (!cancelled) { setDetailLoading(false); setDetailError(codeOf(reason)); } },
     );
     return () => { cancelled = true; };
-  }, [openedId]);
+  }, [openedId, detailEpoch]);
   useEffect(() => {
     if (openedId) return;
     const id = returnFocusId.current;
@@ -685,14 +708,6 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
         aria-modal="true"
         aria-labelledby={opened ? detailTitleId : titleId}
         tabIndex={-1}
-        onMouseDown={(event) => {
-          const target = event.target;
-          if (!(target instanceof Element)) return;
-          if (target.closest("a, button, input, textarea, select, summary")) return;
-          // 포커스를 받지 않는 면을 눌러도 BODY 로 빠지지 않게 다이얼로그가 받는다. Esc 는 그 포커스에서 동작한다.
-          event.preventDefault();
-          dialogRef.current?.focus();
-        }}
       >
         {opened ? (
           <PluginDetailView
