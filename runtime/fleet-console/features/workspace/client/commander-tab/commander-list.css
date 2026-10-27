@@ -70,16 +70,21 @@
 .side-bar-commander-list .commander-tab-count { flex: none; white-space: nowrap; }
 .side-bar-commander-list .commander-tab-bar,
 .side-bar-commander-list .commander-tab-sort { min-width: 0; }
-.side-bar-commander-list .commander-tab-sort { flex: 0 1 auto; overflow: hidden; }
+.side-bar-commander-list .commander-tab-sort { position: static; flex: 0 1 auto; }
 .side-bar-commander-list .commander-tab-direction,
 .side-bar-commander-list .commander-place { flex: none; }
 .side-bar-commander-list .commander-tab-sort-button {
-  display: block;
+  display: flex;
+  min-width: 0;
   max-width: 100%;
+}
+.side-bar-commander-list .commander-tab-sort-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 메뉴는 칩이 아니라 막대 너비에 맞춘다. 칩에 맞추면 280px에서 왼쪽으로 잘린다. */
+.side-bar-commander-list .commander-tab-menu { left: 0; right: 0; width: auto; min-width: 0; }
 .commander-tab-direction svg { width: 14px; height: 14px; }
 
 .commander-tab-sort-button:hover,

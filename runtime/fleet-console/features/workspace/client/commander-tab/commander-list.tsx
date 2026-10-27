@@ -116,7 +116,7 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
   const close = () => { setOpen(false); buttonRef.current?.focus(); };
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"]')?.focus();
+    menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"]')?.focus({ preventScroll: true });
     const onPointerDown = (event: PointerEvent) => {
       if (event.target instanceof Node && (menuRef.current?.contains(event.target) || buttonRef.current?.contains(event.target))) return;
       setOpen(false);
@@ -135,7 +135,7 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
       event.preventDefault();
       const order = ["name", "asc", "desc"];
       const next = order[order.indexOf(column) + (event.key === "ArrowRight" ? 1 : -1)];
-      if (next) row.querySelector<HTMLElement>(`[data-sort-column="${next}"]`)?.focus();
+      if (next) row.querySelector<HTMLElement>(`[data-sort-column="${next}"]`)?.focus({ preventScroll: true });
       return;
     }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -144,15 +144,15 @@ function SortMenu({ preference, nameOnly }: { readonly preference: SortPreferenc
     if (row) {
       const rows = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[data-sort-row]") ?? []);
       const next = rows[rows.indexOf(row) + step];
-      if (next) { (next.querySelector<HTMLElement>(`[data-sort-column="${column}"]`) ?? next.querySelector<HTMLElement>('[role^="menuitem"]'))?.focus(); return; }
+      if (next) { (next.querySelector<HTMLElement>(`[data-sort-column="${column}"]`) ?? next.querySelector<HTMLElement>('[role^="menuitem"]'))?.focus({ preventScroll: true }); return; }
     }
     const fallback = items[index + step] ?? items[step > 0 ? 0 : items.length - 1];
-    fallback?.focus();
+    fallback?.focus({ preventScroll: true });
   };
   const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
   return (
     <span className="commander-tab-sort">
-      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>{nameOnly ? t(current.label) : sortLabel}</button>
+      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}><span className="commander-tab-sort-label">{nameOnly ? t(current.label) : sortLabel}</span></button>
       {open ? <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
         {SORTS.map((sort) => {
           const label = t(sort.label);
