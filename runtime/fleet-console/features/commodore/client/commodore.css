@@ -862,3 +862,15 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 :root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
 @media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }
 .commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
+/* 폰 마켓플레이스 행 — 행 전체를 덮는 열기 단추 위에 토글만 올린다(모바일 설정 행의 <label> 대신). 꺼진 행은 옅어짐으로 말한다. */
+.commodore-market-row { position: relative; }
+.commodore-market-row-open { position: absolute; inset: 0; z-index: 0; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
+.commodore-market-row-open:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commodore-market-row > :not(.commodore-market-row-open) { position: relative; z-index: 1; pointer-events: none; }
+.commodore-market-row > .commodore-market-row-toggle { pointer-events: auto; }
+.commodore-market-row.is-off :is(.fc-settings-row__icon, .fc-settings-row__copy) { opacity: 0.55; }
+.commodore-market-detail { display: grid; gap: var(--space-4); }
+.commodore-market-detail-confirm { display: grid; gap: 10px; padding: 14px 16px; border-radius: var(--radius-lg); background: color-mix(in oklab, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: var(--t-sm); }
+.commodore-market-detail-confirm p { margin: 0; }
+.commodore-market-detail-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.commodore-market-detail-remove { color: var(--coral-ink); }

@@ -151,7 +151,7 @@ function MarketplaceSettings() {
   const enabled = useCommodoreEnabled();
   const { view, loading, error } = useLiveCatalog(enabled);
   const [failure, setFailure] = useState<string | null>(null);
-  const mobile = useMobileSettingsHost() !== null;
+  const openSubScreen = useMobileSettingsHost()?.openSubScreen;
   if (!enabled) return <p className="global-settings-help">{t("commodore.marketplaces.disabled")}</p>;
   if (!view) {
     return error ? <p className="global-settings-error" role="alert">{errorWord(t, error)}</p>
@@ -161,9 +161,10 @@ function MarketplaceSettings() {
   const presets = view.marketplaces.filter((marketplace) => marketplace.preset);
   const customs = view.marketplaces.filter((marketplace) => !marketplace.preset);
   const anySyncing = view.marketplaces.some((marketplace) => marketplace.status === "syncing");
-  // 데스크톱은 카드 격자(카드 한 층만 테두리를 진다), 모바일 설정 호스트는 묶음 행 문법에 타일만 더한다.
-  const list = (items: readonly MarketplaceView[]) => (mobile
-    ? items.map((marketplace) => <MarketplaceRow key={marketplace.name} t={t} marketplace={marketplace} act={act} />)
+  // 데스크톱은 카드 격자(카드 한 층만 테두리를 진다). 폰은 이름·수·상태·토글만 둔 묶음 행이고, 행을 누르면 출처·갱신·설명·제거가
+  // 있는 하위 화면이 열린다. 하위 화면을 열 수 없는 호스트는 카드를 그대로 쓴다.
+  const list = (items: readonly MarketplaceView[]) => (openSubScreen
+    ? items.map((marketplace) => <MarketplaceRow key={marketplace.name} t={t} marketplace={marketplace} act={act} onOpen={() => openSubScreen({ title: marketplace.name, render: () => <MarketplaceDetail name={marketplace.name} /> })} />)
     : <div className="commodore-market-grid">{items.map((marketplace) => <MarketplaceCard key={marketplace.name} t={t} marketplace={marketplace} act={act} />)}</div>);
   return (
     <div className="commodore-marketplaces">
@@ -192,7 +193,7 @@ function updatedWord(at: number): string {
 
 type Act = (work: () => Promise<void>) => void;
 
-/** 한 마켓플레이스의 상태 한 마디와 행동 단추·제거 확인 — 카드와 모바일 행이 같은 것을 쓴다. */
+/** 데스크톱 카드의 상태 한 마디와 행동 단추·제거 확인. 폰은 행(`MarketplaceRow`)과 상세(`MarketplaceDetail`)가 나눠 진다. */
 function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
   const [confirming, setConfirming] = useState(false);
   const syncing = marketplace.status === "syncing";
@@ -216,11 +217,11 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
     <span className="commodore-marketplaces-actions">
       <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => applyCatalog("/commodore/marketplaces/update", { name: marketplace.name }))}>{t("commodore.marketplaces.update")}</button>
       {marketplace.preset ? null : <button type="button" className="commodore-plugins-text" aria-label={t("commodore.marketplaces.removeAria", { name: marketplace.name })} onClick={() => setConfirming(true)}>{t("commodore.marketplaces.remove")}</button>}
-      <SettingsToggle checked={marketplace.enabled} ariaLabel={t("commodore.marketplaces.enableAria", { name: marketplace.name })} onChange={(next) => act(() => applyCatalog("/commodore/marketplaces/enable", { name: marketplace.name, enabled: next }))} />
+      <SettingsToggle checked={marketplace.enabled} ariaLabel={t("commodore.marketplaces.enableAria", { name: marketplace.name })} onChange={enableMarketplace(marketplace, act)} />
     </span>
   );
   const locator = <span className="commodore-plugins-locator">{marketplace.locator}{marketplace.ref ? ` @${marketplace.ref}` : ""}</span>;
-  return { summary, cardSummary, failure, confirm, actions, locator };
+  return { cardSummary, failure, confirm, actions, locator };
 }
 
 /**
@@ -250,18 +251,91 @@ function MarketplaceCard({ t, marketplace, act }: { readonly t: T; readonly mark
   );
 }
 
-/** 모바일 설정 호스트의 마켓플레이스 행 — 묶음 행 문법에 이니셜 타일을 더한다. */
-function MarketplaceRow({ t, marketplace, act }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act }) {
-  const { summary, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act);
+const enableMarketplace = (marketplace: MarketplaceView, act: Act) => (next: boolean) => act(() => applyCatalog("/commodore/marketplaces/enable", { name: marketplace.name, enabled: next }));
+
+/** 폰 행의 짧은 상태 — 긴 실패 이유와 「이미 설치한 것은 그대로」 안내는 상세가 말한다. */
+function shortStatus(t: T, marketplace: MarketplaceView) {
+  if (marketplace.status === "syncing") return <span className="commodore-plugins-state is-syncing">{t("commodore.marketplaces.syncing")}</span>;
+  if (marketplace.status === "failed") return <span className="commodore-plugins-state is-failed">{t("commodore.marketplaces.failedShort")}</span>;
+  if (!marketplace.enabled) return <span className="commodore-plugins-state">{t("commodore.marketplaces.offShort")}</span>;
+  return marketplace.updatedAt ? <span>{t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) })}</span> : null;
+}
+
+/**
+ * 폰 마켓플레이스 행 — 타일·이름·「플러그인 N개 · 상태」·토글. 모바일 설정 행은 `<label>`이라 행을 누르면 첫 컨트롤이 눌린다.
+ * 토글과 상세 열기를 한 행에 같이 두려고 행은 `div`로 두고, 행 전체를 덮는 열기 단추 위에 토글만 올려 세운다.
+ */
+function MarketplaceRow({ t, marketplace, act, onOpen }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly onOpen: () => void }) {
+  const status = shortStatus(t, marketplace);
   return (
-    <SettingsItem
-      label={marketplace.name}
-      icon={<PluginTile name={marketplace.name} size="phone" />}
-      badge={marketplace.preset ? <span className="commodore-marketplaces-by">{t("commodore.marketplaces.by")}</span> : undefined}
-      hint={<span className="commodore-marketplaces-meta">{locator}{summary}{confirm}</span>}
-    >
-      {actions}
-    </SettingsItem>
+    <div className={`fc-settings-row is-mobile commodore-market-row${marketplace.enabled ? "" : " is-off"}`}>
+      <button type="button" className="commodore-market-row-open" aria-haspopup="dialog" aria-label={t("commodore.marketplaces.detail.openAria", { name: marketplace.name })} onClick={onOpen} />
+      <span className="fc-settings-row__icon" aria-hidden="true"><PluginTile name={marketplace.name} size="phone" /></span>
+      <span className="fc-settings-row__copy">
+        <span className="fc-settings-row__label">{marketplace.name}</span>
+        <span className="fc-settings-row__hint">{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}{status ? <> · {status}</> : null}</span>
+      </span>
+      <span className="fc-settings-row__control commodore-market-row-toggle">
+        <SettingsToggle checked={marketplace.enabled} ariaLabel={t("commodore.marketplaces.enableAria", { name: marketplace.name })} onChange={enableMarketplace(marketplace, act)} />
+      </span>
+    </div>
+  );
+}
+
+/** 폰 마켓플레이스 상세 하위 화면 — 열려 있는 동안 호스트가 다시 그리므로 카탈로그를 바로 읽는다. 지워진 뒤에는 그렇다고 말한다. */
+function MarketplaceDetail({ name }: { readonly name: string }) {
+  const t = getT(useConsoleLocale());
+  const { view } = usePluginCatalog();
+  const marketplace = view?.marketplaces.find((candidate) => candidate.name === name);
+  if (!marketplace) return <SettingsGroup ariaLabel={name}><p className="global-settings-help">{t("commodore.marketplaces.detail.gone")}</p></SettingsGroup>;
+  return <MarketplaceDetailBody t={t} marketplace={marketplace} />;
+}
+
+function MarketplaceDetailBody({ t, marketplace }: { readonly t: T; readonly marketplace: MarketplaceView }) {
+  const [failure, setFailure] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const act: Act = (work) => { setFailure(null); void work().catch((reason) => setFailure(errorWord(t, codeOf(reason)))); };
+  const syncing = marketplace.status === "syncing";
+  const status = syncing ? <span className="commodore-plugins-state is-syncing">{t("commodore.marketplaces.syncing")}</span>
+    : marketplace.status === "failed" ? <span className="commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</span>
+      : !marketplace.enabled ? <span className="commodore-plugins-state">{t("commodore.marketplaces.off")}</span> : null;
+  return (
+    <div className="commodore-market-detail">
+      {failure ? <p className="global-settings-error" role="alert">{failure}</p> : null}
+      <SettingsGroup ariaLabel={t("commodore.marketplaces.detail.about")} note={marketplace.preset ? t("commodore.marketplaces.presetsNote") : undefined}>
+        <SettingsItem
+          label={t("commodore.marketplaces.detail.source")}
+          icon={<PluginTile name={marketplace.name} size="phone" />}
+          badge={marketplace.preset ? <span className="commodore-marketplaces-by">{t("commodore.marketplaces.by")}</span> : undefined}
+          hint={<span className="commodore-plugins-locator">{marketplace.locator}{marketplace.ref ? ` @${marketplace.ref}` : ""}</span>}
+        >{null}</SettingsItem>
+        {marketplace.description ? <SettingsItem label={t("commodore.marketplaces.detail.description")} hint={marketplace.description}>{null}</SettingsItem> : null}
+        {!marketplace.preset && marketplace.owner ? <SettingsItem label={t("commodore.marketplaces.detail.owner")} hint={marketplace.owner}>{null}</SettingsItem> : null}
+        <SettingsItem label={t("commodore.marketplaces.detail.status")} hint={<span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}{status ? <> · {status}</> : null}</span>}>{null}</SettingsItem>
+      </SettingsGroup>
+      <SettingsGroup ariaLabel={t("commodore.marketplaces.detail.manage")}>
+        <SettingsItem label={t("commodore.marketplaces.detail.enabled")}>
+          <SettingsToggle checked={marketplace.enabled} ariaLabel={t("commodore.marketplaces.enableAria", { name: marketplace.name })} onChange={enableMarketplace(marketplace, act)} />
+        </SettingsItem>
+        <SettingsItem label={t("commodore.marketplaces.detail.update")} hint={marketplace.updatedAt ? t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) }) : undefined}>
+          <button type="button" className="commodore-plugins-text" disabled={syncing} aria-label={t("commodore.marketplaces.updateAria", { name: marketplace.name })} onClick={() => act(() => applyCatalog("/commodore/marketplaces/update", { name: marketplace.name }))}>{t("commodore.marketplaces.update")}</button>
+        </SettingsItem>
+        {marketplace.preset ? null : (
+          <SettingsItem label={t("commodore.marketplaces.detail.remove")}>
+            <button type="button" className="commodore-plugins-text is-danger" aria-label={t("commodore.marketplaces.removeAria", { name: marketplace.name })} onClick={() => setConfirming(true)}>{t("commodore.marketplaces.remove")}</button>
+          </SettingsItem>
+        )}
+      </SettingsGroup>
+      {confirming ? (
+        <div className="commodore-market-detail-confirm" role="alert">
+          <p>{t("commodore.marketplaces.removeConfirm", { name: marketplace.name })}</p>
+          <div className="commodore-market-detail-confirm-actions">
+            <button type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirming(false)}>{t("commodore.marketplaces.removeCancel")}</button>
+            <button type="button" className="fc-btn fc-btn--secondary commodore-market-detail-remove" onClick={() => { setConfirming(false); act(() => applyCatalog("/commodore/marketplaces/remove", { name: marketplace.name })); }}>{t("commodore.marketplaces.remove")}</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
