@@ -199,12 +199,13 @@ export function ControlReclaimedNotice() {
       });
   };
   /**
-   * 돌아갈 origin은 셸이 게시한 집뿐이다. 브라우저는 이 게시가 비어 있으므로 주소를 짓지 않는다.
+   * 돌아갈 origin은 셸이 게시한 집뿐이다. 브라우저와 모바일은 그 게시가 없어 버튼을 두지 않는다.
    * Desktop은 이 항해를 가로채 `/console/`으로 열고, 호스트 목록 신호는 싣지 않는다.
    */
+  const localConsole = isDesktopShell() && home.origin !== null ? home.origin : null;
   const returnToLocalConsole = () => {
-    if (home.origin === null) return;
-    location.assign(new URL("/console/", `${home.origin}/`).toString());
+    if (localConsole === null) return;
+    location.assign(new URL("/console/", `${localConsole}/`).toString());
   };
 
   return createPortal(
@@ -222,9 +223,11 @@ export function ControlReclaimedNotice() {
               <button type="button" className="control-curtain-primary" disabled={reclaiming} onClick={takeBackControl}>
                 {reclaiming ? t("chrome.control.reclaiming") : t("chrome.control.takeBack")}
               </button>
-              <button type="button" className="control-curtain-secondary" onClick={returnToLocalConsole}>
-                {t("chrome.control.returnLocal")}
-              </button>
+              {localConsole !== null ? (
+                <button type="button" className="control-curtain-secondary" onClick={returnToLocalConsole}>
+                  {t("chrome.control.returnLocal")}
+                </button>
+              ) : null}
             </div>
           </>
         ) : null}
