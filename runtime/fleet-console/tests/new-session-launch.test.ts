@@ -11,6 +11,9 @@ import { resolveMentionEntry } from "../features/workspace/client/conversation/n
 import { getState, removeTheater, setState } from "../core/client/src/integration/store.js";
 import type { ObjectiveRecord, TheaterInfo } from "../core/client/src/integration/types.js";
 
+// jsdom 에 없는 애니메이션은 문맥 승계의 대상이 아니다.
+vi.mock("../features/workspace/client/conversation/new-session-playground.js", () => ({ NewSessionPlayground: () => null }));
+
 function makeTheater(id: string): TheaterInfo {
   return { id, label: id, createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
 }
@@ -97,6 +100,10 @@ it("opens a registry goal as a full conversation before and after its session ar
   const { setConversationBodyRenderer, setConversationStandInComposer } = await import("../features/workspace/client/conversation/conversation-slots.js");
   const { upsertObjectiveLocally, removeObjectiveLocally } = await import("../features/objectives/client/objectives-state.js");
   const { installCommodoreBoard } = await import("../features/commodore/client/board.js");
+  const { readCommodoreList, replaceCommodoreList } = await import("../features/commodore/client/commodore-list.js");
+  const { isCommodoreConversationSelected } = await import("../features/commodore/client/commodore-conversation.js");
+  const { getViewedTheaterId } = await import("../core/client/src/integration/viewed-theater.js");
+  const { openDefaultNewSession, openNewSessionComposer } = await import("../features/workspace/client/conversation/new-session-entry.js");
   const owner = "11111111-1111-4111-8111-111111111111";
   const id = "22222222-2222-4222-8222-222222222222";
   const goal: Objective = {
@@ -134,7 +141,13 @@ it("opens a registry goal as a full conversation before and after its session ar
   const offBody = setConversationBodyRenderer(({ objectiveRecord }) => h("p", { "data-pane-session": objectiveRecord.id }, "Commander conversation"));
   const offComposer = setConversationStandInComposer((objectiveId) => h("textarea", { "data-pane-composer": objectiveId }));
   const previous = getState();
-  setState({ objectiveRecords: [], nestedObjectiveRecords: [], activeObjectiveId: null, newSession: null, groups: [] });
+  const previousCommodores = readCommodoreList();
+  const otherOwner = "33333333-3333-4333-8333-333333333333";
+  replaceCommodoreList([otherOwner, owner].map((commodoreId) => ({
+    commodoreId, label: commodoreId, active: false, run: { phase: "idle", totals: { session: 0, costUsd: 0, actions: 0 } },
+    theaters: [{ theaterId: goal.theaterId, label: "Shared Theater", status: "available" }],
+  })));
+  setState({ theaters: [makeTheater(goal.theaterId)], objectiveRecords: [], nestedObjectiveRecords: [], activeObjectiveId: null, newSession: null, groups: [] });
   upsertObjectiveLocally(goal);
   expect(clusters.get()[0]?.id).toBe(`objectives:${id}`);
   const offFresh = connectFreshConversation({ isActive: () => true, open: openConversationSurface, close: closeConversationSurface, current: getConversationSurface, subscribe: subscribeConversationSurface });
@@ -175,9 +188,32 @@ it("opens a registry goal as a full conversation before and after its session ar
     await act(async () => node.querySelector<HTMLButtonElement>('[data-cluster-row-id="objectives:commodore-ask:question"] .side-bar-cluster-row-main')!.click());
     expect(openQuestion).toHaveBeenCalledOnce();
     expect(getState().activeObjectiveId).toBe(id);
+
+    // 같은 Theater 를 가진 다른 사령관이 목록 첫 번째여도, 다음 세션은 보던 사령관의 세션이다.
+    // 기존 목표 승계 검사만으로는 새 세션이 표면·활성 기록을 걷은 뒤 소유 문맥을 잃는 경계를 지나지 않는다.
+    await act(async () => node.querySelector<HTMLButtonElement>(".commander-tab-direction")!.click());
+    expect(getState().newSession).toEqual({ commodoreId: owner, theaterId: goal.theaterId });
+    expect(getState().activeObjectiveId).toBeNull();
+    expect(getConversationSurface()).toBeNull();
+    expect(getViewedTheaterId()).toBe(goal.theaterId);
+    expect(isCommodoreConversationSelected(owner)).toBe(true);
+    expect(isCommodoreConversationSelected(otherOwner)).toBe(false);
+
+    // 시작 전 목표의 표면도 소유자를 싣는다. 단축키·팔레트·composer.open이 같은 진입 규칙을 쓴다.
+    await act(async () => openConversationSurface(freshConversationSurface.id, { objectiveId: id, commodoreId: owner, theaterId: goal.theaterId }));
+    expect(getState().newSession).toBeNull();
+    expect(getState().activeObjectiveId).toBeNull();
+    expect(getConversationSurface()?.surfaceId).toBe(freshConversationSurface.id);
+    await act(async () => openDefaultNewSession());
+    const opened = getState().newSession;
+    expect(opened).toEqual({ commodoreId: owner, theaterId: goal.theaterId });
+    await act(async () => openNewSessionComposer());
+    expect(getState().newSession).toBe(opened);
+    expect(getViewedTheaterId()).toBe(goal.theaterId);
+    expect(isCommodoreConversationSelected(owner)).toBe(true);
   } finally {
     await act(async () => root.unmount());
     node.remove(); closeConversationSurface(); offFresh(); offComposer(); offBody(); offBoard();
-    removeObjectiveLocally(id); setState(previous); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
+    removeObjectiveLocally(id); setState(previous); replaceCommodoreList(previousCommodores); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
   }
 });

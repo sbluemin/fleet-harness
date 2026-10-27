@@ -76,11 +76,13 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
 
 /**
  * 가운데 칸이 이 사령관을 가리키는가. 사령관 대화뿐 아니라 그 사령관의 지휘관 대화도 사이드바 줄을 강조한다.
- * 다른 표면이 서 있으면 그 표면의 사령관만 보고, 표면이 없으면 열린 Objective 의 소유 사령관을 본다.
+ * 새 세션이면 고정된 사령관을 보고, 다른 표면이 서 있으면 그 표면의 사령관만 본다. 둘 다 없으면 열린 Objective 의 소유 사령관을 본다.
  */
 export function isCommodoreConversationSelected(theaterId: string): boolean {
   const owner = ownerOfContext(theaterId);
   if (owner === null) return false;
+  const newSession = getState().newSession;
+  if (newSession !== null) return newSession.commodoreId === owner;
   const surface = getConversationSurface();
   if (surface) return readParams(surface.params)?.commodoreId === owner;
   const subject = getConversationSubject() ?? getState().objectiveRecords.find((record) => record.id === getState().activeObjectiveId);

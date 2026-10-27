@@ -30,6 +30,11 @@ export function getViewedTheaterId(): string | null {
     const requested = (destination.kind === "plugin" ? destination.params?.theaterId : undefined) ?? getMobileListTheaterId();
     return state.theaters.find((theater) => theater.id === requested)?.id ?? state.theaters[0]?.id ?? null;
   }
+  // 새 세션은 보던 대화를 걷어도 자체 컨텍스트를 유지한다. Theater 가 없으면 이전 대화로 되돌리지 않는다.
+  const newSession = state.newSession;
+  if (newSession !== null) {
+    return state.theaters.find((theater) => theater.id === newSession.theaterId)?.id ?? null;
+  }
   const surface = getConversationSurface();
   if (surface !== null) {
     const theaterId = surface.params.theaterId;
