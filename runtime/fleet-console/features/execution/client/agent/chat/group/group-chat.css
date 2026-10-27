@@ -113,6 +113,26 @@
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
 
+/* 말풍선 안의 넓은 표·OpenUI — 채팅 공용 표는 내용 폭(fit-content)이라 말풍선보다 좁고,
+   OpenUI 카드는 36em 에 고정된다. 둘 다 말풍선 내용 폭까지 넓히고, 그보다 넓은 내용은
+   조상의 overflow 에 잘리지 않게 상자 안에서 가로로 흐르게 한다.
+   에이전트 채팅(.agent-chat)과 인박스의 표·OpenUI 규칙은 그대로 둔다. */
+.group-chat-bubble:has(.markdown-body table, .openui) {
+  min-width: 0;
+}
+.group-chat-bubble .markdown-body table {
+  width: 100%;
+  max-width: 100%;
+}
+.group-chat-bubble .openui {
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+.group-chat-bubble .openui-frame {
+  overflow-x: auto;
+  overflow-y: clip;
+}
+
 /* 아직 집어가지 않은 말 — 같은 말풍선이되 흐리게. 처리가 시작되면 이 흐림만 걷힌다. */
 .group-chat-bubble.is-human.is-pending { opacity: 0.62; }
 .group-chat-pending { padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
