@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { CommodoreRecentActions } from "../../../../../features/commodore/client/commodore-trail.js";
 import { SORTS, activityOf, setSort, useSortPreference, type SortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
@@ -87,19 +87,54 @@ function CommanderRow({ item, commodoreId, selected, onSelect, leave }: { readon
 function CommanderSortSheet({ onClose }: { readonly onClose: () => void }) {
   const t = useT();
   const preference = useSortPreference();
-  const name = useId();
+  const groupRef = useRef<HTMLDivElement | null>(null);
+  const pendingKey = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const key = pendingKey.current;
+    if (!key) return;
+    pendingKey.current = null;
+    groupRef.current?.querySelector<HTMLElement>(`[data-sort-column="name"][data-sort-key="${CSS.escape(key)}"]`)?.focus();
+  }, [preference]);
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const row = target?.closest<HTMLElement>("[data-sort-row]");
+    if (!target || !row || !groupRef.current) return;
+    const rows = [...groupRef.current.querySelectorAll<HTMLElement>("[data-sort-row]")];
+    const index = rows.indexOf(row);
+    const column = target.dataset.sortColumn ?? "name";
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      const order = ["name", "asc", "desc"];
+      const next = order[order.indexOf(column) + (event.key === "ArrowRight" ? 1 : -1)];
+      if (next) row.querySelector<HTMLElement>(`[data-sort-column="${next}"]`)?.focus();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const next = rows[index + (event.key === "ArrowDown" ? 1 : -1)];
+    if (!next) return;
+    if (column === "name") {
+      const key = next.dataset.sortKey;
+      const direction = next.dataset.sortDirection === "desc" ? "desc" : "asc";
+      if (!key) return;
+      pendingKey.current = key;
+      setSort({ ...preference, key: key as SortPreference["key"], direction });
+      return;
+    }
+    next.querySelector<HTMLElement>(`[data-sort-column="${column}"]`)?.focus();
+  };
   return <MobileSheet title={t("commanderTab.sort.menu")} ariaLabel={t("commanderTab.sort.menu")} onClose={onClose} focusInputOnTouch={false} className="mobile-commander-sort">
-    <div role="radiogroup" aria-label={t("commanderTab.sort.menu")}>
+    <div ref={groupRef} role="radiogroup" aria-label={t("commanderTab.sort.menu")} onKeyDown={onKeyDown}>
       {SORTS.map((sort) => {
         const label = t(sort.label);
         const selected = sort.key === preference.key;
-        return <div key={sort.key} className="mobile-sheet-row mobile-commander-sort-option">
-          <button type="button" role="radio" name={name} aria-checked={selected} className="mobile-commander-sort-name" onClick={() => setSort({ ...preference, key: sort.key, direction: sort.direction })}>
+        return <div key={sort.key} className="mobile-sheet-row mobile-commander-sort-option" data-sort-row="" data-sort-key={sort.key} data-sort-direction={sort.direction}>
+          <button type="button" role="radio" data-sort-column="name" data-sort-key={sort.key} tabIndex={selected ? 0 : -1} aria-checked={selected} className="mobile-commander-sort-name" onClick={() => setSort({ ...preference, key: sort.key, direction: sort.direction })}>
             <span>{label}</span>
             <span className="mobile-commander-sort-check" aria-hidden="true">{selected ? <MobileIcon name="check" size={20} /> : null}</span>
           </button>
           {(["asc", "desc"] as const).map((direction) => (
-            <button key={direction} type="button" className="mobile-commander-sort-direction" aria-pressed={selected && preference.direction === direction} aria-label={t("commanderTab.sort.toward", { label, direction: t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc") })} onClick={() => setSort({ ...preference, key: sort.key, direction })}>
+            <button key={direction} type="button" data-sort-column={direction} tabIndex={-1} className="mobile-commander-sort-direction" aria-pressed={selected && preference.direction === direction} aria-label={t("commanderTab.sort.toward", { label, direction: t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc") })} onClick={() => setSort({ ...preference, key: sort.key, direction })}>
               <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d={direction === "asc" ? "M8 13V3M8 3 4.5 6.5M8 3l3.5 3.5" : "M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5"} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           ))}
