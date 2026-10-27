@@ -674,6 +674,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */
 .objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }
+/* divider가 두 섹션 사이에 서면 형제 섹션의 padding-top이 빠진다. 선 뒤 섹션은 행과 같이 18px. 폰·설정 밖에는 닿지 않는다. */
+.objectives-commodore-settings > .objectives-commodore-settings-divider + :is(.commodore-theaters, .commodore-plugins) { padding-top: 18px; }
 .objectives-commodore-settings > .commodore-theaters > .objectives-commodore-section-title {
   color: var(--text-primary);
   font-family: var(--font-ui);
