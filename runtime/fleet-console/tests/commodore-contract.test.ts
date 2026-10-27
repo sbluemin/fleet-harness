@@ -1,4 +1,5 @@
 import type { CommodoreRouteContext } from "../features/commodore/host/routes.js";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -530,6 +531,42 @@ describe("commodore theater state", () => {
     expect(JSON.stringify(escaped.value)).not.toContain("SECRET_OUTSIDE");
     expect((escaped.value.plugin as { readme?: string }).readme).toBeUndefined();
     expect(cliCalls).toBe(0);
+
+    // README 의 raw style 은 공유 렌더러를 통과한 뒤에도 문서 밖(body)으로 새면 안 된다. 하이라이트 class 는 남긴다.
+    const require = createRequire(import.meta.url);
+    const { JSDOM } = createRequire(require.resolve("vitest"))("jsdom") as {
+      JSDOM: new (html: string, options?: { url?: string }) => {
+        window: Window & typeof globalThis & { getComputedStyle: (element: Element) => CSSStyleDeclaration; DOMParser: typeof DOMParser; Node: typeof Node };
+      };
+    };
+    const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://127.0.0.1/" });
+    const previous = { window: globalThis.window, document: globalThis.document, DOMParser: globalThis.DOMParser, Node: globalThis.Node };
+    Object.assign(globalThis, { window: dom.window, document: dom.window.document, DOMParser: dom.window.DOMParser, Node: dom.window.Node });
+    try {
+      const { pluginReadmeHtml } = await import("../features/commodore/client/plugin-readme.js");
+      const html = pluginReadmeHtml([
+        "Hello",
+        "",
+        "<style>body{background:red !important}</style>",
+        "<div class=\"commodore-palette-scrim\" style=\"position:fixed\">overlay</div>",
+        "<a href=\"javascript:alert(1)\">bad</a>",
+        "",
+        "```js",
+        "const n = 1",
+        "```",
+      ].join("\n"));
+      expect(html.toLowerCase()).not.toContain("<style");
+      expect(html).not.toContain("commodore-palette");
+      expect(html.toLowerCase()).not.toContain("style=");
+      expect(html.toLowerCase()).not.toContain("javascript:");
+      expect(html).toContain("Hello");
+      expect(html).toContain("overlay");
+      expect(html).toContain("hljs");
+      dom.window.document.body.innerHTML = html;
+      expect(dom.window.getComputedStyle(dom.window.document.body).backgroundColor).not.toBe("rgb(255, 0, 0)");
+    } finally {
+      Object.assign(globalThis, previous);
+    }
   });
   it("settles marketplace fetches as failed instead of fetching forever when the Claude Code CLI is missing", async () => {
     const h = harness();

@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type Ref } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type Ref } from "react";
 import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
-import { decodeMermaidSource, renderMarkdown } from "@fleet-console/markdown/core";
 import "@fleet-console/markdown/styles.css";
+import { httpUrl, pluginReadmeHtml } from "./plugin-readme.js";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { defineSettingsSection, SettingsGroup, SettingsItem, SettingsToggle, useMobileSettingsHost } from "../../settings/client/preferences-context.js";
@@ -87,49 +87,6 @@ function loadPluginDetail(pluginId: string): Promise<PluginDetail> {
   }).finally(() => { detailInflight.delete(pluginId); });
   detailInflight.set(pluginId, request);
   return request;
-}
-
-/** http(s) 만. 사용자·비밀번호가 섞인 주소와 상대 경로는 거절한다. */
-function httpUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
-    return url.href;
-  } catch { return null; }
-}
-
-/**
- * 플러그인 README — Console 의 markdown 정화를 거친 뒤, 링크·그림은 http(s) 만 남긴다.
- * 상대 경로 그림은 빼고, mermaid·OpenUI 는 실행하지 않고 코드로만 남긴다.
- */
-function pluginReadmeHtml(markdown: string): string {
-  const doc = new DOMParser().parseFromString(renderMarkdown(markdown).html, "text/html");
-  for (const block of [...doc.querySelectorAll(".diagram-block, .openui-block")]) {
-    const encoded = block.getAttribute("data-mermaid-source") ?? block.getAttribute("data-openui-source");
-    const pre = doc.createElement("pre");
-    const code = doc.createElement("code");
-    try { code.textContent = encoded ? decodeMermaidSource(encoded) : ""; } catch { code.textContent = ""; }
-    pre.append(code);
-    block.replaceWith(pre);
-  }
-  for (const element of [...doc.querySelectorAll("script, iframe, object, embed, svg")]) element.remove();
-  for (const anchor of [...doc.querySelectorAll("a")]) {
-    const href = httpUrl(anchor.getAttribute("href") ?? "");
-    if (!href) { anchor.replaceWith(...anchor.childNodes); continue; }
-    for (const attribute of [...anchor.attributes]) {
-      if (attribute.name !== "href" && attribute.name !== "title") anchor.removeAttribute(attribute.name);
-    }
-    anchor.setAttribute("href", href);
-    anchor.setAttribute("target", "_blank");
-    anchor.setAttribute("rel", "noopener noreferrer");
-  }
-  for (const image of [...doc.querySelectorAll("img, source")]) {
-    image.removeAttribute("srcset");
-    const src = httpUrl(image.getAttribute("src") ?? "");
-    if (!src) { image.remove(); continue; }
-    image.setAttribute("src", src);
-  }
-  return doc.body.innerHTML;
 }
 
 /** 등록부를 읽고, 받는 중인 마켓플레이스가 있는 동안에는 몇 초마다 다시 읽는다(카탈로그에는 사건 채널이 없다). */
@@ -603,12 +560,23 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
   const [detailError, setDetailError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const scrollTop = useRef(0);
   const returnFocusId = useRef<string | null>(null);
+  /** 상세의 제거 확인이 열려 있으면 Esc 가 그것만 닫게 한다. */
+  const dismissConfirm = useRef<() => boolean>(() => false);
   const titleId = useId();
   const detailTitleId = useId();
   const name = commodoreName(commodoreId, t);
+  const holdFocus = () => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const active = document.activeElement;
+    if (active instanceof Node && dialog.contains(active)) return;
+    dialog.focus();
+  };
   useEffect(() => { searchRef.current?.focus(); }, []);
+  useEffect(() => { holdFocus(); });
   useEffect(() => {
     if (!openedId) return;
     const id = openedId;
@@ -674,14 +642,20 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
     setRow({ pluginId, phase: "saving" });
     void setCommodorePlugin(commodoreId, pluginId, false).then(() => setRow(null), (reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) }));
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (row?.phase === "trust") { setRow(null); return; }
-    if (openedId) { backToList(); return; }
-    onClose();
-  };
+  useEffect(() => {
+    // 포커스가 BODY 로 빠져도 Esc 규칙은 유지된다. 다이얼로그의 onKeyDown 은 그때 이벤트를 받지 못한다.
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (dismissConfirm.current()) return;
+      if (row?.phase === "trust") { setRow(null); return; }
+      if (openedId) { backToList(); return; }
+      onClose();
+    };
+    document.addEventListener("keydown", onEscape, true);
+    return () => document.removeEventListener("keydown", onEscape, true);
+  }, [onClose, openedId, row]);
   const opened = openedId ? view?.plugins.find((entry) => entry.id === openedId) ?? null : null;
   const openedDetail = openedId ? detailCache.get(openedId) : undefined;
 
@@ -704,7 +678,22 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
 
   return createPortal(
     <div className="commodore-palette-scrim" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className={`commodore-palette${phone ? " is-phone" : ""}`} role="dialog" aria-modal="true" aria-labelledby={opened ? detailTitleId : titleId} onKeyDown={onKeyDown}>
+      <div
+        ref={dialogRef}
+        className={`commodore-palette${phone ? " is-phone" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={opened ? detailTitleId : titleId}
+        tabIndex={-1}
+        onMouseDown={(event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          if (target.closest("a, button, input, textarea, select, summary")) return;
+          // 포커스를 받지 않는 면을 눌러도 BODY 로 빠지지 않게 다이얼로그가 받는다. Esc 는 그 포커스에서 동작한다.
+          event.preventDefault();
+          dialogRef.current?.focus();
+        }}
+      >
         {opened ? (
           <PluginDetailView
             t={t}
@@ -715,6 +704,8 @@ function PluginPalette({ t, commodoreId, installed, phone = false, onClose }: { 
             error={detailError}
             installed={installedSet.has(opened.id)}
             row={row?.pluginId === opened.id ? row : null}
+            dismissConfirm={dismissConfirm}
+            onFocusFallback={holdFocus}
             onBack={backToList}
             onClose={onClose}
             onInstall={() => install(opened)}
@@ -851,7 +842,7 @@ function WebLink({ href, children }: { readonly href: string | undefined; readon
  * 팔레트 안의 상세. 카탈로그 필드는 바로 보이고, 구성 이름·실행 명령·README 는 상세 응답이 오면 채워진다.
  * 조회가 실패해도 카탈로그 필드는 남는다. README 는 정화된 markdown 이다.
  */
-function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, row, onBack, onClose, onInstall, onRemove, onTrust, onCancel }: {
+function PluginDetailView({ t, titleId, entry, detail, loading, error, installed, row, dismissConfirm, onFocusFallback, onBack, onClose, onInstall, onRemove, onTrust, onCancel }: {
   readonly t: T;
   readonly titleId: string;
   readonly entry: PluginCatalogEntry;
@@ -860,6 +851,8 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   readonly error: string | null;
   readonly installed: boolean;
   readonly row: RowState | null;
+  readonly dismissConfirm: { current: () => boolean };
+  readonly onFocusFallback: () => void;
   readonly onBack: () => void;
   readonly onClose: () => void;
   readonly onInstall: () => void;
@@ -869,6 +862,9 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
 }) {
   const backRef = useRef<HTMLButtonElement | null>(null);
   const trustRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRemoveRef = useRef<HTMLButtonElement | null>(null);
+  const removeRef = useRef<HTMLButtonElement | null>(null);
+  const confirmWasOpen = useRef(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const shown = detail ? { ...entry, ...detail } : row?.entry ? { ...entry, ...row.entry } : entry;
   const title = titleOf(shown, entry.name);
@@ -883,6 +879,25 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
   const meta = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null, shown.category ?? null, shown.marketplace].filter(Boolean).join(" · ");
   useEffect(() => { backRef.current?.focus(); }, []);
   useEffect(() => { if (trusting) trustRef.current?.focus({ preventScroll: false }); }, [trusting]);
+  useEffect(() => {
+    dismissConfirm.current = () => {
+      if (!confirmRemove) return false;
+      setConfirmRemove(false);
+      return true;
+    };
+    return () => { dismissConfirm.current = () => false; };
+  }, [confirmRemove, dismissConfirm]);
+  useEffect(() => {
+    if (confirmRemove) {
+      confirmWasOpen.current = true;
+      cancelRemoveRef.current?.focus();
+      return;
+    }
+    if (!confirmWasOpen.current) return;
+    confirmWasOpen.current = false;
+    if (removeRef.current) removeRef.current.focus();
+    else onFocusFallback();
+  }, [confirmRemove, onFocusFallback]);
   return (
     <div className="commodore-plugin-detail">
       <div className="commodore-plugin-detail-bar">
@@ -904,10 +919,10 @@ function PluginDetailView({ t, titleId, entry, detail, loading, error, installed
               confirmRemove ? (
                 <span className="commodore-plugin-detail-confirm" role="alert">
                   <span>{t("commodore.plugins.removeConfirm", { plugin: title })}</span>
-                  <button type="button" className="commodore-plugins-text" onClick={() => setConfirmRemove(false)}>{t("commodore.plugins.removeCancel")}</button>
+                  <button ref={cancelRemoveRef} type="button" className="commodore-plugins-text" onClick={() => setConfirmRemove(false)}>{t("commodore.plugins.removeCancel")}</button>
                   <button type="button" className="commodore-plugins-text is-danger" disabled={working} onClick={() => { setConfirmRemove(false); onRemove(); }}>{t("commodore.plugins.detail.remove")}</button>
                 </span>
-              ) : <button type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
+              ) : <button ref={removeRef} type="button" className="fc-btn fc-btn--secondary" onClick={() => setConfirmRemove(true)}>{t("commodore.plugins.detail.remove")}</button>
             ) : (
               <button type="button" className="fc-btn fc-btn--secondary commodore-palette-install" disabled={working} aria-label={t("commodore.plugins.palette.installAria", { plugin: title })} onClick={onInstall}>{working ? t("commodore.plugins.palette.checking") : t("commodore.plugins.palette.install")}</button>
             )}
