@@ -7,6 +7,7 @@ import type { ObjectiveKindDescriptor, ObjectiveRenderContext, ObjectiveRuntimeS
 import { useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import type { ObjectiveGeometry, ObjectiveRecord } from "../../integration/types.js";
+import { MobileIcon } from "./mobile-icons.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
 import { mobileObjectiveMenuItems } from "./mobile-objective-menu.js";
@@ -23,8 +24,9 @@ import { openMobileCommanderSheet } from "./mobile-commander-sheet.js";
 
 /**
  * An open objectiveRecord is its body under the top bar the shell draws: ‹ back to the conversation list, a pill with the
- * avatar, title and status line (it opens the commander sheet) and a ⋮ menu: rename, whatever the body adds through
- * `mobileObjective.setMenuItems` (the chat/terminal switch, keep-allowing computer use), then archive.
+ * avatar, title and status line (it opens this conversation's info screen) and a commanders glyph that opens the
+ * commander sheet. Rename, archive, and whatever the body adds through `mobileObjective.setMenuItems` stay on that info
+ * screen. While a message conversation takes over the pill, the bar keeps the previous ⋮ menu.
  * When a commander has a member selected (`bodyObjective`), the body, title and avatar are that member's while rename and
  * archive stay with the screen's owner — the same split as the desktop commander panel, whose frame stays its own.
  */
@@ -111,7 +113,9 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
     if (ledgerObjectiveId(objectiveRecord.id) !== null) openLedger(objectiveRecord.id, null);
     else closeMobileObjective();
   };
-  // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 지휘관 목록) · ⋮. 이름 변경·보관은 화면 주인의 것이다.
+  // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · 지휘관 목록 글리프.
+  // 이름 변경·보관·본문이 끼운 항목은 그 정보 화면에 이미 있다. 전언 대화가 pill 을 덮는 동안만 예전 ⋮를 그대로 둔다.
+  const openCommanders = () => openMobileCommanderSheet(objectiveRecord.commodoreId);
   useClaimMobileBar(covered ? null : {
     variant: "conversation",
     title: bodyOwner.title,
@@ -120,8 +124,8 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
     onBack: pillTakeover ? () => { if (!closeTopBackLayer()) stepBack(); } : stepBack,
     pill: {
       key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.objectiveRecord.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}\u0001${pillTakeover?.key ?? ""}`,
-      label: t("commanderTab.aria"),
-      onPress: () => openMobileCommanderSheet(objectiveRecord.commodoreId),
+      label: pillTakeover ? t("commanderTab.aria") : t("mobile.conv.infoAria", { title: bodyOwner.title }),
+      onPress: pillTakeover ? openCommanders : () => setMobileDestination({ kind: "info" }),
       takeover: pillTakeover,
       node: (
         <>
@@ -133,15 +137,19 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
         </>
       ),
     },
-    menu: {
-      label: t("mobile.bar.objectiveRecordMenu"),
-      // 이름 변경·보관은 화면 주인의 것이다 — 구성원 본문을 보는 동안에도 메뉴 머리는 그 주인을 말한다.
-      caption: objectiveRecord.title,
-      items: [
-        { id: "conversation-info", label: t("mobile.conv.infoAria", { title: bodyOwner.title }), run: () => setMobileDestination({ kind: "info" }) },
-        ...mobileObjectiveMenuItems({ objectiveRecord, bodyItems, t, onArchive: archive }),
-      ],
-    },
+    ...(pillTakeover ? {
+      menu: {
+        label: t("mobile.bar.objectiveRecordMenu"),
+        // 이름 변경·보관은 화면 주인의 것이다 — 구성원 본문을 보는 동안에도 메뉴 머리는 그 주인을 말한다.
+        caption: objectiveRecord.title,
+        items: [
+          { id: "conversation-info", label: t("mobile.conv.infoAria", { title: bodyOwner.title }), run: () => setMobileDestination({ kind: "info" }) },
+          ...mobileObjectiveMenuItems({ objectiveRecord, bodyItems, t, onArchive: archive }),
+        ],
+      },
+    } : {
+      actions: [{ id: "commanders", label: t("commanderTab.aria"), icon: <MobileIcon name="commanders" />, run: openCommanders }],
+    }),
   });
 
   return (

@@ -43,6 +43,8 @@ const PATHS = {
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17v.2" /></>,
   spark: <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" />,
   trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />,
+  /** 지휘관 목록 시트 — 앞사람 하나와 그 뒤의 어깨. */
+  commanders: <><circle cx="9" cy="8" r="2.2" /><path d="M4.2 18.2v-.6a3.4 3.4 0 0 1 3.4-3.4h2.8a3.4 3.4 0 0 1 3.4 3.4v.6" /><circle cx="16.2" cy="9" r="1.8" /><path d="M15.2 14.2a3.2 3.2 0 0 1 3.1 2.4" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type MobileIconName = keyof typeof PATHS;
