@@ -200,7 +200,8 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       <span className="commander-ghost-face"><CommodoreAvatar theaterId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
     </button>
     <div className="commander-ghost-rule" role="separator" />
-    <div ref={scroller} className="commander-ghost-scroll">
+    {/* 레일의 탭 정지는 roving 항목 하나뿐이다. 스크롤 영역이 브라우저 기본으로 따로 초점을 받지 않게 한다. */}
+    <div ref={scroller} className="commander-ghost-scroll" tabIndex={-1}>
       {rows.map((item, index) => {
         const summary = clusterRowSummary(item, locale, t);
         const position = index + 1;
