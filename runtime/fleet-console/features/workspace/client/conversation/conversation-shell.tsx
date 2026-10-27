@@ -28,7 +28,8 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { commodoreFaceKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { TheaterGlyph } from "../components/theater-glyph.js";
 import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
@@ -517,14 +518,14 @@ function ConversationPanelIdentity() {
   const clusterIndex = useClusterIndex();
   const renameObjective = useConversationObjectiveRename();
   useConversationSurfaceHead(centerSurface);
-  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
-  // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
+  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 는 정체성이 아니므로 표식은 Theater 표식이다.
+  // 가운데 칸에 그 Theater 를 대신하는 대화가 서 있으면 표식과 이름은 그 대화의 것이다 — 패널을 어느 길로 열든 머리가 같다.
   if (inbox !== null && theaterLabel !== null) {
     const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
     let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
-    let faceKey = commodoreFaceKey(inbox.theaterId);
+    let faceKey: string | null = null;
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
         const avatar = centerSurface.avatar?.(context) ?? null;
@@ -534,7 +535,9 @@ function ConversationPanelIdentity() {
     } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+        {faceKey
+          ? <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+          : <span className="conversation-panel-identity-mark" aria-hidden="true"><TheaterGlyph size={18} /></span>}
         <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );

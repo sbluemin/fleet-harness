@@ -2377,8 +2377,6 @@
 .mongle-avatar.is-tone-indigo, .mongle-picker-tone.is-tone-indigo { --mongle-tone: var(--mongle-indigo); }
 .mongle-avatar.is-tone-plum, .mongle-picker-tone.is-tone-plum { --mongle-tone: var(--mongle-plum); }
 .mongle-avatar.is-tone-rose, .mongle-picker-tone.is-tone-rose { --mongle-tone: var(--mongle-rose); }
-/* 운영자가 꺼진 사령관 — 사이드바 머리 표식과 다른 표면의 Theater 아바타가 이 한 규칙으로 흐려지고 채도를 잃는다. */
-.mongle-avatar.is-off { opacity: 0.55; filter: grayscale(0.8); }
 
 .mongle-avatar-fill {
   fill: var(--mongle-tone);
@@ -6442,7 +6440,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--text-tertiary);
 }
 
-/* 행 글리프 — 16px 상자에 선 글리프·Theater 아바타·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
+/* 행 글리프 — 16px 상자에 선 글리프·레일 아이콘이 같은 자리에 선다. 잉크는 한 채널이고
    선택 행만 본문색으로 올라가며, 파괴 행만 coral(위험 신호)이다. */
 .objective-search-command-glyph {
   display: inline-grid;

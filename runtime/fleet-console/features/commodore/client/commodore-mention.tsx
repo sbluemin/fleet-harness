@@ -51,7 +51,7 @@ function CommodoreMentionMark({ theaterId }: { readonly theaterId: string }) {
   const commodoreId = useCommodoreOwner(theaterId);
   const { view } = useCommodore(commodoreId);
   const { objectives } = useObjectiveTheater(commodoreId);
-  return <CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, objectives)} size={20} label="" decorative />;
+  return commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={commodoreMongleState(view, objectives)} size={20} label="" decorative /> : null;
 }
 
 /** 고른 사령관에게 보낸다 — 사령관 기록 서랍의 입력과 같은 경로(`commodore/message`)다. */

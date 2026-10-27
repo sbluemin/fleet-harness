@@ -245,7 +245,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
         // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 세션·Theater·삭제)는 깊이 1에 그대로 둔다.
-        pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
+        pill: { label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
         ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
       return;
@@ -382,7 +382,7 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   return (
     <div className="objectives-cm-profile">
       <div className="objectives-cm-hero">
-        <CommodoreAvatar theaterId={commodoreId} state={commodoreMongleState(view, board.objectives)} size={104} label="" decorative />
+        <CommodoreAvatar commodoreId={commodoreId} state={commodoreMongleState(view, board.objectives)} size={104} label="" decorative />
         <h2 className="objectives-cm-hero-name">{name}</h2>
         {status ? <p className="objectives-cm-hero-status">{status}</p> : null}
         {onEdit ? <button type="button" data-press="r3" className="objectives-cm-pill objectives-cm-edit" aria-label={t("commodore.mobile.editAria", { name })} onClick={onEdit}>{t("commodore.mobile.edit")}</button> : null}
@@ -491,7 +491,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
           participants={participants}
           working={working}
           language={language}
-          theaterId={commodoreId}
+          commodoreId={commodoreId}
           loading={!loaded}
           empty={t("commodore.log.empty")}
           older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}

@@ -44,11 +44,11 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
 
 /**
  * 행 글리프 어휘. 모양이 종류를 말하고 색은 상태만 말한다 — 글리프는 한 잉크이고
- * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 그 Theater 의 사령관 아바타(`theater-avatar`),
+ * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 Theater 표식(`theater`)이고,
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater-avatar" | "theater-add" | "objective-new"
+  | "theater" | "theater-add" | "objective-new"
   | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group" | "objective-accent"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
@@ -92,8 +92,6 @@ export interface PaletteCommandEntry {
   readonly shortcut?: string;
   /** 대상이 있는 명령의 대상 이름 — 현재 Objective 구역의 행 아래 캡션. */
   readonly subject?: string;
-  /** 「Theater 아바타」 글리프의 재료 — 그 Theater. */
-  readonly theaterAvatar?: { readonly id: string; readonly label: string };
   /** 「레일 엔트리」 글리프의 재료 — 등록된 아이콘. */
   readonly railIcon?: ReactNode | (() => ReactNode);
   /** 빈 입력의 홈 구역에는 세우지 않고 질의 매칭에만 남는다(보고 있지 않은 Theater 의 섹션 행). */
@@ -210,8 +208,7 @@ export function buildPaletteCommands(
       current: theater.id === viewedTheaterId,
       action: { kind: "switch-theater", theaterId: theater.id },
       group: "theater",
-      glyph: "theater-avatar",
-      theaterAvatar: { id: theater.id, label: name },
+      glyph: "theater",
     });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });

@@ -29,7 +29,7 @@ import { isMentionSelectable, mentionErrorMessageKey, mentionTargetName, readMen
 import { useMentionSources } from "./new-session-mention-sources.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
-import { TheaterAvatar } from "../theater-avatar.js";
+import { TheaterGlyph } from "../components/theater-glyph.js";
 import { KeyedAvatar } from "../avatars.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
@@ -286,7 +286,7 @@ export function NewSessionColumn({ state, target, tools }: {
             .map((candidate): NewSessionDeckItem => ({
               kind: "row",
               key: `theater-${candidate.id}`,
-              icon: <TheaterAvatar theaterId={candidate.id} size={16} label={candidate.label} decorative />,
+              icon: <TheaterGlyph size={16} />,
               name: markMatch(candidate.label, query),
               checked: candidate.id === theater?.id,
               pick: () => { pickTheater(candidate.id); finishCommand(); },
@@ -704,7 +704,7 @@ export function NewSessionColumn({ state, target, tools }: {
                 <span className="new-session-anchor">
                   {theater ? (
                     <button type="button" className="new-session-chip" aria-haspopup="menu" aria-expanded={theaterMenuOpen} aria-label={t("conversation.newSession.theaterChipAria", { name: theater.label })} disabled={starting} onClick={() => setTheaterMenuOpen(!theaterMenuOpen)} data-new-session-theater={theater.id}>
-                      <TheaterAvatar theaterId={theater.id} size={14} label={theater.label} decorative />
+                      <TheaterGlyph size={14} />
                       <span className="new-session-chip-label">{theater.label}</span>
                     </button>
                   ) : (
@@ -787,7 +787,7 @@ function TheaterMenu({ theaters, current, onPick, onAdd, onClose }: {
     <div ref={ref} className="new-session-menu is-above" role="menu" aria-label={t("conversation.newSession.theaterMenuAria")} onKeyDown={onKeyDown}>
       {theaters.map((theater) => (
         <button key={theater.id} type="button" role="menuitemradio" aria-checked={theater.id === current} className="new-session-menu-item" onClick={() => onPick(theater.id)}>
-          <TheaterAvatar theaterId={theater.id} size={16} label={theater.label} decorative />
+          <TheaterGlyph size={16} />
           <span className="new-session-row-label">{theater.label}</span>
           {theater.id === current ? <span className="new-session-menu-check" aria-hidden="true">✓</span> : null}
         </button>

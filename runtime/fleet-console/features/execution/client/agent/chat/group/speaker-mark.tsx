@@ -1,6 +1,6 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { commodoreFaceKey, mongleStateOf, objectiveRecordAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
+import { commodoreAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
 import type { ObjectiveCluster } from "../../../../../objectives/shared/objective-clusters.js";
 import * as React from "react";
 
@@ -49,15 +49,21 @@ export type LedgerTargetRule = (speaker: ConversationSpeaker, participants: read
 export const LedgerTargetContext = React.createContext<LedgerTargetRule>(ledgerTarget);
 
 /**
- * 사령관 표식이 쓸 Theater — 가운데 칸에 Objective 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
- * 없으면 지금 대화가 선 Objective 의 Theater 다.
+ * 사령관 표식이 쓸 사령관 UUID — 가운데 칸에 Objective 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
  */
-export const ConversationTheaterContext = React.createContext<string | null>(null);
+export const ConversationCommodoreContext = React.createContext<string | null>(null);
+
+/** 사령관 발화자의 얼굴 열쇠 — 대화 subject 의 사령관, 없으면 대화가 준 사령관. 둘 다 없으면 null(첫 글자 칩). */
+export function useCommodoreSpeakerKey(): string | null {
+  const subject = useConversationSubject();
+  const given = React.useContext(ConversationCommodoreContext);
+  const commodoreId = subject?.commodoreId ?? given;
+  return commodoreId ? commodoreAvatarKey(commodoreId) : null;
+}
 
 /**
  * 발화자의 몽글 아바타 — 지휘관·일반 Objective 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Objective 이 없는 발화자는
- * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다. 사령관은 카드·목록과 같은 열쇠(`commodoreFaceKey`)다 —
- * 대화 문맥의 Theater 해시로 그리면 다른 얼굴이 된다.
+ * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다. 사령관은 카드·목록과 같은 사령관 UUID 열쇠(`commodoreAvatarKey`)다.
  *
  * `acting` 이면 작업 중인 Objective 표식이 사이드바와 같은 축(`useObjectiveMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
  * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Objective 이 없어 기본 리듬이다.
@@ -70,11 +76,10 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
   readonly state?: MongleState;
   readonly acting?: boolean;
 }) {
-  const subject = useConversationSubject();
-  const theater = React.useContext(ConversationTheaterContext);
+  const commodoreKey = useCommodoreSpeakerKey();
   const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
-  if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.objectiveId)) {
-    const key = speaker.kind === "commodore" ? commodoreFaceKey(theater ?? subject?.theaterId, subject?.commodoreId) : objectiveRecordAvatarKey(speaker.objectiveId!);
+  const key = speaker.kind === "commodore" ? commodoreKey : speaker.kind !== "human" && speaker.objectiveId ? objectiveRecordAvatarKey(speaker.objectiveId) : null;
+  if (key) {
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
     const activityObjectiveId = acting && speaker.kind !== "commodore" ? speaker.objectiveId : null;
     return <KeyedAvatar avatarKey={key} role={role} state={state} activityObjectiveId={activityObjectiveId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;

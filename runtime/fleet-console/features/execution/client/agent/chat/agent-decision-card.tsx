@@ -1,7 +1,7 @@
 import type { AgentDecisionCardProps } from "../../../shared/chat-renderer.js";
 
 import { DecisionCard } from "./group/group-cards.js";
-import { ConversationTheaterContext } from "./group/speaker-mark.js";
+import { ConversationCommodoreContext } from "./group/speaker-mark.js";
 import "./group/group-chat.css";
 
 /**
@@ -10,10 +10,10 @@ import "./group/group-chat.css";
  * 그룹 대화의 결정 카드(`DecisionCard`) 그대로다. 플러그인 표면에는 그룹 대화 동작이 없으므로 보내는 길은 계약의
  * `decision.answer` 하나이고, 사령관 표식이 쓸 Theater 만 알려 준다. 카드 문법·문구·스타일은 그룹 대화와 한 곳에서 진다.
  */
-export function AgentDecisionCard({ decision, asker, language, theaterId, mobile = false, onAnswered }: AgentDecisionCardProps) {
+export function AgentDecisionCard({ decision, asker, language, commodoreId, mobile = false, onAnswered }: AgentDecisionCardProps) {
   return (
-    <ConversationTheaterContext.Provider value={theaterId ?? null}>
+    <ConversationCommodoreContext.Provider value={commodoreId ?? null}>
       <DecisionCard decision={decision} actions={null} asker={asker} language={language} phone={mobile} onAnswered={onAnswered} />
-    </ConversationTheaterContext.Provider>
+    </ConversationCommodoreContext.Provider>
   );
 }

@@ -2286,7 +2286,6 @@ describe("Instrument core design contract", () => {
 
   it("keeps the v4 navigation, Theater, map, CLI, and rail visual producers", () => {
     const systemCluster = source("chrome/components/command-band-system-cluster.tsx");
-    const sidebar = source("../../../features/workspace/client/sidebar/objective-records-side-bar.tsx");
     const row = source("../../../features/workspace/client/sidebar/side-bar-cluster-row.tsx");
     const statusIcon = source("../../../features/execution/client/components/objective-status-icon.tsx");
     const nameMark = source("../../../features/execution/client/components/objective-name-mark.tsx");
@@ -2302,7 +2301,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".command-band-system-cluster {");
     expect(components).not.toContain(".side-bar-brand-foot");
 
-    expect(sidebar).toContain("<TheaterAvatar theaterId={theater.id}");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 분기를 다시 적으면 같은 사실이 표면 수만큼의
     // 조형으로 갈라진다. 지휘관 줄과 목록 래퍼는 같은 몽글 아바타 모듈(역할·배정·상태 해석)을 지난다.
     expect(row).toContain('import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js"');

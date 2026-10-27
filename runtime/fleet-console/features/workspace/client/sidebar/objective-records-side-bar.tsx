@@ -30,7 +30,7 @@ import { resolveObjectiveActivity } from "../../../execution/client/objective-ac
 import { reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
-import { TheaterAvatar } from "../theater-avatar.js";
+import { TheaterGlyph } from "../components/theater-glyph.js";
 import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
@@ -780,7 +780,8 @@ function TheaterActionsMenu({ theater, anchor, atCursor = false, onForgetTheater
       >
         {/* 대상 Theater — 활성이 아닌 Theater 에서도 열리므로 무엇을 다루는지 먼저 말한다. 메뉴의 aria-label 이 같은 이름을 읽는다. */}
         <div className="theater-menu-title" aria-hidden="true">
-          <TheaterAvatar theaterId={theater.id} size={22} label="" decorative />
+          {/* 머리의 주제는 사령관이다 — 그 사령관 얼굴. 사령관이 없는 Theater 행이면 Theater 표식이다. */}
+          {theater.commodore ? <KeyedAvatar avatarKey={commodoreAvatarKey(theater.commodore.id)} role="commodore" state="idle" size={22} label="" decorative /> : <TheaterGlyph size={22} />}
           <span className="theater-menu-title-text">
             <strong>{theater.commodore?.alias ?? theater.label}</strong>
             {theater.commodore?.alias ? <span>{theater.label}</span> : null}

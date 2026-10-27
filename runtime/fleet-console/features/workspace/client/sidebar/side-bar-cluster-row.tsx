@@ -19,7 +19,7 @@ import { useLongPress } from "../long-press.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { commanderObjectiveId, type ClusterIndex, type ClusterLayout } from "../objective-clusters.js";
 import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
-import { commodoreFaceKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useObjectivesToolUse, type ObjectiveUseTool } from "../../../computer-use/client/computer-screen-share.js";
 import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../components/caption-actions.js";
@@ -458,8 +458,8 @@ export function ClusterRowAvatar({ item, rowState, label, decorative = false, si
   // 폰도 같은 얼굴·구성원을 쓰되 행 크기에 맞춰 키운다.
   const size = working.length > 0 ? Math.round(full * 26 / 30) : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
-  const commander = row.commodore && !anchor
-    ? <KeyedAvatar avatarKey={commodoreFaceKey(layout.cluster.theaterId, layout.cluster.commodoreId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
+  const commander = row.commodore && !anchor && layout.cluster.commodoreId
+    ? <KeyedAvatar avatarKey={commodoreAvatarKey(layout.cluster.commodoreId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
     : anchor
     ? <ObjectiveAvatar objectiveRecord={anchor.objectiveRecord} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
     : <KeyedAvatar avatarKey={objectiveRecordAvatarKey(layout.cluster.root ?? layout.cluster.avatarObjectiveId ?? layout.cluster.id)} role="commander" state={commanderState} activityObjectiveId={layout.cluster.root} size={size} label={label} decorative={decorative} />;

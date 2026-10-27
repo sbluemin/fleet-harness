@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { ArchiveGlyph } from "../../../../../features/workspace/client/components/archive-glyph.js";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
-import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
+import { TheaterGlyph } from "../../../../../features/workspace/client/components/theater-glyph.js";
 
 /**
  * 팔레트 행·구역 글리프 한 벌. 16px 상자, 1.5px 선, 둥근 끝 — 시작 화면·상태 아이콘과 같은 굵기다.
@@ -17,7 +17,8 @@ function Glyph({ children }: { readonly children: ReactNode }) {
   );
 }
 
-const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry">, ReactNode>> = {
+const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "rail-entry">, ReactNode>> = {
+  theater: <TheaterGlyph />,
   "theater-add": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M8 5.5v5M5.5 8h5" /></Glyph>,
   "objective-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
   "objective-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
@@ -40,7 +41,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "r
 const SECTION_GLYPHS: Readonly<Record<"recent" | PaletteCommandGroup, ReactNode>> = {
   recent: <Glyph><circle cx="8" cy="8" r="6" /><path d="M8 4.8V8l2.2 1.4" /></Glyph>,
   "current-objectiveRecord": <Glyph><rect x="3" y="3" width="10" height="10" rx="2" /></Glyph>,
-  theater: <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M5.5 10.5V6.2m0 0h2.6m-2.6 2.1h2.1" /></Glyph>,
+  theater: LINE_GLYPHS.theater,
   view: LINE_GLYPHS["view-status-axis"],
   panel: LINE_GLYPHS["console-rail"],
   console: LINE_GLYPHS["console-settings"],
@@ -56,20 +57,13 @@ export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => Re
   return <span className="objective-search-command-glyph objective-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;
 }
 
-/** 명령 행의 선행 글리프. Theater는 그 Theater 의 사령관 아바타(사이드바 머리와 같은 얼굴), 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
+/** 명령 행의 선행 글리프. Theater는 Theater 표식, 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteCommandGlyph({ command }: { readonly command: PaletteCommandEntry }) {
-  if (command.glyph === "theater-avatar") {
-    return (
-      <span className="objective-search-command-glyph" aria-hidden="true">
-        {command.theaterAvatar ? <TheaterAvatar theaterId={command.theaterAvatar.id} size={16} label={command.theaterAvatar.label} decorative /> : null}
-      </span>
-    );
-  }
   if (command.glyph === "rail-entry") return <PaletteRailIcon icon={command.railIcon} />;
   return <span className="objective-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;
 }
 
 /** Objective 행 동작 띠의 글리프 — 같은 어휘를 쓴다. */
-export function PaletteActionGlyph({ glyph }: { readonly glyph: Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry"> }) {
+export function PaletteActionGlyph({ glyph }: { readonly glyph: Exclude<PaletteGlyphId, "rail-entry"> }) {
   return <span className="objective-search-action-glyph" aria-hidden="true">{LINE_GLYPHS[glyph]}</span>;
 }

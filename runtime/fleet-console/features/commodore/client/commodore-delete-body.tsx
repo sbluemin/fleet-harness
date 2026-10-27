@@ -131,7 +131,7 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
   const [promptBefore, promptAfter = ""] = t("commodore.delete.prompt", { name: "\u0000" }).split("\u0000");
   const body = <>
     <div className="commodore-delete-who">
-      <CommodoreAvatar theaterId={commodoreId} state="idle" size={mobile ? 44 : 40} label="" decorative />
+      <CommodoreAvatar commodoreId={commodoreId} state="idle" size={mobile ? 44 : 40} label="" decorative />
       <div><p className="commodore-delete-question" id={questionId}>{t("commodore.delete.question", { name })}</p>
         {step === 1 ? <p className="commodore-delete-lead">{t("commodore.delete.lead")}</p> : null}
         <p className="commodore-delete-lead commodore-delete-irreversible">{t("commodore.delete.irreversible")}</p>

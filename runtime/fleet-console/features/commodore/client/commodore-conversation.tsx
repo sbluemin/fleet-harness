@@ -375,7 +375,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
           <Ledger
             speaker={speaker}
-            theaterId={commodoreId}
+            commodoreId={commodoreId}
             language={language}
             onBack={() => setCommodoreLedger(commodoreId, false)}
             entries={ledgerEntries}
@@ -394,7 +394,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             participants={participants}
             working={working}
             language={language}
-            theaterId={commodoreId}
+            commodoreId={commodoreId}
             loading={!transcriptLoaded}
             empty={t("commodore.log.empty")}
             older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}

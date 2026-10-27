@@ -57,7 +57,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
           decision={askDecision(ask, { theaterId, contextTheaterId: board.objectives.find((row) => row.id === ask.objectiveId)?.theaterId ?? contextTheaterId, t, phone, leave, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
           asker={asker}
           language={language}
-          theaterId={theaterId}
+          commodoreId={theaterId}
           mobile={phone}
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />

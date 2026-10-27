@@ -1,7 +1,7 @@
 import { useCommodoreName } from "./commodore-name.js";
 import { useEffect } from "react";
 
-import { commodoreAvatarKey, mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
+import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
 import type { TheaterContribution, TheaterContributionContext } from "../../workspace/shared/surface-contracts.js";
 
 import {
@@ -23,7 +23,7 @@ import { subscribe as subscribeConsole } from "../../../core/client/src/integrat
 import { subscribeConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { subscribeConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getT } from "./i18n/index.js";
-import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
+import { isRunningObjective, isCommodoreWaiting, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -48,14 +48,6 @@ export const commodoreTheaterContribution: TheaterContribution = {
   header: {
     // 얼굴은 사령관 상태와 그 Theater 목표 보드를 함께 읽는다 — 어느 쪽이 바뀌어도 머리가 다시 읽는다.
     subscribe: subscribeCommodoreFace,
-    // 사이드바 밖에서 그 Theater 의 사령관 아바타를 그리는 표면(새 세션 칩·팔레트 행)이 머리 표식과 같은 얼굴을 읽는다.
-    face: (theaterId) => {
-      if (!readCommodoreExperiment().enabled) return null;
-      const commodoreId = ownerOfContext(theaterId);
-      if (!commodoreId) return null;
-      const view = readCommodore(commodoreId).view;
-      return { state: commodoreMongleState(view, readTheater(commodoreId).objectives), off: false, avatarKey: commodoreAvatarKey(commodoreId) };
-    },
     selected: isCommodoreConversationSelected,
     live: (theaterId) => readCommodore(ownerOfContext(theaterId)).view?.run.phase === "turn",
     landing: () => ({ sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" }),
@@ -84,7 +76,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
   const name = useCommodoreName(theater.id, t);
   const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
-  const glyph = <CommodoreAvatar theaterId={commodoreId ?? theater.id} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
+  const glyph = <CommodoreAvatar commodoreId={commodoreId ?? theater.id} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(commodoreId).length;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;

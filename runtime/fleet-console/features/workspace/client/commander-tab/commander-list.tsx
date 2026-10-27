@@ -85,7 +85,7 @@ export function CommanderListOwner({ commodoreId, selected, onSelect }: { readon
   const owner = useCommanderOwner(commodoreId);
   const t = useT();
   return <button type="button" className="commander-list-owner" aria-current={selected ? "true" : undefined} onClick={onSelect}>
-    <CommodoreAvatar theaterId={commodoreId} state={owner.state} size={30} label="" decorative />
+    <CommodoreAvatar commodoreId={commodoreId} state={owner.state} size={30} label="" decorative />
     <span><strong>{owner.name}</strong><small>{t("sidebar.commodore.fallback")}</small></span>
   </button>;
 }

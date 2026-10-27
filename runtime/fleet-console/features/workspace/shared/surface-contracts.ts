@@ -1,5 +1,4 @@
 import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "./theater-inbox.js";
-import type { MongleState } from "./avatars.js";
 import type { ReactNode, RefObject } from "react";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
@@ -138,30 +137,14 @@ export interface TheaterContribution {
 }
 
 
-/** A Theater commodore's face as a value — `off` is true while its operator is switched off, and the avatar is drawn muted. */
-export interface TheaterFace {
-  readonly state: MongleState;
-  readonly off: boolean;
-  /** 저장된 몽글 키. 없으면 호스트가 Theater id 키를 쓴다. */
-  readonly avatarKey?: string;
-}
-
-
 /** The Theater facts a contribution lends the sidebar header. Reads do no I/O. */
 export interface TheaterHeaderContribution {
-  /** Wakes the header when `mark`, `live`, `selected`, `landing` or `face` may answer differently. */
+  /** Wakes the header when `mark`, `live`, `selected` or `landing` may answer differently. */
   readonly subscribe: (listener: () => void) => () => void;
   /** True while this Theater's operator is working — the host runs its live sweep over the Theater name. */
   readonly live?: (theaterId: string) => boolean;
   /** True when this header's operator conversation is selected, not merely its Theater. */
   readonly selected?: (theaterId: string) => boolean;
-  /**
-   * The face of the Theater's commodore avatar while this contribution operates it — the same state and the same
-   * muted look its `mark` shows. The host draws the Theater's avatar with it on surfaces away from the sidebar header
-   * (launcher chips, palette and picker rows), where a mark's own buttons cannot nest. Null leaves the face to the next
-   * contribution, and finally to the host's resting face.
-   */
-  readonly face?: (theaterId: string) => TheaterFace | null;
   /**
    * The Theater Inbox page the header opens for this Theater, in this plugin's own section id. Null leaves the choice
    * to the next contribution, and finally to the host's system prompt page.

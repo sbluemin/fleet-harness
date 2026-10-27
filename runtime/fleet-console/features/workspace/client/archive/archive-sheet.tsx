@@ -14,7 +14,7 @@ import { getState, hydrateObjectiveRecords } from "../../../../core/client/src/i
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useArchiveSections } from "./archive-entry.js";
 import { ArchiveRetention } from "./archive-retention.js";
-import { commodoreFaceKey } from "../../shared/avatars.js";
+import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useMongleLook } from "../avatar-events.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 
@@ -28,7 +28,7 @@ export interface ArchiveSheetDeps {
 }
 
 function ArchiveCommodoreAvatar({ id, label }: { readonly id: string; readonly label: string }) {
-  const look = useMongleLook(commodoreFaceKey(null, id));
+  const look = useMongleLook(commodoreAvatarKey(id));
   return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state="idle" size={20} label={label} decorative />;
 }
 

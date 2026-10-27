@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { commodoreFaceKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { commodoreAvatarKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
 import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
@@ -98,7 +98,7 @@ export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "object
   const groups: string[][] = [];
   for (const theater of state.theaters) {
     const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id && !objectiveRecord.parentObjectiveId).sort(byCreation);
-    groups.push([commodoreFaceKey(theater.id, theater.commodore?.id), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
+    groups.push([...(theater.commodore ? [commodoreAvatarKey(theater.commodore.id)] : []), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
   }
   const children = new Map<string, ObjectiveRecord[]>();
   for (const objectiveRecord of [...state.objectiveRecords, ...state.nestedObjectiveRecords]) {
@@ -147,7 +147,7 @@ export function ObjectiveAvatar({ objectiveRecord, state, size, label, role, dec
   return <MongleAvatar base={look.base} tone={look.tone} role={role ?? objectiveRecordAvatarRole(objectiveRecord)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size, label, decorative, off, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size, label, decorative, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
@@ -156,12 +156,11 @@ export function KeyedAvatar({ avatarKey, role, state, activityObjectiveId, size,
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
-  readonly off?: boolean;
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
   const activity = useObjectiveMongleActivity(state === "running" ? activityObjectiveId : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {

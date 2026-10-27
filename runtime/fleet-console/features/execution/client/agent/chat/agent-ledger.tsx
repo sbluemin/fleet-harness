@@ -11,7 +11,7 @@ import { TranscriptLines, useTranscriptReveal } from "./chat-transcript.js";
 import { MemberWidthButton, SessionCoordinate } from "./chat-view.js";
 import { GroupLedgerFrame } from "./group/group-conversation.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
-import { ConversationTheaterContext, commodoreDisplayName } from "./group/speaker-mark.js";
+import { ConversationCommodoreContext, commodoreDisplayName } from "./group/speaker-mark.js";
 import { readAgentChatSessionCoordinates } from "./session-coordinates.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -26,7 +26,7 @@ const FOLLOW_SLACK_PX = 48;
  * (`.agent-chat` · 스크롤 주체인 `.agent-chat-log` · 같은 거터와 컬럼, 채팅 폭 선호)이며, 바닥은 구성원 원장과 같은 읽기 전용 좌표
  * 줄이다. 턴은 기록 면(`ctx.chat.Transcript`)과 같은 렌더러로 선다 — 둘의 차이는 담는 그릇뿐이다. 입력 틀은 서지 않는다.
  */
-export function AgentLedger({ speaker, theaterId, language, onBack, entries, reveal = null, older = null, references, coordinates = null, openui = false, openUIOpen }: AgentLedgerProps) {
+export function AgentLedger({ speaker, commodoreId, language, onBack, entries, reveal = null, older = null, references, coordinates = null, openui = false, openUIOpen }: AgentLedgerProps) {
   const t = getT(language);
   const readingWidth = useChatReadingWidth();
   const logRef = React.useRef<HTMLDivElement | null>(null);
@@ -53,7 +53,7 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
   useTranscriptReveal(logRef, reveal, () => { follow.current = false; });
 
   return (
-    <OpenUIPluginBoundary port={openUIOpen} language={language}><ConversationTheaterContext.Provider value={theaterId ?? null}>
+    <OpenUIPluginBoundary port={openUIOpen} language={language}><ConversationCommodoreContext.Provider value={commodoreId ?? null}>
       <GroupLedgerFrame speaker={shown} language={language} onBack={onBack}>
         <div className="agent-ledger-host">
           <section
@@ -93,6 +93,6 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
           </section>
         </div>
       </GroupLedgerFrame>
-    </ConversationTheaterContext.Provider></OpenUIPluginBoundary>
+    </ConversationCommodoreContext.Provider></OpenUIPluginBoundary>
   );
 }

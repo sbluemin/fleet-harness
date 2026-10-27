@@ -114,8 +114,8 @@ export interface AgentConversationProps {
   /** Speakers working right now — the working line above the composer. */
   readonly working: readonly ConversationSpeaker[];
   readonly language: "en" | "ko";
-  /** Commodore identity for a `commodore` speaker's mongle. A commodore UUID uses `theater:commodore:<id>`, the same face as the card and list. A Theater hash is only a fallback when the owner is unknown. */
-  readonly theaterId?: string;
+  /** The commodore UUID whose face a `commodore` speaker's mongle shows — the same face as the card and list. */
+  readonly commodoreId?: string;
   /** Still reading the first page — the empty line says so instead of `empty`. */
   readonly loading?: boolean;
   /** The line shown when there are no entries. */
@@ -159,8 +159,8 @@ export interface AgentDecisionCardProps {
   /** Who asks — their mark and name head the card. */
   readonly asker: ConversationSpeaker | null;
   readonly language: "en" | "ko";
-  /** Commodore identity for a `commodore` asker's mark. A commodore UUID uses the same face as the card and list. */
-  readonly theaterId?: string;
+  /** The commodore UUID whose face a `commodore` asker's mark shows — the same face as the card and list. */
+  readonly commodoreId?: string;
   /** Phone layout — the open link reads as the phone's objective view. */
   readonly mobile?: boolean;
   /** The answer was accepted — the plugin takes the card down. */
@@ -176,8 +176,8 @@ export interface AgentDecisionCardProps {
 export interface AgentLedgerProps {
   /** Whose ledger this is — its mark and name in the band. */
   readonly speaker: ConversationSpeaker;
-  /** Commodore identity for a `commodore` speaker's mongle. A commodore UUID uses the same face as the card and list. */
-  readonly theaterId?: string;
+  /** The commodore UUID whose face a `commodore` speaker's mongle shows — the same face as the card and list. */
+  readonly commodoreId?: string;
   readonly language: "en" | "ko";
   /** Close the ledger and return to the conversation. */
   readonly onBack: () => void;

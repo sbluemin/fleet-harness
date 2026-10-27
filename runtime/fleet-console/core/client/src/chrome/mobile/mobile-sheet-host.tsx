@@ -7,7 +7,7 @@ import type { MobileConfirmSpec } from "../../../../../features/workspace/shared
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { createCommodoreGroup, forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
-import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
+import { TheaterGlyph } from "../../../../../features/workspace/client/components/theater-glyph.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
 import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
@@ -344,7 +344,7 @@ function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater:
         closeMobileSheets();
       }}
     >
-      <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
+      <span className="mobile-sheet-row-glyph"><TheaterGlyph size={22} /></span>
       <span className="mobile-sheet-row-copy">
         <strong>{theater.commodore?.alias ?? theater.label}</strong>
         <small className={awaiting > 0 ? "is-awaiting" : undefined}>{theater.commodore?.alias ? `${theater.label} · ${summary}` : summary}</small>
