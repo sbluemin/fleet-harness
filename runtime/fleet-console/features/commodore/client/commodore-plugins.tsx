@@ -84,7 +84,7 @@ function useLiveCatalog(active: boolean): CatalogState {
   return state;
 }
 
-const ERROR_CODES: ReadonlySet<MarketplaceErrorCode> = new Set<MarketplaceErrorCode>(["invalid_source", "duplicate", "preset_name", "not_found", "auth_failed", "no_manifest", "fetch_failed", "preset_locked", "limit", "disabled", "plugin_not_found", "install_failed", "trust_required", "unavailable"]);
+const ERROR_CODES: ReadonlySet<MarketplaceErrorCode> = new Set<MarketplaceErrorCode>(["invalid_source", "duplicate", "preset_name", "reserved_name", "name_taken", "not_found", "auth_failed", "no_manifest", "fetch_failed", "preset_locked", "limit", "disabled", "plugin_not_found", "install_failed", "trust_required", "unavailable"]);
 function errorWord(t: T, code: string): string {
   return ERROR_CODES.has(code as MarketplaceErrorCode) ? t(`commodore.plugins.error.${code as MarketplaceErrorCode}`) : t("commodore.plugins.error.unknown", { code });
 }
@@ -194,7 +194,7 @@ function MarketplaceRow({ t, marketplace, act }: { readonly t: T; readonly marke
 function sourceKind(value: string): { readonly key: CommodoreMessageKey; readonly ref: boolean } | "bad" | null {
   const source = value.trim();
   if (!source) return null;
-  if (/^(?:git@[\w.-]+:|ssh:\/\/)\S+$/.test(source)) return { key: "commodore.marketplaces.kind.ssh", ref: true };
+  if (/^(?:[\w.-]+@[\w.-]+:(?!\/\/)|ssh:\/\/[\w.-]+@[\w.-]+\/)\S+$/.test(source)) return { key: "commodore.marketplaces.kind.ssh", ref: true };
   if (/^https?:\/\/\S+\.json(?:\?\S*)?$/.test(source)) return { key: "commodore.marketplaces.kind.url", ref: false };
   if (/^https?:\/\/[\w.-]+\/\S+$/.test(source)) return { key: "commodore.marketplaces.kind.https", ref: true };
   if (/^[\w.-]+\/[\w.-]+(?:@[\w./-]+)?$/.test(source)) return { key: "commodore.marketplaces.kind.github", ref: true };
