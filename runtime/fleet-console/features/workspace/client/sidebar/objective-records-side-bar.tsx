@@ -33,6 +33,7 @@ import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
+import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
 import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
 import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
@@ -164,8 +165,10 @@ export function ObjectiveRecordsSideBar({
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const surfaceOwner = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
   const viewedOwner = viewedTheaterId ? ownerOfContext(viewedTheaterId) : null;
+  const subjectOwner = useConversationSubject()?.commodoreId ?? null;
   const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
-  const owningCommodoreId = surface ? surfaceOwner ?? viewedOwner : viewedOwner ?? objectiveOwner;
+  // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
+  const owningCommodoreId = surface ? surfaceOwner ?? viewedOwner ?? subjectOwner : viewedOwner ?? subjectOwner ?? objectiveOwner;
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
@@ -405,7 +408,7 @@ export function ObjectiveRecordsSideBar({
                 onPointerDragStart={beginTheaterPointerDrag}
               />
               {!compact && placement.place === "sidebar" && theater.id === owningCommodoreId ? (
-                <div className="side-bar-commander-list">
+                <div className="side-bar-commander-list" data-keep-objective-active="">
                   <CommodoreCommanderList
                     commodoreId={theater.id}
                     selectedId={

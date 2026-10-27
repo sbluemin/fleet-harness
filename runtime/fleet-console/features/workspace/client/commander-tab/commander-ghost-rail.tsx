@@ -177,7 +177,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const tipRow = tip && tip.index > 0 ? rows[tip.index - 1] : null;
   const tipSummary = tipRow ? clusterRowSummary(tipRow, locale, t) : null;
 
-  return <nav ref={nav} className="commander-ghost" aria-label={t("commanderTab.aria")}
+  return <nav ref={nav} className="commander-ghost" data-keep-objective-active="" aria-label={t("commanderTab.aria")}
     data-side={side} data-expanded={expanded || undefined} data-pinned={(expanded && pinned.current) || undefined} onKeyDown={onKeyDown}
     onKeyDownCapture={() => { if (expanded) keyboardExpanded.current = true; }}
     onPointerEnter={clearLeave}
