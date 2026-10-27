@@ -55,6 +55,7 @@ import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
+import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
 /**
@@ -809,6 +810,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
 
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
+  const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
 
   return (
@@ -817,6 +819,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
         도구 분할은 그 아래만 쓴다. pill 줄은 실제 도구 폭 앞에서 drag 상자를 끝낸다. */}
     <div ref={setBand} className="conversation-band" style={{ left: insets.left, right: insets.right }} />
     <section
+      ref={setStageElement}
       className="conversation-stage"
       data-commander-rail={toolCommodoreId !== null && !newSession || undefined}
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
@@ -824,6 +827,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
     >
+      <ConversationDockHost.Provider value={stageElement}>
       {newSession ? (
         <NewSessionColumn state={state} target={newSession} tools={tools(null)} />
       ) : surfaceDescriptor && surface ? (
@@ -860,6 +864,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
         </div>
       )}
       {toolCommodoreId !== null && !newSession ? <CommanderGhostRail key={toolCommodoreId} commodoreId={toolCommodoreId} selectedId={surfaceDescriptor ? standInId : stageSubject?.id ?? null} /> : null}
+      </ConversationDockHost.Provider>
     </section>
     <ConversationWorkbench
       layerRef={workbenchLayerRef}

@@ -1,3 +1,4 @@
+import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { OpenUINavigationContext } from "../../openui-boundary.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
 import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
@@ -269,13 +270,15 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
  * 같은 그룹 입력창이 선다. 일하는 참여자가 없으므로 정지는 서지 않는다.
  */
 function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
+  const dockRef = React.useRef<HTMLDivElement | null>(null);
+  useConversationDockHeight(dockRef);
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
   const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);
-  return <>
+  return <div ref={dockRef} className="group-standin-dock">
     {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
     <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
-  </>;
+  </div>;
 }
 
 /** 한 명 정지 — 기존 실행 중 중지 경로(채팅 턴만 닫는다. 백그라운드 작업은 그대로). */

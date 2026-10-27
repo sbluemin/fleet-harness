@@ -4,7 +4,7 @@
   z-index: 5;
   top: 60px;
   right: 6px;
-  bottom: 116px;
+  bottom: max(116px, calc(var(--conversation-dock-height, 0px) + 8px));
   width: 44px;
   display: flex;
   flex-direction: column;
@@ -98,7 +98,7 @@
   right: 0;
   width: 312px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100% + 8px);
+  max-height: calc(100% + 4px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--popover-rim);

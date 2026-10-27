@@ -28,20 +28,32 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const target = useRef(0);
   const snap = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leave = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardExpanded = useRef(false);
   const reduced = useRef(false);
   const id = useId();
   const itemId = (index: number) => `${id}-${index}`;
 
   const clearDwell = () => { if (dwell.current !== null) clearTimeout(dwell.current); dwell.current = null; };
+  const clearLeave = () => { if (leave.current !== null) clearTimeout(leave.current); leave.current = null; };
   const resetFaces = () => nav.current?.querySelectorAll<HTMLElement>(".commander-ghost-face").forEach((face) => face.style.removeProperty("--ghost-scale"));
   const reveal = (keyboard = false) => {
-    clearDwell(); resetFaces(); setTip(null); setExpanded(true);
+    keyboardExpanded.current = keyboard;
+    clearLeave(); clearDwell(); resetFaces(); setTip(null); setExpanded(true);
     if (keyboard) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
-    clearDwell(); setExpanded(false); setTip(null);
+    clearLeave(); clearDwell(); setExpanded(false); setTip(null);
     if (restore) nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${Math.min(cursor, rows.length)}"]`)?.focus({ preventScroll: true });
   };
+  const scheduleCollapse = () => {
+    clearDwell(); clearLeave(); resetFaces(); setTip(null);
+    leave.current = setTimeout(() => {
+      if (keyboardExpanded.current && panel.current?.contains(document.activeElement)) return;
+      collapse(false);
+    }, 220);
+  };
+  useEffect(() => () => { clearLeave(); clearDwell(); }, []);
 
   // 휠·선택·키보드는 하나의 곡선을 쓴다. 줄 크기와 스크롤 상태를 레이아웃 애니메이션으로 바꾸지 않는다.
   const scrollTo = useCallback((value: number) => {
@@ -98,7 +110,11 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       const delta = event.deltaY * (event.deltaMode === 1 ? 46 : event.deltaMode === 2 ? element.clientHeight : 1);
       scrollTo((frame.current ? target.current : element.scrollTop) + delta);
       if (snap.current !== null) clearTimeout(snap.current);
-      if (!reduced.current) snap.current = setTimeout(() => scrollTo(Math.round(target.current / 46) * 46), 140);
+      if (!reduced.current) snap.current = setTimeout(() => {
+        const maximum = Math.max(0, element.scrollHeight - element.clientHeight);
+        const next = target.current >= maximum - 23 ? maximum : target.current <= 23 ? 0 : Math.round(target.current / 46) * 46;
+        scrollTo(next);
+      }, 140);
     };
     element.addEventListener("wheel", wheel, { passive: false });
     element.addEventListener("scroll", fades, { passive: true });
@@ -133,10 +149,12 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       else openCommanderConversation(commodoreId, objectiveId);
     }
     center(index);
+    collapse(false);
   };
   const selectRow = (item: SideBarRowItem) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
     if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
+    collapse(false);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); collapse(); return; }
@@ -154,7 +172,12 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
 
   return <nav ref={nav} className="commander-ghost" aria-label={t("commanderTab.aria")}
     data-expanded={expanded || undefined} onKeyDown={onKeyDown}
+    onKeyDownCapture={() => { if (expanded) keyboardExpanded.current = true; }}
+    onPointerEnter={clearLeave}
+    onFocus={clearLeave}
+    onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !event.currentTarget.matches(":hover")) scheduleCollapse(); }}
     onPointerMove={(event) => {
+      clearLeave();
       if (expanded || event.pointerType === "touch") return;
       clearDwell();
       let nearest: { index: number; distance: number; top: number } | null = null;
@@ -171,7 +194,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       setTip(nearest);
       if (nearest) dwell.current = setTimeout(() => reveal(), 500);
     }}
-    onPointerLeave={() => { clearDwell(); resetFaces(); setTip(null); }}
+    onPointerLeave={scheduleCollapse}
   >
     <button id={itemId(0)} data-ghost-index={0} data-ghost-owner="" type="button" tabIndex={Math.min(cursor, rows.length) === 0 ? 0 : -1} className="commander-ghost-item" aria-label={owner.name} aria-current={selectedId === null ? "true" : undefined} data-cursor={cursor === 0 || undefined} onClick={() => select(0)}>
       <span className="commander-ghost-face"><CommodoreAvatar theaterId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
@@ -190,7 +213,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         </button>;
       })}
     </div>
-    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t("commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={() => expanded ? collapse() : reveal(true)}>‹</button>
+    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t("commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(event.detail === 0)}>‹</button>
     {!expanded && tip ? <span className="commander-ghost-tip" style={{ top: tip.top }} role="tooltip"><strong>{tipRow?.layout.cluster.title ?? owner.name}</strong><small>{tipSummary?.conversationLine ?? t("sidebar.commodore.fallback")}</small></span> : null}
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">
       <div className="commander-ghost-list-head"><CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => select(0)} />
