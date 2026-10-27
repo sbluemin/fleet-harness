@@ -57,15 +57,16 @@
 .commander-place-button:hover { background: var(--wash-hover); color: var(--text-primary); }
 .commander-place-button[aria-pressed="true"] { color: var(--text-primary); background: var(--wash-selected); border-color: var(--hairline); }
 .commander-place-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+/* 사이드바만 상·하단을 조인다. 채팅 레일·폰 시트의 .commander-tab 여백(10px 10px 16px)은 그대로다.
+   높이 상한과 안쪽 스크롤은 없다 — 줄은 사이드바 목록(objective-records-side-bar-chips)이 스크롤한다. */
 .side-bar-commander-list {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  max-height: min(46vh, 420px);
-  margin: 0 var(--space-1) 6px;
+  margin: 0 var(--space-1);
 }
-.side-bar-commander-list .commander-tab { min-height: 0; }
-.side-bar-commander-list .commander-tab-groups { min-height: 0; max-height: min(38vh, 360px); overflow-y: auto; }
+.side-bar-commander-list .commander-tab { min-height: 0; padding: 0 10px 0; gap: 2px; }
+.side-bar-commander-list .commander-tab-groups { min-height: 0; }
 /* 기본·최소 폭 280px에서는 "정렬 · 최근 활동"이 띄어쓰기에서 두 줄이 된다. 칩 모양은 두고 한 줄로 말줄임한다. */
 .side-bar-commander-list .commander-tab-count { flex: none; white-space: nowrap; }
 .side-bar-commander-list .commander-tab-bar,
@@ -175,6 +176,29 @@
 .commander-tab-list.side-bar-group-chips { gap: 2px; }
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+/* 시작 전·완료는 이름과 수만 있는 줄이다. 셰브런은 쓰지 않는다 — 목표 글리프(.objectives-tab-glyph)와 API 색인 줄(.backend-api-group-toggle)처럼. */
+.commander-tab-fold {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: calc(100% - 8px);
+  margin: 6px 4px 2px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.commander-tab-fold-count { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commander-tab-fold[aria-expanded="true"] { color: var(--text-secondary); }
+.commander-tab-fold:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-tab-fold:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 .commander-tab-trail:empty { display: none; }
 .commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }

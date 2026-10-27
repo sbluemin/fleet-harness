@@ -1,4 +1,7 @@
-/* 얼굴은 거터 안에서만 커진다. 본문과 입력창의 배치·폭은 레일이 소유하지 않는다. */
+/* 접히면 거터의 얼굴 열이다. 펼치면 같은 칸이 목록 너비로 넓어지고 대화 열은 그 몫만큼 좁아진다.
+   폭 곡선은 사이드바 카드와 같은 --duration-base ease. side-bar-motion.ts는 카드 폭을 따라
+   인셋을 보간하는 훅이라 여기선 쓰지 않는다 — 칸과 여백이 같은 길이 토큰을 직접 쓴다. */
+.conversation-stage[data-commander-rail] { --commander-list-span: 312px; }
 .commander-ghost {
   position: absolute;
   z-index: 5;
@@ -10,9 +13,38 @@
   flex-direction: column;
   align-items: center;
   opacity: 0.74;
-  transition: opacity 160ms ease;
+  transition: opacity 160ms ease, width var(--duration-base) ease, top var(--duration-base) ease, bottom var(--duration-base) ease, left var(--duration-base) ease, right var(--duration-base) ease;
   outline: none;
 }
+.commander-ghost[data-expanded] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--commander-list-span);
+  align-items: stretch;
+  overflow: hidden;
+  opacity: 1;
+  background: var(--conversation-surface, var(--surface-panel));
+  border-left: 1px solid var(--hairline);
+}
+.commander-ghost[data-side="left"][data-expanded] {
+  left: 0;
+  right: auto;
+  border-left: 0;
+  border-right: 1px solid var(--hairline);
+}
+.conversation-stage[data-commander-rail] > .conversation-column {
+  transition: margin-right var(--duration-base) ease, margin-left var(--duration-base) ease;
+}
+.conversation-stage[data-commander-rail]:has(.commander-ghost[data-expanded]):not(:has(.commander-ghost[data-side="left"])) > .conversation-column {
+  margin-right: var(--commander-list-span);
+}
+.conversation-stage[data-commander-rail]:has(.commander-ghost[data-side="left"][data-expanded]) > .conversation-column {
+  margin-left: var(--commander-list-span);
+}
+.commander-ghost[data-expanded] > :is(.commander-ghost-scroll, [data-ghost-owner], .commander-ghost-rule) { display: none; }
+.commander-ghost[data-expanded] .commander-ghost-open { align-self: flex-end; margin-top: 8px; margin-right: 6px; }
+.commander-ghost[data-side="left"][data-expanded] .commander-ghost-open { align-self: flex-start; margin-right: 0; margin-left: 6px; }
 .commander-ghost:is(:hover, :focus-within, [data-expanded]) { opacity: 1; }
 .commander-ghost-item {
   position: relative;
@@ -70,48 +102,21 @@
   font-size: var(--t-lg);
   cursor: pointer;
 }
-.commander-ghost-open { position: relative; z-index: 7; margin-top: 4px; }
+.commander-ghost-open { position: relative; z-index: 7; margin-bottom: 4px; }
 .commander-ghost-open:hover, .commander-ghost-close:hover { background: var(--wash-hover); }
-.commander-ghost-close:focus-visible { outline: 2px solid var(--control-focus-ring); }
-.commander-ghost-tip {
-  position: absolute;
-  z-index: 7;
-  right: 50px;
-  transform: translateY(-50%);
-  max-width: 260px;
-  width: max-content;
-  padding: 5px 10px;
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
-  background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
-  color: var(--text-primary);
-  font-size: var(--t-sm);
-  pointer-events: none;
-}
-.commander-ghost-tip strong, .commander-ghost-tip small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commander-ghost-tip strong { font-weight: var(--weight-medium); }
-.commander-ghost-tip small { color: var(--text-tertiary); font-size: var(--t-xs); }
+.commander-ghost-open:focus-visible, .commander-ghost-close:focus-visible { outline: 2px solid var(--control-focus-ring); }
 .commander-ghost-list {
-  position: absolute;
-  z-index: 6;
-  top: -4px;
-  right: 0;
-  width: 312px;
-  max-width: calc(100vw - 32px);
-  /* 하단 화살표는 목록 위에 남아 다시 눌러 닫을 수 있다. */
-  max-height: calc(100% - 32px);
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-xl);
-  background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
+  background: transparent;
   container-type: inline-size;
 }
 .commander-ghost-list-head { display: flex; align-items: center; padding: 6px; flex: none; }
-.commander-ghost[data-side="left"] .commander-ghost-tip { right: auto; left: 50px; }
-.commander-ghost[data-side="left"] .commander-ghost-list { right: auto; left: 0; }
 .commander-ghost-list-head .commander-list-owner { flex: 1; min-width: 0; }
 .commander-ghost-list .commander-tab { min-height: 0; }
 .commander-ghost-list .commander-tab-bar { flex: none; }
@@ -120,7 +125,9 @@
 .commander-ghost-list .side-bar-cluster-row:hover { transform: none; }
 :root[data-view-mode="mobile"] .commander-ghost { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .commander-ghost, .commander-ghost-scroll, .commander-ghost-face { transition: none; }
+  .commander-ghost, .commander-ghost-scroll, .commander-ghost-face,
+  .conversation-stage[data-commander-rail] > .conversation-column,
+  .conversation-stage[data-commander-rail] .group-chat-log { transition: none; }
   .commander-ghost-face { transform: none; }
 }
 
