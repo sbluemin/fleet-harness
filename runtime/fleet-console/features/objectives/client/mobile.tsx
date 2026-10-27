@@ -9,7 +9,7 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
+import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, unseenRecords, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
@@ -24,8 +24,8 @@ import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } f
 import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
-import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
+import { CalGlyph, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
+import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, objectiveRecordSummaries, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -85,6 +85,63 @@ const MemberMark = ({ objective, member, objectiveRecords }: { readonly objectiv
   <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? activityOf(objectiveRecords, member.id) : "closed")} />;
 
 const criteriaMet = (objective: Objective) => objective.criteria.filter((criterion) => criterion.met !== undefined).length;
+
+export type ObjectiveMobileRowValue = { readonly text: string; readonly tone?: "awaiting" | "danger" } | null;
+export type ObjectiveMobileRowValues = {
+  readonly goal: ObjectiveMobileRowValue;
+  readonly crew: ObjectiveMobileRowValue;
+  readonly results: ObjectiveMobileRowValue;
+  /** 카드 아래 한 줄 — 행 값과 다른 묶음 요약(구성원 수·기준). */
+  readonly foot: string;
+};
+
+/**
+ * 상세 첫 화면 행의 오른쪽 값. 결정 요청·안 읽은 임무 기록은 둥근 점 대신 글과 톤으로 말한다.
+ * 구성원 활동(작업 중·허용 대기)도 같은 칸의 글이다. 같은 목표·같은 요약이면 같은 객체를 돌려준다.
+ */
+let rowValueCache: { readonly objective: Objective | null; readonly records: readonly ConsoleObjectiveSummary[]; readonly locale: ConsoleLocale; readonly id: string; readonly value: ObjectiveMobileRowValues } | null = null;
+function readObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale): ObjectiveMobileRowValues {
+  // 보관된 완료 목표는 진행 보드에 없다 — 상세가 찾는 것과 같은 완료 저장소까지 본다.
+  const objective = objectiveOfObjective(objectiveId) ?? findAnyObjective(objectiveId);
+  const records = objectiveRecordSummaries();
+  const hit = rowValueCache;
+  if (hit && hit.objective === objective && hit.records === records && hit.locale === locale && hit.id === objectiveId) return hit.value;
+  const t = getT(locale, true);
+  const indexed = objectiveRecordIndex(records);
+  const empty: ObjectiveMobileRowValues = { goal: null, crew: null, results: null, foot: "" };
+  if (!objective) {
+    rowValueCache = { objective, records, locale, id: objectiveId, value: empty };
+    return empty;
+  }
+  const unseen = objective.missions.reduce((sum, mission) => sum + unseenRecords(mission), 0);
+  let running = 0;
+  let awaiting = 0;
+  for (const member of objective.members) {
+    const activity = member.sessionName !== null ? activityOf(indexed, member.id) : "closed";
+    if (activity === "running") running += 1;
+    else if (activity === "awaiting") awaiting += 1;
+  }
+  const value: ObjectiveMobileRowValues = {
+    goal: objective.decisionRequest && !objective.done
+      ? { text: t("objectives.tabs.decisionDot"), tone: "awaiting" }
+      : objective.criteria.length > 0 ? { text: t("objectives.mobile.criteria", { met: criteriaMet(objective), total: objective.criteria.length }) } : null,
+    crew: unseen > 0 ? { text: t("objectives.tabs.unseenDot"), tone: "awaiting" }
+      : awaiting > 0 ? { text: t("objectives.awaiting.word"), tone: "awaiting" }
+      : running > 0 ? { text: t("objectives.mobile.crewWorking", { count: running }) }
+      : { text: t("objectives.mobile.row.members", { members: objective.members.length }) },
+    results: objective.results.length > 0 ? { text: t("objectives.results.count", { count: objective.results.length }) } : null,
+    foot: objective.criteria.length > 0
+      ? t("objectives.mobile.row.summary", { members: objective.members.length, met: criteriaMet(objective), total: objective.criteria.length })
+      : t("objectives.mobile.row.members", { members: objective.members.length }),
+  };
+  rowValueCache = { objective, records, locale, id: objectiveId, value };
+  return value;
+}
+
+/** 대화 정보 화면의 행 값 — 목표 스토어(완료 목표 포함)가 바뀔 때만 다시 읽는다. */
+export function useObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale): ObjectiveMobileRowValues {
+  return useSyncExternalStore(subscribeObjectiveOrFinished, () => readObjectiveMobileRowValues(objectiveId, locale), () => readObjectiveMobileRowValues(objectiveId, locale));
+}
 /** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
 const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
 /**
@@ -378,9 +435,10 @@ export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext
 }
 
 /**
- * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)에서는 호스트 막대(`mobileBar`)에 제목·⋮ 동작을 선언하는 뿌리이고,
- * 대화 정보 화면의 「목표」 탭에서는 막대가 없어 같은 동작을 본문 맨 위 동작 줄로 그린다. 제목은 정보 화면 머리가 말하므로 본문에 다시 세우지 않는다.
- * 보관은 목표 화면의 ⋮ 또는 대화 정보 화면 「정보」 탭에서 한다. 기동 전 목표도 복원할 수 있고, 영구 삭제는 보관함에서만 한다.
+ * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)은 프로필(아바타·이름·상태·편집·오늘·마감·구역 행)이 뿌리고,
+ * 행을 누르면 그 구역 본문이 한 단 더 깊어진다. 대화 정보 화면은 막대가 없고, 호스트 프로필의 지금 할 일(`mobileFace=strip`)이나
+ * 고른 구역 본문만 그린다 — 동작은 본문 맨 위 줄이다. 보관은 목표 화면의 ⋮ 또는 대화 정보 화면 「정보」 구역에서 한다.
+ * 기동 전 목표도 복원할 수 있고, 영구 삭제는 보관함에서만 한다.
  */
 export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
   const t = getT(ctx.language, true);
@@ -388,10 +446,12 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const objective = useObjective(objectiveId);
   const objectiveRecords = objectiveRecordIndex(useObjectiveSummaries());
   const { mobileBar, visible, api } = ctx;
-  // 막대가 없으면 대화 정보 화면의 「목표」 탭에 심긴 것이다 — 동작은 본문 맨 위 동작 줄로 그린다.
+  // 막대가 없으면 대화 정보 화면에 심긴 것이다 — 동작은 본문 맨 위 동작 줄로 그린다.
   const embedded = !mobileBar;
   const title = objective?.title ?? t("objectives.panel.title");
   const [sheet, setSheet] = useState(false);
+  // 단독 목표 화면의 구역. null이면 프로필(행 목록)이고, 고르면 그 구역 본문이다. 대화 정보 화면은 호스트가 구역을 고른다.
+  const [section, setSection] = useState<DetailTab | null>(null);
   const [routingSheet, setRoutingSheet] = useState(false);
   const [followupSheet, setFollowupSheet] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -437,9 +497,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
     return items;
   }, [act, t]);
-  // 목표 화면의 상태 한 낱말(막대 보조 줄) — 시작 전 목표는 홈 행의 「시작 전」에서 이어지고, 보관된 끝난 목표는 읽기 전용임을 말한다.
+  // 시작 전 목표는 홈 행의 「시작 전」에서 이어지고, 보관된 끝난 목표는 읽기 전용임을 말한다. 그 밖에는 지휘관 자신의 활동 낱말.
   const fresh = !!objective && !objective.done && !objective.awaitingReview && !objective.commander.started && !objectiveRecords.has(objective.id);
-  const stateWord = !objective ? null : fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : null;
   // 시작 전 목표(Objective 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
   const settingsHost = useMobileSettingsHost();
   const tidy = !embedded && !!objective && !objective.hasSession && !objective.done;
@@ -480,21 +539,21 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     ];
     // 누를 수 있는 항목이 하나도 없으면 ⋮ 를 세우지 않는다 — 흐린 「메시지」 하나만 여는 메뉴가 되지 않게.
     const usable = items.some((item) => !item.disabled);
-    // 목표 화면의 뿌리다 — ‹ 는 홈으로 간다.
-    mobileBar.set({ title, ...(stateWord ? { subtitle: stateWord } : {}), depth: 0, ...(usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, archivable, settingsHost, rename, archive]);
+    const menu = usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {};
+    // 프로필은 둥근 ‹ · ⋮ 만 — 이름·상태는 본문 머리가 말한다. 구역은 한 단 더 깊고, ‹ 는 프로필로 돌아온다.
+    if (section === null) mobileBar.set({ title: "", round: true, depth: 0, ...menu });
+    else mobileBar.set({ title: t(`objectives.tabs.${section}`), subtitle: title, round: true, depth: 1, onBack: () => setSection(null), ...menu });
+  }, [mobileBar, visible, title, section, menuKey, t, personActions, tidy, archivable, settingsHost, rename, archive]);
 
-  // 탭 — 데스크톱 상세와 같은 세 낱말이고, 고른 탭도 같은 Theater 보기 상태에 남는다.
-  const theaterId = objective?.theaterId ?? null;
+  // 대화 정보 화면은 호스트가 고른 구역(`detailTab`)만 그린다. `mobileFace=strip` 은 그 화면의 프로필에 오늘·마감과 지금 할 일만 싣는다.
+  // 단독 목표 화면은 프로필(행)에서 구역으로 들어갔다가 ‹ 로 돌아온다.
   const tab = detailTabOf(useOwnerView(objective?.commodoreId ?? null).detailTab);
+  const strip = ctx.params.mobileFace === "strip";
+  const activeTab: DetailTab | null = embedded ? (strip ? null : tab) : section;
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const dueButton = useRef<HTMLButtonElement | null>(null);
-  // 좁은 폭에서 탭 바가 넘치면 고른 탭이 보이게 가로로만 당긴다.
-  const tabsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [tab]);
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
-  // 단독 목표 화면은 호스트 상단 막대 뒤로 흐른다 — 탭 줄이 막대 몫(--m-chrome-top)을 품고 떠 있는 줄이 된다(mobile.css). 정보 화면에 심긴
-  // 상세는 그 화면의 스크롤이 막대 몫을 맡는다.
+  // 단독 목표 화면은 호스트 상단 막대 뒤로 흐른다 — 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다. 정보 화면에 심긴 상세는 그 화면이 맡는다.
   const flow = embedded ? {} : { "data-mobile-chrome": "flow" };
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} {...flow} />;
   const locale = language === "ko" ? "ko" : "en";
@@ -503,19 +562,10 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
-  const pickTab = (next: DetailTab) => patchOwnerView(objective?.commodoreId ?? null, () => ({ detailTab: next }));
-  // 대화 정보 화면은 호스트의 한 줄 탭을 쓴다. Objective 없는 단독 목표 화면만 자기 탭을 가진다.
-  const tabBar = !embedded ? (
-    <div className="objectives-m-tabbar">
-      <div ref={tabsRef} className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
-        {DETAIL_TABS.map((key) => (
-          <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => pickTab(key)}>
-            {t(`objectives.tabs.${key}`)}{key === "goal" && objective.decisionRequest && !objective.done ? <span className="objectives-m-tdot" role="img" aria-label={t("objectives.tabs.decisionDot")} /> : null}
-          </button>
-        ))}
-      </div>
-    </div>
-  ) : null;
+  const pickTab = (next: DetailTab) => {
+    if (embedded) patchOwnerView(objective.commodoreId, () => ({ detailTab: next }));
+    else setSection(next);
+  };
   const schedule = (
     <div className="objectives-m-schedule" role="group" aria-label={t("objectives.schedule.title")}>
       <button type="button" className={objective.today ? "is-on" : undefined} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}>
@@ -530,30 +580,69 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
   const embeddedActions = embedded ? personActions(actions) : [];
   const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
+  // 오늘·마감은 목표 구역 맨 위에만. 프로필에는 두지 않는다 — 첫 화면에 행이 바로 보이게.
+  const showSchedule = activeTab === "goal";
+  const rows = readObjectiveMobileRowValues(objective.id, locale);
+  const heroStatus = fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : memberActivityWord(ownActivityOf(objectiveRecords, objective.id), t);
+  const overlays = (
+    <>
+      {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
+      {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
+      {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
+      {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
+    </>
+  );
+  const attention = (
+    <>
+      {rowActions.length > 0 ? (
+        <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
+          {rowActions.map((item) => (
+            <button type="button" key={item.id} data-press="r3" className="objectives-m-act" disabled={item.disabled} onClick={item.run}>
+              {item.icon}<span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {/* 지금 할 일(결정 요청·넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
+      <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
+      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
+      {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
+    </>
+  );
+  if (!embedded && activeTab === null) {
+    return (
+      <div ref={rootRef} className={rootClass} {...flow}>
+        <div className="objectives-m-profile">
+          <div className="objectives-m-hero">
+            <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, activityOf(objectiveRecords, objective.id))} size={104} />
+            <h2 className="objectives-m-hero-name">{objective.title}</h2>
+            {heroStatus ? <p className="objectives-m-hero-status">{heroStatus}</p> : null}
+            {tidy && settingsHost?.openInput ? <button type="button" data-press="r3" className="objectives-m-edit" aria-label={t("objectives.mobile.editAria", { name: objective.title })} onClick={rename}>{t("objectives.mobile.edit")}</button> : null}
+          </div>
+          <nav aria-label={t("objectives.tabs.aria")}>
+            <div className="objectives-m-rows">
+              <DetailRow tab="goal" icon={<GoalIcon />} label={t("objectives.tabs.goal")} value={rows.goal} onOpen={pickTab} />
+              <DetailRow tab="crew" icon={<CrewIcon />} label={t("objectives.tabs.crew")} value={rows.crew} onOpen={pickTab} />
+              <DetailRow tab="results" icon={<ResultsIcon />} label={t("objectives.tabs.results")} value={rows.results} onOpen={pickTab} />
+            </div>
+          </nav>
+          {rows.foot ? <p className="objectives-m-profile-foot">{rows.foot}</p> : null}
+          <div className="objectives-m-pad objectives-m-profile-actions">{attention}</div>
+        </div>
+        {overlays}
+      </div>
+    );
+  }
   return (
     <div ref={rootRef} className={rootClass} {...flow}>
-      {tabBar}
       <div className="objectives-m-pad">
-        {tab === "goal" ? schedule : null}
-        {rowActions.length > 0 ? (
-          <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
-            {rowActions.map((item) => (
-              <button type="button" key={item.id} data-press="r3" className="objectives-m-act" disabled={item.disabled} onClick={item.run}>
-                {item.icon}<span>{item.label}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다.
-            지금 할 일(결정 요청 답하기·넘김 답하기·개시 카드)은 탭과 무관하게 탭 칸 맨 위에 선다. 결정 내역은 목표 탭 맨 아래다. */}
-        <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
-        <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
-        {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
-        {tab === "goal" ? <>
+        {showSchedule ? schedule : null}
+        {attention}
+        {activeTab === "goal" ? <>
           <BriefCard objective={objective} t={t} />
           <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
           <DecisionHistory objective={objective} t={t} />
-        </> : tab === "crew" ? <>
+        </> : activeTab === "crew" ? <>
           <CrewSection objective={objective} objectiveRecords={objectiveRecords} t={t} crew={crew} />
           <SubagentsSection objective={objective} t={t} crew={crew} />
           {/* 임무 — 구성원 탭 맨 아래. 폰은 그래프 대신 글 목록이다 — 머리는 맡은 사람(구성원이 없으면 지휘관), 끝남은 줄 끝의 체크가 말한다. */}
@@ -573,17 +662,35 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
               })}
             </div>
           </> : null}
-        </> : <>
+        </> : activeTab === "results" ? <>
           <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
           <FollowupResults objective={objective} t={t} language={language} api={api} say={say} />
           <RetroCard objective={objective} t={t} />
-        </>}
+        </> : null}
       </div>
-      {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
-      {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
-      {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
-      {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
+      {overlays}
     </div>
+  );
+}
+
+const GoalIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /></Icon>;
+const CrewIcon = () => <Icon><circle cx="12" cy="8" r="3" /><path d="M5 19v-1.2A4.8 4.8 0 0 1 9.8 13h4.4A4.8 4.8 0 0 1 19 17.8V19" /></Icon>;
+const ResultsIcon = () => <Icon><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></Icon>;
+
+function DetailRow({ tab, icon, label, value, onOpen }: {
+  readonly tab: DetailTab;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly value: ObjectiveMobileRowValue;
+  readonly onOpen: (tab: DetailTab) => void;
+}) {
+  return (
+    <button type="button" data-press="r2" className="objectives-m-prow" data-section={tab} onClick={() => onOpen(tab)}>
+      <span className="objectives-m-prow-ic">{icon}</span>
+      <span className="objectives-m-prow-lb">{label}</span>
+      {value ? <span className={`objectives-m-prow-val${value.tone ? ` is-${value.tone}` : ""}`}>{value.text}</span> : null}
+      <span className="objectives-m-prow-caret"><Chevron open={false} size={18} /></span>
+    </button>
   );
 }
 

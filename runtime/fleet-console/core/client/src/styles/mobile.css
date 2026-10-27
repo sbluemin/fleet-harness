@@ -1510,17 +1510,25 @@ html[data-view-mode="mobile"] .app-toast-action {
 
 .mobile-info-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; overscroll-behavior: contain; background: var(--m-bg); }
 .mobile-info-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 8px 16px 14px; }
+.mobile-info-profile { padding: 0 16px 24px; }
+.mobile-info-hero.is-profile { gap: 0; padding: 8px 0 18px; text-align: center; }
+.mobile-info-name { margin: 14px 0 0; max-width: 100%; color: var(--m-text); font-size: var(--m-fs-heading); font-weight: var(--weight-bold); line-height: 1.3; overflow-wrap: anywhere; }
+.mobile-info-status { margin: 4px 0 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; }
+.mobile-info-edit { margin-top: 14px; }
+.mobile-info-rows { display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; background: var(--m-surface); }
+.mobile-info-prow { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 56px; padding: 0 14px 0 18px; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); text-align: left; background: transparent; border: 0; --pr-r: 0px; }
+.mobile-info-prow + .mobile-info-prow::before { content: ""; position: absolute; top: 0; right: 0; left: 54px; border-top: 1px solid var(--m-hairline); }
+:root[data-mobile-scheme="dark"] .mobile-info-prow + .mobile-info-prow::before { border-top-color: var(--m-hairline-strong); }
+.mobile-info-prow-ic { display: grid; flex: none; place-items: center; width: 22px; color: var(--m-text-nav); }
+.mobile-info-prow-lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-info-prow-val { flex: none; max-width: 52%; overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-info-prow-val.is-awaiting { color: var(--m-awaiting); }
+.mobile-info-prow-caret { flex: none; color: var(--m-text-faint); }
+.mobile-info-foot { margin: 8px 18px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
+.mobile-info-actions { margin-top: 16px; }
 .mobile-info-title { position: relative; display: grid; gap: 2px; width: 100%; padding: 14px 16px; color: var(--m-text); text-align: center; background: var(--m-surface); border: 0; border-radius: 18px; --pr-r: 18px; }
 .mobile-info-title strong { overflow: hidden; font-size: var(--m-fs-heading); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-info-title small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-meta); text-overflow: ellipsis; white-space: nowrap; }
-.mobile-info-tabs-edge { position: relative; }
-.mobile-info-tabs-edge.is-overflowing::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 24px; background: linear-gradient(to right, transparent, var(--m-bg)); pointer-events: none; }
-/* 탭 줄 아래 헤어라인은 두지 않는다 — 고른 탭의 밑줄과 본문의 여백이 줄을 가른다. */
-.mobile-info-tabs { position: relative; display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
-.mobile-info-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 14px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; background: transparent; border: 0; border-bottom: 2px solid transparent; }
-.mobile-info-tab-dot { position: absolute; top: 8px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--m-awaiting); }
-.mobile-info-tab-dot.is-unseen { background: var(--m-idle); }
-.mobile-info-tabs button[aria-selected="true"] { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-inverse); }
 .mobile-info-body { padding-top: 12px; }
 .mobile-info-panel { padding: 0 16px 24px; }
 

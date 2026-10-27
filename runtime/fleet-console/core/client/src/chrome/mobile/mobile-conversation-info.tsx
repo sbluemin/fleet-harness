@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -16,12 +16,15 @@ import { useConsoleState } from "../../hooks/use-store.js";
 import { PaneBody, usePaneContext } from "../pane/pane-body.js";
 import { usePaneIndex, useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { useRegisteredConversationObjectiveTabs } from "../rail/objective-tabs.js";
+import { useObjectiveMobileRowValues } from "../../../../../features/objectives/client/mobile.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { ConversationAvatar, useMobileConversationOf } from "./mobile-conversation-row.js";
+import { pushBackLayer } from "./mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "./mobile-overlay-history.js";
+import { ConversationAvatar, conversationStateWord, useMobileConversationOf } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
 import { mobileObjectiveMenuItems } from "./mobile-objective-menu.js";
-import { conversationTabId, pushMobileSheet, setMobileDestination, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
+import { conversationTabId, getMobileDestination, pushMobileSheet, setMobileDestination, syncMobileDestinationUrl, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
@@ -31,10 +34,12 @@ type InfoTab =
   | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
 
 /**
- * 대화 정보 화면 — Objective 화면 머리 pill이 연다. 큰 아바타 · 제목 카드 · 탭. 탭은 「정보」(모델·강도·하네스·Theater·이름 변경·보관과,
- * 본문이 ⋮에 끼운 항목 — 터미널로 보기 등)와, 데스크톱 오른쪽 패널과 같은 원천의 탭들이다: 대화 탭 등록부(구성원 등)의 탭은 그 본문을 그대로
- * 그리고, `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Objective으로 세운다(막대 창구 없이 — 동작은 본문이 그린다).
- * 구성원 탭에서 구성원을 고르면 그 대화로 돌아간다. 고른 탭은 목적지(`?dest=info:<탭>`)가 들어 새로고침·착지 요청이 그 탭을 세운다.
+ * 대화 정보 화면 — Objective 화면 머리 pill이 연다. 구역이 둘 이상이면 사령관 세부와 같이 큰 아바타 · 이름 · 상태 · 「편집」과
+ * 구역 행(정보·목표·구성원·결과물)이고, 행은 그 본문으로 들어갔다가 ‹ 로 프로필에 돌아온다. 구역이 정보 하나뿐이면 그 본문을 바로 그린다.
+ * 「정보」는 모델·강도·하네스·Theater·이름 변경·보관(본문이 ⋮에 끼운 항목)이고, 대화 탭 등록부(구성원 등)는 그 본문을 그대로 그리며,
+ * `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Objective으로 세운다(막대 창구 없이).
+ * 구성원 구역에서 구성원을 고르면 그 대화로 돌아간다. 고른 구역은 목적지(`?dest=info:<탭>`)가 들어 새로고침·착지 요청이 그 구역을 세운다.
+ * 주의(결정 요청·안 읽은 기록·구성원 활동)는 행의 요약 글이다 — 둥근 점을 두지 않는다.
  */
 export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }: {
   readonly objectiveRecord: ObjectiveRecord;
@@ -53,7 +58,8 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
   const bindings = useRailEntries();
   const destination = useMobileDestination();
   const tabId = destination.kind === "info" ? destination.tab ?? "info" : "info";
-  const setTabId = useCallback((id: string) => setMobileDestination(id === "info" ? { kind: "info" } : { kind: "info", tab: id }), []);
+  const setTabId = useCallback((id: string) => setMobileDestination({ kind: "info", tab: id }), []);
+  const closeSection = useCallback(() => setMobileDestination({ kind: "info" }), []);
   const paneShown = useConversationPaneShown(bindings, objectiveRecord.id);
   const paneTabsKey = useSyncExternalStore(
     (listener) => {
@@ -68,9 +74,6 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
       return [binding.entry.id, value?.selected, value?.tabs.map((item) => [item.id, resolveLocalizedText(item.title, locale), item.replacesMembers, item.dot?.tone, item.dot && resolveLocalizedText(item.dot.label, locale)])];
     })),
   );
-  const tabsRef = useRef<HTMLDivElement>(null);
-  const [tabFade, setTabFade] = useState(false);
-
   const tabs = useMemo<readonly InfoTab[]>(() => {
     const list: InfoTab[] = [{ kind: "info", id: "info", title: t("mobile.info.tabInfo") }];
     // 「구성원」 탭은 데스크톱에서는 1:1 대화에도 「참여자 1」로 서지만, 폰의 정보 화면은 구성원이 있는 묶음에서만 세운다.
@@ -128,24 +131,47 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
       if (tabId !== selected.id) setTabId(selected.id);
     }
   }, [objectiveRecord.id, setTabId, tab, tabId, tabs]);
+  // 구역이 여럿이면 탭 없는 주소는 프로필이다. ‹·하드웨어 뒤로는 닫기 함수가 프로필로 돌리고, 그 함수가 history 항목도 걷는다.
+  // 브라우저 뒤로는 그 항목의 popstate가 같은 닫기를 부른다. 프로필에서 한 번 더 뒤로 가면 대화다.
+  const profile = tabs.length > 1 && destination.kind === "info" && destination.tab === undefined;
+  const inSection = tabs.length > 1 && !profile;
+  const closeSectionRef = useRef(closeSection);
+  closeSectionRef.current = closeSection;
+  useEffect(() => (inSection ? pushBackLayer(() => closeSectionRef.current()) : undefined), [inSection]);
+  // 구역 하나당 history 항목 하나. 브라우저 뒤로의 popstate와 ‹·하드웨어 뒤로의 닫기가 같은 함수로 프로필에 닿는다.
+  const sectionHistory = useRef<number | null>(null);
   useEffect(() => {
-    const strip = tabsRef.current;
-    const selected = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!strip || !selected) return;
-    if (selected.offsetLeft < strip.scrollLeft) strip.scrollLeft = selected.offsetLeft;
-    else if (selected.offsetLeft + selected.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = selected.offsetLeft + selected.offsetWidth - strip.clientWidth;
-  }, [tab.id]);
+    if (inSection && sectionHistory.current === null) {
+      // 지금 항목은 이미 구역 주소다. 그 아래에 프로필 주소를 남기고 구역 항목을 하나 쌓는다 — 뒤로가 가드(대화)에 닿지 않게.
+      const sectionUrl = window.location.href;
+      const profileUrl = new URL(sectionUrl);
+      const dest = profileUrl.searchParams.get("dest");
+      if (dest !== null && dest.startsWith("info:")) profileUrl.searchParams.set("dest", "info");
+      window.history.replaceState(window.history.state, "", profileUrl);
+      const id = pushOverlayHistory(() => closeSectionRef.current());
+      window.history.replaceState(window.history.state, "", sectionUrl);
+      sectionHistory.current = id;
+    }
+    return () => {
+      const held = sectionHistory.current;
+      if (held === null) return;
+      const now = getMobileDestination();
+      // 아직 구역이면 예행(StrictMode)이 효과를 다시 세우는 중이다 — 항목을 걷지 않는다.
+      if (now.kind === "info" && now.tab !== undefined) return;
+      sectionHistory.current = null;
+      if (now.kind === "info") releaseOverlayHistory(held);
+      else runAfterOverlayRelease(held, syncMobileDestinationUrl);
+    };
+  }, [inSection]);
+  // 프로필에 실린 지금 할 일이 결과물로 보내면(넘긴 후보) 그 구역을 연다. 프로필에 들어온 순간의 선택은 기준이라 따라가지 않는다.
+  const profileSelection = useRef<string | null>(null);
   useEffect(() => {
-    const strip = tabsRef.current;
-    if (!strip) return;
-    const update = () => setTabFade(strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 1);
-    const observer = new ResizeObserver(update);
-    observer.observe(strip);
-    for (const child of strip.children) observer.observe(child);
-    strip.addEventListener("scroll", update, { passive: true });
-    update();
-    return () => { observer.disconnect(); strip.removeEventListener("scroll", update); };
-  }, [tabs.length, paneTabsKey]);
+    if (!profile) { profileSelection.current = null; return; }
+    const selected = tabs.find((item) => item.kind === "pane" && item.selected);
+    if (!selected) return;
+    if (profileSelection.current === null) { profileSelection.current = selected.id; return; }
+    if (profileSelection.current !== selected.id) { profileSelection.current = selected.id; setTabId(selected.id); }
+  }, [profile, setTabId, tabs]);
 
   // 구성원 탭에서 구성원(또는 지휘관)을 고르면 그 본문이 대화 화면에 서므로 정보 화면을 닫고 돌아간다 — 선택이 바뀐 것을 본다.
   const selection = state.nestedBodySelection[objectiveRecord.id] ?? null;
@@ -158,9 +184,11 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
 
   useClaimMobileBar({
     variant: "centered",
-    title: "",
+    title: inSection ? tab.title : "",
+    ...(inSection ? { subtitle: objectiveRecord.title } : {}),
     leading: "back",
-    onBack: () => setMobileDestination({ kind: "home" }),
+    ...(tabs.length > 1 ? { round: true } : {}),
+    onBack: inSection ? closeSection : () => setMobileDestination({ kind: "home" }),
     menu: {
       label: t("mobile.bar.objectiveRecordMenu"),
       caption: objectiveRecord.title,
@@ -171,6 +199,8 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
   const harnessLabel = objectiveRecordHarnessLabel(objectiveRecord, t);
   const coordinates = readAgentChatSessionCoordinates(objectiveRecord);
   const hasCoordinates = harnessLabel !== undefined;
+  const rowValues = useObjectiveMobileRowValues(objectiveRecord.id, locale);
+  const statusWord = conversationStateWord(conversation.face, t);
   const panelContext: RailPanelContext = {
     theaterId: objectiveRecord.theaterId,
     pathContext: { kind: "root", relPath: null, label: theater?.label ?? "" },
@@ -181,29 +211,9 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
     theme: state.activeTheme,
   };
 
-  return (
-    <section className="mobile-info-screen">
-      <div className="mobile-info-hero">
-        <ConversationAvatar conversation={conversation} size={110} />
-        <button type="button" data-press="r1" className="mobile-info-title" onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>
-          <strong>{objectiveRecord.title}</strong>
-          <small>{[theater?.label, harnessLabel].filter(Boolean).join(" · ")}</small>
-        </button>
-      </div>
-      {tabs.length > 1 ? (
-        <div className={`mobile-info-tabs-edge${tabFade ? " is-overflowing" : ""}`}>
-          <div ref={tabsRef} className="mobile-info-tabs" role="tablist" aria-label={t("mobile.info.tabsAria")}>
-            {tabs.map((item) => (
-              <button type="button" role="tab" key={item.id} aria-selected={item.id === tab.id} onClick={() => {
-                if (item.kind === "pane") item.select?.();
-                setTabId(item.id);
-              }}>{item.title}{item.kind === "pane" && item.dot ? <span className={`mobile-info-tab-dot is-${item.dot.tone}`} role="img" aria-label={item.dot.label} /> : null}</button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <div className="mobile-info-body">
-        {tab.kind === "info" ? (
+  const infoModel = hasCoordinates ? [coordinates.model ?? t("mobile.info.modelDefault"), coordinates.effort].filter(Boolean).join(" · ") : "";
+  const stripPane = tabs.find((item): item is Extract<InfoTab, { kind: "pane" }> => item.kind === "pane");
+  const infoBody = tab.kind === "info" ? (
           <>
             <div className="mobile-group">
               {hasCoordinates ? (
@@ -248,17 +258,76 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
             </div>
           </>
         ) : tab.kind === "panel" ? (
-          <div className="mobile-info-panel" key={tab.id}>
-            <FeatureErrorBoundary fallback={null}>{tab.render(panelContext)}</FeatureErrorBoundary>
+    <div className="mobile-info-panel" key={tab.id}>
+      <FeatureErrorBoundary fallback={null}>{tab.render(panelContext)}</FeatureErrorBoundary>
+    </div>
+  ) : (
+    <div className="mobile-info-panel" key={tab.id}>
+      <MobileConversationPane paneId={tab.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} />
+    </div>
+  );
+  return (
+    <section className="mobile-info-screen">
+      {profile ? (
+        <div className="mobile-info-profile">
+          <div className="mobile-info-hero is-profile">
+            <ConversationAvatar conversation={conversation} size={104} />
+            <h2 className="mobile-info-name">{objectiveRecord.title}</h2>
+            {statusWord ? <p className="mobile-info-status">{statusWord}</p> : null}
+            <button type="button" data-press="r3" className="mobile-pill-secondary mobile-info-edit" aria-label={t("mobile.info.editAria", { name: objectiveRecord.title })} onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>{t("mobile.info.edit")}</button>
           </div>
-        ) : (
-          <div className="mobile-info-panel" key={tab.id}>
-            <MobileConversationPane paneId={tab.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} />
-          </div>
-        )}
-      </div>
+          <nav className="mobile-info-rows" aria-label={t("mobile.info.tabsAria")}>
+            {tabs.map((item) => {
+              const value = sectionValue(item, infoModel, theater?.label ?? "", rowValues);
+              return (
+                <button type="button" data-press="r2" className="mobile-info-prow" key={item.id} onClick={() => { if (item.kind === "pane") item.select?.(); setTabId(item.id); }}>
+                  <span className="mobile-info-prow-ic" aria-hidden="true"><MobileIcon name={sectionIcon(item)} /></span>
+                  <span className="mobile-info-prow-lb">{item.title}</span>
+                  {value ? <span className={`mobile-info-prow-val${value.tone ? ` is-${value.tone}` : ""}`}>{value.text}</span> : null}
+                  <MobileIcon name="right" size={18} className="mobile-info-prow-caret" />
+                </button>
+              );
+            })}
+          </nav>
+          {rowValues.foot ? <p className="mobile-info-foot">{rowValues.foot}</p> : null}
+          {stripPane ? <div className="mobile-info-actions"><MobileConversationPane paneId={stripPane.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} params={STRIP_PARAMS} /></div> : null}
+        </div>
+      ) : (
+        <>
+          {tabs.length < 2 ? (
+            <div className="mobile-info-hero">
+              <ConversationAvatar conversation={conversation} size={110} />
+              <button type="button" data-press="r1" className="mobile-info-title" onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>
+                <strong>{objectiveRecord.title}</strong>
+                <small>{[theater?.label, harnessLabel].filter(Boolean).join(" · ")}</small>
+              </button>
+            </div>
+          ) : null}
+          <div className="mobile-info-body">{infoBody}</div>
+        </>
+      )}
     </section>
   );
+}
+
+function sectionIcon(item: InfoTab): "info" | "target" | "commanders" | "file" | "grid" {
+  if (item.kind === "info") return "info";
+  if (item.kind === "panel") return "commanders";
+  const viewId = item.id.startsWith(`${item.routeId}:`) ? item.id.slice(item.routeId.length + 1) : "";
+  if (viewId === "goal") return "target";
+  if (viewId === "crew") return "commanders";
+  if (viewId === "results") return "file";
+  return "grid";
+}
+
+function sectionValue(item: InfoTab, model: string, theater: string, rows: ReturnType<typeof useObjectiveMobileRowValues>): { readonly text: string; readonly tone?: "awaiting" | "danger" } | null {
+  if (item.kind === "info") return model ? { text: model } : theater ? { text: theater } : null;
+  if (item.kind !== "pane") return null;
+  const viewId = item.id.startsWith(`${item.routeId}:`) ? item.id.slice(item.routeId.length + 1) : "";
+  if (viewId === "goal") return rows.goal;
+  if (viewId === "crew") return rows.crew;
+  if (viewId === "results") return rows.results;
+  return null;
 }
 
 /** 대화 탭을 선언한 엔트리 가운데 이 대화에 탭을 세우는 것(`conversationPane.shown`) — 엔트리마다 구독해 판정이 바뀌면 다시 그린다. */
@@ -282,24 +351,25 @@ function shownPaneKey(bindings: readonly RailEntryBinding[], objectiveId: string
 }
 
 const NO_OP = () => undefined;
+const STRIP_PARAMS = { mobileFace: "strip" } as const;
 
 /**
  * 대화 탭의 본문 — 엔트리가 `mobile.conversationPane`으로 말한 페인을 그 대화 주인 Objective(`params.objectiveId`)으로 세운다. 막대 창구(`mobileBar`)는
  * 싣지 않는다 — 이 화면의 막대는 정보 화면의 것이다. 닫을 자리가 없으므로 닫기·주소 바꾸기는 아무 일도 하지 않는다.
  */
-function MobileConversationPane({ paneId, objectiveId, theaterId, panelContext }: { readonly paneId: string; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
+function MobileConversationPane({ paneId, objectiveId, theaterId, panelContext, params }: { readonly paneId: string; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext; readonly params?: Readonly<Record<string, string>> }) {
   const descriptor = usePaneIndex().get(paneId);
   if (!descriptor) return null;
   return (
     <FeatureErrorBoundary fallback={null}>
-      <MobileConversationPaneBody key={`${paneId}:${objectiveId}`} descriptor={descriptor} objectiveId={objectiveId} theaterId={theaterId} panelContext={panelContext} />
+      <MobileConversationPaneBody key={`${paneId}:${objectiveId}:${params?.mobileFace ?? ""}`} descriptor={descriptor} objectiveId={objectiveId} theaterId={theaterId} panelContext={panelContext} params={params} />
     </FeatureErrorBoundary>
   );
 }
 
-function MobileConversationPaneBody({ descriptor, objectiveId, theaterId, panelContext }: { readonly descriptor: PaneDescriptor; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext }) {
+function MobileConversationPaneBody({ descriptor, objectiveId, theaterId, panelContext, params: extra }: { readonly descriptor: PaneDescriptor; readonly objectiveId: string; readonly theaterId: string; readonly panelContext: RailPanelContext; readonly params?: Readonly<Record<string, string>> }) {
   const capabilities = useHostCapabilities();
-  const params = useMemo(() => ({ objectiveId }), [objectiveId]);
+  const params = useMemo(() => ({ objectiveId, ...extra }), [extra, objectiveId]);
   const ctx = usePaneContext({
     descriptor,
     mount: "rail",
