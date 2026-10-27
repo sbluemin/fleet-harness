@@ -750,11 +750,13 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
    색은 채널 규칙을 따른다: 상태(받는 중·실패·설치함·꺼짐)만 signal 잉크, 추가·선택·포커스는 brass, 마켓플레이스·플러그인에 정체성 색을 입히지 않는다. */
 .commodore-plugins-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .commodore-plugins-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.commodore-plugins-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.commodore-plugins-list li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .commodore-plugins-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .commodore-plugins-at { margin-left: 6px; color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); }
 .commodore-plugins-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .objectives-cm-gr-tx .commodore-plugins-meta { margin-top: 4px; }
+.commodore-plugins-list .commodore-plugins-meta { grid-column: 2 / -1; }
+.commodore-plugins-phone-row { align-items: flex-start; }
 .commodore-plugins-comp { padding: 0 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 1.6; white-space: nowrap; }
 .commodore-plugins-state { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-plugins-state.is-syncing { color: var(--aurora-ink); }
@@ -769,12 +771,37 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 .commodore-plugins-text.is-danger { color: var(--coral-ink); }
 .commodore-plugins-empty { margin: 0; padding: 20px 4px; color: var(--text-tertiary); font-size: var(--t-xs); text-align: center; }
 
+/* 머리 타일 — 아이콘이 없으면(대부분) 무채색 이니셜, 있으면 같은 자리·같은 모서리의 그림. 해시 색으로 구별하지 않는다.
+   흰 바탕 아이콘이 밝은 테마에서 번지지 않게 그림 위에 안쪽 1px 고리를 겹친다. */
+.commodore-tile { position: relative; display: inline-grid; place-items: center; flex: none; overflow: hidden; background: color-mix(in oklch, var(--text-primary) 7%, transparent); color: var(--text-secondary); font-family: var(--font-ui); font-weight: var(--weight-medium); letter-spacing: 0.02em; line-height: 1; user-select: none; }
+.commodore-tile.is-row { width: 20px; height: 20px; border-radius: 5px; font-size: var(--t-2xs); }
+.commodore-tile.is-card { width: 32px; height: 32px; border-radius: 8px; font-size: var(--t-sm); }
+.commodore-tile.is-market { width: 36px; height: 36px; border-radius: 9px; font-size: var(--t-md); }
+.commodore-tile.is-phone { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
+.commodore-tile.has-icon { background: none; }
+.commodore-tile.has-icon::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--surface-rim); pointer-events: none; }
+.commodore-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+@media (prefers-reduced-motion: no-preference) { .commodore-tile img { animation: commodore-tile-in 120ms ease-out; } }
+@keyframes commodore-tile-in { from { opacity: 0; } }
+.fc-settings-row.is-mobile .fc-settings-row__icon:has(> .commodore-tile) { width: 40px; height: 40px; }
+
 .commodore-marketplaces { display: grid; gap: var(--space-4); }
 .commodore-marketplaces-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%; }
 .commodore-marketplaces-by { margin-left: 8px; padding: 0 6px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-regular); }
 .commodore-marketplaces-meta { display: grid; gap: 2px; min-width: 0; }
 .commodore-marketplaces-actions { display: inline-flex; flex: none; align-items: center; gap: 12px; }
 .commodore-marketplaces-confirm { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 4px; color: var(--text-secondary); }
+/* 마켓플레이스 카드 — 설정 페인의 묶음 면은 걷혀 있으므로 테두리는 카드 한 층만 진다. 좁으면 한 열로 접힌다. */
+.commodore-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 248px), 1fr)); gap: 10px; }
+.commodore-market-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px 14px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.commodore-market-card-head { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.commodore-market-card-title { display: grid; gap: 4px; min-width: 0; }
+.commodore-market-card-name { margin: 0; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); line-height: 1.35; overflow-wrap: anywhere; }
+.commodore-market-card-source { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0; }
+.commodore-market-card-desc { margin: 0; overflow: hidden; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-market-card.is-off :is(.commodore-market-card-head, .commodore-market-card-desc) { opacity: 0.55; }
+.commodore-market-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.commodore-market-card-status { flex: 1 1 auto; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
 .commodore-marketplaces-add { display: grid; gap: 6px; padding-top: 10px; }
 .commodore-marketplaces-add-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .commodore-marketplaces-add-hint { margin: 0 0 0 26px; color: var(--text-tertiary); font-size: var(--t-xs); }
@@ -803,22 +830,34 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 .commodore-palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 8px; }
 .commodore-palette-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 4px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-group-head > span:first-child { color: var(--text-secondary); font-weight: var(--weight-medium); }
-.commodore-palette-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 12px; padding: 9px 0; border-top: 1px solid var(--hairline); }
-.commodore-palette-group-head + .commodore-palette-row { border-top: 0; }
-.commodore-palette-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-sm); }
-.commodore-palette-action { display: inline-flex; justify-self: end; }
+/* 팔레트 카드 — 수백 개를 훑어 고르므로 두 열, 설명은 두 줄에서 자른다. 신뢰 확인이 열린 카드는 두 칸을 차지하며 펼친다. */
+.commodore-palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.commodore-palette-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.commodore-palette-card.is-open { grid-column: 1 / -1; }
+.commodore-palette-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.commodore-palette-card-title { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
+.commodore-palette-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); line-height: 1.4; }
+.commodore-palette-byline { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.commodore-palette-action { display: inline-flex; flex: none; }
 .commodore-palette-install { padding: 3px 12px; font-size: var(--t-xs); }
-.commodore-palette-desc { grid-column: 1 / -1; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; }
-.commodore-palette-wide { grid-column: 1 / -1; }
+.commodore-palette-desc { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.commodore-palette-desc.is-clamped { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.commodore-palette-card > .commodore-plugins-meta { margin-top: auto; }
 .commodore-palette-more { margin: 0; padding: 4px 0 6px; color: var(--text-tertiary); font-size: var(--t-xs); }
-.commodore-palette-trust { grid-column: 1 / -1; display: grid; gap: 8px; margin-top: 6px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 7%, transparent); color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-palette-trust { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 7%, transparent); color: var(--text-secondary); font-size: var(--t-xs); }
 .commodore-palette-trust p { margin: 0; }
 .commodore-palette-trust strong { color: var(--text-primary); font-weight: var(--weight-medium); }
 .commodore-palette-trust ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .commodore-palette-trust li { display: grid; gap: 1px; }
 .commodore-palette-trust code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
-.commodore-palette-trust-source { color: var(--text-tertiary); }
+.commodore-palette-trust-source { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-tertiary); }
+.commodore-palette-trust-source a { color: var(--brass-ink); }
 .commodore-palette-trust-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .commodore-palette-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--hairline); color: var(--text-tertiary); font-size: var(--t-2xs); }
 :root[data-view-mode="mobile"] .commodore-palette-scrim { place-items: end stretch; padding: 0; background: var(--m-scrim); }
 :root[data-view-mode="mobile"] .commodore-palette { width: auto; max-height: calc(100% - 56px); padding-bottom: max(12px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
+/* 폰 시트 — 한 열, 카드 면 대신 묶음 줄(머리줄 선)로 접는다. */
+:root[data-view-mode="mobile"] .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+:root[data-view-mode="mobile"] .commodore-palette-card { padding: 12px 4px; border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
+:root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
+@media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }

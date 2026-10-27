@@ -20,7 +20,7 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError } from "./errors.js";
-import { commodorePluginSetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginInspectSchema } from "../shared/contracts/plugins.js";
+import { commodorePluginSetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, patrolIntervalMs, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
@@ -131,6 +131,27 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     res.end(found.bytes);
     return true;
   };
+  /**
+   * 플러그인 아이콘 — 제3자 저장소의 파일이다. 화면은 `<img>` 로만 읽고, 주소를 문서로 직접 열어도 svg 안의 스크립트·외부 읽기가
+   * 돌지 않게 CSP sandbox 를 함께 보낸다.
+   */
+  const pluginIcon: RouteHandler = ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const parsed = pluginIconQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const found = hooks.plugins?.icon(parsed.data.pluginId) ?? null;
+    if (!found) { ctx.host.http.writeJson(res, 404, { error: "icon_not_found" }); return true; }
+    res.writeHead(200, {
+      "Content-Type": found.mime,
+      "Content-Length": found.bytes.byteLength,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    });
+    res.end(found.bytes);
+    return true;
+  };
 
   return [
     { name: "commodore/delete-preview", method: "POST", summary: "Preview the impact of permanently deleting a Commodore; Theaters are preserved.", handler: json(commodoreRef.strict(), ({ commodoreId, language }) => {
@@ -180,6 +201,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return view(commodoreId, store.setPlugins(commodoreId, selected().filter((id) => id !== pluginId)));
     }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
+    { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDirective(commodoreId, text)); }) },
     { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Theater's Commodore.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, text }) => { read(commodoreId); const { state, item } = store.addIntel(commodoreId, { text, source: "person" }); return { ...view(commodoreId, state), item }; }) },

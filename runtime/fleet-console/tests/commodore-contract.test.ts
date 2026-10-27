@@ -18,6 +18,7 @@ import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as A
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
+import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
@@ -451,6 +452,42 @@ describe("commodore theater state", () => {
       expect((await h.route("commodore/attachment", recent.query)).status).toBe(404);
       expect(fs.existsSync(images)).toBe(false);
     } finally { attachments.dispose(); files.cleanup(); }
+  });
+  it("serves a plugin icon only as a verified image inside that plugin's folder", async () => {
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    const pluginDir = path.join(market, "plugins", "tool");
+    for (const dir of [path.join(pluginDir, ".claude-plugin"), path.join(market, ".claude-plugin"), path.join(root, "claude", "plugins")]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", owner: { name: "Team" }, plugins: [{ name: "tool", source: "./plugins/tool" }] }));
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const declare = (icon: string) => fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", icon }));
+    const hooks = { plugins: createCommodorePlugins({ root, executable: async () => "false" }) };
+    const icon = (pluginId = "tool@team") => h.route("commodore/plugins/icon", { pluginId }, hooks);
+
+    fs.writeFileSync(path.join(pluginDir, "icon.png"), png);
+    declare("./icon.png");
+    expect(await icon()).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png", "Content-Security-Policy": expect.stringContaining("sandbox") } } });
+    h.setAuthorized(false);
+    expect((await icon()).status).toBe(401);
+    h.setAuthorized(true);
+    expect((await icon("../tool@team")).status).toBe(400);
+    // 플러그인 폴더 밖 — 어휘 탈출과, 폴더 안 이름이지만 밖을 가리키는 링크 모두 그림이 없는 것으로 친다.
+    fs.writeFileSync(path.join(market, "secret.png"), png);
+    declare("../../secret.png");
+    expect((await icon()).status).toBe(404);
+    fs.symlinkSync(path.join(market, "secret.png"), path.join(pluginDir, "link.png"));
+    declare("./link.png");
+    expect((await icon()).status).toBe(404);
+    // 그림 확장자를 단 그림 아닌 파일, 그림이 아닌 확장자도 내주지 않는다.
+    fs.writeFileSync(path.join(pluginDir, "fake.png"), "<script>alert(1)</script>");
+    declare("./fake.png");
+    expect((await icon()).status).toBe(404);
+    fs.writeFileSync(path.join(pluginDir, "notes.html"), "<svg></svg>");
+    declare("./notes.html");
+    expect((await icon()).status).toBe(404);
   });
 });
 
