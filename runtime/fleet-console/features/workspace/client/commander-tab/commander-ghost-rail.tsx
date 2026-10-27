@@ -5,7 +5,7 @@ import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
-import { commanderRowMenuIsOpen, openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
+import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import { useLongPress } from "../long-press.js";
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
@@ -13,7 +13,7 @@ import { openCommanderConversation } from "./commander-navigation.js";
 import { useEffectiveCommanderPlacement } from "./commander-placement.js";
 import "./commander-ghost-rail.css";
 
-/** 대화의 거터 위에만 선다. 사령관과 지휘관이 바뀌어도 이 탐색기의 소유 사령관은 같다. */
+/** 접히면 거터의 얼굴 열, 펼치면 채팅을 밀어내는 목록 칸. 소유 사령관은 대화가 바뀌어도 같다. */
 export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commodoreId: string; readonly selectedId: string | null }) {
   const t = useT();
   const locale = useConsoleLocale();
@@ -30,38 +30,20 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const frame = useRef(0);
   const target = useRef(0);
   const snap = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const leave = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keyboardExpanded = useRef(false);
-  const pinned = useRef(false);
   const reduced = useRef(false);
   const id = useId();
   const itemId = (index: number) => `${id}-${index}`;
 
-  const clearLeave = () => { if (leave.current !== null) clearTimeout(leave.current); leave.current = null; };
   const resetFaces = () => nav.current?.querySelectorAll<HTMLElement>(".commander-ghost-face").forEach((face) => face.style.removeProperty("--ghost-scale"));
-  // pin: 확장 버튼·키보드로 연 목록. 올려두기만으로는 열리지 않는다.
-  const reveal = (pin: boolean, focusList = false) => {
-    pinned.current = pin;
-    keyboardExpanded.current = focusList;
-    clearLeave(); resetFaces(); setExpanded(true);
+  // 펼친 칸은 사이드바처럼 남는다. 바깥 클릭·포인터 이탈로는 닫지 않고, 버튼·Escape·키보드만 닫는다.
+  const reveal = (focusList = false) => {
+    resetFaces(); setExpanded(true);
     if (focusList) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
-    pinned.current = false;
-    keyboardExpanded.current = false;
-    clearLeave(); setExpanded(false);
+    setExpanded(false);
     if (restore) nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${Math.min(cursor, rows.length)}"]`)?.focus({ preventScroll: true });
   };
-  const scheduleCollapse = () => {
-    if (pinned.current) return;
-    clearLeave(); resetFaces();
-    leave.current = setTimeout(() => {
-      if (commanderRowMenuIsOpen()) return;
-      if (keyboardExpanded.current && panel.current?.contains(document.activeElement)) return;
-      collapse(false);
-    }, 220);
-  };
-  useEffect(() => () => { clearLeave(); }, []);
 
   // 휠·선택·키보드는 하나의 곡선을 쓴다. 줄 크기와 스크롤 상태를 레이아웃 애니메이션으로 바꾸지 않는다.
   const scrollTo = useCallback((value: number) => {
@@ -130,16 +112,6 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     observer?.observe(element); fades();
     return () => { element.removeEventListener("wheel", wheel); element.removeEventListener("scroll", fades); observer?.disconnect(); };
   }, [rows.length, scrollTo]);
-  useEffect(() => {
-    if (!expanded) return;
-    const outside = (event: PointerEvent) => {
-      if (pinned.current) return;
-      if (event.target instanceof Element && event.target.closest(".group-context-menu-overlay")) return;
-      if (event.target instanceof Node && !nav.current?.contains(event.target)) collapse(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [expanded]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -173,20 +145,12 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
       setCursor(next); center(next);
       nav.current?.querySelector<HTMLElement>(`[data-ghost-index="${next}"]`)?.focus({ preventScroll: true });
     } else if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); select(cursor); }
-    else if (event.key === (side === "left" ? "ArrowRight" : "ArrowLeft") || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true, true); }
+    else if (event.key === (side === "left" ? "ArrowRight" : "ArrowLeft") || event.key === " ") { event.preventDefault(); event.stopPropagation(); reveal(true); }
   };
+  const glyph = side === "left" ? (expanded ? "‹" : "›") : (expanded ? "›" : "‹");
   return <nav ref={nav} className="commander-ghost" data-keep-objective-active="" aria-label={t("commanderTab.aria")}
-    data-side={side} data-expanded={expanded || undefined} data-pinned={(expanded && pinned.current) || undefined} onKeyDown={onKeyDown}
-    onKeyDownCapture={() => { if (expanded) keyboardExpanded.current = true; }}
-    onPointerEnter={clearLeave}
-    onFocus={clearLeave}
-    onBlur={(event) => {
-      const next = event.relatedTarget;
-      if (next instanceof Element && next.closest(".group-context-menu-overlay")) return;
-      if (!event.currentTarget.contains(next) && !event.currentTarget.matches(":hover")) scheduleCollapse();
-    }}
+    data-side={side} data-expanded={expanded || undefined} onKeyDown={onKeyDown}
     onPointerMove={(event) => {
-      clearLeave();
       if (expanded || event.pointerType === "touch") return;
       event.currentTarget.querySelectorAll<HTMLElement>("[data-ghost-index]").forEach((button) => {
         const rect = button.getBoundingClientRect();
@@ -197,9 +161,8 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
         button.querySelector<HTMLElement>(".commander-ghost-face")?.style.setProperty("--ghost-scale", String(scale));
       });
     }}
-    onPointerLeave={scheduleCollapse}
   >
-    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t(expanded ? "commanderRail.collapse" : "commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(true, event.detail === 0)}>{side === "left" ? "›" : "‹"}</button>
+    <button type="button" tabIndex={-1} className="commander-ghost-open" aria-label={t(expanded ? "commanderRail.collapse" : "commanderRail.expand")} aria-expanded={expanded} aria-controls={`${id}-list`} onClick={(event) => expanded ? collapse() : reveal(event.detail === 0)}>{glyph}</button>
     <button id={itemId(0)} data-ghost-index={0} data-ghost-owner="" type="button" tabIndex={Math.min(cursor, rows.length) === 0 ? 0 : -1} className="commander-ghost-item" aria-label={owner.name} aria-current={selectedId === null ? "true" : undefined} data-cursor={cursor === 0 || undefined} onClick={() => select(0)}>
       <span className="commander-ghost-face"><CommodoreAvatar theaterId={commodoreId} state={owner.state} size={26} label="" decorative /></span>
     </button>
