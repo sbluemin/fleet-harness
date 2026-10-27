@@ -787,6 +787,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-tile.is-card { width: 32px; height: 32px; border-radius: 8px; font-size: var(--t-sm); }
 .commodore-tile.is-market { width: 36px; height: 36px; border-radius: 9px; font-size: var(--t-md); }
 .commodore-tile.is-phone { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
+.commodore-tile.is-detail { width: 44px; height: 44px; border-radius: 12px; font-size: var(--t-md); }
 .commodore-tile.has-icon { background: none; }
 .commodore-tile.has-icon::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--surface-rim); pointer-events: none; }
 .commodore-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -844,17 +845,24 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
    신뢰 확인이 열린 카드는 열 수와 상관없이 한 줄 전체(1 / -1)를 차지해 경고가 한 칸에 끼지 않는다. */
 .commodore-palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (min-width: 900px) { .commodore-palette-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.commodore-palette-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.commodore-palette-card { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
 .commodore-palette-card.is-open { grid-column: 1 / -1; }
+.commodore-palette-open { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; padding: 12px 96px 12px 12px; border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.commodore-palette-open:hover { background: color-mix(in oklch, var(--text-primary) 4%, transparent); }
+.commodore-palette-open:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commodore-palette-card.is-open .commodore-palette-open { padding-right: 12px; }
 .commodore-palette-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .commodore-palette-card-title { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
 .commodore-palette-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); line-height: 1.4; }
 .commodore-palette-byline { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
-.commodore-palette-action { display: inline-flex; flex: none; }
+.commodore-palette-action { position: absolute; top: 12px; right: 12px; z-index: 1; display: inline-flex; flex: none; pointer-events: none; }
+.commodore-palette-install { pointer-events: auto; }
 .commodore-palette-install { padding: 3px 12px; font-size: var(--t-xs); }
-.commodore-palette-desc { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.commodore-palette-desc { width: 100%; margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .commodore-palette-desc.is-clamped { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.commodore-palette-card > .commodore-plugins-meta { margin-top: auto; }
+.commodore-palette-open > .commodore-plugins-meta { margin-top: auto; }
+.commodore-palette-card > .commodore-plugins-state,
+.commodore-palette-card > .commodore-palette-trust { margin: 0 12px 12px; }
 .commodore-palette-more { margin: 0; padding: 4px 0 6px; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-palette-trust { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 7%, transparent); color: var(--text-secondary); font-size: var(--t-xs); }
 .commodore-palette-trust p { margin: 0; }
@@ -870,9 +878,58 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 :root[data-view-mode="mobile"] .commodore-palette { width: auto; max-height: calc(100% - 56px); padding-bottom: max(12px, env(safe-area-inset-bottom)); border: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--m-surface); box-shadow: none; }
 /* 폰 시트 — 한 열, 카드 면 대신 묶음 줄(머리줄 선)로 접는다. */
 :root[data-view-mode="mobile"] .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
-:root[data-view-mode="mobile"] .commodore-palette-card { padding: 12px 4px; border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
+:root[data-view-mode="mobile"] .commodore-palette-card { border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
+:root[data-view-mode="mobile"] .commodore-palette-open { padding: 12px 96px 12px 4px; }
+:root[data-view-mode="mobile"] .commodore-palette-card.is-open .commodore-palette-open { padding-right: 4px; }
 :root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
 @media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }
+.commodore-plugin-detail { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.commodore-plugin-detail-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 0; }
+.commodore-plugin-detail-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 2px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
+.commodore-plugin-detail-back svg { width: 10px; height: 10px; }
+.commodore-plugin-detail-back:hover { color: var(--brass-ink); }
+.commodore-plugin-detail-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; border-radius: var(--radius-xs); }
+.commodore-plugin-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 16px 16px; }
+.commodore-plugin-detail-hero { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.commodore-plugin-detail-heading { display: grid; flex: 1 1 auto; gap: 2px; min-width: 0; }
+.commodore-plugin-detail-name { margin: 0; color: var(--text-primary); font-size: var(--t-lg); font-weight: var(--weight-medium); line-height: 1.35; overflow-wrap: anywhere; }
+.commodore-plugin-detail-meta { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.commodore-plugin-detail-action { display: inline-flex; flex: none; align-items: center; max-width: 100%; }
+.commodore-plugin-detail-desc { margin: 12px 0 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.commodore-plugin-detail-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.commodore-plugin-detail-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
+.commodore-plugin-detail-links a { color: var(--brass-ink); font-size: var(--t-sm); }
+.commodore-plugin-detail-keywords { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.commodore-plugin-detail-kicker { color: var(--text-tertiary); font-size: var(--t-2xs); }
+.commodore-plugin-detail-status { margin: 12px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-plugin-detail-status.is-failed { color: var(--coral-ink); }
+.commodore-plugin-detail-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-plugin-detail-included,
+.commodore-plugin-detail-runs,
+.commodore-plugin-detail-readme { display: grid; gap: 8px; margin-top: 18px; min-width: 0; }
+.commodore-plugin-detail-included h3,
+.commodore-plugin-detail-runs h3,
+.commodore-plugin-detail-readme h3 { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+.commodore-plugin-detail-group { display: grid; gap: 4px; min-width: 0; }
+.commodore-plugin-detail-group h4 { margin: 0; color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-regular); }
+.commodore-plugin-detail-runs ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.commodore-plugin-detail-runs li { display: grid; gap: 1px; min-width: 0; color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-plugin-detail-runs code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--t-2xs); overflow-wrap: anywhere; }
+.commodore-plugin-detail .markdown-body { max-inline-size: none; margin: 0; color: var(--text-primary); font-size: var(--t-sm); }
+.commodore-plugin-detail .markdown-body pre,
+.commodore-plugin-detail .markdown-body pre code,
+.commodore-plugin-detail .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
+.commodore-plugin-detail .markdown-body img { max-width: 100%; height: auto; }
+.commodore-plugin-detail .markdown-body a { color: var(--brass-ink); }
+.commodore-plugin-detail .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
+@media (max-width: 520px) {
+  .commodore-plugin-detail-hero { flex-wrap: wrap; }
+  .commodore-plugin-detail-action { flex-basis: 100%; }
+}
+:root[data-view-mode="mobile"] .commodore-plugin-detail-hero { flex-wrap: wrap; }
+:root[data-view-mode="mobile"] .commodore-plugin-detail-action { flex-basis: 100%; }
+:root[data-view-mode="mobile"] .commodore-plugin-detail-bar,
+:root[data-view-mode="mobile"] .commodore-plugin-detail-scroll { padding-left: 16px; padding-right: 16px; }
 .commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
 /* 폰 마켓플레이스 행 — 행 전체를 덮는 열기 단추 위에 토글만 올린다(모바일 설정 행의 <label> 대신). 꺼진 행은 옅어짐으로 말한다. */
 .commodore-market-row { position: relative; }
