@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { SettingsSegments } from "../../../settings/client/preferences-context.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ArchiveRetentionDays } from "../../../../core/client/src/integration/types.js";
@@ -16,11 +16,12 @@ const daysOf = (choice: Choice): ArchiveRetentionDays => choice === "off" ? null
  * 받은 뒤에만 바뀐 것으로 말한다 — 스토어는 저장 중 값을 낙관적으로 얹으므로 저장 중에는 값 대신
  * 「저장 중」을 보인다. 실제 삭제는 서버의 주기 확인이 맡고, 여기서는 아무것도 지우지 않는다.
  */
-export function ArchiveRetention({ open, onOpenChange, archivedAts }: {
+export function ArchiveRetention({ open, onOpenChange, archivedAts, children }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  /** 자동 정리 대상(모든 Theater의 보관 루트 중 삭제 보류가 아닌 것)의 보관 시각. */
+  /** 자동 정리 대상(모든 사령관의 보관 루트 중 삭제 보류가 아닌 것)의 보관 시각. */
   readonly archivedAts: readonly number[];
+  readonly children?: ReactNode;
 }) {
   const t = useT();
   const settings = useGlobalSettingsStore();
@@ -76,10 +77,11 @@ export function ArchiveRetention({ open, onOpenChange, archivedAts }: {
 
   return <section className={`archive-retention${open ? " is-open" : ""}`} aria-labelledby={titleId}>
     <div className="archive-retention-row">
-      <span id={titleId} className="archive-retention-label">{t("archive.retention.label")}</span>
+      <span id={titleId} className="archive-retention-label" title={t("archive.retention.helpScope")}>{t("archive.retention.label")} · {t("archive.retention.scopeAll")}</span>
       <span className="archive-retention-summary" aria-live="polite">{unavailable ? t("archive.retention.unavailable") : summary}</span>
       {unavailable ? null : <button ref={toggleRef} type="button" className="archive-retention-toggle" aria-expanded={open} aria-controls={panelId}
         aria-disabled={saving || undefined} onClick={() => { if (!saving) { setResult(null); onOpenChange(!open); } }}>{t("archive.retention.change")}</button>}
+      {children}
     </div>
     {result ? <p className={`archive-retention-result${result === "failed" ? " is-failed" : ""}`} role={result === "failed" ? "alert" : "status"}>
       {t(result === "failed" ? "archive.retention.failed" : "archive.retention.saved")}

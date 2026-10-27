@@ -2617,9 +2617,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function publishArchiveChanged(): void {
-    const totalsByTheater: Record<string, number> = {};
-    for (const entry of archiveStorage.entries()) totalsByTheater[entry.objectiveRecord.theaterId] = (totalsByTheater[entry.objectiveRecord.theaterId] ?? 0) + 1;
-    publishPluginEvent("objective:archive-changed", { revision: objectiveRecordArchive.revision(), total: archiveStorage.entries().length, totalsByTheater });
+    publishPluginEvent("objective:archive-changed", { revision: objectiveRecordArchive.revision(), total: archiveStorage.entries().length });
     publishPluginEvent("objective:cluster-changed", { removedIds: [...pendingClusterRemoved], objectiveRecords: objectiveRecords.list().map((node) => sanitizeArchiveObjective(node)) });
     pendingClusterRemoved.clear();
     // 보관·복원은 live 목록을 통째로 바꾼다 — 그 Objective 에 걸린 요청·허가의 필터가 여기서 다시 맞춰진다.

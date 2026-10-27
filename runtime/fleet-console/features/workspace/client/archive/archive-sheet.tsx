@@ -1,4 +1,3 @@
-import { useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -15,6 +14,23 @@ import { getState, hydrateObjectiveRecords } from "../../../../core/client/src/i
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useArchiveSections } from "./archive-entry.js";
 import { ArchiveRetention } from "./archive-retention.js";
+import { commodoreFaceKey } from "../../shared/avatars.js";
+import { useMongleLook } from "../avatar-events.js";
+import { MongleAvatar } from "../components/mongle-avatar.js";
+
+/** Console 조합 계층이 이름·순서·소유 Theater를 전달한다. 보관 항목의 소유자는 commodoreId다. */
+export interface ArchiveSheetDeps {
+  readonly commodores: readonly {
+    readonly commodoreId: string;
+    readonly label: string;
+    readonly theaters: readonly { readonly theaterId: string; readonly label: string }[];
+  }[];
+}
+
+function ArchiveCommodoreAvatar({ id, label }: { readonly id: string; readonly label: string }) {
+  const look = useMongleLook(commodoreFaceKey(null, id));
+  return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state="idle" size={20} label={label} decorative />;
+}
 
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const LOCALE_TAG: Readonly<Record<ConsoleLocale, string>> = { en: "en-US", ko: "ko-KR" };
@@ -71,22 +87,21 @@ function Highlight({ text, query }: { readonly text: string; readonly query: str
   return <>{parts}</>;
 }
 
-export function ArchiveSheet() {
-  return useObjectiveArchive().sheetOpen ? <ArchiveSheetDialog /> : null;
+export function ArchiveSheet({ deps }: { readonly deps: ArchiveSheetDeps }) {
+  return useObjectiveArchive().sheetOpen ? <ArchiveSheetDialog deps={deps} /> : null;
 }
 
 /** 무장·고르기는 시트 전체가 공유하며, 복원·삭제 보류는 줄의 자리를 유지한다. */
-function ArchiveSheetDialog() {
+function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
   const t = useT();
   const locale = useConsoleLocale();
   const state = useConsoleState();
-  const viewedTheaterId = useViewedTheaterId();
   const archive = useObjectiveArchive();
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
-  const [allTheaters, setAllTheaters] = useState(true);
+  const [commodoreId, setCommodoreId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const anchorRef = useRef<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -103,34 +118,47 @@ function ArchiveSheetDialog() {
   const focusRequest = useRef<{ id: string; index: number; kind: "next" | "restore" | "undo" } | null>(null);
   const lastFocused = useRef<{ id: string; index: number } | null>(null);
 
-  const theaterIds = state.theaters.map((theater) => theater.id);
-  const scopedIds = allTheaters ? theaterIds : viewedTheaterId ? [viewedTheaterId] : [];
-  const allSections = useArchiveSections("", theaterIds);
-  const currentSections = useArchiveSections("", viewedTheaterId ? [viewedTheaterId] : []);
-  const sections = useArchiveSections(query, scopedIds).filter((entry) => entry.count > 0);
-  const otherIds = theaterIds.filter((id) => id !== viewedTheaterId);
-  const otherSections = useArchiveSections(query, otherIds);
-  const currentCount = (viewedTheaterId ? archive.totalsByTheater[viewedTheaterId] ?? 0 : 0) + currentSections.reduce((sum, entry) => sum + entry.count, 0);
-  const allCount = archive.total + allSections.reduce((sum, entry) => sum + entry.count, 0);
-  const total = allTheaters ? allCount : currentCount;
-  const activeLabel = state.theaters.find((theater) => theater.id === viewedTheaterId)?.label ?? t("archive.currentTheater");
+  // 제공자 계약은 Theater만 안다. 사령관 소유권으로 추정하지 않고 별도의 「기타 보관」에 둔다.
+  const theaterIds = [...new Set([...state.theaters.map((theater) => theater.id), ...deps.commodores.flatMap((owner) => owner.theaters.map((theater) => theater.theaterId))])];
+  const sections = useArchiveSections(query, theaterIds).filter((entry) => entry.count > 0);
   const restoredIds = new Set(restored.map((entry) => entry.objectiveRecord.id));
   const entries = [...(archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.objectiveRecord.id)), ...restored];
   const allClusters = clustersOf(entries);
+  const owners = [...deps.commodores];
+  // 목록과 보관 스냅숏의 갱신 순서가 달라도 항목을 숨기거나 Theater에 소유권을 넘기지 않는다.
+  for (const { root } of allClusters) {
+    const id = root.objectiveRecord.commodoreId;
+    if (!owners.some((owner) => owner.commodoreId === id)) owners.push({ commodoreId: id, label: t("archive.unknownCommodore", { id: id.slice(0, 8) }), theaters: [] });
+  }
+  const ownerOf = (cluster: ArchiveCluster) => owners.find((owner) => owner.commodoreId === cluster.root.objectiveRecord.commodoreId);
+  const theaterLabelOf = (cluster: ArchiveCluster) => ownerOf(cluster)?.theaters.find((theater) => theater.theaterId === cluster.root.objectiveRecord.theaterId)?.label
+    ?? state.theaters.find((theater) => theater.id === cluster.root.objectiveRecord.theaterId)?.label;
   const matches = (cluster: ArchiveCluster) => {
     const node = cluster.root.objectiveRecord;
-    const haystack = [node.title, state.theaters.find((theater) => theater.id === node.theaterId)?.label, state.groups.find((group) => group.id === node.groupId)?.name, ...cluster.members].filter(Boolean).join(" ");
+    const haystack = [node.title, ownerOf(cluster)?.label, theaterLabelOf(cluster), state.groups.find((group) => group.id === node.groupId)?.name, ...cluster.members].filter(Boolean).join(" ");
     return haystack.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   };
-  const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.objectiveRecord.theaterId === viewedTheaterId) && matches(cluster));
-  const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.objectiveRecord.theaterId !== viewedTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
+  const groups = owners.map((owner) => {
+    const owned = allClusters.filter((cluster) => cluster.root.objectiveRecord.commodoreId === owner.commodoreId);
+    const matching = owned.filter(matches);
+    return { owner, clusters: matching, total: owned.filter((cluster) => !restoredIds.has(cluster.rootId)).length,
+      count: matching.filter((cluster) => !restoredIds.has(cluster.rootId)).length,
+      showTheater: new Set([...owner.theaters.map((theater) => theater.theaterId), ...owned.map((cluster) => cluster.root.objectiveRecord.theaterId)]).size > 1 };
+  });
+  const visibleGroups = groups.filter(({ owner, clusters }) => (commodoreId === null || owner.commodoreId === commodoreId) && clusters.length > 0);
+  // 선택 범위와 초점 인덱스는 화면의 사령관·날짜 순서를 그대로 따른다.
+  const clusters = visibleGroups.flatMap((group) => group.clusters);
+  const scopedGroups = groups.filter(({ owner }) => commodoreId === null || owner.commodoreId === commodoreId);
+  const total = scopedGroups.reduce((sum, group) => sum + group.total, 0);
+  const matchingCount = scopedGroups.reduce((sum, group) => sum + group.count, 0);
+  const allMatchingCount = groups.reduce((sum, group) => sum + group.count, 0);
   const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.objectiveIds.includes(id))
     ?? receipts.find((entry) => entry.until > clock && entry.batch.objectiveIds.includes(id))?.batch;
   const selectable = clusters.filter((cluster) => !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId));
   const selectedIds = selectable.filter((cluster) => selected.has(cluster.rootId)).map((cluster) => cluster.rootId);
-  const old = allClusters.filter((cluster) => (allTheaters || cluster.root.objectiveRecord.theaterId === viewedTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
-  const showTools = allCount > 0 || restored.length > 0;
-  // 자동 정리는 화면의 검색·범위와 무관하게 모든 Theater의 보관 루트가 대상이다(삭제 보류 중인 묶음은 서버도 건너뛴다).
+  const old = allClusters.filter((cluster) => (commodoreId === null || cluster.root.objectiveRecord.commodoreId === commodoreId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
+  const selectedOwners = groups.map((group) => ({ label: group.owner.label, count: group.clusters.filter((cluster) => selectedIds.includes(cluster.rootId)).length })).filter((group) => group.count > 0);
+  // 자동 정리는 화면의 검색·범위와 무관하게 모든 사령관의 보관 루트가 대상이다(삭제 보류 중인 묶음은 서버도 건너뛴다).
   const retentionTargets = (archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.objectiveRecord.id) && !pendingOf(entry.objectiveRecord.id)).map((entry) => entry.archivedAt ?? Number.NaN);
 
   useLayoutEffect(() => {
@@ -184,7 +212,7 @@ function ArchiveSheetDialog() {
 
   const clearSelection = () => { setSelected(new Set()); anchorRef.current = null; setArmed(null); };
   const changeQuery = (value: string) => { setQuery(value); clearSelection(); };
-  const changeScope = (value: boolean) => { setAllTheaters(value); clearSelection(); };
+  const changeScope = (value: string | null) => { setCommodoreId(value); clearSelection(); };
   const escape = () => {
     if (armed) setArmed(null);
     else if (retentionOpen) setRetentionOpen(false);
@@ -271,36 +299,46 @@ function ArchiveSheetDialog() {
         onKeyDownCapture={handleKeyDown} onMouseDown={(event) => event.stopPropagation()}>
         <header className="archive-sheet-head">
           <span className="archive-sheet-glyph" aria-hidden="true"><ArchiveGlyph /></span>
-          <h2 id="archive-sheet-title">{t("archive.title")}</h2><span className="archive-sheet-count">{total}</span>
+          <h2 id="archive-sheet-title">{t("archive.title")}</h2><span className="archive-sheet-count">{query.trim() ? `${matchingCount} / ${total}` : total}</span>
           <button type="button" className="archive-sheet-close" onClick={closeArchiveSheet} aria-label={t("archive.closeAria")}>✕</button>
         </header>
-        <ArchiveRetention open={retentionOpen} onOpenChange={setRetentionOpen} archivedAts={retentionTargets} />
-        {showTools ? <div className="archive-sheet-tools">
+        <div className="archive-sheet-tabs" role="group" aria-label={t("archive.scope")}>
+          <button type="button" className="archive-sheet-tab" aria-pressed={commodoreId === null} onClick={() => changeScope(null)}>
+            <span>{t("archive.allCommodores")}</span><span className="archive-sheet-tab-count">{allMatchingCount}</span>
+          </button>
+          {groups.map(({ owner, total, count }) => <button key={owner.commodoreId} type="button"
+            className={`archive-sheet-tab${count === 0 ? " is-empty" : ""}`} aria-pressed={commodoreId === owner.commodoreId}
+            aria-disabled={total === 0 || undefined} aria-label={`${owner.label} ${count}`} title={owner.label}
+            onClick={() => { if (total > 0) changeScope(owner.commodoreId); }}>
+            <ArchiveCommodoreAvatar id={owner.commodoreId} label={owner.label} />
+            <span className="archive-sheet-tab-label">{owner.label}</span><span className="archive-sheet-tab-count">{count}</span>
+          </button>)}
+        </div>
+        <div className="archive-sheet-tools">
           <input ref={searchRef} className="archive-sheet-search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder={t("archive.search")} aria-label={t("archive.search")} />
-          <div className="archive-sheet-scope" aria-label={t("archive.scope")}>
-            <button type="button" aria-pressed={!allTheaters} onClick={() => changeScope(false)}>{activeLabel} {currentCount}</button>
-            <span aria-hidden="true">·</span>
-            <button type="button" aria-pressed={allTheaters} onClick={() => changeScope(true)}>{t("archive.allTheaters")} {allCount}</button>
-          </div>
-        </div> : null}
+        </div>
         {notice ? <p className="archive-sheet-notice" role="status">{t(notice)}</p> : null}
         <div className="archive-sheet-body">
           {clusters.length === 0 && sections.length === 0 ? <div className="archive-sheet-empty" role="status">
             {archive.loading && archive.snapshot === null ? t("archive.loading") : archive.error && archive.snapshot === null ? t("archive.loadFailed") : query.trim() ?
-              <p>{t(allTheaters ? "archive.noMatchesAll" : "archive.noMatches", { query })}</p> : <><strong>{t("archive.emptyTitle")}</strong><p>{t("archive.emptyGuide")}</p><p>{t("archive.emptyDormant")}</p></>}
+              <p>{t("archive.noMatches", { query })}</p> : <><strong>{t("archive.emptyTitle")}</strong><p>{t("archive.emptyGuide")}</p><p>{t("archive.emptyDormant")}</p></>}
           </div> : null}
           <div role="listbox" aria-label={t("archive.title")} aria-multiselectable="true">
-            {daysOf(clusters).map((day) => {
+            {visibleGroups.map(({ owner, clusters: ownedClusters, count, showTheater }) => <section key={owner.commodoreId} className="archive-sheet-commodore" aria-labelledby={`archive-sheet-owner-${owner.commodoreId}`}>
+              <h3 id={`archive-sheet-owner-${owner.commodoreId}`} className="archive-sheet-commodore-head">
+                <ArchiveCommodoreAvatar id={owner.commodoreId} label={owner.label} /><span>{owner.label}</span><span className="archive-sheet-section-count">{count}</span>
+              </h3>
+              {daysOf(ownedClusters).map((day) => {
               const label = dayLabelOf(day.at, clock, locale, t);
-              return <section key={day.key} className="archive-sheet-day" aria-labelledby={`archive-sheet-day-${day.key}`}>
-                <h3 id={`archive-sheet-day-${day.key}`} className="archive-sheet-day-date"><span className="archive-sheet-day-main">{label.main}</span><span className="archive-sheet-day-sub">{label.sub}</span></h3>
+              const dayId = `archive-sheet-day-${owner.commodoreId}-${day.key}`;
+              return <section key={day.key} className="archive-sheet-day" aria-labelledby={dayId}>
+                <h4 id={dayId} className="archive-sheet-day-date"><span className="archive-sheet-day-main">{label.main}</span><span className="archive-sheet-day-sub">{label.sub}</span></h4>
                 <div className="archive-sheet-day-items">
                   {day.clusters.map((cluster) => {
                     const node = cluster.root.objectiveRecord;
                     const group = state.groups.find((candidate) => candidate.id === node.groupId);
-                    const theater = state.theaters.find((candidate) => candidate.id === node.theaterId)?.label;
-                    const meta = [allTheaters ? theater : null, group?.name ?? t(node.groupId ? "archive.meta.groupLost" : "archive.meta.ungrouped"),
-                      isRecent(cluster.archivedAt, clock) ? t("archive.meta.archivedAt", { when: new Intl.DateTimeFormat(LOCALE_TAG[locale], { hour: "numeric", minute: "2-digit" }).format(cluster.archivedAt) }) : null,
+                    const meta = [new Intl.DateTimeFormat(LOCALE_TAG[locale], { hour: "numeric", minute: "2-digit" }).format(cluster.archivedAt),
+                      showTheater ? theaterLabelOf(cluster) : null, group?.name,
                       cluster.members.length ? cluster.members.join(", ") : null].filter(Boolean).join(" · ");
                     const isRestored = restoredIds.has(cluster.rootId);
                     const pending = pendingOf(cluster.rootId);
@@ -324,22 +362,27 @@ function ArchiveSheetDialog() {
                 </div>
               </section>;
             })}
+            </section>)}
           </div>
-          {otherCount > 0 ? <p className="archive-sheet-other">{t("archive.otherMatches", { count: otherCount })} <button type="button" onClick={() => changeScope(true)}>{t("archive.showAll")}</button></p> : null}
-          {sections.map(({ section, count }) => <section key={section.id} className="archive-sheet-section" aria-labelledby={`archive-sheet-section-${section.id}`} data-archive-section={section.id}>
-            <h3 id={`archive-sheet-section-${section.id}`} className="archive-sheet-section-head"><span>{section.title(locale)}</span><span className="archive-sheet-section-count">{count}</span></h3>
-            <div className="archive-sheet-section-body">{scopedIds.filter((id) => section.count(id, query) > 0).map((id) => <div key={id}>{allTheaters ? <p className="archive-sheet-plugin-theater">{state.theaters.find((theater) => theater.id === id)?.label}</p> : null}{section.render({ language: locale, theaterId: id, query, close: closeArchiveSheet })}</div>)}</div>
-          </section>)}
-          {old.length > 0 ? <p className="archive-sheet-old">{t("archive.oldCount", { count: old.length })} <button type="button" onClick={() => { setQuery(""); setArmed(null); setSelected(new Set(old.map((cluster) => cluster.rootId))); anchorRef.current = null; }}>{t("archive.clearOld")}</button></p> : null}
+          {sections.length > 0 ? <section className="archive-sheet-other-archives" aria-labelledby="archive-sheet-other-title">
+            <h3 id="archive-sheet-other-title" className="archive-sheet-section-head">{t("archive.otherArchives")}</h3>
+            {sections.map(({ section, count }) => <section key={section.id} className="archive-sheet-section" aria-labelledby={`archive-sheet-section-${section.id}`} data-archive-section={section.id}>
+              <h4 id={`archive-sheet-section-${section.id}`} className="archive-sheet-section-head"><span>{section.title(locale)}</span><span className="archive-sheet-section-count">{count}</span></h4>
+              <div className="archive-sheet-section-body">{theaterIds.filter((id) => section.count(id, query) > 0).map((id) => <div key={id}><p className="archive-sheet-plugin-theater">{state.theaters.find((theater) => theater.id === id)?.label ?? deps.commodores.flatMap((owner) => owner.theaters).find((theater) => theater.theaterId === id)?.label}</p>{section.render({ language: locale, theaterId: id, query, close: closeArchiveSheet })}</div>)}</div>
+            </section>)}
+          </section> : null}
         </div>
         {selectedIds.length > 0 ? <footer className="archive-sheet-selection">
-          <span>{t("archive.selected", { count: selectedIds.length })}</span>
+          <span className="archive-sheet-selection-summary">{[t("archive.selected", { count: selectedIds.length }), ...selectedOwners.map((owner) => `${owner.label} ${owner.count}`)].join(" · ")}</span>
           <button type="button" className="archive-sheet-restore" aria-disabled={busy || undefined} onClick={() => { void restore(selectedIds); }}>{t("archive.restoreAll")}</button>
           <ArchivePurgeButton targetId="batch" title={t("archive.selected", { count: selectedIds.length })} currentRevision={archive.revision} preview={() => previewObjectiveBatch(selectedIds)} purge={purgeArchivedObjectiveRecords}
             armed={armed === "batch"} onArm={() => setArmed("batch")} onDisarm={() => setArmed(null)} armedLabel={t("archive.purgeBatchArmed", { count: selectedIds.length })} disabled={busy}
             onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshObjectiveArchive(); }} onPurged={(result) => { void purged(selectedIds[0]!, result); }} />
           <button type="button" className="archive-sheet-deselect" onClick={clearSelection}>{t("archive.deselect")}</button>
         </footer> : null}
+        <ArchiveRetention open={retentionOpen} onOpenChange={setRetentionOpen} archivedAts={retentionTargets}>
+          {old.length > 0 ? <span className="archive-sheet-old">{t("archive.oldCount", { count: old.length })} <button type="button" aria-disabled={busy || undefined} onClick={() => { if (busyRef.current) return; setQuery(""); setArmed(null); setSelected(new Set(old.map((cluster) => cluster.rootId))); anchorRef.current = null; }}>{t("archive.clearOld")}</button></span> : null}
+        </ArchiveRetention>
       </div>
     </div>, document.body,
   );

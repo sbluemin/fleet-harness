@@ -13,7 +13,6 @@ import { fetchObjectiveArchive } from "../../../../features/execution/client/obj
 
 interface ArchiveState {
   readonly total: number;
-  readonly totalsByTheater: Readonly<Record<string, number>>;
   readonly revision: number;
   /** 마지막으로 읽은 목록. 시트를 한 번도 열지 않았으면 null. */
   readonly snapshot: ObjectiveArchiveSnapshot | null;
@@ -24,7 +23,7 @@ interface ArchiveState {
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
-let state: ArchiveState = { total: 0, totalsByTheater: {}, revision: -1, snapshot: null, loading: false, error: false, sheetOpen: false };
+let state: ArchiveState = { total: 0, revision: -1, snapshot: null, loading: false, error: false, sheetOpen: false };
 let inflight: Promise<void> | null = null;
 let refetchAfterInflight = false;
 
@@ -58,9 +57,7 @@ export function refreshObjectiveArchive(): Promise<void> {
       refetchAfterInflight = false;
       try {
         const snapshot = await fetchObjectiveArchive();
-        const totalsByTheater: Record<string, number> = {};
-        for (const entry of snapshot.entries) totalsByTheater[entry.objectiveRecord.theaterId] = (totalsByTheater[entry.objectiveRecord.theaterId] ?? 0) + 1;
-        setState({ snapshot, total: snapshot.total, totalsByTheater, revision: snapshot.revision, loading: false, error: false });
+        setState({ snapshot, total: snapshot.total, revision: snapshot.revision, loading: false, error: false });
       } catch { setState({ loading: false, error: true }); }
     } while (refetchAfterInflight);
   })().finally(() => {
@@ -90,13 +87,11 @@ export function openRestoredObjective(id: string): boolean {
   return true;
 }
 
-function readArchiveChanged(payload: unknown): { readonly revision: number; readonly total: number; readonly totalsByTheater?: Readonly<Record<string, number>> } | null {
+function readArchiveChanged(payload: unknown): { readonly revision: number; readonly total: number } | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
   if (typeof record.revision !== "number" || typeof record.total !== "number") return null;
-  const totals = record.totalsByTheater;
-  const validTotals = totals && typeof totals === "object" && !Array.isArray(totals) && Object.values(totals).every((value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
-  return { revision: record.revision, total: record.total, ...(validTotals ? { totalsByTheater: totals as Record<string, number> } : {}) };
+  return { revision: record.revision, total: record.total };
 }
 
 /**
@@ -108,7 +103,7 @@ export function installObjectiveArchive(subscribeConsoleChannel: (channel: strin
     const changed = readArchiveChanged(payload);
     if (!changed) return;
     if (changed.revision === state.revision && changed.total === state.total) return;
-    setState({ total: changed.total, revision: changed.revision, ...(changed.totalsByTheater ? { totalsByTheater: changed.totalsByTheater } : {}) });
+    setState({ total: changed.total, revision: changed.revision });
     if (state.sheetOpen || state.snapshot !== null) void refreshObjectiveArchive();
   };
   const offChanged = subscribeConsoleChannel(OBJECTIVE_ARCHIVE_CHANGED_EVENT, onChanged);

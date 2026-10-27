@@ -65,7 +65,7 @@ describe("archive destructive action safeguards", () => {
 
   it("keeps deletion reversible and never transfers focus to the next delete button", async () => {
     const entries: ObjectiveDescription[] = ["a", "b", "c"].map((id, index) => ({ location: "archived", rootObjectiveId: id, archivedAt: Date.now() - index,
-      objectiveRecord: { id, commodoreId: "c1", theaterId: "theater", pluginId: "terminal", type: "agent", title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
+      objectiveRecord: { id, commodoreId: id === "c" ? "c2" : "c1", theaterId: "theater", pluginId: "terminal", type: "agent", title: id, ...({}), geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
     }));
     let revision = 20;
     let pending = false;
@@ -78,7 +78,13 @@ describe("archive destructive action safeguards", () => {
     const container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container);
     cleanup = () => { act(() => root.unmount()); container.remove(); };
-    await act(async () => { openArchiveSheet(); await refreshObjectiveArchive(); root.render(createElement(ArchiveSheet)); });
+    await act(async () => {
+      openArchiveSheet(); await refreshObjectiveArchive();
+      root.render(createElement(ArchiveSheet, { deps: { commodores: [
+        { commodoreId: "c1", label: "Atlas", theaters: [{ theaterId: "theater", label: "Theater" }] },
+        { commodoreId: "c2", label: "Borealis", theaters: [{ theaterId: "theater", label: "Theater" }] },
+      ] } }));
+    });
     const row = (id: string) => document.querySelector<HTMLElement>(`[data-objective-id="${id}"]`)!;
     const deleteButton = row("a").querySelector<HTMLButtonElement>(".archive-sheet-purge")!;
     await act(async () => { deleteButton.focus(); deleteButton.click(); });
