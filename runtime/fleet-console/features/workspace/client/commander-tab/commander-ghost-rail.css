@@ -3,9 +3,11 @@
    인셋을 보간하는 훅이라 여기선 쓰지 않는다 — 칸과 여백이 같은 길이 토큰을 직접 쓴다. */
 .conversation-stage[data-commander-rail] { --commander-list-span: 312px; }
 .commander-ghost {
+  /* 접힌 펼치기 단추의 맨 위. 펼친 머리도 이 높이를 쓴다 — 그 위는 작업 영역 맨 위 줄(GNB)이다. */
+  --commander-rail-clearance: 60px;
   position: absolute;
   z-index: 5;
-  top: 60px;
+  top: var(--commander-rail-clearance);
   right: 6px;
   bottom: max(116px, calc(var(--conversation-dock-height, 0px) + 8px));
   width: 44px;
@@ -13,11 +15,14 @@
   flex-direction: column;
   align-items: center;
   opacity: 0.74;
-  transition: opacity 160ms ease, width var(--duration-base) ease, top var(--duration-base) ease, bottom var(--duration-base) ease, left var(--duration-base) ease, right var(--duration-base) ease;
+  transition: opacity 160ms ease, width var(--duration-base) ease, top var(--duration-base) ease, bottom var(--duration-base) ease, left var(--duration-base) ease, right var(--duration-base) ease, padding-top var(--duration-base) ease;
   outline: none;
 }
 .commander-ghost[data-expanded] {
+  /* 면은 창 가장자리까지 닿되, 사령관·접기 머리는 접힌 .commander-ghost-open 과 같은 높이에서 시작한다.
+     머리를 0에 두면 오른쪽은 맨 위 줄 도구 「⋯」와 접기 글리프가 겹치고, 왼쪽은 창 끌기·신호등이 클릭을 가져간다. */
   top: 0;
+  padding-top: var(--commander-rail-clearance);
   right: 0;
   bottom: 0;
   width: var(--commander-list-span);
