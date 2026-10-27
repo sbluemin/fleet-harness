@@ -201,6 +201,10 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
       : !marketplace.enabled ? <span className="commodore-plugins-state">{t("commodore.marketplaces.off")}</span>
         : marketplace.updatedAt ? <span>{t("commodore.marketplaces.updatedAt", { time: updatedWord(marketplace.updatedAt) })}</span> : null;
   const summary = <span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}{status ? <> · {status}</> : null}</span>;
+  // 카드는 실패 이유를 본문 한 줄로 따로 세운다 — 아래 칸에 두면 긴 문장이 행동 단추를 다음 줄로 민다.
+  const failed = marketplace.status === "failed";
+  const failure = failed ? <p className="commodore-market-card-failure commodore-plugins-state is-failed">{t("commodore.marketplaces.failed", { reason: errorWord(t, marketplace.error ?? "fetch_failed") })}</p> : null;
+  const cardSummary = failed ? <span>{t("commodore.marketplaces.count", { n: marketplace.pluginCount })}</span> : summary;
   const confirm = confirming ? (
     <span className="commodore-marketplaces-confirm" role="alert">
       <span>{t("commodore.marketplaces.removeConfirm", { name: marketplace.name })}</span>
@@ -216,7 +220,7 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
     </span>
   );
   const locator = <span className="commodore-plugins-locator">{marketplace.locator}{marketplace.ref ? ` @${marketplace.ref}` : ""}</span>;
-  return { summary, confirm, actions, locator };
+  return { summary, cardSummary, failure, confirm, actions, locator };
 }
 
 /**
@@ -224,7 +228,7 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act) {
  * 타일은 언제나 이니셜이다. 꺼진 카드는 색이 아니라 옅어짐으로 말한다.
  */
 function MarketplaceCard({ t, marketplace, act }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act }) {
-  const { summary, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act);
+  const { cardSummary, failure, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act);
   return (
     <article className={`commodore-market-card${marketplace.enabled ? "" : " is-off"}`} aria-label={marketplace.name}>
       <div className="commodore-market-card-head">
@@ -236,9 +240,10 @@ function MarketplaceCard({ t, marketplace, act }: { readonly t: T; readonly mark
       </div>
       {marketplace.description ? <p className="commodore-market-card-desc" title={marketplace.description}>{marketplace.description}</p> : null}
       {!marketplace.preset && marketplace.owner ? <p className="commodore-market-card-desc">{t("commodore.plugins.byAuthor", { name: marketplace.owner })}</p> : null}
+      {failure}
       {confirm}
       <div className="commodore-market-card-foot">
-        <span className="commodore-market-card-status">{summary}</span>
+        <span className="commodore-market-card-status">{cardSummary}</span>
         {actions}
       </div>
     </article>

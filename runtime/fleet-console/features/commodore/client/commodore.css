@@ -861,3 +861,4 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 :root[data-view-mode="mobile"] .commodore-palette-card { padding: 12px 4px; border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
 :root[data-view-mode="mobile"] .commodore-palette-card .commodore-tile.is-card { width: 40px; height: 40px; border-radius: 11px; font-size: var(--t-base); }
 @media (max-width: 520px) { .commodore-palette-grid { grid-template-columns: minmax(0, 1fr); } }
+.commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
