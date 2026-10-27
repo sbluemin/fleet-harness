@@ -6,7 +6,7 @@ import type { ConsoleResidentAgentHost, ConsoleResidentSession } from "../../exe
 import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
 
-import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
+import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
@@ -258,6 +258,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         ...(input.board ? [input.board] : []),
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
+        aliasNote(options.store.read(options.commodoreId)?.alias),
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [

@@ -193,6 +193,17 @@ export function wakeNote(at: Date, reasons: readonly string[]): string {
   return `[wake ${hh}:${mm} · prompt v${COMMODORE_PROMPT_VERSION}] ${reasons.join("; ")}.`;
 }
 
+/**
+ * 이 턴의 별칭. 시스템 프롬프트의 이름은 세션을 열 때 한 번이라, 그 뒤 바꾸거나 지운 이름은 여기로만 안다.
+ * 없으면 없다는 것도 알린다.
+ */
+export function aliasNote(alias: string | null | undefined): string {
+  const name = alias?.trim() ?? "";
+  return name
+    ? `Current alias: ${JSON.stringify(name)}. This is your name for this turn; it can change before the next one.`
+    : "Current alias: none. You have no alias for this turn.";
+}
+
 /** 깨움마다 싣는 fleet-memory 인덱스 — 저장소가 만든 MEMORY.md 그대로, 길면 앞부분만. 항목 본문은 memory_view 로 읽는다. */
 export function memoryNote(index: string): string {
   const text = index.trim();
