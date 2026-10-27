@@ -108,10 +108,16 @@ export function detectMarketplaceSource(raw: string, rawRef?: string): { readonl
     return ref;
   };
   if (/\s/.test(value) || value.startsWith("-")) return null;
-  const ssh = /^(?:git@[A-Za-z0-9.-]+:[A-Za-z0-9._/-]+?(?:\.git)?|ssh:\/\/[A-Za-z0-9._-]+@[A-Za-z0-9.-]+(?::\d+)?\/[A-Za-z0-9._/-]+?(?:\.git)?)$/;
+  // ssh 는 scp 형식(`user@host:path`)만 Claude CLI 가 받는다 — `ssh://` URL 은 invalid_source 로 거절된다(CLI 2.1.310 실측).
+  // 포트 없는 `ssh://user@host/path` 는 같은 뜻의 scp 형식으로 바꿔 넘기고, 포트가 있는 것은 그 형식으로 옮길 수 없어 받지 않는다.
+  const scp = /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:(?!\/\/)[A-Za-z0-9._/~-]+?(?:\.git)?$/;
+  const sshUrl = /^ssh:\/\/([A-Za-z0-9._-]+)@([A-Za-z0-9.-]+)(\/[A-Za-z0-9._/~-]+?(?:\.git)?)$/;
   {
-    const [base, inline] = value.startsWith("git@") ? split(value, "#") : split(value, "#");
-    if (ssh.test(base)) { const ref = pick(inline); if (ref === null) return null; return { kind: "git", locator: base, ...(ref ? { ref } : {}), cliSource: ref ? `${base}#${ref}` : base }; }
+    const [base, inline] = split(value, "#");
+    const converted = sshUrl.exec(base);
+    const cliBase = converted ? `${converted[1]}@${converted[2]}:${converted[3]}` : scp.test(base) ? base : null;
+    if (cliBase) { const ref = pick(inline); if (ref === null) return null; return { kind: "git", locator: base, ...(ref ? { ref } : {}), cliSource: ref ? `${cliBase}#${ref}` : cliBase }; }
+    if (base.startsWith("ssh://")) return null;
   }
   if (/^https:\/\/\S+$/i.test(value)) {
     let url: URL;

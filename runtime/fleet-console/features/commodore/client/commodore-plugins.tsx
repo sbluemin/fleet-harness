@@ -194,7 +194,7 @@ function MarketplaceRow({ t, marketplace, act }: { readonly t: T; readonly marke
 function sourceKind(value: string): { readonly key: CommodoreMessageKey; readonly ref: boolean } | "bad" | null {
   const source = value.trim();
   if (!source) return null;
-  if (/^(?:git@[\w.-]+:|ssh:\/\/)\S+$/.test(source)) return { key: "commodore.marketplaces.kind.ssh", ref: true };
+  if (/^(?:[\w.-]+@[\w.-]+:(?!\/\/)|ssh:\/\/[\w.-]+@[\w.-]+\/)\S+$/.test(source)) return { key: "commodore.marketplaces.kind.ssh", ref: true };
   if (/^https?:\/\/\S+\.json(?:\?\S*)?$/.test(source)) return { key: "commodore.marketplaces.kind.url", ref: false };
   if (/^https?:\/\/[\w.-]+\/\S+$/.test(source)) return { key: "commodore.marketplaces.kind.https", ref: true };
   if (/^[\w.-]+\/[\w.-]+(?:@[\w./-]+)?$/.test(source)) return { key: "commodore.marketplaces.kind.github", ref: true };
