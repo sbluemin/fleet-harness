@@ -1484,9 +1484,18 @@
 /* ── Desktop 셸: 맨 위 줄은 창을 끄는 자리, 네이티브 컨트롤과 한 줄 ─────────────────── */
 /* 가운데·사이드바의 맨 위 줄은 내용 위에 겹친 투명 줄이다. Electron 의 app-region 은 휠을 아래 내용으로 넘기므로 그 줄 위에서도
    스크롤은 되지만, 클릭·드래그 선택은 창 끌기가 가져간다 — 그래서 drag 는 단추·pill 을 뺀 빈 자리뿐이고 높이는 52px 한 줄이다.
-   작업 영역 맨 위 줄(.conversation-band)도 같다 — 도구 분할 위의 빈 자리도 창을 끈다. */
-html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-band, .conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) {
+   작업 영역 맨 위 줄(.conversation-band)도 같다 — 도구 분할 위의 빈 자리도 창을 끈다.
+   오른쪽 세부 정보 머리는 맨 위 줄(.conversation-panel-toolbar)만 끈다 — 머리 전체(아바타·이름·탭, 200px 남짓)를 끌면
+   그 아래 내용을 잡아도 창이 움직인다. */
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-band, .conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header .conversation-panel-toolbar) {
   -webkit-app-region: drag;
+}
+
+/* 떠 있는 표면(대화상자·메뉴·목록 상자 — 결과물 창, 설정 창, 그래프 팝업 등)은 창 끌기에서 뺀다. Electron 은 drag/no-drag 사각형을
+   z-index 와 무관하게 DOM 순서로 합치므로, 맨 위 줄 위에 겹친 표면도 no-drag 를 갖지 않으면 그 자리의 드래그·클릭을 창 끌기가 가져간다.
+   이런 표면은 body 끝 포털이라 앞의 drag 사각형 뒤에 합쳐져 그 자리를 뺀다. */
+html[data-desktop-shell="true"] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]) {
+  -webkit-app-region: no-drag;
 }
 
 /* 도구모음은 맨 위 줄로 portal 된다. 뒤 DOM 인 pill 줄의 drag 사각형을 실제 도구 폭 앞에서 끝내,
