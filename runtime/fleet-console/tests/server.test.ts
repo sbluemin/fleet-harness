@@ -968,16 +968,20 @@ describe("console static and terminal ticket boundary", () => {
     expect(await ownerless.json()).toEqual({ error: "commodore_required" });
     expect(await getJson(`${origin}/api/v1/agent/sessions`)).toEqual(sessionsBefore);
     // 같은 호스트의 생성 경계는 실행 전부터 소유 UUID와 고정 cwd를 분리한다.
+    // 넘긴 등록 id는 배치다. 응답 theaterId는 그 id이고, cwd는 목표 폴더 그대로다. 문서에는 theaterId를 쓰지 않는다.
     const createdResponse = await fetch(`${origin}/api/v1/objectives/objective/create`, {
       method: "POST", headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ commodoreId: ownerId, theaterId, title: "Unlaunched location" }),
     });
     expect(createdResponse.status).toBe(200);
     const created = await createdResponse.json() as { objective: { id: string; commodoreId: string; theaterId: string } };
-    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId: workspaceHash(fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives"))) });
+    expect(created.objective).toMatchObject({ commodoreId: ownerId, theaterId });
     expect(created.objective).not.toHaveProperty("cwd");
     const pending = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives", created.objective.id, "objective.json"), "utf8"));
-    expect(pending).toMatchObject({ pending: true, cwd: fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives")) });
+    const objectivesCwd = fs.realpathSync.native(path.join(ownerRoot, ownerId, "objectives"));
+    expect(pending).toMatchObject({ pending: true, cwd: objectivesCwd, placementTheaterId: theaterId });
+    expect(pending).not.toHaveProperty("theaterId");
+    expect(pending.cwd).not.toBe(realpath);
     const deniedOwner = await fetch(`${origin}/api/v1/objectives/objective/create`, {
       method: "POST", headers: { "Content-Type": "application/json", origin },
       body: JSON.stringify({ commodoreId: "00000000-0000-4000-8000-000000000000", theaterId, title: "Not this owner" }),
