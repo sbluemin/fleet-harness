@@ -29,7 +29,7 @@ import { patrolIntervalMs, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../f
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../features/objectives/shared/commodore-board.js";
 import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
-import { createCommodoreBoardWatch, SETTLE_CHECK_MS, SETTLE_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
+import { BLOCK_MS, createCommodoreBoardWatch, SETTLE_CHECK_MS, SETTLE_MS, STALL_CHECK_MS, type CommodoreBoardWatchDeps } from "../features/objectives/host/commodore-board.js";
 
 /** 이 파일의 단일 Theater fixture. 제품 저장소는 경로를 노출하지 않는 색인 포트를 받는다. */
 function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" | "theaterIdsOf">) {
@@ -1405,9 +1405,38 @@ describe("commodore supervisor", () => {
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       commanderActivity.delete("o2");
 
+      // 막힌 항목 — 구성원이 일해 그룹이 대기 중이 되지 않아도, 지휘관이 쉰 지 1분이면 기준 수정안으로 한 번 깨운다. 지휘관이 일하는
+      // 동안은 쉼 시계가 가지 않는다. 같은 보드로 그룹이 나중에 대기 중이 되어도 다시 깨우지 않는다.
+      (objectives[0] as unknown as { members: unknown[] }).members.push({ id: "w1", role: "implementer", sessionName: "objective-o1-member-1" });
+      commanderActivity.set("w1", "running");
+      commanderActivity.set("o1", "running");
+      Object.assign(objectives[0]!, { criteriaProposals: [{ id: "c3" }], boardUpdatedAt: Date.now() });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      const beforeBlocked = sessions[0]!.sent.length;
+      await vi.advanceTimersByTimeAsync(BLOCK_MS + settleWait);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked);
+      commanderActivity.delete("o1");
+      await vi.advanceTimersByTimeAsync(BLOCK_MS - 5_000);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked);
+      await vi.advanceTimersByTimeAsync(5_000 + 2 * SETTLE_CHECK_MS + COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["criteria:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain('- o1 "Remote pairing"\n  status: in progress · missions 0/1 done\n  waits on you: criteria proposal\n  group: commander idle · members: implementer running');
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 1);
+      // 마지막 제안이 승인된 뒤 다음 점검 전에 새 제안이 서도 새 항목이다 — 지휘관이 계속 쉬면 다시 한 번 깨운다.
+      Object.assign(objectives[0]!, { criteriaProposals: [], boardUpdatedAt: Date.now() });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      Object.assign(objectives[0]!, { criteriaProposals: [{ id: "c4" }], boardUpdatedAt: Date.now() + 1 });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      await vi.advanceTimersByTimeAsync(65_000 + COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["criteria:1"]);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 2);
+      commanderActivity.delete("w1");
+      await vi.advanceTimersByTimeAsync(settleWait * 2);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 2);
+      Object.assign(objectives[0]!, { criteriaProposals: [], boardUpdatedAt: Date.now() });
+
       // 정체 — 구성원이 일하는 동안 지휘관이 15분 쉬면 한 번 깨우고 지휘관에게 사실을 보낸다. 15분 안에 움직인 지휘관은 정체가 아니다.
       // 구성원이 일하는 그룹은 대기 중이 아니므로 그사이 대기 중 깨움도 없다.
-      (objectives[0] as unknown as { members: unknown[] }).members.push({ id: "w1", role: "implementer", sessionName: "objective-o1-member-1" });
       commanderActivity.set("w1", "running");
       commanderActivity.set("o1", "running");
       await vi.advanceTimersByTimeAsync(STALL_CHECK_MS);
