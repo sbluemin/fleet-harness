@@ -486,7 +486,7 @@ export function CommodorePlugins({ t, commodoreId, phone = false }: { readonly t
 
   return (
     <section className="objectives-commodore-section commodore-plugins" aria-label={t("commodore.plugins.title")}>
-      <p className="objectives-commodore-section-title commodore-plugins-head"><span>{t("commodore.plugins.title")}</span>{manage}</p>
+      <p className="objectives-commodore-section-title commodore-plugins-head"><span className="fc-settings-row__label">{t("commodore.plugins.title")}</span>{manage}</p>
       {rows.length ? (
         <ul className="commodore-plugins-list">
           {rows.map(({ pluginId, plugin, title, marketplace, entry, mark }) => (

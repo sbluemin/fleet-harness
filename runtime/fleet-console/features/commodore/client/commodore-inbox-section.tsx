@@ -288,7 +288,9 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
   return (
     <div className="objectives-commodore-settings">
       <CommodoreTheaters commodoreId={theaterId} />
+      <div className="objectives-commodore-settings-divider" role="separator" />
       <CommodorePlugins t={t} commodoreId={theaterId} />
+      <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
         label={t("commodore.settings.model")}
         hint={<>{t("commodore.settings.modelHint")}{modelOverridden ? <UseDefault t={t} onClick={() => act(() => setCommodoreCoordinates(theaterId, null))} /> : null}</>}
