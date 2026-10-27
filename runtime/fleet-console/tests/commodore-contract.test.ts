@@ -1422,9 +1422,17 @@ describe("commodore supervisor", () => {
       expect(tokens().at(-1)).toEqual(["criteria:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('- o1 "Remote pairing"\n  status: in progress · missions 0/1 done\n  waits on you: criteria proposal\n  group: commander idle · members: implementer running');
       expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 1);
+      // 마지막 제안이 승인된 뒤 다음 점검 전에 새 제안이 서도 새 항목이다 — 지휘관이 계속 쉬면 다시 한 번 깨운다.
+      Object.assign(objectives[0]!, { criteriaProposals: [], boardUpdatedAt: Date.now() });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      Object.assign(objectives[0]!, { criteriaProposals: [{ id: "c4" }], boardUpdatedAt: Date.now() + 1 });
+      for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
+      await vi.advanceTimersByTimeAsync(65_000 + COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["criteria:1"]);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 2);
       commanderActivity.delete("w1");
       await vi.advanceTimersByTimeAsync(settleWait * 2);
-      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 1);
+      expect(sessions[0]!.sent).toHaveLength(beforeBlocked + 2);
       Object.assign(objectives[0]!, { criteriaProposals: [], boardUpdatedAt: Date.now() });
 
       // 정체 — 구성원이 일하는 동안 지휘관이 15분 쉬면 한 번 깨우고 지휘관에게 사실을 보낸다. 15분 안에 움직인 지휘관은 정체가 아니다.

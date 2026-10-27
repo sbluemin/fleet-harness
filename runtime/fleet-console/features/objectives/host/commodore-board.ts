@@ -181,6 +181,8 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   /** 보드를 다시 본다 — 대기 상태, 빈 보드, 상태 변화. */
   const boardChanged = (runner: Runner) => {
     const objectives = deps.objectives(runner.commodoreId);
+    // 점검 사이에 사라졌다 다시 선 막힌 항목도 새 항목이다 — 사건마다 거둔다.
+    for (const objective of objectives) forgetBlocked(runner, objective);
     waitingChanged(runner, objectives);
     const empty = !hasOpenOperated(objectives);
     // 사령관 자신의 완료·정리로 보드가 비었으면 깨우지 않는다 — 방금 닫힌 운영 목표가 모두 그의 쓰기 대상이면 그것은 제가 한 일이다.
