@@ -14,7 +14,7 @@ import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { CommodoreRecentActions } from "../../../commodore/client/commodore-trail.js";
 import { revealCommodoreTurn } from "../../../commodore/client/commodore-conversation.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
-import { SORTS, setSort, type SortPreference } from "./commander-sort.js";
+import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
 import "./commander-list.css";
@@ -35,19 +35,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
       <div className="commander-tab-bar">
         <span className="commander-tab-count">{t("commanderTab.count", { count: sorted.length })}</span>
         <SortMenu preference={preference} />
-        <button
-          type="button"
-          className="commander-tab-direction"
-          aria-label={t(preference.direction === "asc" ? "commanderTab.sort.ascending" : "commanderTab.sort.descending")}
-          title={t(preference.direction === "asc" ? "commanderTab.sort.ascending" : "commanderTab.sort.descending")}
-          onClick={() => setSort({ ...preference, direction: preference.direction === "asc" ? "desc" : "asc" })}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            {preference.direction === "asc"
-              ? <path d="M8 13V3M8 3 4.5 6.5M8 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              : <path d="M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
-          </svg>
-        </button>
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
@@ -123,9 +110,11 @@ function SortMenu({ preference }: { readonly preference: SortPreference }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const current = SORTS.find((sort) => sort.key === preference.key) ?? SORTS[0]!;
+  const sortLabel = t("commanderTab.sort.button", { label: t(current.label) });
+  const close = () => { setOpen(false); buttonRef.current?.focus(); };
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"]')?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (event.target instanceof Node && (menuRef.current?.contains(event.target) || buttonRef.current?.contains(event.target))) return;
       setOpen(false);
@@ -133,59 +122,60 @@ function SortMenu({ preference }: { readonly preference: SortPreference }) {
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [open]);
-  const close = () => { setOpen(false); buttonRef.current?.focus(); };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); return; }
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    event.preventDefault();
     const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []);
     const index = items.indexOf(document.activeElement as HTMLElement);
-    items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    const row = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-sort-row]");
+    const column = (document.activeElement as HTMLElement | null)?.dataset.sortColumn ?? "name";
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      if (!row) return;
+      event.preventDefault();
+      const order = ["name", "asc", "desc"];
+      const next = order[order.indexOf(column) + (event.key === "ArrowRight" ? 1 : -1)];
+      if (next) row.querySelector<HTMLElement>(`[data-sort-column="${next}"]`)?.focus();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    if (row) {
+      const rows = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[data-sort-row]") ?? []);
+      const next = rows[rows.indexOf(row) + step];
+      if (next) { (next.querySelector<HTMLElement>(`[data-sort-column="${column}"]`) ?? next.querySelector<HTMLElement>('[role^="menuitem"]'))?.focus(); return; }
+    }
+    const fallback = items[index + step] ?? items[step > 0 ? 0 : items.length - 1];
+    fallback?.focus();
   };
+  const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
   return (
     <span className="commander-tab-sort">
-      <button
-        ref={buttonRef}
-        type="button"
-        className="commander-tab-sort-button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {t("commanderTab.sort.button", { label: t(current.label) })}
-      </button>
-      {open ? (
-        <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
-          {SORTS.map((sort) => (
-            <button
-              key={sort.key}
-              type="button"
-              role="menuitemradio"
-              aria-checked={sort.key === preference.key}
-              className="commander-tab-menu-item"
-              onClick={() => { setSort({ ...preference, key: sort.key, direction: sort.direction }); close(); }}
-            >
-              <span className="commander-tab-menu-check" aria-hidden="true">{sort.key === preference.key ? "✓" : ""}</span>
-              {t(sort.label)}
+      <button ref={buttonRef} type="button" className="commander-tab-sort-button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={sortLabel} title={sortLabel} onClick={() => setOpen((value) => !value)}>{sortLabel}</button>
+      {open ? <div ref={menuRef} id={menuId} className="commander-tab-menu" role="menu" aria-label={t("commanderTab.sort.menu")} onKeyDown={onMenuKeyDown}>
+        {SORTS.map((sort) => {
+          const label = t(sort.label);
+          const selected = sort.key === preference.key;
+          return <div key={sort.key} className="commander-tab-menu-row" data-sort-row="">
+            <button type="button" role="menuitemradio" data-sort-column="name" aria-checked={selected} className="commander-tab-menu-item" onClick={() => pick(sort.key, sort.direction)}>
+              <span className="commander-tab-menu-check" aria-hidden="true">{selected ? "✓" : ""}</span>{label}
             </button>
-          ))}
-          <span className="commander-tab-menu-rule" role="separator" />
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={preference.answerFirst}
-            className="commander-tab-menu-item"
-            onClick={() => setSort({ ...preference, answerFirst: !preference.answerFirst })}
-          >
-            <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? "✓" : ""}</span>
-            {t("commanderTab.sort.answerFirst")}
-          </button>
-          <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
-            <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? "✓" : ""}</span>{t("commanderTab.sort.grouped")}
-          </button>
-        </div>
-      ) : null}
+            {(["asc", "desc"] as const).map((direction) => (
+              <button key={direction} type="button" role="menuitemradio" data-sort-column={direction} className="commander-tab-menu-direction" aria-checked={selected && preference.direction === direction} aria-label={t("commanderTab.sort.toward", { label, direction: t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc") })} title={t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc")} onClick={() => pick(sort.key, direction)}>
+                <svg viewBox="0 0 16 16" aria-hidden="true">{direction === "asc"
+                  ? <path d="M8 13V3M8 3 4.5 6.5M8 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  : <path d="M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}</svg>
+              </button>
+            ))}
+          </div>;
+        })}
+        <span className="commander-tab-menu-rule" role="separator" />
+        <button type="button" role="menuitemcheckbox" aria-checked={preference.answerFirst} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, answerFirst: !preference.answerFirst })}>
+          <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? "✓" : ""}</span>{t("commanderTab.sort.answerFirst")}
+        </button>
+        <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
+          <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? "✓" : ""}</span>{t("commanderTab.sort.grouped")}
+        </button>
+      </div> : null}
     </span>
   );
 }
