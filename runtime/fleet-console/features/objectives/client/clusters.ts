@@ -13,11 +13,11 @@ import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation, openCommodoreLog } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./board-commodore.js";
-import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore, ownerOfContext } from "./board-commodore.js";
+import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskOwners, personTurnAt, readCommodore, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeObjectiveId, viewedTheaterId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readObjectiveView, readTheater, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { activeObjectiveId, viewedTheaterId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readBoard, readObjectiveView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -368,14 +368,14 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
-  // 사령관의 질문 — 목표 묶음이 아닌 줄로 「내 결정」에 선다(물은 시각순). 누르면 질문 카드가 선 사령관 기록이 열린다.
-  for (const theaterId of openAskTheaters()) {
-    const served = readCommodore(ownerOfContext(theaterId) ?? "").view?.asks?.objectives;
-    const board = readTheater(theaterId);
-    for (const ask of openAsks(ownerOfContext(theaterId))) {
+  // 사령관의 질문 — 소유자마다 한 번만 읽는다. 행의 문맥도 소유 UUID로 고정해 Theater가 늘거나 바뀌어도 같은 줄·기록을 연다.
+  for (const commodoreId of openAskOwners()) {
+    const served = readCommodore(commodoreId).view?.asks?.objectives;
+    const board = readBoard(commodoreId);
+    for (const ask of openAsks(commodoreId)) {
       const objectiveTitle = ask.objectiveId ? askObjectiveTitle(board, served, ask.objectiveId) : null;
       out.push({
-        id: `commodore-ask:${ask.id}`, theaterId, commodoreId: ownerOfContext(theaterId) ?? undefined, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(ownerOfContext(theaterId) ?? ""),
+        id: `commodore-ask:${ask.id}`, theaterId: commodoreId, commodoreId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(commodoreId),
         row: {
           groupId: null, order: -1, fold: [], commodore: true, decisionRequestedAt: ask.at, decisionQuestions: ask.questions.length,
           decisionNote: (locale) => { const t = getT(locale); return objectiveTitle ? `${t("objectives.ask.title")} · ${objectiveTitle}` : t("objectives.ask.title"); },

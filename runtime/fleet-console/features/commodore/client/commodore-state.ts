@@ -750,10 +750,9 @@ export function openAsks(commodoreId: string | null): readonly CommodoreAsk[] {
   return open;
 }
 
-/** 서 있는 질문이 있는 화면 문맥 — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다. 정체성은 UUID다. */
-export function openAskTheaters(): readonly string[] {
-  const asking = new Set([...theaters.keys()].filter((commodoreId) => openAsks(commodoreId).length > 0));
-  return [...contextOwners.entries()].filter(([, commodoreId]) => asking.has(commodoreId)).map(([theaterId]) => theaterId);
+/** 답을 기다리는 질문의 소유 사령관 UUID — 화면 문맥 수와 관계없이 질문마다 한 줄만 세운다. */
+export function openAskOwners(): readonly string[] {
+  return [...theaters.keys()].filter((commodoreId) => openAsks(commodoreId).length > 0);
 }
 
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */
