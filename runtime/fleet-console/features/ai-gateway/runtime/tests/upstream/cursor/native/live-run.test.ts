@@ -1625,7 +1625,8 @@ describe("Cursor live client-tool Run bridge", () => {
       }
     };
     const reporting = await advertisedFirst({ messagingToolNames: ["SendMessage"] });
-    expect(reporting.wire.filter((name) => name.startsWith("cc_send_message_"))).toHaveLength(1);
+    expect(reporting.wire).toContain("SendMessage");
+    expect(reporting.wire.some((name) => name.startsWith("cc_send_message_"))).toBe(false);
     expect(reporting.wire.some((name) => name.startsWith("cc_task_stop_"))).toBe(false);
     expect(reporting.counted).toContain("SendMessage");
     expect(reporting.counted).not.toContain("TaskStop");

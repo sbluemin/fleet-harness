@@ -953,7 +953,7 @@ function runtimeTimeZone(): string {
 function cursorRedirectTools(request: CanonicalResponseRequest): readonly CursorWireTool[] {
   return (request.tools ?? [])
     .filter((tool) => isCursorHotPathToolName(tool.name))
-    .map(toCursorWireTool);
+    .map((tool) => toCursorWireTool(tool));
 }
 
 /**
@@ -983,7 +983,7 @@ function applyCursorToolBudget(
       || isCursorToolSearchName(tool.name)
       || explicitlySelected;
   });
-  const wireTools = sourceTools.map(toCursorWireTool);
+  const wireTools = sourceTools.map((tool) => toCursorWireTool(tool, reporting));
   if (
     wireTools.length <= CURSOR_TOOL_COUNT_LIMIT
     && cursorToolPayloadBytes(wireTools) <= CURSOR_TOOL_BYTES_LIMIT
@@ -1045,8 +1045,9 @@ function applyCursorToolBudget(
 
 function toCursorWireTool(
   tool: NonNullable<CanonicalResponseRequest["tools"]>[number],
+  passthroughNames?: ReadonlySet<string>,
 ): CursorWireTool {
-  const wireName = cursorWireToolName(tool.name);
+  const wireName = cursorWireToolName(tool.name, passthroughNames);
   return {
     clientName: tool.name,
     inputSchemaValue: tool.parameters,
@@ -1069,9 +1070,13 @@ const CURSOR_PASSTHROUGH_TOOL_NAME = /^[a-z][a-z0-9_-]*$/;
  * Cursor reserves several title-cased names for native tools. Claude Code exposes its own tools
  * with those same names, so isolate unsafe names behind a stable lowercase wire alias and map them
  * back at the adapter boundary.
+ *
+ * A harness reporting tool is the exception: the member has to call it by the name its instructions
+ * use. `passthroughNames` is only the harness vocabulary (`messagingToolNames`), not every title-cased
+ * tool.
  */
-function cursorWireToolName(clientName: string): string {
-  if (CURSOR_PASSTHROUGH_TOOL_NAME.test(clientName)) return clientName;
+function cursorWireToolName(clientName: string, passthroughNames?: ReadonlySet<string>): string {
+  if (passthroughNames?.has(clientName) || CURSOR_PASSTHROUGH_TOOL_NAME.test(clientName)) return clientName;
   const slug = clientName
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
@@ -2499,11 +2504,13 @@ function reportCursorCatalog(
     for (const tool of declared.slice(0, 1024)) {
       const expected = selected.has(tool.name);
       const schema = JSON.stringify(tool.parameters);
+      const wireName = tools.find((candidate) => candidate.clientName === tool.name)?.toolName
+        ?? cursorWireToolName(tool.name);
       report("tool.catalog", {
         toolName: cursorDiagnosticLabel(tool.name),
         toolKey: cursorDiagnosticHash(tool.name),
-        wireName: cursorDiagnosticLabel(cursorWireToolName(tool.name)),
-        wireKey: cursorDiagnosticHash(cursorWireToolName(tool.name)),
+        wireName: cursorDiagnosticLabel(wireName),
+        wireKey: cursorDiagnosticHash(wireName),
         schemaHash: cursorDiagnosticHash(schema),
         schemaBytes: Buffer.byteLength(schema),
         deferred: tool.defer_loading === true,
