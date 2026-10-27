@@ -13,12 +13,13 @@ import { patrolIntervalMs, type CommodorePatrolMinutes, type CommodoreStateView 
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { post } from "./request.js";
 import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
+import { readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
  * 사령관(Commodore)의 브라우저 쪽 상태 — 소유 UUID마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
  *
- * Theater는 사령관을 찾기 위한 화면 문맥일 뿐이다. 진실은 서버다: 화면은 응답이 아니라 `commodore` 사건으로
+ * 사령관은 UUID 로만 가리킨다 — Theater 에서 주인을 찾지 않는다. 진실은 서버다: 화면은 응답이 아니라 `commodore` 사건으로
  * 갱신되고, 스트림이 다시 붙으면 읽어 둔 사령관을 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면
  * 머리 글리프·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
  */
@@ -71,9 +72,6 @@ const MAX_HELD_ENTRIES = 2_000;
 let installed: CommodoreClientDeps | null = null;
 /** 소유 UUID → 그 사령관의 화면 상태. */
 const theaters = new Map<string, TheaterCommodore>();
-/** 화면 문맥(Theater) → 사령관 UUID. 경로·정체성이 아니다. */
-const contextOwners = new Map<string, string>();
-const contextResolving = new Map<string, Promise<string | null>>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let enabledSnapshot = false;
@@ -108,77 +106,26 @@ export function commodoreRevision(): number {
   return revision;
 }
 
-function rememberContext(theaterId: string, commodoreId: string): void {
-  if (wasCommodoreRemoved(commodoreId) || contextOwners.get(theaterId) === commodoreId) return;
-  contextOwners.set(theaterId, commodoreId);
-  notify();
-}
-
-/** 이미 풀어 둔 화면 문맥의 사령관 UUID. 아직 모르면 null. */
-const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function ownerOfContext(theaterId: string): string | null {
-  // 사이드바 섹션은 Theater 해시 대신 사령관 UUID를 넘긴다. 그 값은 소유자 자신이라 다시 해석하지 않는다.
-  if (COMMODORE_UUID.test(theaterId)) return wasCommodoreRemoved(theaterId) ? null : theaterId;
-  const owner = installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.commodore?.id ?? contextOwners.get(theaterId) ?? null;
-  return owner && !wasCommodoreRemoved(owner) ? owner : null;
-}
-
-/** 그 사령관을 가리키는 화면 문맥. 이동에만 쓰고 정체성으로 쓰지 않는다. */
-export function contextsOf(commodoreId: string): readonly string[] {
-  return [...contextOwners.entries()].filter(([, id]) => id === commodoreId).map(([theaterId]) => theaterId);
-}
-
-/** Theater 머리·사이드바에서 사령관 UUID를 구한다. 실패·없음은 null이고 Theater로 대체하지 않는다. */
-export function resolveContext(theaterId: string): Promise<string | null> {
-  const known = ownerOfContext(theaterId);
-  if (known) { rememberContext(theaterId, known); return Promise.resolve(known); }
-  const inflight = contextResolving.get(theaterId);
-  if (inflight) return inflight;
-  const client = api();
-  if (!client) return Promise.resolve(null);
-  const request = post<{ readonly commodoreId: string | null }>(client, "/commodore/resolve", { theaterId })
-    .then((result) => {
-      if (!result.commodoreId || wasCommodoreRemoved(result.commodoreId)) return null;
-      rememberContext(theaterId, result.commodoreId);
-      return result.commodoreId;
-    })
-    .catch(() => null)
-    .finally(() => { if (contextResolving.get(theaterId) === request) contextResolving.delete(theaterId); });
-  contextResolving.set(theaterId, request);
-  return request;
-}
-
-export function useCommodoreOwner(theaterId: string | null): string | null {
-  const owner = useSyncExternalStore(
-    subscribeCommodore,
-    () => (theaterId ? ownerOfContext(theaterId) : null),
-    () => (theaterId ? ownerOfContext(theaterId) : null),
-  );
-  useEffect(() => { if (theaterId) void resolveContext(theaterId); }, [theaterId]);
-  return owner;
-}
-
 /**
  * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
- * 읽지 않은 Theater 는 자동 운영하지 않는 것으로 다룬다. `enabled` 는 사령관 표면의 가용 여부이고,
- * `peek` 는 사람이 이 Theater 머리의 사령관 글리프에 머무는 중이다.
+ * 읽지 않은 사령관은 자동 운영하지 않는 것으로 다룬다. `enabled` 는 사령관 표면의 가용 여부이고,
+ * `peek` 는 사람이 이 사령관 머리의 글리프에 머무는 중이다.
  */
 export function commodoreBoardOf(commodoreId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly peek: boolean } {
   if (!enabledSnapshot) return DISABLED_BOARD;
   const view = theaters.get(commodoreId)?.view;
-  const peek = peekTheater !== null && ownerOfContext(peekTheater) === commodoreId;
+  const peek = peekCommodore === commodoreId;
   if (!view?.active) return { active: false, stalled: [], enabled: true, peek };
   return { active: true, stalled: view.run.stalled ?? [], enabled: true, peek };
 }
 const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, peek: false };
 
-/** 사람이 사령관 글리프에 머무는 Theater — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
-let peekTheater: string | null = null;
+/** 사람이 글리프에 머무는 사령관 — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
+let peekCommodore: string | null = null;
 
-export function setCommodorePeek(theaterId: string | null): void {
-  if (peekTheater === theaterId) return;
-  peekTheater = theaterId;
+export function setCommodorePeek(commodoreId: string | null): void {
+  if (peekCommodore === commodoreId) return;
+  peekCommodore = commodoreId;
   notify();
 }
 
@@ -210,7 +157,7 @@ function readExperimentsKnown(): boolean {
  */
 export const commodoreDestinationShown = {
   subscribe: (listener: () => void) => subscribeCommodore(listener),
-  get: (_theaterId: string | null): boolean => !experimentsKnown || enabledSnapshot,
+  get: (_commodoreId: string | null): boolean => !experimentsKnown || enabledSnapshot,
 };
 
 export function subscribeCommodore(listener: () => void): () => void {
@@ -218,36 +165,32 @@ export function subscribeCommodore(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** Theater 목록 중 사령관 행선지 이름이 기대는 몫(id·이름·별칭)의 서명 — 바뀐 때만 덱을 다시 읽게 한다. */
+/** 사령관 목록 중 행선지 이름이 기대는 몫(id·이름·별칭)의 서명 — 바뀐 때만 덱을 다시 읽게 한다. */
 function commodoreNamesKey(): string {
-  return (installed?.consoleState.getTheaters() ?? []).map((theater) => `${theater.id}\u0000${theater.label}\u0000${theater.commodore?.id ?? ""}\u0000${theater.commodore?.alias ?? ""}`).join("\u0001");
+  return readCommodoreList().map((row) => `${row.commodoreId}\u0000${row.label}\u0000${row.alias ?? ""}`).join("\u0001");
 }
 
 /**
- * 모든 등록 Theater의 사령관이 같은 행선지 목록을 공유한다. Theater 목록의 추가·제거·별칭 지정·해제는 설치가 콘솔 상태를 듣다가
+ * 모든 사령관이 같은 행선지 목록을 공유한다. 사령관 목록의 추가·제거·별칭 지정·해제는 설치가 목록을 듣다가
  * 사령관 구독자에게 알리므로(`installCommodoreState`), 호스트가 플러그인 설치보다 먼저 구독해도 놓치지 않는다.
  */
 export function subscribeCommodoreMentions(listener: () => void): () => void { return subscribeCommodore(listener); }
-export function commodoreTheaterIds(): readonly string[] { return installed?.consoleState.getTheaters().map((theater) => theater.id) ?? []; }
 
 export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
-  const loadRegistered = () => {
-    const owners = new Set<string>();
-    for (const theater of installed?.consoleState.getTheaters() ?? []) if (theater.commodore?.id) owners.add(theater.commodore.id);
-    for (const commodoreId of owners) void loadCommodore(commodoreId);
-  };
-  let registered = commodoreTheaterIds().join("\0");
-  // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 등록 목록이 바뀔 때만 새로 한다.
+  const commodoreIds = () => readCommodoreList().map((row) => row.commodoreId);
+  const loadRegistered = () => { for (const commodoreId of commodoreIds()) void loadCommodore(commodoreId); };
+  let registered = commodoreIds().join("\0");
+  // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 사령관 목록이 바뀔 때만 새로 한다.
   let names = commodoreNamesKey();
   loadRegistered();
-  const offConsole = ctx.consoleState.subscribe(() => {
+  const offConsole = subscribeCommodoreList(() => {
     const nextNames = commodoreNamesKey();
     if (nextNames === names) return;
     names = nextNames;
-    const next = commodoreTheaterIds().join("\0");
+    const next = commodoreIds().join("\0");
     if (next !== registered) {
       registered = next;
       loadRegistered();
@@ -261,7 +204,6 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
     }
     if (wasCommodoreRemoved(commodoreId)) return;
     if (event.op === "state" && event.change === "alias") publishCommodoreLifecycle(event);
-    for (const theaterId of event.theaterIds) rememberContext(theaterId, commodoreId);
     if (event.op === "memory") {
       if (memories.has(commodoreId)) void loadCommodoreMemory(commodoreId);
       return;
@@ -344,8 +286,6 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
     offExperiments();
     if (installed === ctx) installed = null;
     theaters.clear();
-    contextOwners.clear();
-    contextResolving.clear();
     loading.clear();
     memories.clear();
     notify();
@@ -354,8 +294,7 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
 
 export function forgetCommodoreClient(commodoreId: string, theaterIds: readonly string[] = []): void {
   theaters.delete(commodoreId); loading.delete(commodoreId); memories.delete(commodoreId); memoryRequests.delete(commodoreId);
-  for (const [context, owner] of contextOwners) if (owner === commodoreId) { contextOwners.delete(context); contextResolving.delete(context); }
-  if (peekTheater === commodoreId || theaterIds.includes(peekTheater ?? "")) peekTheater = null;
+  if (peekCommodore === commodoreId) peekCommodore = null;
   if (!wasCommodoreRemoved(commodoreId)) publishCommodoreLifecycle({ op: "removed", commodoreId, theaterIds });
   notify();
 }
@@ -520,20 +459,10 @@ export function subscribeCommodoreMapInsets(listener: () => void): () => void {
   return installed?.consoleState.subscribeMapInsets?.(listener) ?? (() => undefined);
 }
 
-/** Theater 의 원래 이름 — 사령관 별칭이 있어도 바뀌지 않는다(사이드바는 별칭 아래 줄에 이 이름을 둔다). */
-export function commodoreTheaterLabel(theaterId: string): string {
-  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "";
-}
-
-/** 사람이 지정한 사령관 별칭 — 없거나 지웠으면 null 이다. 구버전 호스트는 싣지 않으므로 늘 null 이다. */
-export function commodoreAlias(theaterId: string): string | null {
-  const owner = ownerOfContext(theaterId);
-  return owner ? commodoreOwnerAlias(owner) : null;
-}
-/** 별칭은 UUID 소유 상태다. 아직 상태를 읽지 않았으면 서버의 같은 UUID identity 투영을 사용한다. */
+/** 별칭은 UUID 소유 상태다 — 없거나 지웠으면 null. 아직 상태를 읽지 않았으면 사령관 목록의 같은 UUID 행을 쓴다. */
 export function commodoreOwnerAlias(commodoreId: string): string | null {
   const view = theaters.get(commodoreId)?.view;
-  return view ? view.state.alias ?? null : installed?.consoleState.getTheaters().find((theater) => theater.commodore?.id === commodoreId)?.commodore?.alias ?? null;
+  return view ? view.state.alias ?? null : readCommodoreList().find((row) => row.commodoreId === commodoreId)?.alias ?? null;
 }
 
 /* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */
@@ -572,11 +501,11 @@ export function useCommodoreMobilePanelRequest(request: string | undefined, onOp
 }
 
 /** 폰 사령관 화면을 고른 구역으로 연다 — 모바일 호스트는 목적지로 선언된 엔트리의 `rail.open`을 화면으로 연다. */
-export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string | null, panel = false): void {
+export function openCommodoreMobile(tab: CommodoreMobileTab, commodoreId: string | null, panel = false): void {
   setCommodoreMobileTab(tab);
   mobilePanelRequest = panel ? String(++mobilePanelSequence) : null;
-  // 사령관 UUID 는 등록 Theater 가 아니다 — theaterId 로 넘기면 착지가 그 Theater 를 찾지 못해 화면이 서지 않는다. 폰 화면이 읽는 commodoreId 로 넘긴다.
-  const target: Record<string, string> = theaterId && COMMODORE_UUID.test(theaterId) ? { commodoreId: theaterId } : theaterId ? { theaterId } : {};
+  // 폰 화면은 사령관 UUID 를 읽는다. 없으면 화면이 고른 사령관(칩·목록 첫 사령관)으로 선다.
+  const target: Record<string, string> = commodoreId ? { commodoreId } : {};
   installed?.rail.open(COMMODORE_ENTRY_ID, {
     ...target,
     ...(mobilePanelRequest ? { commodorePanel: mobilePanelRequest } : {}),
@@ -780,7 +709,3 @@ export function useCommodoreRoster(target: ModelRosterTarget): ModelRoster | nul
   return useModelRoster(installed?.models, target);
 }
 
-/** Theater 의 표시 이름을 React 로 — Theater 목록이 늦게 읽혀도 따라온다. */
-export function useCommodoreTheaterLabel(theaterId: string): string {
-  return useSyncExternalStore((listener) => installed?.consoleState.subscribe(listener) ?? (() => undefined), () => commodoreTheaterLabel(theaterId), () => commodoreTheaterLabel(theaterId));
-}

@@ -17,7 +17,7 @@ import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, l
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeObjectiveId, viewedTheaterId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readBoard, readObjectiveView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { activeObjectiveId, viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readBoard, readOwnerView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -452,16 +452,16 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
     // Objective 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
     const surfaceOpen = isObjectiveSurfaceOpen() && !activeObjectiveId();
-    const theaterId = viewedTheaterId();
+    const commodoreId = viewedCommodoreId();
     // 가운데 칸에 시작 전 목표가 서 있으면 그 줄이 하이라이트를 가진다 — 패널을 닫아도 가운데 칸이 가리키는 대상은 그대로다.
-    const selected = freshConversationObjectiveId() ?? (surfaceOpen ? readObjectiveView(theaterId).selected : null);
+    const selected = freshConversationObjectiveId() ?? (surfaceOpen ? readOwnerView(commodoreId).selected : null);
     // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.
     const now = Date.now();
     // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
     // 휴면·유휴로 접어 정체를 세우지 않도록, 축을 신뢰할 수 있을 때만 보드가 직접 센다. 전이는 호스트 상태 통지로 깨어난다.
     const runtimeReady = runtimeHydration() === "ready";
     const roster = readLaunchRoster();
-    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, finishedObjectivesRevision(), ...theaterStates];
+    const inputs = [summaries, surfaceOpen, commodoreId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, finishedObjectivesRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.
@@ -471,7 +471,7 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     // 보관된 완료 목표는 살아 있는 목록에 없다 — 완료 화면이 보는 동안만 읽어 둔 끝난 목표로 그 입력창의 대화(지휘관과의 메시지·범위 넓히기)를 세운다.
     const archivedShown = showing && !live.some((objective) => objective.id === showing) ? findFinishedObjective(showing) : null;
     const next = [
-      ...clustersOf(live, activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (objectiveId) => observations.get(objectiveId) ?? null : () => null, now, roster),
+      ...clustersOf(live, activity, (objective) => objective.commodoreId === commodoreId && selected === objective.id, commodoreBoardOf, runtimeReady ? (objectiveId) => observations.get(objectiveId) ?? null : () => null, now, roster),
       ...(archivedShown?.done ? [doneStandInCluster(archivedShown, roster, commodoreBoardOf)] : []),
     ];
     const nextSignature = signature(next);

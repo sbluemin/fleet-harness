@@ -49,9 +49,7 @@ export interface CommodoreRouteHooks {
   readonly plugins?: import("./plugins.js").CommodorePlugins;
   readonly deletion?: ReturnType<typeof import("./deletion.js").createCommodoreDeletion>;
   readonly assertWritable?: (commodoreId: string) => void;
-  readonly resolve?: (theaterId: string) => string | null;
   readonly create?: (alias: string) => string;
-  readonly resolveAll?: (theaterId: string) => readonly string[];
   readonly list?: () => readonly ConsoleCommodoreSummary[];
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
   readonly summary?: (id: string) => ConsoleCommodoreSummary;
@@ -169,7 +167,6 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       hooks.setOrder(commodoreIds);
       return { commodores: hooks.list() };
     }) },
-    { name: "commodore/resolve", method: "POST", summary: "Resolve all Commodores using a Theater, without choosing an ambiguous owner.", handler: json(z.object({ theaterId: ids }).strict(), ({ theaterId }) => { const commodoreIds = hooks.resolveAll?.(theaterId) ?? (hooks.resolve?.(theaterId) ? [hooks.resolve(theaterId)!] : []); return { commodoreIds, commodoreId: commodoreIds.length === 1 ? commodoreIds[0] : null }; }) },
     { name: "commodore/create", method: "POST", summary: "Create a Commodore with no Theaters.", handler: json(z.object({ alias: z.string().transform(normalizeCommodoreAlias).pipe(z.string().min(1)) }).strict(), ({ alias }) => {
       if (!hooks.create || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
       const commodoreId = hooks.create(alias);
@@ -307,9 +304,6 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/transcript", method: "POST", summary: "Read a page of the Commodore log, newest last; pass the first entry's seq as before to read older entries.", handler: json(commodoreRef.extend({ limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE).optional(), before: z.number().int().nonnegative().optional() }).strict(), ({ commodoreId, limit, before }) => { read(commodoreId); return { commodoreId, ...store.transcriptRead(commodoreId, { limit, before }) }; }) },
   ];
 }
-
-/** 사이드바 Theater DTO 플래그 — 실험 기능이 켜지고 순찰이 안 함이 아닌 자동 운영 상태. */
-export const COMMODORE_ACTIVE_FLAG = "commodoreActive";
 
 export function commodoreActive(ctx: CommodoreRouteContext, store: CommodoreStore, commodoreId: string): boolean {
   if (!(ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS).commodore) return false;

@@ -23,6 +23,8 @@ export interface ClientConsoleStateCapability {
   getActiveTheaterId(): string | null;
   /** 지금 화면에 보이는 대화 또는 모바일 목록의 Theater. 빈 칸은 null이다. */
   getViewedTheaterId?(): string | null;
+  /** 지금 화면이 가리키는 사령관 UUID(새 세션·가운데 표면·대화 대상·활성 Objective, 폰은 고른 사령관). Theater 에서 찾지 않는다. 없으면 null. */
+  getViewedCommodoreId?(): string | null;
   /** 마운트하지 않고 해당 Theater의 Inbox를 연다. */
   viewTheater?(theaterId: string): void;
   /** 캔버스에서 활성인 Objective — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
@@ -67,11 +69,6 @@ export interface ConsoleTheaterSummary {
   readonly id: string;
   /** 원래 Theater 이름 — 별칭이 있어도 바뀌지 않는다. */
   readonly label: string;
-  /**
-   * 연결된 사령관의 읽기 전용 요약. 별칭은 UUID의 속성이다. 사령관을 부르는 자리는 `commodore?.alias ?? label` 로
-   * 이름을 정하고, 별칭이 있으면 원래 Theater 이름을 함께 둔다. 구버전 호스트는 싣지 않는다.
-   */
-  readonly commodore?: { readonly id: string; readonly alias?: string };
 }
 
 /** 조합이 주입하는 사령관 이름 편집. Workspace는 UUID 발급·저장 구현을 알지 않는다. */

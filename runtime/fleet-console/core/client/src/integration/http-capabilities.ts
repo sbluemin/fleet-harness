@@ -1,4 +1,3 @@
-import { resolveOwnerForContext } from "../../../../features/commodore/shared/contracts/client-helpers.js";
 import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
 import * as React from "react";
 import { assertObjectiveRecord, ApiError } from "../../../../features/execution/client/objective-records.js";
@@ -73,6 +72,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       getObjectiveRecords: () => [],
       getActiveTheaterId: () => null,
       getViewedTheaterId: () => null,
+      getViewedCommodoreId: () => null,
       viewTheater: () => undefined,
       getActiveObjectiveId: () => null,
       // 스트림이 없는 사본은 끊긴 적도 없다 — offline 으로 두면 플러그인이 영원히 단절로 읽는다.
@@ -114,10 +114,12 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     },
     objectiveRecords: {
       create: async (input) => {
+        // 부르는 쪽이 자기 문맥의 사령관을 싣는다 — Theater 에서 주인을 찾지 않는다.
+        if (!input.commodoreId) throw new Error("commodore_required");
         const response = await fetch("/api/v1/objectives/records", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...input, commodoreId: ("commodoreId" in input && typeof input.commodoreId === "string" ? input.commodoreId : await resolveOwnerForContext(input.theaterId)) }),
+          body: JSON.stringify(input),
         });
         if (!response.ok) throw new ApiError(response.status, `Objective create failed: ${response.status}`);
         const payload = await response.json() as { readonly objectiveRecord?: unknown };

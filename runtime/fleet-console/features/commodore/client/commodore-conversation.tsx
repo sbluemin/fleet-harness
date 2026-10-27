@@ -1,4 +1,4 @@
-import { commodoreName, useCommodoreOwnerName } from "./commodore-name.js";
+import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -23,10 +23,9 @@ import { getConversationSurface, useConversationSurface } from "../../workspace/
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { getState } from "../../../core/client/src/integration/store.js";
 import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store.js";
-import { setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
+import { readCommodoreList, setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
-import { contextsOf, ownerOfContext } from "./commodore-state.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -79,9 +78,8 @@ export function subscribeCommodoreConversationActive(listener: () => void): () =
  * 가운데 칸이 이 사령관을 가리키는가. 사령관 대화뿐 아니라 그 사령관의 지휘관 대화도 사이드바 줄을 강조한다.
  * 새 세션이면 고정된 사령관을 보고, 다른 표면이 서 있으면 그 표면의 사령관만 본다. 둘 다 없으면 열린 Objective 의 소유 사령관을 본다.
  */
-export function isCommodoreConversationSelected(theaterId: string): boolean {
-  const owner = ownerOfContext(theaterId);
-  if (owner === null) return false;
+export function isCommodoreConversationSelected(commodoreId: string): boolean {
+  const owner = commodoreId;
   const newSession = getState().newSession;
   if (newSession !== null) return newSession.commodoreId === owner;
   const surface = getConversationSurface();
@@ -91,15 +89,14 @@ export function isCommodoreConversationSelected(theaterId: string): boolean {
 }
 
 /**
- * 가운데 칸에 그 Theater 의 사령관 대화(입력창이 있는 것)가 지금 서 있는가. 읽기 전용 기록은 입력창이 없어 치지 않는다.
+ * 가운데 칸에 그 사령관의 대화(입력창이 있는 것)가 지금 서 있는가. 읽기 전용 기록은 입력창이 없어 치지 않는다.
  * 호스트의 「붙일 곳」 판정(`ComposerQuoteReceiver.targets` 의 `current`)이 읽는다. 바뀜은 `subscribeCommodoreConversationActive` 가 깨운다.
  */
-export function isCommodoreConversationOpen(theaterId: string): boolean {
+export function isCommodoreConversationOpen(commodoreId: string): boolean {
   const surface = port?.current();
   if (!surface || surface.surfaceId !== COMMODORE_SURFACE_ID) return false;
   const params = readParams(surface.params);
-  const owner = ownerOfContext(theaterId);
-  return owner !== null && params?.commodoreId === owner && !params.readOnly;
+  return params?.commodoreId === commodoreId && !params.readOnly;
 }
 
 /** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
@@ -112,12 +109,17 @@ export function useCommodoreConversationActive(): boolean {
 }
 
 const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 사령관 자기 Theater 목록의 첫 Theater — 사령관에서 Theater 로 가는 방향만 쓴다. 없으면 undefined. */
+export function commodoreHomeTheater(commodoreId: string): string | undefined {
+  return readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.find((theater) => theater.theaterId)?.theaterId ?? undefined;
+}
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. Theater id는 UUID가 아니라 여기서 거절한다. */
 export function openCommodoreConversation(commodoreId: string, options: CommodoreConversationOptions = {}): boolean {
   if (!port || !port.isActive() || !COMMODORE_UUID.test(commodoreId)) return false;
-  // 등록 Theater가 있으면 그 id를 대화 파라미터에 둔다. 패널이 열리는 화면 Theater는 이 값이다.
+  // 그 사령관 자기 Theater 목록의 첫 Theater 를 대화 파라미터에 둔다. 패널이 열리는 화면 Theater는 이 값이다.
   // 섹션 문맥은 theater()가 사령관 UUID로 돌려 주고, Inbox도 그 UUID를 쓴다.
-  const theaterId = contextsOf(commodoreId)[0];
+  const theaterId = commodoreHomeTheater(commodoreId);
   const opened = port.open(COMMODORE_SURFACE_ID, { ...options, commodoreId, ...(theaterId ? { theaterId } : {}) });
   if (!opened) return false;
   void loadCommodore(commodoreId);
@@ -273,7 +275,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const Conversation = commodoreConversationRenderer();
   const screenTheaterId = theaterId ?? "";
   const index = useCommodoreObjectiveIndex(commodoreId);
-  const name = useCommodoreOwnerName(commodoreId, t);
+  const name = useCommodoreName(commodoreId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
@@ -534,6 +536,6 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     if (!target || target.readOnly) return;
     const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
     // 「기록」 탭은 목표 흔적이다 — 폰에는 같은 흔적을 그리는 「목표」 탭이 따로 있다(기록은 가운데 대화).
-    openCommodoreMobile(tab === "goals" ? "goals" : tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
+    openCommodoreMobile(tab === "goals" ? "goals" : tab ? TAB_INBOX_PAGES[tab] : "log", target.commodoreId, tab !== undefined);
   },
 };

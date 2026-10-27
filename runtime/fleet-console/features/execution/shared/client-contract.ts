@@ -82,7 +82,8 @@ export interface ClientObjectiveStatusDetailCapability {
 
 
 export interface ClientObjectiveRecordsCapability {
-  create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: ObjectiveGeometry | null }): Promise<ObjectiveRecord>;
+  /** `commodoreId` 는 그 Objective 을 소유할 사령관이다 — 없으면 `commodore_required` 로 거절한다(Theater 에서 주인을 찾지 않는다). */
+  create(input: { readonly commodoreId?: string; readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: ObjectiveGeometry | null }): Promise<ObjectiveRecord>;
   rename(objectiveId: string, title: string): Promise<ObjectiveRecord>;
   remove(objectiveId: string): Promise<void>;
   /** 그 Objective 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다.

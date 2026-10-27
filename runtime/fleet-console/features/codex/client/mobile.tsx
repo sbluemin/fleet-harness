@@ -33,7 +33,7 @@ const WikiIcon = () => <Icon><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" 
 export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
   const { theaterId, commodoreId, mobileBar, panes, visible } = ctx;
-  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
+  const contextKey = codexWorkspaceContextKey(commodoreId);
   const label = t("rail.codex.thisCommodore");
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const generation = useRef(0);
@@ -82,7 +82,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const refresh = useCallback(() => {
     const id = ++generation.current;
     const current = () => id === generation.current;
-    void resolveCodexWorkspace(theaterId, commodoreId)
+    void resolveCodexWorkspace(commodoreId)
       .then(async (workspace) => {
         if (!current()) return;
         // 리더 열이 같은 해석을 읽는다 — 같은 Theater라도 사령관이 바뀌면 다른 위키다.

@@ -1,5 +1,5 @@
 import { openOwnedObjectiveOnPhone } from "./board.js";
-import { useCommodoreOwnerName } from "./commodore-name.js";
+import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -48,7 +48,6 @@ import {
   setCommodorePatrol,
   subscribeCommodore,
   useCommodore,
-  ownerOfContext,
   useCommodoreEnabled,
   useCommodoreExperimentKnown,
   INTEL_EDIT_ATTRIBUTE,
@@ -111,9 +110,9 @@ function failWord(t: T, error: unknown): string {
  */
 export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
   subscribe: (listener) => subscribeCommodore(listener),
-  get: (theaterId): RailEntryDestinationTrailingValue | null => {
-    if (!theaterId) return null;
-    const view = readCommodore(ownerOfContext(theaterId)).view;
+  get: (commodoreId): RailEntryDestinationTrailingValue | null => {
+    if (!commodoreId) return null;
+    const view = readCommodore(commodoreId).view;
     if (!view) return null;
     const t = getT(commodoreLanguage());
     const run = view.run;
@@ -134,13 +133,10 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const rawCommodore = ctx.params["commodoreId"];
   const rawTheater = ctx.params["theaterId"];
   const paramCommodoreId = typeof rawCommodore === "string" && rawCommodore.length > 0 ? rawCommodore : null;
-  const addressedTheaterId = (typeof rawTheater === "string" ? rawTheater : "") || ctx.theaterId || "";
-  // 주소의 Theater를 가진 사령관이 하나면 그 사령관. 미소속이거나 여럿이면 칩에서 고른 사령관, 없으면 목록의 첫 사령관.
+  // 주소의 사령관, 없으면 칩에서 고른 사령관, 그것도 없으면 목록의 첫 사령관. Theater 에서 주인을 찾지 않는다.
   const selectedCommodoreId = useMobileCommodoreSelection();
   const listed = useCommodoreList();
-  const owners = listed.filter((row) => row.theaters.some((theater) => theater.theaterId === addressedTheaterId));
-  const fromTheater = owners.length === 1 ? owners[0]?.commodoreId ?? null : null;
-  const commodoreId = paramCommodoreId ?? fromTheater ?? selectedCommodoreId ?? listed[0]?.commodoreId ?? null;
+  const commodoreId = paramCommodoreId ?? selectedCommodoreId ?? listed[0]?.commodoreId ?? null;
   useEffect(() => {
     if (!commodoreId || !visible) return;
     if (paramCommodoreId === commodoreId && rawTheater === undefined) return;
@@ -150,7 +146,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const row = commodoreId ? listed.find((item) => item.commodoreId === commodoreId) ?? null : null;
   const firstTheaterLabel = row?.theaters.find((theater) => theater.label)?.label ?? "";
   const fallbackName = t("commodore.name");
-  const title = useCommodoreOwnerName(commodoreId ?? "", t);
+  const title = useCommodoreName(commodoreId ?? "", t);
   const named = title !== fallbackName || !commodoreId ? title : (firstTheaterLabel || fallbackName);
   const theaterLabel = firstTheaterLabel && firstTheaterLabel !== named ? firstTheaterLabel : (!firstTheaterLabel && named !== fallbackName ? fallbackName : "");
 
@@ -447,7 +443,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const asks = view?.state.asks;
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const index = useCommodoreObjectiveIndex(commodoreId);
-  const name = useCommodoreOwnerName(commodoreId, t);
+  const name = useCommodoreName(commodoreId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, asks, index.finished, name), [t, commodoreId, entries, board.objectives, asks, index.finished, name]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
     const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name);

@@ -173,24 +173,20 @@ export function buildPaletteCommands(
     push({ commandId: `archive-objectiveRecord:${activeObjective.id}`, label: t("palette.archiveObjective", { title: subject }), aliasLabel: alias("palette.archiveObjective", { title: subject }), action: { kind: "archive-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-archive", subject, undoable: true });
   }
   // Theater Inbox 섹션 행(사령관 등) — 보고 있는 Theater 의 행이 theater 구역 맨 앞에 서고, 다른 Theater 의 행은
-  // 홈에서 빠진 채 질의에만 맞는다. 이름은 사이드바 머리처럼 별칭을 앞세우고, 원래 이름으로도 찾아진다.
+  // 홈에서 빠진 채 질의에만 맞는다. 이름은 Theater 이름이다 — Theater 는 사령관을 정하지 않는다.
   const viewedTheaterId = getViewedTheaterId();
   const theaterSections = [...(options?.theaterSections ?? [])]
     .sort((left, right) => Number(right.theaterId === viewedTheaterId) - Number(left.theaterId === viewedTheaterId));
   for (const section of theaterSections) {
     const theater = current.theaters.find((candidate) => candidate.id === section.theaterId);
     if (!theater) continue;
-    const name = theater.commodore?.alias || theater.label;
+    const name = theater.label;
     const title = language === "ko" ? section.titles.ko : section.titles.en;
     const otherTitle = language === "ko" ? section.titles.en : section.titles.ko;
     push({
       commandId: `open-theater-section:${section.sectionId}@${section.theaterId}`,
       label: t("palette.openTheaterSection", { section: title, theater: name }),
       aliasLabel: alias("palette.openTheaterSection", { section: otherTitle, theater: name }),
-      ...(theater.commodore?.alias ? { extraAliases: [
-        t("palette.openTheaterSection", { section: title, theater: theater.label }),
-        alias("palette.openTheaterSection", { section: otherTitle, theater: theater.label }),
-      ] } : {}),
       action: { kind: "open-theater-section", theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId },
       group: "theater",
       glyph: "rail-entry",
@@ -199,12 +195,11 @@ export function buildPaletteCommands(
     });
   }
   for (const theater of current.theaters) {
-    const name = theater.commodore?.alias || theater.label;
+    const name = theater.label;
     push({
       commandId: `switch-theater:${theater.id}`,
       label: t("palette.switchTheater", { label: name }),
       aliasLabel: alias("palette.switchTheater", { label: name }),
-      ...(theater.commodore?.alias ? { extraAliases: [t("palette.switchTheater", { label: theater.label }), alias("palette.switchTheater", { label: theater.label })] } : {}),
       current: theater.id === viewedTheaterId,
       action: { kind: "switch-theater", theaterId: theater.id },
       group: "theater",

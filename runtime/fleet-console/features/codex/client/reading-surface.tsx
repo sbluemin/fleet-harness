@@ -30,7 +30,7 @@ export const codexReadingSurface: ExpandedSurfaceDescriptor = {
 
 function RestoredCodexReadingSheet({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   const reader = useReaderState().codexReader;
-  const contextKey = codexWorkspaceContextKey(ctx.theaterId, ctx.commodoreId);
+  const contextKey = codexWorkspaceContextKey(ctx.commodoreId);
   const restored = useRef<string | null>(null);
   const context = useRef(ctx);
   context.current = ctx;
@@ -67,8 +67,8 @@ function RestoredCodexReadingSheet({ ctx }: { readonly ctx: ExpandedSurfaceConte
       return;
     }
     let stopped = false;
-    const current = () => !stopped && codexWorkspaceContextKey(context.current.theaterId, context.current.commodoreId) === contextKey;
-    void resolveCodexWorkspace(theaterId, commodoreId).then((result) => {
+    const current = () => !stopped && codexWorkspaceContextKey(context.current.commodoreId) === contextKey;
+    void resolveCodexWorkspace(commodoreId).then((result) => {
       if (!current()) return;
       publishResolvedWorkspace({ contextKey, theaterId, ...result });
       if (!result.hasWiki) resetCodexReaderContext();

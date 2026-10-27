@@ -1006,8 +1006,10 @@ describe("console static and terminal ticket boundary", () => {
     const two = await post("commodore/theaters/add", { commodoreId: freshId, theaterId: workspaceHash(registered) });
     expect(two.commodore.theaters).toHaveLength(2);
     await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
-    expect((await post("commodore/resolve", { theaterId })).commodoreIds.sort()).toEqual([ownerId, freshId].sort());
-    expect((await post("commodore/resolve", { theaterId })).commodoreId).toBeNull();
+    // 같은 폴더를 두 사령관이 특수 처리 없이 함께 쓴다 — 각자 자기 목록에 그 Theater 를 둔다.
+    const sharing = ((await post("commodore/list", {})).commodores as readonly { commodoreId: string; theaters: readonly { theaterId: string }[] }[])
+      .filter((row) => row.theaters.some((theater) => theater.theaterId === theaterId)).map((row) => row.commodoreId).sort();
+    expect(sharing).toEqual([ownerId, freshId].sort());
     const record = await post("objectives/records", { commodoreId: freshId, theaterId: workspaceHash(registered), title: "General session" });
     const recordFile = path.join(ownerRoot, freshId, "objectives", record.objectiveRecord.id, "objective.json");
     const recordBefore = fs.readFileSync(recordFile, "utf8");

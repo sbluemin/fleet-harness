@@ -119,8 +119,8 @@ function CodexReaderPane(ctx: PaneContext) {
   const theaterId = ctx.theaterId;
   const workspaceId = useSyncExternalStore(
     subscribeCodexWorkspace,
-    () => resolvedCodexWorkspaceIdFor(theaterId, ctx.commodoreId),
-    () => resolvedCodexWorkspaceIdFor(theaterId, ctx.commodoreId),
+    () => resolvedCodexWorkspaceIdFor(ctx.commodoreId),
+    () => resolvedCodexWorkspaceIdFor(ctx.commodoreId),
   );
 
   const reader = state.codexReader;

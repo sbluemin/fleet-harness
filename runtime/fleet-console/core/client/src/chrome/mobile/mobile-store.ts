@@ -4,7 +4,7 @@ import type { MobileConfirmSpec } from "../../../../../features/workspace/shared
 import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
-import { mobileCommodoreTarget } from "../../../../../features/commodore/client/commodore-list.js";
+import { readCommodoreList, readMobileCommodoreId } from "../../../../../features/commodore/client/commodore-list.js";
 
 
 /**
@@ -116,10 +116,13 @@ export function setMobileDestination(next: MobileDestination): void {
   emit();
 }
 
-/** 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. 사령관 화면의 주소는 Theater가 아니라 고른 사령관 UUID다. */
+/**
+ * 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. 사령관 화면의 주소는 Theater가 아니라 고른 사령관 UUID다 —
+ * 칩에서 고른 사령관, 없으면 목록의 첫 사령관. Theater 에서 주인을 찾지 않는다.
+ */
 export function openMobilePluginDestination(entryId: string, theaterId: string | null): void {
   if (entryId === "commodore") {
-    const commodoreId = mobileCommodoreTarget(theaterId);
+    const commodoreId = readMobileCommodoreId() ?? readCommodoreList()[0]?.commodoreId ?? null;
     setMobileDestination({ kind: "plugin", entryId, ...(commodoreId ? { params: { commodoreId } } : {}) });
     return;
   }
@@ -201,8 +204,6 @@ export type MobileSheetKind =
   | { readonly kind: "forget"; readonly theaterId: string }
   /** S-07 행을 길게 누르면 서는 그 Theater 의 동작 — 데스크톱 머리 메뉴와 같은 항목이다. 별칭·새 그룹은 그 위에 입력 시트를 쌓는다. */
   | { readonly kind: "theater-actions"; readonly theaterId: string }
-  | { readonly kind: "theater-alias"; readonly theaterId: string }
-  | { readonly kind: "theater-group"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly objectiveId: string };
 
 let sheetStack: readonly MobileSheetKind[] = [];

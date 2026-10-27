@@ -12,12 +12,13 @@ import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import type { ConsoleState, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { resolveObjectiveActivity, type ObjectiveMarkVisual } from "../../execution/client/objective-activity.js";
 import { useObjectiveMongleActivity } from "../../execution/client/avatar-activity.js";
+import { readCommodoreList, useCommodoreList } from "../../commodore/client/commodore-list.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
  *
- * 역할: 부모 Objective 이 있는 Objective 은 구성원, 그 밖의 Objective(목표의 뿌리와 일반 Objective)은 지휘관 안테나, Theater 는 사령관.
- * 배정: 사이드바가 한 곳(`useAvatarClaims`)에서 아직 모습이 없는 키를 묶음째 뽑는다 — 같은 Theater 의 사령관·지휘관끼리,
+ * 역할: 부모 Objective 이 있는 Objective 은 구성원, 그 밖의 Objective(목표의 뿌리와 일반 Objective)은 지휘관 안테나, 사령관(UUID)은 사령관.
+ * 배정: 사이드바가 한 곳(`useAvatarClaims`)에서 아직 모습이 없는 키를 묶음째 뽑는다 — 같은 사령관의 사령관·지휘관끼리,
  * 같은 부모의 구성원끼리 겹치지 않게. 다른 표면은 읽기만 하고, 저장값이 없으면 키에서 정한 베이스를 그린다.
  */
 
@@ -93,12 +94,12 @@ export function clusterWorkingMembers(
 
 const byCreation = (left: ObjectiveRecord, right: ObjectiveRecord) => left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 
-/** 배정 묶음 — 묶음 안에서는 겹치지 않게 뽑는다. Theater 묶음의 첫 키는 사령관이다. */
-export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "objectiveRecords" | "nestedObjectiveRecords">): string[][] {
+/** 배정 묶음 — 묶음 안에서는 겹치지 않게 뽑는다. 사령관 묶음의 첫 키는 사령관 자신이고, 뒤는 그 사령관이 소유한 최상위 Objective 이다. */
+export function avatarClaimGroups(commodoreIds: readonly string[], state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords">): string[][] {
   const groups: string[][] = [];
-  for (const theater of state.theaters) {
-    const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id && !objectiveRecord.parentObjectiveId).sort(byCreation);
-    groups.push([...(theater.commodore ? [commodoreAvatarKey(theater.commodore.id)] : []), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
+  for (const commodoreId of commodoreIds) {
+    const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId && !objectiveRecord.parentObjectiveId).sort(byCreation);
+    groups.push([commodoreAvatarKey(commodoreId), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
   }
   const children = new Map<string, ObjectiveRecord[]>();
   for (const objectiveRecord of [...state.objectiveRecords, ...state.nestedObjectiveRecords]) {
@@ -114,8 +115,9 @@ export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "object
 /** 사이드바가 한 번 마운트한다 — Theater·Objective 이 처음 보이면 묶음째 뽑아 저장한다. 이미 저장된 키는 건드리지 않는다. */
 export function useAvatarClaims(): void {
   const state = useConsoleState();
+  const commodores = useCommodoreList();
   const book = useAvatarBook();
-  const groups = useMemo(() => avatarClaimGroups(state), [state.theaters, state.objectiveRecords, state.nestedObjectiveRecords]);
+  const groups = useMemo(() => avatarClaimGroups(commodores.map((row) => row.commodoreId), state), [commodores, state.objectiveRecords, state.nestedObjectiveRecords]);
   const signature = groups.map((group) => group.join(",")).join("|");
   useEffect(() => {
     if (!book) return;
@@ -126,8 +128,8 @@ export function useAvatarClaims(): void {
 }
 
 /** 편집기의 「다시 뽑기」가 피할 형제 키. */
-function siblingKeysOf(state: Pick<ConsoleState, "theaters" | "objectiveRecords" | "nestedObjectiveRecords">, key: string): string[] {
-  return avatarClaimGroups(state).find((group) => group.includes(key))?.filter((candidate) => candidate !== key) ?? [];
+function siblingKeysOf(state: Pick<ConsoleState, "objectiveRecords" | "nestedObjectiveRecords">, key: string): string[] {
+  return avatarClaimGroups(readCommodoreList().map((row) => row.commodoreId), state).find((group) => group.includes(key))?.filter((candidate) => candidate !== key) ?? [];
 }
 
 interface ObjectiveAvatarProps {

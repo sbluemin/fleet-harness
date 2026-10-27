@@ -149,9 +149,13 @@ if (typeof prompt !== "string") {
   process.exit(0);
 }
 
-let { commodoreId, commodoreIds = [] } = await api("POST", "/api/v1/commodore/resolve", { theaterId });
+// Console has no Theater-to-owner lookup: a Theater is a folder in each Commodore's own list. Pick the fixture
+// Commodore from the Commodore list, the way a person picks it in the sidebar.
+const { commodores = [] } = await api("POST", "/api/v1/commodore/list", {});
+const listing = commodores.filter((row) => (row.theaters ?? []).some((theater) => theater.theaterId === theaterId));
+let commodoreId = listing.length === 1 ? listing[0].commodoreId : null;
 if (!commodoreId) {
-  if (commodoreIds.length > 0) fail("Theater has multiple Commodore owners; choose an unambiguous fixture Theater");
+  if (listing.length > 1) fail("Several Commodores list this Theater; choose an unambiguous fixture Theater");
   ({ commodoreId } = await api("POST", "/api/v1/commodore/create", { alias: path.basename(theaterPath) || "Fixture" }));
   await api("POST", "/api/v1/commodore/theaters/add", { commodoreId, theaterId });
 }

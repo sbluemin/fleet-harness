@@ -32,9 +32,12 @@ export function publishResolvedWorkspace(next: CodexWorkspaceState): void {
   for (const listener of workspaceListeners) listener();
 }
 
-/** 소유자가 없는 옛 진입점만 Theater의 단일 소유자 해석을 유지한다. */
-export function codexWorkspaceContextKey(theaterId: string | null, commodoreId?: string | null): string {
-  return commodoreId ?? theaterId ?? "";
+/**
+ * Wiki 소유 스코프 — 위키는 사령관의 것이라 사령관 UUID 가 곧 키다. 사령관이 없으면 빈 키(위키 없음)다.
+ * Theater 에서 주인을 찾지 않는다: 같은 폴더를 여러 사령관이 함께 쓸 수 있다.
+ */
+export function codexWorkspaceContextKey(commodoreId: string | null | undefined): string {
+  return commodoreId ?? "";
 }
 
 /**
@@ -46,8 +49,8 @@ export function codexWorkspaceContextKey(theaterId: string | null, commodoreId?:
  * 아무도 다시 부르지 않아 리더가 에러 화면에 머문다 — 그래서 해석 결과는 구독 가능한
  * 값이어야 하고, 소비자는 null인 동안 마운트를 미뤄야 한다.
  */
-export function resolvedCodexWorkspaceIdFor(theaterId: string | null, commodoreId?: string | null): string | null {
-  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
+export function resolvedCodexWorkspaceIdFor(commodoreId: string | null | undefined): string | null {
+  const contextKey = codexWorkspaceContextKey(commodoreId);
   if (lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey && lastResolvedWorkspace.hasWiki) {
     return lastResolvedWorkspace.id;
   }
@@ -78,15 +81,13 @@ export function rememberCodexScope(contextKey: string): void {
   lastCodexContextKey = contextKey;
 }
 
-/** 카탈로그를 열지 않고 복귀한 확대 표면도 같은 workspace 해석을 쓴다. */
-export async function resolveCodexWorkspace(theaterId: string | null, commodoreId?: string | null): Promise<Pick<CodexWorkspaceState, "hasWiki" | "id">> {
-  const contextId = codexWorkspaceContextKey(theaterId, commodoreId);
-  if (!contextId) return { hasWiki: false, id: null };
+/** 카탈로그를 열지 않고 복귀한 확대 표면도 같은 workspace 해석을 쓴다. 사령관 UUID 로만 묻고, 사령관이 없으면 위키도 없다. */
+export async function resolveCodexWorkspace(commodoreId: string | null | undefined): Promise<Pick<CodexWorkspaceState, "hasWiki" | "id">> {
+  if (!commodoreId) return { hasWiki: false, id: null };
   const response = await fetch("/api/v1/codex/workspace", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // 기존 전송 필드명은 유지한다. 서버의 컨텍스트 해석은 사령관 UUID를 먼저 인정한다.
-    body: JSON.stringify({ theaterId: contextId }),
+    body: JSON.stringify({ commodoreId }),
   });
   if (!response.ok) throw new Error("codex_workspace_unavailable");
   const value: unknown = await response.json();

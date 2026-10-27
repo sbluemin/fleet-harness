@@ -53,8 +53,8 @@ export function CodexReadingSheet({ navigate, commodoreId }: { readonly navigate
   // 해석이 도착한 프레임에 리더를 세운다(그 전에는 세우지 않는다).
   const workspaceId = useSyncExternalStore(
     subscribeCodexWorkspace,
-    () => resolvedCodexWorkspaceIdFor(theaterId, commodoreId),
-    () => resolvedCodexWorkspaceIdFor(theaterId, commodoreId),
+    () => resolvedCodexWorkspaceIdFor(commodoreId),
+    () => resolvedCodexWorkspaceIdFor(commodoreId),
   );
 
   const sheetRef = useRef<HTMLDivElement>(null);

@@ -15,7 +15,7 @@ import { createWorkspaceActions } from "../../../features/workspace/host/actions
 import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../../features/workspace/host/objective-archive-storage.js";
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
-import { createAvatarRouter, createAvatarStore, migrateCommodoreAvatars } from "../../../features/workspace/host/avatars.js";
+import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -1218,7 +1218,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     knowledge: {
       root: (commodoreId) => commodore?.knowledge.root(commodoreId) ?? null,
       ids: () => commodore?.knowledge.ids() ?? [],
-      commodoreForContext: (contextId) => commodore ? commodore.knowledge.forContext(contextId) : { ok: false, reason: "unavailable" },
+      commodoreExists: (commodoreId) => commodore?.knowledge.exists(commodoreId) ?? false,
       legacyKnowledgeSources: (commodoreId, resuming) => commodore?.knowledge.legacySources(commodoreId, resuming) ?? [],
     },
     // 플러그인의 모델 좌표 해석. Gateway 설정 파일을 플러그인이 직접 열지 않도록 같은 파일의 로스터 투영만 내준다.
@@ -2006,7 +2006,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const theaterId = readUrl(req).searchParams.get("theaterId");
+    const commodoreId = readUrl(req).searchParams.get("commodoreId");
     const payload: ConsoleObserverStatus = {
       name: consoleLabel(),
       workspaces: objectiveRecords.list().length,
@@ -2018,7 +2018,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       requestedPort: portState.requestedPort,
       effectivePort: portState.effectivePort,
       portHonored: portState.portHonored,
-      wikiServerStatus: resolveWikiServerStatus(theaterId),
+      wikiServerStatus: resolveWikiServerStatus(commodoreId),
     };
     writeJson(res, 200, payload);
   }
@@ -2065,15 +2065,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
-    const identity = commodore?.identity(theater.id);
     return {
       id: theater.id,
       label: theater.label,
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
-      ...(identity ? { commodore: identity } : {}),
-      commodoreActive: commodore?.active(theater.id) ?? false,
       hasWiki,
       activeAdmiralCount: objectiveRecords.listByTheater(theater.id).length,
     };
@@ -2083,10 +2080,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 지식 서버 상태는 그것을 소유한 플러그인이 말한다. 소유자가 없으면 "unknown"이다 —
    * 코어가 대신 "unavailable"이라고 답하면, 아무도 모른다는 사실이 없다는 주장으로 바뀐다.
    */
-  function resolveWikiServerStatus(theaterId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
-    if (!theaterId) return "unknown";
-    if (!theaters.get(theaterId)) return "unknown";
-    return commodore?.knowledge.forContext(theaterId).ok ? "available" : "unavailable";
+  function resolveWikiServerStatus(commodoreId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
+    if (!commodoreId || !commodore) return "unknown";
+    return commodore.knowledge.exists(commodoreId) ? "available" : "unavailable";
   }
 
   /** An accepted update stops this Console from inside: the same stop request a signal makes, with the same deadline. */
@@ -2178,7 +2174,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (ownership) {
       const owners = ownership.entities.ids().map((commodoreId) => ({ commodoreId, theaterIds: ownership!.theaterIds(commodoreId) }));
       commodoreSystemPrompts.migrate(owners);
-      migrateCommodoreAvatars(avatarStore, owners);
     }
     theaters.restore(state.theaters);
     objectiveRecords.replace(state.objectiveRecords);

@@ -12,8 +12,8 @@ import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, P
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, commodoreQuoteTargets, messageCommodoreMention, receiveCommodoreQuote, subscribeCommodoreQuoteTargets } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
-import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, contextsOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, ownerOfContext, readCommodore, resolveContext, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
-import { CommodoreZoneHost, commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
+import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openAskOwners, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { installCommodoreBoard } from "./board.js";
 import { getT } from "./i18n/index.js";
@@ -24,7 +24,7 @@ export const commodoreMobilePane: PaneDescriptor = {
   id: COMMODORE_MOBILE_PANE,
   role: "primary",
   mounts: ["rail"],
-  title: (ctx) => commodoreName(ctx.theaterId ?? "", getT(ctx.language)),
+  title: (ctx) => commodoreName(ctx.params.commodoreId ?? ctx.consoleState.getViewedCommodoreId?.() ?? "", getT(ctx.language)),
   hideCaption: true,
   render: (ctx) => ctx.mobileBar ? <MobileCommodore ctx={ctx} /> : null,
 };
@@ -44,7 +44,7 @@ export const commodoreEntry: RailEntryDescriptor = {
   // 사령관 칩 배지 — 사령관이 사람에게 물어 답을 기다리는 질문 수(`openAsks`). 행은 「목표」의 확인 필요가 같은 질문을 이미 세우므로 두지 않는다.
   attention: {
     subscribe: subscribeCommodore,
-    count: (theaterId) => theaterId ? openAsks(ownerOfContext(theaterId)).length : 0,
+    count: (commodoreId) => commodoreId ? openAsks(commodoreId).length : 0,
     label: (count, locale) => getT(locale)("commodore.board.ask.badge", { count }),
   },
 };
@@ -64,10 +64,8 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     revision: commodoreRevision,
     askOwners: openAskOwners,
     load: (commodoreId) => loadCommodore(commodoreId),
-    resolveContext,
-    ownerOfContext,
     open(commodoreId, options) {
-      const theaterId = contextsOf(commodoreId)[0] ?? null;
+      const theaterId = commodoreHomeTheater(commodoreId) ?? null;
       // 폰 화면의 문맥은 기억된 Theater가 아니라 사령관 UUID다. 빠진 Theater 이름이 부제로 남지 않는다.
       if (options?.mobile || options?.tab && options.tab !== "log") { openCommodoreMobile(options?.tab ?? "log", commodoreId); return true; }
       if (options?.revealAt !== undefined || options?.readOnly || options?.objectiveId) return openCommodoreConversation(commodoreId, options);

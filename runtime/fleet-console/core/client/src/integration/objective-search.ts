@@ -9,6 +9,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
 
 import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
+import { readCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { resolveObjectiveActivity } from "../../../../features/execution/client/objective-activity.js";
 import { fuzzyMatchPaletteLabel, searchTokens } from "./palette-match.js";
@@ -22,8 +23,8 @@ export interface ObjectiveSearchEntry {
   readonly objectiveId: string;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
-  /** 사령관 별칭 — 사이드바처럼 묶음 머리는 별칭을 앞세우고, 검색은 별칭과 원래 이름 둘 다로 맞는다. */
-  readonly theaterAlias?: string;
+  /** 그 Objective 를 소유한 사령관의 별칭 — 검색이 별칭으로도 맞는다. 묶음 머리(Theater)에는 서지 않는다. */
+  readonly commodoreAlias?: string;
   /** Shell 판별용 Objective 종류 — 팔레트의 이름 왼쪽 마크가 사이드바와 같은 분기를 탄다. */
   readonly type: string;
   readonly objectiveRecordName: string;
@@ -68,7 +69,6 @@ export interface ObjectiveSearchGroup {
   readonly archived?: boolean;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
-  readonly theaterAlias?: string;
   /** 그 Theater 의 Inbox 섹션 행(사령관 등) — 묶음의 Objective 행보다 먼저 선다. */
   readonly sections: readonly TheaterSectionSearchEntry[];
   readonly entries: readonly ObjectiveSearchEntry[];
@@ -83,7 +83,6 @@ export interface TheaterSectionSearchEntry {
   readonly key: string;
   readonly theaterId: string;
   readonly theaterLabel: string;
-  readonly theaterAlias?: string;
   /** 정준 id(`commodore:commodore`) */
   readonly sectionId: string;
   /** 서술자의 첫 칸 id */
@@ -272,7 +271,6 @@ export function groupObjectiveSearchEntries(
     groups.push({
       theaterId: entry.theaterId,
       theaterLabel: entry.theaterLabel,
-      ...(entry.theaterAlias ? { theaterAlias: entry.theaterAlias } : {}),
       sections: [],
       entries: [entry],
       archived: entry.archived,
@@ -288,7 +286,6 @@ export function groupObjectiveSearchEntries(
     const created: ObjectiveSearchGroup = {
       theaterId: section.theaterId,
       theaterLabel: section.theaterLabel,
-      ...(section.theaterAlias ? { theaterAlias: section.theaterAlias } : {}),
       sections: [section],
       entries: [],
     };
@@ -313,7 +310,7 @@ export function buildTheaterSectionSearchEntries(
 ): readonly TheaterSectionSearchEntry[] {
   const rows: TheaterSectionSearchEntry[] = [];
   for (const theater of theaters) {
-    const summary = { id: theater.id, label: theater.label, ...(theater.commodore ? { commodore: theater.commodore } : {}) };
+    const summary = { id: theater.id, label: theater.label };
     for (const section of sections) {
       try {
         const page = section.pages[0];
@@ -325,14 +322,13 @@ export function buildTheaterSectionSearchEntries(
           key: `${section.id}@${theater.id}`,
           theaterId: theater.id,
           theaterLabel: theater.label,
-          ...(theater.commodore?.alias ? { theaterAlias: theater.commodore?.alias } : {}),
           sectionId: section.id,
           pageId: page.id,
           title: section.title(language, theater.id),
           titles,
           caption: status.scope,
-          // 표시 언어와 무관하게 두 언어 제목·별칭·원래 이름 어느 것으로도 찾아진다.
-          searchText: [titles.ko, titles.en, section.title("ko"), section.title("en"), theater.commodore?.alias, theater.label].filter(Boolean).join(" "),
+          // 표시 언어와 무관하게 두 언어 제목·Theater 이름 어느 것으로도 찾아진다.
+          searchText: [titles.ko, titles.en, section.title("ko"), section.title("en"), theater.label].filter(Boolean).join(" "),
           icon: section.icon({ theater: summary }),
         });
       } catch {
@@ -363,6 +359,10 @@ export function filterTheaterSectionSearchEntries(
 }
 
 
+function commodoreAliasOf(commodoreId: string | undefined): string | null {
+  return commodoreId ? readCommodoreList().find((row) => row.commodoreId === commodoreId)?.alias ?? null : null;
+}
+
 function toObjectiveSearchEntry(
   objectiveRecord: ObjectiveRecord,
   theater: TheaterInfo | undefined,
@@ -372,7 +372,8 @@ function toObjectiveSearchEntry(
     objectiveId: objectiveRecord.id,
     theaterId: objectiveRecord.theaterId,
     theaterLabel: theater?.label ?? objectiveRecord.theaterId,
-    ...(theater?.commodore?.alias ? { theaterAlias: theater.commodore?.alias } : {}),
+    // 별칭은 그 Objective 를 소유한 사령관의 것이다 — Theater 에서 주인을 찾지 않는다.
+    ...(commodoreAliasOf(objectiveRecord.commodoreId) ? { commodoreAlias: commodoreAliasOf(objectiveRecord.commodoreId)! } : {}),
     type: "agent",
     objectiveRecordName: objectiveRecord.title,
     pluginId: "terminal",
@@ -383,5 +384,5 @@ function toObjectiveSearchEntry(
 }
 
 function objectiveRecordSearchText(entry: ObjectiveSearchEntry): string {
-  return [entry.objectiveRecordName, entry.theaterAlias, entry.theaterLabel, entry.pluginId].filter(Boolean).join(" ");
+  return [entry.objectiveRecordName, entry.commodoreAlias, entry.theaterLabel, entry.pluginId].filter(Boolean).join(" ");
 }

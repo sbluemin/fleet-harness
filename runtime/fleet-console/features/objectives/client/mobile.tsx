@@ -11,7 +11,7 @@ import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard, ownerOfContext } from "./board-commodore.js";
+import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -25,7 +25,7 @@ import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedTheaterId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
+import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -114,28 +114,29 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
 
 /**
  * 레일 아이콘 배지의 수 — 「확인 필요」 행·사이드바 「내 결정」과 같은 판정이라 사람의 차례만 센다: 사람이 답할 목표(`personTurnAt`)와
- * 사령관이 사람에게 직접 물은 질문(`openAsks`). 표면이 닫혀 있어도 활성 Theater 는 미리 읽혀 있다(installObjectiveState).
+ * 사령관이 사람에게 직접 물은 질문(`openAsks`). 표면이 닫혀 있어도 사령관 보드는 미리 읽혀 있다(installObjectiveState).
+ * `commodoreId`는 호스트가 건넨 지금 화면의 사령관이다.
  */
-export function personTurnCount(theaterId: string | null): number {
-  const active = theaterId !== null && commodoreBoardOf(ownerOfContext(theaterId) ?? "").active;
-  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(ownerOfContext(theaterId)).length;
+export function personTurnCount(commodoreId: string | null): number {
+  const active = commodoreId !== null && commodoreBoardOf(commodoreId).active;
+  return readBoard(commodoreId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(commodoreId).length;
 }
 
 /**
  * 사람의 차례마다 한 행 — 사령관의 질문(누르면 사령관 화면의 질문 카드), 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
  * (데스크톱 「내 결정」 구역과 같은 판정 `personTurnAt`). 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다.
  */
-export function decisionAttentionItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
-  const source = readTheater(theaterId).objectives;
-  const key = theaterId ?? "";
-  const answering = theaterId !== null && commodoreBoardOf(ownerOfContext(theaterId) ?? "").active;
-  const asks = openAsks(ownerOfContext(theaterId));
+export function decisionAttentionItems(commodoreId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
+  const source = readBoard(commodoreId).objectives;
+  const key = commodoreId ?? "";
+  const answering = commodoreId !== null && commodoreBoardOf(commodoreId).active;
+  const asks = openAsks(commodoreId);
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.asks === asks && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale, true);
   const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
   const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
-    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", ownerOfContext(theaterId)) })),
+    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", commodoreId) })),
     ...pending.map((objective) => ({
       id: objective.id,
       clusterId: objective.id,
@@ -150,19 +151,19 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
 
 // ── 지휘관 목록의 「보관한 완료 N」 ──
 
-/** 「보관한 완료 N」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(사람이 보관해 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
+/** 「보관한 완료 N」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(사람이 보관해 빠졌거나 복원돼 돌아왔다)와 사령관을 바꿀 때 다시 읽는다. */
 let finishedRoster = "";
 
-/** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「보관한 완료 N」을 다시 읽는다. */
+/** 지금 화면이 가리키는 사령관의 살아 있는 명단이 바뀌었으면 「보관한 완료 N」을 다시 읽는다. */
 function followFinished(): void {
-  const theaterId = viewedTheaterId();
-  if (!theaterId) return;
-  const state = readTheater(theaterId);
+  const commodoreId = viewedCommodoreId();
+  if (!commodoreId) return;
+  const state = readBoard(commodoreId);
   if (!state.loaded) return;
-  const roster = `${theaterId}|${state.objectives.map((objective) => objective.id).join(",")}`;
+  const roster = `${commodoreId}|${state.objectives.map((objective) => objective.id).join(",")}`;
   if (roster === finishedRoster) return;
   finishedRoster = roster;
-  loadFinishedObjectives(ownerOfContext(theaterId) ?? "");
+  loadFinishedObjectives(commodoreId);
 }
 
 /** 「보관한 완료 N」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
@@ -177,11 +178,11 @@ export function subscribeFinishedObjectives(listener: () => void): () => void {
  * 폰 「보관한 완료 N」 접기의 행(`RailEntryMobile.finished`) — 사람이 보관한 완료 목표만 올린다.
  * 보관하지 않았거나 복원된 완료 목표는 지휘관 정렬 목록에 선다. 누르면 복원 없이 읽기 전용 목표 화면을 연다(`openObjectiveOnPhone`).
  */
-export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
-  if (theaterId === null) return [];
+export function finishedObjectiveItems(commodoreId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
+  if (commodoreId === null) return [];
   const t = getT(locale, true);
-  const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
-  return finishedObjectives(ownerOfContext(theaterId) ?? "")
+  const live = new Set(readBoard(commodoreId).objectives.map((objective) => objective.id));
+  return finishedObjectives(commodoreId)
     .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
     .map((objective) => {
       // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).

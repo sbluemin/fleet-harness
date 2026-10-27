@@ -18,7 +18,7 @@ function isRegisteredTheater(state: ReturnType<typeof getState>, theaterId: unkn
 }
 
 /**
- * 목표의 극장 문맥은 그 사령관의 등록 Theater 목록에서만 고른다. 전역 단일 소유(theater.commodore)는 쓰지 않는다.
+ * 목표의 극장 문맥은 그 사령관의 등록 Theater 목록에서만 고른다. Theater 에서 주인 사령관을 찾지 않는다.
  * 저장된 id가 그 목록에 있으면 그 id다. 미등록 해시이고 등록 Theater가 하나면 그 하나다.
  * 없거나 여럿인데 해시뿐이면 null — 목표 탭은 Theater 없이 열리고, 경로가 필요한 도구는 고르지 않는다.
  */
@@ -69,23 +69,34 @@ export function getViewedTheaterId(): string | null {
   return visibleTheaterOf(state, state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subjectId));
 }
 
-/** 화면이 명시한 도구 소유자만 전달한다. Theater 공유 목록에서 임의로 고르지 않는다. */
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const commodoreUuid = (id: unknown): string | null => (typeof id === "string" && COMMODORE_UUID.test(id) ? id : null);
+
+/**
+ * 지금 화면이 명시한 사령관 UUID — 사령관 하나에 걸린 표면(사령관 Inbox·목표·배지·도구)이 읽는 문맥이다.
+ * Theater 에서 주인을 거꾸로 찾지 않고, Theater 공유 목록이나 사령관 목록에서 임의로 고르지도 않는다: 같은 폴더를 여러 사령관이
+ * 함께 쓸 수 있으므로 Theater 는 사령관을 정하지 않는다.
+ * 폰은 화면의 Objective, 목적지 주소, 칩에서 고른 사령관 순이다. 데스크톱은 새 세션의 사령관, 가운데 표면의 사령관, Theater Inbox 를 연
+ * 동안의 작전 구역 사령관, 대화 대상 또는 활성 Objective 의 사령관 순이다. 모두 비면 null 이고, 부르는 쪽은 「사령관 없음」으로 다룬다 —
+ * 첫 사령관 같은 대체가 꼭 필요한 소비자만 스스로 명시한다.
+ */
 export function getViewedCommodoreId(): string | null {
   const state = getState();
   if (getViewModeSnapshot().effective === "mobile") {
     const objectiveId = readMobileObjectiveId();
     const objective = state.objectiveRecords.find((row) => row.id === objectiveId);
-    if (objective) return objective.commodoreId;
+    if (objective) return commodoreUuid(objective.commodoreId);
     const destination = getMobileDestination();
-    if (destination.kind === "plugin" && destination.params?.commodoreId) return destination.params.commodoreId;
-    return readMobileCommodoreId();
+    const addressed = commodoreUuid(destination.kind === "plugin" ? destination.params?.commodoreId : undefined);
+    if (addressed) return addressed;
+    return commodoreUuid(readMobileCommodoreId());
   }
-  if (state.newSession !== null) return state.newSession.commodoreId ?? null;
+  if (state.newSession !== null) return commodoreUuid(state.newSession.commodoreId);
   const surface = getConversationSurface();
-  if (surface !== null) return typeof surface.params.commodoreId === "string" ? surface.params.commodoreId : null;
-  if (readTheaterInboxState() !== null) return readZoneCommodore();
+  if (surface !== null) return commodoreUuid(surface.params.commodoreId);
+  if (readTheaterInboxState() !== null) return commodoreUuid(readZoneCommodore());
   const subjectId = getConversationSubject()?.id ?? state.activeObjectiveId;
-  return state.objectiveRecords.find((row) => row.id === subjectId)?.commodoreId ?? null;
+  return commodoreUuid(state.objectiveRecords.find((row) => row.id === subjectId)?.commodoreId);
 }
 
 export function useViewedCommodoreId(): string | null {

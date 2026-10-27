@@ -1,4 +1,3 @@
-import { resolveOwnerForContext } from "../../../commodore/shared/contracts/client-helpers.js";
 import type { ObjectiveGeometry, ObjectiveRecord } from "../../../objectives/shared/records/types.js";
 import {
   readAgentChatCatalogPayload,
@@ -75,7 +74,9 @@ export async function createAgentSession(
   },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
-  const commodoreId = options?.commodoreId ?? await resolveOwnerForContext(theaterId, signal);
+  // 세션은 사령관의 것이다 — 부르는 쪽이 자기 문맥의 사령관을 싣는다. Theater 에서 주인을 찾지 않는다.
+  const commodoreId = options?.commodoreId;
+  if (!commodoreId) throw new Error("commodore_required");
   const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
   const effort = typeof options?.effort === "string" && options.effort.length > 0 ? options.effort : undefined;
   // 요청 body에는 prompt를 실을 수 있지만, 응답 DTO에는 절대 오면 안 된다 — FORBIDDEN_BROWSER_PAYLOAD_KEYS의 "prompt"는 응답 가드이므로 지우지 않는다.

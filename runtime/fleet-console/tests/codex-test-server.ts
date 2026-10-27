@@ -14,9 +14,10 @@ interface StartCodexTestServerOptions {
 export interface CodexTestServer {
   address(): { port: number };
   close(callback?: () => void): void;
+  /** 폴더를 Theater 로 등록하고, 그 옛 위키를 맡은 사령관 id 를 돌려준다. */
   registerWorkspace(cwd: string): Promise<string>;
-  /** 등록된 Theater를 보는 화면의 위키 root — 그 맥락 사령관의 `commodore/{uuid}/knowledge`. */
-  knowledgeRoot(theaterId: string): Promise<string>;
+  /** 그 사령관의 위키 root — `commodore/{uuid}/knowledge`. */
+  knowledgeRoot(commodoreId: string): Promise<string>;
 }
 
 /**
@@ -66,20 +67,24 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
       const wanted = cwd.split("/").filter(Boolean).at(-1);
       theaterId = theaters.theaters?.find((theater) => theater.label === wanted)?.id ?? "";
     }
-    // 화면이 하듯 그 맥락의 위키를 연다 — 사령관 workspace가 열리고 MRU가 된다.
+    // 옛 위키가 있는 폴더는 등록이 그 지식의 사령관을 세운다 — 사람이 사이드바에서 보듯 사령관 목록에서 그 사령관을 고른다.
+    const list = await fetch(`${origin}/api/v1/commodore/list`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: "{}" });
+    const { commodores } = await list.json() as { readonly commodores: readonly { readonly commodoreId: string; readonly theaters: readonly { readonly theaterId: string }[] }[] };
+    const commodoreId = commodores.find((row) => row.theaters.some((theater) => theater.theaterId === theaterId))?.commodoreId ?? "";
+    // 화면이 하듯 그 사령관의 위키를 연다 — 사령관 workspace가 열리고 MRU가 된다.
     await fetch(`${origin}/api/v1/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: origin },
-      body: JSON.stringify({ theaterId }),
+      body: JSON.stringify({ commodoreId }),
     });
-    return theaterId;
+    return commodoreId;
   };
-  const knowledgeRoot = async (theaterId: string): Promise<string> => {
+  const knowledgeRoot = async (commodoreId: string): Promise<string> => {
     const origin = `http://127.0.0.1:${port}`;
     const response = await fetch(`${origin}/api/v1/codex/workspace`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: origin },
-      body: JSON.stringify({ theaterId }),
+      body: JSON.stringify({ commodoreId }),
     });
     const { id } = await response.json() as { readonly id: string };
     return join(lockDir, "fleet-data", "console", "commodore", id, "knowledge");
@@ -96,7 +101,7 @@ export async function startCodexTestServer(options: StartCodexTestServerOptions)
     },
     /**
      * 워크스페이스 등록은 이제 Theater 등록의 결과다 — Codex 플러그인이 생명주기
-     * 이벤트를 듣고 스스로 연다. 콘솔에 Codex 전용 진입점은 더 이상 없다.
+     * 이벤트를 듣고 스스로 연다. 콘솔에 Codex 전용 진입점은 더 이상 없다. 돌려주는 값은 그 위키의 사령관 id 다.
      */
     registerWorkspace: registerTheater,
     knowledgeRoot,

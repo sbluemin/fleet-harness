@@ -4,6 +4,7 @@ import type { ComposerQuoteReceiver, ComposerQuoteTargetOption } from "../../../
 import { attachComposerQuote } from "../../../../features/execution/client/objective-view-state.js";
 import { getConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { getState, subscribe } from "./store.js";
+import { getViewedCommodoreId } from "./viewed-theater.js";
 
 /**
  * 컴포저 인용의 호스트 중개 — 다른 표면(Codex 문서)이 고른 문장을 받는 쪽 입력창 초안에 칩으로 붙인다.
@@ -36,8 +37,10 @@ function chatCommanders(theaterId: string) {
 export function composerQuoteTargets(theaterId: string): readonly ComposerQuoteTargetOption[] {
   const options: ComposerQuoteTargetOption[] = [];
   let pluginCurrent = false;
+  // 플러그인 대상(사령관)은 지금 화면이 가리키는 사령관의 것이다 — Theater 에서 주인을 찾지 않는다.
+  const commodoreId = getViewedCommodoreId();
   for (const [pluginId, receiver] of receivers) {
-    for (const target of receiver.targets(theaterId)) {
+    for (const target of receiver.targets(commodoreId)) {
       const current = target.current === true && !pluginCurrent;
       if (current) pluginCurrent = true;
       options.push({ target: { kind: "plugin", pluginId, targetId: target.targetId }, label: target.label, group: "commodore", ...(current ? { current: true } : {}) });

@@ -1,5 +1,10 @@
-import { useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
+
+/**
+ * 사이드바 머리 한 줄 — 사령관 section 이 `TheaterInfo` 모양으로 선다. `id` 와 `commodore.id` 는 그 사령관 UUID 이고,
+ * 별칭은 사령관 목록의 값이다. Theater 목록에서 주인을 찾지 않는다. 사령관이 없는 Theater 행이면 `commodore` 가 없다.
+ */
+type SideBarHead = TheaterInfo & { readonly commodore?: { readonly id: string; readonly alias?: string } };
 export { theaterInitials } from "./theater-initials.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -14,7 +19,6 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { ownerOfContext } from "../../../commodore/client/commodore-state.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
@@ -92,7 +96,7 @@ interface TheaterAliasEditing {
 }
 
 interface TheaterSectionHeaderProps extends TheaterAliasEditing {
-  readonly theater: TheaterInfo;
+  readonly theater: SideBarHead;
   readonly active: boolean;
   readonly lastResponse: string | undefined;
   readonly showStatusLiveTick: boolean;
@@ -100,7 +104,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
   /** 머리를 눌렀을 때 — 그 사령관의 대화를 연다. */
-  readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
+  readonly onOpenInbox: (theater: SideBarHead, returnFocus: HTMLElement | null) => void;
   /** 이 머리의 사령관 메뉴를 연다 — 우클릭은 커서 자리(atCursor), 키·길게 누르기는 앵커 아래. */
   readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
   /** 열린 사령관 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 사령관에서도 열리므로 머리가 대상을 말한다. */
@@ -109,7 +113,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
 }
 
 interface TheaterActionsMenuProps {
-  readonly theater: TheaterInfo;
+  readonly theater: SideBarHead;
   readonly anchor: DOMRect;
   /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
   readonly atCursor?: boolean;
@@ -148,7 +152,6 @@ export function ObjectiveRecordsSideBar({
   // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
   const compact = sideBar.compact;
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
-  const viewedTheaterId = useViewedTheaterId();
   const surface = useConversationSurface();
   const placement = useEffectiveCommanderPlacement();
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
@@ -164,19 +167,18 @@ export function ObjectiveRecordsSideBar({
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const surfaceOwner = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
-  const viewedOwner = viewedTheaterId ? ownerOfContext(viewedTheaterId) : null;
   const subjectOwner = useConversationSubject()?.commodoreId ?? null;
   const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
   // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
   const owningCommodoreId = newSession !== null ? newSession.commodoreId ?? null
-    : surface ? surfaceOwner ?? viewedOwner ?? subjectOwner : viewedOwner ?? subjectOwner ?? objectiveOwner;
+    : surface ? surfaceOwner ?? subjectOwner : subjectOwner ?? objectiveOwner;
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
 
   // 사이드바 행은 사령관(UUID)이다 — 등록 Theater 목록이 아니라 사령관 목록에서 선다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
-  const sectionFaces: TheaterInfo[] = commodoreSections.map((section) => ({
+  const sectionFaces: SideBarHead[] = commodoreSections.map((section) => ({
     id: section.commodoreId,
     label: section.alias ?? section.label,
     createdAt: "",
@@ -189,7 +191,7 @@ export function ObjectiveRecordsSideBar({
     const rank = (id: string) => { const index = pendingOrder.indexOf(id); return index === -1 ? pendingOrder.length : index; };
     return rank(left.id) - rank(right.id);
   });
-  const contextMenuTheater = activeContextMenu
+  const contextMenuTheater: SideBarHead | null = activeContextMenu
     ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
 
@@ -320,7 +322,7 @@ export function ObjectiveRecordsSideBar({
 
   // 사령관 머리 — 그 사령관의 대화. 대화를 세울 수 없으면 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도
   // 정하지 않으면 사령관 기록 칸이다.
-  const openTheaterHeaderInbox = (theater: TheaterInfo, returnFocus: HTMLElement | null) => {
+  const openTheaterHeaderInbox = (theater: SideBarHead, returnFocus: HTMLElement | null) => {
     setActiveContextMenu(null);
     setZoneCommodore(theater.id);
     if (openCommodoreConversation(theater.id)) return;
@@ -607,8 +609,8 @@ function TheaterSectionHeader({
   };
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-      {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
-      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.commodore?.id ?? theater.id)} role="commodore" state="idle" size={32} label="" decorative />
+      {/* 플러그인 표식이 없을 때도 사령관 머리는 그 사령관(머리 id = 사령관 UUID)의 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
+      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state="idle" size={32} label="" decorative />
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
@@ -674,7 +676,7 @@ function TheaterSectionHeader({
  * 머리 자리의 별칭 입력 — Enter 는 저장, Esc 나 다른 곳을 누르면 취소, 비우고 저장하면 해제다. 바뀐 것이 없으면 저장하지 않는다.
  * IME 조합 중의 Enter·Esc 는 조합의 것이라 편집을 끝내지 않는다.
  */
-function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlias: (value: string) => string; readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined, viaKey: boolean) => void }) {
+function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlias: (value: string) => string; readonly theater: SideBarHead; readonly onDone: (alias: string | null | undefined, viaKey: boolean) => void }) {
   const t = useT();
   const [value, setValue] = useState(theater.commodore?.alias ?? "");
   const inputRef = useRef<HTMLInputElement | null>(null);
