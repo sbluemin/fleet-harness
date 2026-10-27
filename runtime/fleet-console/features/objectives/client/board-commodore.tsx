@@ -77,7 +77,7 @@ const EMPTY = { commodoreId: "", active: false, stalled: [] as readonly string[]
 export const commodoreBoardOf = (commodoreId: string) => host?.read(commodoreId) ?? EMPTY;
 export const readCommodore = commodoreBoardOf;
 export const openAsks = (commodoreId: string | null) => commodoreId ? host?.read(commodoreId).asks ?? EMPTY.asks : EMPTY.asks;
-export const openAskTheaters = () => host?.askTheaters() ?? [];
+export const openAskOwners = () => host?.askOwners() ?? [];
 export const commodoreLanguage = () => host?.language();
 export const isCommodoreConversationActive = () => host?.conversationActive() ?? false;
 export const subscribeCommodoreConversationActive = (listener: () => void) => { conversationListeners.add(listener); return () => { conversationListeners.delete(listener); }; };

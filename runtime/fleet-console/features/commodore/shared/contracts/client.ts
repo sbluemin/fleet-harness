@@ -16,8 +16,8 @@ export interface CommodoreClientHost {
   revision(): number;
   /** Theater 등록 수와 독립된 사령관 UUID 목록. */
   ids(): readonly string[];
-  /** 서 있는 질문이 있는 화면 문맥(Theater). 사령관의 정체성이 아니다. */
-  askTheaters(): readonly string[];
+  /** 답을 기다리는 질문을 가진 사령관 UUID 목록. 화면 문맥 수와 독립적이다. */
+  askOwners(): readonly string[];
   load(commodoreId: string): Promise<void>;
   open(commodoreId: string, options?: { readonly tab?: "log" | "directive" | "memory" | "settings" | "goals"; readonly ask?: string; readonly revealAt?: number; readonly readOnly?: boolean; readonly objectiveId?: string; readonly mobile?: boolean }): boolean;
   /** Theater 머리·사이드바에서 그 화면의 사령관 UUID를 구한다. 없으면 null. */
