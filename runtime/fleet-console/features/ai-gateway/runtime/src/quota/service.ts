@@ -270,7 +270,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
 
   /**
    * 창이 있는 성공은 마지막 값을 갈아 끼운다. 창이 없는 성공은 저장값을 지우거나 stale로
-   * 바꾸지 않고, 리셋 전인 창을 이번 조회 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
+   * 바꾸지 않는다. Muse는 그 성공을 세션 미사용으로 잇고, 그 외는 리셋 전인 창만 이번 조회
+   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
    */
   function applySettled(id: ProviderId, result: ProviderResult, at: number): ProviderDto {
     if (isProviderSuccess(result) && result.windows.length > 0) {
@@ -293,39 +294,47 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   }
 
   /**
-   * 창이 없는 성공. 저장값을 지우거나 stale로 바꾸지 않고, 리셋 전인 창만 일반 ok로 잇는다.
+   * 창이 없는 성공. 저장값을 지우거나 stale로 바꾸지 않는다.
    * `fetchedAt`은 이번 조회 시각이다. 직전 창의 시각을 두면 배정이 관측 나이로 stale을 고른다.
-   * 리셋이 지난 창은 0%로 꾸미지 않고 뺀다. 이전 값이 없거나 남을 창이 없어도 파일을 지우지 않는다.
+   * 리셋이 지난 창은 뺀다.
+   *
+   * Muse만 예외로 둔다. key가 진행 중인 5시간 창을 빼면 `subs_usage`가 통째로 없고, 그건
+   * 모르는 값이 아니라 세션 미사용이다. 파서에서 세션 0%를 만들면 창 있는 성공이 되어 이전
+   * 주간 창을 통째로 갈아 끼운다. 그래서 여기서 세션 창만 0%로 대체하고, 리셋 전인 비세션 창은
+   * 유지한다. resetsAt·period는 업스트림이 주지 않았으므로 붙이지 않는다. 다른 공급자의 빈
+   * 성공은 세션 0%로 바꾸지 않는다.
    */
   function presentEmptySuccess(id: ProviderId, result: ProviderSuccess, at: number): ProviderDto {
     const previous = lastGood.get(id);
     const plan = result.plan ?? previous?.plan;
     const method = result.method ?? previous?.method;
-    const empty: ProviderDto = {
-      status: "ok",
-      windows: [],
-      fetchedAt: at,
-      ...(plan ? { plan } : {}),
-      ...(method ? { method } : {}),
-    };
-    if (!previous) return empty;
-    const kept = withoutLapsed({
+    const kept = previous === undefined ? null : withoutLapsed({
       ...previous,
       status: "ok",
       fetchedAt: at,
       ...(plan ? { plan } : {}),
       ...(method ? { method } : {}),
     }, at);
-    const windows = kept?.windows ?? [];
-    if (kept === null || windows.length === 0) return empty;
+    const windows = id === "muse-code"
+      ? [{ id: "session" as const, usedPercent: 0 }, ...(kept?.windows ?? []).filter((window) => window.id !== "session")]
+      : kept?.windows ?? [];
+    if (id !== "muse-code" && windows.length === 0) {
+      return {
+        status: "ok",
+        windows: [],
+        fetchedAt: at,
+        ...(plan ? { plan } : {}),
+        ...(method ? { method } : {}),
+      };
+    }
     const value: ProviderSuccess = {
       status: "ok",
       windows,
       fetchedAt: at,
-      ...(kept.plan ? { plan: kept.plan } : {}),
-      ...(kept.method ? { method: kept.method } : {}),
-      ...(kept.cycleDays !== undefined ? { cycleDays: kept.cycleDays } : {}),
-      ...(kept.credits ? { credits: kept.credits } : {}),
+      ...(plan ? { plan } : {}),
+      ...(method ? { method } : {}),
+      ...(kept?.cycleDays !== undefined ? { cycleDays: kept.cycleDays } : {}),
+      ...(kept?.credits ? { credits: kept.credits } : {}),
     };
     remember(id, value, at);
     return value;

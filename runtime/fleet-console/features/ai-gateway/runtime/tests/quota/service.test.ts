@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
+import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
@@ -279,10 +280,19 @@ describe("quota service", () => {
         status: "ok",
         plan: "Power",
         fetchedAt: now,
-        windows: [{ id: "weekly", usedPercent: 30 }],
+        windows: [
+          { id: "session", usedPercent: 0 },
+          { id: "weekly", usedPercent: 30 },
+        ],
       });
+      expect(emptied.windows?.[0]).toEqual({ id: "session", usedPercent: 0, risk: { pressure: "ok" } });
       expect(JSON.stringify(emptied)).not.toMatch(/secret/);
       expect(service.peekSummary()?.providers["muse-code"]).toMatchObject({ status: "ok", fetchedAt: now });
+      expect(normalizeRoutingQuota(emptied, undefined, now)).toEqual({
+        observation: "partial",
+        ageSeconds: 0,
+        remainingPercent: 70,
+      });
 
       // 추론 스트림이 알려 준 창은 그 뒤의 빈 key 성공이 리셋 전에 지우면 안 된다.
       const sessionReset = now + 5 * 3_600_000;
@@ -301,7 +311,7 @@ describe("quota service", () => {
         plan: "Power",
         fetchedAt: now,
         windows: [
-          { id: "session", usedPercent: 4 },
+          { id: "session", usedPercent: 0 },
           { id: "weekly", usedPercent: 30 },
         ],
       });
@@ -312,23 +322,39 @@ describe("quota service", () => {
         plan: "Power",
         fetchedAt: now,
         windows: [
-          { id: "session", usedPercent: 4 },
+          { id: "session", usedPercent: 0 },
           { id: "weekly", usedPercent: 30 },
         ],
       });
 
-      // 리셋이 모두 지나도 창 없는 성공은 저장값을 지우거나 0%로 꾸미지 않는다.
+      // 리셋이 지난 주간 창은 빼고, 창 없는 성공은 세션 미사용으로 남긴다.
       now = liveReset + 1;
       const lapsed = (await open().getSummary({ force: true })).providers["muse-code"];
-      expect(lapsed).toMatchObject({ status: "ok", windows: [] });
-      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]?.status).toBe("ok");
+      expect(lapsed).toMatchObject({
+        status: "ok",
+        fetchedAt: now,
+        windows: [{ id: "session", usedPercent: 0 }],
+      });
+      expect(lapsed.windows?.some((window) => window.id === "weekly")).toBe(false);
+      expect(normalizeRoutingQuota(lapsed, undefined, now)).toEqual({
+        observation: "partial",
+        ageSeconds: 0,
+        remainingPercent: 100,
+      });
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]?.windows).toEqual([
+        { id: "session", usedPercent: 0 },
+      ]);
 
       open().record("muse-code", { status: "not_connected" });
       expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]).toBeUndefined();
 
       fs.writeFileSync(filePath, "{not json");
       const ignored = (await open().getSummary()).providers["muse-code"];
-      expect(ignored).toMatchObject({ status: "ok", plan: "Power", windows: [] });
+      expect(ignored).toMatchObject({
+        status: "ok",
+        plan: "Power",
+        windows: [{ id: "session", usedPercent: 0 }],
+      });
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
