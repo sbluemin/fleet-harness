@@ -208,3 +208,6 @@
 .commander-list-owner strong { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .commander-list-owner small { font-size: var(--t-xs); color: var(--text-tertiary); }
 .commander-list-rule { flex: none; height: 1px; margin: 0 10px; background: var(--hairline); }
+
+/* 목록의 작은 얼굴은 상태별 정지 표정·소품으로 읽고, 안쪽 SVG 재페인트와 바깥 몸짓의 지속 합성을 함께 멈춘다. */
+:is(.commander-ghost, .side-bar-commander-list) .mongle-avatar { --state-motion: none; }
