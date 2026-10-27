@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { closeNewSession } from "../../../../core/client/src/integration/store.js";
+import { openCommanderConversation } from "./commander-navigation.js";
+import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
-import { openCommanderSplit, useCommanderSplit } from "../conversation/commander-split-store.js";
+import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
+import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/client/commodore-list.js";
+import { useCommodore } from "../../../commodore/client/commodore-state.js";
+import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
+import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { CommodoreRecentActions } from "../../../commodore/client/commodore-trail.js";
 import { revealCommodoreTurn } from "../../../commodore/client/commodore-conversation.js";
@@ -14,18 +18,16 @@ import { SORTS, setSort, type SortPreference } from "./commander-sort.js";
 import { useCommanderRows } from "./commander-rows.js";
 import "./commander-list.css";
 
-/*
- * 사령관 오른쪽 「지휘관」 탭 — 시작 전·진행 중·완료 목표를 같은 두 줄 문법으로 보인다. 정렬과 그룹 묶기 선호는 전역이다.
- * 목표를 고르면 옆 칸에 시작 화면 또는 그룹 대화가 서고, 선택한 행 아래에 최근 사령관 행위가 펼쳐진다.
- */
-
-export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: string }) {
+/** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬·최근 행위를 쓴다. */
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession }: {
+  readonly commodoreId: string;
+  readonly selectedId?: string | null;
+  readonly onSelect?: (item: SideBarRowItem) => void;
+  readonly onNewSession?: () => void;
+}) {
   const t = useT();
-  const state = useConsoleState();
-  const split = useCommanderSplit();
   const language = useConsoleLocale();
-  const shownId = split.open && state.newSession?.placement !== "commander-split" ? split.picked[commodoreId] ?? null : null;
-  const { sorted, sections, preference } = useCommanderRows(commodoreId, shownId);
+  const { sorted, sections, preference } = useCommanderRows(commodoreId, selectedId);
 
   return (
     <section className="commander-tab" aria-label={t("commanderTab.aria")}>
@@ -45,7 +47,7 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
               : <path d="M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
           </svg>
         </button>
-        <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={() => openCommodoreNewSession(commodoreId)}>
+        <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
       </div>
@@ -56,10 +58,10 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
             <ol className="commander-tab-list side-bar-group-chips">
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
-                const selected = objectiveId !== null && shownId === objectiveId;
+                const selected = objectiveId !== null && selectedId === objectiveId;
                 return <Fragment key={item.layout.cluster.id}>
                   <SideBarClusterRow item={item} selected={selected}
-                    onFocus={(id) => { closeNewSession(); openCommanderSplit(commodoreId, id); }} />
+                    onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }} />
                   {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
                 </Fragment>;
               })}
@@ -69,6 +71,26 @@ export function CommodoreCommanderList({ commodoreId }: { readonly commodoreId: 
       )}
     </section>
   );
+}
+
+export function useCommanderOwner(commodoreId: string) {
+  const t = useT();
+  const owner = useCommodoreList().find((item) => item.commodoreId === commodoreId);
+  const { view } = useCommodore(commodoreId);
+  const board = useObjectiveTheater(commodoreId);
+  return {
+    name: owner ? commodoreSectionLabel(owner, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback"),
+    state: commodoreMongleState(view, board.objectives),
+  };
+}
+
+export function CommanderListOwner({ commodoreId, selected, onSelect }: { readonly commodoreId: string; readonly selected: boolean; readonly onSelect: () => void }) {
+  const owner = useCommanderOwner(commodoreId);
+  const t = useT();
+  return <button type="button" className="commander-list-owner" aria-current={selected ? "true" : undefined} onClick={onSelect}>
+    <CommodoreAvatar theaterId={commodoreId} state={owner.state} size={30} label="" decorative />
+    <span><strong>{owner.name}</strong><small>{t("sidebar.commodore.fallback")}</small></span>
+  </button>;
 }
 
 function SortMenu({ preference }: { readonly preference: SortPreference }) {

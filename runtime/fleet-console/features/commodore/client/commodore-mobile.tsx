@@ -200,7 +200,7 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
 }
 
 /**
- * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 깊이 1의 세부
+ * 화면은 세 단이다. 기본(깊이 0)은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 은 지휘관 시트를 열고, 메뉴에서 깊이 1의 세부
  * — 큰 아바타 · 이름 · 「편집」과 구역 행 카드(지휘관 세션·기록·목표 / 지시·기억·설정) — 가 선다. 행을 누르면 그 구역 본문이 깊이 2의
  * 하위 화면으로 서고, 기억 항목은 그 위에 한 단씩 쌓인다. ‹·시스템 뒤로·`__fleetMobileBack`은 모두 막대의 `onBack` 하나로 한 단씩 돌아온다.
  * 깊은 링크(`openCommodoreMobile(tab, id, true)`)와 대화의 원장 열기는 세부와 그 구역을 한 번에 세운다(깊이 0 → 2) — 뒤로는 구역 → 세부 → 대화다.
@@ -242,8 +242,9 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
-        // pill 은 세부(프로필)를 연다 — 구역은 세부의 행에서 고른다.
-        pill: { label: t("commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
+        // 제목은 사령관·지휘관 전환 시트, 세부는 메뉴로 연다. 기존 「지휘관 세션」도 세부에서 유지한다.
+        pill: { label: t("commodore.tabs.sessions"), avatar: <CommodoreAvatar theaterId={commodoreId ?? theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => { if (actions && commodoreId) actions.commanders(commodoreId); else { setSection(null); setPanel(true); } } },
+        menu: { label: t("commodore.mobile.more"), caption: title, items: [{ id: "conversation-info", label: t("commodore.mobile.openPanel"), run: () => { setSection(null); setPanel(true); } }] },
       });
       return;
     }

@@ -24,15 +24,10 @@ export interface CommodoreMobileSessions {
   readonly List: ComponentType<CommodoreMobileSessionsProps>;
   readonly useAttentionCount: (commodoreId: string) => number;
 }
-/**
- * 데스크톱 사령관 오른쪽 사이드바 「지휘관」 탭 — 그 사령관이 가진 지휘관 세션 목록. 줄 문법·정렬·고른 지휘관을 대화 옆 칸에 세우는
- * 일은 호스트의 것이라 호스트가 그려 넘긴다. 없으면 탭은 서지 않는다.
- */
-export interface CommodoreCommanderSessions {
-  readonly List: ComponentType<{ readonly commodoreId: string }>;
-}
 /** 폰 사령관 세부의 동작 중 호스트 폰 셸이 가진 것 — 시트와 새 세션 화면은 호스트 소유라 호스트가 열어 준다. */
 export interface CommodoreMobileActions {
+  /** 머리 제목에서 사령관·지휘관 전환 시트를 연다. */
+  readonly commanders: (commodoreId: string) => void;
   readonly delete: (commodoreId: string) => void;
   /** 「이름·모양 바꾸기」 시트를 연다(홈 행 길게 누르기와 같은 시트). `label`은 지금 보이는 이름, `alias`는 저장된 별칭(없으면 빈 문자열). */
   readonly editLook: (input: { readonly commodoreId: string; readonly label: string; readonly alias: string }) => void;
@@ -57,8 +52,6 @@ export interface CommodoreClientDeps {
    * 호스트가 그려 넘긴다. 없으면 탭은 서지 않는다.
    */
   readonly mobileSessions?: CommodoreMobileSessions;
-  /** 데스크톱 사령관 대화의 「지휘관」 탭 본문. 없으면 그 탭이 서지 않는다. */
-  readonly commanderSessions?: CommodoreCommanderSessions;
   /** 폰 사령관 세부의 「편집」·⋮ 「새 세션」. 없으면 그 동작이 서지 않는다. */
   readonly mobileActions?: CommodoreMobileActions;
 }

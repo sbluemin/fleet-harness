@@ -16,8 +16,6 @@ export interface ConversationSurfaceContext {
    * 없거나 구버전 호스트면 없다.
    */
   readonly composer?: () => ReactNode;
-  /** 대신하던 Objective 이 서면 이 칸 안에서 대화를 잇는다. 없으면 표면의 기본 전체 이동을 쓴다. */
-  readonly onObjectiveReady?: (objectiveId: string) => void;
 }
 
 
@@ -87,11 +85,6 @@ export interface ConversationSurfaceDescriptor {
   readonly standInObjectiveId?: (ctx: ConversationSurfaceContext) => string | null;
   /** 목표 대화를 대신하는 표면의 소유 사령관. 도구 작업대는 그 사령관과 공유한다. */
   readonly commodoreId?: (ctx: ConversationSurfaceContext) => string | null;
-  /**
-   * 이 대화가 사령관 자신의 대화면 그 사령관 UUID. 있으면 호스트가 가운데 칸을 나눠 그 사령관의 지휘관 그룹 대화를 옆에 세울 수
-   * 있다(분할의 열림·비율은 브라우저에 전역으로, 고른 지휘관은 사령관마다 남는다). 없거나 null 이면 나누지 않는다.
-   */
-  readonly commanderSplit?: (ctx: ConversationSurfaceContext) => string | null;
   /**
    * 이 대화의 에이전트 세션이 쓰는 플릿 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
    * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Objective 대화와 같은 지구본을 세우고, 누르면 이 플러그인 id 와

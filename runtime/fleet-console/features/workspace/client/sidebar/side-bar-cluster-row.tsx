@@ -22,7 +22,7 @@ import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "..
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 
 /**
- * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사령관 「지휘관」 탭에 서는 한 줄.
+ * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사령관의 지휘관 목록에 서는 한 줄.
  *
  * 뿌리·구성원 Objective 은 이 줄로 접히고, 줄의 글리프는 그중 가장 급한 상태다. 무엇이 검토 대기이고 무엇이 기한을 넘겼는지는
  * 플러그인이 판정해 넘기고, 여기서는 그리기만 진다. 순서는 탭이 고른 정렬이다.
@@ -108,7 +108,7 @@ export function rowGlyphState(item: SideBarRowItem): ObjectiveClusterRowGlyph | 
 }
 
 /**
- * 그 사령관의 묶음 줄 — 줄을 선언한 묶음마다 하나, 뿌리·접힌 Objective 엔트리를 붙여서. 사이드바 그룹 배치와 사령관 「지휘관」 탭이
+ * 그 사령관의 묶음 줄 — 줄을 선언한 묶음마다 하나, 뿌리·접힌 Objective 엔트리를 붙여서. 사이드바 그룹 배치와 사령관의 지휘관 목록이
  * 같은 줄을 쓴다.
  */
 export function sideBarRowItems(
@@ -156,7 +156,7 @@ interface SideBarClusterRowProps {
   readonly item: SideBarRowItem;
   /** 뿌리 Objective 의 사용자 accent — 제목 잉크만 소유한다. */
   readonly accentValue?: string | null;
-  /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관 「지휘관」 탭은 대화 옆 칸에 세운다. */
+  /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관의 지휘관 목록은 그룹 대화로 전환한다. */
   readonly onFocus: (objectiveId: string) => void;
   readonly selected: boolean;
 }
@@ -250,7 +250,7 @@ export function SideBarClusterRow({ item, accentValue = null, onFocus, selected 
   ));
   const rowRef = useRef<HTMLLIElement | null>(null);
   const pointerTypeRef = useRef("mouse");
-  // 목표 줄은 세션 유무와 무관하게 옆 칸으로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
+  // 목표 줄은 세션 유무와 무관하게 그 대화로 간다. 목표가 아닌 사령관 질문만 기존 질문 카드를 연다.
   const open = () => {
     const objectiveId = commanderObjectiveId(layout.cluster);
     if (objectiveId === null) { layout.cluster.open?.(); return; }

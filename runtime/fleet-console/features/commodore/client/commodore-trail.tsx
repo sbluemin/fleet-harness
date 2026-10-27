@@ -276,7 +276,7 @@ function recentWhen(at: number, language: "en" | "ko"): string {
     : RECENT_DATE_FORMATS[language].format(at);
 }
 
-/** 지휘관 탭에서 고른 목표 바로 아래의 최근 세 행위. 폰의 전체 기록과 같은 보드 사실을 읽는다. */
+/** 지휘관 목록에서 고른 목표 바로 아래의 최근 세 행위. 폰의 전체 기록과 같은 보드 사실을 읽는다. */
 export function CommodoreRecentActions({ commodoreId, objectiveId, language, onReveal }: {
   readonly commodoreId: string; readonly objectiveId: string; readonly language: "en" | "ko"; readonly onReveal?: (at: number) => void;
 }) {

@@ -7,8 +7,6 @@ import { getViewedTheaterId } from "../../../../core/client/src/integration/view
 import { readNewSessionSelection } from "./new-session-preferences.js";
 import { getConversationSurface } from "./conversation-surface-store.js";
 import { getConversationSubject } from "./conversation-slots.js";
-import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
-import { revealCommanderSplit } from "./commander-split-store.js";
 import { mobileCommodoreTarget, readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../../../commodore/client/commodore-list.js";
 
 /**
@@ -61,11 +59,9 @@ export function resolveNewSessionCommodoreId(): string | null {
   return commodoreUuid(picked) ?? readCommodoreList()[0]?.commodoreId ?? null;
 }
 
-/** 지휘관 탭 「+」·사령관 메뉴 — 그 사령관을 실은 새 세션을 대화 옆 칸에 연다. */
+/** 지휘관 목록 「+」·사령관 메뉴 — 그 사령관을 실은 새 세션을 대화 칸에 연다. */
 export function openCommodoreNewSession(commodoreId: string): void {
-  if (!openCommodoreConversation(commodoreId)) return;
-  revealCommanderSplit();
-  openNewSession({ theaterId: resolveNewSessionTheaterId(commodoreId), commodoreId, placement: "commander-split" });
+  openNewSession({ theaterId: resolveNewSessionTheaterId(commodoreId), commodoreId });
 }
 
 /**
@@ -73,7 +69,7 @@ export function openCommodoreNewSession(commodoreId: string): void {
  * 이미 열려 있으면 고른 Theater 를 그대로 두고 컴포저로 돌아간다 — 쓰던 문장과 고른 자리를 단축키가 갈아치우지 않는다.
  */
 export function openDefaultNewSession(): void {
-  if (getState().newSession !== null && getState().newSession?.placement !== "commander-split") {
+  if (getState().newSession !== null) {
     requestNewSessionFocus();
     return;
   }

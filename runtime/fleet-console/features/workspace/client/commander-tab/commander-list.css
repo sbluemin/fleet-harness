@@ -1,5 +1,4 @@
-/* 사령관 오른쪽 사이드바 「지휘관」 탭 — 줄 문법은 사이드바 묶음 줄(.side-bar-cluster-row)을 그대로 쓰고, 여기서는 탭 머리 줄과
-   정렬 메뉴만 진다. 메뉴의 면·행은 사이드바 우클릭 메뉴(.group-context-menu-*)와 같은 토큰이다. */
+/* 고스트 목록과 폰 시트 — 줄 문법은 사이드바 묶음 줄을 그대로 쓰고 정렬 메뉴도 같은 토큰을 쓴다. */
 .commander-tab {
   display: flex;
   flex-direction: column;
@@ -111,3 +110,11 @@
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .commander-tab-trail:empty { display: none; }
+.commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+.commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }
+.commander-list-owner:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+.commander-list-owner > span { min-width: 0; }
+.commander-list-owner strong, .commander-list-owner small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commander-list-owner strong { font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.commander-list-owner small { font-size: var(--t-xs); color: var(--text-tertiary); }
+.commander-list-rule { flex: none; height: 1px; margin: 0 10px; background: var(--hairline); }
