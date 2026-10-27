@@ -5,6 +5,7 @@ import type { SessionEndedReason } from "./control-session.js";
 import { revokeRemoteAccessSession } from "../../settings/client/global-settings-api.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { formatRelativeTime, useConsoleLocale, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
+import { resumeConsoleSession } from "../../../core/client/src/integration/api.js";
 import { dismissControlCurtain } from "../../../core/client/src/integration/store.js";
 import { desktopPickerUrl, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 
@@ -176,9 +177,37 @@ export function ControlReclaimedNotice() {
   const t = useT();
   const reason = useConsoleState().controlReclaimed;
   const home = useDesktopShellHome();
+  const [reclaiming, setReclaiming] = useState(false);
+  const [reclaimError, setReclaimError] = useState(false);
 
   if (reason === null) return null;
   const copy = NOTICE_COPY[reason];
+  /**
+   * 종료 안내는 세션이 끝난 문서에 남는다. 토큰 없는 join이 페어링 쿠키를 새 세션으로
+   * 바꾼 뒤에만 다시 읽는다 — 그 전에 다시 읽으면 세션 없는 `/console/`이 401 문서가 된다.
+   * 이 요청은 창의 fetch라 같은 Electron 세션의 HttpOnly 페어링 쿠키가 실린다.
+   */
+  const takeBackControl = () => {
+    if (reclaiming) return;
+    setReclaiming(true);
+    setReclaimError(false);
+    void resumeConsoleSession()
+      .then(() => { location.reload(); })
+      .catch(() => {
+        setReclaimError(true);
+        setReclaiming(false);
+      });
+  };
+  /**
+   * 돌아갈 origin은 셸이 게시한 집뿐이다. 브라우저와 모바일은 그 게시가 없어 버튼을 두지 않는다.
+   * Desktop은 이 항해를 가로채 `/console/`으로 열고, 호스트 목록 신호는 싣지 않는다.
+   */
+  const localConsole = isDesktopShell() && home.origin !== null ? home.origin : null;
+  const returnToLocalConsole = () => {
+    if (localConsole === null) return;
+    location.assign(new URL("/console/", `${localConsole}/`).toString());
+  };
+
   return createPortal(
     <div className="control-reclaimed-notice" role="alert" aria-live="assertive">
       <section className="control-reclaimed-card">
@@ -186,7 +215,22 @@ export function ControlReclaimedNotice() {
         <span className="control-reclaimed-eyebrow">{t(copy.eyebrow)}</span>
         <h2>{t(copy.title)}</h2>
         <p>{t(copy.body)}</p>
-        {isDesktopShell() && home.origin !== null ? <a className="control-reclaimed-home" href={desktopPickerUrl(home.origin)}>{t("chrome.control.chooseHost")}</a> : null}
+        {reason === "reclaimed" && isDesktopShell() && home.origin !== null ? <a className="control-reclaimed-home" href={desktopPickerUrl(home.origin)}>{t("chrome.control.chooseHost")}</a> : null}
+        {reason === "superseded" ? (
+          <>
+            {reclaimError ? <p className="control-curtain-error" role="alert">{t("chrome.control.reclaimError")}</p> : null}
+            <div className="control-curtain-actions">
+              <button type="button" className="control-curtain-primary" disabled={reclaiming} onClick={takeBackControl}>
+                {reclaiming ? t("chrome.control.reclaiming") : t("chrome.control.takeBack")}
+              </button>
+              {localConsole !== null ? (
+                <button type="button" className="control-curtain-secondary" onClick={returnToLocalConsole}>
+                  {t("chrome.control.returnLocal")}
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
       </section>
     </div>,
     document.body,
