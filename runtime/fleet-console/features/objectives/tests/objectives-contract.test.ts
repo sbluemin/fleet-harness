@@ -945,10 +945,11 @@ describe("Objectives contract", () => {
     expect(saved).toHaveProperty("sessions.0.id", research);
     expect(saved).not.toHaveProperty("payload");
     expect(saved.id).toBe(objective.id);
-    for (const key of ["geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
-    expect(saved).toHaveProperty("theaterId", "t1");
+    for (const key of ["theaterId", "theaterIdExplicit", "geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
+    expect(saved).toHaveProperty("placementTheaterId", "t1");
     await expect(launch.create({ commodoreId: "c1", theaterId: "other-theater", theaterIdSpecified: true, title: "Rejected theater", groupId: null })).rejects.toThrow("theater_not_owned");
     const unbound = await launch.create({ commodoreId: "c1", theaterId: "", title: "Unbound theater", groupId: null });
+    expect(savedObjective(unbound.id)).not.toHaveProperty("placementTheaterId");
     expect(savedObjective(unbound.id)).not.toHaveProperty("theaterId");
     fs.rmSync(path.join(objectivesDir, unbound.id), { recursive: true, force: true });
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Objective 에서 온다.

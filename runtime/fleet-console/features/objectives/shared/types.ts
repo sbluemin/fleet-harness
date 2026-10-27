@@ -574,7 +574,9 @@ export interface StoredObjective {
   readonly commodoreId?: string;
   readonly cwd?: string;
   readonly theaterId?: string;
-  /** 문서에 사람이 넘긴 Theater id가 있다. cwd 해시로 채운 값은 아니다. */
+  /** 문서 최상위에만 둔다. 옛 버전은 이 키를 모르고 보존한다. cwd 해시가 아니다. */
+  readonly placementTheaterId?: string;
+  /** 메모리 전용. 문서·API·레코드로 나가지 않는다. */
   readonly theaterIdExplicit?: true;
   readonly groupId?: string | null;
   readonly ts?: { readonly createdAt: number; readonly updatedAt: number };
