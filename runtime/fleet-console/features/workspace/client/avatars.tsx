@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { mongleStateOf, objectiveRecordAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
+import { commodoreFaceKey, mongleStateOf, objectiveRecordAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "../shared/avatars.js";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "./avatar-events.js";
 import { MongleAvatar } from "./components/mongle-avatar.js";
 import type { ObjectiveCluster } from "../../objectives/shared/objective-clusters.js";
@@ -98,7 +98,7 @@ export function avatarClaimGroups(state: Pick<ConsoleState, "theaters" | "object
   const groups: string[][] = [];
   for (const theater of state.theaters) {
     const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id && !objectiveRecord.parentObjectiveId).sort(byCreation);
-    groups.push([theaterAvatarKey(theater.id), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
+    groups.push([commodoreFaceKey(theater.id, theater.commodore?.id), ...objectiveRecords.map((objectiveRecord) => objectiveRecordAvatarKey(objectiveRecord.id))]);
   }
   const children = new Map<string, ObjectiveRecord[]>();
   for (const objectiveRecord of [...state.objectiveRecords, ...state.nestedObjectiveRecords]) {
