@@ -172,18 +172,22 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-patrol-menu .objectives-menu-hint { flex: none; }
 .objectives-commodore-patrol-check { color: var(--brass-ink); }
 
-/* 설정 — Console 설정과 같은 줄(SettingsRow·SettingsToggle). 시트 안에서는 형제 사이 hairline 과 위아래 숨구멍을 같은 값으로. */
-.objectives-commodore-settings { display: grid; }
+/* 설정 — Console 설정과 같은 줄(SettingsRow·SettingsToggle). 시트 안에서는 형제 사이 hairline 과 위아래 숨구멍을 같은 값으로.
+   이 칸의 선은 행 구분선(.fc-settings-row + .fc-settings-row)과 같은 color-mix 한 곳이다. */
+.objectives-commodore-settings {
+  display: grid;
+  --commodore-settings-line: color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
 .objectives-commodore-settings .fc-settings-row { padding: 18px 0; }
-.objectives-commodore-settings .fc-settings-row + .fc-settings-row { padding-top: 18px; }
+.objectives-commodore-settings .fc-settings-row + .fc-settings-row { padding-top: 18px; border-top-color: var(--commodore-settings-line); }
 .objectives-commodore-settings .fc-settings-row__copy { max-width: 60ch; }
 .objectives-commodore-settings .fc-settings-row__label { font-size: var(--t-md); }
 .objectives-commodore-settings .fc-settings-row__hint { font-size: var(--t-sm); line-height: 1.55; }
 /* 행 값의 오른쪽 음수 마진은 패딩 있는 설정 카드의 끝선 맞춤이다. 이 칸은 좌우 패딩이 없어 그 8px이 본문 밖으로 넘친다. */
 .objectives-commodore-settings :is(.fc-row-value, .fc-coord-trigger.is-field) { margin-right: 0; }
-.objectives-commodore-settings-divider { height: 1px; margin: 6px 0; background: var(--surface-rim); }
+.objectives-commodore-settings-divider { height: 1px; margin: 6px 0; background: var(--commodore-settings-line); }
 /* 지침 선택 상자 밑의 구성원 맡기기 토글 — 상자와 붙지 않게 위로 한 줄 간격과 머리카락 선을 둔 자기 설정 줄이다. */
-.objectives-commodore-settings .theater-subagents { gap: 0; margin-top: 22px; padding-top: 0; border-top: 1px solid var(--surface-rim); }
+.objectives-commodore-settings .theater-subagents { gap: 0; margin-top: 22px; padding-top: 0; border-top: 1px solid var(--commodore-settings-line); }
 .objectives-commodore-default {
   padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px;
@@ -666,7 +670,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
 .commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
-/* 설정 맨 위의 Theater·플러그인 — 지시 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px var(--surface-rim))로만 나눈다.
+/* 설정 맨 위의 Theater·플러그인 — 지시 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */
 .objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }
