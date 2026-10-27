@@ -67,7 +67,7 @@ export interface GroupConversationProps {
   /** 첫 줄 위에 이전 기록이 있다 — 칼럼 맨 위 글자 단추가 읽는다. 앞에 붙어도 보던 자리를 지킨다. */
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
-  readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  readonly reveal?: { readonly entryId: string; readonly nonce: number; readonly applied?: () => void } | null;
   /**
    * 구성원 턴 표시 — 그룹 루트는 항상 켜고, 플러그인 소유 대화는 기존 원장 표시를 유지한다. 사용자 선호가 아니다.
    * 짧은 진행 말은 진행 칩 하나로, 긴 말풍선은 높이 상한으로, 말풍선과 겹치는 보고 줄은 머리 꼬리표로 접는다.
@@ -225,13 +225,21 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     const target = Array.from(logRef.current?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []).find((node) => node.dataset.entryId === reveal.entryId);
     if (!target) return;
     revealed.current = reveal.nonce;
-    if (logRef.current) setFollowing(logRef.current, false);
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    // 부드러운 이동의 첫 사건은 아직 바닥 60px 안이라, 따라가기가 다시 켜지고 다음 사건이 바닥으로 되돌린다.
+    // 한 번에 옮기면 그 사건은 이미 대상 자리라 따라가기를 다시 켜지 않는다.
+    if (logRef.current) {
+      const log = logRef.current;
+      setFollowing(log, false);
+      target.scrollIntoView({ block: "center", behavior: "auto" });
+      programmaticTop.current = log.scrollTop;
+    }
     target.classList.remove("is-revealed");
     void target.offsetWidth;
     target.classList.add("is-revealed");
     const timer = window.setTimeout(() => target.classList.remove("is-revealed"), 1_600);
-    return () => window.clearTimeout(timer);
+    // 줄을 찾은 뒤에만 알린다. StrictMode 해제→재설치는 이 프레임을 취소하고, 못 찾은 요청은 growth 로 다시 찾는다.
+    const frame = requestAnimationFrame(() => reveal.applied?.());
+    return () => { window.clearTimeout(timer); cancelAnimationFrame(frame); };
   }, [reveal, growth, setFollowing]);
 
   // 그룹 루트는 진행 칩과 말풍선 머리 보고로 접고, 플러그인 소유 대화는 원장 줄을 그대로 세운다.

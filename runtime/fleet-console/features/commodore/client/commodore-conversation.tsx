@@ -162,11 +162,11 @@ export function revealCommodoreTurn(commodoreId: string, at: number): void {
   for (const listener of revealListeners) listener();
 }
 
-/** 이 대화가 그 줄을 받은 요청만 지운다. 줄이 오기 전에 지우면 이전 쪽을 읽는 요청이 사라진다. */
+/** 대화가 줄을 찾은 요청. 저장소를 비우지 않는다 — 지금 인스턴스의 표시를 지우지 않고, 다음 마운트만 거른다. */
+let consumedRevealNonce = -1;
+
 function consumeCommodoreReveal(nonce: number): void {
-  if (reveal?.nonce !== nonce) return;
-  reveal = null;
-  for (const listener of revealListeners) listener();
+  consumedRevealNonce = nonce;
 }
 
 function useCommodoreReveal(theaterId: string) {
@@ -175,7 +175,7 @@ function useCommodoreReveal(theaterId: string) {
     () => reveal,
     () => null,
   );
-  return current?.commodoreId === theaterId ? current : null;
+  return current?.commodoreId === theaterId && current.nonce !== consumedRevealNonce ? current : null;
 }
 
 /* ── 사령관 원장 — 가운데 칸의 읽기 전용 턴 기록 ─────────────────────── */
@@ -300,16 +300,12 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     readOlder();
   }, [reveal, hasMore, entries, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps -- readOlder 는 위 값만 읽는다.
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
-  const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
-  // 모듈에 남은 요청은 본문이 다시 마운트될 때마다 새 대화가 처음 보는 nonce 가 되어 같은 자리로 다시 간다. 지휘관을 다녀오면
-  // 이 본문이 갈렸다가 서고, 다른 사령관으로 바꾸면 같은 인스턴스라 그 nonce 를 기억해 다시 가지 않는다. 줄을 받은 다음 프레임에
-  // 지운다 — StrictMode 의 해제→재설치가 첫 적용을 취소하지 않고, 줄이 아직 없으면(이전 쪽) 요청은 남는다.
-  useEffect(() => {
-    if (!reveal || target === null) return;
-    const nonce = reveal.nonce;
-    const frame = requestAnimationFrame(() => consumeCommodoreReveal(nonce));
-    return () => cancelAnimationFrame(frame);
-  }, [reveal, target]);
+  const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? {
+    entryId: target,
+    nonce: reveal.nonce,
+    // 대화가 그 줄을 찾은 뒤에만 소비한다. 데이터에 id 가 있어도 아직 노드가 없으면 요청은 남는다.
+    applied: () => consumeCommodoreReveal(reveal.nonce),
+  } : null), [reveal, target]);
   const references = useCommodoreReferenceHost(t, commodoreId);
   const openUIOpen = useCommodoreOpenUIPort(commodoreId);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
@@ -323,6 +319,13 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   // 턴을 이루는 줄과 지금의 실행 상태로 가린다 — 창이 턴 한가운데서 시작해도 도는 턴의 원장은 열린다.
   const Ledger = commodoreLedgerRenderer();
   const ledgerOpen = useCommodoreLedger(commodoreId) && Ledger !== null;
+  // 원장이 대화를 대신 그릴 때는 GroupConversation 의 applied 가 없다. 줄이 잡힌 뒤에만 소비한다.
+  useEffect(() => {
+    if (!reveal || !ledgerOpen || target === null) return;
+    const nonce = reveal.nonce;
+    const frame = requestAnimationFrame(() => consumeCommodoreReveal(nonce));
+    return () => cancelAnimationFrame(frame);
+  }, [reveal, ledgerOpen, target]);
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   // 도는 턴의 시작 — 그 깨움이 창 밖이면 창의 첫 줄에서 그 턴이 이어진다(`commodoreChatEntries` 가 거기서 턴을 연다).
   const runningAt = turning ? entries.findLast((entry) => entry.kind === "wake")?.at ?? entries[0]?.at : undefined;

@@ -123,7 +123,7 @@ export interface AgentConversationProps {
   /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
-  readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  readonly reveal?: { readonly entryId: string; readonly nonce: number; readonly applied?: () => void } | null;
   /**
    * A participant's ledger — the plugin's full turn record for that speaker. When given, the participant's name on its bubbles and
    * its mark and words on the working line open it, with the hit rules an Objective conversation uses (the name is the tab stop,
