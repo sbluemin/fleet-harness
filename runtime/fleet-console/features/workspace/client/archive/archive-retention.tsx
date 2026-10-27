@@ -77,7 +77,7 @@ export function ArchiveRetention({ open, onOpenChange, archivedAts, children }: 
 
   return <section className={`archive-retention${open ? " is-open" : ""}`} aria-labelledby={titleId}>
     <div className="archive-retention-row">
-      <span id={titleId} className="archive-retention-label" title={t("archive.retention.helpScope")}>{t("archive.retention.label")} · {t("archive.allCommodores")}</span>
+      <span id={titleId} className="archive-retention-label" title={t("archive.retention.helpScope")}>{t("archive.retention.label")} · {t("archive.retention.scopeAll")}</span>
       <span className="archive-retention-summary" aria-live="polite">{unavailable ? t("archive.retention.unavailable") : summary}</span>
       {unavailable ? null : <button ref={toggleRef} type="button" className="archive-retention-toggle" aria-expanded={open} aria-controls={panelId}
         aria-disabled={saving || undefined} onClick={() => { if (!saving) { setResult(null); onOpenChange(!open); } }}>{t("archive.retention.change")}</button>}

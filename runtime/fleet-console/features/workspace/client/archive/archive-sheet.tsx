@@ -307,8 +307,9 @@ function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
             <span>{t("archive.allCommodores")}</span><span className="archive-sheet-tab-count">{allMatchingCount}</span>
           </button>
           {groups.map(({ owner, total, count }) => <button key={owner.commodoreId} type="button"
-            className={`archive-sheet-tab${total === 0 ? " is-empty" : ""}`} aria-pressed={commodoreId === owner.commodoreId}
-            aria-label={`${owner.label} ${count}`} title={owner.label} onClick={() => changeScope(owner.commodoreId)}>
+            className={`archive-sheet-tab${count === 0 ? " is-empty" : ""}`} aria-pressed={commodoreId === owner.commodoreId}
+            aria-disabled={total === 0 || undefined} aria-label={`${owner.label} ${count}`} title={owner.label}
+            onClick={() => { if (total > 0) changeScope(owner.commodoreId); }}>
             <ArchiveCommodoreAvatar id={owner.commodoreId} label={owner.label} />
             <span className="archive-sheet-tab-label">{owner.label}</span><span className="archive-sheet-tab-count">{count}</span>
           </button>)}
@@ -337,7 +338,8 @@ function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
                     const node = cluster.root.objectiveRecord;
                     const group = state.groups.find((candidate) => candidate.id === node.groupId);
                     const meta = [new Intl.DateTimeFormat(LOCALE_TAG[locale], { hour: "numeric", minute: "2-digit" }).format(cluster.archivedAt),
-                      showTheater ? theaterLabelOf(cluster) : null, group?.name].filter(Boolean).join(" · ");
+                      showTheater ? theaterLabelOf(cluster) : null, group?.name,
+                      cluster.members.length ? cluster.members.join(", ") : null].filter(Boolean).join(" · ");
                     const isRestored = restoredIds.has(cluster.rootId);
                     const pending = pendingOf(cluster.rootId);
                     const index = clusters.indexOf(cluster);
