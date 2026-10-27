@@ -54,9 +54,6 @@
 .objectives-rw-artifact a:hover { text-decoration-color: var(--brass); }
 .objectives-result-window.is-narrow .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
 .objectives-result-window.is-narrow :is(.objectives-rw-missions, .objectives-rw-heading, .objectives-rw-objective, .objectives-rw-mission-head > b) { display: none; }
-.objectives-result-window-open { margin: 8px 12px; padding: 5px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.objectives-result-window-open:hover { color: var(--text-primary); background: var(--control-rest); }
-.objectives-result-window-open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
 @container objectives-result (width < 400px) {
   .objectives-rw-mission-head > span, .objectives-rw-caption > span:not(:last-child) { display: none; }

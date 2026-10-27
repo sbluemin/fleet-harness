@@ -95,7 +95,6 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
   const artifactVisible = groups.some(({ mission, results }) => groupOpen(resultGroupKey(objective.id, mission.id)) && results.some((result) => result.kind === "artifact"))
     || groupOpen(resultGroupKey(objective.id)) && loose.some((result) => result.kind === "artifact");
   return <div className="objectives-results">
-    <button type="button" className="objectives-result-window-open" onClick={(event) => openResultWindow(objective.id, undefined, event.currentTarget)}>{t("objectives.results.window.open")}</button>
     {groups.map(({ mission, n, results }) => group(mission, n, results))}
     {loose.length ? group(null, 0, loose) : null}
     {artifactVisible ? <p className="objectives-artifact-notice"><InfoGlyph /><span>{t("objectives.results.artifact.notice")}</span></p> : null}

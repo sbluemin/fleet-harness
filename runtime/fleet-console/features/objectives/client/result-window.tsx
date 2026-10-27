@@ -17,26 +17,10 @@ const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const snapshot = () => selection;
 function updateSelection(next: Selection | null) { selection = next; for (const listener of listeners) listener(); }
-const MEMORY_KEY = "fleet.objectives.result-window.selection";
 const RECT_KEY = "fleet.objectives.result-window.rect";
 
-function rememberedResults(): Record<string, string> {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? "{}");
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    return Object.fromEntries(Object.entries(value).filter(([key, id]) => key.length <= 128 && typeof id === "string" && id.length <= 128).slice(-30));
-  } catch { return {}; }
-}
-function remember(objectiveId: string, resultId: string) {
-  try {
-    const previous = rememberedResults();
-    delete previous[objectiveId];
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(Object.fromEntries([...Object.entries(previous), [objectiveId, resultId]].slice(-30))));
-  } catch { /* 기기별 편의 상태다. 저장을 막아도 창은 동작한다. */ }
-}
-
-export function openResultWindow(objectiveId: string, resultId?: string, opener: HTMLElement | null = null): void {
-  updateSelection({ objectiveId, resultId: resultId ?? rememberedResults()[objectiveId] ?? null, opener });
+export function openResultWindow(objectiveId: string, resultId: string, opener: HTMLElement | null = null): void {
+  updateSelection({ objectiveId, resultId, opener });
 }
 export function resetResultWindow(): void { updateSelection(null); }
 
@@ -105,13 +89,12 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const choose = (id: string) => {
     // 다음 종류에서 사라지는 이미지 화살표에 초점을 남기지 않는다. 채팅 초점은 건드리지 않는다.
     if (document.activeElement?.classList.contains("objectives-att-view-step")) rootRef.current?.focus({ preventScroll: true });
-    updateSelection({ ...opened, resultId: id }); remember(opened.objectiveId, id);
+    updateSelection({ ...opened, resultId: id });
   };
   const chooseGroup = (id: string) => { const first = groups.find((item) => item.id === id)?.results[0]; if (first) choose(first.id); };
   const title = result ? result.kind === "evidence" ? result.label ?? result.name : result.kind === "pr" ? result.label ?? result.observation.title ?? `${result.owner}/${result.repo} #${result.number}` : result.label ?? t("objectives.results.artifact.untitled") : t("objectives.results.title");
   useEffect(() => { rootRef.current?.focus({ preventScroll: true }); }, [opened.opener, opened.objectiveId]);
   useEffect(() => {
-    if (result) remember(opened.objectiveId, result.id);
     rootRef.current?.querySelector(".objectives-rw-strip [aria-current=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [opened.objectiveId, result?.id]);
   useEffect(() => {
