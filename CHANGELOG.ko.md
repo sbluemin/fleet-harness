@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.265.1] - 2026-10-27
+
+### fleet-console
+
+#### Changed
+- 데스크톱 지휘관 목록 머리에서 개수 문구가 빠지고, 정렬과 새 세션은 왼쪽, 위치 버튼은 오른쪽에 있습니다. 채팅 안에서 펼친 목록은 더 좁아져 진척과 맡김 표시 사이의 빈 공간이 줄었습니다.
+
+#### Fixed
+- 좁은 사이드바에서 사령관은 다시 아바타만 보이며, 이름이나 상태가 아바타 위에 겹쳐 그려지지 않습니다.
+
 ## [1.265.0] - 2026-10-27
 
 ### fleet-console
