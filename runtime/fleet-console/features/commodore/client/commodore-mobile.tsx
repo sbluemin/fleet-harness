@@ -489,7 +489,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
           participants={participants}
           working={working}
           language={language}
-          theaterId={theaterId}
+          theaterId={commodoreId}
           loading={!loaded}
           empty={t("commodore.log.empty")}
           older={hasMore ? { label: t("commodore.log.older"), loading: loadingOlder, load: readOlder } : null}

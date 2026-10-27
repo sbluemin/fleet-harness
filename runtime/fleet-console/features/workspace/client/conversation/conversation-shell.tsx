@@ -27,7 +27,7 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { objectiveRecordAvatarKey, theaterAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { commodoreFaceKey, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
@@ -523,15 +523,17 @@ function ConversationPanelIdentity() {
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
     let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
+    let faceKey = commodoreFaceKey(inbox.theaterId);
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
         const avatar = centerSurface.avatar?.(context) ?? null;
+        if (avatar?.key) faceKey = avatar.key;
         owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle" };
       }
     } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+        <AvatarEditor avatarKey={faceKey} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
         <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );

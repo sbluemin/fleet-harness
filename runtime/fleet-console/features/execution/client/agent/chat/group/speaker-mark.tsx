@@ -1,6 +1,6 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { mongleStateOf, objectiveRecordAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
+import { commodoreFaceKey, mongleStateOf, objectiveRecordAvatarKey, type MongleRole, type MongleState } from "../../../../../workspace/shared/avatars.js";
 import type { ObjectiveCluster } from "../../../../../objectives/shared/objective-clusters.js";
 import * as React from "react";
 
@@ -56,7 +56,8 @@ export const ConversationTheaterContext = React.createContext<string | null>(nul
 
 /**
  * 발화자의 몽글 아바타 — 지휘관·일반 Objective 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Objective 이 없는 발화자는
- * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
+ * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다. 사령관은 카드·목록과 같은 열쇠(`commodoreFaceKey`)다 —
+ * 대화 문맥의 Theater 해시로 그리면 다른 얼굴이 된다.
  *
  * `acting` 이면 작업 중인 Objective 표식이 사이드바와 같은 축(`useObjectiveMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
  * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Objective 이 없어 기본 리듬이다.
@@ -73,7 +74,7 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
   const theater = React.useContext(ConversationTheaterContext);
   const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
   if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.objectiveId)) {
-    const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : objectiveRecordAvatarKey(speaker.objectiveId!);
+    const key = speaker.kind === "commodore" ? commodoreFaceKey(theater ?? subject?.theaterId, subject?.commodoreId) : objectiveRecordAvatarKey(speaker.objectiveId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
     const activityObjectiveId = acting && speaker.kind !== "commodore" ? speaker.objectiveId : null;
     return <KeyedAvatar avatarKey={key} role={role} state={state} activityObjectiveId={activityObjectiveId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;

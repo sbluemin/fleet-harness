@@ -3,11 +3,11 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { launchProviderGlyph } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import * as React from "react";
 
-import { objectiveRecordAvatarKey, theaterAvatarKey } from "../../../../../workspace/shared/avatars.js";
+import { commodoreFaceKey, objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
 import type { ConversationMemberProfile, ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { ledgerTarget, participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { ConversationTheaterContext, ledgerTarget, participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import { AvatarEditor } from "../../../../../workspace/client/avatars.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
@@ -80,11 +80,12 @@ function MemberRow({ participant, language, notStarted, showing, onLedger, onRem
         : speaker.kind === "human" ? t("group.you") : t("group.objectiveRecord");
   // Objective 이 있는 참여자(사령관 포함)의 아바타는 이 탭에서 고친다 — 대화 중심 화면에만 서는 탭이다. 사람은 첫 글자 칩 그대로다.
   const subject = useConversationSubject();
+  const theater = React.useContext(ConversationTheaterContext);
   // 얼굴은 다른 표면과 같은 기준이다 — 말풍선의 최신 표식과 같은 `participantMongleState` 를 지난다.
   const consoleState = useConsoleState();
   const clusters = useConversationClusters();
   const avatar = speaker.kind === "commodore"
-    ? { key: theaterAvatarKey(subject?.theaterId ?? "unknown"), role: "commodore" as const }
+    ? { key: commodoreFaceKey(theater ?? subject?.theaterId, subject?.commodoreId), role: "commodore" as const }
     : speaker.kind !== "human" && speaker.objectiveId
       ? { key: objectiveRecordAvatarKey(speaker.objectiveId), role: speaker.kind === "member" ? "member" as const : "commander" as const }
       : null;

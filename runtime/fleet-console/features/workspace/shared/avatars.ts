@@ -129,6 +129,18 @@ export function commodoreAvatarKey(commodoreId: string): string {
   return `theater:commodore:${commodoreId}`;
 }
 
+const COMMODORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/**
+ * 사령관 얼굴의 한 열쇠. 정체성은 사령관 UUID다. 화면 문맥이 그 UUID이거나 호출부가 소유 사령관을 알면
+ * `theater:commodore:<id>`를 쓴다. Theater 해시로 `theater:<hash>`를 그리면 카드·목록과 다른 얼굴이 된다.
+ * 소유자를 모르는 해시만 옛 열쇠로 남는다.
+ */
+export function commodoreFaceKey(contextId: string | null | undefined, ownerId?: string | null): string {
+  const owner = ownerId && ownerId.length > 0 ? ownerId : contextId && COMMODORE_ID.test(contextId) ? contextId : null;
+  return owner ? commodoreAvatarKey(owner) : theaterAvatarKey(contextId && contextId.length > 0 ? contextId : "unknown");
+}
+
 export function objectiveRecordAvatarKey(objectiveId: string): string {
   return `objective:${objectiveId}`;
 }
