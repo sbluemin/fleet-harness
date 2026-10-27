@@ -16,6 +16,7 @@ import { revealCommodoreTurn } from "../../../commodore/client/commodore-convers
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { SORTS, setSort, type SortPreference } from "./commander-sort.js";
 import { useCommanderRows } from "./commander-rows.js";
+import { setCommanderPlacement, useCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬·최근 행위를 쓴다. */
@@ -50,6 +51,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
+        <CommanderPlacementGlyphs />
       </div>
       {sorted.length === 0 ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : (
         <div className="commander-tab-groups">
@@ -91,6 +93,26 @@ export function CommanderListOwner({ commodoreId, selected, onSelect }: { readon
     <CommodoreAvatar theaterId={commodoreId} state={owner.state} size={30} label="" decorative />
     <span><strong>{owner.name}</strong><small>{t("sidebar.commodore.fallback")}</small></span>
   </button>;
+}
+
+/** 목록 위치. 글자 없이 글리프만 두고, 사이드바와 채팅의 왼쪽·오른쪽은 한 묶음이다. */
+function CommanderPlacementGlyphs() {
+  const t = useT();
+  const placement = useCommanderPlacement();
+  const choose = (next: CommanderPlacement) => setCommanderPlacement(next);
+  return (
+    <span className="commander-place" role="group" aria-label={t("commanderRail.place")}>
+      <button type="button" className="commander-place-button" aria-pressed={placement.place === "sidebar"} aria-label={t("commanderRail.placeSidebar")} title={t("commanderRail.placeSidebar")} onClick={() => choose({ place: "sidebar", side: placement.side })}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.4h3.1v11.2H2.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M7.6 4.6h6M7.6 8h6M7.6 11.4h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+      </button>
+      <button type="button" className="commander-place-button" aria-pressed={placement.place === "chat" && placement.side === "left"} aria-label={t("commanderRail.placeChatLeft")} title={t("commanderRail.placeChatLeft")} onClick={() => choose({ place: "chat", side: "left" })}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h3.2v9.6H2.2zM6.6 3.2h7.2v9.6H6.6z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+      </button>
+      <button type="button" className="commander-place-button" aria-pressed={placement.place === "chat" && placement.side === "right"} aria-label={t("commanderRail.placeChatRight")} title={t("commanderRail.placeChatRight")} onClick={() => choose({ place: "chat", side: "right" })}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h7.2v9.6H2.2zM10.6 3.2h3.2v9.6h-3.2z" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+      </button>
+    </span>
+  );
 }
 
 function SortMenu({ preference }: { readonly preference: SortPreference }) {

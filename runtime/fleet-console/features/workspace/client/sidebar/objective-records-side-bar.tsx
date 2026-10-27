@@ -14,6 +14,7 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { ownerOfContext } from "../../../commodore/client/commodore-state.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, setZoneCommodore, useSidebarCommodores } from "../../../commodore/client/commodore-list.js";
@@ -32,12 +33,15 @@ import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
+import { useConversationSurface } from "../conversation/conversation-surface-store.js";
+import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
+import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 /*
  * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
- * 지휘관 세션은 사령관 대화의 고스트 목록에 있다(commander-tab) — 여기서는 사령관을 고르고 옮기고 다룬다.
+ * 지휘관 목록은 기본으로 활성 사령관 아래에 서고, 목록의 위치 글리프로 채팅 안 오버레이로 옮길 수 있다.
  */
 
 interface ObjectiveRecordsSideBarProps {
@@ -144,6 +148,9 @@ export function ObjectiveRecordsSideBar({
   const compact = sideBar.compact;
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const viewedTheaterId = useViewedTheaterId();
+  const surface = useConversationSurface();
+  const placement = useCommanderPlacement();
+  const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
   const orderedTheaterIdsRef = useRef<string[]>([]);
@@ -155,7 +162,10 @@ export function ObjectiveRecordsSideBar({
   const [orderError, setOrderError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
   const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
-  const { objectiveRecordRuntime, pendingSideBarAddTheater, groups } = useConsoleState();
+  const surfaceOwner = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
+  const viewedOwner = viewedTheaterId ? ownerOfContext(viewedTheaterId) : null;
+  const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
+  const owningCommodoreId = surface ? surfaceOwner ?? viewedOwner : viewedOwner ?? objectiveOwner;
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
@@ -374,7 +384,7 @@ export function ObjectiveRecordsSideBar({
               key={theater.id}
               className={[
                 "side-bar-theater-section",
-                theater.id === viewedTheaterId ? "side-bar-theater-section--active" : "",
+                theater.id === owningCommodoreId ? "side-bar-theater-section--active" : "",
                 theaterDropBefore ? "side-bar-theater-section--drop-before" : "",
                 theaterDropAfter ? "side-bar-theater-section--drop-after" : "",
               ].filter(Boolean).join(" ")}
@@ -382,7 +392,7 @@ export function ObjectiveRecordsSideBar({
             >
               <TheaterSectionHeader
                 theater={theater}
-                active={theater.id === viewedTheaterId}
+                active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
@@ -394,6 +404,18 @@ export function ObjectiveRecordsSideBar({
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
+              {!compact && placement.place === "sidebar" && theater.id === owningCommodoreId ? (
+                <div className="side-bar-commander-list">
+                  <CommodoreCommanderList
+                    commodoreId={theater.id}
+                    selectedId={
+                      typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
+                        ? surface.params.objectiveId
+                        : objectiveOwner === theater.id ? activeObjectiveId : null
+                    }
+                  />
+                </div>
+              ) : null}
             </li>
           );
         })}

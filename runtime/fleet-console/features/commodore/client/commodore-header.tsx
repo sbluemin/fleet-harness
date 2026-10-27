@@ -19,6 +19,9 @@ import {
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { openCommodoreConversation, isCommodoreConversationSelected, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
+import { subscribe as subscribeConsole } from "../../../core/client/src/integration/store.js";
+import { subscribeConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
+import { subscribeConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getT } from "./i18n/index.js";
 import { isRunningObjective, isCommodoreWaiting, readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -29,7 +32,10 @@ function subscribeCommodoreFace(listener: () => void): () => void {
   const offCommodore = subscribeCommodore(listener);
   const offObjectives = subscribeObjective(listener);
   const offConversation = subscribeCommodoreConversationActive(listener);
-  return () => { offCommodore(); offObjectives(); offConversation(); };
+  const offConsole = subscribeConsole(listener);
+  const offSubject = subscribeConversationSubject(listener);
+  const offSurface = subscribeConversationSurface(listener);
+  return () => { offCommodore(); offObjectives(); offConversation(); offConsole(); offSubject(); offSurface(); };
 }
 
 /**

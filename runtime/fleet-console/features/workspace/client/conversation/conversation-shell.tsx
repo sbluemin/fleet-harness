@@ -55,6 +55,7 @@ import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
+import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -744,6 +745,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
         : null;
+  const commanderPlacement = useCommanderPlacement();
+  const showCommanderRail = toolCommodoreId !== null && !newSession && commanderPlacement.place === "chat";
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(
     () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
@@ -821,7 +824,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     <section
       ref={setStageElement}
       className="conversation-stage"
-      data-commander-rail={toolCommodoreId !== null && !newSession || undefined}
+      data-commander-rail={showCommanderRail || undefined}
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
       // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 머리 pill 줄이 그만큼 오른쪽으로 더 뻗어 맨 위 줄 전체에 걸칠 때 쓴다.
       style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
@@ -863,7 +866,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           </div>
         </div>
       )}
-      {toolCommodoreId !== null && !newSession ? <CommanderGhostRail key={toolCommodoreId} commodoreId={toolCommodoreId} selectedId={surfaceDescriptor ? standInId : stageSubject?.id ?? null} /> : null}
+      {showCommanderRail && toolCommodoreId !== null ? <CommanderGhostRail key={toolCommodoreId} commodoreId={toolCommodoreId} selectedId={surfaceDescriptor ? standInId : stageSubject?.id ?? null} /> : null}
       </ConversationDockHost.Provider>
     </section>
     <ConversationWorkbench

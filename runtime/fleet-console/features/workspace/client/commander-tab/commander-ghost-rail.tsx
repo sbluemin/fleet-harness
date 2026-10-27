@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
@@ -8,37 +8,8 @@ import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRo
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { openCommanderConversation } from "./commander-navigation.js";
+import { useCommanderPlacement } from "./commander-placement.js";
 import "./commander-ghost-rail.css";
-
-/** 목록이 채팅의 어느 쪽에 서는지는 브라우저에 하나다. 고정은 연 방식이라 저장하지 않는다. */
-const SIDE_KEY = "fleet-console.commanderRail.side";
-type RailSide = "left" | "right";
-
-function readRailSide(): RailSide {
-  try {
-    return typeof window !== "undefined" && window.localStorage.getItem(SIDE_KEY) === "left" ? "left" : "right";
-  } catch {
-    return "right";
-  }
-}
-
-let railSide = readRailSide();
-const sideListeners = new Set<() => void>();
-
-function setRailSide(next: RailSide): void {
-  if (railSide === next) return;
-  railSide = next;
-  try { window.localStorage.setItem(SIDE_KEY, next); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
-  for (const listener of sideListeners) listener();
-}
-
-function useRailSide(): RailSide {
-  return useSyncExternalStore(
-    (listener) => { sideListeners.add(listener); return () => { sideListeners.delete(listener); }; },
-    () => railSide,
-    () => railSide,
-  );
-}
 
 /** 대화의 거터 위에만 선다. 사령관과 지휘관이 바뀌어도 이 탐색기의 소유 사령관은 같다. */
 export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commodoreId: string; readonly selectedId: string | null }) {
@@ -50,7 +21,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
   const [expanded, setExpanded] = useState(false);
-  const side = useRailSide();
+  const side = useCommanderPlacement().side;
   const [tip, setTip] = useState<{ index: number; top: number } | null>(null);
   const nav = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -254,7 +225,6 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     {!expanded && tip ? <span className="commander-ghost-tip" style={{ top: tip.top }} role="tooltip"><strong>{tipRow?.layout.cluster.title ?? owner.name}</strong><small>{tipSummary?.conversationLine ?? t("sidebar.commodore.fallback")}</small></span> : null}
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">
       <div className="commander-ghost-list-head"><CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => select(0)} />
-        <button type="button" className="commander-ghost-side" aria-label={t(side === "left" ? "commanderRail.toRight" : "commanderRail.toLeft")} onClick={() => setRailSide(side === "left" ? "right" : "left")}>{side === "left" ? "→" : "←"}</button>
         <button type="button" className="commander-ghost-close" aria-label={t("commanderRail.collapse")} onClick={() => collapse()}>×</button></div>
       <div className="commander-list-rule" role="separator" />
       <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onSelect={selectRow} />
