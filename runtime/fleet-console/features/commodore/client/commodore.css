@@ -811,9 +811,10 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 .commodore-plugins-field:focus-visible { border-color: var(--brass); }
 .commodore-plugins-field:disabled { opacity: var(--control-disabled-opacity); }
 
-/* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다. */
+/* 팔레트 — 사령관 설정이 Inbox 시트(스크림 90)나 오른쪽 패널에서 열리므로 덮개 층 위에 선다.
+   높이는 스크림 padding(위 10vh·아래 16px)을 뺀 뷰포트 안에 둔다. */
 .commodore-palette-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 4); display: grid; place-items: start center; padding: 10vh 16px 16px; background: var(--dialog-scrim); }
-.commodore-palette { display: flex; flex-direction: column; width: min(600px, 100%); max-height: min(620px, 80vh); border: 1px solid var(--popover-rim); border-radius: var(--radius-lg); background: var(--popover-face); box-shadow: var(--popover-shadow); overflow: hidden; }
+.commodore-palette { display: flex; flex-direction: column; width: min(1040px, 100%); min-width: 0; max-height: min(760px, calc(90vh - 16px)); border: 1px solid var(--popover-rim); border-radius: var(--radius-lg); background: var(--popover-face); box-shadow: var(--popover-shadow); overflow: hidden; }
 .commodore-palette-title { margin: 12px 16px 0; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .commodore-palette-search { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin: 8px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
 .commodore-palette-search:focus-within { background: color-mix(in oklch, var(--text-primary) 9%, transparent); }
@@ -830,8 +831,10 @@ button.objectives-commodore-recent-entry { cursor: pointer; }
 .commodore-palette-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 8px; }
 .commodore-palette-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 4px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-palette-group-head > span:first-child { color: var(--text-secondary); font-weight: var(--weight-medium); }
-/* 팔레트 카드 — 수백 개를 훑어 고르므로 두 열, 설명은 두 줄에서 자른다. 신뢰 확인이 열린 카드는 두 칸을 차지하며 펼친다. */
+/* 팔레트 카드 — 넓은 화면은 세 열, 그 아래는 두 열, 520px 이하는 한 열. 설명은 두 줄에서 자른다.
+   신뢰 확인이 열린 카드는 열 수와 상관없이 한 줄 전체(1 / -1)를 차지해 경고가 한 칸에 끼지 않는다. */
 .commodore-palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 900px) { .commodore-palette-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .commodore-palette-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
 .commodore-palette-card.is-open { grid-column: 1 / -1; }
 .commodore-palette-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
