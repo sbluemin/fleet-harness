@@ -4,5 +4,5 @@ branch: fix/muse-quota-latest
 
 ### fleet-console
 #### Fixed
-- A successful Muse Code usage check with no open window records the 5-hour session as unused and keeps a weekly reading that has not reset, so Muse Code stays available to assign.
-  ko: 진행 중인 창이 없는 Muse Code 사용량 조회가 성공하면 5시간 세션을 미사용으로 기록하고, 리셋 전인 주간 값은 그대로 두어 배정에서 빠지지 않습니다.
+- Muse Code usage is read like any other provider when assigning a model, including right after a check that finds no open 5-hour window.
+  ko: 진행 중인 5시간 창이 없는 조회 직후를 포함해, Muse Code 사용량이 모델을 배정할 때 다른 공급자와 같이 읽힙니다.

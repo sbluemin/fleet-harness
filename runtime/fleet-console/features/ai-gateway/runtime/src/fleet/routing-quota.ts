@@ -40,9 +40,14 @@ export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, s
     const expired = validReset && reset <= now;
     const validClock = validReset && duration !== undefined && Number.isFinite(duration) && duration > 0
       && reset > at && reset - at <= duration;
+    const clocklessUnused = remaining !== undefined && window.usedPercent === 0 && !validReset
+      && !(typeof duration === "number" && Number.isFinite(duration) && duration > 0);
     return { remaining, reset: validReset ? reset : undefined, expired,
       // 관측 이후 시간이 흐른 것만으로 소비 여유가 커지지 않도록 관측 시각을 사용한다.
-      headroom: remaining !== undefined && validClock ? remaining / ((reset - at) / duration) : undefined };
+      // 사용 0%이고 리셋도 기간도 없으면 창이 아직 열리지 않은 것이다. 남은 기간 비율은 1이다.
+      // resetsAt이나 사용량은 만들지 않는다.
+      headroom: remaining !== undefined && validClock ? remaining / ((reset - at) / duration)
+        : clocklessUnused ? remaining : undefined };
   });
   // 리셋을 넘긴 옛 사용량을 0% 사용으로 자동 갱신하지 않는다. 새 관측이 필요하다.
   if (facts.some(fact => fact.expired)) return { observation: "stale", ageSeconds };
@@ -53,8 +58,9 @@ export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, s
   let recovery: RoutingQuota["recovery"];
   if (complete && remaining !== undefined) {
     // 첫 리셋이 다른 병목을 해소하지 않으면 건너뛴다. 이미 리셋된 풀은 추가 사용 없이 100%다.
-    for (const reset of [...new Set(facts.map(fact => fact.reset!))].sort((a, b) => a - b)) {
-      const after = Math.min(...facts.map(fact => fact.reset! <= reset ? 1 : fact.remaining!));
+    // 시계가 없는 창은 리셋 시각이 없으므로 여기서 100%로 올리지 않는다.
+    for (const reset of [...new Set(facts.flatMap(fact => fact.reset === undefined ? [] : [fact.reset]))].sort((a, b) => a - b)) {
+      const after = Math.min(...facts.map(fact => fact.reset !== undefined && fact.reset <= reset ? 1 : fact.remaining!));
       if (after > remaining) {
         recovery = { inSeconds: Math.ceil((reset - now) / 1_000), remainingPercent: round(after * 100) };
         break;

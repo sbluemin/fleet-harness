@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
 import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
+import { parseMuseCodeSubscriptionUsage } from "../../src/upstream/muse-code/quota.js";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
@@ -203,7 +204,14 @@ describe("quota service", () => {
     });
     expect(entry.key).toBe("minted-secret-key");
     expect(muse).not.toHaveProperty("method");
-    expect(muse.windows?.[1]).not.toHaveProperty("period");
+    expect(muse.windows?.[1]).toMatchObject({
+      period: {
+        durationMs: 604_800_000,
+        durationBasis: "catalog",
+        startsAt: 1_759_363_200_000 - 604_800_000,
+        startsAtBasis: "derived",
+      },
+    });
     expect(JSON.stringify(muse)).not.toMatch(/minted-secret-key|person@example\.com|Person/);
 
     // 응답 직후의 새로고침은 upstream에 다시 닿지 않는다.
@@ -337,9 +345,34 @@ describe("quota service", () => {
       });
       expect(lapsed.windows?.some((window) => window.id === "weekly")).toBe(false);
       expect(normalizeRoutingQuota(lapsed, undefined, now)).toEqual({
-        observation: "partial",
+        observation: "fresh",
         ageSeconds: 0,
         remainingPercent: 100,
+        sustainableHeadroom: 1,
+      });
+      // 세션 20%는 5시간 중 3시간이 남고, 주간 40%는 7일 중 3일이 남는다.
+      const openedAt = Date.parse("2026-10-01T00:00:00.000Z");
+      const weeklyReset = openedAt + 3 * 86_400_000;
+      const opened = parseMuseCodeSubscriptionUsage({
+        window: { used_percent: 20, window_duration_mins: 300, resets_at: new Date(openedAt + 3 * 3_600_000).toISOString() },
+        weekly: { used_percent: 40, resets_at: Math.floor(weeklyReset / 1000) },
+      });
+      const weekly = parseMuseCodeSubscriptionUsage({
+        weekly: { used_percent: 40, resets_at: Math.floor(weeklyReset / 1000) },
+      });
+      expect(normalizeRoutingQuota({ status: "ok", fetchedAt: openedAt, windows: [{ id: "session", usedPercent: 0 }] }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 100, sustainableHeadroom: 1,
+      });
+      expect(normalizeRoutingQuota({
+        status: "ok", fetchedAt: openedAt,
+        windows: [{ id: "session", usedPercent: 0 }, ...(weekly ?? [])],
+      }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 60, sustainableHeadroom: 1,
+        recovery: { inSeconds: 3 * 86_400, remainingPercent: 100 },
+      });
+      expect(normalizeRoutingQuota({ status: "ok", fetchedAt: openedAt, windows: opened ?? [] }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 60, sustainableHeadroom: 1.33333,
+        recovery: { inSeconds: 3 * 86_400, remainingPercent: 100 },
       });
       expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]?.windows).toEqual([
         { id: "session", usedPercent: 0 },
