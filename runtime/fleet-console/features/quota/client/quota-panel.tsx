@@ -263,16 +263,6 @@ export function mostUrgentWindow(windows: readonly QuotaWindow[] | undefined): Q
   });
 }
 
-/**
- * 구독은 살아 있지만 지금 진행 중인 사용 창이 없다(Muse Code는 이때 사용량을 싣지 않는다).
- * 수치가 없는 성공을 따로 말하지 않으면 아직 읽지 못한 카드와 구분되지 않는다.
- */
-export function isIdle(id: ProviderId, provider: ProviderDto): boolean {
-  return id === "muse-code"
-    && provider.status === "ok"
-    && (provider.windows === undefined || provider.windows.length === 0);
-}
-
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
@@ -617,14 +607,9 @@ function ProviderCard({
       </header>
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
-      {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
       {provider.status === "stale" ? (
-        <StatusStrip kind="stale">
-          {provider.staleReason === "no_window"
-            ? t("quota.stale.noWindow", { t: elapsed(provider.fetchedAt, now) })
-            : t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}
-        </StatusStrip>
+        <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip>
       ) : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);

@@ -118,7 +118,7 @@ interface CacheEntry {
   /** 보호 대상 공급자만: 이 시각 전에는 upstream을 부르지 않는다. */
   readonly backoffUntil?: number;
   /**
-   * upstream이 성공으로 답했다. 창이 없어 화면은 stale이어도, 강제 새로고침 간격은
+   * upstream이 성공으로 답했다. 창이 없는 성공도 포함해, 강제 새로고침 간격은
    * 성공 응답과 같이 둔다.
    */
   readonly accepted?: boolean;
@@ -181,7 +181,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       // stale 값이 backoff보다 먼저 낡아도 backoff는 유지한다.
       if (cached.backoffUntil !== undefined && cached.backoffUntil > now()) return presentable(cached.value);
       // 간격은 upstream이 답한 결과에만 둔다. 로컬 로그인 없음·읽기 실패는 로그인 즉시 갱신돼야 한다.
-      // 빈 성공을 stale로 이은 값도 그 답이다. 새로고침 연타가 key endpoint를 다시 두드리면 안 된다.
+      // 창이 없는 성공도 그 답이다. 새로고침 연타가 key endpoint를 다시 두드리면 안 된다.
       const answered = cached.value.status === "ok"
         || cached.value.status === "no_subscription"
         || cached.accepted === true;
@@ -269,9 +269,9 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   }
 
   /**
-   * 창이 있는 성공만 마지막 값을 갈아 끼운다. 창이 없는 성공(Muse key가 진행 중인 창을
-   * 빠뜨릴 때)은 이전 창을 지우지 않고, 실패와 같이 stale로 보이되 리셋이 지난 창은 뺀다.
-   * 남는 창이 없으면 그 빈 성공 자체를 그대로 둔다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
+   * 창이 있는 성공은 마지막 값을 갈아 끼운다. 창이 없는 성공은 저장값을 지우거나 stale로
+   * 바꾸지 않는다. Muse는 그 성공을 세션 미사용으로 잇고, 그 외는 리셋 전인 창만 이번 조회
+   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
    */
   function applySettled(id: ProviderId, result: ProviderResult, at: number): ProviderDto {
     if (isProviderSuccess(result) && result.windows.length > 0) {
@@ -294,39 +294,50 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   }
 
   /**
-   * 빈 성공. 이전 창이 리셋 전이면 stale로 잇고, 하나도 남지 않으면 지금 응답(idle)을 그대로 둔다.
-   * 오류로 바꾸지 않는다 — 구독은 살아 있고 단지 진행 중인 창이 없는 것이다.
+   * 창이 없는 성공. 저장값을 지우거나 stale로 바꾸지 않는다.
+   * `fetchedAt`은 이번 조회 시각이다. 직전 창의 시각을 두면 배정이 관측 나이로 stale을 고른다.
+   * 리셋이 지난 창은 뺀다.
+   *
+   * Muse만 예외로 둔다. key가 진행 중인 5시간 창을 빼면 `subs_usage`가 통째로 없고, 그건
+   * 모르는 값이 아니라 세션 미사용이다. 파서에서 세션 0%를 만들면 창 있는 성공이 되어 이전
+   * 주간 창을 통째로 갈아 끼운다. 그래서 여기서 세션 창만 0%로 대체하고, 리셋 전인 비세션 창은
+   * 유지한다. resetsAt·period는 업스트림이 주지 않았으므로 붙이지 않는다. 다른 공급자의 빈
+   * 성공은 세션 0%로 바꾸지 않는다.
    */
   function presentEmptySuccess(id: ProviderId, result: ProviderSuccess, at: number): ProviderDto {
     const previous = lastGood.get(id);
     const plan = result.plan ?? previous?.plan;
-    const idle: ProviderDto = {
+    const method = result.method ?? previous?.method;
+    const kept = previous === undefined ? null : withoutLapsed({
+      ...previous,
       status: "ok",
-      windows: [],
-      fetchedAt: result.fetchedAt,
+      fetchedAt: at,
       ...(plan ? { plan } : {}),
-      ...(result.method ? { method: result.method } : {}),
-    };
-    if (!previous) return idle;
-    if (result.plan && result.plan !== previous.plan) remember(id, { ...previous, plan: result.plan });
-    const kept = withoutLapsed({
-      ...lastGood.get(id)!,
-      status: "stale",
-      staleReason: "no_window",
-      ...(plan ? { plan } : {}),
+      ...(method ? { method } : {}),
     }, at);
-    if (kept === null || (kept.windows?.length ?? 0) === 0) {
-      forget(id);
-      return idle;
+    const windows = id === "muse-code"
+      ? [{ id: "session" as const, usedPercent: 0 }, ...(kept?.windows ?? []).filter((window) => window.id !== "session")]
+      : kept?.windows ?? [];
+    if (id !== "muse-code" && windows.length === 0) {
+      return {
+        status: "ok",
+        windows: [],
+        fetchedAt: at,
+        ...(plan ? { plan } : {}),
+        ...(method ? { method } : {}),
+      };
     }
-    const survived = kept.windows ?? [];
-    const creditsChanged = (kept.credits?.available !== previous.credits?.available)
-      || (kept.credits?.nextExpiresAt !== previous.credits?.nextExpiresAt);
-    if (survived.length !== previous.windows.length || creditsChanged) {
-      const { status: _status, message: _message, staleReason: _reason, ...rest } = kept;
-      remember(id, { ...rest, status: "ok", windows: survived, fetchedAt: previous.fetchedAt });
-    }
-    return kept;
+    const value: ProviderSuccess = {
+      status: "ok",
+      windows,
+      fetchedAt: at,
+      ...(plan ? { plan } : {}),
+      ...(method ? { method } : {}),
+      ...(kept?.cycleDays !== undefined ? { cycleDays: kept.cycleDays } : {}),
+      ...(kept?.credits ? { credits: kept.credits } : {}),
+    };
+    remember(id, value, at);
+    return value;
   }
 
   /**

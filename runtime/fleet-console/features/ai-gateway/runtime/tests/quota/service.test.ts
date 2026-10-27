@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
+import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
+import { parseMuseCodeSubscriptionUsage } from "../../src/upstream/muse-code/quota.js";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
@@ -202,7 +204,14 @@ describe("quota service", () => {
     });
     expect(entry.key).toBe("minted-secret-key");
     expect(muse).not.toHaveProperty("method");
-    expect(muse.windows?.[1]).not.toHaveProperty("period");
+    expect(muse.windows?.[1]).toMatchObject({
+      period: {
+        durationMs: 604_800_000,
+        durationBasis: "catalog",
+        startsAt: 1_759_363_200_000 - 604_800_000,
+        startsAtBasis: "derived",
+      },
+    });
     expect(JSON.stringify(muse)).not.toMatch(/minted-secret-key|person@example\.com|Person/);
 
     // 응답 직후의 새로고침은 upstream에 다시 닿지 않는다.
@@ -276,12 +285,22 @@ describe("quota service", () => {
       now += 300_000;
       const emptied = (await service.getSummary()).providers["muse-code"];
       expect(emptied).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
-        windows: [{ id: "weekly", usedPercent: 30 }],
+        fetchedAt: now,
+        windows: [
+          { id: "session", usedPercent: 0 },
+          { id: "weekly", usedPercent: 30 },
+        ],
       });
+      expect(emptied.windows?.[0]).toEqual({ id: "session", usedPercent: 0, risk: { pressure: "ok" } });
       expect(JSON.stringify(emptied)).not.toMatch(/secret/);
+      expect(service.peekSummary()?.providers["muse-code"]).toMatchObject({ status: "ok", fetchedAt: now });
+      expect(normalizeRoutingQuota(emptied, undefined, now)).toEqual({
+        observation: "partial",
+        ageSeconds: 0,
+        remainingPercent: 70,
+      });
 
       // 추론 스트림이 알려 준 창은 그 뒤의 빈 key 성공이 리셋 전에 지우면 안 된다.
       const sessionReset = now + 5 * 3_600_000;
@@ -296,32 +315,79 @@ describe("quota service", () => {
       now += 300_000;
       const afterStream = (await service.getSummary()).providers["muse-code"];
       expect(afterStream).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
+        fetchedAt: now,
         windows: [
-          { id: "session", usedPercent: 4 },
+          { id: "session", usedPercent: 0 },
           { id: "weekly", usedPercent: 30 },
         ],
       });
 
       const restarted = (await open().getSummary()).providers["muse-code"];
       expect(restarted).toMatchObject({
-        status: "stale",
-        staleReason: "no_window",
+        status: "ok",
         plan: "Power",
+        fetchedAt: now,
         windows: [
-          { id: "session", usedPercent: 4 },
+          { id: "session", usedPercent: 0 },
           { id: "weekly", usedPercent: 30 },
         ],
       });
+
+      // 리셋이 지난 주간 창은 빼고, 창 없는 성공은 세션 미사용으로 남긴다.
+      now = liveReset + 1;
+      const lapsed = (await open().getSummary({ force: true })).providers["muse-code"];
+      expect(lapsed).toMatchObject({
+        status: "ok",
+        fetchedAt: now,
+        windows: [{ id: "session", usedPercent: 0 }],
+      });
+      expect(lapsed.windows?.some((window) => window.id === "weekly")).toBe(false);
+      expect(normalizeRoutingQuota(lapsed, undefined, now)).toEqual({
+        observation: "fresh",
+        ageSeconds: 0,
+        remainingPercent: 100,
+        sustainableHeadroom: 1,
+      });
+      // 세션 20%는 5시간 중 3시간이 남고, 주간 40%는 7일 중 3일이 남는다.
+      const openedAt = Date.parse("2026-10-01T00:00:00.000Z");
+      const weeklyReset = openedAt + 3 * 86_400_000;
+      const opened = parseMuseCodeSubscriptionUsage({
+        window: { used_percent: 20, window_duration_mins: 300, resets_at: new Date(openedAt + 3 * 3_600_000).toISOString() },
+        weekly: { used_percent: 40, resets_at: Math.floor(weeklyReset / 1000) },
+      });
+      const weekly = parseMuseCodeSubscriptionUsage({
+        weekly: { used_percent: 40, resets_at: Math.floor(weeklyReset / 1000) },
+      });
+      expect(normalizeRoutingQuota({ status: "ok", fetchedAt: openedAt, windows: [{ id: "session", usedPercent: 0 }] }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 100, sustainableHeadroom: 1,
+      });
+      expect(normalizeRoutingQuota({
+        status: "ok", fetchedAt: openedAt,
+        windows: [{ id: "session", usedPercent: 0 }, ...(weekly ?? [])],
+      }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 60, sustainableHeadroom: 1,
+        recovery: { inSeconds: 3 * 86_400, remainingPercent: 100 },
+      });
+      expect(normalizeRoutingQuota({ status: "ok", fetchedAt: openedAt, windows: opened ?? [] }, undefined, openedAt)).toEqual({
+        observation: "fresh", ageSeconds: 0, remainingPercent: 60, sustainableHeadroom: 1.33333,
+        recovery: { inSeconds: 3 * 86_400, remainingPercent: 100 },
+      });
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]?.windows).toEqual([
+        { id: "session", usedPercent: 0 },
+      ]);
 
       open().record("muse-code", { status: "not_connected" });
       expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]).toBeUndefined();
 
       fs.writeFileSync(filePath, "{not json");
       const ignored = (await open().getSummary()).providers["muse-code"];
-      expect(ignored).toMatchObject({ status: "ok", plan: "Power", windows: [] });
+      expect(ignored).toMatchObject({
+        status: "ok",
+        plan: "Power",
+        windows: [{ id: "session", usedPercent: 0 }],
+      });
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

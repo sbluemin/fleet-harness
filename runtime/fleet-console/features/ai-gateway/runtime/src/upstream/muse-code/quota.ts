@@ -1,5 +1,5 @@
 import type { QuotaWindow } from "../../quota/types.js";
-import { object, percent, safeTimestamp, titleCase, windowPeriod } from "../../quota/windows.js";
+import { HOUR_MS, WEEK_MS, object, percent, safeTimestamp, titleCase, windowPeriod } from "../../quota/windows.js";
 
 export type ParsedMuseCodeUsage =
   | { readonly status: "inactive" }
@@ -10,10 +10,14 @@ function usedPercent(value: unknown): number | undefined {
   return percent(value);
 }
 
+/** Muse의 5시간 세션. 업스트림이 `window_duration_mins`를 빠뜨릴 때만 catalog로 쓴다. */
+const MUSE_SESSION_MS = 5 * HOUR_MS;
+
 /**
  * 구독 사용량 블록 `{window, weekly, tier}`를 window로 옮긴다. key 응답의 `subs_usage`와
  * 추론 스트림의 `response.subscription_usage` 이벤트의 `subscription`이 같은 모양이다(실측 2026-09-26).
- * 읽을 창이 하나도 없으면 `null`. `weekly`는 기간을 밝히지 않으므로 period를 꾸며 붙이지 않는다.
+ * 읽을 창이 하나도 없으면 `null`. 주간 길이는 업스트림이 말하지 않으므로 Claude와 같이 7일 catalog다.
+ * 리셋 시각이 없으면 기간을 붙이지 않는다. 세션 길이는 업스트림 분 값이 있으면 그것을 쓴다.
  */
 export function parseMuseCodeSubscriptionUsage(value: unknown): readonly QuotaWindow[] | null {
   const usage = object(value);
@@ -24,9 +28,10 @@ export function parseMuseCodeSubscriptionUsage(value: unknown): readonly QuotaWi
   if (session && sessionUsed !== undefined) {
     const resetsAt = safeTimestamp(session.resets_at);
     const minutes = session.window_duration_mins;
-    const period = typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0
-      ? windowPeriod(minutes * 60_000, "upstream", resetsAt)
-      : undefined;
+    const statedMs = typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 ? minutes * 60_000 : undefined;
+    const period = statedMs !== undefined
+      ? windowPeriod(statedMs, "upstream", resetsAt)
+      : resetsAt !== undefined ? windowPeriod(MUSE_SESSION_MS, "catalog", resetsAt) : undefined;
     windows.push({
       id: "session",
       usedPercent: sessionUsed,
@@ -38,10 +43,12 @@ export function parseMuseCodeSubscriptionUsage(value: unknown): readonly QuotaWi
   const weeklyUsed = usedPercent(weekly?.used_percent);
   if (weekly && weeklyUsed !== undefined) {
     const resetsAt = safeTimestamp(weekly.resets_at);
+    const period = resetsAt !== undefined ? windowPeriod(WEEK_MS, "catalog", resetsAt) : undefined;
     windows.push({
       id: "weekly",
       usedPercent: weeklyUsed,
       ...(resetsAt !== undefined ? { resetsAt } : {}),
+      ...(period ? { period } : {}),
     });
   }
   return windows.length > 0 ? windows : null;
