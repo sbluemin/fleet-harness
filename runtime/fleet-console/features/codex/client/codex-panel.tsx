@@ -101,16 +101,14 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   const localeRef = useRef(locale);
   const commodoreId = ctx.commodoreId;
   const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
-  const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(() => {
+  const [workspace, setWorkspace] = useState<(CodexWorkspaceState & { readonly failed?: boolean }) | null>(() => {
     const known = lastResolvedCodexWorkspace();
-    return known && known.contextKey === contextKey ? known : null;
+    return known && known.contextKey === contextKey && known.hasWiki ? known : null;
   });
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
-  const activeTheater = state.theaters.find((t) => t.id === theaterId) ?? null;
-  const hasTheaters = state.theaters.length > 0;
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
 
@@ -146,7 +144,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       if (stopped || latestContextKeyRef.current !== contextKey) return;
       const nextWorkspace = { contextKey, theaterId, hasWiki: false, id: null };
       publishResolvedWorkspace(nextWorkspace);
-      setWorkspace(nextWorkspace);
+      setWorkspace({ ...nextWorkspace, failed: true });
     });
     return () => { stopped = true; };
   }, [contextKey, theaterId, commodoreId]);
@@ -220,34 +218,21 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <div className="codex-panel-body"><CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} /></div>;
+    const kind = !contextKey ? "none" : workspace?.contextKey !== contextKey ? "loading" : workspace.failed ? "failed" : "none";
+    return <div className="codex-panel-body"><CodexEmpty kind={kind} /></div>;
   }
 
   return <div className="codex-panel-body"><div ref={navRef} className="codex-rail-host" /></div>;
 }
 
-function CodexEmpty({
-  activeTheater,
-  hasTheaters,
-}: {
-  readonly activeTheater: { readonly label: string } | null;
-  readonly hasTheaters: boolean;
-}) {
+function CodexEmpty({ kind }: { readonly kind: "loading" | "none" | "failed" }) {
   const t = useT();
-  if (!hasTheaters) {
-    return (
-      <section className="codex-empty-state">
-        <p className="codex-empty-eyebrow">{t("rail.codex.emptyEyebrow")}</p>
-        <h1>{t("rail.codex.addTheater")}</h1>
-        <p>{t("rail.codex.addTheaterHint")}</p>
-      </section>
-    );
-  }
+  // hasWiki:false는 소유자를 못 정한 상태다. 항목이 없는 정상 위키는 카탈로그가 따로 안내한다.
   return (
-    <section className="codex-empty-state">
-      <p className="codex-empty-eyebrow">{t("rail.codex.unavailable")}</p>
-      <h1>{activeTheater?.label || t("rail.codex.thisTheater")}</h1>
-      <p>{t("rail.codex.wikiUnavailable")}</p>
+    <section className="codex-empty-state" role={kind === "failed" ? "alert" : "status"}>
+      <p className="codex-empty-eyebrow">{t(kind === "failed" ? "rail.codex.unavailable" : "rail.codex.emptyEyebrow")}</p>
+      <h1>{t(kind === "none" ? "rail.codex.chooseCommodore" : "rail.codex.thisCommodore")}</h1>
+      <p>{t(kind === "loading" ? "common.loading" : kind === "failed" ? "rail.codex.wikiUnavailable" : "rail.codex.chooseCommodoreHint")}</p>
     </section>
   );
 }

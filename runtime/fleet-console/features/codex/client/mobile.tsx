@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { PaneContext } from "../../workspace/shared/pane.js";
 
@@ -32,9 +32,9 @@ const WikiIcon = () => <Icon><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" 
 
 export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
-  const { theaterId, commodoreId, mobileBar, panes, visible, consoleState } = ctx;
+  const { theaterId, commodoreId, mobileBar, panes, visible } = ctx;
   const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
-  const label = useSyncExternalStore(consoleState.subscribe, () => consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "", () => "");
+  const label = t("rail.codex.thisCommodore");
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const generation = useRef(0);
   const title = t("mobile.wiki.title");
@@ -139,7 +139,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
       <div className="codex-m-pad">
         {load.kind === "loading" ? <p className="codex-m-note" role="status">{t("mobile.wiki.loading")}</p> : null}
         {load.kind === "failed" ? <button type="button" className="codex-m-note" onClick={refresh}>{t("mobile.wiki.failed")}</button> : null}
-        {load.kind === "none" ? <p className="codex-m-note">{t("rail.codex.wikiUnavailable")}</p> : null}
+        {load.kind === "none" ? <p className="codex-m-note">{t("rail.codex.chooseCommodoreHint")}</p> : null}
         {load.kind === "ready" ? (
           <>
             <h2 className="codex-m-glab">{t("mobile.wiki.items")}</h2>

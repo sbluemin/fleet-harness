@@ -97,7 +97,7 @@ A tool bar above every conversation opens tools for that conversation's Theater:
 - **Repository**: history, changes, compare, worktrees, branches, tags, and stashes.
 - **Files**: a tree with quick peek, pinned folders, and git status tints.
 - **Shell**: one terminal for the whole Console, a keystroke away (<kbd>Ctrl</kbd><kbd>`</kbd>).
-- **Codex**: the project wiki. Select a passage to attach it as a comment or question to a commander's or the Commodore's chat; their edits arrive as proposals, and nothing changes until you approve them.
+- **Codex**: each Commodore's wiki. Select a passage to attach it as a comment or question to a commander's or the Commodore's chat; their edits arrive as proposals, and nothing changes until you approve them.
 
 Provider quotas stay in view as usage meters at the top right; click them for the details.
 

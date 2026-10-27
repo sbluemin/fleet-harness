@@ -501,7 +501,7 @@ export function mountNavigatorInto(
       return;
     }
     if (state.error) {
-      navList.innerHTML = `<div class="codex-nav-error" role="alert">${escapeHtml(state.error)}</div>`;
+      navList.innerHTML = `<div class="codex-nav-error" role="alert">${escapeHtml(t("rail.codex.wikiUnavailable"))}</div>`;
       return;
     }
     if (merged.length === 0) {
