@@ -666,8 +666,17 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
 .commodore-prompt-body { width: 100%; color: var(--text-primary); background: var(--control-field); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); }
-/* 설정 맨 위의 Theater — 지시 탭 정보 목록과 같은 줄 문법(작은 제목 · 옅은 행 · 글자 단추 · 「+」 추가 줄). 아래 설정과는 머리카락 선으로 나뉜다. */
-.objectives-commodore-settings > .commodore-theaters { padding-bottom: 18px; border-bottom: 1px solid var(--surface-rim); }
+/* 설정 맨 위의 Theater·플러그인 — 지시 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px var(--surface-rim))로만 나눈다.
+   Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
+   폰·Theater Inbox 제목에는 닿지 않는다. */
+.objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }
+.objectives-commodore-settings > .commodore-theaters > .objectives-commodore-section-title {
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+}
 .commodore-theaters-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .commodore-theaters-list li { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .commodore-theaters-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
