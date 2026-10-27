@@ -9,7 +9,7 @@ import { STATE_VERSION, sanitizeDurableConsoleState, deletionObjectiveRecords, t
 import { ObjectiveArchiveError, validateLocations, type ArchivedObjective, type ArchiveLifecycleEvent } from "../../workspace/host/objective-archive-storage.js";
 import type { StoredObjective } from "../shared/types.js";
 import { assertMinimal, boardFromDocument, documentFromBoard, documentFromObjective, object, objectiveRecordFromDocument, normalizeObjectiveDocument, type ObjectiveDocumentContext, type ObjectiveDocument } from "./storage-codec.js";
-import { clearPendingIndex, importMissingObjectives, readPendingIndex, rememberImported } from "./legacy-import.js";
+import { clearPendingIndex, importMissingObjectives, readImportedIds, readPendingIndex, rememberImported } from "./legacy-import.js";
 
 export interface ObjectiveOwner extends ObjectiveDocumentContext { readonly directory: string }
 export interface ObjectiveBoardStorage {
@@ -388,7 +388,7 @@ export function createObjectiveStorage(deps: {
       scope.archive = archive;
     }
   }
-  const persistentReasons = new Set(["invalid_inline_row", "id_conflict", "archive_unreadable", "missing_theater_registration", "index_missing", "purge_conflict"]);
+  const persistentReasons = new Set(["invalid_inline_row", "id_conflict", "archive_unreadable", "missing_theater_registration", "index_missing", "purge_conflict", "legacy_duplicate"]);
   function persistentHolds(scope: Scope): Set<string> {
     return new Set((scope.archive.quarantine ?? []).filter((row) => persistentReasons.has(row.reason)).flatMap((row) => row.id ? [row.id] : []));
   }
@@ -430,12 +430,83 @@ export function createObjectiveStorage(deps: {
     };
     for (const id of objectiveIds) scope.unreadable.add(id);
   }
+  /** 이 commodore 밖에서 이미 이주한 옛 목표. Console 원장은 가져간 commodore가 삭제돼도 남아 되살리지 않는다. */
+  function legacyClaims(commodoreId: string): Set<string> {
+    const claimed = new Set<string>();
+    const add = (dir: string) => { const read = readImportedIds(dir); if (read.ok) for (const id of read.ids) claimed.add(id); };
+    add(deps.directory);
+    for (const owner of deps.owners()) {
+      if (owner.commodoreId === commodoreId) continue;
+      add(owner.directory);
+      const other = scopes.get(owner.commodoreId);
+      if (other) for (const id of [...other.documents.keys(), ...inactive(other)]) claimed.add(id);
+    }
+    return claimed;
+  }
+  /** 옛 버전은 같은 Theater를 둔 commodore마다 같은 옛 목표를 복사해 기동을 막았다. 같은 사본은 첫 commodore만 남기고 나머지는 지우지 않고 보류한다. */
+  function setAsideLegacyDuplicates(): void {
+    const first = new Map<string, Scope>();
+    for (const owner of deps.owners()) {
+      const scope = scopes.get(owner.commodoreId);
+      if (!scope || held(scope)) continue;
+      const imported = readImportedIds(owner.directory);
+      const place = (from: Scope, id: string) => from.archive.deletions.some((row) => row.objectiveIds.includes(id)) ? "deleted"
+        : from.archive.entries.some((row) => row.objectiveId === id) ? "archived" : "active";
+      const duplicates: string[] = [];
+      for (const [id, doc] of scope.documents) {
+        if (doc.pending || unavailable(scope, id)) continue;
+        const kept = first.get(id);
+        if (!kept) { first.set(id, scope); continue; }
+        if (imported.ok && imported.ids.has(id) && place(scope, id) !== "deleted" && place(scope, id) === place(kept, id) && isDeepStrictEqual(doc, kept.documents.get(id))) duplicates.push(id);
+      }
+      if (!duplicates.length) continue;
+      for (const id of duplicates) {
+        holdIds(scope, [id], "legacy_duplicate", createHash("sha256").update(readBytes(path.join(objectiveDir(scope, id), "objective.json"))).digest("hex"));
+        // 본문은 읽힌다. 이번 기동의 Theater 편집까지 막지 않도록 읽기 실패 표시는 남기지 않는다.
+        scope.unreadable.delete(id);
+      }
+      archiveStore(scope).save(scope.archive);
+      console.warn(`[objectives] owner ${owner.commodoreId}: ${duplicates.length} legacy duplicate(s) set aside; original preserved`);
+    }
+  }
+  /**
+   * 이주를 확정한 옛 목표 원본(`workspaces/<이름>/objectives/<id>`)을 지운다. Console 원장에 있고, 사본이 읽히는 commodore가 있거나
+   * 모든 owner를 읽었는데 어디에도 없을 때(사용자·commodore 삭제)만 지운다. 읽지 못한 사본만 남은 id는 원본을 남긴다.
+   */
+  function pruneLegacySources(): void {
+    const ledger = readImportedIds(deps.directory);
+    if (!ledger.ok || !ledger.ids.size) return;
+    const allLoaded = deps.owners().every((owner) => { const scope = scopes.get(owner.commodoreId); return !!scope && !held(scope); });
+    const readable = new Set<string>(), known = new Set<string>();
+    for (const scope of scopes.values()) {
+      for (const id of scope.documents.keys()) if (!unavailable(scope, id)) readable.add(id);
+      for (const id of [...scope.documents.keys(), ...inactive(scope), ...scope.unreadable]) known.add(id);
+    }
+    const root = path.join(deps.directory, "workspaces");
+    let workspaces: fs.Dirent[] = [];
+    try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+    for (const workspace of workspaces) {
+      if (!workspace.isDirectory()) continue;
+      const objectives = path.join(root, workspace.name, "objectives");
+      let entries: fs.Dirent[];
+      try {
+        if (!fs.lstatSync(objectives).isDirectory()) continue;
+        entries = fs.readdirSync(objectives, { withFileTypes: true });
+      } catch { continue; }
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !ledger.ids.has(entry.name) || !(readable.has(entry.name) || (allLoaded && !known.has(entry.name)))) continue;
+        try { fs.rmSync(path.join(objectives, entry.name), { recursive: true, force: true }); }
+        catch (error) { console.warn(`[objectives] ${entry.name}: ${error instanceof Error ? error.message : "legacy_prune_failed"}; original preserved`); }
+      }
+      try { if (!fs.readdirSync(objectives).length) fs.rmdirSync(objectives); } catch { /* 다음 기동이 다시 정리한다. */ }
+    }
+  }
   function importLegacy(scope: Scope): { readonly touched: readonly string[]; readonly groupIds: readonly string[] } {
     const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
     let imported: ReturnType<typeof importMissingObjectives>;
     try {
-      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
+      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, claimed: legacyClaims(scope.owner.commodoreId), quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
       return { touched: [], groupIds: [] };
@@ -557,6 +628,7 @@ export function createObjectiveStorage(deps: {
       // 읽은 색인과 같으면 다시 쓰지 않는다. 키 순서만 다른 정규화가 재시작마다 archive.json을 바꾸면 안 된다.
       if (!loadedArchive || !isDeepStrictEqual(loadedArchive, scope.archive)) archiveStore(scope).save(scope.archive);
       if (touched.length || durableGroupIds.length) rememberImported(owner.directory, touched, durableGroupIds);
+      if (touched.length) rememberImported(deps.directory, touched);
       clearPendingIndex(owner.directory, touched);
     }
     if (!exists(groupsFile)) writeJson(groupsFile, { groups: scope.groups });
@@ -823,6 +895,8 @@ export function createObjectiveStorage(deps: {
           console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
         }
       }
+      setAsideLegacyDuplicates();
+      pruneLegacySources();
       // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
       // 별칭 이주는 별개다. 커밋한 항목만 명부에서 거둔다. 이번 기동에 복구가 끝난 owner만 거둔다.
       if (deps.migrateRegistrationAliases) {

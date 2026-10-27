@@ -377,7 +377,8 @@ describe("durable console state", () => {
     const again = legacy.open().load();
     expect(again.objectiveRecords.map((node) => node.id).sort()).toEqual(importedState.objectiveRecords.map((node) => node.id).sort());
     expect(fs.readFileSync(oldArchive, "utf8")).toBe(oldArchiveBytes);
-    expect(fs.readFileSync(path.join(oldBoard, "active", "objective.json"), "utf8")).toBe(activeBoard);
+    // 확정 이주한 옛 원본만 지운다. 귀속하지 못했거나 읽지 못한 원본은 남긴다.
+    expect(["active", "archived", "unlaunched", "stray", "broken"].filter((id) => fs.existsSync(path.join(oldBoard, id)))).toEqual(["stray", "broken"]);
     expect(fs.readFileSync(marker, "utf8")).toBe("old marker bytes");
     expect(fs.readFileSync(legacy.stateFile, "utf8")).toBe(oldState);
     const ledger = path.join(legacy.destination, ".archive-migration", "imported.json");
@@ -450,6 +451,30 @@ describe("durable console state", () => {
       archived: spelledImport.entries().some((entry) => entry.objectiveRecord.id === "fresh"),
       group: spelledState.groups?.some((group) => group.id === "g-old"),
     }).toEqual({ oldIdIncluded: true, archived: true, group: true });
+  });
+
+  it("migrates a legacy objective once when commodores share its Theater", () => {
+    const shared = fixture();
+    const second = { ...shared.owner, commodoreId: "c2", directory: path.join(shared.directory, "commodore/second/objectives") };
+    const third = { ...shared.owner, commodoreId: "c3", directory: path.join(shared.directory, "commodore/third/objectives") };
+    const operation = { id: "old", theaterId: "t1", title: "Old", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    fs.writeFileSync(shared.stateFile, JSON.stringify({ ...shared.source, operations: [operation] }));
+    const board = path.join(ensureWorkspaceDirectory(shared.directory, shared.directory).path, "objectives", "old");
+    fs.mkdirSync(board, { recursive: true });
+    fs.writeFileSync(path.join(board, "objective.json"), JSON.stringify({ operationId: "old", rank: 1, note: "old", missions: [] }));
+    let owners = [shared.owner, second];
+    const open = () => createObjectiveStorage({ directory: shared.directory, stateStore: shared.stateStore, owners: () => owners });
+    const boot = () => { const storage = open(); storage.load(); return Object.fromEntries(owners.map((owner) => [owner.commodoreId, storage.board.list(owner.commodoreId).map((row) => row.id)])); };
+    expect(boot()).toEqual({ c1: ["old"], c2: [] });
+    // 옛 버전이 두 commodore에 복사한 같은 사본은 기동을 막지 않고, 뒤 commodore의 사본만 지우지 않고 보류한다.
+    fs.cpSync(path.join(shared.destination, "old"), path.join(second.directory, "old"), { recursive: true });
+    fs.cpSync(path.join(shared.destination, ".archive-migration"), path.join(second.directory, ".archive-migration"), { recursive: true });
+    expect(boot()).toEqual({ c1: ["old"], c2: [] });
+    expect(fs.existsSync(path.join(second.directory, "old", "objective.json"))).toBe(true);
+    // 가져간 commodore를 지워도 같은 Theater의 새 commodore가 옛 원본에서 되살리지 않는다.
+    fs.rmSync(path.join(shared.directory, "commodore/owner"), { recursive: true, force: true });
+    owners = [third];
+    expect(boot()).toEqual({ c3: [] });
   });
 
   it("does not restore Commodore aliases as Theater properties, including deletion snapshots", () => {

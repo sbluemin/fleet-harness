@@ -225,6 +225,8 @@ export function importMissingObjectives(deps: {
   owner: ObjectiveDocumentContext & { readonly directory: string };
   previousRaw: Record<string, unknown>;
   known: ReadonlySet<string>;
+  /** 다른 commodore가 이미 가져간 옛 목표. 같은 Theater를 둔 commodore가 여럿이어도 한 번만 이주한다. */
+  claimed: ReadonlySet<string>;
   quarantined: readonly { id: string | null; sourceHash: string; reason: string }[];
   prepareDir: (dir: string) => void;
   writeJson: (file: string, value: unknown) => void;
@@ -299,6 +301,7 @@ export function importMissingObjectives(deps: {
         touched.add(id);
         continue;
       }
+      if (deps.claimed.has(id)) continue;
       const source = path.join(tree.dir, id);
       if (entry.isSymbolicLink()) {
         quarantine.push({ id, sourceHash: hashOf(Buffer.from(source)), location: source, reason: "legacy_unreadable" });
@@ -327,6 +330,7 @@ export function importMissingObjectives(deps: {
   for (const [id, hit] of records) {
     if (touched.has(id)) continue;
     if (deps.known.has(id)) { if (pending.has(id)) noteIndex(id, hit); touched.add(id); continue; }
+    if (deps.claimed.has(id)) continue;
     if (!wanted.has(id)) wanted.set(id, { hit });
   }
 
