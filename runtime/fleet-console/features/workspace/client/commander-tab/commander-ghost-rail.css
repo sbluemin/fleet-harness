@@ -24,7 +24,7 @@
   align-items: stretch;
   overflow: hidden;
   opacity: 1;
-  background: var(--conversation-surface);
+  background: var(--conversation-surface, var(--surface-panel));
   border-left: 1px solid var(--hairline);
 }
 .commander-ghost[data-side="left"][data-expanded] {

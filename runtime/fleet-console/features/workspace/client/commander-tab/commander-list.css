@@ -176,6 +176,29 @@
 .commander-tab-list.side-bar-group-chips { gap: 2px; }
 .commander-tab-group-title { display: flex; gap: 6px; align-items: baseline; margin: 0; padding: 8px 8px 2px; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .commander-tab-group-title > span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+/* 시작 전·완료는 이름과 수만 있는 줄이다. 셰브런은 쓰지 않는다 — 목표 글리프(.objectives-tab-glyph)와 API 색인 줄(.backend-api-group-toggle)처럼. */
+.commander-tab-fold {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: calc(100% - 8px);
+  margin: 6px 4px 2px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.commander-tab-fold-count { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commander-tab-fold[aria-expanded="true"] { color: var(--text-secondary); }
+.commander-tab-fold:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commander-tab-fold:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 .commander-tab-trail:empty { display: none; }
 .commander-list-owner { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px; border: 0; border-radius: var(--radius-lg); background: none; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .commander-list-owner:hover, .commander-list-owner[aria-current="true"] { background: var(--wash-hover); }

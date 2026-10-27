@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
@@ -169,16 +169,23 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
     <div className="commander-ghost-rule" role="separator" />
     {/* 레일의 탭 정지는 roving 항목 하나뿐이다. 스크롤 영역이 브라우저 기본으로 따로 초점을 받지 않게 한다. */}
     <div ref={scroller} className="commander-ghost-scroll" tabIndex={-1}>
-      {rows.map((item, index) => {
-        const summary = clusterRowSummary(item, locale, t);
-        const position = index + 1;
-        return <CommanderGhostFace key={item.layout.cluster.id} item={item} id={itemId(position)} index={position}
-          tabIndex={Math.min(cursor, rows.length) === position ? 0 : -1}
-          label={`${item.layout.cluster.title}, ${summary.conversationLine}${item.row.progress ? `, ${item.row.progress.done}/${item.row.progress.total}` : ""}`}
-          current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId}
-          cursor={cursor === position}
-          summary={summary}
-          onSelect={() => select(position)} />;
+      {sections.map((section, sectionIndex) => {
+        const before = sections.slice(0, sectionIndex).reduce((count, prior) => count + prior.rows.length, 0);
+        const separated = section.fold !== null && sections.slice(0, sectionIndex).some((prior) => prior.rows.length > 0);
+        return <Fragment key={section.id}>
+          {separated ? <div className="commander-ghost-rule" role="separator" /> : null}
+          {section.rows.map((item, index) => {
+            const summary = clusterRowSummary(item, locale, t);
+            const position = before + index + 1;
+            return <CommanderGhostFace key={item.layout.cluster.id} item={item} id={itemId(position)} index={position}
+              tabIndex={Math.min(cursor, rows.length) === position ? 0 : -1}
+              label={`${item.layout.cluster.title}, ${summary.conversationLine}${item.row.progress ? `, ${item.row.progress.done}/${item.row.progress.total}` : ""}`}
+              current={selectedId !== null && commanderObjectiveId(item.layout.cluster) === selectedId}
+              cursor={cursor === position}
+              summary={summary}
+              onSelect={() => select(position)} />;
+          })}
+        </Fragment>;
       })}
     </div>
     {expanded ? <div ref={panel} id={`${id}-list`} className="commander-ghost-list">

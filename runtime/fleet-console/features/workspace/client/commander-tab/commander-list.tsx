@@ -17,6 +17,7 @@ import { CommodoreRecentActions } from "../../../commodore/client/commodore-trai
 import { revealCommodoreTurn } from "../../../commodore/client/commodore-conversation.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
+import { toggleFold, useCommanderFolds } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlacement, type CommanderPlacement } from "./commander-placement.js";
 import "./commander-list.css";
@@ -33,6 +34,8 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const t = useT();
   const language = useConsoleLocale();
   const desktop = useViewMode().effective !== "mobile";
+  const foldDomId = useId();
+  const folds = useCommanderFolds();
   const { sorted, sections, preference } = useCommanderRows(commodoreId, selectedId);
 
   return (
@@ -47,9 +50,15 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
       </div>
       {sorted.length === 0 ? <p className="commander-tab-empty">{t("commanderTab.empty")}</p> : (
         <div className="commander-tab-groups">
-          {sections.map((group) => <section key={group.id}>
-            {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-            <ol className="commander-tab-list side-bar-group-chips">
+          {sections.map((group) => {
+            const collapsed = group.fold !== null && folds[group.fold];
+            const listId = `${foldDomId}-${group.id}`;
+            return <section key={group.id}>
+            {group.fold !== null ? <button type="button" className="commander-tab-fold" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : listId} onClick={() => toggleFold(group.fold!)}>
+              <span className="commander-tab-fold-label">{group.title}</span>
+              <span className="commander-tab-fold-count">{group.rows.length}</span>
+            </button> : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+            {collapsed ? null : <ol id={listId} className="commander-tab-list side-bar-group-chips">
               {group.rows.map((item) => {
                 const objectiveId = commanderObjectiveId(item.layout.cluster);
                 const selected = objectiveId !== null && selectedId === objectiveId;
@@ -60,8 +69,9 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                   {selected ? <li className="commander-tab-trail"><CommodoreRecentActions commodoreId={commodoreId} objectiveId={objectiveId} language={language} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} /></li> : null}
                 </Fragment>;
               })}
-            </ol>
-          </section>)}
+            </ol>}
+          </section>;
+          })}
         </div>
       )}
     </section>
