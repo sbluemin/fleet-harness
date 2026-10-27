@@ -76,6 +76,28 @@ export interface PluginComponents {
   readonly mcp: number;
 }
 
+/** 카드에 실리는 설명 상한. 상세는 이보다 긴 `MAX_PLUGIN_DETAIL_DESCRIPTION` 까지 준다. */
+export const MAX_PLUGIN_CARD_DESCRIPTION = 600;
+/** 상세 설명 상한. 목록 응답에는 카드 상한만 실린다. */
+export const MAX_PLUGIN_DETAIL_DESCRIPTION = 8_000;
+/** 상세 README 원문 상한(바이트). 넘치면 앞부분만 싣고 `readmeTruncated` 를 세운다. */
+export const MAX_PLUGIN_README_BYTES = 64 * 1024;
+export const MAX_PLUGIN_KEYWORDS = 16;
+/** 상세가 나열하는 구성 이름 상한. 이름은 폴더·선언에서만 읽고, 파일 경로는 싣지 않는다. */
+export const MAX_PLUGIN_PARTS = 64;
+
+/**
+ * 상세가 채우는 구성 이름. 수는 `components` 가 담당한다.
+ * 스킬·명령·에이전트는 그 폴더의 이름, 훅은 이벤트 이름, MCP 는 `.mcp.json` 또는 plugin.json `mcpServers` 의 키다.
+ */
+export interface PluginContents {
+  readonly skills: readonly string[];
+  readonly commands: readonly string[];
+  readonly agents: readonly string[];
+  readonly hooks: readonly string[];
+  readonly mcp: readonly string[];
+}
+
 export interface PluginCatalogEntry {
   /** `plugin@marketplace`. */
   readonly id: string;
@@ -91,6 +113,11 @@ export interface PluginCatalogEntry {
   readonly category?: string;
   readonly author?: string;
   readonly homepage?: string;
+  /** plugin.json 또는 마켓 항목의 `license`. 없으면 싣지 않는다. */
+  readonly license?: string;
+  /** http(s) 저장소 주소만. 그 외 표기는 싣지 않는다. */
+  readonly repository?: string;
+  readonly keywords?: readonly string[];
   /** plugin.json `icon` 이 플러그인 폴더 안 이미지를 가리킨다 — 그림은 `pluginIconPath(id)` 로 읽는다. 경로는 싣지 않는다. */
   readonly icon?: true;
   readonly components?: PluginComponents;
@@ -99,6 +126,17 @@ export interface PluginCatalogEntry {
    * 한 줄씩 `훅 <이벤트> · <명령>` 이 아니라 구조로 준다: 화면이 문구를 고른다.
    */
   readonly runs?: readonly { readonly kind: "hook" | "mcp"; readonly label: string; readonly command: string }[];
+}
+
+/**
+ * `commodore/plugins/detail` 의 플러그인. 카탈로그 필드는 그대로 두고, 설명만 카드보다 길 수 있다.
+ * `readme` 는 플러그인 폴더 안 README 의 markdown 원문이다. 경로·바이너리는 싣지 않고, 플러그인 코드는 실행하지 않는다.
+ * `contents` 는 읽기에 성공했을 때만 있다 — 실패는 이 객체가 아니라 오류다.
+ */
+export interface PluginDetail extends PluginCatalogEntry {
+  readonly contents: PluginContents;
+  readonly readme?: string;
+  readonly readmeTruncated?: true;
 }
 
 export interface PluginCatalogView {
@@ -139,6 +177,8 @@ export type MarketplaceErrorCode =
  * - `commodore/marketplaces/enable` { name, enabled } → PluginCatalogView
  * - `commodore/marketplaces/remove` { name } → PluginCatalogView (기본 제공은 preset_locked)
  * - `commodore/plugins/inspect` { pluginId } → { plugin: PluginCatalogEntry } — 받아서 구성 요소·실행 명령을 채운다
+ * - `commodore/plugins/detail` { pluginId } → { plugin: PluginDetail } — 카탈로그 필드에 구성 이름·실행 명령·README 를 더한다.
+ *   마켓 안 상대 경로 플러그인은 받지 않고 읽고, 그 외에는 inspect 와 같이 Fleet 전용 홈에 받은 뒤 읽는다. 플러그인 코드는 실행하지 않는다.
  * - `commodore/plugins/set` { commodoreId, pluginId, installed, trusted? } → CommodoreStateView
  *   실행 명령이 있는 플러그인을 처음 설치할 때 trusted 가 없으면 trust_required 로 거절한다.
  * - GET `commodore/plugins/icon?pluginId=` → 그 플러그인 아이콘 그림(png·jpeg·gif·webp·svg). 카탈로그 항목에 `icon` 이 있을 때만 있다.

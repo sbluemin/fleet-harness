@@ -19,6 +19,7 @@ import { createCommodoreEntities } from "../features/commodore/host/entities.js"
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
+import { MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
 import { createConsoleSettingsStore } from "../features/settings/host/settings-domain.js";
 import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { createCommodoreSession } from "../features/commodore/host/session.js";
@@ -453,7 +454,7 @@ describe("commodore theater state", () => {
       expect(fs.existsSync(images)).toBe(false);
     } finally { attachments.dispose(); files.cleanup(); }
   });
-  it("serves a plugin icon only as a verified image inside that plugin's folder", async () => {
+  it("serves a plugin icon only as a verified image inside that plugin's folder, and a detail README only from inside that folder", async () => {
     const h = harness();
     const root = path.join(h.objectivesDir, "commodore-plugins");
     const market = path.join(root, "markets", "team");
@@ -464,7 +465,8 @@ describe("commodore theater state", () => {
     fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
     const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
     const declare = (icon: string) => fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", icon }));
-    const hooks = { plugins: createCommodorePlugins({ root, executable: async () => "false" }) };
+    let cliCalls = 0;
+    const hooks = { plugins: createCommodorePlugins({ root, executable: async () => { cliCalls += 1; return "false"; } }) };
     const icon = (pluginId = "tool@team") => h.route("commodore/plugins/icon", { pluginId }, hooks);
 
     fs.writeFileSync(path.join(pluginDir, "icon.png"), png);
@@ -488,6 +490,46 @@ describe("commodore theater state", () => {
     fs.writeFileSync(path.join(pluginDir, "notes.html"), "<svg></svg>");
     declare("./notes.html");
     expect((await icon()).status).toBe(404);
+
+    // 상세는 마켓 안 폴더를 받기(CLI) 없이 읽는다. README 는 폴더 안 텍스트만이고, 밖을 가리키는 링크·선언 경로는 본문에 섞이지 않는다.
+    fs.mkdirSync(path.join(pluginDir, "skills", "review"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "skills", "review", "SKILL.md"), "# Review\n");
+    fs.mkdirSync(path.join(pluginDir, "commands"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "commands", "ship.md"), "# Ship\n");
+    fs.mkdirSync(path.join(pluginDir, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "agents", "helper.md"), "# Helper\n");
+    fs.writeFileSync(path.join(pluginDir, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "echo" } } }));
+    fs.mkdirSync(path.join(pluginDir, "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "hooks", "hooks.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }] } }));
+    fs.writeFileSync(path.join(pluginDir, "README.md"), "Safe readme body\n");
+    fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", description: "Full description", license: "MIT", keywords: ["review"], repository: "https://example.com/tool" }));
+    const detail = () => h.route("commodore/plugins/detail", { pluginId: "tool@team" }, hooks);
+    const loaded = await detail();
+    expect(loaded.status).toBe(200);
+    expect(loaded.value).toMatchObject({ plugin: {
+      readme: "Safe readme body", license: "MIT", keywords: ["review"], repository: "https://example.com/tool",
+      contents: { skills: ["review"], commands: ["ship"], agents: ["helper"], hooks: ["SessionStart"], mcp: ["docs"] },
+      runs: [{ kind: "hook", label: "SessionStart", command: "echo hi" }, { kind: "mcp", label: "docs", command: "echo" }],
+    } });
+    expect(JSON.stringify(loaded.value)).not.toContain(pluginDir);
+    expect(cliCalls).toBe(0);
+    fs.writeFileSync(path.join(pluginDir, "README.md"), `${"a".repeat(MAX_PLUGIN_README_BYTES)}TAILMARKER`);
+    const truncated = await detail();
+    expect(truncated.value).toMatchObject({ plugin: { readmeTruncated: true } });
+    expect(JSON.stringify(truncated.value)).not.toContain("TAILMARKER");
+    const outside = path.join(market, "secret.md");
+    fs.writeFileSync(outside, "SECRET_OUTSIDE");
+    fs.rmSync(path.join(pluginDir, "README.md"));
+    fs.symlinkSync(outside, path.join(pluginDir, "README.md"));
+    const linked = await detail();
+    expect(JSON.stringify(linked.value)).not.toContain("SECRET_OUTSIDE");
+    expect((linked.value.plugin as { readme?: string }).readme).toBeUndefined();
+    fs.unlinkSync(path.join(pluginDir, "README.md"));
+    fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", readme: "../../secret.md" }));
+    const escaped = await detail();
+    expect(JSON.stringify(escaped.value)).not.toContain("SECRET_OUTSIDE");
+    expect((escaped.value.plugin as { readme?: string }).readme).toBeUndefined();
+    expect(cliCalls).toBe(0);
   });
   it("settles marketplace fetches as failed instead of fetching forever when the Claude Code CLI is missing", async () => {
     const h = harness();
