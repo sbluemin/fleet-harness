@@ -411,6 +411,8 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     const contextObjective = contextObjectiveId(ctx);
     if (contextObjective !== lastContextObjective) {
       lastContextObjective = contextObjective;
+      // 사령관 목록이 다른 살아 있는 목표로 옮기면 표면 id는 그대로 null이다. 앞 대화에서 고른 보기가 새 목표를 가리지 않게 먼저 비운다.
+      if (selectionTheater) clearSelectionTheater();
       if (contextObjective) {
         reveal = null;
         followActiveObjective();
@@ -437,7 +439,16 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     }, 0);
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
+  let seenSurfaceObjectiveId = conversationSurfaceObjectiveId();
+  const offConversation = ctx.conversation?.subscribe(() => {
+    const next = conversationSurfaceObjectiveId();
+    if (next === seenSurfaceObjectiveId) return;
+    seenSurfaceObjectiveId = next;
+    // 시작 전·완료 표면의 목표가 바뀌거나 걷히면, 그 표면에 묶어 둔 보기를 비운다. 새 선택은 이 알림 다음에 다시 선다.
+    if (selectionTheater && selectionTheater.surfaceObjectiveId !== next) clearSelectionTheater();
+  }) ?? (() => {});
   return () => {
+    offConversation();
     offOwnerRemoved(); offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offOwners(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
@@ -878,7 +889,17 @@ export function readObjectiveView(theaterId: string | null): ObjectiveViewState 
 export function patchObjectiveView(theaterId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void { patchOwnerView(ownerOfContext(theaterId), patch); }
 export function useObjectiveView(theaterId: string | null): ObjectiveViewState { return useOwnerView(ownerOfContext(theaterId)); }
 
-let selectionTheater: { readonly contextTheaterId: string | null; readonly commodoreId: string } | null = null;
+let selectionTheater: { readonly contextTheaterId: string | null; readonly commodoreId: string; readonly surfaceObjectiveId: string | null } | null = null;
+
+function conversationSurfaceObjectiveId(): string | null {
+  const id = installed?.conversation?.current()?.params.objectiveId;
+  return typeof id === "string" ? id : null;
+}
+
+function conversationSurfaceCommodoreId(): string | null {
+  const id = installed?.conversation?.current()?.params.commodoreId;
+  return typeof id === "string" ? id : null;
+}
 
 function clearSelectionTheater(): void {
   pendingSelectionObjectiveId = null;
@@ -890,11 +911,11 @@ function clearSelectionTheater(): void {
 
 /** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
 export function objectiveDisplayOwnerId(contextTheaterId: string | null): string | null {
-  const surface = installed?.conversation?.current();
-  const surfaceCommodore = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
-  const surfaceObjective = typeof surface?.params.objectiveId === "string" ? surface.params.objectiveId : null;
+  const surfaceObjective = conversationSurfaceObjectiveId();
+  const surfaceCommodore = conversationSurfaceCommodoreId();
+  // 사람이 고른 보기는 그 표면에서만 표면 사령관보다 앞선다. 다른 목표로 옮기면 맞지 않아 새 목표를 가리지 않는다.
+  if (selectionTheater?.contextTheaterId === contextTheaterId && selectionTheater.surfaceObjectiveId === surfaceObjective) return selectionTheater.commodoreId;
   if (surfaceObjective && surfaceCommodore) return surfaceCommodore;
-  if (selectionTheater?.contextTheaterId === contextTheaterId) return selectionTheater.commodoreId;
   const activeId = contextObjectiveId();
   const objectiveId = activeId ?? surfaceObjective;
   return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? ownerOfContext(contextTheaterId) : ownerOfContext(contextTheaterId);
@@ -945,7 +966,7 @@ function selectObjectiveObjective(objectiveId: string, shown: () => boolean): vo
   if (!targetTheaterId) return;
 
   const theaterId = targetTheaterId;
-  selectionTheater = { contextTheaterId: viewedTheaterId(), commodoreId: theaterId };
+  selectionTheater = { contextTheaterId: viewedTheaterId(), commodoreId: theaterId, surfaceObjectiveId: conversationSurfaceObjectiveId() };
   awaitedSelection = null;
   const select = () => {
     if (token !== latestSelectionToken || !shown()) return;
