@@ -193,7 +193,7 @@ export function NewSessionColumn({ state, target, tools }: {
     setTheaterMenuOpen(false);
     // 고른 Theater 는 기억에 남는다 — 다음 새 세션(데스크톱·모바일)이 같은 Theater 로 시작한다. 사령관은 그대로 둔다.
     writeNewSessionTheater(theaterId);
-    openNewSession({ ...target, theaterId });
+    openNewSession({ ...target, theaterId, ...(commodoreId !== null ? { commodoreId } : {}) });
   };
 
   const addTheater = () => {

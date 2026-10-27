@@ -151,7 +151,7 @@ export function ObjectiveRecordsSideBar({
   const viewedTheaterId = useViewedTheaterId();
   const surface = useConversationSurface();
   const placement = useEffectiveCommanderPlacement();
-  const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId } = useConsoleState();
+  const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
   const orderedTheaterIdsRef = useRef<string[]>([]);
@@ -168,7 +168,8 @@ export function ObjectiveRecordsSideBar({
   const subjectOwner = useConversationSubject()?.commodoreId ?? null;
   const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
   // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
-  const owningCommodoreId = surface ? surfaceOwner ?? viewedOwner ?? subjectOwner : viewedOwner ?? subjectOwner ?? objectiveOwner;
+  const owningCommodoreId = newSession !== null ? newSession.commodoreId ?? null
+    : surface ? surfaceOwner ?? viewedOwner ?? subjectOwner : viewedOwner ?? subjectOwner ?? objectiveOwner;
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
