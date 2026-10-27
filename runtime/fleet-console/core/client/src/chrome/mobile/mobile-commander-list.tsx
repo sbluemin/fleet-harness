@@ -36,9 +36,6 @@ export function MobileCommanderList({ commodoreId, rows, leave, hasAttention }: 
         <button type="button" className="mobile-pill-secondary" aria-haspopup="dialog" onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommanderSortSheet onClose={dismiss} /> })}>
           {t("commanderTab.sort.button", { label: t(current.label) })}<MobileIcon name="down" size={14} />
         </button>
-        <button type="button" className="mobile-commander-direction" aria-label={t(preference.direction === "asc" ? "commanderTab.sort.ascending" : "commanderTab.sort.descending")} onClick={() => setSort({ ...preference, direction: preference.direction === "asc" ? "desc" : "asc" })}>
-          <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d={preference.direction === "asc" ? "M8 13V3M8 3 4.5 6.5M8 3l3.5 3.5" : "M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5"} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
       </div>
       {sorted.length === 0 && !hasAttention ? <p className="mobile-conv-empty-note">{t("mobile.commodore.sessions.empty")}</p> : null}
       {sections.map((section) => <section key={section.id}>
@@ -93,11 +90,21 @@ function CommanderSortSheet({ onClose }: { readonly onClose: () => void }) {
   const name = useId();
   return <MobileSheet title={t("commanderTab.sort.menu")} ariaLabel={t("commanderTab.sort.menu")} onClose={onClose} focusInputOnTouch={false} className="mobile-commander-sort">
     <div role="radiogroup" aria-label={t("commanderTab.sort.menu")}>
-      {SORTS.map((sort) => <label key={sort.key} className="mobile-sheet-row mobile-commander-sort-option">
-        <span>{t(sort.label)}</span>
-        <input type="radio" name={name} checked={sort.key === preference.key} onChange={() => setSort({ ...preference, key: sort.key, direction: sort.direction })} />
-        <span className="mobile-commander-sort-check" aria-hidden="true">{sort.key === preference.key ? <MobileIcon name="check" size={20} /> : null}</span>
-      </label>)}
+      {SORTS.map((sort) => {
+        const label = t(sort.label);
+        const selected = sort.key === preference.key;
+        return <div key={sort.key} className="mobile-sheet-row mobile-commander-sort-option">
+          <button type="button" role="radio" name={name} aria-checked={selected} className="mobile-commander-sort-name" onClick={() => setSort({ ...preference, key: sort.key, direction: sort.direction })}>
+            <span>{label}</span>
+            <span className="mobile-commander-sort-check" aria-hidden="true">{selected ? <MobileIcon name="check" size={20} /> : null}</span>
+          </button>
+          {(["asc", "desc"] as const).map((direction) => (
+            <button key={direction} type="button" className="mobile-commander-sort-direction" aria-pressed={selected && preference.direction === direction} aria-label={t("commanderTab.sort.toward", { label, direction: t(direction === "asc" ? "commanderTab.sort.asc" : "commanderTab.sort.desc") })} onClick={() => setSort({ ...preference, key: sort.key, direction })}>
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d={direction === "asc" ? "M8 13V3M8 3 4.5 6.5M8 3l3.5 3.5" : "M8 3v10M8 13l-3.5-3.5M8 13l3.5-3.5"} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          ))}
+        </div>;
+      })}
     </div>
     <hr />
     <button type="button" className="mobile-sheet-row" role="switch" aria-checked={preference.answerFirst} onClick={() => setSort({ ...preference, answerFirst: !preference.answerFirst })}>
