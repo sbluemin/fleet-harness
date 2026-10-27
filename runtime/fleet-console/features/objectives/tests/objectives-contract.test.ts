@@ -210,6 +210,7 @@ title: input.title});
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
   const ctx = {
     resolveCreation: (commodoreId: string, theaterId: string) => { if (commodoreId !== "c1" || theaterId !== "t1") throw new Error("objective_owner_unavailable"); return { commodoreId, cwd: theaterPath }; },
+    ownedTheaterIds: (commodoreId: string) => commodoreId === "c1" ? ["t1"] : [],
     security: { isTerminalAuthorized: () => authorized },
     http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
     server: { origin: routingOrigin },
@@ -944,7 +945,12 @@ describe("Objectives contract", () => {
     expect(saved).toHaveProperty("sessions.0.id", research);
     expect(saved).not.toHaveProperty("payload");
     expect(saved.id).toBe(objective.id);
-    for (const key of ["theaterId", "geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
+    for (const key of ["geometry", "pluginId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(saved).not.toHaveProperty(key);
+    expect(saved).toHaveProperty("theaterId", "t1");
+    await expect(launch.create({ commodoreId: "c1", theaterId: "other-theater", theaterIdSpecified: true, title: "Rejected theater", groupId: null })).rejects.toThrow("theater_not_owned");
+    const unbound = await launch.create({ commodoreId: "c1", theaterId: "", title: "Unbound theater", groupId: null });
+    expect(savedObjective(unbound.id)).not.toHaveProperty("theaterId");
+    fs.rmSync(path.join(objectivesDir, unbound.id), { recursive: true, force: true });
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Objective 에서 온다.
     const reloaded = createObjectiveStore({ documentContext, dirOf: () => path.join(workspace, "objectives"), objectiveRecords: { get: (id) => objectiveRecords.get(id) ?? null, list: () => [...objectiveRecords.values()] }, emit: () => undefined });
     // 행위자를 받지 않은 개시(사람의 화면)는 사람의 개시로 남고, 다시 읽어도 그대로다.

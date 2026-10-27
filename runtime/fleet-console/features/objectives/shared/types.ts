@@ -557,6 +557,7 @@ export interface PendingCommander {
   readonly commodoreId: string;
   readonly cwd: string;
   readonly theaterId: string;
+  readonly theaterIdExplicit?: true;
   readonly title: string;
   readonly groupId: string | null;
   readonly createdAt: number;
@@ -573,6 +574,8 @@ export interface StoredObjective {
   readonly commodoreId?: string;
   readonly cwd?: string;
   readonly theaterId?: string;
+  /** 문서에 사람이 넘긴 Theater id가 있다. cwd 해시로 채운 값은 아니다. */
+  readonly theaterIdExplicit?: true;
   readonly groupId?: string | null;
   readonly ts?: { readonly createdAt: number; readonly updatedAt: number };
   readonly session?: Readonly<Record<string, unknown>>;

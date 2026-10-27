@@ -108,8 +108,13 @@ it("reads an unregistered objective theater as the owning commodore's registered
   expect(getViewedTheaterId()).toBe("shared");
   openConversationSurface("objective-fresh", { objectiveId: "ambiguous", theaterId: "9c56bd5e5148", commodoreId: "owner-c" });
   expect(getViewedTheaterId()).toBeNull();
-  openConversationSurface("new-session", { theaterId: "other", commodoreId: "owner-a" });
+  openConversationSurface("objective-fresh", { objectiveId: "picked", theaterId: "other", commodoreId: "owner-c" });
   expect(getViewedTheaterId()).toBe("other");
+  openConversationSurface("objective-fresh", { objectiveId: "foreign", theaterId: "other", commodoreId: "owner-a" });
+  expect(getViewedTheaterId()).toBeNull();
+  setState({ theaters: [theater("shared"), theater("other"), { ...theater("labeled"), commodore: { id: "owner-a" } }] });
+  openConversationSurface("objective-fresh", { objectiveId: "hash", theaterId: "9c56bd5e5148", commodoreId: "owner-a" });
+  expect(getViewedTheaterId()).toBe("shared");
   closeConversationSurface();
   const stored = { id: "stored-record", commodoreId: "owner-a", theaterId: "9c56bd5e5148", title: "Stored", ts: { createdAt: 1, updatedAt: 1 } };
   setState({ objectiveRecords: [stored], activeObjectiveId: stored.id });

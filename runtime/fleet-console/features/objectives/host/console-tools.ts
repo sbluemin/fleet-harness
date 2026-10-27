@@ -264,9 +264,10 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // 그룹은 입력으로 받지 않는다 — 호출 Objective 의 그룹을 그대로 따른다.
         const groupId = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.groupId ?? null : null;
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
-        const theaterId = call.theaterId ?? (caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined);
+        const inherited = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined;
+        const specified = call.theaterId !== undefined;
         const objective = await launch.create({
-          commodoreId, theaterId: theaterId ?? "", groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
+          commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;

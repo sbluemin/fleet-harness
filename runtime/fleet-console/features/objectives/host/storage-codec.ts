@@ -67,7 +67,7 @@ export function normalizeObjectiveDocument(doc: ObjectiveDocument, context: Obje
   return { ...actors(doc, context) as ObjectiveDocument, cwd };
 }
 export function documentFromBoard(board: StoredObjective, previous?: ObjectiveDocument): ObjectiveDocument {
-  const { commodoreId: _owner, theaterId: _location, ...fields } = board;
+  const { commodoreId: _owner, theaterId, theaterIdExplicit, ...fields } = board;
   const result: Record<string, unknown> = { ...fields };
   // 보드는 완전한 스냅샷이다. 실행이 소유하는 필드만 이전 문서에서 보존한다.
   if (previous && (!board.pending || !previous.pending)) {
@@ -77,11 +77,14 @@ export function documentFromBoard(board: StoredObjective, previous?: ObjectiveDo
   }
   // 생성 때의 위치는 보드·실행 스냅샷이 덮어쓰지 않는다.
   if (previous?.cwd !== undefined) result.cwd = previous.cwd;
+  if (theaterIdExplicit && typeof theaterId === "string" && theaterId !== "") result.theaterId = theaterId;
+  else delete result.theaterId;
   return { title: board.id, ts: { createdAt: 0, updatedAt: 0 }, ...result } as ObjectiveDocument;
 }
 export function boardFromDocument(doc: ObjectiveDocument, context: ObjectiveDocumentContext): StoredObjective {
   const normalized = normalizeObjectiveDocument(doc, context);
-  return { ...normalized, id: doc.id, commodoreId: context.commodoreId, theaterId: context.theaterIdOf(normalized.cwd as string), cwd: normalized.cwd as string,
+  const explicitTheaterId = typeof normalized.theaterId === "string" && normalized.theaterId !== "" ? normalized.theaterId : undefined;
+  return { ...normalized, id: doc.id, commodoreId: context.commodoreId, theaterId: explicitTheaterId ?? context.theaterIdOf(normalized.cwd as string), ...(explicitTheaterId ? { theaterIdExplicit: true as const } : {}), cwd: normalized.cwd as string,
     rank: typeof doc.rank === "number" ? doc.rank : 0, note: typeof doc.note === "string" ? doc.note : "", missions: (doc.missions ?? []) as StoredObjective["missions"] };
 }
 export function documentFromObjective(node: ObjectiveRecord, previous?: ObjectiveDocument): ObjectiveDocument {
@@ -96,7 +99,7 @@ export function objectiveRecordFromDocument(doc: ObjectiveDocument, context: Obj
   const normalized = normalizeObjectiveDocument(doc, context);
   return { ...normalized, commodoreId: context.commodoreId, theaterId: context.theaterIdOf(normalized.cwd as string) } as ObjectiveRecord;
 }
-const forbidden = new Set(["pluginId", "userQuestions", "resumeAvailable", "cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession", "launchKey", "geometry", "theaterId", "payload", "parentObjectiveId"]);
+const forbidden = new Set(["pluginId", "userQuestions", "resumeAvailable", "cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession", "launchKey", "geometry", "payload", "parentObjectiveId"]);
 export function assertMinimal(value: unknown): void {
   if (Array.isArray(value)) { for (const item of value) assertMinimal(item); return; }
   if (!object(value)) return;
