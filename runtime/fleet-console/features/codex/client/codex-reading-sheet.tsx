@@ -32,7 +32,7 @@ type Overlay = "none" | "switcher" | "source";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CodexReadingSheet({ navigate }: { readonly navigate?: import("../../workspace/shared/navigation.js").ClientNavigateCapability }) {
+export function CodexReadingSheet({ navigate, commodoreId }: { readonly navigate?: import("../../workspace/shared/navigation.js").ClientNavigateCapability; readonly commodoreId?: string | null | undefined }) {
   const t = useT();
   const history = useSyncExternalStore(
     subscribeCodexReaderHistory,
@@ -53,8 +53,8 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("..
   // 해석이 도착한 프레임에 리더를 세운다(그 전에는 세우지 않는다).
   const workspaceId = useSyncExternalStore(
     subscribeCodexWorkspace,
-    () => resolvedCodexWorkspaceIdFor(theaterId),
-    () => resolvedCodexWorkspaceIdFor(theaterId),
+    () => resolvedCodexWorkspaceIdFor(theaterId, commodoreId),
+    () => resolvedCodexWorkspaceIdFor(theaterId, commodoreId),
   );
 
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -160,7 +160,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("..
       kind,
       subId,
       theaterId: workspaceId,
-      sessionTheaterId: theaterId,
+      sessionTheaterId: commodoreId ?? theaterId,
       fileTheaterId: theaterId,
       navigate,
       // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
@@ -186,7 +186,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("..
     requestAnimationFrame(() => {
       readRef.current?.focus({ preventScroll: true });
     });
-  }, [isOpen, readerKey, workspaceId]);
+  }, [isOpen, readerKey, workspaceId, theaterId, commodoreId]);
 
   // 읽기 진행률 — 헤드바가 "지금 어디쯤"을 말한다.
   useEffect(() => {

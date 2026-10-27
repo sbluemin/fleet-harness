@@ -20,6 +20,8 @@ export interface RailPathContext {
 
 export interface RailPanelContext {
   readonly theaterId: string | null;
+  /** 도구의 사령관 소유권은 Theater 경로와 별개다. */
+  readonly commodoreId?: string | null | undefined;
   /** @deprecated Always the Theater-root context. */
   readonly pathContext: RailPathContext;
   /** @deprecated Path selection is no longer supported. */

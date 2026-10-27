@@ -85,6 +85,7 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
       const ctx = context as HostPaneContext;
       return panel.render?.({
         theaterId: ctx.theaterId,
+        commodoreId: ctx.commodoreId,
         api: ctx.api,
         language: ctx.language,
         theme: ctx.theme,

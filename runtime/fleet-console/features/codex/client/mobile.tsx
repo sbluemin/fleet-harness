@@ -7,8 +7,8 @@ import { fetchSearch } from "./codex/api.js";
 import { CODEX_READER_PANE_ID } from "./codex-reader-pane.js";
 import { getT } from "./i18n/index.js";
 import { enterMobileWiki, holdWikiSearchClose, setWikiSearchOpen } from "./mobile-stack.js";
-import { openCodexReader, useReaderState } from "./reader-store.js";
-import { publishResolvedWorkspace, resolveCodexWorkspace } from "./workspace-store.js";
+import { openCodexReader, resetCodexReaderContext, useReaderState } from "./reader-store.js";
+import { codexWorkspaceContextKey, lastCodexScope, publishResolvedWorkspace, rememberCodexScope, resolveCodexWorkspace } from "./workspace-store.js";
 import "./mobile.css";
 
 /**
@@ -32,7 +32,8 @@ const WikiIcon = () => <Icon><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" 
 
 export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   const t = getT(ctx.language);
-  const { theaterId, mobileBar, panes, visible, consoleState } = ctx;
+  const { theaterId, commodoreId, mobileBar, panes, visible, consoleState } = ctx;
+  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
   const label = useSyncExternalStore(consoleState.subscribe, () => consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "", () => "");
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const generation = useRef(0);
@@ -72,32 +73,41 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void fetchSearch(workspaceId, { q, signal: controller.signal })
-        .then((response) => setResults(response.entries))
+        .then((response) => { if (!controller.signal.aborted) setResults(response.entries); })
         .catch(() => { if (!controller.signal.aborted) setResults([]); });
     }, SEARCH_DEBOUNCE_MS);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [searching, query]);
+  }, [searching, query, contextKey]);
 
   const refresh = useCallback(() => {
-    if (!theaterId) return;
     const id = ++generation.current;
     const current = () => id === generation.current;
-    void resolveCodexWorkspace(theaterId)
+    void resolveCodexWorkspace(theaterId, commodoreId)
       .then(async (workspace) => {
         if (!current()) return;
-        // 리더 열이 같은 해석을 읽는다 — 데스크톱 카탈로그와 같은 발행이다.
-        publishResolvedWorkspace({ contextKey: theaterId, ...workspace });
+        // 리더 열이 같은 해석을 읽는다 — 같은 Theater라도 사령관이 바뀌면 다른 위키다.
+        publishResolvedWorkspace({ contextKey, theaterId, ...workspace });
         if (!workspace.hasWiki || !workspace.id) { workspaceRef.current = null; setLoad({ kind: "none" }); return; }
         workspaceRef.current = workspace.id;
         const search = await fetchSearch(workspace.id);
         if (current()) setLoad({ kind: "ready", entries: search.entries });
       })
       .catch(() => { if (current()) setLoad({ kind: "failed" }); });
-  }, [theaterId]);
+  }, [theaterId, commodoreId, contextKey]);
 
+  useEffect(() => {
+    const previous = lastCodexScope();
+    if (previous && previous !== contextKey) resetCodexReaderContext();
+    rememberCodexScope(contextKey);
+    workspaceRef.current = null;
+    setSearching(false);
+    setQuery("");
+    setResults(null);
+    setLoad({ kind: "loading" });
+    return () => { generation.current++; };
+  }, [contextKey]);
   // 처음과, 문서에서 돌아와 다시 보일 때 — 자리를 비운 사이의 변화는 돌아온 순간 다시 읽는다.
-  useEffect(() => { setLoad({ kind: "loading" }); }, [theaterId]);
-  useEffect(() => { if (visible) refresh(); }, [visible, refresh]);
+  useEffect(() => { if (visible) refresh(); return () => { generation.current++; }; }, [visible, refresh]);
 
   const openEntry = (entryId: string) => { openCodexReader({ kind: "entry", entryId }); panes.open({ paneId: CODEX_READER_PANE_ID }); };
 

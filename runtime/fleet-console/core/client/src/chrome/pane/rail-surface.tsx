@@ -47,6 +47,7 @@ export interface RailSurfaceProps {
   /** 모바일 시트는 같은 페인을 한 번에 한 장씩 보여 준다. */
   readonly singlePane?: boolean;
   readonly theaterId: string | null;
+  readonly commodoreId?: string | null | undefined;
   readonly api: ClientApiCapability;
   readonly language: ConsoleLocale;
   readonly theme?: ConsoleTheme;
@@ -63,6 +64,7 @@ export const RailSurface = memo(function RailSurface({
   overlayDetails = false,
   singlePane = false,
   theaterId,
+  commodoreId,
   api,
   language,
   theme,
@@ -260,7 +262,7 @@ export const RailSurface = memo(function RailSurface({
 
   const primaryHost = (
     <PaneHost
-      key={`${primary.id}:${theaterId ?? ""}`}
+      key={`${primary.id}:${commodoreId ?? ""}:${theaterId ?? ""}`}
       descriptor={primary}
       instanceId={primaryInstance?.instanceId ?? `pane-primary-${primary.id}`}
       params={primaryInstance?.params ?? EMPTY_PARAMS}
@@ -268,6 +270,7 @@ export const RailSurface = memo(function RailSurface({
       singlePane={singlePane}
       focused={focusedPaneId === primary.id}
       theaterId={theaterId}
+      commodoreId={commodoreId}
       api={api}
       language={language}
       theme={theme}
@@ -293,7 +296,7 @@ export const RailSurface = memo(function RailSurface({
     >
       {extras.map(({ instance, descriptor }) => (
         <PaneHost
-          key={`${instance.instanceId}:${theaterId ?? ""}`}
+          key={`${instance.instanceId}:${commodoreId ?? ""}:${theaterId ?? ""}`}
           descriptor={descriptor}
           instanceId={instance.instanceId}
           params={instance.params}
@@ -303,6 +306,7 @@ export const RailSurface = memo(function RailSurface({
           returnFocus={returnFocus}
           focused={focusedPaneId === descriptor.id}
           theaterId={theaterId}
+          commodoreId={commodoreId}
           api={api}
           language={language}
           theme={theme}
@@ -335,6 +339,7 @@ interface PaneHostProps {
   readonly visible: boolean;
   readonly focused: boolean;
   readonly theaterId: string | null;
+  readonly commodoreId?: string | null | undefined;
   readonly api: ClientApiCapability;
   readonly language: ConsoleLocale;
   readonly theme?: ConsoleTheme;
@@ -367,6 +372,7 @@ function PaneHost({
   visible,
   focused,
   theaterId,
+  commodoreId,
   api,
   language,
   theme,
@@ -467,6 +473,7 @@ function PaneHost({
     // 컨텍스트가 매번 새로 만들어져 본문이 다시 그려진다.
     width: width ?? (descriptor.defaultWidth ?? (descriptor.widthClass === undefined ? 0 : resolvePaneDefaultWidth(descriptor))),
     theaterId,
+    commodoreId,
     api,
     lifecycle: HOST_CAPABILITIES.lifecycle,
     preferences: HOST_CAPABILITIES.preferences,

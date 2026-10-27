@@ -40,6 +40,7 @@ export function useExpandedSurfaceContext({
   paneWidth,
   focused,
   theaterId,
+  commodoreId,
   theme,
   language,
   capabilities,
@@ -55,6 +56,7 @@ export function useExpandedSurfaceContext({
   readonly paneWidth: number;
   readonly focused: boolean;
   readonly theaterId: string | null;
+  readonly commodoreId?: string | null | undefined;
   readonly theme: ReturnType<typeof getState>["activeTheme"];
   readonly language: ConsoleLocale;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
@@ -89,6 +91,7 @@ export function useExpandedSurfaceContext({
     slotWidth: paneWidth,
     focused,
     theaterId,
+    commodoreId,
     navigate: capabilities.navigate,
     shell: capabilities.shell,
     rail: capabilities.rail,
@@ -106,7 +109,7 @@ export function useExpandedSurfaceContext({
     close: () => closeRef.current(),
     focus: () => focusRef.current(),
     replaceParams: (next) => replaceRef.current(next),
-  }), [reportMinPaneWidth, capabilities, conversation, focused, index, instance.instanceId, instance.params, instance.surfaceId, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
+  }), [reportMinPaneWidth, capabilities, commodoreId, conversation, focused, index, instance.instanceId, instance.params, instance.surfaceId, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
 }
 
 export function SurfacePane({
@@ -117,6 +120,7 @@ export function SurfacePane({
   paneWidth,
   focused,
   theaterId,
+  commodoreId,
   theme,
   language,
   capabilities,
@@ -136,6 +140,7 @@ export function SurfacePane({
   readonly paneWidth: number;
   readonly focused: boolean;
   readonly theaterId: string | null;
+  readonly commodoreId?: string | null | undefined;
   readonly theme: ReturnType<typeof getState>["activeTheme"];
   readonly language: ReturnType<typeof resolveConsoleLanguage>;
   readonly capabilities: ReturnType<typeof createHostCapabilities>;
@@ -188,6 +193,7 @@ export function SurfacePane({
     paneWidth,
     focused,
     theaterId,
+    commodoreId,
     theme,
     language,
     capabilities,

@@ -18,6 +18,7 @@ import {
 } from "./codex-host.js";
 import { CODEX_READER_PANE_ID, shouldStandReaderColumn } from "./codex-reader-pane.js";
 import {
+  codexWorkspaceContextKey,
   lastCodexScope,
   lastResolvedCodexWorkspace,
   publishResolvedWorkspace,
@@ -98,7 +99,8 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   const navRef = useRef<HTMLDivElement>(null);
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
-  const contextKey = theaterId ?? "";
+  const commodoreId = ctx.commodoreId;
+  const contextKey = codexWorkspaceContextKey(theaterId, commodoreId);
   const [workspace, setWorkspace] = useState<CodexWorkspaceState | null>(() => {
     const known = lastResolvedCodexWorkspace();
     return known && known.contextKey === contextKey ? known : null;
@@ -121,9 +123,9 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
     else panes.close(CODEX_READER_PANE_ID);
   }, [panes, state]);
 
-  // 실제 Theater가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
+  // Wiki 소유 스코프가 바뀐 경우에만 이전 reader를 닫고, 같은 패널 재마운트 상태는 보존한다.
   //
-  // "아직 Theater를 모른다"(빈 contextKey)에서 실제 Theater로 가는 것은 **바뀐 것이 아니라
+  // "아직 맥락을 모른다"(빈 contextKey)에서 실제 소유자로 가는 것은 **바뀐 것이 아니라
   // 정해진 것**이다. 그것을 변경으로 읽으면, 주소가 막 열어 둔 문서를 부팅 도중에 닫아
   // 버린다 — 공유 링크가 확대로 들어와도 축소로 되돌아가던 원인이 이것이었다.
   useEffect(() => {
@@ -134,24 +136,20 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       resetCodexReaderContext();
     }
     rememberCodexScope(contextKey);
-    if (!theaterId) {
-      const nextWorkspace = { contextKey, hasWiki: false, id: null };
-      publishResolvedWorkspace(nextWorkspace);
-      setWorkspace(nextWorkspace);
-      return;
-    }
-    void resolveCodexWorkspace(theaterId).then((result) => {
-      if (latestContextKeyRef.current !== contextKey) return;
-      const nextWorkspace = { contextKey, ...result };
+    let stopped = false;
+    void resolveCodexWorkspace(theaterId, commodoreId).then((result) => {
+      if (stopped || latestContextKeyRef.current !== contextKey) return;
+      const nextWorkspace = { contextKey, theaterId, ...result };
       publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     }).catch(() => {
-      if (latestContextKeyRef.current !== contextKey) return;
-      const nextWorkspace = { contextKey, hasWiki: false, id: null };
+      if (stopped || latestContextKeyRef.current !== contextKey) return;
+      const nextWorkspace = { contextKey, theaterId, hasWiki: false, id: null };
       publishResolvedWorkspace(nextWorkspace);
       setWorkspace(nextWorkspace);
     });
-  }, [contextKey, theaterId]);
+    return () => { stopped = true; };
+  }, [contextKey, theaterId, commodoreId]);
 
   // 위키 없음이 확정된 경우에만 singleton을 정리한다. 다음 Theater를 해석하는 동안에는
   // destroy+remount하지 않고, 기존 host를 새 navigator 컨테이너로 relocate한다.
@@ -188,12 +186,12 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       // 자리를 비운 사이의 변화는 이벤트로도 오지 않았으므로 복귀는 곧 재검증이다.
       revalidateCodexNow();
       if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
-        const session = readReaderSession(theaterId);
+        const session = readReaderSession(contextKey);
         if (session) {
-          void validateReaderEntry(theaterId, workspaceId, session.entryId, controller.signal).then((exists) => {
+          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal).then((exists) => {
             if (!exists || controller.signal.aborted || latestContextKeyRef.current !== contextKey
               || getReaderState().codexReader || hasCodexEntryInUrl()) return;
-            const entryId = restoreCodexReaderSession(theaterId);
+            const entryId = restoreCodexReaderSession(contextKey);
             if (entryId !== session.entryId) return;
             openCodexReader({ kind: "entry", entryId });
             if (consumeRestoredReaderExpanded()) expandCodexReader();
@@ -204,7 +202,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       }
     }
     return () => controller.abort();
-  }, [shouldMountCodex, workspaceId, theaterId]);
+  }, [shouldMountCodex, workspaceId, theaterId, contextKey]);
 
   // 창으로 돌아왔을 때의 재검증 — SSE가 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다.
   useEffect(() => installCodexLiveRevalidation(), []);

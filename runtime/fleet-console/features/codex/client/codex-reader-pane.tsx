@@ -119,8 +119,8 @@ function CodexReaderPane(ctx: PaneContext) {
   const theaterId = ctx.theaterId;
   const workspaceId = useSyncExternalStore(
     subscribeCodexWorkspace,
-    () => resolvedCodexWorkspaceIdFor(theaterId),
-    () => resolvedCodexWorkspaceIdFor(theaterId),
+    () => resolvedCodexWorkspaceIdFor(theaterId, ctx.commodoreId),
+    () => resolvedCodexWorkspaceIdFor(theaterId, ctx.commodoreId),
   );
 
   const reader = state.codexReader;
@@ -144,7 +144,7 @@ function CodexReaderPane(ctx: PaneContext) {
       kind,
       subId,
       theaterId: workspaceId,
-      sessionTheaterId: theaterId,
+      sessionTheaterId: ctx.commodoreId ?? theaterId,
       fileTheaterId: theaterId,
       navigate: leavingNavigate(ctx),
       onRelatedClick: (id) => openCodexReader({ kind: "entry", entryId: id }),
@@ -152,7 +152,7 @@ function CodexReaderPane(ctx: PaneContext) {
       onTagClick: (tag) => setNavigatorTagFilter(tag),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, hasReader, expanded, readerKey, locale, theaterId]);
+  }, [workspaceId, hasReader, expanded, readerKey, locale, theaterId, ctx.commodoreId]);
 
   // 접힌 아웃라인 스파인이 현재 섹션명을 되비추도록 스크롤 스파이의 활성 전환을 구독한다.
   useEffect(() => {

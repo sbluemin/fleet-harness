@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { codexWorkspaceContextKey, publishResolvedWorkspace, resolveCodexWorkspace, resolvedCodexWorkspaceIdFor } from "../features/codex/client/workspace-store.js";
 
 import { legacyKnowledgeRoot, startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
@@ -42,11 +43,42 @@ describe("workspace-prefixed routes", () => {
   });
 
   // 옛 `/w/<맥락 id>/` 주소는 그 맥락 사령관의 `/c/<uuid>/`로 넘어가고, 사령관마다 자기 위키만 본다.
-  it("serves selected workspace entry data through /w/:ws/api routes", async () => {
+  it("keeps Wiki reads with the selected commodore even when owners share a Theater", async () => {
     const entryA = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsA}/api/entry/shared`);
     const entryB = await fetchJson<{ frontmatter: { title: string } }>(`/w/${wsB}/api/entry/shared`);
     expect(entryA.frontmatter.title).toBe("Workspace A");
     expect(entryB.frontmatter.title).toBe("Workspace B");
+
+    // 브라우저의 상대 URL만 실제 격리 서버로 연결한다. 소유자 해석·본문 읽기는 제품 경로 그대로다.
+    const origin = new URL(baseUrl).origin;
+    const nativeFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set("Origin", origin);
+      return nativeFetch(typeof input === "string" ? new URL(input, origin) : input, { ...init, headers });
+    });
+    try {
+      const ownerA = (await resolveCodexWorkspace(wsA)).id!;
+      const ownerB = (await resolveCodexWorkspace(wsB)).id!;
+      const added = await fetch("/api/v1/commodore/theaters/add", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commodoreId: ownerB, theaterId: wsA }),
+      });
+      expect(added.status).toBe(200);
+      // 소유자 없는 옛 진입은 공유 Theater에서 임의의 사령관을 택하지 않는다.
+      expect(await resolveCodexWorkspace(wsA)).toEqual({ hasWiki: false, id: null });
+      for (const [owner, title, other] of [[ownerA, "Workspace A", ownerB], [ownerB, "Workspace B", ownerA], [ownerA, "Workspace A", ownerB]]) {
+        const workspace = await resolveCodexWorkspace(wsA, owner);
+        expect(workspace).toEqual({ hasWiki: true, id: owner });
+        publishResolvedWorkspace({ contextKey: codexWorkspaceContextKey(wsA, owner), theaterId: wsA, ...workspace });
+        expect(resolvedCodexWorkspaceIdFor(wsA, other)).toBeNull();
+        const resolved = resolvedCodexWorkspaceIdFor(wsA, owner);
+        const entry = await fetchJson<{ frontmatter: { title: string } }>(`/c/${resolved}/api/entry/shared`);
+        expect(entry.frontmatter.title).toBe(title);
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
 

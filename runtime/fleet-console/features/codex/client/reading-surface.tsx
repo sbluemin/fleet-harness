@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { CodexReadingSheet } from "./codex-reading-sheet.js";
 import { readExpandedCodexRequest, releaseCodexExpansion, restoreExpandedCodexReader, resetCodexReaderContext, useReaderState, getReaderState } from "./reader-store.js";
-import { lastResolvedCodexWorkspace, publishResolvedWorkspace, rememberCodexScope, resolveCodexWorkspace } from "./workspace-store.js";
+import { codexWorkspaceContextKey, lastResolvedCodexWorkspace, publishResolvedWorkspace, rememberCodexScope, resolveCodexWorkspace } from "./workspace-store.js";
 import { getT } from "./i18n/index.js";
 import { getCodexReaderDocumentState } from "./codex-host.js";
 
@@ -30,20 +30,21 @@ export const codexReadingSurface: ExpandedSurfaceDescriptor = {
 
 function RestoredCodexReadingSheet({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
   const reader = useReaderState().codexReader;
+  const contextKey = codexWorkspaceContextKey(ctx.theaterId, ctx.commodoreId);
   const restored = useRef<string | null>(null);
   const context = useRef(ctx);
   context.current = ctx;
   useLayoutEffect(() => {
-    if (!ctx.theaterId) { resetCodexReaderContext(); restored.current = null; return; }
+    if (!contextKey) { resetCodexReaderContext(); restored.current = null; return; }
     if (restored.current) {
-      if (restored.current !== ctx.theaterId) {
-        restored.current = ctx.theaterId;
-        rememberCodexScope(ctx.theaterId);
+      if (restored.current !== contextKey) {
+        restored.current = contextKey;
+        rememberCodexScope(contextKey);
         resetCodexReaderContext();
       }
       return;
     }
-    restored.current = ctx.theaterId;
+    restored.current = contextKey;
     // 명시적인 문서 주소는 세션 스냅샷보다 우선한다. 주소 동기화가 요청과 Theater를 적용한다.
     if (new URLSearchParams(window.location.search).has("codex")) return;
     const request = readExpandedCodexRequest(ctx.params);
@@ -52,36 +53,36 @@ function RestoredCodexReadingSheet({ ctx }: { readonly ctx: ExpandedSurfaceConte
       resetCodexReaderContext();
       return;
     }
-    rememberCodexScope(ctx.theaterId);
+    rememberCodexScope(contextKey);
     restoreExpandedCodexReader(request);
   }, [ctx]);
 
   useEffect(() => {
-    const theaterId = ctx.theaterId;
-    if (!theaterId) return;
-    // 레일이 다른 도구를 보여도 확대 본문은 스스로 workspace를 확보한다. 이미 해석된
-    // 사실은 재사용하고, 떠난 Theater의 늦은 답은 현재 시트에 적용하지 않는다.
+    const { theaterId, commodoreId } = ctx;
+    if (!contextKey) return;
+    // 레일이 다른 도구를 보여도 확대 본문은 같은 사령관의 workspace만 재사용한다.
     const known = lastResolvedCodexWorkspace();
-    if (known?.contextKey === theaterId) {
+    if (known?.contextKey === contextKey && known.theaterId === theaterId) {
       if (!known.hasWiki) resetCodexReaderContext();
       return;
     }
     let stopped = false;
-    void resolveCodexWorkspace(theaterId).then((result) => {
-      if (stopped || context.current.theaterId !== theaterId) return;
-      publishResolvedWorkspace({ contextKey: theaterId, ...result });
+    const current = () => !stopped && codexWorkspaceContextKey(context.current.theaterId, context.current.commodoreId) === contextKey;
+    void resolveCodexWorkspace(theaterId, commodoreId).then((result) => {
+      if (!current()) return;
+      publishResolvedWorkspace({ contextKey, theaterId, ...result });
       if (!result.hasWiki) resetCodexReaderContext();
     }).catch(() => {
-      if (!stopped && context.current.theaterId === theaterId) {
-        publishResolvedWorkspace({ contextKey: theaterId, hasWiki: false, id: null });
+      if (current()) {
+        publishResolvedWorkspace({ contextKey, theaterId, hasWiki: false, id: null });
         resetCodexReaderContext();
       }
     });
     return () => { stopped = true; };
-  }, [ctx.theaterId]);
+  }, [ctx.theaterId, ctx.commodoreId, contextKey]);
 
   return reader === null
     ? <div className="codex-empty-state" role="status"><p>{getT(ctx.language ?? "en")("chrome.codexReading.chooseEntry")}</p></div>
-    : <CodexReadingSheet navigate={ctx.navigate} />;
+    : <CodexReadingSheet navigate={ctx.navigate} commodoreId={ctx.commodoreId} />;
 }
 

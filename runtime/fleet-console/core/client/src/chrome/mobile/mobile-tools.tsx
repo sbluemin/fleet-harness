@@ -1,4 +1,4 @@
-import { getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
@@ -45,6 +45,7 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
   const t = useT();
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
+  const commodoreId = useViewedCommodoreId();
   const tool = useMobileTool();
   const registry = useFeatureRegistry();
   const settingsRows = collectPluginSettingsSections(registry.providers, language, t, "mobile").filter((section) => section.mobile?.pluginRow !== undefined);
@@ -160,8 +161,8 @@ export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme;
     </header>
     <div className="mobile-tool-sheet-body" ref={surfaceRef}>
       <FeatureErrorBoundary>
-        {binding ? <RailSurface key={binding.entry.id} binding={binding} singlePane theaterId={theaterId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} /> : null}
-        {instance && descriptor ? <SurfacePane key={instance.instanceId} instance={instance} descriptor={descriptor} index={0} paneCount={1} paneWidth={width} focused theaterId={theaterId} theme={theme} language={language} capabilities={capabilities} isLast onReportMinimum={ignoreMinimum} onDividerPointerDown={ignoreDivider} onDividerNudge={ignoreDivider} /> : null}
+        {binding ? <RailSurface key={binding.entry.id} binding={binding} singlePane theaterId={theaterId} commodoreId={commodoreId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} /> : null}
+        {instance && descriptor ? <SurfacePane key={instance.instanceId} instance={instance} descriptor={descriptor} index={0} paneCount={1} paneWidth={width} focused theaterId={theaterId} commodoreId={commodoreId} theme={theme} language={language} capabilities={capabilities} isLast onReportMinimum={ignoreMinimum} onDividerPointerDown={ignoreDivider} onDividerNudge={ignoreDivider} /> : null}
       </FeatureErrorBoundary>
     </div>
   </section>;

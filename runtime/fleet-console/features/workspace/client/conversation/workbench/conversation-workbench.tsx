@@ -624,6 +624,7 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
           <RailSurface
             binding={binding}
             theaterId={toolContext.theaterId}
+            commodoreId={toolContext.commodoreId}
             api={toolContext.api}
             language={language}
             {...(toolContext.theme === undefined ? {} : { theme: toolContext.theme })}
@@ -653,6 +654,7 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
     paneWidth: Math.round(entry.rect.w),
     focused,
     theaterId: toolContext.theaterId,
+    commodoreId: toolContext.commodoreId,
     theme: state.activeTheme,
     language,
     capabilities,

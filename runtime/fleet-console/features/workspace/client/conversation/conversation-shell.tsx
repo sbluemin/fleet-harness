@@ -802,8 +802,8 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
   );
   const scopedToolContext = useMemo<RailToolContext>(
-    () => ({ ...toolContext, theaterId: scopeTheaterId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
-    [conversationKey, toolContext, workLocation, scopeTheaterId],
+    () => ({ ...toolContext, theaterId: scopeTheaterId, commodoreId: toolCommodoreId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
+    [conversationKey, toolContext, toolCommodoreId, workLocation, scopeTheaterId],
   );
   // 대화의 작업 위치를 모르면(예: 등록 Theater 가 둘 이상인데 고른 것이 없음) 칸을 세우지 않는다. 판정은 여기 하나다 — 칸을 숨기는
   // 것과 대화 칸이 오른쪽·아래로 비키는 것이 같은 빈 배치의 geometry 에서 함께 나온다. 저장된 배치는 건드리지 않으므로 작업 위치가
