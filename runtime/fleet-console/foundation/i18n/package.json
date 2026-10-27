@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/i18n",
-  "version": "1.265.1",
+  "version": "1.265.2",
   "private": true,
   "type": "module",
   "exports": {

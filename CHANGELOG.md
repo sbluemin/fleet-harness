@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.265.2] - 2026-10-27
+
+### fleet-console
+
+#### Fixed
+- Muse Code no longer shows a "no usage window" notice in the quota panel or gets passed over when models are assigned; an idle subscription now reads as unused, alongside the last weekly reading.
+
 ## [1.265.1] - 2026-10-27
 
 ### fleet-console

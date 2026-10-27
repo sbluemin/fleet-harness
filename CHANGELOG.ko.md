@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.265.2] - 2026-10-27
+
+### fleet-console
+
+#### Fixed
+- 쿼터 패널의 Muse Code에 "진행 중인 사용 창이 없어요" 안내가 더 이상 뜨지 않고, 모델 배정에서도 빠지지 않습니다. 쓰지 않은 구독은 미사용으로 보이고 마지막 주간 값도 함께 보입니다.
+
 ## [1.265.1] - 2026-10-27
 
 ### fleet-console
