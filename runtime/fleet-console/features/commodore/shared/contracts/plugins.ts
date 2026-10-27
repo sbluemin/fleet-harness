@@ -93,6 +93,10 @@ export type MarketplaceErrorCode =
   | "invalid_source"
   | "duplicate"
   | "preset_name"
+  /** Claude Code 가 Anthropic 공식 마켓플레이스에 예약한 이름 — anthropics GitHub 출처로만 추가할 수 있다. */
+  | "reserved_name"
+  /** 같은 이름의 마켓플레이스가 이미 다른 출처로 등록돼 있다. */
+  | "name_taken"
   | "not_found"
   | "auth_failed"
   | "no_manifest"

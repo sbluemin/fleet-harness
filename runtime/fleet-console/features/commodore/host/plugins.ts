@@ -210,6 +210,12 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const errorCode = (result: CliResult): MarketplaceErrorCode => {
     const text = `${result.failureCode ?? ""} ${result.message ?? ""}`.toLowerCase();
     if (result.failureCode === "invalid_source") return "invalid_source";
+    // CLI 의 보호 거부 — 네트워크 문제가 아니므로 원인을 그대로 알린다(CLI 2.1.310 실측 문구·코드).
+    if (/reserved for official anthropic marketplaces/.test(text)) return "reserved_name";
+    if (result.failureCode === "declared" || /doesn't match its extraknownmarketplaces entry/.test(text)) {
+      const name = /cannot add marketplace "([^"]+)"/i.exec(result.message ?? "")?.[1];
+      return name && PRESET_MARKETPLACES.some((preset) => preset.name === name) ? "preset_name" : "name_taken";
+    }
     if (/auth|permission denied|could not read username|publickey|host key verification|could not read from remote repository|403|401/.test(text)) return "auth_failed";
     if (/marketplace\.json|manifest/.test(text)) return "no_manifest";
     if (result.failureCode === "not_found" || /not found|404|does not exist/.test(text)) return "not_found";
