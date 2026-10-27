@@ -36,7 +36,7 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
 import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
-import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
@@ -150,7 +150,7 @@ export function ObjectiveRecordsSideBar({
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const viewedTheaterId = useViewedTheaterId();
   const surface = useConversationSurface();
-  const placement = useCommanderPlacement();
+  const placement = useEffectiveCommanderPlacement();
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
@@ -407,7 +407,7 @@ export function ObjectiveRecordsSideBar({
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
-              {!compact && placement.place === "sidebar" && theater.id === owningCommodoreId ? (
+              {placement.place === "sidebar" && theater.id === owningCommodoreId ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <CommodoreCommanderList
                     commodoreId={theater.id}

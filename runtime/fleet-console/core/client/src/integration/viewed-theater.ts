@@ -8,14 +8,15 @@ import { getConversationSubject, subscribeConversationSubject } from "../../../.
 import { getConversationSurface, subscribeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { readTheaterInboxState, subscribeTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
 
-/** 목표의 theaterId 는 폴더 해시라 사이드바 Theater 와 같지 않다. 소속 사령관이 있으면 그 사령관 줄로 돌아간다. */
+/**
+ * 등록된 Theater 가 있으면 그 폴더가 지금 보는 곳이다. 한 사령관이 Theater 를 여러 개 가질 수 있어,
+ * 소유 사령관으로 먼저 고르면 다른 폴더의 목표가 첫 Theater 로 붙는다. 등록되지 않은 해시만 소유 사령관 Theater 로 대체한다.
+ */
 function visibleTheaterOf(state: ReturnType<typeof getState>, record: { readonly commodoreId?: unknown; readonly theaterId?: unknown } | undefined): string | null {
   if (!record) return null;
-  if (typeof record.commodoreId === "string") {
-    const owned = state.theaters.find((theater) => theater.commodore?.id === record.commodoreId)?.id;
-    if (owned) return owned;
-  }
-  return typeof record.theaterId === "string" && state.theaters.some((theater) => theater.id === record.theaterId) ? record.theaterId : null;
+  if (typeof record.theaterId === "string" && state.theaters.some((theater) => theater.id === record.theaterId)) return record.theaterId;
+  if (typeof record.commodoreId === "string") return state.theaters.find((theater) => theater.commodore?.id === record.commodoreId)?.id ?? null;
+  return null;
 }
 
 /** Mount 상태가 아니라 지금 화면에 선 대화의 소속이다. 빈 칸에는 임의의 Theater를 붙이지 않는다. */

@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
+
 /** 지휘관 목록이 서는 곳. 채팅 안일 때만 side 를 쓴다. 기본은 사이드바다. */
 export type CommanderPlace = "sidebar" | "chat";
 export type CommanderSide = "left" | "right";
@@ -48,4 +50,14 @@ export function useCommanderPlacement(): CommanderPlacement {
     () => placement,
     () => placement,
   );
+}
+
+/** 좁은 창에서는 사이드바 목록이 사라지므로, 저장값은 그대로 두고 채팅 레일로 보여 준다. */
+export function effectiveCommanderPlacement(stored: CommanderPlacement, compact: boolean): CommanderPlacement {
+  if (compact && stored.place === "sidebar") return { place: "chat", side: stored.side };
+  return stored;
+}
+
+export function useEffectiveCommanderPlacement(): CommanderPlacement {
+  return effectiveCommanderPlacement(useCommanderPlacement(), useSideBarState().compact);
 }

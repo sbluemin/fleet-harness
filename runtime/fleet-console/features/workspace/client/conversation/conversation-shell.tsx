@@ -55,7 +55,7 @@ import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
-import { useCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -745,7 +745,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
             : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
         : null;
-  const commanderPlacement = useCommanderPlacement();
+  const commanderPlacement = useEffectiveCommanderPlacement();
   const showCommanderRail = toolCommodoreId !== null && !newSession && commanderPlacement.place === "chat";
   const railBindings = useDesktopRailEntries();
   const toolEntryIds = useMemo(

@@ -8,7 +8,7 @@ import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRo
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { openCommanderConversation } from "./commander-navigation.js";
-import { useCommanderPlacement } from "./commander-placement.js";
+import { useEffectiveCommanderPlacement } from "./commander-placement.js";
 import "./commander-ghost-rail.css";
 
 /** 대화의 거터 위에만 선다. 사령관과 지휘관이 바뀌어도 이 탐색기의 소유 사령관은 같다. */
@@ -21,7 +21,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
   const [expanded, setExpanded] = useState(false);
-  const side = useCommanderPlacement().side;
+  const side = useEffectiveCommanderPlacement().side;
   const [tip, setTip] = useState<{ index: number; top: number } | null>(null);
   const nav = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
