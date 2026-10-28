@@ -1,4 +1,5 @@
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
@@ -37,10 +38,11 @@ export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
 /**
  * 세션이 다룰 폴더들과 그 폴더가 가져오는 능력. `workspace` 정책을 연 호스트만 받는다.
  *
- * 폴더의 `.claude/skills`는 Skill 도구로 발견되고 세션 중 바뀐 것도 반영된다. 그러려면 자식이 `project` 설정 층을 읽어야
- * 하는데, 그 층은 작업 폴더와 상위 폴더(홈 포함)의 CLAUDE.md·규칙까지 싣는다 — 그래서 어느 폴더의 CLAUDE.md·규칙도 싣지
- * 않도록 모두 제외한다. 추가 폴더의 CLAUDE.md·설정 파일은 원래 읽히지 않는다(CLI 2.1.310 실측). 작업 폴더의
- * `.claude/settings.json`은 읽히므로 작업 폴더는 호스트 소유 자리여야 한다. 폴더의 `.mcp.json`은 읽히지 않는다 —
+ * 추가 폴더의 `.claude/skills`는 Skill 도구로 발견되고 세션 중 바뀐 것도 반영된다. 그러려면 자식이 `project` 설정 층을
+ * 읽어야 하는데, 그 층은 작업 폴더와 상위 폴더(홈 포함)의 CLAUDE.md·규칙까지 싣는다 — 그래서 어느 폴더의 CLAUDE.md·규칙도
+ * 싣지 않도록 모두 제외한다. 추가 폴더의 CLAUDE.md·설정 파일은 원래 읽히지 않는다(CLI 2.1.310 실측). 그 층의 설정·스킬
+ * 탐색은 작업 폴더가 아니라 세션 scratch의 빈 프로젝트 폴더에서 시작하고 그 자리에서 멈춘다 — 작업 폴더와 그 상위
+ * (체크아웃·데이터 루트)의 `.claude/skills`·`.claude/settings.json`은 싣지 않는다. 폴더의 `.mcp.json`은 읽히지 않는다 —
  * MCP 서버는 호출자가 `mcpServers`로 지목한다.
  */
 export interface AgentWorkspace {
@@ -134,8 +136,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),
         ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),
-        // 폴더의 스킬만 연다 — CLAUDE.md·규칙은 어느 폴더의 것도 싣지 않는다(AgentWorkspace).
-        ...(options.workspace ? { settingSources: ["project"] as const, claudeMdExcludes: ["**/*"] } : {}),
+        // 추가 폴더의 스킬만 연다 — CLAUDE.md·규칙은 어느 폴더의 것도 싣지 않고, 프로젝트 층은 빈 scratch 폴더에서 읽는다(AgentWorkspace).
+        ...(options.workspace ? { settingSources: ["project"] as const, claudeMdExcludes: ["**/*"], projectConfigRoot: await isolatedProjectRoot(scratch) } : {}),
       });
     };
     const buildTurn = (): ClaudeExecutionTurn => ({
@@ -366,6 +368,16 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
     return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactThresholdTokens(window, ceiling) } } };
   }
   return event;
+}
+
+/**
+ * `project` 층을 읽을 호스트 소유 빈 폴더. CLI는 이 폴더에서 상위로 스킬을 찾다가 git 루트에서 멈추므로 빈 `.git`
+ * 항목으로 탐색을 이 자리에 묶는다(CLI 2.1.312 실측). 없으면 OS 임시 폴더의 상위(`/tmp` 등)까지 올라간다.
+ */
+async function isolatedProjectRoot(scratch: string): Promise<string> {
+  const root = path.join(scratch, "project");
+  await fs.mkdir(path.join(root, ".git"), { recursive: true });
+  return root;
 }
 
 function validateOptions(options: InternalSessionOptions, policy: AgentSessionHostPolicy): void {

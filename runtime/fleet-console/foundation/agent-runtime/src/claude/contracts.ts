@@ -250,6 +250,15 @@ export interface ClaudeGatewaySdkOptions {
    */
   readonly settingSources?: readonly ("user" | "project" | "local")[];
   /**
+   * vendor `projectConfigRoot`(`--project-config-root`) — `project` 층의 설정·`.claude` 트리(스킬·명령·에이전트)를
+   * 작업 폴더 대신 이 절대 경로에서 읽는다. 작업 폴더와 도구 접근 범위는 바꾸지 않는다.
+   *
+   * 스킬 탐색은 이 폴더에서 상위로 올라가 홈 직전이나 git 루트(`.git` 항목이 있는 폴더)에서 멈춘다 — 그래서
+   * `.git` 항목을 둔 호스트 소유 빈 폴더를 주면 위쪽 폴더의 스킬을 싣지 않는다(CLI 2.1.312 실측). 추가 폴더의
+   * `.claude/skills`는 이와 무관하게 계속 실린다.
+   */
+  readonly projectConfigRoot?: string;
+  /**
    * 자식이 프로젝트 `.mcp.json`·사용자 설정·플러그인이 선언한 MCP 서버에 붙어도 되는가.
    * 기본은 `false`이고, 그때는 호출자가 넘긴 좌표만 남는다.
    *

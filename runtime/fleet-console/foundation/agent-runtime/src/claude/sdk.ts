@@ -38,6 +38,9 @@ export async function createClaudeGatewaySdk(
   if (options.executablePath !== undefined && (typeof options.executablePath !== "string" || !path.isAbsolute(options.executablePath) || options.executablePath.includes("\0"))) {
     throw new TypeError("executablePath must be an absolute executable path.");
   }
+  if (options.projectConfigRoot !== undefined && (typeof options.projectConfigRoot !== "string" || !path.isAbsolute(options.projectConfigRoot) || options.projectConfigRoot.includes("\0"))) {
+    throw new TypeError("projectConfigRoot must be an absolute directory path.");
+  }
   if (options.autoCompactWindow !== undefined && (!Number.isSafeInteger(options.autoCompactWindow) || options.autoCompactWindow <= 0)) {
     throw new TypeError("autoCompactWindow must be a positive integer token count.");
   }
@@ -115,6 +118,7 @@ export async function createClaudeGatewaySdk(
     // `settingSources: []`가 사용자·프로젝트 설정과 CLAUDE.md를 끄고, `strictMcpConfig`가
     // 그와 별개인 ambient .mcp.json·플러그인 MCP를 막는다.
     settingSources: options.settingSources ? [...options.settingSources] : [],
+    ...(options.projectConfigRoot === undefined ? {} : { projectConfigRoot: options.projectConfigRoot }),
     strictMcpConfig: options.allowAmbientMcpServers !== true,
     // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
     // 명시한 키만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
