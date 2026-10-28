@@ -173,6 +173,8 @@ export function isValidRemoteBindHost(value: unknown): value is string {
  */
 export interface ConsoleBrowserSettings {
   readonly defaultProfile?: string | null;
+  readonly suggestionsEnabled?: boolean;
+  readonly suggestionsPrompted?: boolean;
 }
 
 export interface ConsoleSettingsData {
@@ -283,8 +285,11 @@ const BROWSER_PROFILE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 function sanitizeConsoleBrowserSettings(value: unknown): ConsoleBrowserSettings | undefined {
   if (!isRecord(value)) return undefined;
-  if (typeof value.defaultProfile === "string" && BROWSER_PROFILE_ID.test(value.defaultProfile)) return { defaultProfile: value.defaultProfile };
-  return undefined;
+  return {
+    ...(typeof value.defaultProfile === "string" && BROWSER_PROFILE_ID.test(value.defaultProfile) ? { defaultProfile: value.defaultProfile } : {}),
+    ...(typeof value.suggestionsEnabled === "boolean" ? { suggestionsEnabled: value.suggestionsEnabled } : {}),
+    ...(typeof value.suggestionsPrompted === "boolean" ? { suggestionsPrompted: value.suggestionsPrompted } : {}),
+  };
 }
 
 export function emptyConsoleSettingsData(): ConsoleSettingsData {

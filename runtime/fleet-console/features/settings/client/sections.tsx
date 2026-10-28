@@ -20,7 +20,9 @@ import { BackendApiSection } from "../../../core/client/src/chrome/components/ba
 import { desktopAsksForLocalFonts, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
-import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
+import { renderMessage, useT, useConsoleLocale, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
+import { getT as getBrowserT } from "../../browser/client/i18n.js";
+import { saveSuggestionSettings, useSuggestionSettings } from "../../browser/client/suggestion-settings.js";
 import { setActiveTheme } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
@@ -188,7 +190,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "advanced",
       group: "machine",
       label: t("settings.core.advanced.label"),
-      entries: [t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
+      entries: ["Fleet Browser", "Google", t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
     },
     {
       id: "experiments",
@@ -203,6 +205,19 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       ],
     },
   ];
+}
+
+function BrowserSuggestionsCard() {
+  const t = getBrowserT(useConsoleLocale());
+  const { settings, saving, failed } = useSuggestionSettings();
+  return (
+    <SettingsGroup title={t("terminal.browser.title")} ariaLabel={t("terminal.browser.title")}>
+      <SettingsItem label={t("terminal.browser.suggestions.title")} hint={t("terminal.browser.suggestions.disclosure")}>
+        <SettingsToggle checked={settings?.enabled === true} disabled={settings === null} busy={saving} ariaLabel={t("terminal.browser.suggestions.title")} onChange={(enabled) => { void saveSuggestionSettings(enabled); }} />
+      </SettingsItem>
+      {failed ? <p role="alert">{t("terminal.browser.suggestions.settingsFailed")}</p> : null}
+    </SettingsGroup>
+  );
 }
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
@@ -247,7 +262,7 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
     case "shortcuts":
       return <ShortcutsCard state={state} saving={saving.has("shortcuts")} />;
     case "advanced":
-      return <BackendApiSection />;
+      return <><BrowserSuggestionsCard /><BackendApiSection /></>;
     case "experiments":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return (

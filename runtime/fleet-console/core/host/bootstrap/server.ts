@@ -928,7 +928,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     defaultProfile: {
       // 미기동 Browser의 실패 정리도 상태를 읽는다. lock 패자의 정리가 설정 승계를 쓰면 안 된다.
       read: () => consoleSettingsStore.readSnapshot().browser?.defaultProfile ?? null,
-      write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: profile === null ? {} : { defaultProfile: profile } })); },
+      write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: { ...current.browser, defaultProfile: profile } })); },
     },
   });
   /**
@@ -1606,7 +1606,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Objective 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
-  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
+  routeRegistry.register("/api/v1/browser", createBrowserRouter({
+    browserService, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null,
+    suggestionSettings: {
+      read: () => {
+        const settings = consoleSettingsStore.readSnapshot().browser;
+        return { enabled: settings?.suggestionsEnabled === true, prompted: settings?.suggestionsPrompted === true };
+      },
+      write: (settings) => { consoleSettingsStore.update((current) => ({ ...current, browser: { ...current.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } })); },
+    },
+    logSuggestion: (event) => { process.stdout.write(`[fleet-browser] ${JSON.stringify(event)}\n`); },
+    isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders,
+  }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;

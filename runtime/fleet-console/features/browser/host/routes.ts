@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { writeImageToClipboard } from "./clipboard.js";
+import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 
 export interface BrowserSetShortcutsInput {
   readonly shortcuts: readonly string[];
@@ -9,6 +10,11 @@ export interface BrowserSetShortcutsInput {
 
 interface BrowserRouteDeps {
   readonly browserService: BrowserService;
+  readonly suggestionSettings?: {
+    read(): BrowserSuggestionSettings;
+    write(settings: BrowserSuggestionSettings): void;
+  };
+  readonly logSuggestion?: (event: { readonly event: "browser.suggest"; readonly timestamp: string; readonly transmitted: boolean; readonly reason: string; readonly count: number }) => void;
   readonly browserMcp: {
     interruptObjective(id: string): number;
     pasteIntoTerminal(id: string): boolean;
@@ -44,6 +50,59 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       try { writeJson(res, 200, await browserService.importSources()); }
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
       return true;
+    }
+    if (pathname === "/api/v1/browser/suggestion-settings") {
+      res.setHeader("Cache-Control", "no-store");
+      if (req.method === "GET") {
+        writeJson(res, 200, deps.suggestionSettings?.read() ?? DEFAULT_BROWSER_SUGGESTION_SETTINGS);
+        return true;
+      }
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+      if (!body || typeof body.enabled !== "boolean") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+      if (!deps.suggestionSettings) { writeJson(res, 503, { error: "settings_unavailable" }); return true; }
+      // 켜기·끄기·안내 닫기 모두 사람의 명시적 선택이다. 프로필 등 다른 설정은 저장 포트가 보존한다.
+      const settings = { enabled: body.enabled, prompted: true };
+      deps.suggestionSettings.write(settings);
+      writeJson(res, 200, settings);
+      return true;
+    }
+    if (pathname === "/api/v1/browser/suggest") {
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      res.setHeader("Cache-Control", "no-store");
+      const finish = (transmitted: boolean, reason: string, suggestions: string[] = []) => {
+        // 입력 원문·URL·예외 본문은 기록하지 않는다. 판정과 결과 개수만 남긴다.
+        deps.logSuggestion?.({ event: "browser.suggest", timestamp: new Date().toISOString(), transmitted, reason, count: suggestions.length });
+        writeJson(res, 200, { suggestions });
+        return true;
+      };
+      if (!deps.suggestionSettings?.read().enabled) return finish(false, "disabled");
+      if (!browserService.available()) return finish(false, "browser_unavailable");
+      const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+      const query = typeof body?.query === "string" ? body.query.trim() : "";
+      const skip = suggestionSkipReason(query);
+      if (skip) return finish(false, skip);
+      // 본문을 기다리는 동안 설정이 바뀌었을 수 있다. 외부 호출 직전에 다시 확인한다.
+      if (!deps.suggestionSettings.read().enabled) return finish(false, "disabled");
+      try {
+        const url = new URL("https://suggestqueries.google.com/complete/search");
+        url.searchParams.set("client", "firefox");
+        url.searchParams.set("q", query);
+        const response = await fetch(url, { signal: AbortSignal.timeout(1500), redirect: "error" });
+        if (!response.ok) return finish(true, "http_error");
+        const text = await response.text();
+        let data: unknown;
+        try { data = JSON.parse(text); }
+        catch { return finish(true, "invalid_response"); }
+        if (!Array.isArray(data) || !Array.isArray(data[1]) || !data[1].every((item: unknown) => typeof item === "string")) return finish(true, "invalid_response");
+        const suggestions = [...new Set<string>(data[1])].filter((item) => item.trim() && item.length <= 256).slice(0, 5);
+        return finish(true, "ok", suggestions);
+      } catch {
+        // 제안 실패는 탐색 실패가 아니다. 예외에 포함될 수 있는 검색어도 로그에 남기지 않는다.
+        return finish(true, "request_failed");
+      }
     }
     if (pathname === "/api/v1/browser/default-profile") {
       // Console 전체의 설정이라 Objective 아래가 아니다. 엔진이 없어도 정할 수 있다 — 다음 Objective 을 위한 값이다.
