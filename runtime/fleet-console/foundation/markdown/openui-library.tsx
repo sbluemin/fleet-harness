@@ -79,7 +79,6 @@ function StepRow({ props }: { props: Record<string, unknown> }) {
 
 const statReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
 const stepReady = (p: Record<string, unknown>) => plain(p.label) !== null && oneOf(p.state, STATES) !== null;
-const choiceReady = (p: Record<string, unknown>) => typeof p.label === "string" && p.label.trim() !== "" && sendableReply(p.reply) !== null;
 const factReady = (p: Record<string, unknown>) => plain(p.label) !== null && plain(p.value) !== null;
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 // 흐르는 중 판정은 더 와도 풀리지 않는 위반만 보므로(열린 숫자는 아님) 컴포넌트도 같은 조건을 본다 — 0 ≤ done ≤ total, total > 0.
@@ -233,33 +232,19 @@ const Progress = defineComponent({
     );
   },
 });
-const DecisionLayout = React.createContext(false);
-function ChoiceButton({ label, reply, why, effect }: { label: string; reply: string; why: string | null; effect: string | null }) {
-  const block = useBlock();
-  const decision = React.useContext(DecisionLayout);
-  const trigger = useTriggerAction();
-  const key = React.useId();
-  return <button type="button" className={decision ? "openui-option" : "openui-button"} title={reply} aria-pressed={block.sent === key ? true : undefined}
-    disabled={!block.final || block.sent !== null} aria-disabled={block.final && !block.send ? true : undefined}
-    onClick={(event) => block.activate(event, { type: "send", message: reply, max: 200 }, key, trigger)}>
-    {decision ? <><span className="openui-option-text"><span className="openui-option-label">{label}</span>{why ? <span className="openui-option-why">{why}</span> : null}{effect ? <span className="openui-option-effect">{effect}</span> : null}</span><span className="openui-option-mark" aria-hidden="true" /></> : label}
-  </button>;
-}
+// 은퇴한 선택지 — 안내 문면에서 빠져 새 답에는 나오지 않는다. 옛 기록의 카드가 코드 블록으로 떨어지지 않도록 파서 등록과 판정은
+// 남기되, 아무것도 그리지 않고 Card 도 자식에서 거른다. 형제(표·사실·단추)는 그대로 그린다.
 const Choice = defineComponent({
   name: "Choice",
-  description: "One answer sent as the person's message when clicked.",
+  description: "Retired; renders nothing.",
   props: z.object({ label: z.string(), reply: z.string(), why: z.string().optional(), effect: z.string().optional() }),
-  component: ({ props }) => <ChoiceButton label={(props.label as string).trim()} reply={sendableReply(props.reply)!} why={optionalPlain(props.why)} effect={optionalPlain(props.effect)} />,
+  component: () => null,
 });
 const Choices = defineComponent({
   name: "Choices",
-  description: "Two to four answers the person can pick.",
+  description: "Retired; renders nothing.",
   props: z.object({ items: z.array(Choice.ref) }),
-  component: ({ props, renderNode }) => {
-    const items = list(props.items).filter((item) => isNode(item, "Choice") && choiceReady(item.props));
-    const decision = items.some((item) => isNode(item, "Choice") && (optionalPlain(item.props.why) || optionalPlain(item.props.effect)));
-    return items.length ? <DecisionLayout.Provider value={decision}><div className={decision ? "openui-decision" : "openui-choices"} role="group">{renderNode(items)}</div></DecisionLayout.Provider> : null;
-  },
+  component: () => null,
 });
 
 // 등록 때는 액션 문법을 알리지만, 판정은 단일 리터럴 단계만 허용한다. Action·Run·상태 변경은 실행기에 닿지 않는다.
@@ -327,10 +312,10 @@ const Button = defineComponent({
 
 const fieldName = z.string().regex(/^[a-z][a-z0-9_]{0,15}$/);
 // 한 줄 판정은 표시용 문장에도 적용한다. 명령 접두 규칙은 전송 문장에만 적용한다.
-const line = (max: number, allowEmpty = false) => z.string().refine((v) => {
+const line = (max: number) => z.string().refine((v) => {
   const t = v.trim();
   // eslint-disable-next-line no-control-regex
-  return (allowEmpty || !!t) && t.length <= max && !/[\u0000-\u001f\u007f\p{Zl}\p{Zp}]/u.test(v);
+  return !!t && t.length <= max && !/[\u0000-\u001f\u007f\p{Zl}\p{Zp}]/u.test(v);
 });
 const inputLimit = z.object({ name: fieldName, label: line(40) });
 const selectLimit = inputLimit.extend({ options: z.array(line(40)).min(2).max(6).refine((values) => new Set(values).size === values.length) });
@@ -490,7 +475,7 @@ const Sparklines = defineComponent({
     return items.length ? <div className="openui-bars openui-sparklines">{renderNode(items)}</div> : null;
   },
 });
-const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Choices", "Timeline", "Compare", "Tags", "Sparklines", "Button", "Form"]);
+const CHILDREN = new Set(["Stats", "Steps", "Bars", "Table", "Facts", "Callout", "Progress", "Timeline", "Compare", "Tags", "Sparklines", "Button", "Form"]);
 const Card = defineComponent({
   name: "Card",
   description: "Titled group of components.",
@@ -510,7 +495,6 @@ const Card = defineComponent({
 export const library = createLibrary({ components: [Card, Stats, Stat, Steps, Step, Bars, Table, Facts, Fact, Callout, Progress, Choices, Choice, Timeline, Moment, Compare, Delta, Tags, Tag, Sparklines, Sparkline, Button, Form, Input, Select], root: "Card" });
 
 // ---- 2. 상한 — 등록 스키마와 따로 둔 Zod 판정(lang-core 는 max/refine 을 보지 않는다, 실측). 노드마다 safeParse.
-const reply = z.string().refine((value) => sendableReply(value) !== null);
 // 자식 자리에는 허용된 컴포넌트만 — lang-core 는 union 소속을 검사하지 않는다(실측: Card 직속 Stat 이 오류 없이 통과).
 const element = (...names: [string, ...string[]]) => z.object({ type: z.literal("element"), typeName: z.enum(names) });
 const short = (max: number) => z.string().refine((value) => { const t = value.trim(); return t.length > 0 && t.length <= max; });
@@ -536,8 +520,9 @@ const LIMITS: Readonly<Record<string, z.ZodType>> = {
   Callout: z.object({ text: z.string(), tone: z.enum(TONES).nullish() }),
   Progress: z.object({ label: z.string(), done: z.number().finite().min(0), total: z.number().finite().gt(0), note: text.nullish() })
     .refine((p) => p.done <= p.total),
-  Choices: z.object({ items: z.array(element("Choice")).min(2).max(4) }),
-  Choice: z.object({ label: short(40), reply, why: line(120, true).nullish(), effect: line(120, true).nullish() }),
+  // 은퇴한 선택지는 그리지 않으므로 상한도 보지 않는다 — 옛 카드의 형제를 지키는 것이 목적이다.
+  Choices: z.object({ items: z.array(element("Choice")) }),
+  Choice: z.object({}),
   Button: z.object({ label: line(40), action: z.unknown().optional() }).refine((p) => buttonAction(p.action, p.label)),
   Form: z.object({ fields: z.array(element("Input", "Select")).min(1).max(4), template: z.string(), submit: line(24) }),
   Input: inputLimit,
@@ -620,7 +605,7 @@ function prefixBad(prefix: string): boolean {
   let forms = 0;
   const bad = someNode(root, (node) =>
     limitIssues(node).some((issue) => !(pending && arrayCount(issue, "too_small")))
-    || ((node.typeName === "Choices" || node.typeName === "Form") && ++forms > 1)
+    || (node.typeName === "Form" && ++forms > 1)
     || (node.typeName === "Form" && (pending ? formSettledBad(node.props) : !formReady(node.props))), () => true);
   if (bad || !pending) return bad;
   let counted: ParseResult;
@@ -657,7 +642,7 @@ function openBad(full: ParseResult): boolean {
   let forms = 0;
   return someNode(full.root, (node) =>
     limitIssues(node).some((issue) => arrayCount(issue, "too_big") || (issue.code === "invalid_value" && (issue.path[issue.path.length - 1] === "typeName" || enumDeadEnd(node, issue))))
-    || ((node.typeName === "Choices" || node.typeName === "Form") && ++forms > 1));
+    || (node.typeName === "Form" && ++forms > 1));
 }
 
 /**
@@ -678,7 +663,7 @@ export function judge(source: string, final: boolean): Verdict {
   if (!root) return no;
   if (final && (result.meta.incomplete || result.meta.unresolved.length)) return no;
   if (final && result.meta.errors.some((error) => error.severity !== "warning")) return no;
-  let choices = 0;
+  let forms = 0;
   const visit = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.every(visit);
     if (!value || typeof value !== "object") return true;
@@ -687,7 +672,7 @@ export function judge(source: string, final: boolean): Verdict {
     const limit = LIMITS[node.typeName];
     // 액션 때문에 부모까지 동적으로 표시된다. Button.action의 단일 리터럴만 예외이며 다른 AST 객체는 visit이 거절한다.
     if (!limit || (final && !limit.safeParse(node.props).success)) return false;
-    if ((node.typeName === "Choices" || node.typeName === "Form") && ++choices > 1) return false;
+    if (node.typeName === "Form" && ++forms > 1) return false;
     if (node.typeName === "Form" && final && !formReady(node.props)) return false;
     return Object.entries(node.props).every(([key, child]) => node.typeName === "Button" && key === "action" ? buttonAction(child, node.props.label) : visit(child));
   };
