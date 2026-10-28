@@ -78,6 +78,8 @@
 
 /* 공유 폴더 파일 — 임무 목록·띠 없이 한 파일만 보인다. */
 .objectives-result-window.is-shared .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
+/* 브리핑 첨부 — 임무 목록 없이 첨부만 보인다. 틀·드래그·크기·초점 규칙은 결과물 창 그대로 쓴다. */
+.objectives-result-window.is-attachment .objectives-rw-body { grid-template-columns: minmax(0, 1fr); }
 .objectives-rw-caption > .is-mono { font-family: var(--font-mono, monospace); }
 .objectives-rw-download { align-self: flex-start; padding-bottom: 12px; color: var(--text-secondary); font-size: var(--t-xs); text-underline-offset: 3px; }
 .objectives-rw-download:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
