@@ -127,13 +127,19 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     const index = sections.findIndex((section) => section.id === open.address.sectionId);
     const section = index >= 0 ? sections[index] : undefined;
     const page = section?.descriptor.pages.find((candidate) => candidate.id === open.address.pageId);
-    if (!section || !page) {
+    // 서지 못하는 칸은 폴백 칸으로 돌린다. 폴백 칸마저 서지 못하면 다시 열지 않는다 — 같은 주소를 거듭 열면 포커스 요청이
+    // 계속 올라 이 효과가 끝없이 돌고 앱 전체가 멈춘다(사령관 섹션이 받지 않는 폴더로 착지할 때).
+    const openFallback = () => {
+      if (open.address.sectionId === fallback.sectionId && open.address.pageId === fallback.pageId) return;
       navigation.open({ theaterId: theater.id, ...fallback });
+    };
+    if (!section || !page) {
+      openFallback();
       return;
     }
     if (states[index]?.availability === "loading") return;
     if (!available(index)) {
-      navigation.open({ theaterId: theater.id, ...fallback });
+      openFallback();
       return;
     }
     let tabId = theaterInboxPanelTabId(open.address);
