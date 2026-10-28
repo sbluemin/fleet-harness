@@ -55,7 +55,7 @@ export const codexEntry: RailEntryDescriptor = {
   handles: {
     openWikiEntry: (request, host) => {
       if (!readCommodoreList().some((commodore) => commodore.commodoreId === request.theaterId)) return { ok: false, reason: "not_found" };
-      host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: request.replace === true });
+      host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexCommodore: null, codexView: null }, { replace: request.replace === true });
       return { ok: true };
     },
   },
@@ -85,7 +85,8 @@ export const codexPane: PaneDescriptor = {
         // 리더를 직접 열지 않고 **주소로** 연다. 패널은 마운트 직후 Theater가 확정되기 전
         // 리더를 한 번 닫으므로, 직접 연 문서는 그 닫힘에 지워진다. 주소는 그 구간을 건너
         // 살아남았다가 Theater가 준비된 뒤 적용된다 — 공유 링크가 그렇게 동작한다.
-        openCodexReaderByAddress(entry.id, theaterId);
+        // 검색한 사령관을 함께 싣는다 — 여러 사령관이 나누는 폴더에서도 그 사령관의 위키로 연다.
+        openCodexReaderByAddress(entry.id, theaterId, commodoreId ?? null);
       },
     }));
   },

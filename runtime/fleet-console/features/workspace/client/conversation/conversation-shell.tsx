@@ -806,9 +806,12 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     conversationKey === null || scopeTheaterId === null ? { kind: "none" }
       : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
   );
+  // 대화가 서 있지 않으면(Theater Inbox 문맥만 선 화면) 도구의 Theater 는 호스트가 보는 Theater 이므로, 사령관도 호스트가 보는 사령관을
+  // 함께 쓴다 — Theater 만 넘기면 사령관 단위 도구(위키)가 사령관 없음으로 풀려 링크로 온 문서를 버린다.
+  const scopeCommodoreId = toolCommodoreId ?? (surfaceDescriptor === null && stageSubject === null ? toolContext.commodoreId : null);
   const scopedToolContext = useMemo<RailToolContext>(
-    () => ({ ...toolContext, theaterId: scopeTheaterId, commodoreId: toolCommodoreId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
-    [conversationKey, toolContext, toolCommodoreId, workLocation, scopeTheaterId],
+    () => ({ ...toolContext, theaterId: scopeTheaterId, commodoreId: scopeCommodoreId, conversation: conversationKey !== null && workLocation !== null ? { key: conversationKey, location: workLocation } : undefined }),
+    [conversationKey, toolContext, scopeCommodoreId, workLocation, scopeTheaterId],
   );
   // 대화의 작업 위치를 모르면(예: 등록 Theater 가 둘 이상인데 고른 것이 없음) Theater 에 묶인 칸을 세우지 않는다. 브라우저 칸은
   // 이 대화의 세션을 따르므로 작업 위치 없이도 선다 — 숨기면 지구본이 눌림만 남기고 아무것도 세우지 않는다. 판정은 여기 하나다 — 칸을

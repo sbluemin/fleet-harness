@@ -15,6 +15,7 @@ import { mobileWikiActive } from "./mobile-stack.js";
 const ENTRY_PARAM = "codex";
 const VIEW_PARAM = "codexView";
 const THEATER_PARAM = "codexTheater";
+const COMMODORE_PARAM = "codexCommodore";
 const VIEW_FULL = "full";
 
 interface ReaderTarget {
@@ -25,6 +26,11 @@ interface ReaderTarget {
    * 링크를 받은 쪽의 활성 Theater에서 같은 id를 찾다가 없는 문서를 보여주게 된다.
    */
   readonly theaterId: string | null;
+  /**
+   * 그 Theater를 가진 사령관. 같은 폴더를 여러 사령관이 나눌 수 있어 Theater만으로는 어느 사령관의 위키인지 정해지지 않는다.
+   * 옛 링크처럼 없으면 null — 호스트가 보고 있는 사령관이나 사람의 선택으로 정한다.
+   */
+  readonly commodoreId: string | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -54,6 +60,8 @@ export function useCodexReaderUrlSync(): void {
   const targetRef = useRef<ReaderTarget | null>(readTarget(window.location.search));
   // 자기가 쓴 주소를 다시 읽어 되돌리는 왕복을 막는다.
   const writtenRef = useRef<string | null>(null);
+  // Theater 옮기기를 이미 요청한 목표 — 같은 목표로 다시 요청하지 않는다.
+  const viewRequestedRef = useRef<ReaderTarget | null>(null);
 
   // 주소 → 목표
   useEffect(() => {
@@ -61,7 +69,8 @@ export function useCodexReaderUrlSync(): void {
     const entryId = params.get(ENTRY_PARAM);
     const wantExpanded = params.get(VIEW_PARAM) === VIEW_FULL;
     const wantTheater = params.get(THEATER_PARAM);
-    const signature = `${entryId ?? ""}|${wantExpanded ? VIEW_FULL : ""}|${wantTheater ?? ""}`;
+    const wantCommodore = params.get(COMMODORE_PARAM);
+    const signature = `${entryId ?? ""}|${wantExpanded ? VIEW_FULL : ""}|${wantTheater ?? ""}|${wantCommodore ?? ""}`;
     // 자기가 방금 쓴 주소는 한 번만 흘려보낸다 — 계속 물고 있으면 같은 주소로 되돌아오는
     // 앞으로가기가 영영 무시된다.
     if (signature === writtenRef.current) {
@@ -78,7 +87,7 @@ export function useCodexReaderUrlSync(): void {
       if (reader !== null && !mobileWikiActive()) closeCodexReader();
       return;
     }
-    targetRef.current = { entryId, expanded: wantExpanded, theaterId: wantTheater };
+    targetRef.current = { entryId, expanded: wantExpanded, theaterId: wantTheater, commodoreId: wantCommodore };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 주소 변화에만 반응한다
   }, [location.search]);
 
@@ -86,32 +95,48 @@ export function useCodexReaderUrlSync(): void {
   useEffect(() => {
     const target = targetRef.current;
     if (!target || (!theaterId && theaters.length === 0)) return;
-    if (target.theaterId && target.theaterId !== theaterId) {
+    const viewedCommodoreId = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
+    // 위키는 사령관마다 따로다. 같은 폴더를 보고 있어도 링크가 다른 사령관을 실었으면 그 사령관으로 옮겨서 연다 — 한 번만 청하고,
+    // 호스트가 그 사령관을 세우지 못하면(그 사령관이 폴더를 더는 갖지 않는 옛 링크) 호스트가 정한 사령관으로 연다.
+    const otherOwner = target.theaterId !== null && target.commodoreId !== null
+      && target.commodoreId !== viewedCommodoreId && viewRequestedRef.current !== target;
+    if ((target.theaterId && target.theaterId !== theaterId) || otherOwner) {
       // 링크가 다른 Theater의 문서를 가리키면 그 Theater로 옮겨서 연다.
       if (theaters.some((entry) => entry.id === target.theaterId)) {
-        viewTheater(target.theaterId);
+        // 목표 하나에 한 번만 옮겨 달라고 한다. 호스트가 바로 옮기지 못하면(사람이 사령관을 고르는 중) 이 effect가
+        // 다시 돌 때마다 같은 요청을 되풀이해 선택 창을 다시 열거나 갱신을 끝없이 일으킨다.
+        if (viewRequestedRef.current !== target) {
+          viewRequestedRef.current = target;
+          viewTheater(target.theaterId!, target.commodoreId);
+        }
+        // 폴더가 그대로면 사령관만 옮겼다 — 보이는 Theater 가 바뀌지 않아 이 effect가 다시 돌 계기가 없으니 여기서 이어서 연다.
+        if (target.theaterId !== theaterId) return;
+      } else {
+        // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한
+        // 문서가 아닌 것을 보여주게 되므로 열지 않는다. 앞서 보던 문서를 그대로 두면
+        // 주소와 화면이 어긋난 채 남으므로 리더도 닫고, 목표는 버려 재시도를 끊는다.
+        targetRef.current = null;
+        if (reader !== null) closeCodexReader();
         return;
       }
-      // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한
-      // 문서가 아닌 것을 보여주게 되므로 열지 않는다. 앞서 보던 문서를 그대로 두면
-      // 주소와 화면이 어긋난 채 남으므로 리더도 닫고, 목표는 버려 재시도를 끊는다.
-      targetRef.current = null;
-      if (reader !== null) closeCodexReader();
-      return;
     }
     if (!theaterId) return;
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다. 이 한 줄이 빠지면 링크는
     // 축소 화면에서 아무것도 못 보여주고, 확대 링크는 null workspace로 영영 기다린다.
     openCodexRailPanel();
+    // 링크의 사령관으로 옮겨 왔으면 그 사령관의 위키가 풀릴 때까지 기다린다 — 앞서 보던 사령관의 위키로 문서를 찾거나, 같은 id로
+    // 이미 열린 그 사령관의 문서를 도착으로 보면 링크가 엉뚱한 문서로 소비된다. 방금 사령관을 옮겼을 수 있으니 지금 값을 다시 읽는다.
+    const ownerNow = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
+    if (target.commodoreId !== null && target.commodoreId === ownerNow && workspace?.contextKey !== target.commodoreId) return;
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
       if (!workspace || (workspace.theaterId ?? workspace.contextKey) !== theaterId) return;
       const controller = new AbortController();
       const discardTarget = () => {
         clearReaderSession(workspace.contextKey, target.entryId);
         targetRef.current = null;
-        writtenRef.current = "||";
-        hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null }, { replace: true });
+        writtenRef.current = "|||";
+        hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null, [COMMODORE_PARAM]: null }, { replace: true });
         closeCodexReader();
       };
       if (!workspace.hasWiki || !workspace.id) {
@@ -159,17 +184,20 @@ export function useCodexReaderUrlSync(): void {
     const currentEntry = params.get(ENTRY_PARAM);
     const currentView = params.get(VIEW_PARAM);
     const currentTheater = params.get(THEATER_PARAM);
+    const currentCommodore = params.get(COMMODORE_PARAM);
     // 모바일 위키 화면 — 주소를 쌓지 않는다. 링크로 들어와 이미 소비한 리더 주소만 제자리에서 걷는다.
     if (mobileWikiActive()) {
-      if (currentEntry === null && currentView === null && currentTheater === null) return;
-      writtenRef.current = "||";
-      hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null }, { replace: true });
+      if (currentEntry === null && currentView === null && currentTheater === null && currentCommodore === null) return;
+      writtenRef.current = "|||";
+      hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null, [COMMODORE_PARAM]: null }, { replace: true });
       return;
     }
     const nextEntry = reader?.kind === "entry" ? reader.entryId : null;
     const nextView = nextEntry && expanded ? VIEW_FULL : null;
     const nextTheater = nextEntry ? theaterId : null;
-    if (currentEntry === nextEntry && currentView === nextView && currentTheater === nextTheater) return;
+    // 주소창에서 그대로 복사해 건네도 같은 사령관의 위키로 열리게, 지금 보는 사령관을 함께 싣는다.
+    const nextCommodore = nextEntry ? hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null : null;
+    if (currentEntry === nextEntry && currentView === nextView && currentTheater === nextTheater && currentCommodore === nextCommodore) return;
 
     if (nextEntry) params.set(ENTRY_PARAM, nextEntry);
     else params.delete(ENTRY_PARAM);
@@ -177,8 +205,10 @@ export function useCodexReaderUrlSync(): void {
     else params.delete(VIEW_PARAM);
     if (nextTheater) params.set(THEATER_PARAM, nextTheater);
     else params.delete(THEATER_PARAM);
+    if (nextCommodore) params.set(COMMODORE_PARAM, nextCommodore);
+    else params.delete(COMMODORE_PARAM);
 
-    writtenRef.current = `${nextEntry ?? ""}|${nextView ?? ""}|${nextTheater ?? ""}`;
+    writtenRef.current = `${nextEntry ?? ""}|${nextView ?? ""}|${nextTheater ?? ""}|${nextCommodore ?? ""}`;
     // 문서가 바뀌면 한 걸음 쌓고(뒤로가기로 돌아올 수 있게), 같은 문서의 표시 모드
     // 변화는 그 자리를 갈아 끼운다.
     const documentChanged = currentEntry !== nextEntry;
@@ -187,6 +217,7 @@ export function useCodexReaderUrlSync(): void {
       [ENTRY_PARAM]: nextEntry ?? null,
       [VIEW_PARAM]: nextView ?? null,
       [THEATER_PARAM]: nextTheater ?? null,
+      [COMMODORE_PARAM]: nextCommodore ?? null,
     }, { replace: !documentChanged });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 리더 상태 변화에만 반응한다
   }, [reader, expanded, theaterId]);
@@ -202,5 +233,6 @@ function readTarget(search: string): ReaderTarget | null {
     entryId,
     expanded: params.get(VIEW_PARAM) === VIEW_FULL,
     theaterId: params.get(THEATER_PARAM),
+    commodoreId: params.get(COMMODORE_PARAM),
   };
 }

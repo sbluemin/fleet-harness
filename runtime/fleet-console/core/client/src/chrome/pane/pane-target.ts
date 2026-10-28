@@ -11,7 +11,11 @@ export interface PaneTargetBinding {
 
 export interface PaneTargetPorts {
   readonly bindings: readonly PaneTargetBinding[];
-  readonly activateTheater: (theaterId: string) => boolean;
+  /**
+   * 착지할 Theater를 화면 문맥으로 세운다. `commodoreId` 는 요청이 실은 사령관이다(없으면 null). 모르는 폴더면 false.
+   * 여러 사령관이 나누는 폴더라 주인을 정하지 못하면 사람에게 고르게 하고 `"choosing"` — 고르면 `retry` 로 그 사령관을 실어 다시 착지한다.
+   */
+  readonly activateTheater: (theaterId: string, commodoreId: string | null, retry: (commodoreId: string) => void) => boolean | "choosing";
   readonly openRail: (entryId: string) => void;
   readonly openPane: (request: PaneOpenRequest) => void;
   readonly openExpanded: (request: ExpandedSurfaceOpenRequest) => unknown;
@@ -24,7 +28,15 @@ export function landPaneTarget(target: PaneTarget, ports: PaneTargetPorts, fallb
   const descriptor = owner?.panes.find((pane) => pane.id === target.paneId);
   if (!descriptor && !fallbackEntryId) return { ok: false, reason: "no_handler" };
   const theaterId = target.theaterId ?? target.params?.theaterId;
-  if (!target.params?.objectiveId && theaterId && !ports.activateTheater(theaterId)) return { ok: false, reason: "not_found" };
+  if (!target.params?.objectiveId && theaterId) {
+    const commodoreId = typeof target.params?.commodoreId === "string" ? target.params.commodoreId : null;
+    const activated = ports.activateTheater(theaterId, commodoreId, (chosen) => {
+      landPaneTarget({ ...target, params: { ...target.params, commodoreId: chosen } }, ports, fallbackEntryId);
+    });
+    if (activated === false) return { ok: false, reason: "not_found" };
+    // 사람이 고르는 동안은 착지를 미룬다 — 요청은 받아들여졌고, 고른 사령관으로 같은 착지가 이어진다.
+    if (activated === "choosing") return { ok: true };
+  }
   const params = { ...target.params, ...(theaterId ? { theaterId } : {}), requestId: ports.requestId() };
   if (ports.showTarget({ ...target, params })) return { ok: true };
   const mount = target.mount ?? descriptor?.mounts[0] ?? "rail";
