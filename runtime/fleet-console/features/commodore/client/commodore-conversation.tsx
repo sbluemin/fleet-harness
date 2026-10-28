@@ -460,7 +460,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
         </>
       ) : null}
-      {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} onRequest={() => openCommodoreConversation(commodoreId)} /> : null}
+      {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} /> : null}
       {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}

@@ -259,7 +259,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreIntel t={t} theaterId={commodoreId ?? ""} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
           </>
         ) : null}
-        {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} onRequest={() => navigation.open({ theaterId, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" })} /> : null}
+        {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} /> : null}
         {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId ?? ""} /> : null}
         {/* 설정 칸의 메뉴(모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
