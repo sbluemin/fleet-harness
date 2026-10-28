@@ -16,6 +16,18 @@ export const PICKER_PLACE_SIDE = "side";
  */
 export const LOCAL_FONTS_SURFACE = "local-fonts";
 
+/**
+ * 집 origin을 모르는 화면이 셸에게 "집으로"를 청하는 신호. 자기 origin의 `/console/`로 걸고, 셸이 같은 리터럴로 가로채
+ * 자기가 아는 집으로 창을 보낸다. 셸 게시보다 먼저 세션이 끝난 종료 안내가 이것을 쓴다.
+ */
+export const RETURN_HOME_SURFACE = "return-home";
+
+export function desktopReturnHomeUrl(origin: string): string {
+  const url = new URL("/console/", `${origin}/`);
+  url.searchParams.set(PICKER_SURFACE_PARAM, RETURN_HOME_SURFACE);
+  return url.toString();
+}
+
 export function desktopLocalFontsUrl(origin: string): string {
   const url = new URL("/console/", `${origin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, LOCAL_FONTS_SURFACE);

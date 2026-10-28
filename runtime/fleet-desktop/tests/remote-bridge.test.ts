@@ -295,6 +295,22 @@ describe("host picker surface", () => {
     expect(harness.trace).not.toContain(`load:${LOCAL}/console/`);
   });
 
+  /** 집을 모르는 화면(셸 게시 전에 세션이 끝남)도 돌아간다. 목적지는 언제나 셸의 집이고, 화면이 고를 수 없다. */
+  it("sends the window home on the active console's return-home signal, wherever the page points", async () => {
+    const contents = new EventEmitter();
+    const harness = createHarness();
+    harness.bridge.attach(contents as never);
+    harness.setCurrent(REMOTE);
+    let prevented = false;
+
+    contents.emit("will-navigate", { preventDefault: () => { prevented = true; } }, `${REMOTE}/console/?desktop-surface=return-home&at=https://evil.test`, undefined, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(prevented).toBe(true);
+    expect(harness.trace).toContain(`load:${LOCAL}/console/`);
+    expect(harness.trace.filter((entry) => entry.startsWith("load:"))).toEqual([`load:${LOCAL}/console/`]);
+  });
+
   it("opens a remote console at its entry, not the requesting page's path or query", async () => {
     const harness = createHarness();
 
