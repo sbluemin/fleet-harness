@@ -3,7 +3,6 @@ import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useRef, useState } from "react";
 
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
-import { registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import { addCommodoreTheaterFromPath } from "../../../../../features/commodore/client/theaters-api.js";
 import { describeTheaterRegistrationError } from "../../integration/failure-notices.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
@@ -32,7 +31,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { getMobileSheetStack, closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
+import { getMobileSheetStack, closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheater, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -77,16 +76,18 @@ export function MobileSheetHost({ state }: { readonly state: ConsoleState }) {
   return <TheaterSheet />;
 }
 
-/** 사령관이 있으면 그 목록에만 더한다. 사령관 없는 첫 실행의 폴더 선택만 기존 시작 경로를 쓴다. */
+/** 사령관이 있으면 그 목록에만 더한다. 사령관이 없으면 새 사령관 만들기 흐름으로 이어진다. */
 async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Promise<void> {
   const commodoreId = mobileHomeCommodoreId();
+  if (!commodoreId) {
+    requestCommodoreCreate();
+    return;
+  }
   try {
-    const theaterId = commodoreId ? await addCommodoreTheaterFromPath(commodoreId, path) : await registerTheaterFromPath(path, true);
+    const theaterId = await addCommodoreTheaterFromPath(commodoreId, path);
     if (!theaterId) return;
-    if (commodoreId) await refreshCommodoreList();
-    const label = commodoreId
-      ? readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.find((row) => row.theaterId === theaterId)?.label
-      : getState().theaters.find((row) => row.id === theaterId)?.label;
+    await refreshCommodoreList();
+    const label = readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.find((row) => row.theaterId === theaterId)?.label;
     if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
   } catch (error) { showMobileToast(describeTheaterRegistrationError(error, t)); }
 }
@@ -137,7 +138,7 @@ function TheaterSheet() {
         const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
         return (
           <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
-            <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; if (home) setMobileListTheaterId(home); closeMobileSheets(); }}>
+            <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; setMobileListTheater(home ? { commodoreId: commodore.commodoreId, theaterId: home } : null); closeMobileSheets(); }}>
               <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
             </button>
             <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>

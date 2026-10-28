@@ -10,6 +10,7 @@ import { ArchiveRows, useArchiveRestore } from "./mobile-archive-screen.js";
 import { ConversationRow, conversationStateWord, useMobileConversations } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { setMobileDestination } from "./mobile-store.js";
+import { theaterFolderName, theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 
 type SearchKind = "all" | "conversation" | "archived";
 const KINDS: readonly SearchKind[] = ["all", "conversation", "archived"];
@@ -64,13 +65,17 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
       </div>
       <div className="mobile-conv-scroll">
         {found.map((conversation) => {
-          const theater = state.theaters.find((item) => item.id === conversation.objectiveRecord.theaterId);
+          const theaterLabel = theaterLabelOf(
+            conversation.objectiveRecord.commodoreId,
+            conversation.objectiveRecord.theaterId,
+            theaterFolderName(typeof conversation.objectiveRecord.cwd === "string" ? conversation.objectiveRecord.cwd : null),
+          );
           return (
             <ConversationRow
               key={conversation.objectiveRecord.id}
               conversation={conversation}
               trailing={<span className="mobile-conv-kind">{t(conversation.isCluster ? "mobile.search.label.cluster" : "mobile.search.label.conversation")}</span>}
-              sub={[theater?.label, conversationStateWord(conversation.face, t)].filter(Boolean).join(" · ")}
+              sub={[theaterLabel, conversationStateWord(conversation.face, t)].filter(Boolean).join(" · ")}
               onOpen={() => { setMobileDestination({ kind: "home" }); focusObjective(conversation.objectiveRecord.id); }}
             />
           );

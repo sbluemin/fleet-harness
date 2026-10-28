@@ -6,6 +6,7 @@ import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
 import { getT, useT } from "./i18n/index.js";
 import { useConsoleLocale } from "./reader-store.js";
+import { readCommodoreList } from "../../commodore/client/commodore-list.js";
 import {
   consumeRestoredReaderExpanded,
   mountNavigatorInto,
@@ -53,7 +54,7 @@ export const codexEntry: RailEntryDescriptor = {
   mobile: { destination: { order: 30, label: (locale) => getT(locale)("mobile.wiki.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h9" /></svg> },
   handles: {
     openWikiEntry: (request, host) => {
-      if (!host.consoleState.getTheaters().some(theater => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+      if (!readCommodoreList().some((commodore) => commodore.commodoreId === request.theaterId)) return { ok: false, reason: "not_found" };
       host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: request.replace === true });
       return { ok: true };
     },

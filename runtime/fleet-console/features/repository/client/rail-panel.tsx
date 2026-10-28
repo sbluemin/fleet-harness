@@ -1,4 +1,5 @@
 import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
@@ -1603,7 +1604,7 @@ export const repositoryEntry: RailEntryDescriptor = {
     const response = await fetch("/api/v1/repository/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, repoRel, query, limit }),
+      body: JSON.stringify({ theaterId, repoRel, query, limit, ...theaterOwnerParam(theaterId) }),
       signal,
     });
     if (!response.ok) throw new Error("repository_search_failed");

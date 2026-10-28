@@ -1,5 +1,6 @@
 import type { FolderListResult } from "../shared/types.js";
 import { surfaceSelector, type SurfaceSelector } from "../../workspace/shared/surface-selector.js";
+import { resolveTheaterOwner } from "../../commodore/client/theater-owner.js";
 import type { ListFolderOptions, PluginFilesClient } from "./tree.js";
 
 /**
@@ -16,7 +17,9 @@ export const LIST_TIMEOUT_MS = 10_000;
  * 기준 mtime을 얻으려 부모 폴더를 한 번 나열하고, 트리는 목록 그 자체를 그린다.
  */
 export function makeFilesClient(selector: string | SurfaceSelector | null): PluginFilesClient {
-  const resolved = typeof selector === "string" ? surfaceSelector({ theaterId: selector }) : selector;
+  const resolved = typeof selector === "string"
+    ? surfaceSelector({ theaterId: selector, commodoreId: resolveTheaterOwner(selector) })
+    : selector;
   return {
     listFolder: async (relativePath?, options: ListFolderOptions = {}) => {
       if (!resolved) throw new Error("no_theater");

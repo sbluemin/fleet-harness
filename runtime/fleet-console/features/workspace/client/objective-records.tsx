@@ -9,11 +9,12 @@ import type { ObjectiveLaunchKind } from "../../objectives/shared/records/types.
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import type { ClientFeatureDescriptor } from "../shared/feature-surfaces.js";
 
-import { createGroup, fetchGroups, fetchObjectiveRecords, patchObjective, renameObjective, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
+import { createGroup, fetchGroups, fetchObjectiveRecords, patchObjective, renameObjective } from "../../../core/client/src/integration/api.js";
 import { clearActiveObjective, shouldReleaseActiveObjective } from "../../../core/client/src/integration/active-objective-surface.js";
 import { blocksObjectiveRecordsShortcutWhileEditing, isBlockingDialogOpen, resolveObjectiveRecordsArrowShortcutAction } from "../../../core/client/src/integration/shortcuts.js";
 import { archiveObjectiveFromUi, resumeDormantOnOpen, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
-import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
+import { addCommodoreTheaterFromPath } from "../../commodore/client/theaters-api.js";
+import { refreshCommodoreList, readCommodoreList } from "../../commodore/client/commodore-list.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { CommanderRowMenuLayer } from "./commander-tab/commander-row-menu.js";
 import { objectiveRecordAccentFromNode } from "./objective-accent.js";
@@ -29,7 +30,7 @@ import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-stor
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleObjectiveRecordsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
+import { consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -52,12 +53,11 @@ const CHROME_FLOAT_GUTTER = 24;
 interface ObjectiveRecordsProps {
   readonly aliasEditor: CommodoreAliasEditor;
   readonly state: ConsoleState;
-  readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
   readonly onArchived: (outcome: ArchiveOutcome) => void;
   readonly deletionToast?: ReactNode;
 }
 
-export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArchived, deletionToast }: ObjectiveRecordsProps) {
+export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast }: ObjectiveRecordsProps) {
   useDesktopConversationAddress(state);
   const viewedTheaterId = useViewedTheaterId();
   const registry = useFeatureRegistry();
@@ -138,8 +138,9 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
 
   useEffect(() => {
     if (!state.objectiveRecordsHydrated) return;
-    for (const theater of state.theaters) pruneObjectiveAccents(theater.id, new Set(state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id).map((objectiveRecord) => objectiveRecord.id)));
-  }, [state.objectiveRecords, state.theaters, state.objectiveRecordsHydrated]);
+    const theaters = readCommodoreList().flatMap((owner) => owner.theaters.map((theater) => theater.theaterId));
+    for (const theaterId of new Set([...theaters, ...state.objectiveRecords.map((objectiveRecord) => objectiveRecord.theaterId)])) pruneObjectiveAccents(theaterId, new Set(state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id)));
+  }, [state.objectiveRecords, state.objectiveRecordsHydrated]);
 
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다.
   useEffect(() => {
@@ -160,9 +161,9 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
       event.stopImmediatePropagation();
       const snapshot = stateRef.current;
       const theaterObjectiveRecords = snapshot.objectiveRecords;
-      const order = snapshot.theaters.flatMap((theater) => {
-        const objectiveRecords = snapshot.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id);
-        return focusCycleObjectiveIds(objectiveRecords, snapshot.groups.filter((group) => group.theaterId === theater.id), objectiveRecordOrderFromNodes(objectiveRecords), getTheaterGroupCollapse(theater.id).collapsedGroups);
+      const order = readCommodoreList().flatMap((owner) => owner.theaters.filter((theater) => theater.status === "available")).flatMap((theater) => {
+        const objectiveRecords = snapshot.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.theaterId);
+        return focusCycleObjectiveIds(objectiveRecords, snapshot.groups.filter((group) => group.theaterId === theater.theaterId), objectiveRecordOrderFromNodes(objectiveRecords), getTheaterGroupCollapse(theater.theaterId).collapsedGroups);
       });
       if (order.length === 0) return;
       const nextId = nextObjectiveId(order, snapshot.activeObjectiveId, arrowAction === "focus-next" ? 1 : -1);
@@ -236,7 +237,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
   // 새 세션 컴포저가 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
   useEffect(() => {
     const request = state.pendingLaunch;
-    if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
+    if (!request || !readCommodoreList().some((owner) => owner.theaters.some((theater) => theater.status === "available" && theater.theaterId === request.theaterId))) return;
     consumeLaunch();
     void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId)
       .then(() => {
@@ -254,7 +255,7 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
           shortenByChars: readShortenByChars(error),
         });
       });
-  }, [registry.providers, state.theaters, state.pendingLaunch, state.newSession]);
+  }, [registry.providers, state.pendingLaunch, state.newSession]);
 
   const handleFocus = useCallback((objectiveId: string) => {
     const objectiveRecord = stateRef.current.objectiveRecords.find((candidate) => candidate.id === objectiveId);
@@ -369,24 +370,16 @@ export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArc
     onSetCompanionPanelVisible: () => {},
   }), [handleClose, language, state.activeObjectiveId, state.activeTheme]);
 
-  const handleAddTheater = useCallback(async (path: string) => {
-    await registerTheaterFromPath(path);
+  const handleAddTheater = useCallback(async (commodoreId: string, path: string) => {
+    await addCommodoreTheaterFromPath(commodoreId, path);
+    await refreshCommodoreList();
   }, []);
-
-  const handleForgetTheater = useCallback(async (theaterId: string) => {
-    onDeferredDeletion(await forgetTheaterCompletely(theaterId));
-  }, [onDeferredDeletion]);
 
   const sideBarChrome = (
     <ObjectiveRecordsSideBar
-      theaters={state.theaters}
       objectiveRecords={state.objectiveRecords}
-      addingTheater={state.addingTheater}
-      theaterError={state.theaterError}
       clampAlias={aliasEditor.clamp}
       onAddTheater={handleAddTheater}
-      onCancelAddTheater={cancelAddTheater}
-      onForgetTheater={handleForgetTheater}
       topStripTrailing={<ConversationSideBarActions />}
       topStripCenter={<ConversationSideBarDeputies />}
       bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}

@@ -10,6 +10,7 @@ import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import { LONG_LINE_CHAR_CAP, renderLine } from "./viewer/code.js";
 import { cacheBustedImageSrc } from "./viewer/image.js";
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 
 /**
  * 훑어보기 — 포커스 행 옆에 잠깐 뜨는 첫 화면.
@@ -83,7 +84,7 @@ export function FilePeek({ theaterId, objectiveId, relativePath, name, anchorTop
         const res = await fetch("/api/v1/file-explorer/files/read", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), relativePath, maxLines: PEEK_LINES }),
+          body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }), relativePath, maxLines: PEEK_LINES }),
           signal: controller.signal,
         });
         if (!res.ok) {

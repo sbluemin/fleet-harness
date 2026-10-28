@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 import { getState, subscribe } from "../integration/store.js";
+import { subscribeViewedTheater } from "../integration/viewed-theater.js";
+import { theaterLabelOrNull } from "../../../../features/commodore/client/theater-owner.js";
 import type { ConsoleState } from "../integration/types.js";
 
 export function useConsoleState(): ConsoleState {
@@ -13,8 +15,8 @@ export function useConsoleState(): ConsoleState {
  */
 export function useTheaterLabel(theaterId: string | null | undefined): string | null {
   return useSyncExternalStore(
-    subscribe,
-    () => (theaterId ? getState().theaters.find((theater) => theater.id === theaterId)?.label ?? null : null),
+    subscribeViewedTheater,
+    () => (theaterId ? theaterLabelOrNull(null, theaterId) : null),
     () => null,
   );
 }

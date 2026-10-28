@@ -1,11 +1,11 @@
-import { ApiError, fetchGroups, fetchObserverStatus, fetchObjectiveRecords, fetchTheaters, resumeConsoleSession } from "./api.js";
+import { ApiError, fetchGroups, fetchObserverStatus, fetchObjectiveRecords, resumeConsoleSession } from "./api.js";
+import { refreshCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
 import { refreshObjectiveArchive } from "./objective-archive.js";
 import { OBJECTIVE_CLUSTER_CHANGED_EVENT } from "../../../../features/objectives/shared/records/archive.js";
 import type { SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
-import { applyTheaterLifecycle } from "../../../../features/workspace/client/theater.js";
-import { applyControlHolder, applyControlReclaimed, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyObjectiveRemoved, applyObjectiveUpdate, getState, hydrateGroups, hydrateObjectiveRecords, hydrateTheaters, setConnectionState } from "./store.js";
+import { applyControlHolder, applyControlReclaimed, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyObjectiveRemoved, applyObjectiveUpdate, getState, hydrateGroups, hydrateObjectiveRecords, setConnectionState } from "./store.js";
 import type { ControlHolder, ObjectiveRecord } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -240,17 +240,12 @@ export function connectObjectiveRecordsSse(): void {
     }
   });
 
-  // 다른 창·API·Console Use가 Theater를 등록·잊기·되돌린 순간. 누른 창은 스스로 다시 조회하지만 나머지 창은
-  // 이 프레임이 아니면 다음 재수화까지 옛 목록을 보인다.
+  // 다른 창·API·Console Use가 사령관 Theater를 바꾸는 순간. 목록은 사령관 목록 재수화로 따라간다.
+  // 전역 theater:* 프레임은 호스트 퇴역 전까지 올 수 있지만 무시한다.
   for (const event of ["registered", "forgotten", "restored", "updated"] as const) {
-    source.addEventListener(`theater:${event}`, (e) => {
+    source.addEventListener(`theater:${event}`, () => {
       if (!acceptFrame()) return;
-      try {
-        const data = JSON.parse((e as MessageEvent<string>).data) as { readonly theaterId?: unknown };
-        if (typeof data.theaterId === "string") applyTheaterLifecycle(event, data.theaterId);
-      } catch {
-        // ignore malformed SSE event
-      }
+      void refreshCommodoreList().catch(() => {});
     });
   }
 
@@ -387,10 +382,9 @@ function attemptReconnect(): void {
     scheduleReconnect();
   }, RECONNECT_ATTEMPT_DEADLINE_MS);
   const { signal } = controller;
-  const refreshSnapshots = () => Promise.all([fetchObjectiveRecords(null, signal), fetchGroups(null, signal).catch(() => null), fetchTheaters(signal).catch(() => null)])
-    .then(([objectiveRecords, groups, theaters]) => {
+  const refreshSnapshots = () => Promise.all([fetchObjectiveRecords(null, signal), fetchGroups(null, signal).catch(() => null)])
+    .then(([objectiveRecords, groups]) => {
       if (attemptGeneration !== connectionGeneration) return;
-      if (theaters) hydrateTheaters(theaters);
       if (groups) hydrateGroups(groups);
       hydrateObjectiveRecords(objectiveRecords);
     });

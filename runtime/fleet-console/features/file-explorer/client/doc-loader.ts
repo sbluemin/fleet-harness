@@ -6,6 +6,7 @@ import { getT, translateServerError } from "./i18n/index.js";
 import { makeFilesClient } from "./files-client.js";
 import { beginDocumentLoad, getFileExplorerSnapshot, isCurrentDocumentLoad, markDocStale, setDocViewState } from "./view-store.js";
 import { cacheBustedImageSrc } from "./viewer/image.js";
+import { resolveTheaterOwner, theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 import { parentDirOf } from "./viewer/stale.js";
 
 /**
@@ -25,7 +26,7 @@ export function nameOfPath(relativePath: string): string {
 export async function refreshDocumentDiskStatus(theaterId: string, paths: readonly string[], signal?: AbortSignal, objectiveId?: string): Promise<void> {
   if (paths.length === 0) return;
   const before = getFileExplorerSnapshot(theaterId).docStates;
-  const response = await fetch("/api/v1/file-explorer/files/disk-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), paths }), ...(signal ? { signal } : {}) });
+  const response = await fetch("/api/v1/file-explorer/files/disk-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }), paths }), ...(signal ? { signal } : {}) });
   if (!response.ok || signal?.aborted) return;
   const result = await response.json() as { statuses: FileDiskStatus[] };
   if (signal?.aborted) return;
@@ -77,8 +78,9 @@ export async function loadDocument(
     }
     const mtimeMs = knownMtime(theaterId, relativePath);
     const sizeBytes = knownSize(theaterId, relativePath);
+    const ownerQuery = objectiveId ? "" : (() => { const owner = resolveTheaterOwner(theaterId); return owner ? `&commodoreId=${encodeURIComponent(owner)}` : ""; })();
     const src = cacheBustedImageSrc(
-      `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}`}&path=${encodeURIComponent(relativePath)}`,
+      `/api/v1/file-explorer/files/image?${objectiveId ? `objectiveId=${encodeURIComponent(objectiveId)}` : `theaterId=${encodeURIComponent(theaterId)}${ownerQuery}`}&path=${encodeURIComponent(relativePath)}`,
       mtimeMs,
     );
     setDocViewState(theaterId, relativePath, { kind: "image", relativePath, name, src, mtimeMs, sizeBytes, stale: false });
@@ -91,7 +93,7 @@ export async function loadDocument(
     const res = await fetch("/api/v1/file-explorer/files/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), relativePath, window: readWindow }),
+      body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }), relativePath, window: readWindow }),
       ...(signal ? { signal } : {}),
     });
     if (!res.ok) {

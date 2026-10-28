@@ -6,7 +6,7 @@ import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openArchiveSheet, useObjectiveArchive } from "../../../../core/client/src/integration/objective-archive.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
-import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
+import { readCommodoreList } from "../../../commodore/client/commodore-list.js";
 
 export interface ArchiveSectionCount {
   readonly section: ArchiveSectionDescriptor;
@@ -19,7 +19,7 @@ export interface ArchiveSectionCount {
  */
 export function useArchiveSections(query = "", theaterIds?: readonly string[]): readonly ArchiveSectionCount[] {
   const { archiveSections } = useFeatureRegistry();
-  const registeredIds = useConsoleState().theaters.map((theater) => theater.id);
+  const registeredIds = readCommodoreList().flatMap((owner) => owner.theaters.map((theater) => theater.theaterId));
   const idsKey = JSON.stringify(theaterIds ?? registeredIds);
   const subscribe = useCallback((listener: () => void) => {
     const offs = archiveSections.map((section) => section.subscribe(listener));

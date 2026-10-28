@@ -16,7 +16,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
-import { getMobileDestination, pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
+import { getMobileDestination, setMobileDestination, useMobileDestination } from "./mobile-store.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { MobileArchiveScreen } from "./mobile-archive-screen.js";
 import { MobileSearchScreen } from "./mobile-search-screen.js";
@@ -24,6 +24,7 @@ import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileHome } from "./mobile-home.js";
 import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
+import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { readMobileObjectiveId, replaceMobileObjectiveId } from "./mobile-objective-url.js";
 import "../../styles/mobile.css";
@@ -137,7 +138,7 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
       </>
     );
   } else {
-    content = commodores.length > 0 || consoleState.theaters.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
+    content = commodores.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
   }
 
   return (
@@ -148,13 +149,13 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
 }
 
 /**
- * Theater가 하나도 없을 때의 홈 — 첫 실행 화면(S-49, 상단 막대 없음). 아직 부트스트랩 전이면 빈 화면이다.
- * Theater가 있으면 홈은 사령관 목록이다(`MobileHome`).
+ * 사령관이 하나도 없을 때의 홈 — 첫 실행 화면(S-49, 상단 막대 없음). 아직 부트스트랩 전이면 빈 화면이다.
+ * 사령관이 있으면 홈은 사령관 목록이다(`MobileHome`).
  */
 function MobileEmptyHome() {
   const t = useT();
   const state = useConsoleState();
-  const firstRun = state.bootstrapped && state.theaters.length === 0;
+  const firstRun = state.bootstrapped && useCommodoreList().length === 0;
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
   if (!firstRun) return null;
   return (
@@ -169,7 +170,7 @@ function MobileEmptyHome() {
           </div>
         ))}
       </div>
-      <button type="button" className="mobile-pill" onClick={() => pushMobileSheet({ kind: "folder" })}><MobileIcon name="plus" size={18} />{t("mobile.sheet.theater.add")}</button>
+      <button type="button" className="mobile-pill" onClick={() => requestCommodoreCreate()}><MobileIcon name="plus" size={18} />{t("sidebar.commodore.createTitle")}</button>
     </section>
   );
 }

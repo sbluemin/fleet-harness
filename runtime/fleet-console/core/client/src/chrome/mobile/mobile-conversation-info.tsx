@@ -25,6 +25,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
 import { mobileObjectiveMenuItems } from "./mobile-objective-menu.js";
 import { conversationTabId, getMobileDestination, pushMobileSheet, setMobileDestination, syncMobileDestinationUrl, useMobileDestination, useMobileObjectiveMenu } from "./mobile-store.js";
+import { theaterFolderName, theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
@@ -52,7 +53,11 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
   const state = useConsoleState();
   const capabilities = useHostCapabilities();
   const conversation = useMobileConversationOf(state)(objectiveRecord);
-  const theater = state.theaters.find((item) => item.id === objectiveRecord.theaterId) ?? null;
+  const theaterLabel = theaterLabelOf(
+    objectiveRecord.commodoreId,
+    objectiveRecord.theaterId,
+    theaterFolderName(typeof objectiveRecord.cwd === "string" ? objectiveRecord.cwd : null),
+  );
   const bodyItems = useMobileObjectiveMenu(bodyOwner.id);
   const registered = useRegisteredConversationObjectiveTabs();
   const bindings = useRailEntries();
@@ -203,7 +208,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
   const statusWord = conversationStateWord(conversation.face, t);
   const panelContext: RailPanelContext = {
     theaterId: objectiveRecord.theaterId,
-    pathContext: { kind: "root", relPath: null, label: theater?.label ?? "" },
+    pathContext: { kind: "root", relPath: null, label: theaterLabel },
     api: capabilities.api,
     rail: capabilities.rail,
     surfaces: capabilities.surfaces,
@@ -238,7 +243,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
               <div className="mobile-group-row">
                 <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="folder" /></span>
                 <span className="mobile-group-row-copy">{t("mobile.info.theater")}</span>
-                <span className="mobile-group-row-value">{theater?.label ?? ""}</span>
+                <span className="mobile-group-row-value">{theaterLabel}</span>
               </div>
               <div className="mobile-group-row">
                 <span className="mobile-group-row-icon" aria-hidden="true"><MobileIcon name="info" /></span>
@@ -278,7 +283,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
           </div>
           <nav className="mobile-info-rows" aria-label={t("mobile.info.tabsAria")}>
             {tabs.map((item) => {
-              const value = sectionValue(item, infoModel, theater?.label ?? "", rowValues);
+              const value = sectionValue(item, infoModel, theaterLabel, rowValues);
               return (
                 <button type="button" data-press="r2" className="mobile-info-prow" key={item.id} onClick={() => { if (item.kind === "pane") item.select?.(); setTabId(item.id); }}>
                   <span className="mobile-info-prow-ic" aria-hidden="true"><MobileIcon name={sectionIcon(item)} /></span>
@@ -299,7 +304,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
               <ConversationAvatar conversation={conversation} size={110} />
               <button type="button" data-press="r1" className="mobile-info-title" onClick={() => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id })}>
                 <strong>{objectiveRecord.title}</strong>
-                <small>{[theater?.label, harnessLabel].filter(Boolean).join(" · ")}</small>
+                <small>{[theaterLabel, harnessLabel].filter(Boolean).join(" · ")}</small>
               </button>
             </div>
           ) : null}

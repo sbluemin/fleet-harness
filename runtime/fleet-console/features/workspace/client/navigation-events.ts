@@ -1,4 +1,5 @@
 import type { ShellOpenAtRequest, ShellOpenAtResult } from "../shared/navigation.js";
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 import { ApiError } from "../../execution/client/objective-records.js";
 
 /**
@@ -18,10 +19,13 @@ export function requestShellRestartAt(request: ShellOpenAtRequest, target: Shell
 }
 
 async function postShellPlacement(url: string, request: ShellOpenAtRequest, target: ShellPlacementTarget): Promise<ShellOpenAtResult> {
+  const owned = request.objectiveId === undefined && request.commodoreId === undefined && request.theaterId !== undefined
+    ? { ...request, ...theaterOwnerParam(request.theaterId) }
+    : request;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(target.shell === undefined ? request : { ...request, shell: target.shell }),
+    body: JSON.stringify(target.shell === undefined ? owned : { ...owned, shell: target.shell }),
   });
   if (response.ok) return { ok: true };
   const body = await response.json().catch(() => null) as { error?: string } | null;

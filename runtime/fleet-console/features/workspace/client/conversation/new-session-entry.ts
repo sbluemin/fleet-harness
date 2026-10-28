@@ -15,13 +15,12 @@ import { readCommodoreList, readMobileCommodoreId, readZoneCommodore } from "../
  * 화면이 Theater 칩 자리에 「Theater 추가…」를 세운다. commodoreId 가 null 이면(사령관이 아직 없다) Console 에 등록된 Theater 에서 같은 순서로 고른다.
  */
 export function resolveNewSessionTheaterId(commodoreId: string | null): string | null {
-  const registered = new Set(getState().theaters.map((theater) => theater.id));
   const owned = commodoreId === null
-    ? null
+    ? []
     : readCommodoreList().find((commodore) => commodore.commodoreId === commodoreId)?.theaters
       .filter((theater) => theater.status === "available")
       .map((theater) => theater.theaterId) ?? [];
-  const ids = owned ?? [...registered];
+  const ids = owned;
   const remembered = readNewSessionSelection().theaterId;
   if (remembered !== null && ids.includes(remembered)) return remembered;
   const viewed = getViewedTheaterId();

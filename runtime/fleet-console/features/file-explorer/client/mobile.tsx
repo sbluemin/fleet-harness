@@ -135,7 +135,7 @@ export function MobileFileTree(ctx: PaneContext) {
     activateStoredDocument(theaterId, { relativePath: entry.relativePath, name: entry.name, preview: true });
     // 트리에서 연 문서도 주소에 좌표를 싣는다 — 새로고침이 그 문서를 되살리고, 트리로 돌아오면 위 효과가 걷는다.
     panes.replaceParams({ ...Object.fromEntries(Object.entries(params).filter(([key]) => !DOCUMENT_ADDRESS_KEYS.has(key))), path: entry.relativePath });
-    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: entry.relativePath, theaterId } });
+    panes.open({ paneId: DOCUMENT_PANE_ID, params: { path: entry.relativePath, theaterId, ...(ctx.commodoreId ? { commodoreId: ctx.commodoreId } : {}) } });
   };
 
   const rows = (relativePath: string, depth: number): ReactNode[] => {

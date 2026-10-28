@@ -198,7 +198,9 @@ async function searchRailPanel(
 
 /** 스토어의 기본 목록이 이미 구성원(부모가 대표하는 Objective)을 뺐다 — 여기서 따로 거르지 않는다. */
 export function buildObjectiveSearchEntries(current: ConsoleState): readonly ObjectiveSearchEntry[] {
-  const theaters = new Map(current.theaters.map((theater) => [theater.id, theater]));
+  const theaters = new Map(readCommodoreList().flatMap((owner) => owner.theaters
+    .filter((theater) => theater.status === "available")
+    .map((theater) => [theater.theaterId, { id: theater.theaterId, label: theater.label }] as const)));
   const entries: ObjectiveSearchEntry[] = [];
   for (const objectiveRecord of current.objectiveRecords) {
     if (!objectiveRecord.theaterId) continue;
@@ -365,7 +367,7 @@ function commodoreAliasOf(commodoreId: string | undefined): string | null {
 
 function toObjectiveSearchEntry(
   objectiveRecord: ObjectiveRecord,
-  theater: TheaterInfo | undefined,
+  theater: Pick<TheaterInfo, "id" | "label"> | undefined,
   objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>,
 ): ObjectiveSearchEntry {
   return {

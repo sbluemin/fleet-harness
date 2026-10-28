@@ -34,7 +34,7 @@ import { KeyedAvatar } from "../avatars.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { addCommodoreTheaterFromPath } from "../../../commodore/client/theaters-api.js";
-import { registerTheaterFromPath } from "../theater.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
 import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
@@ -69,14 +69,14 @@ export function NewSessionColumn({ state, target, tools }: {
   const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
   const commodoreName = commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
   // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라진 행은 시작할 수 없으므로 세우지 않는다.
-  // 사령관이 하나도 없을 때만(첫 실행이 새 사령관을 만든다) Console 에 등록된 Theater 를 후보로 둔다.
+  // 사령관이 없으면 후보가 없다 — 「Theater 추가…」는 새 사령관 만들기 흐름으로 이어진다.
   const theaters = useMemo(() => {
-    if (commodoreId === null) return state.theaters.map((info) => ({ id: info.id, label: info.label }));
+    if (commodoreId === null) return [];
     return (commodore?.theaters ?? []).flatMap((row) => {
       if (row.status !== "available") return [];
       return [{ id: row.theaterId, label: row.label }];
     });
-  }, [commodoreId, commodore, state.theaters]);
+  }, [commodoreId, commodore]);
   // 고른 Theater 가 이 사령관 목록에 없으면(다른 사령관의 것이거나 빠졌다) 기본 규칙으로 다시 고른다 — 목록이 비면 null.
   const theater = theaters.find((candidate) => candidate.id === target.theaterId)
     ?? theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId(commodoreId))
@@ -197,15 +197,20 @@ export function NewSessionColumn({ state, target, tools }: {
 
   const addTheater = () => {
     setTheaterMenuOpen(false);
+    // 사령관이 없으면 폴더를 먼저 고르지 않는다 — 새 사령관 만들기 흐름으로 이어진다.
+    if (!commodoreId) {
+      requestCommodoreCreate();
+      return;
+    }
     setFolderDialogOpen(true);
   };
 
-  // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
+  // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다.
   const confirmFolder = (path: string) => {
     setFolderDialogOpen(false);
-    void (commodoreId ? addCommodoreTheaterFromPath(commodoreId, path) : registerTheaterFromPath(path)).then(async (theaterId) => {
-      if (theaterId === null) return;
-      if (commodoreId) await refreshCommodoreList();
+    if (!commodoreId) return;
+    void addCommodoreTheaterFromPath(commodoreId, path).then(async (theaterId) => {
+      await refreshCommodoreList();
       pickTheater(theaterId);
     }).catch(() => {});
   };
@@ -595,7 +600,6 @@ export function NewSessionColumn({ state, target, tools }: {
   };
 
   const viewLabel = t(startView === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
-  const adding = state.addingTheater;
 
   return (
     <div className="conversation-column new-session" onKeyDown={onKeyDown}>
@@ -704,9 +708,9 @@ export function NewSessionColumn({ state, target, tools }: {
                       <span className="new-session-chip-label">{theater.label}</span>
                     </button>
                   ) : (
-                    <button type="button" className="new-session-chip is-quiet" onClick={addTheater} disabled={adding || starting} data-new-session-add-theater="chip">
+                    <button type="button" className="new-session-chip is-quiet" onClick={addTheater} disabled={starting} data-new-session-add-theater="chip">
                       <span className="new-session-chip-glyph" aria-hidden="true"><FolderPlusGlyph /></span>
-                      <span className="new-session-chip-label">{t("conversation.newSession.addTheater")}</span>
+                      <span className="new-session-chip-label">{t(commodoreId ? "conversation.newSession.addTheater" : "sidebar.commodore.createTitle")}</span>
                     </button>
                   )}
                   {theaterMenuOpen && theater ? <TheaterMenu theaters={theaters} current={theater.id} onPick={pickTheater} onAdd={addTheater} onClose={() => setTheaterMenuOpen(false)} /> : null}

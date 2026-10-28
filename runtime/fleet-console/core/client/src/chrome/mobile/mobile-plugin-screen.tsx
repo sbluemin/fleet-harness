@@ -9,6 +9,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/feature-registry.js";
 import { SurfacePane } from "../expanded-surface/layer.js";
 import { closeExpandedSurface, getExpandedSurfaceState, useExpandedSurfaces } from "../expanded-surface/store.js";
+import { resolveTheaterOwner, theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
@@ -41,7 +42,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const addressTheaterKnown = useSyncExternalStore(subscribe, () => {
     const current = getMobileDestination();
     const addressed = current.kind === "plugin" && current.entryId === entryId ? current.params?.theaterId : undefined;
-    return addressed === undefined || getState().theaters.some((theater) => theater.id === addressed);
+    return addressed === undefined || resolveTheaterOwner(addressed) !== null;
   });
   const [theaterReady, setTheaterReady] = useState(addressTheaterKnown);
   if (addressTheaterKnown && !theaterReady) setTheaterReady(true);
@@ -119,7 +120,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const commodoreId = useViewedCommodoreId();
-  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getViewedTheaterId())?.label ?? "");
+  const theaterLabel = useSyncExternalStore(subscribe, () => theaterLabelOf(null, getViewedTheaterId(), ""));
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances } = useExpandedSurfaces();
   const instance = instances.find((item) => item.surfaceId === surfaceId);

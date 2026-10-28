@@ -21,12 +21,13 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-/** 모바일 대화 목록의 Theater 필터만 기억한다. 데스크톱 동작·Objective 수명과 무관하며 영속화하지 않는다. */
-let mobileListTheaterId: string | null = null;
-export function getMobileListTheaterId(): string | null { return mobileListTheaterId; }
-export function setMobileListTheaterId(theaterId: string | null): void {
-  if (mobileListTheaterId === theaterId) return;
-  mobileListTheaterId = theaterId;
+/** 모바일 대화 목록의 Theater 필터 — 사령관 + Theater 쌍으로만 기억한다. 데스크톱 동작·Objective 수명과 무관하며 영속화하지 않는다. */
+export interface MobileListTheater { readonly commodoreId: string; readonly theaterId: string }
+let mobileListTheater: MobileListTheater | null = null;
+export function getMobileListTheater(): MobileListTheater | null { return mobileListTheater; }
+export function setMobileListTheater(filter: MobileListTheater | null): void {
+  if (mobileListTheater?.commodoreId === filter?.commodoreId && mobileListTheater?.theaterId === filter?.theaterId) return;
+  mobileListTheater = filter;
   emit();
 }
 export function subscribeMobileState(listener: () => void): () => void { return subscribe(listener); }
@@ -101,7 +102,11 @@ function writeDestinationToUrl(next: MobileDestination): void {
 
 let destination: MobileDestination = readDestinationFromUrl();
 // 목적지의 Theater는 홈으로 돌아가도 이어진다. 영속 저장소 대신 복원한 주소에서 목록 필터를 시작한다.
-if (destination.kind === "plugin" && destination.params?.theaterId) mobileListTheaterId = destination.params.theaterId;
+if (destination.kind === "plugin" && destination.params?.theaterId) {
+  mobileListTheater = typeof destination.params.commodoreId === "string"
+    ? { commodoreId: destination.params.commodoreId, theaterId: destination.params.theaterId }
+    : null;
+}
 
 export function useMobileDestination(): MobileDestination {
   return useSyncExternalStore(subscribe, () => destination);
@@ -114,7 +119,11 @@ export function setMobileDestination(next: MobileDestination): void {
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) { writeDestinationToUrl(next); return; }
   destination = next;
-  if (next.kind === "plugin" && next.params?.theaterId) mobileListTheaterId = next.params.theaterId;
+  if (next.kind === "plugin" && next.params?.theaterId) {
+    mobileListTheater = typeof next.params.commodoreId === "string"
+      ? { commodoreId: next.params.commodoreId, theaterId: next.params.theaterId }
+      : null;
+  }
   writeDestinationToUrl(next);
   emit();
 }

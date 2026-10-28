@@ -3,7 +3,9 @@ import type { CommodoreClientHost } from "../../../../features/commodore/shared/
 import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/workspace/client/navigation-events.js";
 import { getActiveShellKey } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
-import { setMobileListTheaterId } from "../chrome/mobile/mobile-store.js";
+import { setMobileListTheater } from "../chrome/mobile/mobile-store.js";
+import { readCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { resolveTheaterOwner } from "../../../../features/commodore/client/theater-owner.js";
 import { getViewedCommodoreId, getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "../../../../features/workspace/shared/pane.js";
 import type { ExpandedSurfaceOpenRequest } from "../../../../features/workspace/shared/expanded-surface.js";
@@ -37,9 +39,10 @@ import { clearObjectiveRuntime, dismissNotificationsForObjective, focusObjective
   raiseObjectiveNotification, setObjectiveRuntime, setObjectiveRuntimeHydration, subscribe } from "./store.js";
 
 function viewTheaterInbox(theaterId: string): void {
-  if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
+  const owner = resolveTheaterOwner(theaterId);
+  if (!owner) return;
   if (getViewModeSnapshot().effective === "mobile") {
-    setMobileListTheaterId(theaterId);
+    setMobileListTheater({ commodoreId: owner, theaterId });
     closeMobileObjective();
     setMobileDestination({ kind: "home" });
   }
@@ -107,7 +110,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
   return {
     bindings,
     activateTheater: (theaterId) => {
-      if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
+      if (!resolveTheaterOwner(theaterId)) return false;
       if (getViewModeSnapshot().effective === "mobile") {
         viewTheaterInbox(theaterId);
       } else if (getViewedTheaterId() !== theaterId) {
@@ -215,7 +218,7 @@ export function createHostCapabilities(
       clear: (objectiveId) => clearObjectiveStatusDetail(objectiveId),
     },
     consoleState: {
-      getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label })),
+      getTheaters: () => readCommodoreList().flatMap((owner) => owner.theaters.filter((theater) => theater.status === "available").map((theater) => ({ id: theater.theaterId, label: theater.label }))),
       // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
       // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
       // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveObjectiveRuntimeActivity)을 원 런타임에 쓴다.
@@ -264,7 +267,7 @@ export function createHostCapabilities(
         const binding = readBindings().find((item) => item.entry.handles?.openFile);
         const handler = binding?.entry.handles?.openFile;
         if (!handler) return { ok: false, reason: "no_handler" };
-        if (!request.objectiveId && !getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+        if (!request.objectiveId && !resolveTheaterOwner(request.theaterId)) return { ok: false, reason: "not_found" };
         const target = await handler(request, capabilities);
         if ("ok" in target) {
           if (target.ok) capabilities.rail.open(binding!.entry.id);
@@ -281,7 +284,7 @@ export function createHostCapabilities(
         const binding = readBindings().find((item) => item.entry.handles?.openWikiEntry);
         const handler = binding?.entry.handles?.openWikiEntry;
         if (!handler) return { ok: false, reason: "no_handler" };
-        if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+        if (!resolveTheaterOwner(request.theaterId)) return { ok: false, reason: "not_found" };
         const result = await handler(request, capabilities);
         if (result && !result.ok) return result;
         viewTheaterInbox(request.theaterId);

@@ -2,6 +2,7 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "../../..
 import type { ClientConsoleStateCapability } from "../../../../workspace/shared/console-state.js";
 import type { PersistentComponentContext } from "../../../../workspace/shared/surface-contracts.js";
 import type { ShellOpenAtRequest as ShellCwdHint } from "../../../../workspace/shared/navigation.js";
+import { theaterOwnerParam } from "../../../../commodore/client/theater-owner.js";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
@@ -115,9 +116,9 @@ function disposeShellHost(key: string): void {
 /** 이 칸이 처음 Shell 을 세울 자리 — 대화의 작업 위치, 대화가 없으면 표면 params·마지막으로 본 Theater 의 루트. */
 function launchHintOf(context: ExpandedSurfaceContext): ShellCwdHint | undefined {
   const location = context.conversation?.location;
-  if (location) return location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
+  if (location) return location.relative === "" ? { theaterId: location.theaterId, ...theaterOwnerParam(location.theaterId) } : { theaterId: location.theaterId, path: location.relative, ...theaterOwnerParam(location.theaterId) };
   const theaterId = context.params.cwdTheaterId ?? lastViewedTheaterId;
-  return theaterId ? { theaterId } : undefined;
+  return theaterId ? { theaterId, ...theaterOwnerParam(theaterId) } : undefined;
 }
 
 function attachShellMount(target: HTMLElement, context: ExpandedSurfaceContext): void {
@@ -250,7 +251,7 @@ function ShellLocationNotice({ ctx }: { readonly ctx: ExpandedSurfaceContext }) 
   const location = ctx.conversation?.location ?? null;
   if (location === null || mount === null || mount.launchedAt === null || !session?.open) return null;
   if (mount.launchedAt === location.relative) return null;
-  const target = location.relative === "" ? { theaterId: location.theaterId } : { theaterId: location.theaterId, path: location.relative };
+  const target = location.relative === "" ? { theaterId: location.theaterId, ...theaterOwnerParam(location.theaterId) } : { theaterId: location.theaterId, path: location.relative, ...theaterOwnerParam(location.theaterId) };
   const settle = () => {
     const current = shellMounts.get(key);
     if (current) publishShellMount(key, { ...current, launchedAt: location.relative, cwdHint: target });

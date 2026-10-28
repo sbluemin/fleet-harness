@@ -50,6 +50,7 @@ import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
@@ -797,7 +798,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
 
   // 도구 캡슐은 지금 대화가 고른 Theater만 쓴다. 사령관의 등록 Theater가 둘 이상인데 목표가 하나를 저장하지 않았으면
   // 전역 현재 Theater나 단일 소유 조회로 아무 Theater에나 묶지 않는다.
-  const theaterLabelOf = (id: string | null) => (id === null ? "" : state.theaters.find((theater) => theater.id === id)?.label ?? "");
+  const theaterLabelOf = (id: string | null) => (id === null ? "" : theaterLabelFromOwner(toolCommodoreId, id, ""));
   const scopeTheaterId = toolCommodoreId !== null
     ? toolContext.theaterId
     : standInId !== null ? null : surfaceTheaterId ?? toolContext.theaterId;

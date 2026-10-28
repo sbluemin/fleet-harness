@@ -19,6 +19,7 @@ import { reportSheetChrome, reportShellChrome } from "../../../../core/client/sr
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { isMentionSelectable, mentionTargetName, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
+import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { KeyedAvatar } from "../avatars.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { resolveObjectiveMarkVisual } from "../../../execution/client/objective-activity.js";
@@ -51,7 +52,6 @@ export interface MobileNewSessionSheetProps {
   readonly onTheater: (id: string) => void;
   /** 고른 폴더를 Theater 로 등록하고 이 사령관의 목록에 더한다. */
   readonly onAddFolder: (path: string) => void;
-  readonly addingTheater: boolean;
   readonly groups: readonly ObjectiveLaunchVariantGroup[];
   readonly selectedRow: ObjectiveLaunchVariantRow | null;
   readonly effort: string | null;
@@ -189,8 +189,8 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
             {candidate.id === theaterId ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
           </button>
         ))}
-        {/* 이 사령관의 목록에 폴더를 더한다 — 폰 셸의 Theater 시트와 같은 행 문법이다. */}
-        <button type="button" className="mobile-sheet-row" onClick={() => setSub("folder")} disabled={props.addingTheater} data-mls-add-theater="">
+        {/* 이 사령관의 목록에 폴더를 더한다 — 사령관이 없으면 새 사령관 만들기 흐름으로 이어진다. */}
+        <button type="button" className="mobile-sheet-row" onClick={() => props.commodoreId ? setSub("folder") : leaveSheet(requestCommodoreCreate)} data-mls-add-theater="">
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
         </button>
@@ -339,7 +339,7 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
               <span className="mls-chip-name">{theater.label}</span>
             </button>
           ) : (
-            <button type="button" className="mobile-pill-secondary mls-theater-chip" onClick={() => setSub("folder")} disabled={props.addingTheater} data-mls-add-theater="chip">
+            <button type="button" className="mobile-pill-secondary mls-theater-chip" onClick={() => props.commodoreId ? setSub("folder") : leaveSheet(requestCommodoreCreate)} data-mls-add-theater="chip">
               <MobileIcon name="plus" size={18} />
               <span className="mls-chip-name">{t("mobile.sheet.theater.add")}</span>
             </button>
