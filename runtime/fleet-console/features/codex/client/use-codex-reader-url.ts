@@ -125,13 +125,12 @@ export function useCodexReaderUrlSync(): void {
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다. 이 한 줄이 빠지면 링크는
     // 축소 화면에서 아무것도 못 보여주고, 확대 링크는 null workspace로 영영 기다린다.
     openCodexRailPanel();
+    // 링크의 사령관으로 옮겨 왔으면 그 사령관의 위키가 풀릴 때까지 기다린다 — 앞서 보던 사령관의 위키로 문서를 찾거나, 같은 id로
+    // 이미 열린 그 사령관의 문서를 도착으로 보면 링크가 엉뚱한 문서로 소비된다. 방금 사령관을 옮겼을 수 있으니 지금 값을 다시 읽는다.
+    const ownerNow = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
+    if (target.commodoreId !== null && target.commodoreId === ownerNow && workspace?.contextKey !== target.commodoreId) return;
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
       if (!workspace || (workspace.theaterId ?? workspace.contextKey) !== theaterId) return;
-      // 링크의 사령관으로 옮겨 왔으면 그 사령관의 위키가 풀릴 때까지 기다린다 — 앞서 보던 사령관의 위키로 문서를 찾으면
-      // 같은 id의 다른 문서를 열거나 없는 문서로 보고 링크를 버린다.
-      // 방금 사령관을 옮겼을 수 있으니 지금 값을 다시 읽는다.
-      const ownerNow = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
-      if (target.commodoreId !== null && target.commodoreId === ownerNow && workspace.contextKey !== target.commodoreId) return;
       const controller = new AbortController();
       const discardTarget = () => {
         clearReaderSession(workspace.contextKey, target.entryId);
