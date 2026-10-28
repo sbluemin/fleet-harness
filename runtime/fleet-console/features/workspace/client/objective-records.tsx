@@ -161,7 +161,9 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       event.stopImmediatePropagation();
       const snapshot = stateRef.current;
       const theaterObjectiveRecords = snapshot.objectiveRecords;
-      const order = readCommodoreList().flatMap((owner) => owner.theaters.filter((theater) => theater.status === "available")).flatMap((theater) => {
+      // 같은 폴더를 여러 사령관이 나누면 그 폴더가 사령관마다 나온다. 한 번만 돌아야 순환이 모든 목표에 닿는다.
+      const theaters = [...new Map(readCommodoreList().flatMap((owner) => owner.theaters.filter((theater) => theater.status === "available")).map((theater) => [theater.theaterId, theater])).values()];
+      const order = theaters.flatMap((theater) => {
         const objectiveRecords = snapshot.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.theaterId);
         return focusCycleObjectiveIds(objectiveRecords, snapshot.groups.filter((group) => group.theaterId === theater.theaterId), objectiveRecordOrderFromNodes(objectiveRecords), getTheaterGroupCollapse(theater.theaterId).collapsedGroups);
       });

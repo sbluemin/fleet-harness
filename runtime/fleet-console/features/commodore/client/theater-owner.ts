@@ -1,11 +1,12 @@
 import { readCommodoreList } from "./commodore-list.js";
+import { getViewedCommodoreId } from "../../../core/client/src/integration/viewed-theater.js";
 
 /**
  * 전역 Theater 등록부 없이 Theater의 주인을 찾는다. 후보 사령관을 알면(보고 있는
  * 사령관·표면의 사령관) 그 목록에 있을 때만 인정하고, 모르면 가용 목록에 든
  * 사령관이 정확히 하나일 때만 돌려준다. 여럿이 나누는 폴더는 고르지 않는다.
  */
-export function resolveTheaterOwner(theaterId: string, preferredCommodoreId?: string | null): string | null {
+export function resolveTheaterOwner(theaterId: string, preferredCommodoreId: string | null = getViewedCommodoreId()): string | null {
   const commodores = readCommodoreList();
   // 사령관 UUID 자체가 들어오면(Codex 리더 주소 등) 그 사령관이다.
   if (commodores.some((row) => row.commodoreId === theaterId)) return theaterId;
@@ -49,4 +50,9 @@ export function theaterLabelOrNull(commodoreId: string | null | undefined, theat
  */
 export function theaterOwnerParam(commodoreId?: string | null): { readonly commodoreId: string } | Record<string, never> {
   return commodoreId ? { commodoreId } : {};
+}
+
+/** 어느 사령관이든 지금 그 폴더를 가지고 있는가. 같은 폴더를 여러 사령관이 나눠도 참이다 — 주인 하나를 고르지 않는다. */
+export function isKnownTheater(theaterId: string): boolean {
+  return readCommodoreList().some((row) => row.theaters.some((theater) => theater.status === "available" && theater.theaterId === theaterId));
 }

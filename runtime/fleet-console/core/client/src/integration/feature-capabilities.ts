@@ -5,7 +5,7 @@ import { getActiveShellKey } from "../../../../features/execution/client/termina
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { setMobileListTheater } from "../chrome/mobile/mobile-store.js";
 import { readCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
-import { resolveTheaterOwner } from "../../../../features/commodore/client/theater-owner.js";
+import { isKnownTheater, resolveTheaterOwner } from "../../../../features/commodore/client/theater-owner.js";
 import { getViewedCommodoreId, getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "../../../../features/workspace/shared/pane.js";
 import type { ExpandedSurfaceOpenRequest } from "../../../../features/workspace/shared/expanded-surface.js";
@@ -110,7 +110,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
   return {
     bindings,
     activateTheater: (theaterId) => {
-      if (!resolveTheaterOwner(theaterId)) return false;
+      if (!isKnownTheater(theaterId)) return false;
       if (getViewModeSnapshot().effective === "mobile") {
         viewTheaterInbox(theaterId);
       } else if (getViewedTheaterId() !== theaterId) {
@@ -267,7 +267,7 @@ export function createHostCapabilities(
         const binding = readBindings().find((item) => item.entry.handles?.openFile);
         const handler = binding?.entry.handles?.openFile;
         if (!handler) return { ok: false, reason: "no_handler" };
-        if (!request.objectiveId && !resolveTheaterOwner(request.theaterId)) return { ok: false, reason: "not_found" };
+        if (!request.objectiveId && !isKnownTheater(request.theaterId)) return { ok: false, reason: "not_found" };
         const target = await handler(request, capabilities);
         if ("ok" in target) {
           if (target.ok) capabilities.rail.open(binding!.entry.id);
@@ -284,7 +284,7 @@ export function createHostCapabilities(
         const binding = readBindings().find((item) => item.entry.handles?.openWikiEntry);
         const handler = binding?.entry.handles?.openWikiEntry;
         if (!handler) return { ok: false, reason: "no_handler" };
-        if (!resolveTheaterOwner(request.theaterId)) return { ok: false, reason: "not_found" };
+        if (!isKnownTheater(request.theaterId)) return { ok: false, reason: "not_found" };
         const result = await handler(request, capabilities);
         if (result && !result.ok) return result;
         viewTheaterInbox(request.theaterId);

@@ -138,7 +138,9 @@ export function openMobilePluginDestination(entryId: string, theaterId: string |
     setMobileDestination({ kind: "plugin", entryId, ...(commodoreId ? { params: { commodoreId } } : {}) });
     return;
   }
-  setMobileDestination({ kind: "plugin", entryId, ...(theaterId === null ? {} : { params: { theaterId } }) });
+  // 같은 폴더를 여러 사령관이 나눌 수 있다. 지금 보는 사령관을 함께 실어 새로고침해도 그 사령관의 폴더로 연다.
+  const commodoreId = theaterId === null ? null : getViewedCommodoreId();
+  setMobileDestination({ kind: "plugin", entryId, ...(theaterId === null ? {} : { params: { theaterId, ...(commodoreId ? { commodoreId } : {}) } }) });
 }
 
 /** 대화 정보 화면에서 엔트리(`mobile.conversationPane`)가 세우는 탭의 id — 착지 요청과 탭 목록이 같은 id를 쓴다. */
