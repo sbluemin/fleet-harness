@@ -304,7 +304,6 @@ export interface ConsoleState {
   readonly requestedPort: number | null;
   readonly effectivePort: number;
   readonly portHonored: boolean;
-  readonly theaters: readonly TheaterInfo[];
   /**
    * 목록 표면이 쓰는 최상위 Objective — 자식은 부모의 sessions에서 파생되어 이 목록에 들지 않는다.
    * id 로 찾을 때는 `findObjective`, 부모의 구성원은 `nestedObjectiveRecordsOf` 로 명시적으로 연다.
@@ -326,8 +325,6 @@ export interface ConsoleState {
   readonly objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>;
   readonly objectiveRecordRuntimeHydration: ObjectiveRuntimeHydration;
   readonly objectiveRecordRuntimeError: string | null;
-  readonly addingTheater: boolean;
-  readonly theaterError: string | null;
   readonly objectiveRecordsViewActive: boolean;
   readonly objectiveRecordSearchOpen: boolean;
   readonly objectiveRecordSearchSeed: string | null;
@@ -361,7 +358,7 @@ export interface ConsoleState {
   readonly bootstrapped: boolean;
   readonly pendingObjectiveFocus: string | null;
   readonly keyboardFocusRequest: { readonly objectiveId: string; readonly requestId: number } | null;
-  readonly pendingSideBarAddTheater: boolean;
+  readonly pendingSideBarAddTheater: string | null;
   /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
   readonly newSession: NewSessionTarget | null;
   /** 이미 열린 새 세션 화면에 「컴포저로 돌아오라」는 요청 번호. 단축키를 다시 누르면 오른다 — 화면이 이 값이 바뀔 때 포커스한다. */

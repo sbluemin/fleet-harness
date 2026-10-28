@@ -22,7 +22,6 @@ import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
 import { useMentionSources } from "./new-session-mention-sources.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
-import { registerTheaterFromPath } from "../theater.js";
 import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { addCommodoreTheaterFromPath } from "../../../commodore/client/theaters-api.js";
 
@@ -78,15 +77,14 @@ export function MobileNewSession() {
   const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
   const commodoreName = commodoreId === null ? null : commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
   // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라진 행은 시작할 수 없으므로 세우지 않는다.
-  // 사령관이 하나도 없을 때만(첫 실행이 새 사령관을 만든다) Console 에 등록된 Theater 를 후보로 둔다 — 데스크톱과 같다.
-  const registered = state.theaters;
+  // 사령관이 없으면 후보가 없다 — 폴더 추가는 새 사령관 만들기 흐름으로 이어진다.
   const theaters = useMemo(() => {
-    if (commodoreId === null) return (registered ?? []).map((info) => ({ id: info.id, label: info.label }));
+    if (commodoreId === null) return [];
     return (commodore?.theaters ?? []).flatMap((row) => {
       if (row.status !== "available") return [];
       return [{ id: row.theaterId, label: row.label }];
     });
-  }, [commodoreId, commodore, registered]);
+  }, [commodoreId, commodore]);
   // 고른 Theater 가 이 사령관 목록에 없으면(목록이 늦게 왔거나 다른 사령관의 기억) 기본 규칙으로 다시 고른다 — 목록이 비면 null.
   const effectiveTheaterId = theaters.find((candidate) => candidate.id === theaterId)?.id
     ?? theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId(commodoreId))?.id
@@ -332,11 +330,11 @@ export function MobileNewSession() {
     finishSubmission();
   };
 
-  // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
+  // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다.
   const addFolder = (path: string) => {
-    void (commodoreId ? addCommodoreTheaterFromPath(commodoreId, path) : registerTheaterFromPath(path, true)).then(async (added) => {
-      if (added === null) return;
-      if (commodoreId) await refreshCommodoreList();
+    if (!commodoreId) return;
+    void addCommodoreTheaterFromPath(commodoreId, path).then(async (added) => {
+      await refreshCommodoreList();
       setTheaterId(added);
       writeNewSessionTheater(added);
     }).catch(() => {});
@@ -366,7 +364,6 @@ export function MobileNewSession() {
       theaterId={effectiveTheaterId}
       onTheater={(id) => { setTheaterId(id); writeNewSessionTheater(id); }}
       onAddFolder={addFolder}
-      addingTheater={state.addingTheater}
       groups={groups}
       selectedRow={selectedRow}
       effort={effort}

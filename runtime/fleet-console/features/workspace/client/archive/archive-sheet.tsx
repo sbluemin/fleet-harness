@@ -119,7 +119,7 @@ function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
   const lastFocused = useRef<{ id: string; index: number } | null>(null);
 
   // 제공자 계약은 Theater만 안다. 사령관 소유권으로 추정하지 않고 별도의 「기타 보관」에 둔다.
-  const theaterIds = [...new Set([...state.theaters.map((theater) => theater.id), ...deps.commodores.flatMap((owner) => owner.theaters.map((theater) => theater.theaterId))])];
+  const theaterIds = [...new Set([...deps.commodores.flatMap((owner) => owner.theaters.map((theater) => theater.theaterId))])];
   const sections = useArchiveSections(query, theaterIds).filter((entry) => entry.count > 0);
   const restoredIds = new Set(restored.map((entry) => entry.objectiveRecord.id));
   const entries = [...(archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.objectiveRecord.id)), ...restored];
@@ -131,8 +131,7 @@ function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
     if (!owners.some((owner) => owner.commodoreId === id)) owners.push({ commodoreId: id, label: t("archive.unknownCommodore", { id: id.slice(0, 8) }), theaters: [] });
   }
   const ownerOf = (cluster: ArchiveCluster) => owners.find((owner) => owner.commodoreId === cluster.root.objectiveRecord.commodoreId);
-  const theaterLabelOf = (cluster: ArchiveCluster) => ownerOf(cluster)?.theaters.find((theater) => theater.theaterId === cluster.root.objectiveRecord.theaterId)?.label
-    ?? state.theaters.find((theater) => theater.id === cluster.root.objectiveRecord.theaterId)?.label;
+  const theaterLabelOf = (cluster: ArchiveCluster) => ownerOf(cluster)?.theaters.find((theater) => theater.theaterId === cluster.root.objectiveRecord.theaterId)?.label;
   const matches = (cluster: ArchiveCluster) => {
     const node = cluster.root.objectiveRecord;
     const haystack = [node.title, ownerOf(cluster)?.label, theaterLabelOf(cluster), state.groups.find((group) => group.id === node.groupId)?.name, ...cluster.members].filter(Boolean).join(" ");
@@ -368,7 +367,7 @@ function ArchiveSheetDialog({ deps }: { readonly deps: ArchiveSheetDeps }) {
             <h3 id="archive-sheet-other-title" className="archive-sheet-section-head">{t("archive.otherArchives")}</h3>
             {sections.map(({ section, count }) => <section key={section.id} className="archive-sheet-section" aria-labelledby={`archive-sheet-section-${section.id}`} data-archive-section={section.id}>
               <h4 id={`archive-sheet-section-${section.id}`} className="archive-sheet-section-head"><span>{section.title(locale)}</span><span className="archive-sheet-section-count">{count}</span></h4>
-              <div className="archive-sheet-section-body">{theaterIds.filter((id) => section.count(id, query) > 0).map((id) => <div key={id}><p className="archive-sheet-plugin-theater">{state.theaters.find((theater) => theater.id === id)?.label ?? deps.commodores.flatMap((owner) => owner.theaters).find((theater) => theater.theaterId === id)?.label}</p>{section.render({ language: locale, theaterId: id, query, close: closeArchiveSheet })}</div>)}</div>
+              <div className="archive-sheet-section-body">{theaterIds.filter((id) => section.count(id, query) > 0).map((id) => <div key={id}><p className="archive-sheet-plugin-theater">{deps.commodores.flatMap((owner) => owner.theaters).find((theater) => theater.theaterId === id)?.label}</p>{section.render({ language: locale, theaterId: id, query, close: closeArchiveSheet })}</div>)}</div>
             </section>)}
           </section> : null}
         </div>

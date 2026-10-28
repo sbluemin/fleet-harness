@@ -2,6 +2,7 @@ import { isAbsolute, parseFileRef, type FileRef } from "@fleet-console/markdown/
 import type { PaneTarget } from "../../workspace/shared/pane.js";
 import type { OpenFileRequest } from "../../workspace/shared/navigation.js";
 import type { FileResolveResult } from "../host/file-resolver.js";
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 
 export const DOCUMENT_PANE_ID = "file-explorer-document";
 
@@ -25,7 +26,7 @@ export class FileNavigationError extends Error {
 export async function resolveFilePath(theaterId: string, filePath: string, pathKind: OpenFileRequest["pathKind"], signal?: AbortSignal, objectiveId?: string): Promise<FileResolveResult> {
   const response = await fetch("/api/v1/file-explorer/files/resolve", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId }), path: filePath, pathKind }), ...(signal ? { signal } : {}),
+    body: JSON.stringify({ ...(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }), path: filePath, pathKind }), ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new FileNavigationError(response.status === 403 ? "outside_theater" : "not_found");
   return response.json() as Promise<FileResolveResult>;

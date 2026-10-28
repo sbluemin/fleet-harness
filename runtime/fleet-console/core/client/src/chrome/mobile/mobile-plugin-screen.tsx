@@ -9,6 +9,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/feature-registry.js";
 import { SurfacePane } from "../expanded-surface/layer.js";
 import { closeExpandedSurface, getExpandedSurfaceState, useExpandedSurfaces } from "../expanded-surface/store.js";
+import { isKnownTheater, theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
@@ -40,8 +41,10 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   // 한 번 서면 그대로 둔다 — 재연결로 목록이 잠시 비어도 화면을 닫았다 다시 열지 않는다.
   const addressTheaterKnown = useSyncExternalStore(subscribe, () => {
     const current = getMobileDestination();
-    const addressed = current.kind === "plugin" && current.entryId === entryId ? current.params?.theaterId : undefined;
-    return addressed === undefined || getState().theaters.some((theater) => theater.id === addressed);
+    const params = current.kind === "plugin" && current.entryId === entryId ? current.params : undefined;
+    const addressed = params?.theaterId;
+    // 공유 폴더도 있는 폴더다 — 주인 하나를 고르지 않고, 어느 사령관이든 가지고 있으면 연다.
+    return addressed === undefined || isKnownTheater(addressed);
   });
   const [theaterReady, setTheaterReady] = useState(addressTheaterKnown);
   if (addressTheaterKnown && !theaterReady) setTheaterReady(true);
@@ -119,7 +122,7 @@ function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly s
   const capabilities = useHostCapabilities();
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const commodoreId = useViewedCommodoreId();
-  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getViewedTheaterId())?.label ?? "");
+  const theaterLabel = useSyncExternalStore(subscribe, () => theaterLabelOf(null, getViewedTheaterId(), ""));
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances } = useExpandedSurfaces();
   const instance = instances.find((item) => item.surfaceId === surfaceId);

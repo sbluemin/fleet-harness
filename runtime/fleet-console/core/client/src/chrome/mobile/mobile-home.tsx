@@ -14,7 +14,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { MobileShortcutSheet } from "./mobile-shortcut-sheet.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
-import { pushMobileSheet, setMobileDestination, setMobileListTheaterId } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, setMobileListTheater } from "./mobile-store.js";
 import { CommodoreRowActions } from "./mobile-sheet-host.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 
@@ -40,7 +40,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
     selectMobileCommodore(commodore.commodoreId);
     // 바로가기(파일·위키 등)의 범위는 마지막으로 연 사령관의 Theater 목록 첫 줄이다 — 옛 사령관 고르기 시트와 같은 규칙.
     const home = commodore.theaters.find((theater) => theater.status === "available")?.theaterId ?? null;
-    if (home) setMobileListTheaterId(home);
+    if (home) setMobileListTheater({ commodoreId: commodore.commodoreId, theaterId: home });
     setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: commodore.commodoreId } });
   };
   // 머리는 목록 위에 떠 있다 — 목록이 그 높이(`--m-screen-head`)만큼 위를 비운다.

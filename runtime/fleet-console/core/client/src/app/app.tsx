@@ -5,7 +5,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import { takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
-import { fetchGroups, fetchObjectiveRecords, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
+import { fetchGroups, fetchObjectiveRecords, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
@@ -49,7 +49,9 @@ import { CommodoreCreateModal } from "../../../../features/commodore/client/comm
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/objective-records-sse.js";
-import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, hydrateTheaterBootstrap, hydrateTheaters, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive, setState, themePolarity } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive, themePolarity } from "../integration/store.js";
+import { commodoreListLoaded, refreshCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { theaterLabelOf } from "../../../../features/commodore/client/theater-owner.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { subscribeObjectiveActivityTracking } from "../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
@@ -276,15 +278,19 @@ function ConnectedApp() {
     // 수화는 이 마운트 안에서만 한다 — 그리기 전에 플래그를 세우면 ready가 빈 프레임에 나간다.
     let cancelled = false;
     const snapshots = startBootSnapshots();
-    void snapshots.theaters.then((bootstrap) => {
-      if (cancelled) return;
-      hydrateTheaterBootstrap(bootstrap);
+    // 온보딩 판정은 사령관 목록을 보고 정한다. 목록이 처음 닿거나(실패 포함) 끊기기 전까지 기다린다.
+    let onboardingResolved = false;
+    const resolveOnboardingOnce = () => {
+      if (onboardingResolved || cancelled) return;
+      onboardingResolved = true;
+      offCommodoreOnboarding();
       resolveOnboardingOnBootstrap();
-    }).catch((error: unknown) => {
-      if (cancelled) return;
-      setState({ theaterError: error instanceof Error ? error.message : String(error) });
-      resolveOnboardingOnBootstrap();
+    };
+    const offCommodoreOnboarding = subscribeCommodoreList(() => {
+      if (commodoreListLoaded()) resolveOnboardingOnce();
     });
+    if (commodoreListLoaded()) resolveOnboardingOnce();
+    else void refreshCommodoreList().catch(() => {}).then(() => resolveOnboardingOnce());
     void snapshots.objectiveRecords.then((objectiveRecords) => {
       if (cancelled) return;
       hydrateInitialObjectiveRecords(objectiveRecords);
@@ -303,6 +309,7 @@ function ConnectedApp() {
     const recheckTimer = window.setTimeout(refreshObserverStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
     return () => {
       cancelled = true;
+      offCommodoreOnboarding();
       window.clearTimeout(recheckTimer);
     };
   }, []);
@@ -404,7 +411,6 @@ function ConnectedApp() {
         .then(() => Promise.allSettled([fetchObjectiveRecords(null).then(hydrateObjectiveRecords)]))
       : restoreDeletion(entry.deletion.deletionId)
         .then(() => Promise.allSettled([
-          fetchTheaters(null).then(hydrateTheaters),
           fetchObjectiveRecords(null).then(hydrateObjectiveRecords),
           fetchGroups(null).then(hydrateGroups),
         ]));
@@ -468,7 +474,7 @@ function ConnectedApp() {
           const capabilities = createHostCapabilities(undefined, { railBindings });
           entry.activate({
             theaterId: getViewedTheaterId(),
-            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getViewedTheaterId())?.label ?? "" },
+            pathContext: { kind: "root", relPath: null, label: theaterLabelOf(null, getViewedTheaterId()) },
             api: capabilities.api,
             surfaces: capabilities.surfaces,
             rail: capabilities.rail,
@@ -578,7 +584,7 @@ function ConnectedApp() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/objectives" replace />} />
-                <Route path="/objectives" element={<ObjectiveRecords aliasEditor={commodoreAliasEditor} state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/objectives" element={<ObjectiveRecords aliasEditor={commodoreAliasEditor} state={state} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/objectives" replace />} />
               </Routes>

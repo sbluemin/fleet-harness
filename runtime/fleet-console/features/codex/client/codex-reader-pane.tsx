@@ -144,6 +144,7 @@ function CodexReaderPane(ctx: PaneContext) {
       kind,
       subId,
       theaterId: workspaceId,
+      commodoreId: ctx.commodoreId ?? null,
       sessionTheaterId: ctx.commodoreId ?? theaterId,
       fileTheaterId: theaterId,
       navigate: leavingNavigate(ctx),

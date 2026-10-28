@@ -33,6 +33,7 @@ export interface ClientNavigateCapability {
 export interface ShellOpenAtRequest {
   readonly theaterId?: string;
   readonly objectiveId?: string;
+  readonly commodoreId?: string;
   readonly path?: string;
 }
 

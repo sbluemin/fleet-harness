@@ -6,6 +6,7 @@ import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 
 import { getT, useT } from "./i18n/index.js";
 import { useConsoleLocale } from "./reader-store.js";
+import { readCommodoreList } from "../../commodore/client/commodore-list.js";
 import {
   consumeRestoredReaderExpanded,
   mountNavigatorInto,
@@ -53,7 +54,7 @@ export const codexEntry: RailEntryDescriptor = {
   mobile: { destination: { order: 30, label: (locale) => getT(locale)("mobile.wiki.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h9" /></svg> },
   handles: {
     openWikiEntry: (request, host) => {
-      if (!host.consoleState.getTheaters().some(theater => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
+      if (!readCommodoreList().some((commodore) => commodore.commodoreId === request.theaterId)) return { ok: false, reason: "not_found" };
       host.navigation.setSearchParams({ codex: request.entryId, codexTheater: request.theaterId, codexView: null }, { replace: request.replace === true });
       return { ok: true };
     },
@@ -70,9 +71,9 @@ export const codexPane: PaneDescriptor = {
   render: (ctx) => (ctx.mobileBar ? <MobileWikiList ctx={ctx} /> : <CodexRailPanel ctx={ctx} />),
   defaultWidth: 420,
   minWidth: 248,
-  search: async ({ query, theaterId, limit, signal, language }) => {
+  search: async ({ query, theaterId, limit, signal, language, commodoreId }) => {
     if (!theaterId) return [];
-    const response = await fetchSearch(theaterId, { q: query, limit, signal });
+    const response = await fetchSearch(theaterId, { q: query, limit, signal, commodoreId: commodoreId ?? null });
     const t = getT(language);
     return response.entries.map((entry) => ({
       id: entry.id,
@@ -186,7 +187,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
         const session = readReaderSession(contextKey);
         if (session) {
-          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal).then((exists) => {
+          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal, contextKey || null).then((exists) => {
             if (!exists || controller.signal.aborted || latestContextKeyRef.current !== contextKey
               || getReaderState().codexReader || hasCodexEntryInUrl()) return;
             const entryId = restoreCodexReaderSession(contextKey);

@@ -143,8 +143,8 @@ if (deputies.length > 0) {
 // resolves for this Theater. Reading it back through that commodore's Codex route proves the server serves the same root.
 let wiki: { entry: string; version: number; reused: boolean } | null = null;
 if (wikiId) {
-  const theaters = (await getJson<{ theaters: { id: string }[] }>("/api/v1/theaters")).theaters;
-  if (!theaters.some((theater) => theater.id === theaterId)) throw new Error(`Theater ${theaterId} is not registered in the owned Console.`);
+  const commodores = await send<{ commodores: { commodoreId: string; theaters: { theaterId: string; status: string }[] }[] }>("POST", "/api/v1/commodore/list", {});
+  if (!commodores.commodores.some((owner) => owner.theaters.some((theater) => theater.theaterId === theaterId && theater.status === "available"))) throw new Error(`Theater ${theaterId} is not owned by any commodore in the owned Console.`);
   // Opening the workspace lets the Console issue the commodore and finish any old-wiki migration; the script only writes
   // into the resulting root and never migrates on its own.
   const workspace = await send<{ hasWiki: boolean; id: string | null }>("POST", "/api/v1/codex/workspace", { theaterId });

@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 
 import type { GitFileStatus, GitStatusResult } from "../host/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../shared/types.js";
@@ -965,7 +966,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       const response = await fetch("/api/v1/file-explorer/files/git-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(objectiveId ? { objectiveId } : { theaterId }),
+        body: JSON.stringify(objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) }),
       });
       if (!response.ok) return;
       const nextResult = await response.json() as GitStatusResult;

@@ -1,6 +1,6 @@
 import { DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
 
-import { fetchGroups, fetchObjectiveRecords, fetchTheaterBootstrap } from "./api.js";
+import { fetchGroups, fetchObjectiveRecords } from "./api.js";
 
 /**
  * 호스트 전환의 원격은 HTTP/1.1이라 한 origin에 연결이 여섯 개다. 새 연결은 왕복 세 번이다.
@@ -14,14 +14,12 @@ import { fetchGroups, fetchObjectiveRecords, fetchTheaterBootstrap } from "./api
 const BOOT_CRITICAL_PATHS = new Set([
   "/api/v1/settings/global",
   "/api/v1/settings/fonts/migration",
-  "/api/v1/theaters",
   "/api/v1/objectives/records",
   "/api/v1/objectives/records/groups",
   DESKTOP_WINDOW_COMMAND_PATH,
 ]);
 
 export interface BootSnapshots {
-  readonly theaters: ReturnType<typeof fetchTheaterBootstrap>;
   readonly objectiveRecords: ReturnType<typeof fetchObjectiveRecords>;
   readonly groups: Promise<Awaited<ReturnType<typeof fetchGroups>> | null>;
 }
@@ -103,7 +101,6 @@ function isBootCritical(input: RequestInfo | URL): boolean {
 export function startBootSnapshots(): BootSnapshots {
   if (snapshots) return snapshots;
   snapshots = {
-    theaters: fetchTheaterBootstrap(),
     objectiveRecords: fetchObjectiveRecords(null),
     groups: fetchGroups(null).catch(() => null),
   };

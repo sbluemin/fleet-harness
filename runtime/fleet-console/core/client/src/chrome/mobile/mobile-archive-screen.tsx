@@ -13,6 +13,7 @@ import type { ConsoleState } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { setMobileDestination } from "./mobile-store.js";
+import { theaterFolderName, theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 import { showMobileToast } from "./mobile-toast.js";
 
 /**
@@ -52,11 +53,15 @@ export function ArchiveRows({ entries, state, restore, busy }: { readonly entrie
   return (
         <div className="mobile-group">
           {entries.map((entry) => {
-            const theater = state.theaters.find((item) => item.id === entry.objectiveRecord.theaterId);
+            const theaterLabel = theaterLabelOf(
+              entry.objectiveRecord.commodoreId,
+              entry.objectiveRecord.theaterId,
+              theaterFolderName(typeof entry.objectiveRecord.cwd === "string" ? entry.objectiveRecord.cwd : null),
+            );
             return (
               <div className="mobile-group-row is-two" key={entry.objectiveRecord.id}>
                 <ObjectiveStatusIcon objectiveRecord={entry.objectiveRecord} status="ended" archived size={28} decorative />
-                <span className="mobile-group-row-copy">{entry.objectiveRecord.title}<small>{[theater?.label, entry.archivedAt ? t("mobile.archive.when", { time: formatRelativeTime(entry.archivedAt, locale) }) : null].filter(Boolean).join(" · ")}</small></span>
+                <span className="mobile-group-row-copy">{entry.objectiveRecord.title}<small>{[theaterLabel, entry.archivedAt ? t("mobile.archive.when", { time: formatRelativeTime(entry.archivedAt, locale) }) : null].filter(Boolean).join(" · ")}</small></span>
                 <button type="button" className="mobile-pill-secondary" disabled={busy !== null} onClick={() => void restore(entry.objectiveRecord.id)}>
                   <MobileIcon name="copy" size={16} />{t("mobile.archive.restore")}
                 </button>

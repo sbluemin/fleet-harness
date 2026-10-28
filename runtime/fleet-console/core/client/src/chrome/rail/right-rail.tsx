@@ -1,4 +1,5 @@
 import { useViewedCommodoreId } from "../../integration/viewed-theater.js";
+import { theaterLabelOf } from "../../../../../features/commodore/client/theater-owner.js";
 import { usePaneOverlay } from "../pane/use-pane-overlay.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -387,7 +388,7 @@ export function useRailPanelContext(
   const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
     subscribe,
-    () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
+    () => theaterLabelOf(commodoreId, theaterId, theaterFallback),
     () => theaterFallback,
   );
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "dark" as const);

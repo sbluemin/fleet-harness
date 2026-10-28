@@ -16,7 +16,6 @@ vi.mock("../core/client/src/integration/api.js", async (importOriginal) => ({
   fetchGroups: vi.fn(async () => null),
   fetchObserverStatus: mocks.fetchObserverStatus,
   fetchObjectiveRecords: mocks.fetchObjectiveRecords,
-  fetchTheaters: vi.fn(async () => null),
   resumeConsoleSession: mocks.resumeConsoleSession,
 }));
 

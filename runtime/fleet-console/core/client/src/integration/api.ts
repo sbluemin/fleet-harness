@@ -1,6 +1,6 @@
 import { parseConsoleUpdateFailureReason, parseConsoleUpdateOldConsoleEnding } from "@fleet-console/protocol/lifecycle/update";
 import { parseConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
-import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, ObjectiveGroup, ObjectiveRecord, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleUpdateApplyFailureProgress, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, ObjectiveGroup, ObjectiveRecord, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -83,18 +83,6 @@ export class ConsoleUpdateApplyFailure extends ApiError {
     super(status, "update_worker_unavailable");
     this.name = "ConsoleUpdateApplyFailure";
   }
-}
-
-export async function fetchTheaters(signal?: AbortSignal | null): Promise<readonly TheaterInfo[]> {
-  return (await fetchTheaterBootstrap(signal)).theaters;
-}
-
-export async function fetchTheaterBootstrap(signal?: AbortSignal | null): Promise<TheaterBootstrap> {
-  const response = await fetch("/api/v1/theaters", { signal });
-  await assertOk(response);
-  const payload = (await response.json()) as { theaters?: unknown };
-  if (!Array.isArray(payload.theaters)) throw new ApiError(response.status, "Invalid Theater response");
-  return { theaters: payload.theaters.map((theater) => assertTheaterInfo(theater, response.status)) };
 }
 
 export async function fetchObserverStatus(commodoreId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
@@ -188,45 +176,12 @@ export async function fetchUpdateProgress(signal?: AbortSignal): Promise<Console
   return assertConsoleUpdateProgress(await response.json(), response.status);
 }
 
-export async function addTheater(folderGrantId: string, claudeTrustConsent = false, signal?: AbortSignal): Promise<TheaterInfo> {
-  const response = await fetch("/api/v1/theaters", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folderGrantId, claudeTrustConsent }),
-    signal,
-  });
-  await assertOk(response);
-  const payload = await response.json() as unknown;
-  return assertTheaterInfo(payload, response.status);
-}
-
 /** 별칭은 사령관 UUID로 쓴다. 자율 운영 상태와 무관하다. */
 export async function setCommodoreAlias(commodoreId: string, alias: string | null, signal?: AbortSignal): Promise<void> {
   const response = await fetch("/api/v1/commodore/alias", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, alias }), signal,
   });
   await assertOk(response);
-}
-
-export async function createCommodoreForTheater(theaterId: string): Promise<string> {
-  const response = await fetch("/api/v1/commodore/create", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, forAlias: true }),
-  });
-  await assertOk(response);
-  const payload = await response.json() as { commodoreId?: unknown };
-  if (typeof payload.commodoreId !== "string" || !payload.commodoreId) throw new ApiError(response.status, "invalid_commodore");
-  return payload.commodoreId;
-}
-
-export async function patchTheaterOrder(theaterId: string, order: number, signal?: AbortSignal): Promise<TheaterInfo> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ order }),
-    signal,
-  });
-  await assertOk(response);
-  return assertTheaterInfo(await response.json(), response.status);
 }
 
 export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
@@ -251,12 +206,6 @@ export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal
   const payload = (await response.json()) as { folderGrantId?: unknown };
   if (typeof payload.folderGrantId !== "string") throw new ApiError(response.status, "Invalid folder grant response");
   return payload.folderGrantId;
-}
-
-export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
-  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE", signal });
-  await assertOk(response);
-  return assertDeferredDeletionResponse(await response.json(), response.status);
 }
 
 export async function deleteObjective(objectiveId: string, signal?: AbortSignal): Promise<DeferredDeletionResponse> {
@@ -448,31 +397,6 @@ function assertObjectiveGroup(value: unknown, status: number): ObjectiveGroup {
     color: payload.color,
     order: payload.order,
     createdAt: payload.createdAt,
-  };
-}
-
-function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
-  const payload = value as Partial<TheaterInfo>;
-  if (
-    !payload
-    || typeof payload.id !== "string"
-    || typeof payload.label !== "string"
-    || typeof payload.createdAt !== "string"
-    || typeof payload.lastOpenedAt !== "string"
-    || typeof payload.hasWiki !== "boolean"
-    || typeof payload.activeAdmiralCount !== "number"
-    || hasForbiddenBrowserPayloadKey(payload)
-  ) {
-    throw new ApiError(status, "Invalid Theater response");
-  }
-  return {
-    id: payload.id,
-    label: payload.label,
-    createdAt: payload.createdAt,
-    lastOpenedAt: payload.lastOpenedAt,
-    ...(typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? { order: payload.order } : {}),
-    hasWiki: payload.hasWiki,
-    activeAdmiralCount: payload.activeAdmiralCount,
   };
 }
 

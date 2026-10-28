@@ -17,7 +17,7 @@ import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settin
 import { clearConversationStage, closeConversationSurface, getConversationSurface, isConversationStageEmpty, openConversationSurface, resumeConversationStage } from "../features/workspace/client/conversation/conversation-surface-store.js";
 import { closeTheaterInbox, readTheaterInboxState } from "../features/workspace/client/theater-inbox/store.js";
 import { getViewedTheaterId } from "../core/client/src/integration/viewed-theater.js";
-import { replaceCommodoreList } from "../features/commodore/client/commodore-list.js";
+import { replaceCommodoreList, setZoneCommodore } from "../features/commodore/client/commodore-list.js";
 import { EMPTY_RUN_TOTALS } from "../features/commodore/shared/contracts/types.js";
 import { setViewModePreference } from "../core/client/src/integration/view-mode-store.js";
 import { getMobileDestination, registerMobileDestinationEntries, setMobileDestination } from "../core/client/src/chrome/mobile/mobile-store.js";
@@ -25,15 +25,15 @@ import { getMobileDestination, registerMobileDestinationEntries, setMobileDestin
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
 // 파일을 읽으려는 요청이 대화를 닫거나 설정 포커스 요청을 남기지 않는지도 같은 경계에서 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); replaceCommodoreList([]); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); replaceCommodoreList([]); setZoneCommodore(null); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
-  setState({ theaters: ["a", "b"].map((id) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 })) });
+  replaceCommodoreList([{ commodoreId: "owner", label: "owner", theaters: [{ theaterId: "b", label: "b", status: "available" as const }, { theaterId: "a", label: "a", status: "available" as const }], active: false, run: { phase: "off" as const, totals: EMPTY_RUN_TOTALS } }]);
   const pane: PaneDescriptor = { id: "file-doc", role: "detail", mounts: ["rail"], title: () => "File", render: () => null };
   const bindings: PaneTargetBinding[] = [{ entry: { id: "files", title: "Files", icon: null, panes: [pane.id], handles: { openFile: () => ({ paneId: pane.id }) } }, panes: [pane] }];
   const host = createHostCapabilities(undefined, { railBindings: bindings });
-  openConversationSurface("conversation", { theaterId: "b" });
+  openConversationSurface("conversation", { theaterId: "b", commodoreId: "owner" });
   const conversation = getConversationSurface();
   expect(conversation).not.toBeNull();
   try {
@@ -46,6 +46,7 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     expect(getPaneStoreSnapshot().rail[0]!.params.requestId).not.toBe(first.params.requestId);
     expect(getConversationSurface()).toBe(conversation);
     expect(readTheaterInboxState()).toBeNull();
+    setZoneCommodore("owner");
     expect(landPaneTarget({ paneId: pane.id, theaterId: "a", params: { path: "README.md" } }, createHostPaneTargetPorts(bindings), "files")).toEqual({ ok: true });
     expect(getPaneStoreSnapshot().rail[0]!.params).toMatchObject({ theaterId: "a", path: "README.md" });
     expect(getViewedTheaterId()).toBe("a");
@@ -92,11 +93,10 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
 });
 
 it("reads an unregistered objective theater as the owning commodore's registered Theater", () => {
-  const theater = (id: string) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 });
   const commodore = (commodoreId: string, theaterIds: readonly string[]) => ({
     commodoreId, label: commodoreId, theaters: theaterIds.map((theaterId) => ({ theaterId, label: theaterId, status: "available" as const })), active: false, run: { phase: "off" as const, totals: EMPTY_RUN_TOTALS },
   });
-  setState({ theaters: [theater("shared"), theater("other")], activeObjectiveId: null, objectiveRecords: [] });
+  setState({ activeObjectiveId: null, objectiveRecords: [] });
   replaceCommodoreList([
     commodore("owner-a", ["shared"]),
     commodore("owner-b", ["shared"]),
@@ -112,7 +112,6 @@ it("reads an unregistered objective theater as the owning commodore's registered
   expect(getViewedTheaterId()).toBe("other");
   openConversationSurface("objective-fresh", { objectiveId: "foreign", theaterId: "other", commodoreId: "owner-a" });
   expect(getViewedTheaterId()).toBeNull();
-  setState({ theaters: [theater("shared"), theater("other"), theater("labeled")] });
   openConversationSurface("objective-fresh", { objectiveId: "hash", theaterId: "9c56bd5e5148", commodoreId: "owner-a" });
   expect(getViewedTheaterId()).toBe("shared");
   closeConversationSurface();

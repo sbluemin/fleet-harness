@@ -18,6 +18,7 @@ export function requestShellRestartAt(request: ShellOpenAtRequest, target: Shell
 }
 
 async function postShellPlacement(url: string, request: ShellOpenAtRequest, target: ShellPlacementTarget): Promise<ShellOpenAtResult> {
+  // 소유 사령관은 호출자가 request.commodoreId 로 싣는다. 여기서 목록을 뒤져 추론하지 않는다.
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -37,6 +37,7 @@ interface FileLinkOptions {
   readonly container: HTMLElement;
   readonly secondaryContainer?: HTMLElement;
   readonly getTheaterId: () => string | null;
+  readonly getCommodoreId?: () => string | null;
   readonly getNavigate: () => ClientNavigateCapability | undefined;
 }
 
@@ -75,7 +76,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
     panel.querySelector<HTMLElement>("[data-peek-close]")?.addEventListener("click", closePeek);
     panel.querySelector<HTMLElement>("[data-peek-close]")?.focus({ preventScroll: true });
     try {
-      const result = await fetchFilePeek(theaterId, ref.path, ref.line);
+      const result = await fetchFilePeek(theaterId, ref.path, ref.line, options.getCommodoreId?.() ?? null);
       if (disposed || request !== epoch || options.getTheaterId() !== theaterId) return;
       panel.innerHTML = `<header>${peekPathLabel({ ...ref, path: result.path })}<div class="codex-file-peek-actions"><button type="button" data-peek-open>${escapeHtml(t()("codex.files.openInFiles"))}</button><button type="button" data-peek-close aria-label="${escapeHtml(t()("common.close"))}">×</button></div></header><pre aria-label="${escapeHtml(t()("codex.files.preview"))}">${result.lines.map((text, index) => `<span class="codex-file-peek-line${result.startLine + index === ref.line ? " is-target" : ""}"><span aria-hidden="true">${result.startLine + index}</span><code>${escapeHtml(text) || " "}</code></span>`).join("")}</pre>${result.truncated ? `<p>${escapeHtml(t()("codex.files.truncated"))}</p>` : ""}<span data-peek-error role="alert"></span>`;
       panel.querySelector<HTMLElement>("[data-peek-close]")?.addEventListener("click", closePeek);
@@ -163,7 +164,7 @@ export function mountCodexFileLinks(options: FileLinkOptions) {
     for (const { code } of candidates) code.dataset.codexFileChecked = "true";
     try {
       const paths = [...new Set(candidates.map(({ ref }) => ref.path))];
-      const refs = await fetchFileRefs(theaterId, paths);
+      const refs = await fetchFileRefs(theaterId, paths, options.getCommodoreId?.() ?? null);
       if (disposed || options.getTheaterId() !== theaterId) return;
       // 절대 입력을 응답에 반사하지 않고 요청 순서로 원래 코드와 상대 경로를 대응시킨다.
       const resolved = new Map(paths.map((path, index) => [path, refs[index]]));

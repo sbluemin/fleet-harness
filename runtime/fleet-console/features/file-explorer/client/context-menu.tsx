@@ -11,6 +11,7 @@ import {
 
 import type { Translate } from "@fleet-console/i18n";
 
+import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 
 export type FileContextAction = "copyPath" | "copyRelativePath" | "reveal" | "openExternal" | "openShell";
@@ -158,7 +159,7 @@ export async function performFileContextAction(
   const endpoint = action === "copyPath"
     ? "/api/v1/file-explorer/files/clipboard"
     : "/api/v1/file-explorer/files/reveal";
-  const selector = objectiveId ? { objectiveId } : { theaterId };
+  const selector = objectiveId ? { objectiveId } : { theaterId, ...theaterOwnerParam(theaterId) };
   const body = action === "copyPath"
     ? { ...selector, relativePath }
     : { ...selector, relativePath, mode: action === "reveal" ? "reveal" : "open" };

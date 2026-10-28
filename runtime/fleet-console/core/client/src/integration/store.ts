@@ -10,6 +10,8 @@ import { buildObjectiveSearchEntries } from "./objective-search.js";
 import { fetchObjectiveRecords, putObjectiveOrder } from "./api.js";
 import { clearLegacyObjectiveOrder, readLegacyObjectiveOrder } from "./legacy-objective-order.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
+import { readCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { theaterFolderName, theaterLabelOf } from "../../../../features/commodore/client/theater-owner.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/objective-marks.js";
 import { noteObjectiveFocused } from "./palette-recent.js";
 import { stowExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
@@ -32,8 +34,6 @@ import type {
   ReleaseNotesLocale,
   ReleaseNotesResponse,
   ThemeId,
-  TheaterBootstrap,
-  TheaterInfo,
 } from "./types.js";
 
 type Listener = () => void;
@@ -85,7 +85,6 @@ let state: ConsoleState = {
   requestedPort: null,
   effectivePort: 0,
   portHonored: true,
-  theaters: [],
   objectiveRecords: [],
   nestedObjectiveRecords: [],
   nestedBodySelection: {},
@@ -100,8 +99,6 @@ let state: ConsoleState = {
   // 기본을 pending 으로 두면 아무도 보고하지 않는 설치에서 재개가 영구히 막힌다.
   objectiveRecordRuntimeHydration: "ready",
   objectiveRecordRuntimeError: null,
-  addingTheater: false,
-  theaterError: null,
   objectiveRecordsViewActive: false,
   objectiveRecordSearchOpen: false,
   objectiveRecordSearchSeed: null,
@@ -124,7 +121,7 @@ let state: ConsoleState = {
   bootstrapped: false,
   pendingObjectiveFocus: null,
   keyboardFocusRequest: null,
-  pendingSideBarAddTheater: false,
+  pendingSideBarAddTheater: null,
   newSession: null,
   newSessionFocusRequest: 0,
   newSessionRejection: null,
@@ -463,14 +460,6 @@ function trackDesktopZoomFactor(): void {
 }
 
 
-export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
-  setState({ theaters });
-}
-
-export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
-  hydrateTheaters(bootstrap.theaters);
-}
-
 export function hydrateObjectiveRecords(objectiveRecords: readonly ObjectiveRecord[]): void {
   setState({ objectiveRecords: objectiveRecords, objectiveRecordsHydrated: true });
   migrateLegacyObjectiveOrders(objectiveRecords);
@@ -725,7 +714,11 @@ export function raiseObjectiveNotification(input: ClientNotification): void {
   const objectiveRecord = state.objectiveRecords.find((item) => item.id === input.objectiveId);
   if (!objectiveRecord) return;
   const theaterId = objectiveRecord.theaterId ?? null;
-  const theaterLabel = state.theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId ?? "Unknown";
+  const theaterLabel = theaterLabelOf(
+    typeof objectiveRecord.commodoreId === "string" ? objectiveRecord.commodoreId : null,
+    theaterId,
+    theaterFolderName(typeof objectiveRecord.cwd === "string" ? objectiveRecord.cwd : null),
+  );
   const objectiveRecordLabel = objectiveRecord.title;
   const kind = mapNotificationKind(input.kind);
   notificationSeq += 1;
@@ -743,27 +736,6 @@ export function raiseObjectiveNotification(input: ClientNotification): void {
       },
     },
   });
-}
-
-export function beginAddTheater(): void {
-  setState({ addingTheater: true, theaterError: null });
-}
-
-export function completeAddTheater(theater: TheaterInfo): void {
-  const theaters = [theater, ...state.theaters.filter((item) => item.id !== theater.id)];
-  setState({
-    theaters,
-    addingTheater: false,
-    theaterError: null,
-  });
-}
-
-export function cancelAddTheater(): void {
-  setState({ addingTheater: false, theaterError: null });
-}
-
-export function failAddTheater(error: string): void {
-  setState({ addingTheater: false, theaterError: error });
 }
 
 /**
@@ -809,13 +781,15 @@ export function consumeObjectiveFocus(): void {
 
 // 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.
 // pendingObjectiveFocus/consumeObjectiveFocus와 같은 request/consume 계약.
-export function requestSideBarAddTheater(): void {
-  setState({ pendingSideBarAddTheater: true });
+export function requestSideBarAddTheater(commodoreId: string): void {
+  setState({ pendingSideBarAddTheater: commodoreId });
 }
 
-export function consumeSideBarAddTheater(): void {
-  if (!state.pendingSideBarAddTheater) return;
-  setState({ pendingSideBarAddTheater: false });
+export function consumeSideBarAddTheater(): string | null {
+  const commodoreId = state.pendingSideBarAddTheater;
+  if (commodoreId === null) return null;
+  setState({ pendingSideBarAddTheater: null });
+  return commodoreId;
 }
 
 export function requestObjectiveKeyboardFocus(objectiveId: string): void {
@@ -850,7 +824,7 @@ export function closeNewSession(): void {
 // 소비자(ObjectiveRecordsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
 // consume은 UI 반응(다이얼로그 열림 등)을 동반하므로 경계 정리에는 쓸 수 없다.
 export function clearPendingSideBarSignals(): void {
-  setState({ pendingSideBarAddTheater: false });
+  setState({ pendingSideBarAddTheater: null });
 }
 
 export function openKeyboardShortcuts(): void {
@@ -1102,7 +1076,7 @@ export function resolveOnboardingOnBootstrap(): void {
   }
   const commissioningSeen = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
     || readStoredCommissioningSeen();
-  const shouldOpen = state.theaters.length === 0 && !commissioningSeen;
+  const shouldOpen = readCommodoreList().length === 0 && !commissioningSeen;
   setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
 }
 
@@ -1121,17 +1095,16 @@ export async function migrateStoredCommissioningSeen(): Promise<boolean> {
   return saved;
 }
 
-export function removeTheater(theaterId: string): void {
-  const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
+export function pruneRemovedCommodoreTheater(commodoreId: string, theaterId: string): void {
   const objectiveRecordNotifications = pruneNotificationsForTheater(state.objectiveRecordNotifications, theaterId);
-  const removedObjectiveIds = new Set(allObjectiveRecords().filter((objectiveRecord) => objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id));
+  const removedObjectiveIds = new Set(allObjectiveRecords().filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId && objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id));
   const activeObjectiveId = state.activeObjectiveId && removedObjectiveIds.has(state.activeObjectiveId) ? null : state.activeObjectiveId;
   const activeObjectiveAcknowledged = activeObjectiveId === null ? true : state.activeObjectiveAcknowledged;
   // 사라진 Theater를 겨눈 실행 요청도 함께 버린다.
   const pendingLaunch = state.pendingLaunch?.theaterId === theaterId ? null : state.pendingLaunch;
-  // 잊은 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
+  // 뺀 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
   const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
-  setState({ theaters, activeObjectiveId, activeObjectiveAcknowledged, objectiveRecordNotifications, pendingLaunch, newSession });
+  setState({ activeObjectiveId, activeObjectiveAcknowledged, objectiveRecordNotifications, pendingLaunch, newSession });
 }
 
 export function dismissNotificationsForObjective(objectiveId: string): void {

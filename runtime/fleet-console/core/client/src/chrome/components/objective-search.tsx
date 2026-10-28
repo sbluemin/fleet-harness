@@ -4,6 +4,7 @@ import { resolveTheaterInboxLanding } from "../../../../../features/workspace/cl
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
+import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
@@ -281,7 +282,7 @@ export function ObjectiveSearch({
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchRailPanels(railPanels, text, theaterId, abort.signal).then((nextGroups) => {
+      void searchRailPanels(railPanels, text, theaterId, abort.signal, viewedCommodoreId).then((nextGroups) => {
         // provider가 abort를 무시해도 이전 세대 결과는 현재 팔레트에 반영하지 않는다.
         if (abort.signal.aborted || generation !== searchGenerationRef.current) return;
         setRailSearchGroups(nextGroups);
@@ -420,7 +421,9 @@ export function ObjectiveSearch({
       case "new-theater": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
-        requestSideBarAddTheater();
+        // 보는 사령관이 있으면 그 목록에 더하고, 없으면 새 사령관 만들기 흐름으로 이어진다.
+        if (viewedCommodoreId) requestSideBarAddTheater(viewedCommodoreId);
+        else requestCommodoreCreate();
         break;
       }
       case "new-objectiveRecord": {

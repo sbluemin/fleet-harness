@@ -132,12 +132,13 @@ export async function searchRailPanels(
   query: string,
   theaterId: string,
   signal: AbortSignal,
+  commodoreId?: string | null,
 ): Promise<readonly RailSearchGroup[]> {
   const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
     if (!panel.search) return null;
     const reference = panel.fileReferences ? parseFileRef(query) : null;
-    const found = await searchRailPanel(panel, reference?.path ?? query, theaterId, signal, language);
+    const found = await searchRailPanel(panel, reference?.path ?? query, theaterId, signal, language, commodoreId ?? null);
     const results = found?.map((result): PaneSearchResult => !reference?.line ? result : {
       ...result,
       activate: async () => {
@@ -166,6 +167,7 @@ async function searchRailPanel(
   theaterId: string,
   parentSignal: AbortSignal,
   language: ConsoleLocale,
+  commodoreId?: string | null,
 ): Promise<readonly PaneSearchResult[] | null> {
   if (!panel.search || parentSignal.aborted) return null;
   const controller = new AbortController();
@@ -187,6 +189,7 @@ async function searchRailPanel(
         limit: RAIL_SEARCH_PROVIDER_LIMIT,
         signal: controller.signal,
         language,
+        ...(commodoreId ? { commodoreId } : {}),
       }))
       .then((results) => results, () => null);
     return await Promise.race([request, stopped]);
@@ -198,7 +201,9 @@ async function searchRailPanel(
 
 /** 스토어의 기본 목록이 이미 구성원(부모가 대표하는 Objective)을 뺐다 — 여기서 따로 거르지 않는다. */
 export function buildObjectiveSearchEntries(current: ConsoleState): readonly ObjectiveSearchEntry[] {
-  const theaters = new Map(current.theaters.map((theater) => [theater.id, theater]));
+  const theaters = new Map(readCommodoreList().flatMap((owner) => owner.theaters
+    .filter((theater) => theater.status === "available")
+    .map((theater) => [theater.theaterId, { id: theater.theaterId, label: theater.label }] as const)));
   const entries: ObjectiveSearchEntry[] = [];
   for (const objectiveRecord of current.objectiveRecords) {
     if (!objectiveRecord.theaterId) continue;
@@ -365,7 +370,7 @@ function commodoreAliasOf(commodoreId: string | undefined): string | null {
 
 function toObjectiveSearchEntry(
   objectiveRecord: ObjectiveRecord,
-  theater: TheaterInfo | undefined,
+  theater: Pick<TheaterInfo, "id" | "label"> | undefined,
   objectiveRecordRuntime: Readonly<Record<string, ObjectiveRuntimeState>>,
 ): ObjectiveSearchEntry {
   return {

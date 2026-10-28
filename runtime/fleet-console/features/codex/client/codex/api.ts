@@ -1,5 +1,6 @@
 // 서버 응답 DTO는 api-types.ts(타입 전용 파일)를 단일 출처로 공유한다.
 // 같은 패키지 서버 코드의 type-only import이므로 Vite 번들에는 포함되지 않는다.
+import { theaterOwnerParam } from "../../../commodore/client/theater-owner.js";
 import type {
   CodexHealthResponse,
   EntryBacklink,
@@ -35,10 +36,14 @@ export interface SearchOptions {
   tags?: string[];
   limit?: number;
   signal?: AbortSignal;
+  /** 요청하는 사령관. 알면 싣는다 — 모르면 생략한다. */
+  commodoreId?: string | null;
 }
 
 export interface EntryOptions {
   includeRaw?: boolean;
+  /** 요청하는 사령관. 알면 싣는다 — 모르면 생략한다. */
+  commodoreId?: string | null;
 }
 
 export class CodexRequestError extends Error {
@@ -49,12 +54,12 @@ export class CodexRequestError extends Error {
 }
 
 
-export async function fetchFilePeek(theaterId: string, path: string, line?: number): Promise<import("../../shared/contracts.js").FilePeekResponse> {
-  return postJson("/api/v1/codex/file-peek", { theaterId, path, line });
+export async function fetchFilePeek(theaterId: string, path: string, line?: number, commodoreId?: string | null): Promise<import("../../shared/contracts.js").FilePeekResponse> {
+  return postJson("/api/v1/codex/file-peek", { theaterId, path, line, ...theaterOwnerParam(commodoreId) });
 }
 
-export async function fetchFileRefs(theaterId: string, paths: readonly string[]): Promise<readonly import("../../shared/contracts.js").FileRefResolution[]> {
-  return postJson("/api/v1/codex/file-refs", { theaterId, paths });
+export async function fetchFileRefs(theaterId: string, paths: readonly string[], commodoreId?: string | null): Promise<readonly import("../../shared/contracts.js").FileRefResolution[]> {
+  return postJson("/api/v1/codex/file-refs", { theaterId, paths, ...theaterOwnerParam(commodoreId) });
 }
 
 // ─── Fetchers ─────────────────────────────────────────────────────────────────
@@ -64,13 +69,17 @@ export async function fetchSearch(theaterId: string | null, opts?: SearchOptions
   if (opts?.q) params.set("q", opts.q);
   if (opts?.tags && opts.tags.length > 0) params.set("tags", opts.tags.join(","));
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.commodoreId) params.set("commodoreId", opts.commodoreId);
   const suffix = params.toString();
   return fetchJson<SearchResponse>(apiPath(theaterId, `/search${suffix ? `?${suffix}` : ""}`), opts?.signal);
 }
 
 export async function fetchEntry(theaterId: string | null, id: string, opts?: EntryOptions): Promise<EntryResponse> {
-  const suffix = opts?.includeRaw ? "?include=raw" : "";
-  return fetchJson<EntryResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}${suffix}`));
+  const query = new URLSearchParams();
+  if (opts?.includeRaw) query.set("include", "raw");
+  if (opts?.commodoreId) query.set("commodoreId", opts.commodoreId);
+  const suffix = query.toString();
+  return fetchJson<EntryResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}${suffix ? `?${suffix}` : ""}`));
 }
 
 export async function fetchHealth(theaterId: string | null, signal?: AbortSignal): Promise<CodexHealthResponse> {

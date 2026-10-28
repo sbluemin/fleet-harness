@@ -60,15 +60,10 @@ interface ObjectiveRecordsSideBarProps {
   readonly topStripCenter?: ReactNode;
   /** 사이드바 맨 아래에 서는 셸의 기여(호스트 아바타·플러그인 요약 줄). */
   readonly bottomAccessory?: ReactNode;
-  readonly theaters: readonly TheaterInfo[];
   readonly objectiveRecords: readonly ObjectiveRecord[];
-  readonly addingTheater: boolean;
-  readonly theaterError: string | null;
   /** 사령관 별칭 지정 — null 은 해제다. */
   readonly clampAlias: (value: string) => string;
-  readonly onAddTheater: (path: string) => void;
-  readonly onCancelAddTheater: () => void;
-  readonly onForgetTheater: (theaterId: string) => void;
+  readonly onAddTheater: (commodoreId: string, path: string) => Promise<void>;
 }
 
 /** atCursor — 우클릭으로 열었으면 앵커는 커서 한 점이고 메뉴는 그 자리에 선다. 아니면(키·길게 누르기) 앵커 아래에 선다. */
@@ -124,8 +119,6 @@ interface TheaterActionsMenuProps {
   readonly anchor: DOMRect;
   /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
   readonly atCursor?: boolean;
-  /** 등록 Theater 를 잊는다 — 사령관 행에는 없다(사령관은 Theater 가 아니다). */
-  readonly onForgetTheater?: (() => void) | undefined;
   readonly onDeleteCommodore?: (() => void) | undefined;
   readonly onOpenZone: () => void;
   readonly onNewSession: () => void;
@@ -138,14 +131,9 @@ const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
 
 export function ObjectiveRecordsSideBar({
-  theaters,
   objectiveRecords,
-  addingTheater,
-  theaterError,
   clampAlias,
   onAddTheater,
-  onCancelAddTheater,
-  onForgetTheater,
   widthCap,
   topStripTrailing,
   topStripCenter,
@@ -169,6 +157,8 @@ export function ObjectiveRecordsSideBar({
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserCommodoreId, setBrowserCommodoreId] = useState<string | null>(null);
+  const [addFailure, setAddFailure] = useState<string | null>(null);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -208,7 +198,7 @@ export function ObjectiveRecordsSideBar({
     return rank(left.id) - rank(right.id);
   });
   const contextMenuTheater: SideBarHead | null = activeContextMenu
-    ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
+    ? sectionFaces.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
 
   // window 이벤트 핸들러에서 commit 시점 최신값을 읽기 위해 매 렌더 ref를 동기화한다.
@@ -299,19 +289,26 @@ export function ObjectiveRecordsSideBar({
     setActiveContextMenu({ theaterId, anchor, returnFocus, atCursor });
   };
 
-  const openTheaterBrowser = () => {
+  const openTheaterBrowser = (commodoreId: string) => {
     setActiveContextMenu(null);
+    setBrowserCommodoreId(commodoreId);
+    setAddFailure(null);
     setBrowserOpen(true);
   };
 
   const cancelTheaterBrowser = () => {
     setBrowserOpen(false);
-    onCancelAddTheater();
+    setBrowserCommodoreId(null);
   };
 
   const confirmTheaterBrowser = (path: string) => {
+    const commodoreId = browserCommodoreId;
     setBrowserOpen(false);
-    onAddTheater(path);
+    setBrowserCommodoreId(null);
+    if (!commodoreId) return;
+    void onAddTheater(commodoreId, path).catch((error: unknown) => {
+      setAddFailure(error instanceof Error ? error.message : String(error));
+    });
   };
 
   // 사이드바 빈 영역 우클릭 = 맨 위 「+」와 같은 새 세션 화면. 사령관 머리는 자체 우클릭 핸들러가 preventDefault()를
@@ -347,11 +344,12 @@ export function ObjectiveRecordsSideBar({
     else openTheaterInbox({ theaterId: theater.id, sectionId: "commodore:commodore", pageId: "log", returnFocus });
   };
 
-  // "Theater 추가" 요청 소비(팔레트) — Theater 브라우저를 연다.
+  // "Theater 추가" 요청 소비(팔레트) — 그 사령관의 폴더 브라우저를 연다.
   useEffect(() => {
-    if (!pendingSideBarAddTheater) return;
+    const commodoreId = pendingSideBarAddTheater;
+    if (!commodoreId) return;
     consumeSideBarAddTheater();
-    openTheaterBrowser();
+    openTheaterBrowser(commodoreId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
 
@@ -389,7 +387,7 @@ export function ObjectiveRecordsSideBar({
 
       {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
-      {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
+      {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
@@ -471,9 +469,8 @@ export function ObjectiveRecordsSideBar({
               type="button"
               className="side-bar-starter-primary"
               onClick={requestCommodoreCreate}
-              disabled={addingTheater}
             >
-              {addingTheater ? t("sidebar.starter.addingTheater") : t("sidebar.commodore.createTitle")}
+              {t("sidebar.commodore.createTitle")}
             </button>
             <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
               {t("sidebar.starter.reopenGuide")}
@@ -496,10 +493,6 @@ export function ObjectiveRecordsSideBar({
           theater={contextMenuTheater}
           anchor={activeContextMenu.anchor}
           atCursor={activeContextMenu.atCursor === true}
-          onForgetTheater={theaters.some((theater) => theater.id === contextMenuTheater.id) ? () => {
-            onForgetTheater(contextMenuTheater.id);
-            closeActiveContextMenu();
-          } : undefined}
           onDeleteCommodore={contextMenuTheater.commodore?.id === contextMenuTheater.id ? () => {
             const id = contextMenuTheater.id;
             const opener = document.querySelector<HTMLElement>(`[data-theater-id="${CSS.escape(id)}"] .side-bar-theater-activate`);
@@ -776,7 +769,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ theater, anchor, atCursor = false, onForgetTheater, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, anchor, atCursor = false, onDeleteCommodore, onOpenZone, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
@@ -858,17 +851,17 @@ function TheaterActionsMenu({ theater, anchor, atCursor = false, onForgetTheater
           <span className="theater-menu-label">{t("sidebar.commodore.zone")}</span>
         </button>
         <TheaterContributionMenuItems theater={theater} onClose={onClose} />
-        {onDeleteCommodore || onForgetTheater ? (
+        {onDeleteCommodore ? (
           <>
             <div className="theater-menu-divider" aria-hidden="true" />
             <button
               type="button"
               role="menuitem"
               className="theater-menu-item theater-menu-forget"
-              onClick={onDeleteCommodore ?? onForgetTheater}
+              onClick={onDeleteCommodore}
             >
               <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
-              <span className="theater-menu-label">{t(onDeleteCommodore ? "sidebar.commodore.delete" : "sidebar.theater.forget")}</span>
+              <span className="theater-menu-label">{t("sidebar.commodore.delete")}</span>
             </button>
           </>
         ) : null}

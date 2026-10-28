@@ -386,6 +386,8 @@ export interface PaneOpenRequest {
 export interface PaneSearchRequest {
   readonly query: string;
   readonly theaterId: string;
+  /** 검색 대상 폴더를 소유한 사령관. 알 때만 싣는다. */
+  readonly commodoreId?: string | null;
   readonly limit: number;
   readonly signal: AbortSignal;
   readonly language?: ConsoleLocale;
