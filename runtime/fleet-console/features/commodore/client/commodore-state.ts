@@ -648,7 +648,7 @@ export function discardCommodoreAttachment(id: string): Promise<void> {
 }
 
 /** `references` — 본문 속 지휘관 참조의 목표 id(본문의 표식 글자 순서). 서버가 짝·Theater·실재를 검증한다. */
-export async function messageCommodore(commodoreId: string, text: string, attachmentIds?: readonly string[], references?: readonly string[]): Promise<void> {
+export async function messageCommodore(commodoreId: string, text: string, attachmentIds?: readonly string[], references?: readonly (string | { readonly kind: "commodore"; readonly id: string })[]): Promise<void> {
   const client = api();
   if (!client || !commodoreId) throw new Error("not_installed");
   const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ commodoreId, text, ...(attachmentIds?.length ? { attachmentIds } : {}), ...(references?.length ? { references } : {}) }));

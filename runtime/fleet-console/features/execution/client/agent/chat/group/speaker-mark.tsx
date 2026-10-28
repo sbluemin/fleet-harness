@@ -25,7 +25,7 @@ export function speakerTone(speaker: ConversationSpeaker): string | null {
 
 /** 같은 발화자를 가리키는 좌표 — 원장 보기·정지 대상의 키. 사람에게는 Objective 이 없다. */
 export function speakerKey(speaker: ConversationSpeaker): string {
-  return speaker.objectiveId ?? `${speaker.kind}:${speaker.name}`;
+  return speaker.commodoreId ? `commodore:${speaker.commodoreId}` : speaker.objectiveId ?? `${speaker.kind}:${speaker.name}`;
 }
 
 /**
@@ -78,7 +78,7 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
 }) {
   const commodoreKey = useCommodoreSpeakerKey();
   const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
-  const key = speaker.kind === "commodore" ? commodoreKey : speaker.kind !== "human" && speaker.objectiveId ? objectiveRecordAvatarKey(speaker.objectiveId) : null;
+  const key = speaker.kind === "commodore" ? (speaker.commodoreId ? commodoreAvatarKey(speaker.commodoreId) : commodoreKey) : speaker.kind !== "human" && speaker.objectiveId ? objectiveRecordAvatarKey(speaker.objectiveId) : null;
   if (key) {
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
     const activityObjectiveId = acting && speaker.kind !== "commodore" ? speaker.objectiveId : null;

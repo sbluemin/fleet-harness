@@ -85,7 +85,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "settled" | "routine" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
+export type WakeCode = "settled" | "routine" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "mail" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "started" | "retry" | "rotated" | "answered" | "returned" | "resume-failed";
 
 const STATUS_DETAILS = 8;
 
@@ -120,6 +120,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "intel-edited": return `the person edited ${plural("intel item")}${tail}`;
     case "intel-removed": return `the person removed ${plural("intel item")}${tail}`;
     case "message": return "the person sent you a message (quoted below)";
+    case "mail": return "another Commodore sent you a message (their words, not the person's; quoted below)";
     case "status": {
       const shown = reason.details.slice(-STATUS_DETAILS);
       const more = reason.details.length - shown.length;
@@ -152,7 +153,10 @@ interface QueuedMessage {
   readonly messageId?: string;
   readonly attachments?: readonly { readonly id: string }[];
   readonly imageBytes?: number;
+  readonly mentions?: readonly { readonly id: string; readonly alias: string }[];
 }
+
+type ReceivedMessage = Extract<CommodoreTranscriptEntry, { kind: "received" }>;
 
 interface Runner {
   readonly commodoreId: string;
@@ -164,6 +168,9 @@ interface Runner {
   pending: Map<WakeCode, PendingReason>;
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
   messages: QueuedMessage[];
+  /** 다른 사령관의 말은 사람 입력·권한 큐에 절대 섞지 않는다. */
+  mail: ReceivedMessage[];
+  turnSent: Set<string>;
   /** 도는 턴에 건넸고 아직 집히지 않은 메시지 — 건넨 id 로. 집히면 「전달됨」, 닿지 못하면 `messages` 로 돌아온다. */
   hosted: Map<string, QueuedMessage>;
   /** 이번 턴에 실은 메시지만 보드 도구가 복사할 수 있다. 대기·과거 메시지는 권한이 아니다. */
@@ -486,11 +493,27 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
       runner.sessionImageBytes += batchBytes;
       runner.sessionImageBase64Bytes += batchBase64Bytes;
+      // 배치의 글자 상한은 문맥 크기 방어다. 홉·빈도나 연락 건수에 상한을 두지 않고 남은 말은 다음 턴에 싣는다.
+      let mailChars = 0;
+      let mailCount = 0;
+      for (const entry of runner.mail) {
+        if (mailChars + entry.text.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+        mailChars += entry.text.length;
+        mailCount += 1;
+      }
+      const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
+      runner.turnSent.clear();
       let outcome: CommodoreTurnOutcome;
       try {
-        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}) });
-      } finally { runner.turnMessages = []; }
+        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}) });
+      } finally {
+        for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
+        runner.turnMessages = [];
+      }
+      if (outcome.outcome === "ok") {
+        for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
+      } else runner.mail.unshift(...mail);
       if (outcome.outcome === "ok") {
         releaseMessages(runner, messages);
         // 알림 확인 저장 실패는 성공한 작업을 재실행하지 않는다. 남은 알림은 다음 턴에 다시 실린다.
@@ -522,6 +545,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         return;
       }
       if (runner.messages.length) wake(runner, "message");
+      if (runner.mail.length) wake(runner, "mail");
       runner.retryAttempt = 0;
       setPhase(runner, "idle");
       scheduleRoutines(runner);
@@ -582,7 +606,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(commodoreId) || stops.has(commodoreId) || !canRun(commodoreId)) return;
     let runner = runners.get(commodoreId);
     if (runner && !runner.stopping) return;
-    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
+    runner = { commodoreId, session: null, phase: "idle", pending: new Map(), messages: [], mail: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), emptyReported: false };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
@@ -599,6 +623,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // Clear 뒤에는 기존 기록을 되살리지 않는다. 재시작 자체는 깨움 이유가 아니다.
     if (!wakeImmediately) { if (reason === "message") requeueUndelivered(runner); return; }
     requeueUndelivered(runner);
+    requeueMail(runner);
     if (runner.board?.emptyOperated()) { runner.emptyReported = true; wake(runner, "empty"); }
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(commodoreId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
@@ -608,6 +633,27 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
    * 지난번 끌 때 「전달되지 않음」으로 남은 사람의 메시지를 대기열에 다시 싣는다 — 새 대화에서도 그 말을 잃지 않는다.
    * 이미지가 붙은 말은 끌 때 보관이 풀려 다시 싣지 못한다(그대로 「전달되지 않음」이다).
    */
+  const mentionsOf = (entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) =>
+    (entry.references ?? []).flatMap((ref) => ref.kind === "commodore" ? [{ id: ref.id, alias: ref.title }] : []);
+
+  const requeueMail = (runner: Runner) => {
+    const read = new Set<number>();
+    const pending: ReceivedMessage[] = [];
+    let before: number | undefined;
+    // 최근 한 쪽 밖에서 기다리던 연락도 읽는다. Clear 경계는 저장소가 적용한다.
+    for (;;) {
+      const page = deps.store.transcriptRead(runner.commodoreId, { limit: MAX_TRANSCRIPT_PAGE, ...(before === undefined ? {} : { before }) });
+      for (const entry of [...page.entries].reverse()) {
+        if (entry.kind === "received-read") for (const seq of entry.seqs) read.add(seq);
+        else if (entry.kind === "received" && !read.has(entry.seq)) pending.push(entry);
+      }
+      if (!page.hasMore || !page.entries.length) break;
+      before = page.entries[0]!.seq;
+    }
+    runner.mail.push(...pending.reverse());
+    if (runner.mail.length) wake(runner, "mail");
+  };
+
   const requeueUndelivered = (runner: Runner) => {
     let entries: readonly CommodoreTranscriptEntry[];
     try { entries = deps.store.transcriptRead(runner.commodoreId, { limit: MAX_TRANSCRIPT_PAGE }).entries; }
@@ -615,7 +661,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const waiting = undeliveredMessageSeqs(entries);
     const messages = entries.flatMap((entry) => (entry.kind === "message" && waiting.has(entry.seq) && !entry.attachments?.length ? [entry] : []));
     if (!messages.length) return;
-    for (const entry of messages) runner.messages.push({ seq: entry.seq, text: messagePromptText(entry) });
+    for (const entry of messages) runner.messages.push({ seq: entry.seq, text: messagePromptText(entry), mentions: mentionsOf(entry) });
     record(runner, { kind: "requeued", seqs: messages.map((entry) => entry.seq) });
     wake(runner, "message");
   };
@@ -704,13 +750,20 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     // 사람이 사령관의 질문에 답했다 — 답은 asks 도구로 읽는다(깨움 문장에는 싣지 않는다).
     if (event.op === "transcript" && event.entry.kind === "ask-answered" && runner) { wake(runner, "answered", { bump: true, detail: askDetail(event.entry.answers[0]?.question ?? event.entry.askId) }); return; }
+    if (event.op === "transcript" && event.entry.kind === "sent" && event.entry.ok && runner?.phase === "turn") runner.turnSent.add(event.entry.to.id);
+    if (event.op === "transcript" && event.entry.kind === "received") {
+      // 새 실행기는 기록에서 복원하므로 현재 사건을 중복해서 넣지 않는다.
+      if (!runner) { start(event.commodoreId, "mail"); return; }
+      if (!runner.stopping) { runner.mail.push(event.entry); wake(runner, "mail"); }
+      return;
+    }
     if (event.op === "transcript" && event.entry.kind === "message") {
       // 첫 메시지가 실행기를 세울 때도 같은 사건 감시 경계를 쓴다.
       if (!runner) { start(event.commodoreId, "message", false); runner = runners.get(event.commodoreId); }
       if (!runner) return;
       const { entry } = event;
       const text = messagePromptText(entry);
-      const message: QueuedMessage = { seq: entry.seq, text, ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) };
+      const message: QueuedMessage = { seq: entry.seq, text, mentions: mentionsOf(entry), ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) };
       // 턴이 돌고 있으면 그 턴에 건넨다 — 다음 도구 경계에서 같은 턴이 읽는다. 이미지가 붙은 말은 보관·예산을 지는 다음 턴에 싣는다.
       const id = `m${entry.seq}`;
       if (!message.messageId && runner.phase === "turn" && !runner.stopping && runner.session?.steer(text, id)) { runner.hosted.set(id, message); return; }

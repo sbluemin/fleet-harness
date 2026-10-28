@@ -226,7 +226,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       read(commodoreId);
       return view(commodoreId, store.routineRemove(commodoreId, routineId, "person"));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the board is unavailable.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to this Commodore. Inline U+FFFC references name owned objectives (id strings) or ready peer Commodores ({kind: commodore, id}); the current Commodore decides what to relay. Refused while the experiment or board is unavailable.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(z.union([ids, z.object({ kind: z.literal("commodore"), id: ids }).strict()])).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       read(commodoreId);
       // 서버가 권위다 — 종료·Clear 중이거나 보드가 없으면 기록에 남기기 전에 거절한다.
       if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
@@ -240,8 +240,15 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       // 않은 참조는 서지 않는다.
       const text = referenceIds.length ? raw : raw.split(CONVERSATION_REFERENCE_MARK).join("").trim();
       if (!text) throw new CommodoreStoreError("invalid_request");
-      if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds).size !== referenceIds.length) throw new CommodoreStoreError("invalid_request");
+      if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds.map((ref) => typeof ref === "string" ? `objective:${ref}` : `commodore:${ref.id}`)).size !== referenceIds.length) throw new CommodoreStoreError("invalid_request");
       const references = referenceIds.map((id) => {
+        if (typeof id !== "string") {
+          if (id.id === commodoreId) throw new CommodoreStoreError("self_target");
+          const peer = store.read(id.id);
+          if (!peer) throw new CommodoreStoreError("unknown_commodore");
+          if (!hooks.acceptsMessage?.(id.id)) throw new CommodoreStoreError("commodore_unavailable");
+          return { kind: "commodore" as const, id: id.id, title: peer.alias ?? "Commodore" };
+        }
         const found = hooks.objective?.(id);
         if (!found || found.removed) throw new CommodoreStoreError("unknown_objective");
         if (found.commodoreId !== commodoreId) throw new CommodoreStoreError("objective_owner_mismatch");

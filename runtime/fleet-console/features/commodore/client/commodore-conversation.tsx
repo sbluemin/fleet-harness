@@ -1,3 +1,4 @@
+import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -278,11 +279,13 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const index = useCommodoreObjectiveIndex(commodoreId);
   const name = useCommodoreName(commodoreId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name]);
-  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
+  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name, commodoreId), [t, entries, live, confirmed, name, commodoreId]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = run?.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
-  const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name, commodoreId }), [name, commodoreId]);
+  const participants = useMemo<readonly ConversationParticipant[]>(() => commodoreParticipants(speaker, turning, confirmed), [speaker, turning, confirmed]);
+  const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
+  useEffect(() => setPeerLedger(null), [commodoreId]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
 
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -334,10 +337,11 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const runningAt = turning ? entries.findLast((entry) => entry.kind === "wake")?.at ?? entries[0]?.at : undefined;
   const [ledgerReveal, setLedgerReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
   const showInLedger = (at: number) => setLedgerReveal((previous) => ({ at, nonce: (previous?.nonce ?? 0) + 1 }));
-  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn && Ledger ? () => {
+  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => ((hasTurn || participants.length > 1) && Ledger ? (target) => {
+    if (target.commodoreId && target.commodoreId !== commodoreId) { setPeerLedger(target); return; }
     if (runningAt !== undefined) showInLedger(runningAt); else setLedgerReveal(null);
     setCommodoreLedger(commodoreId, true);
-  } : null), [hasTurn, Ledger, runningAt, commodoreId]);
+  } : null), [hasTurn, Ledger, runningAt, commodoreId, participants.length]);
   // 원장이 열린 채 곁 칸·목표 대화가 턴을 가리키면 그 요청은 원장이 받는다 — 대화는 지금 그려지지 않는다. 앞쪽 읽기는 위의 같은 효과가 맡는다.
   useEffect(() => {
     if (reveal && ledgerOpen) showInLedger(reveal.at);
@@ -373,7 +377,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
-      {ledgerOpen && Ledger ? (
+      {peerLedger ? <div className="objectives-commodore-ledger" data-commodore-ledger=""><CommodorePeerLedger speaker={peerLedger} language={language} onBack={() => setPeerLedger(null)} /></div> : ledgerOpen && Ledger ? (
         // 그룹 대화가 지휘관 원장을 여는 그 틀·본문·바닥 줄(호스트 `ctx.chat.Ledger`)이다. 이 상자는 머리 pill 오버레이 밑자리만 진다.
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
           <Ledger

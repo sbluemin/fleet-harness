@@ -532,7 +532,10 @@ function compactIfLarge(file: string): readonly CommodoreTranscriptEntry[] | und
   try { size = fs.statSync(file).size; } catch { return; }
   if (size <= TRANSCRIPT_COMPACT_BYTES) return;
   const entries = readTranscriptFile(file);
-  const kept = entries.slice(Math.floor(entries.length / 2));
+  // 사령관 연락은 이 기록 자체가 미처리 큐다. 오래된 표시 이력을 줄여도 아직 읽지 않은 수신은 버리지 않는다.
+  const read = new Set(entries.flatMap((entry) => entry.kind === "received-read" ? entry.seqs : []));
+  const half = Math.floor(entries.length / 2);
+  const kept = entries.filter((entry, index) => index >= half || (entry.kind === "received" && !read.has(entry.seq)));
   writeFileAtomic(file, kept.map((entry) => JSON.stringify(entry)).join("\n") + (kept.length ? "\n" : ""));
   return kept;
 }
