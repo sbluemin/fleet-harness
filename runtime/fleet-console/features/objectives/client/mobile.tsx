@@ -1365,7 +1365,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
       drafts.delete(objective.id);
       sentRequests.set(objective.id, request.id);
       setSentTick((tick) => tick + 1);
-      say(t("objectives.mobile.toast.decision"));
+      say(t("objectives.mobile.toast.decline"));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.declineFailed"));
