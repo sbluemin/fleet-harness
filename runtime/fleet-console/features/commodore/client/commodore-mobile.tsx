@@ -134,10 +134,10 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const rawCommodore = ctx.params["commodoreId"];
   const rawTheater = ctx.params["theaterId"];
   const paramCommodoreId = typeof rawCommodore === "string" && rawCommodore.length > 0 ? rawCommodore : null;
-  // 주소의 사령관, 없으면 칩에서 고른 사령관, 그것도 없으면 목록의 첫 사령관. Theater 에서 주인을 찾지 않는다.
+  // 주소의 사령관, 없으면 기기에 기억한 선택. 고른 적 없으면 임의의 수신자를 세우지 않는다.
   const selectedCommodoreId = useMobileCommodoreSelection();
   const listed = useCommodoreList();
-  const commodoreId = paramCommodoreId ?? selectedCommodoreId ?? listed[0]?.commodoreId ?? null;
+  const commodoreId = paramCommodoreId ?? selectedCommodoreId;
   useEffect(() => {
     if (!commodoreId || !visible) return;
     if (paramCommodoreId === commodoreId && rawTheater === undefined) return;

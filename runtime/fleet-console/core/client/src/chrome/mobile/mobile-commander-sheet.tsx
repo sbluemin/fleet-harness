@@ -5,6 +5,7 @@ import { CommanderListOwner, CommodoreCommanderList } from "../../../../../featu
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import { MobileSheet } from "./mobile-sheet.js";
+import { useMobileCommanderActions } from "./mobile-commander-actions.js";
 import { pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
 import { runAfterSheetRelease } from "./mobile-sheet-host.js";
 
@@ -17,11 +18,12 @@ function MobileCommanderSheet({ commodoreId, onClose }: { readonly commodoreId: 
   const t = useT();
   const state = useConsoleState();
   const destination = useMobileDestination();
+  const openActions = useMobileCommanderActions();
   const selectedId = destination.kind === "plugin" ? null : state.objectiveRecords.find((record) => record.id === state.activeObjectiveId && record.commodoreId === commodoreId)?.id ?? null;
   return <MobileSheet title={t("commanderTab.aria")} onClose={onClose} className="mobile-commander-sheet" focusInputOnTouch={false}>
     <CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => runAfterSheetRelease(() => openCommodoreMobile("log", commodoreId))} />
     <div className="commander-list-rule" role="separator" />
-    <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId}
+    <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onRowMenu={openActions}
       onNewSession={() => runAfterSheetRelease(() => openMobileNewSession(commodoreId))}
       onSelect={(item) => runAfterSheetRelease(() => {
         const root = item.layout.cluster.root;

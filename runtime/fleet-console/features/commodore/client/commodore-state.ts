@@ -503,7 +503,7 @@ export function useCommodoreMobilePanelRequest(request: string | undefined, onOp
 export function openCommodoreMobile(tab: CommodoreMobileTab, commodoreId: string | null, panel = false): void {
   setCommodoreMobileTab(tab);
   mobilePanelRequest = panel ? String(++mobilePanelSequence) : null;
-  // 폰 화면은 사령관 UUID 를 읽는다. 없으면 화면이 고른 사령관(칩·목록 첫 사령관)으로 선다.
+  // 폰 화면은 사령관 UUID 를 읽는다. 없으면 기기에 기억한 선택을 쓰고, 고른 적 없으면 비워 둔다.
   const target: Record<string, string> = commodoreId ? { commodoreId } : {};
   installed?.rail.open(COMMODORE_ENTRY_ID, {
     ...target,

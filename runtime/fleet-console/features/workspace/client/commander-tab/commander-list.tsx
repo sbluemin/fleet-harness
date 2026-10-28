@@ -20,11 +20,12 @@ import { setCommanderPlacement, useCommanderPlacement, useEffectiveCommanderPlac
 import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. */
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, sortNameOnly = false }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
   readonly onNewSession?: () => void;
+  readonly onRowMenu?: (item: SideBarRowItem) => void;
   /** 사이드바처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 채팅 레일과 폰은 접두어를 유지한다. */
   readonly sortNameOnly?: boolean;
 }) {
@@ -59,7 +60,7 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
                 const selected = objectiveId !== null && selectedId === objectiveId;
                 return <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selected}
                   onFocus={(id) => { if (onSelect) onSelect(item); else openCommanderConversation(commodoreId, id); }}
-                  onContextMenu={desktop ? (row, anchor, returnFocus) => openCommanderRowMenu({ item: row, anchor, returnFocus }) : undefined} />;
+                  onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus) => openCommanderRowMenu({ item: row, anchor, returnFocus }) : undefined)} />;
               })}
             </ol>}
           </section>;

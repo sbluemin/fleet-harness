@@ -1,6 +1,7 @@
 import type { CommodoreAliasEditor } from "../shared/console-state.js";
 import { getViewedTheaterId, useViewedTheaterId } from "../../../core/client/src/integration/viewed-theater.js";
 import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
+import { useDesktopConversationAddress } from "../../../core/client/src/integration/conversation-address.js";
 import { pluginRuntimeState } from "../../execution/client/objective-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -57,6 +58,7 @@ interface ObjectiveRecordsProps {
 }
 
 export function ObjectiveRecords({ aliasEditor, state, onDeferredDeletion, onArchived, deletionToast }: ObjectiveRecordsProps) {
+  useDesktopConversationAddress(state);
   const viewedTheaterId = useViewedTheaterId();
   const registry = useFeatureRegistry();
   const viewMode = useViewMode();
