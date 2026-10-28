@@ -439,7 +439,6 @@ function trackDesktopZoomFactor(): void {
     const style = document.documentElement.style;
     style.setProperty("--desktop-zoom", `${factor}`);
     const lights = MACOS_TRAFFIC_LIGHTS;
-    style.setProperty("--desktop-macos-compact-width", `${(lights.left + lights.span + lights.right) / factor}px`);
     // 셸의 52px 줄 가운데 배치와 같은 DIP 반올림을 적용한다.
     style.setProperty("--desktop-traffic-bottom", `${(Math.round((52 * factor - lights.height) / 2) + lights.height) / factor}px`);
     for (const listener of desktopZoomListeners) listener();

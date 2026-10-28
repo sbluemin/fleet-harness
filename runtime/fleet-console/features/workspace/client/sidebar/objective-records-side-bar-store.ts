@@ -185,6 +185,9 @@ function notifyListeners(): void {
 }
 
 export function getSideBarState(): SideBarState {
+  // 모듈을 읽은 뒤 Desktop 마커가 붙을 수 있다. 첫 소비도 실제 셸 폭을 읽되 같은 폭이면 스냅숏 참조를 유지한다.
+  const compactWidth = readCompactWidth();
+  if (sideBarState.compactWidth !== compactWidth) sideBarState = { ...sideBarState, compactWidth };
   return sideBarState;
 }
 

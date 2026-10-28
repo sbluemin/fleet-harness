@@ -54,6 +54,8 @@ interface RightRailProps {
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
 /** 카드 양쪽 테두리 — 열 실측과 카드 폭 사이의 차이. */
 const RAIL_CARD_BORDER_WIDTH = 2;
+/** 대화 셸도 같은 하한으로 사이드바의 임시 compact 여부를 판정한다. */
+export { MIN_PANEL_WIDTH } from "./pane-width.js";
 /** 엔트리의 대표 페인 — 폭 기본값 등 표면 차원의 힌트를 primary가 말한다(pane 계약). */
 function primaryPaneOf(binding: RailEntryBinding | null) {
   if (binding === null) return null;
