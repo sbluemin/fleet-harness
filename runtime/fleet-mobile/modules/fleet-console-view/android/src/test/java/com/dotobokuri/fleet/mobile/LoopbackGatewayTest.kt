@@ -82,19 +82,36 @@ class LoopbackGatewayTest {
     assertTrue(output.flushes >= 2)
   }
 
-  @Test fun eventStreamOutlivesTheOrdinaryRequestReadTimeout() {
+  @Test fun responseSocketPolicyBudgetsSlowHeadersAndKeepsStreamsUnlimited() {
+    // ai-gateway/routing-test holds headers until the routing-model agent (30s budget) answers,
+    // so the header wait must outlast it while a stalled upstream stays bounded.
     val upstream = Socket().apply { soTimeout = 8_000 }
-    val response = HttpResponse(
-      "HTTP/1.1 200 OK",
-      200,
-      Headers(listOf(Header("Content-Type", "text/event-stream; charset=utf-8"))),
-      BodyKind.UNTIL_CLOSE,
-    )
-
-    ResponseSocketPolicy.prepare(upstream, response)
-
-    assertEquals(0, upstream.soTimeout)
-    upstream.close()
+    try {
+      ResponseSocketPolicy.prepareForHeaders(upstream)
+      assertTrue(upstream.soTimeout > 30_000)
+      ResponseSocketPolicy.prepare(
+        upstream,
+        HttpResponse(
+          "HTTP/1.1 200 OK",
+          200,
+          Headers(listOf(Header("Content-Length", "0"))),
+          BodyKind.FIXED(0),
+        ),
+      )
+      assertTrue(upstream.soTimeout > 0)
+      ResponseSocketPolicy.prepare(
+        upstream,
+        HttpResponse(
+          "HTTP/1.1 200 OK",
+          200,
+          Headers(listOf(Header("Content-Type", "text/event-stream; charset=utf-8"))),
+          BodyKind.UNTIL_CLOSE,
+        ),
+      )
+      assertEquals(0, upstream.soTimeout)
+    } finally {
+      upstream.close()
+    }
   }
 
   @Test fun preservesWebSocketPathTicketAndUpgradeContract() {
