@@ -708,6 +708,8 @@ function TheaterSectionHeader({
         <button
           type="button"
           className="side-bar-theater-fold-btn"
+          // 접기는 목록을 보이고 숨길 뿐이다 — 문서 캡처 단계의 pointerdown 이 활성 Objective 를 풀지 않게 한다.
+          data-keep-objective-active=""
           aria-expanded={expanded}
           aria-label={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
           title={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
