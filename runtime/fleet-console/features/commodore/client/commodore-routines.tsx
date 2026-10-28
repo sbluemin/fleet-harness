@@ -23,7 +23,7 @@ function scheduleWord(routine: CommodoreRoutine, language: "en" | "ko", t: T, ti
 }
 
 /** 메뉴와 길게 누르기는 이 feature 내부에서 소유한다. 다른 feature의 비공개 UI 구현은 가져오지 않는다. */
-export function CommodoreRoutines({ commodoreId, language, phone = false, onRequest }: { readonly commodoreId: string; readonly language: "en" | "ko"; readonly phone?: boolean; readonly onRequest: () => void }) {
+export function CommodoreRoutines({ commodoreId, language, phone = false }: { readonly commodoreId: string; readonly language: "en" | "ko"; readonly phone?: boolean }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
   const online = useCommodoreOnline();
@@ -84,7 +84,6 @@ export function CommodoreRoutines({ commodoreId, language, phone = false, onRequ
     <p className="commodore-routines-hint">{t(phone ? "commodore.routines.phoneHint" : "commodore.routines.hint")}</p>
     {!view ? <p>{t("commodore.board.launch.loading")}</p> : !routines.length ? <div className="commodore-routines-empty">
       <p>{t("commodore.routines.empty")}</p><p>{t("commodore.routines.example")}</p>
-      <button type="button" className="fc-btn fc-btn--secondary" onClick={onRequest}>{t("commodore.routines.request")}</button>
     </div> : <>
       <p className="commodore-routines-hint">{t("commodore.routines.count", { n: routines.filter((r) => r.enabled).length, total: routines.length })}</p>
       <div className="commodore-routines-list">{routines.map((routine) => <div key={routine.id} className={`commodore-routines-row${routine.enabled ? "" : " is-off"}`} tabIndex={-1}
