@@ -102,6 +102,8 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   useEffect(() => { if (attachmentAt >= 0) lastAttachmentAt.current = attachmentAt; }, [attachmentAt]);
   const shownAttachmentAt = attachmentAt >= 0 ? attachmentAt : Math.min(lastAttachmentAt.current, Math.max(attachments.length - 1, 0));
   const attachment = attachmentMode ? attachments[shownAttachmentAt] ?? null : null;
+  // 대신 보인 이웃을 선택으로 굳힌다. 옛 자리에 매여 있으면 다른 첨부를 지울 때마다 보던 장이 바뀐다.
+  useEffect(() => { if (attachmentMode && attachmentAt < 0 && attachment) updateSelection({ ...opened, attachmentId: attachment.id }); }, [attachmentMode, attachmentAt, attachment, opened]);
   const attachmentLabel = attachment ? t("objectives.att.label", { n: attachment.n }) : "";
   const result = attachmentMode ? null : ordered.find((item) => item.id === opened.resultId) ?? ordered[0] ?? null;
   const group = groups.find((item) => item.results.some((entry) => entry.id === result?.id));
