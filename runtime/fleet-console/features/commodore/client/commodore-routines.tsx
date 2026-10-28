@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { SettingsToggle } from "../../settings/client/preferences-context.js";
 import type { CommodoreRoutine } from "../shared/contracts/types.js";
 import { removeCommodoreRoutine, toggleCommodoreRoutine, useCommodore, useCommodoreOnline } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
@@ -69,7 +70,7 @@ export function CommodoreRoutines({ commodoreId, language, phone = false, onRequ
     catch (error) { setFailure(t("commodore.failed", { code: error instanceof Error ? error.message : "failed" })); }
     finally { setBusy(false); }
   };
-  const toggle = (routine: CommodoreRoutine) => void act(() => toggleCommodoreRoutine(commodoreId, routine.id, !routine.enabled), t(routine.enabled ? "commodore.routines.paused" : "commodore.routines.enabled"));
+  const toggle = (routine: CommodoreRoutine, enabled = !routine.enabled) => void act(() => toggleCommodoreRoutine(commodoreId, routine.id, enabled), t(enabled ? "commodore.routines.enabled" : "commodore.routines.paused"));
   const onMenuKey = (event: KeyboardEvent) => {
     const buttons = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -90,18 +91,23 @@ export function CommodoreRoutines({ commodoreId, language, phone = false, onRequ
         onContextMenu={(event) => { event.preventDefault(); open(routine, event.currentTarget, event.clientX, event.clientY); }}
         onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); open(routine, event.currentTarget, rect.left + 16, rect.bottom); } }}
         onPointerDown={(event) => {
-          if (!phone || event.button !== 0 || (event.target as HTMLElement).closest('[role="switch"]')) return;
+          if (!phone || event.button !== 0 || (event.target as HTMLElement).closest("[data-routine-toggle]")) return;
           cancelPress(); suppressClick.current = false;
           const trigger = event.currentTarget; const { clientX: x, clientY: y } = event;
           press.current = { x, y, timer: setTimeout(() => { suppressClick.current = true; open(routine, trigger, x, y); }, 500) };
         }}
         onPointerMove={(event) => { if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 6) cancelPress(); }}
         onPointerUp={cancelPress} onPointerCancel={cancelPress} onPointerLeave={cancelPress}
-        onClickCapture={(event) => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } }}>
+        onClickCapture={(event) => {
+          if ((event.target as HTMLElement).closest("[data-routine-toggle]")) { suppressClick.current = false; return; }
+          if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); }
+        }}>
         <button type="button" className="commodore-routines-main" aria-expanded={expanded === routine.id} aria-haspopup={phone ? "dialog" : "menu"} onClick={() => setExpanded(expanded === routine.id ? null : routine.id)}>
           <span className="commodore-routines-name">{routine.name}</span><span className="commodore-routines-when">{scheduleWord(routine, language, t, view?.run.routineTimeZone)}</span>
         </button>
-        <button type="button" role="switch" aria-checked={routine.enabled} aria-label={`${routine.name} · ${t(routine.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}`} disabled={!online || busy} className="commodore-routines-switch" onClick={() => toggle(routine)} />
+        <span data-routine-toggle onPointerDown={(event) => { cancelPress(); suppressClick.current = false; event.stopPropagation(); }} onClick={(event) => event.stopPropagation()} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={(event) => event.stopPropagation()}>
+          <SettingsToggle checked={routine.enabled} ariaLabel={`${routine.name} · ${t(routine.enabled ? "commodore.routines.turnOff" : "commodore.routines.turnOn")}`} disabled={!online} busy={busy} onChange={(enabled) => toggle(routine, enabled)} />
+        </span>
         {expanded === routine.id ? <dl className="commodore-routines-detail"><dt>{t("commodore.routines.task")}</dt><dd>{routine.task}</dd><dt>{t("commodore.routines.next")}</dt><dd>{routine.enabled ? (view?.run.routineNextRuns?.[routine.id] ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view.run.routineTimeZone }).format(view.run.routineNextRuns[routine.id]!) : "—") : t("commodore.routines.off")}</dd><dt>{t("commodore.routines.last")}</dt><dd>{routine.lastRunAt ? new Intl.DateTimeFormat(localeOf(language), { dateStyle: "medium", timeStyle: "short", timeZone: view?.run.routineTimeZone }).format(routine.lastRunAt) : "—"}</dd></dl> : null}
       </div>)}</div>
     </>}
