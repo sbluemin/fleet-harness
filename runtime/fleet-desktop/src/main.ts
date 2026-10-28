@@ -46,6 +46,9 @@ import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from ".
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
+import { readChromeHistory } from "./chrome-history.js";
+import { createBrowserHistoryStorage } from "./browser-history-storage.js";
+import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
 import type { DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
@@ -351,6 +354,7 @@ async function boot(): Promise<void> {
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
+  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
   const browserViews = createDesktopBrowserViews({
     shell: () => window,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
@@ -375,6 +379,11 @@ async function boot(): Promise<void> {
      */
     shellCommand: async (method, params) => {
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
+      if (method === DESKTOP_BROWSER_HISTORY) return browserHistoryStorage.command(params);
+      if (method === DESKTOP_BROWSER_CHROME_HISTORY) {
+        if (typeof params.profileId !== "string") throw new Error("chrome_profile_not_found");
+        return { entries: readChromeHistory({ profileId: params.profileId, tempRoot: app.getPath("temp") }) };
+      }
       if (method === DESKTOP_BROWSER_IMPORT_COOKIES) {
         const target = browserTargetSession(params);
         const profileId = typeof params.profileId === "string" ? params.profileId : null;
@@ -391,6 +400,7 @@ async function boot(): Promise<void> {
         if (profile === null || !DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
         // 콘솔이 이 프로필의 뷰를 먼저 모두 닫고 부른다 — Windows 는 열려 있는 파일을 지우지 못한다.
         await browserProfileSession(profile).clearStorageData();
+        browserHistoryStorage.clear(profile);
         logger.info(`cleared browser profile ${profile}`);
         return { cleared: true };
       }

@@ -59,6 +59,10 @@
 .op-browser__suggestion-prompt { gap: var(--space-1); padding: var(--space-2); color: var(--text-secondary); font-size: var(--t-sm); }
 .op-browser__suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .op-browser__suggestion:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.op-browser__suggestion-result { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.op-browser__suggestion-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.op-browser__suggestion-label small { display: block; overflow: hidden; text-overflow: ellipsis; color: var(--text-tertiary); font-size: var(--t-xs); }
+.op-browser__suggestions[role="listbox"] { max-height: min(60vh, 420px); overflow-y: auto; }
 .op-browser__url-input::placeholder { color: var(--text-tertiary); }
 .op-browser__url-display { position: absolute; inset: 0 32px 0 var(--space-3); display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; }
 .op-browser__url-host { color: var(--text-primary); }

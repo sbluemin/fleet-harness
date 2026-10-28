@@ -128,7 +128,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import|profile|clear-profile)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|history|place|import|profile|clear-profile)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -152,10 +152,13 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
-      const tabId = readUrl(req).searchParams.get("tabId") ?? "";
-      const icon = await browserService.favicon(objectiveId, tabId).catch(() => null);
+      const params = readUrl(req).searchParams;
+      const historyId = params.get("historyId");
+      const icon = await (historyId && /^[a-f0-9]{64}$/u.test(historyId)
+        ? browserService.historyFavicon(objectiveId, historyId)
+        : browserService.favicon(objectiveId, params.get("tabId") ?? "")).catch(() => null);
       if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
-      res.writeHead(200, withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "private, max-age=3600", "Content-Length": String(icon.body.byteLength) }));
+      res.writeHead(200, { ...withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "no-store", "Content-Length": String(icon.body.byteLength) }), "Content-Security-Policy": "default-src 'none'; sandbox" });
       res.end(icon.body);
       return true;
     }
@@ -177,6 +180,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : undefined);
     if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
+      if (action === "history") {
+        if (typeof body.query !== "string" || body.query.length > 2048) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        res.setHeader("Cache-Control", "no-store");
+        writeJson(res, 200, { history: await browserService.historySuggestions(objectiveId, body.query) }); return true;
+      }
       if (action === "import") {
         if (typeof body.profileId !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, await browserService.importFromChrome(objectiveId, body.profileId)); return true;

@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { capturePixels } from "./capture-geometry.js";
 import type { BrowserTarget, BrowserElementState } from "./semantic.js";
 import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
+import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
+import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
@@ -147,6 +149,7 @@ export function invalidTargetMessage(target: unknown, scope = false): string {
 }
 
 interface Tab {
+  lastHistoryUrl?: string;
   readonly id: string;
   readonly targetId: string;
   sessionId: string;
@@ -311,6 +314,21 @@ const PRESETS: Record<Exclude<ViewportPreset, "responsive">, { width: number; he
 
 export class BrowserService {
   private client: CdpClient | null = null;
+  private readonly browsingHistory = new BrowserHistory(() => this.engineClient());
+
+  private historyScope(op: ObjectiveBrowser): HistoryScope {
+    const generation = op.resetGeneration;
+    const host = this.deps.desktop.currentHost;
+    return { owner: op.objectiveId, profile: op.profile, current: () => !this.disposed && op.resetGeneration === generation && this.objectiveRecords.get(op.objectiveId) === op && this.deps.desktop.currentHost === host };
+  }
+
+  async historySuggestions(objectiveId: string, query: string): Promise<HistorySuggestion[]> {
+    return this.browsingHistory.suggest(this.historyScope(this.objectiveRecord(objectiveId)), query);
+  }
+
+  async historyFavicon(objectiveId: string, id: string): Promise<{ body: Buffer; type: string } | null> {
+    return this.browsingHistory.favicon(this.historyScope(this.objectiveRecord(objectiveId)), id);
+  }
   private disposed = false;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
@@ -387,7 +405,9 @@ export class BrowserService {
     this.unsubscribeEvents = null;
     this.identity = null;
     if (this.engine !== "failed") this.engine = "idle";
+    this.browsingHistory.forgetAll();
     for (const op of this.objectiveRecords.values()) {
+      op.resetGeneration += 1;
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
       op.tabs.clear();
       op.activeTabId = null;
@@ -543,6 +563,11 @@ export class BrowserService {
 
   /** 이 Objective 의 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
   private async disposeContext(op: ObjectiveBrowser): Promise<void> {
+    // 임시 이력은 탭 개수가 아니라 쿠키 파티션을 버리는 이 경계에서 함께 사라진다.
+    if (op.profile === null) {
+      op.resetGeneration += 1;
+      this.browsingHistory.forget(op.objectiveId);
+    }
     const client = this.client;
     if (client && op.contextId) { try { await client.send("Target.disposeBrowserContext", { browserContextId: op.contextId }); } catch { /* 이미 사라졌다 */ } }
     op.contextId = "";
@@ -783,6 +808,8 @@ export class BrowserService {
   }
 
   private async refreshTab(client: CdpClient, tab: Tab): Promise<void> {
+    const owner = this.findTab(tab.sessionId)?.op;
+    const scope = owner ? this.historyScope(owner) : null;
     try {
       const history = await client.send<{ currentIndex: number; entries: { url: string; title: string }[] }>("Page.getNavigationHistory", {}, tab.sessionId);
       const entry = history.entries[history.currentIndex];
@@ -791,6 +818,12 @@ export class BrowserService {
       if (/^https?:/.test(tab.url)) {
         const icon = await client.send<{ result: { value?: unknown } }>("Runtime.evaluate", { expression: FAVICON_EXPRESSION, returnByValue: true }, tab.sessionId);
         tab.favicon = typeof icon.result.value === "string" && /^https?:/.test(icon.result.value) ? icon.result.value : null;
+        if (scope?.current() && owner?.tabs.get(tab.id) === tab) {
+          const increment = tab.lastHistoryUrl !== tab.url;
+          tab.lastHistoryUrl = tab.url;
+          void this.browsingHistory.record(scope, [{ url: tab.url, title: tab.title, visits: 1, lastVisited: Date.now() }], { iconUrl: tab.favicon, increment })
+            .catch(() => this.deps.log("browser history could not be saved"));
+        }
       }
     } catch { /* 탭이 닫히는 중 */ }
     tab.refs.clear();
@@ -811,20 +844,33 @@ export class BrowserService {
    * Chrome 프로필의 쿠키를 이 Objective 이 지금 쓰는 세션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다.
    * 영속 프로필을 쓰고 있으면 그 프로필로 들어가 다음에 열 때도 남고, 임시 세션이면 그 세션과 함께 사라진다.
    */
-  async importFromChrome(objectiveId: string, profileId: string): Promise<{ cookies: number }> {
-    if (!/^[A-Za-z0-9 ._-]+$/.test(profileId)) throw new BrowserPolicyError("chrome_profile_not_found", CHROME_IMPORT_FAILURES.chrome_profile_not_found!);
+  async importFromChrome(objectiveId: string, profileId: string): Promise<{ cookies: number; history: number; cookiesFailed: boolean; historyFailed: boolean }> {
+    if (!/^[A-Za-z0-9 ._-]+$/.test(profileId) || profileId === "." || profileId === "..") throw new BrowserPolicyError("chrome_profile_not_found", CHROME_IMPORT_FAILURES.chrome_profile_not_found!);
     const op = this.objectiveRecord(objectiveId);
     const { client, contextId } = await this.context(op);
+    const scope = this.historyScope(op);
+    let history = 0, cookies = 0;
+    let historyFailed = false, cookiesFailed = false;
+    // 이력에는 키체인도 Chrome 실행도 필요 없다. 쿠키 복호화가 실패해도 먼저 가져온 이력은 남는다.
     try {
-      const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId, browserProfile: op.profile });
-      this.deps.log(`imported ${result.cookies} cookies from Chrome profile ${profileId} into ${op.profile ? `browser profile ${op.profile}` : objectiveId}`);
-      return result;
+      const imported = await client.send<{ entries: BrowserHistoryVisit[] }>(DESKTOP_BROWSER_CHROME_HISTORY, { profileId });
+      history = await this.browsingHistory.record(scope, imported.entries, { imported: true });
+    } catch { historyFailed = true; }
+    if (!scope.current()) throw new BrowserPolicyError("chrome_import_failed", "The browser session changed during import.");
+    try {
+      const result = await client.send<{ cookies: number }>(DESKTOP_BROWSER_IMPORT_COOKIES, { partition: contextId, profileId, browserProfile: scope.profile });
+      cookies = result.cookies;
     } catch (error) {
-      // 셸의 까닭은 CdpError 메시지(`Fleet.importChromeCookies: chrome_…`)에 실려 온다.
-      const raw = error instanceof CdpError ? error.message.slice(error.method.length + 2) : "";
-      const code = /^(chrome_[a-z_]+)/.exec(raw)?.[1] ?? "chrome_import_failed";
-      throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile.");
+      cookiesFailed = true;
+      if (historyFailed) {
+        const raw = error instanceof CdpError ? error.message.slice(error.method.length + 2) : "";
+        const code = /^(chrome_[a-z_]+)/.exec(raw)?.[1] ?? "chrome_import_failed";
+        throw new BrowserPolicyError(code, CHROME_IMPORT_FAILURES[code] ?? "Chrome could not open the copied profile.");
+      }
     }
+    if (!scope.current()) throw new BrowserPolicyError("chrome_import_failed", "The browser session changed during import.");
+    this.deps.log(`imported ${cookies} cookies and ${history} history entries from Chrome profile ${profileId} into ${scope.profile ? `browser profile ${scope.profile}` : objectiveId}`);
+    return { cookies, history, cookiesFailed, historyFailed };
   }
 
   // ---------- 프로필 ----------
@@ -881,33 +927,19 @@ export class BrowserService {
       this.emitState(op);
     }
     const client = await this.engineClient();
-    await client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile });
+    await this.browsingHistory.exclusive(() => client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile }));
     this.deps.log(`cleared browser profile ${profile}`);
     this.scheduleIdle();
   }
 
   // ---------- 파비콘 프록시 ----------
 
-  private readonly favicons = new Map<string, { at: number; body: Buffer; type: string }>();
-
-  /** 탭의 파비콘 바이트. 페이지가 선언한 URL 을 서버가 받아 준다 — 클라이언트 CSP 가 외부 이미지를 막기 때문. */
+  /** 탭과 이력의 파비콘은 같은 세션 저장소를 쓴다. 임시 세션 사이에 바이트 캐시를 공유하지 않는다. */
   async favicon(objectiveId: string, tabId: string): Promise<{ body: Buffer; type: string } | null> {
     const op = this.objectiveRecord(objectiveId);
     const tab = op.tabs.get(tabId);
     if (!tab?.favicon) return null;
-    const cached = this.favicons.get(tab.favicon);
-    if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached;
-    try {
-      const response = await fetch(tab.favicon, { signal: AbortSignal.timeout(5000), redirect: "follow" });
-      const type = response.headers.get("content-type") ?? "";
-      if (!response.ok || !/^image\//.test(type)) return null;
-      const body = Buffer.from(await response.arrayBuffer());
-      if (body.byteLength === 0 || body.byteLength > 256 * 1024) return null;
-      const entry = { at: Date.now(), body, type };
-      this.favicons.set(tab.favicon, entry);
-      if (this.favicons.size > 200) { const oldest = [...this.favicons.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) this.favicons.delete(oldest[0]); }
-      return entry;
-    } catch { return null; }
+    return this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url);
   }
 
 
@@ -964,7 +996,12 @@ export class BrowserService {
         return;
       }
       case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
-      case "Page.navigatedWithinDocument": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = false; this.emitState(op); return;
+      case "Page.navigatedWithinDocument": {
+        if (tab.frameId && p.frameId !== tab.frameId) return;
+        tab.loading = false;
+        if (this.client) void this.refreshTab(this.client, tab).then(() => this.emitState(op));
+        return;
+      }
       case "Page.loadEventFired": case "Page.frameStoppedLoading": {
         if (event.method === "Page.frameStoppedLoading" && tab.frameId && p.frameId !== tab.frameId) return;
         tab.loading = false;

@@ -193,6 +193,8 @@ describe("session browser host contract", () => {
     const answered = new Set<number>();
     const urls = new Map<string, string>();
     // 실제 서비스·DesktopEngine 경로를 통과시키고, 셸의 부착·CDP 응답만 대신한다.
+    let historySnapshot: string | null = null;
+    const historyWrites: string[] = [];
     const engine = new DesktopEngine({
       publish: (snapshot) => queueMicrotask(() => {
         const attaching = snapshot.views.filter((view) => !attached.has(view.id));
@@ -209,6 +211,15 @@ describe("session browser host contract", () => {
             result = { currentIndex: 0, entries: [{ url: urls.get(command.viewId) ?? "about:blank", title: "" }] };
           } else if (command.method === "Runtime.evaluate") {
             result = { result: { type: "undefined" } };
+          } else if (command.method === "Fleet.browserHistory") {
+            if (command.params.action === "write") { historySnapshot = String(command.params.data); historyWrites.push(String(command.params.browserProfile)); }
+            result = { data: historySnapshot, revision: "fixture" };
+          } else if (command.method === "Fleet.chromeHistory") {
+            result = { entries: [{ url: "https://imported.example/docs", title: "가져온 문서", visits: 5, lastVisited: Date.now() }] };
+          } else if (command.method === "Fleet.importChromeCookies") {
+            return { id: command.id, error: "chrome_cookies_locked" };
+          } else if (command.method === "Fleet.clearBrowserProfile") {
+            historySnapshot = null;
           }
           return { id: command.id, result };
         });
@@ -232,7 +243,43 @@ describe("session browser host contract", () => {
     try {
       await expect(service.createTab(GLOBAL_BROWSER_OWNER_ID, "https://example.com/reserved", "user")).rejects.toMatchObject({ code: "browser_owner_reserved" });
       expect(service.status().objectiveRecords).not.toContain(GLOBAL_BROWSER_OWNER_ID);
-      const foreign = await service.createTab("op-foreign", "https://example.com/foreign", "user");
+      let foreign = await service.createTab("op-foreign", "https://example.com/foreign", "user");
+      expect(await service.historySuggestions("op-foreign", "example.com/foreign")).toMatchObject([{ url: "https://example.com/foreign" }]);
+      // 쿠키 키체인이 막혀도 이력은 독립적으로 저장되고, 로컬 제안 조회는 외부 Suggest에 보내지 않는다.
+      expect(await service.importFromChrome("op-foreign", "Default")).toMatchObject({ history: 1, cookies: 0, cookiesFailed: true, historyFailed: false });
+      const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("fixture-icon", { headers: { "Content-Type": "image/png" } }));
+      try {
+        const entries = await service.historySuggestions("op-foreign", "가져온");
+        expect(entries).toMatchObject([{ url: "https://imported.example/docs", title: "가져온 문서" }]);
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(await service.historyFavicon("op-foreign", entries[0]!.id)).toMatchObject({ type: "image/png" });
+        expect(historySnapshot).toContain(Buffer.from("fixture-icon").toString("base64"));
+        // 같은 영속 프로필은 새 서비스에서도 디스크 adapter를 통해 살아난다.
+        const restarted = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "local" }), desktop: engine, log: () => {}, defaultProfile: { read: () => "default", write: () => {} } });
+        expect(await restarted.historySuggestions("op-restarted", "가져온")).toEqual(entries);
+        expect(await restarted.historyFavicon("op-restarted", entries[0]!.id)).toMatchObject({ type: "image/png" });
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        await service.setProfile("op-private", null);
+        const writesBefore = historyWrites.length;
+        await service.importFromChrome("op-private", "Default");
+        expect(await service.historySuggestions("op-private", "가져온")).toHaveLength(1);
+        await service.setProfile("op-other-private", null);
+        expect(await service.historySuggestions("op-other-private", "가져온")).toEqual([]);
+        expect(historyWrites).toHaveLength(writesBefore);
+        const privateTab = await service.createTab("op-private", null, "user");
+        await service.closeTab("op-private", privateTab.id);
+        expect(await service.historySuggestions("op-private", "가져온")).toEqual([]);
+        await service.importFromChrome("op-private", "Default");
+        await service.setProfile("op-private", "default");
+        await service.setProfile("op-private", null);
+        expect(await service.historySuggestions("op-private", "가져온")).toEqual([]);
+        await service.clearProfile("default");
+        expect(historySnapshot).toBeNull();
+        expect(await service.historySuggestions("op-restarted", "가져온")).toEqual([]);
+        expect(await service.historyFavicon("op-restarted", entries[0]!.id)).toBeNull();
+        // 뒤따르는 기존 생명주기 검증에 필요한 탭을 다시 연다.
+        foreign = await service.createTab("op-foreign", "https://example.com/foreign", "user");
+      } finally { fetcher.mockRestore(); }
 
       // 에이전트의 동시 생성도 완성 탭과 생성 예약을 합쳐 Objective별 8개까지만 받는다.
       for (let index = 0; index < 7; index += 1) await service.createTab("op-target", null, "agent");
