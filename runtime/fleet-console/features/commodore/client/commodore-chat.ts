@@ -430,6 +430,9 @@ function plainFirstLine(text: string): string {
 function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>, index: CommodoreObjectiveIndex | undefined): { readonly detail: string; readonly references?: readonly ConversationReference[] } {
   if (!tool.action) return { detail: tool.summary ?? "" };
   const action = actionWord(t, tool.action);
+  if (tool.name === "console_commodores" && tool.action === "create" && tool.ok !== false && tool.commodoreId && tool.alias) {
+    return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [{ id: `commodore:${tool.commodoreId}`, label: tool.alias }] };
+  }
   if (!index) return { detail: [action, tool.title].filter(Boolean).join(" · ") };
   const target = objectiveTarget(t, index, tool.objectiveId, tool.title);
   if (target.id && target.label) return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [{ id: target.id, label: target.label }] };

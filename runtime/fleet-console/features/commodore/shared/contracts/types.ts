@@ -219,7 +219,7 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "wake-scope"; readonly woke: readonly CommodoreScopeItem[]; readonly held: readonly CommodoreScopeItem[]; readonly wokeMore?: number; readonly heldMore?: number }
   | CommodoreTranscriptBase & { readonly kind: "text"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
-  | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
+  | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly commodoreId?: string; readonly alias?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
   /** `resumed`는 이전 버전 기록 읽기 호환용이다. 새 세션은 이 사건을 기록하지 않는다. */
   /** 열린 세션(`stopped` 가 아닌 줄)에는 그 세션이 실제로 도는 모델·강도가 실린다 — 설정값이 아니라 로스터 폴백까지 푼 좌표다. */
@@ -283,7 +283,7 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("thinking"), text }).strict(),
   // 보드 행위는 action·objectiveId·title 로 서랍이 「목표 X 를 완료」 한 줄로 그린다 — 도구 인자 전체는 싣지 않는다.
   // 거절은 코드 한 낱말만(`error`) — 도구 결과의 나머지(입력·힌트)는 싣지 않는다.
-  z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), commodoreId: ids.optional(), alias: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "resumed", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional(), model: z.string().min(1).max(200).optional(), effort: z.string().min(1).max(32).optional() }).strict(),
   // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
