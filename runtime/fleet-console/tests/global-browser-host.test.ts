@@ -195,6 +195,7 @@ describe("session browser host contract", () => {
     // 실제 서비스·DesktopEngine 경로를 통과시키고, 셸의 부착·CDP 응답만 대신한다.
     let historySnapshot: string | null = null;
     const historyWrites: string[] = [];
+    let conflictNextHistoryWrite = false;
     const engine = new DesktopEngine({
       publish: (snapshot) => queueMicrotask(() => {
         const attaching = snapshot.views.filter((view) => !attached.has(view.id));
@@ -210,8 +211,15 @@ describe("session browser host contract", () => {
           } else if (command.method === "Page.getNavigationHistory") {
             result = { currentIndex: 0, entries: [{ url: urls.get(command.viewId) ?? "about:blank", title: "" }] };
           } else if (command.method === "Runtime.evaluate") {
-            result = { result: { type: "undefined" } };
+            result = { result: { value: urls.get(command.viewId)?.includes("unrecorded") ? "https://example.com/large-icon.avif" : undefined } };
           } else if (command.method === "Fleet.browserHistory") {
+            if (command.params.action === "write" && conflictNextHistoryWrite) {
+              conflictNextHistoryWrite = false;
+              const newer = JSON.parse(historySnapshot!);
+              newer.entries.push({ url: "https://newer.example/retained", title: "Newer revision", visits: 1, lastVisited: Date.now(), iconUrl: null });
+              historySnapshot = JSON.stringify(newer);
+              return { id: command.id, error: "browser_history_changed" };
+            }
             if (command.params.action === "write") { historySnapshot = String(command.params.data); historyWrites.push(String(command.params.browserProfile)); }
             result = { data: historySnapshot, revision: "fixture" };
           } else if (command.method === "Fleet.chromeHistory") {
@@ -259,6 +267,16 @@ describe("session browser host contract", () => {
         expect(await restarted.historySuggestions("op-restarted", "가져온")).toEqual(entries);
         expect(await restarted.historyFavicon("op-restarted", entries[0]!.id)).toMatchObject({ type: "image/png" });
         expect(fetcher).toHaveBeenCalledTimes(1);
+        conflictNextHistoryWrite = true;
+        await service.createTab("op-conflict", "https://new-write.example/", "user");
+        expect(await service.historySuggestions("op-foreign", "newer.example")).toMatchObject([{ title: "Newer revision" }]);
+        // 저장 대상이 아닌 URL의 큰 탭 아이콘도 표시한다. snapshot에는 넣지 않는다.
+        const largeIcon = new Uint8Array(64 * 1024).fill(42);
+        fetcher.mockResolvedValueOnce(new Response(largeIcon, { headers: { "Content-Type": "image/avif" } }));
+        const unrecorded = await service.createTab("op-large", "https://user:password@example.com/unrecorded", "user");
+        expect(await service.historySuggestions("op-large", "unrecorded")).toEqual([]);
+        expect(await service.favicon("op-large", unrecorded.id)).toEqual({ body: Buffer.from(largeIcon), type: "image/avif" });
+        expect(historySnapshot).not.toContain(Buffer.from(largeIcon).toString("base64"));
         await service.setProfile("op-private", null);
         const writesBefore = historyWrites.length;
         await service.importFromChrome("op-private", "Default");

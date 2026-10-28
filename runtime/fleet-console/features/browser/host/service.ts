@@ -315,11 +315,20 @@ const PRESETS: Record<Exclude<ViewportPreset, "responsive">, { width: number; he
 export class BrowserService {
   private client: CdpClient | null = null;
   private readonly browsingHistory = new BrowserHistory(() => this.engineClient());
+  private historyHost: string | null = null;
+  private historyEpoch = 0;
+
+  private syncHistoryHost(): void {
+    const host = this.deps.desktop.currentHost;
+    if (this.historyHost !== host) { this.historyEpoch += 1; this.browsingHistory.forgetAll(); this.historyHost = host; }
+  }
 
   private historyScope(op: ObjectiveBrowser): HistoryScope {
+    this.syncHistoryHost();
     const generation = op.resetGeneration;
+    const epoch = this.historyEpoch;
     const host = this.deps.desktop.currentHost;
-    return { owner: op.objectiveId, profile: op.profile, current: () => !this.disposed && op.resetGeneration === generation && this.objectiveRecords.get(op.objectiveId) === op && this.deps.desktop.currentHost === host };
+    return { owner: op.objectiveId, profile: op.profile, current: () => !this.disposed && this.historyEpoch === epoch && op.resetGeneration === generation && this.objectiveRecords.get(op.objectiveId) === op && this.deps.desktop.currentHost === host };
   }
 
   async historySuggestions(objectiveId: string, query: string): Promise<HistorySuggestion[]> {
@@ -368,6 +377,7 @@ export class BrowserService {
     if (this.disposed) return;
     const policy = this.deps.availability();
     this.deps.desktop.setHost(policy.host);
+    this.syncHistoryHost();
     const available = this.availability().available;
     const closing = this.lastAvailable === true && !available;
     this.lastAvailable = available;
@@ -551,6 +561,7 @@ export class BrowserService {
   private async resetContext(op: ObjectiveBrowser): Promise<void> {
     // 첫 await 전에 무효화한다 — 빈 contextId여도 진행 중 생성은 더 이상 등록할 수 없다.
     op.resetGeneration += 1;
+    this.browsingHistory.forget(op.objectiveId);
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
     op.callParticipants.clear();
@@ -927,7 +938,10 @@ export class BrowserService {
       this.emitState(op);
     }
     const client = await this.engineClient();
-    await this.browsingHistory.exclusive(() => client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile }));
+    await this.browsingHistory.exclusive(async () => {
+      try { await client.send(DESKTOP_BROWSER_CLEAR_PROFILE, { browserProfile: profile }); }
+      finally { this.browsingHistory.forgetProfile(profile); }
+    });
     this.deps.log(`cleared browser profile ${profile}`);
     this.scheduleIdle();
   }
@@ -939,7 +953,7 @@ export class BrowserService {
     const op = this.objectiveRecord(objectiveId);
     const tab = op.tabs.get(tabId);
     if (!tab?.favicon) return null;
-    return this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url);
+    return this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url, tab.favicon);
   }
 
 
