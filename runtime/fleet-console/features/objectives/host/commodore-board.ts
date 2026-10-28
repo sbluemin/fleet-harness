@@ -81,6 +81,11 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   const cleanups: (() => void)[] = [];
   let disposed = false;
   const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settledAt: new Map(), restSince: new Map(), blockedHeard: new Map() };
+  // 감시 이전부터 멈춘 보드는 이미 들은 자리다. 자동 재개 턴이 돌아도 보드가 그대로면 다시 깨우지 않는다.
+  // 미처리 대기는 이전 보고 여부와 무관하게 다시 깨워야 하므로 서명을 채우지 않는다. 사람 몫 대기는 제외한다.
+  if (deps.observe) for (const objective of deps.objectives(commodoreId)) {
+    if (groupIdle(objective, deps.observe) && !waitingReasons(objective, deps.observe).some((reason) => !heldForPerson(objective, reason))) runner.settledAt.set(objective.id, boardSignature(objective));
+  }
   const wake = (_runner: Runner, code: WakeCode, input?: Parameters<CommodoreWakeSink["wake"]>[1]) => sink.wake(code, input);
   const forgetStatus = (_runner: Runner, objectiveId: string) => sink.forget(objectiveId);
   const publish = (runner: Runner) => sink.stalledChanged([...runner.stalledReported]);
@@ -202,7 +207,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
   // 그룹 대화의 대기 중 — 사령관이 운영하는 열린 목표에서 지휘관과 띄운 구성원이 모두 멈춰 `SETTLE_MS` 이어지면 들어선 것이다.
   // 들어설 때 한 번 깨운다: 같은 보드 서명으로 이미 깨웠으면 다시 깨우지 않고(그 뒤는 정체 판정이 맡는다), 남은 일이 모두 사람
   // 몫이면 깨우지 않는다. 대기 항목(기준·개시·결정·검토·후속·구성원 실패)과 단계 이동은 이 깨움의 보드 요약으로 실린다.
-  // 감시가 막 섰을 때(Console 재시작·순찰 시작) 이미 대기 중인 그룹은 바로 들어선 것으로 본다 — 그 턴과 함께 깨운다.
+  // 감시가 막 섰을 때(Console 재시작·순찰 시작) 이미 대기 중인 그룹은 미처리 대기 항목으로만 깨운다. 진행 상태만으로는 깨우지 않는다.
   // 그룹이 아직 일하는 목표는 `blocked` 가 맡는다.
   const settle = (runner: Runner, seeded: boolean) => {
     if (disposed || !sink.automatic() || !deps.observe) return;
