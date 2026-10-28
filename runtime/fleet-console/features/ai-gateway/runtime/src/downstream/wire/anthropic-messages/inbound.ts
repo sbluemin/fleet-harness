@@ -39,8 +39,6 @@ export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOp
    * guard — never as a projection denominator.
    */
   modelContextWindow?: number;
-  /** 새로 여는 provider trace가 진단 이벤트를 낼지 결정한다. 생략하면 adapter 기본값을 유지한다. */
-  diagnosticsEnabled?: boolean;
   signal?: AbortSignal;
 }
 
@@ -116,9 +114,6 @@ export class AnthropicMessagesGateway {
       ...(options.modelContextWindow === undefined
         ? {}
         : { modelContextWindow: options.modelContextWindow }),
-      ...(options.diagnosticsEnabled === undefined
-        ? {}
-        : { diagnosticsEnabled: options.diagnosticsEnabled }),
       signal: options.signal
     });
 
@@ -195,8 +190,8 @@ async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
  * a tokenizer. It is a last-resort backstop behind correct window accounting, never the
  * primary defence, so it only fires when the estimate is strictly over the window.
  *
- * Only the tools the adapter actually serializes upstream are counted. Cursor drops
- * deferred tools and caps the rest, so counting the declared catalog would refuse turns
+ * Only the tools the adapter actually serializes upstream are counted. Counting
+ * a declared catalog larger than the serialized one would refuse turns
  * whose real request is far under the window — and, because the catalog is re-declared
  * every turn while reactive compaction only shrinks the conversation, a catalog large
  * enough to overflow on its own would lock the model out permanently instead of

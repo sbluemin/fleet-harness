@@ -16,7 +16,7 @@ export interface AiGatewaySettings {
   readonly providerPriority?: readonly AiGatewayProviderId[];
 }
 
-export type AiGatewayProviderId = "antigravity" | "codex" | "cursor" | "xai" | "claude" | "muse-code";
+export type AiGatewayProviderId = "antigravity" | "codex" | "xai" | "claude" | "muse-code";
 
 /** Absent / null is Auto. `"early"` / `"late"` are 88 / 97. A number is Custom 70–99. */
 export type CompactCeiling = "early" | "late" | number;
@@ -56,7 +56,6 @@ export type DelegationRoutingMode = "jev" | "model";
 export interface SystemPromptSettingsState {
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
-  readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
   /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
   readonly delegationRoutingEnabled: boolean;
@@ -68,7 +67,6 @@ export interface SystemPromptSettingsState {
 
 export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
-  | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
   | { readonly delegationRoutingMode: DelegationRoutingMode }
@@ -173,7 +171,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
-    || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
     || typeof payload.delegationRoutingEnabled !== "boolean"
     || !isDelegationRoutingMode(payload.delegationRoutingMode)
@@ -185,7 +182,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   return {
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
-    cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
     delegationRoutingEnabled: payload.delegationRoutingEnabled,
     delegationRoutingModel: payload.delegationRoutingModel ?? null,
@@ -224,7 +220,7 @@ import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -336,9 +332,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
-  if (field === "cursorDiagnosticsEnabled") {
-    return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };
-  }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
   }

@@ -238,11 +238,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
         aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingMode: mode });
         return aiGateway;
       },
-      writeCursorDiagnosticsEnabled: (enabled) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({ ...aiGateway, cursorDiagnosticsEnabled: enabled });
-        return aiGateway;
-      },
       writeWireLogEnabled: (enabled) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({

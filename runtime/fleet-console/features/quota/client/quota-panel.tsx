@@ -29,7 +29,6 @@ export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
-  cursor: "Cursor",
   "muse-code": "Muse Code",
   xai: "xAI",
 };
@@ -67,7 +66,6 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
-  cursor: "quota.cursor.signedOut",
   "muse-code": "quota.museCode.signedOut",
   xai: "quota.xai.signedOut",
 };
@@ -76,18 +74,15 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.expired.antigravity",
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
-  cursor: "quota.expired.cursor",
   "muse-code": "quota.expired.museCode",
   xai: "quota.expired.xai",
 };
 
-// Cursor만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
-// 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
+// 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
-  cursor: "quota.cursor.noSubscription",
   "muse-code": "quota.noSubscription",
   xai: "quota.noSubscription",
 };
@@ -100,7 +95,7 @@ export function isConnectable(id: ProviderId): id is ConnectableProviderId {
 }
 
 /**
- * Codex·xAI·Cursor·Muse Code는 Console이 로그인을 소유한다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
+ * Codex·xAI·Muse Code는 Console이 로그인을 소유한다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
  * (`signed_out`은 옛 Gateway가 보내던 미로그인 상태라 같은 카드로 받는다.)
  */
 export function needsConsoleLogin(id: ProviderId, status: ProviderStatus | undefined): id is LoginProvider {
@@ -117,7 +112,6 @@ export const LOGIN_FAILURE_KEY: Readonly<Record<LoginFailure, QuotaMessageKey>> 
 /** 로그인 카드의 설명. 어느 계정으로 로그인하는지는 공급자마다 다르다. */
 export const LOGIN_BODY_KEY: Readonly<Record<LoginProvider, QuotaMessageKey>> = {
   codex: "quota.login.body.codex",
-  cursor: "quota.login.body.cursor",
   "muse-code": "quota.login.body.museCode",
   xai: "quota.login.body.xai",
 };

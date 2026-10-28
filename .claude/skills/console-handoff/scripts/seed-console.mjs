@@ -11,8 +11,7 @@
  *                                [--pick N | --text "..." | --approve | --dismiss | --revise "..."]
  *
  * The answer mode re-reads the journal to find the parked question rather than taking an
- * id on the command line: a real tool_use id can contain a newline (measured on the cursor
- * gateway), so it must never travel through a shell variable.
+ * id on the command line: a real tool_use id can contain a newline, so it must never travel through a shell variable.
  *
  * Prints one JSON object on stdout; progress goes to stderr.
  */

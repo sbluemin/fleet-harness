@@ -20,7 +20,6 @@ const LOGIN_LABEL: Readonly<Record<LoginProvider, string>> = {
   "muse-code": "Muse Code",
   codex: "Codex",
   xai: "xAI",
-  cursor: "Cursor",
 };
 
 const LOGIN_ROUTES: readonly { readonly action: LoginAction; readonly method: "GET" | "POST"; readonly summary: (label: string) => string }[] = [

@@ -4671,9 +4671,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .objective-launch-variant-caption.is-codex,
 .launch-pop-band.is-codex,
 .fc-composer-deck-band.is-codex { --launch-provider-tone: var(--provider-codex); }
-.objective-launch-variant-caption.is-cursor,
-.launch-pop-band.is-cursor,
-.fc-composer-deck-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .objective-launch-variant-caption.is-xai,
 .launch-pop-band.is-xai,
 .fc-composer-deck-band.is-xai { --launch-provider-tone: var(--provider-xai); }
@@ -4681,7 +4678,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-model-picker__glyph.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-model-picker__glyph.is-codex { --launch-provider-tone: var(--provider-codex); }
-.fc-model-picker__glyph.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .fc-model-picker__glyph.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
@@ -4710,14 +4706,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .launch-kind-icon.is-antigravity,
 .launch-kind-icon.is-claude,
 .launch-kind-icon.is-codex,
-.launch-kind-icon.is-cursor,
 .launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
 .launch-kind-icon.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
-.launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
@@ -10303,7 +10297,6 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu-provider.is-claude, .fc-coord-trigger-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-coord-menu-provider.is-codex, .fc-coord-trigger-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-coord-menu-provider.is-xai, .fc-coord-trigger-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
-.fc-coord-menu-provider.is-cursor, .fc-coord-trigger-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 /* 빈 로스터의 폴백 띠 머리 — 새 세션·캔버스·채팅 좌표가 공급자 띠 대신 그린다. 폴백은 상태라 warn이 말하고, 길 안내는 brass 잉크다.
    공급자 캡션(대문자·자간)을 물려받지 않는 문장이다 — 호출부는 캡션 클래스를 섞지 않는다. */

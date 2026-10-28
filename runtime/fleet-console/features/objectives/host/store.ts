@@ -564,7 +564,7 @@ function storedUnreported(value: StoredMember["unreported"]): ObjectiveMemberUnr
 export function lacksReportTool(tools: readonly string[] | null): boolean {
   return tools !== null && !tools.includes(REPORT_TOOL);
 }
-/** 구성원이 지휘관에게 보고하는 도구 — 하네스가 광고하는 이름(Cursor 의 광고명 치환은 Gateway 안쪽이라 init 목록은 이 이름을 말한다). */
+/** 구성원이 지휘관에게 보고하는 도구 — 하네스가 광고하는 이름. */
 export const REPORT_TOOL = "SendMessage";
 function storedTurn(value: StoredMember["settledTurn"]): SettledTurn | undefined {
   return value && typeof value === "object" && Number.isFinite(value.revision) && (value.generation === undefined || typeof value.generation === "string") ? value : undefined;

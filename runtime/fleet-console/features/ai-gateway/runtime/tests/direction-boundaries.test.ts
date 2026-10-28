@@ -25,7 +25,6 @@ const UPSTREAM_FOLDERS = [
   "anthropic",
   "antigravity",
   "codex",
-  "cursor",
   "typesafe",
   "xai",
 ] as const;
@@ -34,7 +33,6 @@ const UPSTREAM_FOLDERS = [
 const GATEWAY_PROVIDER_FOLDERS = [
   "antigravity",
   "codex",
-  "cursor",
   "xai",
 ] as const;
 
@@ -451,11 +449,9 @@ describe("core-ai-gateway direction boundaries", () => {
       "gateway-router",
       "antigravity",
       "codex",
-      "cursor",
       "xai",
       "openai-chat-adapter.ts",
       "openai-responses-adapter.ts",
-      "cursor-adapter.ts",
       "provider-credentials.ts",
       "canonical.ts",
       "anthropic.ts",
@@ -532,12 +528,12 @@ describe("gateway module specifier extraction", () => {
   it("captures type-level imports, require, and createRequire specifiers", () => {
     expect(moduleSpecifiers(`
       type T = import("../../codex/x.js").T;
-      const r = require("../cursor/y.js");
+      const r = require("../xai/y.js");
       const cr = createRequire(import.meta.url)("../../xai/z.js");
       import { E } from "./e.js";
     `)).toEqual([
       "../../codex/x.js",
-      "../cursor/y.js",
+      "../xai/y.js",
       "../../xai/z.js",
       "./e.js",
     ]);
@@ -546,12 +542,12 @@ describe("gateway module specifier extraction", () => {
   it("captures no-substitution template specifiers but never interpolated ones", () => {
     expect(moduleSpecifiers(`
       const a = import(\`../../codex/x.js\`);
-      const r = require(\`../cursor/y.js\`);
+      const r = require(\`../xai/y.js\`);
       const cr = createRequire(import.meta.url)(\`../../xai/z.js\`);
       const dyn = import(\`../\${name}.js\`);
     `)).toEqual([
       "../../codex/x.js",
-      "../cursor/y.js",
+      "../xai/y.js",
       "../../xai/z.js",
     ]);
   });

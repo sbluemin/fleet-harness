@@ -40,12 +40,12 @@ describe("claude-gateway profile", () => {
       KEEP_ME: "yes",
     }, "/tmp", {
       cliId: "claude",
-      model: "claude-gateway--cursor-auto",
+      model: "claude-gateway--xai--grok-4.7",
       effort: "xhigh",
     });
 
     expect(profile).toMatchObject({
-      args: ["--model", "claude-gateway--cursor-auto", "--effort", "xhigh"],
+      args: ["--model", "claude-gateway--xai--grok-4.7", "--effort", "xhigh"],
       bin: process.execPath,
       id: "claude",
       label: "Claude",

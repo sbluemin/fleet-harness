@@ -32,7 +32,6 @@ async function readStoredSettings(ctx: QuotaRouteContext): Promise<StoredSetting
 }
 
 // 저장 문서에 남길 키의 화이트리스트. 카드 순서·접힘이 없어진 뒤 남은 옛 키(providerOrder·foldedProviders)와
-// Cursor가 Console 로그인으로 바뀐 뒤의 cursorConnected는 다음 쓰기에서 함께 걷힌다.
 // claudeConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
 function retainedSettings(settings: StoredSettings): Record<string, unknown> {
   return typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {};

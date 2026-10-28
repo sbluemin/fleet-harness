@@ -24,7 +24,7 @@ export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}):
     ...paintFleetHelpBanner(colorEnabled),
     dim(`Fleet AI Gateway · ${release.version} · ${release.channel}`, colorEnabled),
     "",
-    dim("One Anthropic-compatible endpoint over your Codex, Cursor, and xAI", colorEnabled),
+    dim("One Anthropic-compatible endpoint over your Codex and xAI", colorEnabled),
     dim("subscriptions. Same configuration the Console screen edits.", colorEnabled),
     "",
     section("USAGE", colorEnabled),

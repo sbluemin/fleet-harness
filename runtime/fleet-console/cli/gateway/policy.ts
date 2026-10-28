@@ -21,7 +21,6 @@ export const GATEWAY_SET_KEYS = [
   "xai-endpoint",
   "compact-ceiling",
   "wire-log",
-  "cursor-diagnostics",
   "provider-priority",
 ] as const;
 
@@ -31,7 +30,6 @@ export const GATEWAY_SET_KEY_SYNTAX: Readonly<Record<GatewaySetKey, string>> = O
   "xai-endpoint": "direct | cli-proxy",
   "compact-ceiling": `auto | early | late | ${COMPACT_CEILING_CUSTOM_MIN}–${COMPACT_CEILING_CUSTOM_MAX}`,
   "wire-log": "on | off | auto",
-  "cursor-diagnostics": "on | off",
   "provider-priority": "comma-separated providers, or `none`",
 });
 
@@ -80,13 +78,6 @@ export function applyGatewaySetting(
     if (enabled === "invalid") return invalid(key, value);
     store.writeWireLogEnabled(enabled);
     return { ok: true, summary: `wire-log = ${enabled === undefined ? "auto" : enabled ? "on" : "off"}` };
-  }
-
-  if (key === "cursor-diagnostics") {
-    const enabled = parseToggle(value, { allowAuto: false });
-    if (enabled === "invalid" || enabled === undefined) return invalid(key, value);
-    store.writeCursorDiagnosticsEnabled(enabled);
-    return { ok: true, summary: `cursor-diagnostics = ${enabled ? "on" : "off"}` };
   }
 
   const priority = parseProviderPriority(value);
@@ -189,7 +180,6 @@ export function describeGatewayPolicy(settings: AiGatewayStoredSettings): Readon
     "wire-log": settings.wireLogEnabled === undefined
       ? "auto (env)"
       : settings.wireLogEnabled ? "on" : "off",
-    "cursor-diagnostics": settings.cursorDiagnosticsEnabled === true ? "on" : "off",
     "provider-priority": settings.providerPriority?.length
       ? settings.providerPriority.join(" → ")
       : "none",

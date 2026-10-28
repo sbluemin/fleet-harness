@@ -24,7 +24,7 @@ Options:
   --operations <count>     Positive integer, default ${DEFAULT_OPERATIONS}, maximum ${MAX_OPERATIONS}
   --trials <count>         Positive integer, default ${DEFAULT_TRIALS}, maximum ${MAX_TRIALS}
   --timeout-ms <count>     Positive integer, default ${DEFAULT_TIMEOUT_MS}, maximum ${MAX_TIMER_MS}
-  --auth-path <path>       Console slot auth.json holding the Codex/xAI/Cursor sign-in; required for those models
+  --auth-path <path>       Console slot auth.json holding the Codex/xAI sign-in; required for those models
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading build artifacts or credentials
 
@@ -189,7 +189,6 @@ function createTrialMetrics() {
       cacheWriteInputTokens: 0,
       outputTokens: 0,
     },
-    cursorDiagnosticEvents: {},
   };
 }
 
@@ -225,7 +224,7 @@ function parseAnthropicResponse(result) {
   return response;
 }
 
-async function runTrial({ options, port, diagnostics }) {
+async function runTrial({ options, port }) {
   const startedAt = Date.now();
   const deadline = startedAt + options.timeoutMs;
   const metrics = createTrialMetrics();
@@ -358,13 +357,6 @@ function safeErrorName(error) {
   return /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name) ? name : "Error";
 }
 
-function makeDiagnosticSink(diagnostics) {
-  return (event) => {
-    if (typeof event?.event !== "string") return;
-    diagnostics[event.event] = (diagnostics[event.event] ?? 0) + 1;
-  };
-}
-
 function validateTarget(gateway, options) {
   const target = gateway.findGatewayModel(options.model);
   if (!target || gateway.toClaudeGatewayModelId(target) !== options.model) {
@@ -376,7 +368,7 @@ function validateTarget(gateway, options) {
     }
   }
   // The auth store never guesses a data root, so Console sign-ins require the slot's file.
-  if (["codex", "xai", "cursor"].includes(target.provider) && options.authPath === null) {
+  if (["codex", "xai"].includes(target.provider) && options.authPath === null) {
     throw new UsageError(`--auth-path is required for ${target.provider} models`);
   }
   return target;
@@ -395,15 +387,6 @@ function aggregateUsage(trials) {
     cacheWriteInputTokens: 0,
     outputTokens: 0,
   });
-}
-
-function aggregateDiagnosticEvents(trials) {
-  return trials.reduce((total, trial) => {
-    for (const [event, count] of Object.entries(trial.cursorDiagnosticEvents)) {
-      total[event] = (total[event] ?? 0) + count;
-    }
-    return total;
-  }, {});
 }
 
 function createTrialServer(router) {
@@ -427,40 +410,33 @@ function createTrialServer(router) {
 }
 
 async function runTrialWithLifecycle({ gateway, options, target }) {
-  const diagnostics = {};
-  const diagnosticSink = makeDiagnosticSink(diagnostics);
   const authService = options.authPath === null
     ? null
     : gateway.createProviderAuthService({ authPath: options.authPath });
   const codex = authService === null ? null : gateway.createCodexOAuth({ authService });
   const xai = authService === null ? null : gateway.createXaiOAuth({ authService });
-  const cursor = authService === null ? null : gateway.createCursorOAuth({ authService });
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: async () => (await codex?.readSubscription()) ?? null,
-    readCursorToken: async () => (await cursor?.readSubscriptionToken()) ?? null,
     readXaiToken: async () => (await xai?.readSubscriptionToken()) ?? null,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
-    cursorDiagnostics: diagnosticSink,
   });
   const server = createTrialServer(router);
   let serverClosed = false;
 
   try {
     const port = await listen(server);
-    const metrics = await runTrial({ options, port, diagnostics });
+    const metrics = await runTrial({ options, port });
     router.dispose();
     const routerDisposed = true;
     await closeServer(server);
     serverClosed = !server.listening;
     if (!serverClosed) throw new Error("loopback server remained open");
-    metrics.cursorDiagnosticEvents = Object.freeze({ ...diagnostics });
     metrics.cleanup = { routerDisposed, loopbackServerClosed: true };
     return metrics;
   } finally {
     codex?.dispose();
     xai?.dispose();
-    cursor?.dispose();
     if (!serverClosed) {
       router.dispose();
       await closeServer(server);
@@ -502,7 +478,6 @@ async function main() {
     successfulTrials: trials.length,
     trials,
     usage: aggregateUsage(trials),
-    cursorDiagnosticEvents: aggregateDiagnosticEvents(trials),
   })}\n`);
 }
 

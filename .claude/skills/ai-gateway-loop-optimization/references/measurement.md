@@ -14,7 +14,7 @@ Freeze these before the baseline and keep them identical after the change:
 
 Record the literal values. If any changes, the comparison is not controlled; rerun rather than rationalize. When trials spend paid quota, report an anomaly in any trial — a provider error, a rejected shape, or a result outside the success criteria — before starting the next one, so the requester decides whether to spend the rest (an Objectives member reports to its Commander).
 
-Before measuring a change that acts on a behavior, run one pilot and confirm the workload produces that behavior at the frozen effort. When the change alters what reaches the provider, including a success result whose unset fields go out as proto3 defaults (`0`, empty), make that pilot one real call and confirm from the wire that the provider accepted the shape before spending trials: Cursor turned a `ReadSuccess` with unset `total_lines` into `Offset undefined is beyond file length (0 lines)`. A reasoning-carry change measured on a task with no reasoning output measures nothing: a simple file-sum task produced zero reasoning items at `low` and almost none at `medium`, while a clue puzzle with decoy files produced reasoning on every request. Decoy paths also turn reasoning quality into countable outcomes — correct answer, tool calls, and decoys opened. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
+Before measuring a change that acts on a behavior, run one pilot and confirm the workload produces that behavior at the frozen effort. When the change alters what reaches the provider, including a tool result whose omitted fields change the serialized shape, make that pilot one real call and confirm from the wire that the provider accepted the shape before spending trials. A reasoning-carry change measured on a task with no reasoning output measures nothing: a simple file-sum task produced zero reasoning items at `low` and almost none at `medium`, while a clue puzzle with decoy files produced reasoning on every request. Decoy paths also turn reasoning quality into countable outcomes — correct answer, tool calls, and decoys opened. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
 
 For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Objective, use an isolated runtime directory, confirm the running PID command, and build `@fleet-console/ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
 
@@ -27,8 +27,8 @@ Instrument before the first prompt. Collect all layers that exist for the provid
 | Caller transcript | Claude Code JSONL | Which tools were actually handed to the caller, executed, errored, and returned? |
 | Client ingress | `anthropic.request` | Which model/catalog did Claude Code send? |
 | Canonical seam | `canonical.request` / `canonical.event` | What did normalization preserve or drop? |
-| Provider wire | `<provider>.wire.request`, `cursor.wire.*` | What exact body/catalog/instructions reached upstream? |
-| Provider diagnostics | e.g. Cursor bridge/redirect events | Did a live connection park, attach, mismatch, expire, or replay? |
+| Provider wire | `<provider>.wire.request` | What exact body/catalog/instructions reached upstream? |
+| Provider diagnostics | provider-specific transport events | Did a live connection park, attach, mismatch, expire, or replay? |
 | Host lifecycle | Objective state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
 
 Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. An adapter-layer rejection of a native tool is not written into the caller transcript. Do not treat the model's own account of what ran as evidence; cross-check it against the adapter and gateway records. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
@@ -52,11 +52,7 @@ Separate workload traffic from host auxiliary traffic by input shape and prompt,
 
 ### Classify lifecycle outcomes before counting them
 
-**Symptom:** a probe reports provider failures on otherwise successful Cursor multi-tool trials.
-
-**Action:** classify each lifecycle outcome against the adapter contract before aggregating it; `client_tool_suspended` is the normal segment boundary that parks a Run while it waits for client tool results.
-
-**Why:** counting every non-success segment finish as a provider failure creates one false failure per park even though the Run attaches and completes normally.
+Classify each lifecycle outcome against the adapter contract before aggregating it. A normal intermediate boundary is not a provider failure; count the completed logical turn separately from its segments.
 
 ### Baseline metric contract
 

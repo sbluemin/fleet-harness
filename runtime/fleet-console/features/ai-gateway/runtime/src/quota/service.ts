@@ -3,7 +3,6 @@ import type { AuthService } from "../auth/types.js";
 import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
 import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
 import { createCodexOAuth, type CodexOAuth } from "../oauth/codex/login.js";
-import { createCursorOAuth, type CursorOAuth } from "../oauth/cursor/login.js";
 import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
 import { createXaiOAuth, type XaiOAuth } from "../oauth/xai/login.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
@@ -50,7 +49,6 @@ export interface QuotaServiceDeps {
   readonly isClaudeConnected: () => Promise<boolean>;
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
-  readonly fetchCursor?: () => Promise<ProviderResult>;
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
@@ -76,7 +74,6 @@ export interface AiGatewayQuotaCollectorDeps {
   /** Console 로그인 자격을 소유한 인스턴스. 추론 라우터와 같은 것을 넘겨야 갱신이 한 번에 묶인다. */
   readonly codex?: Pick<CodexOAuth, "fetchUsage">;
   readonly xai?: Pick<XaiOAuth, "fetchUsage">;
-  readonly cursor?: Pick<CursorOAuth, "fetchUsage">;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
 }
@@ -84,7 +81,6 @@ export interface AiGatewayQuotaCollectorDeps {
 export interface AiGatewayQuotaCollectors {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
-  readonly fetchCursor: () => Promise<ProviderResult>;
   readonly fetchXai: () => Promise<ProviderResult>;
   readonly fetchAntigravity: () => Promise<ProviderResult>;
   readonly fetchMuseCode: () => Promise<ProviderResult>;
@@ -99,11 +95,9 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
   const museCode = deps.museCode ?? createMuseCodeOAuth(deps);
   const codex = deps.codex ?? createCodexOAuth(deps);
   const xai = deps.xai ?? createXaiOAuth(deps);
-  const cursor = deps.cursor ?? createCursorOAuth(deps);
   return {
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => codex.fetchUsage(),
-    fetchCursor: () => cursor.fetchUsage(),
     fetchXai: () => xai.fetchUsage(),
     fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
     fetchMuseCode: () => museCode.fetchUsage(),
@@ -135,7 +129,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   const fetchers: Record<ProviderId, () => Promise<ProviderResult>> = {
     claude: deps.fetchClaude,
     codex: deps.fetchCodex,
-    cursor: deps.fetchCursor ?? (async () => ({ status: "signed_out" })),
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
     antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
@@ -409,7 +402,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         return withRisk(value);
       };
       return { providers: {
-        claude: read("claude"), codex: read("codex"), cursor: read("cursor"),
+        claude: read("claude"), codex: read("codex"),
         xai: read("xai"), antigravity: read("antigravity"),
         "muse-code": read("muse-code"),
       } };
@@ -430,21 +423,19 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       };
       const claude = read("claude");
       const codex = read("codex");
-      const cursor = read("cursor");
       const xai = read("xai");
       const antigravity = read("antigravity");
       const museCode = read("muse-code");
-      if (!claude || !codex || !cursor || !xai || !antigravity || !museCode) return undefined;
+      if (!claude || !codex || !xai || !antigravity || !museCode) return undefined;
       return {
-        summary: { providers: { claude, codex, cursor, xai, antigravity, "muse-code": museCode } },
+        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, cursor, xai, antigravity, museCode] = await Promise.all([
+      const [claude, codex, xai, antigravity, museCode] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
-        load("cursor", options.force === true || options.forceProvider === "cursor"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
@@ -453,7 +444,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         providers: {
           claude: withRisk(claude),
           codex: withRisk(codex),
-          cursor: withRisk(cursor),
           xai: withRisk(xai),
           antigravity: withRisk(antigravity),
           "muse-code": withRisk(museCode),

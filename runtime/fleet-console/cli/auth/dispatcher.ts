@@ -15,7 +15,7 @@ const AUTH_HELP_TEXT = `AI Gateway provider authentication
 Sign in or out from fleet gateway, then Providers.
 TypeSafe takes an API key there.
 
-Codex, Cursor, and xAI use their own subscription credentials.
+Codex and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
 
 TypeSafe holds no routable model: its key lets Console features ask Jev
