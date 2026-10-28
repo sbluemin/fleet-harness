@@ -58,7 +58,7 @@ export function SharedFolderRows({ objective, t, language, state }: {
         <span className="objectives-row-ic">{entry.kind === "image" ? <ImageGlyph /> : entry.kind === "text" ? <DocGlyph /> : <FileGlyph />}</span>
         <span className="objectives-result-body">
           <span className="objectives-result-title is-mono" title={entry.path}>{name}</span>
-          <span className="objectives-result-sub">{folder ? <span className="objectives-shared-dir">{folder}</span> : null}{t(`objectives.shared.kind.${entry.kind}`)} · {bytesLabel(entry.bytes)} · <time dateTime={new Date(entry.modifiedAt).toISOString()} title={absolute(entry.modifiedAt, language)}>{relative(entry.modifiedAt, now, language)}</time></span>
+          <span className="objectives-result-sub">{folder ? <><span className="objectives-shared-dir">{folder}</span> · </> : null}{t(`objectives.shared.kind.${entry.kind}`)} · {bytesLabel(entry.bytes)} · <time dateTime={new Date(entry.modifiedAt).toISOString()} title={absolute(entry.modifiedAt, language)}>{relative(entry.modifiedAt, now, language)}</time></span>
         </span>
         {previewable
           ? <button type="button" className="objectives-result-open" aria-label={t("objectives.shared.openAria", { name: entry.path })} onClick={(event) => view(entry, event.currentTarget)}>{t("objectives.shared.open")}</button>
