@@ -32,9 +32,11 @@ export interface MobileChoiceSpec {
 export interface MobileModelGroup {
   readonly key: string;
   readonly label: string;
+  /** 띠 제목 바로 아래 안내. */
+  readonly description?: string;
   readonly icon?: React.ReactNode;
   /** `meta`는 오른쪽 끝의 짧은 표식(「1M」), `description`은 이름 아래 설명 줄이다(선택 방식의 풀이처럼 긴 글). */
-  readonly options: readonly { readonly value: string; readonly label: string; readonly meta?: string; readonly description?: string }[];
+  readonly options: readonly { readonly value: string; readonly label: string; readonly providerName?: string; readonly meta?: string; readonly description?: string }[];
 }
 
 
@@ -118,7 +120,7 @@ export interface MobileSettingsHost {
  */
 export interface MobileCoordinateChoiceProps {
   readonly title: string;
-  readonly roster: ModelRoster;
+  readonly roster: ModelRoster | null;
   readonly value: { readonly model?: string; readonly effort?: string };
   readonly onSelect: (next: { readonly model: string; readonly effort?: string }, meta?: { readonly final: boolean }) => void;
   /** `none`이면 강도 탭이 서지 않는다(모델만 고르는 칸). */
@@ -126,6 +128,8 @@ export interface MobileCoordinateChoiceProps {
   readonly effortLabel: string;
   /** 로스터 밖 저장값의 띠 머리(「꺼짐」). */
   readonly offLabel?: string;
+  readonly providerRemovedLabel?: string;
+  readonly chooseAnotherModelLabel?: string;
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
   readonly reset?: MobileModelReset;
   readonly onClose: () => void;

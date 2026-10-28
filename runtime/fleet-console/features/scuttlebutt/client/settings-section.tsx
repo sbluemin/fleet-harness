@@ -237,6 +237,8 @@ function ModelRow({ t, saving, model, effort, onSave }: {
           loading: t("settings.section.modelLoading"),
           empty: t("settings.section.modelEmpty"),
           off: t("settings.section.modelOff"),
+          providerRemoved: t("settings.section.providerRemoved"),
+          chooseAnotherModel: t("settings.section.chooseAnotherModel"),
           fallback: t("settings.section.modelFallback"),
         }}
         trigger={{ variant: "field" }}

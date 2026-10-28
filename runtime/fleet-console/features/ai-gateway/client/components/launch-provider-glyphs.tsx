@@ -160,6 +160,17 @@ export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphI
   return isLaunchProviderGlyphId(provider) ? provider : null;
 }
 
+/** Name in place of a glyph only for an off-roster model whose provider is no longer known. */
+export function removedLaunchProviderName(modelId: string | undefined, off: boolean): string | null {
+  if (!off || !modelId) return null;
+  const id = modelId.startsWith(CLAUDE_GATEWAY_MODEL_PREFIX) ? modelId.slice(CLAUDE_GATEWAY_MODEL_PREFIX.length) : modelId;
+  const separator = id.indexOf("--");
+  if (separator <= 0) return null;
+  const provider = id.slice(0, separator);
+  if (isLaunchProviderGlyphId(provider)) return null;
+  return provider.split(/[-_]+/u).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+
 /**
  * Resolve the provider glyph for a model id.
  *

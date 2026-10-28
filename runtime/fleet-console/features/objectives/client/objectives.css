@@ -351,6 +351,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-meta .objectives-launch { margin: 0; }
 .objectives-member-meta .objectives-launch > * { flex: none; }
 .objectives-member-meta .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 좁은 구성원 행에서 제거된 공급자는 이름과 표식만 — 모델 이름은 메뉴와 hover 글이 말한다. */
+.objectives-member-meta .objectives-launch > .fc-coord-trigger-model.is-removed { display: none; }
 .objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-ui); color: var(--text-tertiary); }
 .objectives-member-subagents { color: var(--text-secondary); }
 .objectives-member-slot { display: contents; }

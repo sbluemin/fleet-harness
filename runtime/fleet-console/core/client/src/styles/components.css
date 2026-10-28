@@ -10278,6 +10278,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-trigger-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
 .objective-launch-provider-glyph.fc-coord-trigger-provider { border: 0; background: none; }
 .fc-coord-trigger-provider svg { width: 14px; height: 14px; }
+.fc-coord-provider-name { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
+.fc-coord-trigger .fc-coord-provider-name { font-size: inherit; }
 .fc-coord-trigger-model { color: var(--text-primary); }
 .fc-coord-trigger-model.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
 .fc-coord-trigger-dot { color: var(--text-tertiary); }

@@ -25,6 +25,8 @@ function rosterPickerLabels(t: ReturnType<typeof getT>, title: string): ModelCoo
     loading: t("terminal.settings.models.loading"),
     empty: t("terminal.settings.models.empty"),
     off: t("terminal.settings.models.off"),
+    providerRemoved: t("terminal.settings.models.providerRemoved"),
+    chooseAnotherModel: t("terminal.settings.models.chooseAnotherModel"),
     fallback: t("terminal.settings.models.fallback"),
   };
 }

@@ -147,6 +147,7 @@ function MemberLaunch({ launch, text }: {
     <span className="group-members-launch">
       {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{text(launch.via.label)}</span> : null}
       <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : [label, effort].filter(Boolean).join(" · ")}>
+        {launch.providerName ? <span className="fc-coord-provider-name">{launch.providerName}</span> : null}
         {launch.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
         <span className={`group-members-launch-label${launch.struck ? " is-off" : ""}`}>{label}</span>
         {effort ? <><span className="group-members-launch-dot" aria-hidden="true">·</span><span className="group-members-launch-effort">{effort}</span></> : null}

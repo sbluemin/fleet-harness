@@ -799,6 +799,7 @@
 
 /* 모델 팝업 변형 — 제공자 묶음 머리, 구분선, 「추론 강도」 글자 탭 줄(S-11b와 같은 문법). */
 .mobile-choice-band { display: flex; align-items: center; gap: 8px; padding: 12px 22px 4px; color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); line-height: 18px; }
+.mobile-choice-band-note { padding-top: 0; font-weight: var(--weight-regular); }
 .mobile-choice-meta { flex: none; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mobile-choice-rule { height: 1px; margin: 8px 22px 0; background: var(--m-hairline); }
 .mobile-choice-tabs { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 22px 4px; }

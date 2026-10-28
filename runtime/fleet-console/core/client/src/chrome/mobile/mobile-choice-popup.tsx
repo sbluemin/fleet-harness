@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 
 import type { MobileCoordinateChoiceProps, MobileModelChoiceProps, MobileModelGroup } from "../../../../../features/settings/client/mobile-host.js";
 import { clampRosterEffort, findRosterRow, rosterRowEfforts } from "../../../../../features/ai-gateway/shared/models.js";
-import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph } from "../../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderGlyph, removedLaunchProviderName } from "../../../../../features/ai-gateway/client/components/launch-provider-glyphs.js";
+import { prettyModelId } from "../../../../../features/ai-gateway/client/components/model-coordinate-picker.js";
 
 import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
@@ -171,11 +172,12 @@ export function MobileModelChoice({ title, groups, value, onSelect, effort, rese
             {groups.map((group) => (
               <div key={group.key} role="presentation">
                 <div className="mobile-choice-band">{group.label}</div>
+                {group.description ? <div className="mobile-choice-band mobile-choice-band-note">{group.description}</div> : null}
                 {group.options.map((option) => {
                   const selected = option.value === value;
                   return (
                     <button type="button" role="radio" key={option.value} aria-checked={selected} className={`mobile-choice-row${selected ? " is-selected" : ""}${option.description ? " has-description" : ""}`} onClick={() => { onSelect(option.value); if (closeAfterSelect?.(option.value)) window.setTimeout(requestClose, CLOSE_AFTER_PICK_MS); }}>
-                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{withoutGroupPrefix(option.label, group.label)}</span>{option.description ? <small>{option.description}</small> : null}</span>
+                      <span className="mobile-choice-copy"><span className="mobile-choice-label">{option.providerName ? <><span className="fc-coord-provider-name">{option.providerName}</span>{" "}</> : null}{withoutGroupPrefix(option.label, group.label)}</span>{option.description ? <small>{option.description}</small> : null}</span>
                       {option.meta ? <span className="mobile-choice-meta">{option.meta}</span> : null}
                       {selected ? <MobileIcon name="check" size={22} className="mobile-choice-check" /> : <span className="mobile-choice-check-slot" aria-hidden="true" />}
                     </button>
@@ -232,13 +234,13 @@ function formatContextWindow(contextWindow: number | undefined): string | undefi
  * 좌표 시트 — 모델 로스터를 모델 팝업의 문법(공급자 묶음 → 구분선 → 강도 탭)으로 편다. 강도 탭은 고른 행이 내놓는
  * 사다리 전체다. 로스터 밖 저장값은 「꺼짐」 묶음에 그대로 서고, 선택 방식(extras)은 맨 위 묶음이다.
  */
-export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, extras, reset, onClose }: MobileCoordinateChoiceProps) {
+export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, providerRemovedLabel, chooseAnotherModelLabel, extras, reset, onClose }: MobileCoordinateChoiceProps) {
   const row = findRosterRow(roster, value.model);
   const groups: MobileModelGroup[] = [];
   if (extras?.length) {
     groups.push({ key: "extras", label: "", options: extras.filter((extra) => !extra.disabled).map((extra) => ({ value: `${EXTRA_VALUE_PREFIX}${extra.id}`, label: extra.label, ...(extra.hint ? { description: extra.hint } : {}) })) });
   }
-  for (const group of roster) {
+  for (const group of roster ?? []) {
     const provider = launchProviderFromGroupId(group.id);
     groups.push({
       key: group.id,
@@ -250,7 +252,15 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
       }),
     });
   }
-  if (value.model && !row) groups.push({ key: "off", label: offLabel ?? "…", options: [{ value: value.model, label: value.model }] });
+  if (roster !== null && value.model && !row) {
+    const providerName = removedLaunchProviderName(value.model, true);
+    groups.push({
+      key: "off",
+      label: (providerName ? providerRemovedLabel : offLabel) ?? "…",
+      ...(providerName && chooseAnotherModelLabel ? { description: chooseAnotherModelLabel } : {}),
+      options: [{ value: value.model, label: providerName ? prettyModelId(value.model) : value.model, ...(providerName ? { providerName } : {}) }],
+    });
+  }
   const activeExtra = extras?.find((extra) => extra.active);
   const ladder = effort === "track" && row && !activeExtra ? rosterRowEfforts(row) : [];
   const currentEffort = clampRosterEffort(ladder, value.effort);
