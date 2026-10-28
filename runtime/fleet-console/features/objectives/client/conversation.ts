@@ -57,7 +57,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const labels = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
     if (typeof decision.by === "object" && decision.by.kind === "commodore") {
       events.push({
-        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: boardAct("answer"),
+        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: boardAct(decision.declined === true ? "decline" : "answer"),
         text: [decision.question.text, ...labels, decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
       });
       continue;
