@@ -237,6 +237,14 @@ function TabIcon({ objectiveId, tab }: { readonly objectiveId: string; readonly 
   return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
 }
 
+interface AddressSuggestion { readonly value: string; readonly title: string; readonly historyId?: string }
+function SuggestionIcon({ objectiveId, suggestion }: { readonly objectiveId: string; readonly suggestion: AddressSuggestion }) {
+  const [broken, setBroken] = React.useState(false);
+  if (!suggestion.historyId) return <span className="op-browser__tab-icon is-fallback" aria-hidden="true">{glyph('<circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/>')}</span>;
+  if (!broken) return <img className="op-browser__tab-icon" src={`${base(objectiveId)}/favicon?historyId=${suggestion.historyId}`} alt="" draggable={false} onError={() => setBroken(true)} />;
+  return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
+}
+
 function CameraGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
@@ -462,7 +470,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const [editingUrl, setEditingUrl] = React.useState(false);
   // 포커스만으로 현재 URL 을 외부에 보내지 않는다. 사람이 고친 입력만 제안에 쓴다.
   const [suggestQuery, setSuggestQuery] = React.useState<string | null>(null);
-  const [suggestions, setSuggestions] = React.useState<readonly string[]>([]);
+  const [searchSuggestions, setSuggestions] = React.useState<readonly string[]>([]);
+  const [historySuggestions, setHistorySuggestions] = React.useState<readonly AddressSuggestion[]>([]);
+  const suggestions: readonly AddressSuggestion[] = [...historySuggestions, ...searchSuggestions.map((value) => ({ value, title: value }))];
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(-1);
   const [composingUrl, setComposingUrl] = React.useState(false);
   const composingUrlRef = React.useRef(false);
@@ -470,19 +480,31 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const suggestionSettings = useSuggestionSettings();
   const suggestionsEnabled = suggestionSettings.settings?.enabled === true && !suggestionSettings.saving;
   const suggestionsId = React.useId();
-  const suggestionsOpen = available && suggestionsEnabled && editingUrl && !composingUrl && suggestions.length > 0;
-  const suggestionPromptOpen = available && editingUrl && !composingUrl && suggestionSettings.settings?.enabled === false && !suggestionSettings.settings.prompted;
+  const suggestionsOpen = available && editingUrl && !composingUrl && suggestions.length > 0;
+  const suggestionPromptOpen = available && editingUrl && !composingUrl && !suggestionsOpen && suggestionSettings.settings?.enabled === false && !suggestionSettings.settings.prompted;
   const addressOverlayOpen = suggestionsOpen || suggestionPromptOpen;
-  const dismissSuggestions = () => { suggestionRequest.current?.abort(); setSuggestQuery(null); setSuggestions([]); setSelectedSuggestion(-1); };
+  const dismissSuggestions = () => { suggestionRequest.current?.abort(); setSuggestQuery(null); setSuggestions([]); setHistorySuggestions([]); setSelectedSuggestion(-1); };
   React.useEffect(() => {
     const query = suggestQuery?.trim() ?? "";
     setSuggestions([]);
+    setHistorySuggestions([]);
     setSelectedSuggestion(-1);
-    if (!available || !suggestionsEnabled || !editingUrl || composingUrl || suggestionSkipReason(query)) return;
+    if (!available || !editingUrl || composingUrl || !query || query.length > 2048) return;
     const controller = new AbortController();
     suggestionRequest.current = controller;
     const timer = setTimeout(() => {
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]);
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]);
+      void fetch(`${base(objectiveId)}/history`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal,
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json() as { history?: { id: string; url: string; title: string }[] };
+        if (!signal.aborted && Array.isArray(data.history)) {
+          setHistorySuggestions(data.history.filter((item) => typeof item.id === "string" && /^[a-f0-9]{64}$/u.test(item.id) && typeof item.url === "string" && /^https?:\/\//u.test(item.url) && typeof item.title === "string").slice(0, 5).map((item) => ({ value: item.url, title: item.title || item.url, historyId: item.id })));
+          setSelectedSuggestion(-1);
+        }
+      }).catch(() => undefined);
+      if (!suggestionsEnabled || suggestionSkipReason(query)) return;
       void fetch("/api/v1/browser/suggest", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }),
         signal,
@@ -495,7 +517,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       }).catch(() => undefined);
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [available, suggestionsEnabled, editingUrl, composingUrl, suggestQuery]);
+  }, [available, suggestionsEnabled, editingUrl, composingUrl, suggestQuery, objectiveId, state?.profile]);
   const [busy, setBusy] = React.useState(false);
   const captionOverlay = useBrowserCaptionOverlay(objectiveId);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -1022,10 +1044,10 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     setImportSources(loaded.sources);
   };
   const runImport = async (profileId: string) => {
-    const result = await run<{ cookies: number }>("import", { profileId });
+    const result = await run<{ cookies: number; history: number; cookiesFailed: boolean; historyFailed: boolean }>("import", { profileId });
     if (!result) return false;
     setImportSources(null);
-    setInfo(t("terminal.browser.import.done", { count: String(result.cookies) }));
+    setInfo(t(result.cookiesFailed ? "terminal.browser.import.historyOnly" : result.historyFailed ? "terminal.browser.import.cookiesOnly" : "terminal.browser.import.done", { count: String(result.cookies), history: String(result.history) }));
     return true;
   };
   // ---- 세션 고르기 — 임시(null)이거나 내 프로필이거나. 세션은 살아 있는 뷰에 바꿔 끼울 수 없어 탭을 닫고 다시 연다 ----
@@ -1141,6 +1163,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
               setEditingUrl(true);
               setUrlDraft(event.target.value);
               setSuggestions([]);
+              setHistorySuggestions([]);
               setSelectedSuggestion(-1);
               setSuggestQuery(event.target.value);
             }}
@@ -1159,7 +1182,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                   ? (index + 1) % suggestions.length
                   : (index <= 0 ? suggestions.length : index) - 1);
               } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
-                event.preventDefault(); submitUrl(suggestions[selectedSuggestion]);
+                event.preventDefault(); submitUrl(suggestions[selectedSuggestion]?.value);
               }
             }}
           />
@@ -1177,16 +1200,16 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             <div id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.suggestions.title")}>
               {suggestions.map((suggestion, index) => (
                 <button
-                  key={suggestion}
+                  key={`${suggestion.historyId ?? "search"}:${suggestion.value}`}
                   id={`${suggestionsId}-${index}`}
                   type="button"
                   role="option"
                   tabIndex={-1}
                   aria-selected={selectedSuggestion === index}
-                  className="op-browser__suggestion"
+                  className="op-browser__suggestion op-browser__suggestion-result"
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion); }}
-                >{suggestion}</button>
+                  onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion.value); }}
+                ><SuggestionIcon objectiveId={objectiveId} suggestion={suggestion} /><span className="op-browser__suggestion-label">{suggestion.title}{suggestion.historyId ? <small>{suggestion.value}</small> : null}</span></button>
               ))}
             </div>
           ) : null}

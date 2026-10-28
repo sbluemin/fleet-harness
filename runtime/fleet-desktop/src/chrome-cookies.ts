@@ -11,8 +11,8 @@ import path from "node:path";
  *
  * 복호화는 Chrome 자신에게 맡긴다: 프로필의 Cookies DB 만 임시 user-data-dir 로 복사해 같은 Chrome 바이너리를
  * 헤드리스로 잠깐 띄우고 CDP `Storage.getCookies` 로 평문을 받는다. OS 키체인의 "Chrome Safe Storage" 키를
- * Desktop 이 만지지 않으므로 플랫폼별 암호 방식에 묶이지 않는다. 비밀번호·방문 기록은 격리된 세션에 넣을 길이
- * 없어 지원하지 않는다. CDP 는 파이프(fd 3·4)로만 잇는다 — 포트를 열면 같은 기기의 다른 프로세스가 붙을 수 있다.
+ * Desktop 이 만지지 않으므로 플랫폼별 암호 방식에 묶이지 않는다. 비밀번호는 지원하지 않고, 방문 기록은
+ * chrome-history가 SQLite 사본에서 따로 읽는다. CDP 는 파이프(fd 3·4)로만 잇는다 — 포트를 열면 같은 기기의 다른 프로세스가 붙을 수 있다.
  */
 
 export interface ChromeProfile { readonly id: string; readonly name: string; readonly account: string | null }

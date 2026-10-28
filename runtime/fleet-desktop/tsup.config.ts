@@ -16,6 +16,8 @@ export default defineConfig({
   outDir: "dist",
   outExtension: () => ({ js: ".mjs" }),
   platform: "node",
+  // node:sqlite처럼 맨 이름 별칭이 없는 빌트인도 Electron이 해석할 수 있도록 접두를 보존한다.
+  removeNodeProtocol: false,
   sourcemap: false,
   splitting: false,
   target: "node22",

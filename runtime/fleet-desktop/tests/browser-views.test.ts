@@ -1,4 +1,10 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { readChromeHistory } from "../src/chrome-history.js";
+import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
 import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
 
@@ -6,6 +12,38 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDesktopBrowserViews } from "../src/browser-views.js";
 import type { DesktopShellWindow } from "../src/shell-window.js";
+
+describe("browser profile history storage boundary", () => {
+  it("reads only a Chrome snapshot, contains durable writes, and clears history with its icons", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-history-contract-"));
+    let source: DatabaseSync | null = null;
+    try {
+      const chrome = path.join(root, "chrome");
+      const profile = path.join(chrome, "Profile 1");
+      fs.mkdirSync(profile, { recursive: true });
+      source = new DatabaseSync(path.join(profile, "History"));
+      source.exec("PRAGMA journal_mode=WAL; CREATE TABLE urls (url TEXT, title TEXT, visit_count INTEGER, last_visit_time INTEGER, hidden INTEGER); INSERT INTO urls VALUES ('https://fixture.invalid/docs', 'Fixture title', 3, 13400000000000000, 0), ('https://hidden.invalid', 'Hidden', 1, 13400000000000000, 1)");
+      const before = fs.readdirSync(profile).map((name) => [name, fs.readFileSync(path.join(profile, name))] as const);
+      const entries = readChromeHistory({ profileId: "Profile 1", userDataDir: chrome, tempRoot: root });
+      expect(entries).toEqual([{ url: "https://fixture.invalid/docs", title: "Fixture title", visits: 3, lastVisited: 1755526400000 }]);
+      for (const [name, bytes] of before) expect(fs.readFileSync(path.join(profile, name))).toEqual(bytes);
+      expect(fs.readdirSync(root).sort()).toEqual(["chrome"]);
+      const browserRoot = path.join(root, "browser-profiles");
+      const storage = createBrowserHistoryStorage(browserRoot);
+      const initial = storage.command({ action: "read", browserProfile: "default" });
+      const data = JSON.stringify({ version: 1, entries, icons: { fixture: { type: "image/png", body: "aWNvbg==" } } });
+      storage.command({ action: "write", browserProfile: "default", data, revision: initial.revision });
+      expect(createBrowserHistoryStorage(browserRoot).command({ action: "read", browserProfile: "default" }).data).toBe(data);
+      expect(() => storage.command({ action: "write", browserProfile: "default", data: "stale", revision: initial.revision })).toThrow("browser_history_changed");
+      expect(() => storage.command({ action: "read", browserProfile: "../chrome" })).toThrow("browser_profile_invalid");
+      fs.symlinkSync(chrome, path.join(browserRoot, "linked"), "dir");
+      expect(() => storage.command({ action: "read", browserProfile: "linked" })).toThrow("browser_profile_invalid");
+      storage.clear("default");
+      expect(fs.existsSync(path.join(browserRoot, "default", "fleet-history.json"))).toBe(false);
+      expect(storage.command({ action: "read", browserProfile: "default" }).data).toBeNull();
+    } finally { source?.close(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+});
 
 const REMOTE = "https://100.84.12.7:6768";
 
