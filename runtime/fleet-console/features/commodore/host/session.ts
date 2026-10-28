@@ -38,7 +38,6 @@ export interface CommodoreSessionOptions {
   readonly knowledgeTools?: readonly McpServerTools[];
   /** 세션을 여는 순간 이 사령관이 고른 플러그인 — 로컬 경로와 호스트가 대신 여는 MCP 선언. */
   readonly plugins?: () => readonly ResolvedPlugin[];
-  readonly onNextWake: (at: number, reason: string) => void;
   /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
@@ -194,7 +193,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     // Theater 의 `.mcp.json` 서버는 싣지 않는다 — Theater 에서 하는 실무는 그 목표의 지휘관·구성원 몫이다.
     const roots = [...new Set((options.theaters?.() ?? []).flatMap(({ root }) => (root ? [root] : [])))];
     const knowledge = (options.knowledgeTools ?? []).filter((group) => group.tools.length && group.name !== COMMODORE_TOOL_GROUP && group.name !== BOARD_TOOL_GROUP);
-    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
+    const tools = createCommodoreTools({ commodoreId: options.commodoreId, theaterRoot: options.theaterRoot, cwd: options.cwd, store: options.store, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       // 라벨과 UUID 앞부분으로 세션 이름을 만든다. provider 세션 id와는 별개다.
@@ -313,7 +312,7 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   }
   switch (name) {
     case "intel": return { name, summary: str("since") ? `since ${str("since")}` : undefined, counts: false };
-    case "next_wake": return { name, summary: [typeof args.inMinutes === "number" ? `${args.inMinutes}m` : undefined, str("reason")].filter(Boolean).join(" · "), counts: false };
+    case "routine_add": case "routine_update": case "routine_remove": return { name, summary: [str("name") ?? str("routineId"), str("reason")].filter(Boolean).join(" · "), counts: false };
     case "issue_list": return { name, summary: str("sourceId"), counts: false };
     // 내장 도구의 경로·명령은 절대 경로를 담을 수 있다 — 기록(브라우저에 보이는)에는 경로를 싣지 않는다.
     // Read는 도구명·성공 여부만, Bash는 모델이 쓴 한 줄 설명만, Glob·Grep은 패턴만, Skill은 스킬 이름만 남긴다.

@@ -254,7 +254,7 @@ describe("console terminal observability", () => {
       await post("commodore/delete", { commodoreId: owner, confirm: true, alias: "Delete exactly ", language: "ko" }, 409);
       expect(fs.readFileSync(path.join(ownerDirectory, "state.json"), "utf8")).toBe(before);
       const preview = await post("commodore/delete-preview", { commodoreId: owner });
-      expect(preview).toMatchObject({ confirmationAlias: "Delete exactly", objectives: { total: 4, archived: 1 }, activeTurn: false, patrol: false });
+      expect(preview).toMatchObject({ confirmationAlias: "Delete exactly", objectives: { total: 4, archived: 1 }, activeTurn: false });
       expect(preview.diskBytes).toBeGreaterThan(0);
       const keptFile = path.join(directory, "commodore", keptOwner, "objectives", keptId, "objective.json");
       const keptBefore = fs.readFileSync(keptFile, "utf8");

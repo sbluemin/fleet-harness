@@ -1,8 +1,7 @@
 import { requestCommodoreDelete } from "./commodore-delete-modal.js";
 import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
 import { CaptionTipHost } from "../../workspace/client/components/caption-actions.js";
 import { AttachImageIcon } from "../../execution/client/composer-primitives/icons.js";
@@ -21,18 +20,18 @@ import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "../../workspace/shared/theater-inbox.js";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreLiveEvent, CommodoreRunStatus, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextTokens, type CommodoreLogTurn } from "./commodore-chat.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
+import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
-import { clockTime } from "./commodore-header.js";
+import { clockTime, nextRoutineWord } from "./commodore-header.js";
 import { openCommodoreConversation } from "./commodore-conversation.js";
-import { DatePicker, localDateTime } from "./date-picker.js";
+import { CommodoreRoutines } from "./commodore-routines.js";
 import {
   addCommodoreIntel,
   clearCommodore,
@@ -56,8 +55,6 @@ import {
   saveCommodoreDirective,
   setCommodoreCommander,
   setCommodoreCoordinates,
-  setCommodorePatrol,
-  setCommodoreStopAt,
   subscribeCommodore,
   useCommodore,
   type CommodoreTab,
@@ -67,11 +64,9 @@ import { DEFAULT_LAUNCH } from "./defaults.js";
 
 type T = Translate<CommodoreMessageKey>;
 
-const PATROL_MENU_WIDTH = 248;
-const PATROL_MENU_MARGIN = 12;
 /** 본문이 이보다 좁으면 기록 곁 칸(목표)을 기록 아래로 내린다 — 옛 시트의 좁은 모양과 같은 자리. */
 const COMPACT_BODY_WIDTH = 500;
-const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "directive", "memory", "settings"];
+const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "routines", "directive", "memory", "settings"];
 
 /* ── Theater Inbox 섹션 ──────────────────────────────────────────────── */
 
@@ -94,16 +89,15 @@ function inboxCommodore(id: string | null | undefined): string | null {
   return id && COMMODORE_UUID.test(id) ? id : null;
 }
 
-/** 사령관의 지금 한 줄 — 옛 「사령관 기록」 시트 왼쪽 머리에 있던 그 말(자율 운영 · 다음 순찰 …). */
-function commodoreStatusLine(t: T, commodoreId: string, language: "en" | "ko"): string {
+/** 사령관의 지금 한 줄 — 옛 「사령관 기록」 시트 왼쪽 머리에 있던 그 말(자율 운영 · 다음 루틴 …). */
+function commodoreStatusLine(t: T, commodoreId: string): string {
   const view = readCommodore(commodoreId).view;
   if (!view) return t("commodore.inbox.scope");
   const on = view.active;
   const run = view.run;
   return [
-    on ? t("commodore.meta.autonomous") : t("commodore.meta.patrolOff"),
-    on && view.state.stopAt ? t("commodore.stop.at", { time: stopTime(view.state.stopAt, language) }) : null,
-    on && run.phase === "idle" && run.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null,
+    on ? t("commodore.meta.autonomous") : t("commodore.meta.inactive"),
+    nextRoutineWord(t, view),
     run.phase === "turn" ? t("commodore.meta.turn") : null,
     run.phase === "retrying" && run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null,
     run.phase === "error" ? `${t("commodore.meta.error")}${run.reason ? ` · ${errorWord(t, run.reason)}` : ""}` : null,
@@ -121,6 +115,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   pages: [
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
     { id: "log", title: (language) => getT(language)("commodore.tabs.log"), layout: "fill" },
+    { id: "routines", title: (language) => getT(language)("commodore.tabs.routines") },
     // 지시 칸은 옛 정보 칸을 흡수했다(지시 아래 정보·정보 출처) — 정보 칸을 부르는 요청도 이 칸이 받는다.
     { id: "directive", title: (language) => getT(language)("commodore.tabs.directive"), applies: (language) => getT(language)("commodore.inbox.applies.directive") },
     { id: "memory", title: (language) => getT(language)("commodore.tabs.memory") },
@@ -134,7 +129,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     if (!experiment.enabled) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("commodore.inbox.disabled") });
     const commodoreId = inboxCommodore(theater.id);
     if (!commodoreId) return cachedSectionState({ availability: "disabled", scope: "", disabledNote: t("commodore.inbox.noCommodore") });
-    return cachedSectionState({ availability: "available", scope: commodoreStatusLine(t, commodoreId, language) });
+    return cachedSectionState({ availability: "available", scope: commodoreStatusLine(t, commodoreId) });
   },
   subscribe: subscribeCommodore,
   render: (context) => <CommodoreInboxSection context={context} />,
@@ -264,8 +259,9 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreIntel t={t} theaterId={commodoreId ?? ""} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
           </>
         ) : null}
+        {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} onRequest={() => navigation.open({ theaterId, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" })} /> : null}
         {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId ?? ""} /> : null}
-        {/* 설정 칸의 메뉴(순찰·종료 시각·모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
+        {/* 설정 칸의 메뉴(모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
@@ -289,10 +285,9 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
  * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
  * 로스터, 지휘관은 Agent CLI 로스터).
  */
-export function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
-  const { state, defaults, run } = view;
+export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const { state, defaults } = view;
   const modelOverridden = state.model !== undefined;
-  const patrol = state.patrolMinutes ?? DEFAULT_PATROL;
   const commanderOverridden = state.commanderModel !== undefined;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   return (
@@ -313,20 +308,6 @@ export function CommodoreSettings({ t, language, theaterId, view, onFail, onClea
           fallback={defaults}
           onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
         />
-      </SettingsRow>
-      <SettingsRow
-        label={t("commodore.settings.patrol")}
-        hint={<>{t("commodore.settings.patrolHint")}{patrol !== DEFAULT_PATROL ? <UseDefault t={t} onClick={() => act(() => setCommodorePatrol(theaterId, DEFAULT_PATROL))} /> : null}</>}
-      >
-        <PatrolControl
-          t={t}
-          minutes={patrol}
-          nextPatrolAt={view.active && run.phase === "idle" ? run.nextWakeAt : undefined}
-          onPick={(minutes) => act(() => setCommodorePatrol(theaterId, minutes))}
-        />
-      </SettingsRow>
-      <SettingsRow label={t("commodore.stop.title")} hint={t("commodore.stop.hint")}>
-        <StopAtControl t={t} language={language} stopAt={state.stopAt} disabled={!view.active || run.reason === "scheduled_stop"} onPick={(stopAt) => act(() => setCommodoreStopAt(theaterId, stopAt))} />
       </SettingsRow>
       <div className="objectives-commodore-settings-divider" role="separator" />
       <SettingsRow
@@ -372,128 +353,6 @@ export function CommodoreSessionSettings({ commodoreId, phone = false }: { reado
         ) : null}
       </div>
       <TheaterSubagentsSection theaterId={commodoreId} mobile={phone} />
-    </>
-  );
-}
-
-function stopTime(at: number, language: "en" | "ko"): string {
-  const date = new Date(at);
-  const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
-  return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
-}
-
-function StopAtControl({ t, language, stopAt, disabled, onPick }: { readonly t: T; readonly language: "en" | "ko"; readonly stopAt?: number; readonly disabled: boolean; readonly onPick: (at: number | null) => void }) {
-  const [anchor, setAnchor] = useState<DOMRect | null>(null);
-  const trigger = useRef<HTMLButtonElement | null>(null);
-  const close = () => { setAnchor(null); trigger.current?.focus({ preventScroll: true }); };
-  useEffect(() => { if (disabled) setAnchor(null); }, [disabled]);
-  return <>
-    <button ref={trigger} type="button" className="fc-row-value objectives-commodore-patrol" disabled={disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-label={t("commodore.stop.title")} onClick={() => setAnchor(trigger.current?.getBoundingClientRect() ?? null)}>
-      <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
-      <span className="fc-row-value-text">{stopAt ? stopTime(stopAt, language) : t("commodore.stop.none")}</span>
-    </button>
-    {anchor && !disabled ? <DatePicker withTime anchor={anchor} value={stopAt ? localDateTime(new Date(stopAt)) : null} language={language} t={t} onClose={close} onPick={(value) => onPick(value === null ? null : new Date(value).getTime())} /> : null}
-  </>;
-}
-
-
-
-const PatrolGlyph = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <circle cx="8" cy="8.5" r="5.25" />
-    <path d="M8 5.75V8.5l1.9 1.2M6.5 1.75h3" />
-  </svg>
-);
-
-const CheckGlyph = () => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.75 6.25 5 8.5l4.25-5" /></svg>;
-
-/**
- * 순찰 간격 — 모델 칩 옆의 같은 문법(글리프 + 낱말)이고, 누르면 같은 유리 메뉴에 사다리가 선다. 고르면 곧바로 저장하고 닫힌다.
- * 메뉴는 body 포털이라 서랍의 Esc(서랍 닫기)에 닿지 않게 키 입력을 메뉴 안에서 끝낸다.
- */
-function PatrolControl({ t, minutes, nextPatrolAt, onPick }: { readonly t: T; readonly minutes: CommodorePatrolMinutes; readonly nextPatrolAt: number | undefined; readonly onPick: (minutes: CommodorePatrolMinutes) => void }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<CSSProperties>({});
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const focusOnOpen = useRef(false);
-  const word = patrolWord(t, minutes);
-  const title = [minutes === "off" ? t("commodore.meta.patrolOff") : t("commodore.patrol.title", { interval: word }), nextPatrolAt ? t("commodore.drawer.nextPatrol", { time: clockTime(nextPatrolAt) }) : null].filter(Boolean).join(" · ");
-
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const left = Math.max(PATROL_MENU_MARGIN, Math.min(rect.right - PATROL_MENU_WIDTH, window.innerWidth - PATROL_MENU_WIDTH - PATROL_MENU_MARGIN));
-    const height = menuRef.current?.offsetHeight ?? 300;
-    const below = rect.bottom + 6;
-    const top = below + height > window.innerHeight - PATROL_MENU_MARGIN ? Math.max(PATROL_MENU_MARGIN, rect.top - height - 6) : below;
-    setPos({ left, top, width: PATROL_MENU_WIDTH });
-    if (focusOnOpen.current) {
-      focusOnOpen.current = false;
-      menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')?.focus();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [open]);
-
-  const close = (refocus: boolean) => { setOpen(false); if (refocus) triggerRef.current?.focus({ preventScroll: true }); };
-  const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [])];
-    const index = items.indexOf(document.activeElement as HTMLButtonElement);
-    const move = (next: number) => { event.preventDefault(); items[(next + items.length) % items.length]?.focus(); };
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
-    else if (event.key === "ArrowDown") move(index + 1);
-    else if (event.key === "ArrowUp") move(index < 0 ? items.length - 1 : index - 1);
-    else if (event.key === "Home") move(0);
-    else if (event.key === "End") move(items.length - 1);
-    else if (event.key === "Tab") close(true);
-  };
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        // 설정 행의 값 자리 — 모델 좌표 선택기의 field 변형과 같은 호스트 계약(fc-row-value)으로 그린다.
-        className="fc-row-value objectives-commodore-patrol"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`${t("commodore.patrol.aria")} · ${word}`}
-        title={title}
-        onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); focusOnOpen.current = true; setOpen(true); } }}
-        onClick={(event) => { focusOnOpen.current = event.detail === 0; setOpen((value) => !value); }}
-      >
-        <span className="objectives-commodore-patrol-glyph"><PatrolGlyph /></span>
-        <span className="fc-row-value-text">{word}</span>
-      </button>
-      {open ? createPortal(
-        <div ref={menuRef} className="objectives-menu objectives-commodore-patrol-menu" role="menu" aria-label={t("commodore.patrol.aria")} style={pos} onKeyDown={onMenuKey}>
-          <div className="objectives-menu-head">
-            <b>{t("commodore.patrol.head")}</b>
-            <span>{t("commodore.patrol.hint")}</span>
-          </div>
-          {PATROL_STEPS.map((step) => {
-            const active = step === minutes;
-            return (
-              <button key={step} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`} onClick={() => { if (!active) onPick(step); close(true); }}>
-                <span className="objectives-menu-label">{patrolWord(t, step)}</span>
-                {step === DEFAULT_PATROL ? <span className="objectives-menu-hint">{t("commodore.patrol.default")}</span> : null}
-                <span className="objectives-menu-chev objectives-commodore-patrol-check" aria-hidden="true">{active ? <CheckGlyph /> : null}</span>
-              </button>
-            );
-          })}
-        </div>,
-        document.body,
-      ) : null}
     </>
   );
 }
@@ -726,7 +585,7 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
 
 /**
  * 사령관에게 말하기 — 채팅 화면의 입력과 같은 문법: 한 상자 안에 자라는 입력과 원형 전송, 초점이면 상자가 brass 로 선다.
- * 순찰 안 함에서도 메시지와 /clear를 받는다. 서버가 전송을 거절하면 쓰던 초안은 그대로 둔다.
+ * 메시지와 /clear를 받는다. 서버가 전송을 거절하면 쓰던 초안은 그대로 둔다.
  * 다른 창에서 막 끈 경합은 서버가 거절하고(`commodore_inactive`) 초안은 지우지 않는다.
  */
 function useClearConfirmation(theaterId: string, onFail: (error: unknown) => void, onClear: () => void) {

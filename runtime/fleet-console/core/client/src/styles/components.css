@@ -10248,7 +10248,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-trigger.is-glyph:hover, .fc-coord-trigger.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 /* 행 값 — 설정 행 오른쪽 끝에 붙는 값 텍스트(「[글리프] 모델 · 강도 ⌄」, 「⏱ 1시간 ⌄」). 쉴 때는 테두리·면이 없어 행과 한 몸으로
    읽히고, hover·열림 때만 옅은 면이 깔린다. 기준 문법은 AI Gateway 「우선 소진 — 순위 없음 ⌄」(Select compact)이다.
-   모델 좌표 선택기의 field 변형과 Objectives 사령관 서랍의 순찰 간격이 같은 계약(fc-row-value)을 쓴다. 패딩은 끝 여백을
+   모델 좌표 선택기의 field 변형이 값 자리 계약(fc-row-value)을 쓴다. 패딩은 끝 여백을
    음수로 상쇄해 글자 끝선이 같은 행의 토글·세그먼트 끝선과 맞는다. */
 .fc-row-value, .fc-coord-trigger.is-field {
   position: relative; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px;

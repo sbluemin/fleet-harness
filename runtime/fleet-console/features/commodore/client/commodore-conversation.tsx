@@ -1,3 +1,4 @@
+import { CommodoreRoutines } from "./commodore-routines.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore } from "./commodore-state.js";
@@ -37,7 +38,7 @@ type T = Translate<CommodoreMessageKey>;
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { goals: "commodore-goals", directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
+const TAB_IDS = { goals: "commodore-goals", routines: "commodore-routines", directive: "commodore-directive", memory: "commodore-memory", settings: "commodore-settings" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 
 let port: ClientConversationCapability | null = null;
@@ -271,7 +272,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
-  const { meta, patrol } = commodoreSummary(t, view, board.objectives);
+  const { meta, routine } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
   const screenTheaterId = theaterId ?? "";
   const index = useCommodoreObjectiveIndex(commodoreId);
@@ -359,7 +360,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} context={run?.context} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (
@@ -455,6 +456,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />
         </>
       ) : null}
+      {tab === "routines" ? <CommodoreRoutines commodoreId={commodoreId} language={language} onRequest={() => openCommodoreConversation(commodoreId)} /> : null}
       {tab === "memory" ? <CommodoreMemory t={t} theaterId={commodoreId} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
@@ -463,10 +465,11 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
 }
 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. */
-const TAB_INBOX_PAGES = { goals: "log", directive: "directive", memory: "memory", settings: "settings" } as const;
+const TAB_INBOX_PAGES = { goals: "log", routines: "routines", directive: "directive", memory: "memory", settings: "settings" } as const;
 
 const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
   goals: "commodore.tabs.log",
+  routines: "commodore.tabs.routines",
   directive: "commodore.tabs.directive",
   memory: "commodore.tabs.memory",
   settings: "commodore.tabs.settings",

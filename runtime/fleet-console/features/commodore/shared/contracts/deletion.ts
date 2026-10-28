@@ -6,7 +6,6 @@ export interface CommodoreDeletePreview {
   readonly objectives: { readonly total: number; readonly active: number; readonly archived: number };
   readonly runningSessions: number;
   readonly activeTurn: boolean;
-  readonly patrol: boolean;
   readonly memoryEntries: number;
   readonly diskBytes: number;
   readonly diskBytesTruncated: boolean;

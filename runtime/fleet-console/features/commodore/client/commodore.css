@@ -78,13 +78,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--brass); }
 .objectives-cal-day.is-cursor { border-color: var(--hairline-strong); }
 .objectives-cal-day.is-selected { background: var(--brass); color: var(--text-on-brass); box-shadow: none; }
-.objectives-cal.is-time { z-index: calc(var(--z-overlay) + 2); }
-.objectives-cal-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-size: var(--t-sm); }
-.objectives-cal-time label { display: flex; align-items: center; gap: 8px; }
-.objectives-cal-time input { min-width: 0; width: 100px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); padding: 3px 4px; background: var(--surface-panel); color: var(--text-primary); font: inherit; font-variant-numeric: tabular-nums; }
-.objectives-cal-time button { margin-left: auto; padding: 4px 10px; border: 1px solid var(--brass); border-radius: var(--radius-xs); background: var(--brass-glow); color: var(--text-primary); font: inherit; cursor: pointer; }
-.objectives-cal.is-time :disabled { opacity: .45; cursor: default; }
-.objectives-cal-error { margin: 4px 2px 0; color: var(--coral-ink); font-size: var(--t-xs); }
 .objectives-menu-hint { font-size: var(--t-sm); color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui); }
 .objectives-menu-check :is(.objectives-menu-label, .fc-coord-menu-label),
 .objectives-menu-check :is(.objectives-menu-hint, .fc-coord-menu-hint) { white-space: normal; overflow: visible; text-overflow: unset; padding-left: 0; }
@@ -108,7 +101,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* ─── 사령관(자율 운영) ──────────────────────────────────────────────────────
    사이드바 Theater 머리의 사령관 표식 — 호스트가 이니셜 칩 자리(18px)에 세우는 사령관 몽글 아바타(베이스 + brass 별 배지)다.
-   순찰 설정과 무관하게 제 색이며 누르면 대화를 연다. 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
+   루틴 설정과 무관하게 제 색이며 누르면 대화를 연다. 오류·재시도·턴·부름은 아바타의 얼굴과 몸짓이 말하고,
    턴을 도는 동안의 물결은 호스트가 Theater 이름에 함께 흘린다. 왼쪽 띠·상자형 필터 단추는 두지 않는다. */
 .objectives-commodore-mark {
   display: grid;
@@ -147,7 +140,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* Theater Inbox 「사령관」 섹션 — 시트 틀·목록·머리는 호스트가 그린다. 여기는 섹션 본문(띠·기록·지시·정보·설정)만.
    시트에서 연 메뉴는 호스트 스크림(z-index 90) 위에 선다. */
-.objectives-commodore-patrol-menu { z-index: 91; }
 .objectives-commodore-inbox { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .objectives-commodore-inbox-glyph { width: 14px; height: 14px; color: var(--text-secondary); }
 /* 기록 칸 머리의 작은 띠 — 누적(세션·비용)과 기록 비우기. 옛 시트의 목록 바닥·머리에 있던 것이다. */
@@ -162,15 +154,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-hint-link:hover { text-decoration-color: var(--brass); }
 .objectives-commodore-hint-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 
-/* 순찰 간격 — 모델 칩과 같은 트리거 문법. 글리프는 공급자 글리프 자리와 같은 크기·잉크이고, 메뉴는 같은 유리 메뉴다. */
-.objectives-commodore-patrol { gap: 5px; font-variant-numeric: tabular-nums; }
-.objectives-commodore-patrol-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); transition: color var(--duration-fast); }
-.objectives-commodore-patrol-glyph svg { width: 14px; height: 14px; }
-.objectives-commodore-patrol:hover .objectives-commodore-patrol-glyph, .objectives-commodore-patrol[aria-expanded="true"] .objectives-commodore-patrol-glyph { color: var(--brass-ink); }
-.objectives-commodore-patrol-menu .objectives-menu-head span { font-size: var(--t-2xs); }
-.objectives-commodore-patrol-menu .objectives-menu-item { font-variant-numeric: tabular-nums; }
-.objectives-commodore-patrol-menu .objectives-menu-hint { flex: none; }
-.objectives-commodore-patrol-check { color: var(--brass-ink); }
 
 /* 설정 — Console 설정과 같은 줄(SettingsRow·SettingsToggle). 시트 안에서는 형제 사이 hairline 과 위아래 숨구멍을 같은 값으로.
    이 칸의 선은 행 구분선(.fc-settings-row + .fc-settings-row)과 같은 color-mix 한 곳이다. */

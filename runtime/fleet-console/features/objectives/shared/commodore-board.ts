@@ -19,7 +19,7 @@ export interface CommodoreTurnBindings {
 }
 
 export interface CommodoreWakeSink {
-  /** 순찰 안 함에서는 보드 감시와 지휘관 정체 통지도 자동 실행하지 않는다. */
+  /** 실험 기능이 꺼지면 보드 감시와 지휘관 정체 통지를 멈춘다. */
   automatic(): boolean;
   wake(code: CommodoreBoardWakeCode, input?: { readonly count?: number; readonly bump?: boolean; readonly detail?: string; readonly objectiveId?: string }): void;
   forget(objectiveId: string): void;

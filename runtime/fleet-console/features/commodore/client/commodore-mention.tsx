@@ -28,7 +28,7 @@ function targetNames(commodoreId: string): { readonly alias: string | null; read
 /**
  * 새 세션 '@' 덱에 서는 사령관 — 사령관 목록의 사령관마다 하나다. Theater 에서 주인을 찾지 않는다.
  *
- * 순찰 안 함에서도 메시지를 받는다. 보드가 준비된 사령관만 행선지로 내며, 전송 중의 종료·Clear 경합은 서버가 거절한다.
+ * 루틴이 없어도 메시지를 받는다. 보드가 준비된 사령관만 행선지로 내며, 전송 중의 종료·Clear 경합은 서버가 거절한다.
  * 실패하면 새 세션은 초안과 행선지를 그대로 둔다.
  *
  * 밴드가 이미 「사령관」을 말하므로 행 이름은 사이드바 사령관 머리와 같은 이름이다 — 별칭이 있으면 별칭, 없으면 그 사령관 첫 Theater 이름이라
@@ -53,7 +53,7 @@ export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
 }
 
 /**
- * 덱 행·선택 칩·레인의 사령관 표식 — 사이드바 머리 표식과 같은 얼굴(상태)을 스스로 구독해 그린다. 순찰 설정과
+ * 덱 행·선택 칩·레인의 사령관 표식 — 사이드바 머리 표식과 같은 얼굴(상태)을 스스로 구독해 그린다. 루틴 설정과
  * 무관하게 흐리지 않는다. 호스트 표식 칸(17–20px)이 svg 를 칸에 맞추므로 크기는 그 상한으로 둔다.
  */
 function CommodoreMentionMark({ commodoreId }: { readonly commodoreId: string }) {
