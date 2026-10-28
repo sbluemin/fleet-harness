@@ -42,7 +42,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     write(path.join(b.dir, "state.json"), JSON.stringify({ ...JSON.parse(state(b.text)), autonomy: false, patrolMinutes: 120 }));
     const failedCopy = seed("cross-device-copy-verification", theater("failed-copy"));
     const stopped = seed("stopped-before-commit", theater("before"));
-    write(path.join(stopped.dir, "state.json"), JSON.stringify({ ...JSON.parse(state(stopped.text)), patrolMinutes: 120 }));
+    write(path.join(stopped.dir, "state.json"), JSON.stringify({ ...JSON.parse(state(stopped.text)), patrolMinutes: 120, stopAt: 1 }));
     const stoppedId = randomUUID();
     write(path.join(stopped.dir, ".migration.json"), marker(stoppedId, stopped.root));
     const after = seed("stopped-after-commit", theater("after"));
@@ -149,7 +149,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const ownerOf = (theaterId: string): string | null => { const ids = owners(theaterId); return ids.length === 1 ? ids[0]! : null; };
     const resolved = { commodoreId: ownerOf(workspaceHash(a.root)) };
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
-    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { patrolMinutes: 60, directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
+    expect(view).toMatchObject({ commodoreId: resolved.commodoreId, active: false, state: { directive: { text: a.text, rev: 1 } }, run: { phase: "off" } });
     // 등록 경로와 사령관 링크가 표기만 달라도 같은 사령관으로 풀리고 저장된다. 대소문자를 무시하는 파일 시스템은 등록 대소문자를 뒤집고, 구분하는 파일 시스템은 `/.`를 쓴다.
     const notationOf = (root: string): string => {
       const slash = root.lastIndexOf("/");
@@ -173,7 +173,11 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(JSON.stringify(view)).not.toContain(a.root);
     expect(view.state).not.toHaveProperty("autonomy");
     expect(ownerOf(workspaceHash(stopped.root))).toBe(stoppedId);
-    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { patrolMinutes: 120, directive: { text: stopped.text, rev: 1 } } });
+    expect(await call("commodore/state", { commodoreId: stoppedId })).toMatchObject({ state: { directive: { text: stopped.text, rev: 1 } } });
+    const migrated = (await call("commodore/state", { commodoreId: stoppedId })).state;
+    expect(migrated).not.toHaveProperty("patrolMinutes");
+    expect(migrated).not.toHaveProperty("stopAt");
+    expect(migrated).not.toHaveProperty("autonomy");
     expect(ownerOf(workspaceHash(fresh))).toBeNull();
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(owners(workspaceHash(unknown.root))).toEqual([]);
@@ -207,7 +211,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const finalStates = fs.readdirSync(entities).map((id) => ({ id, value: JSON.parse(fs.readFileSync(path.join(entities, id, "state.json"), "utf8")) }));
     expect(finalStates.filter((entry) => entry.value.theaters[0]?.path === a.root)).toHaveLength(1);
     const bState = finalStates.find((entry) => entry.value.theaters[0]?.path === b.root)!;
-    expect(bState.value).toMatchObject({ patrolMinutes: "off", directive: { text: b.text } });
+    expect(bState.value).toMatchObject({ directive: { text: b.text } });
     expect(bState.value).not.toHaveProperty("autonomy");
     const bId = bState.id;
     expect(fs.readFileSync(path.join(entities, bId, "memory", "MEMORY.md"), "utf8")).toBe("keep memory\n");

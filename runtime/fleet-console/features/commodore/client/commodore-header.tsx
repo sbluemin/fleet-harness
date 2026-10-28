@@ -38,7 +38,7 @@ function subscribeCommodoreFace(listener: () => void): () => void {
 
 /**
  * 사이드바 Theater 머리에 사령관이 빌려 주는 것 — 이니셜 칩 자리의 사령관 글리프, 턴을 도는 동안의 이름 물결, 머리를 누르면 여는
- * Inbox 칸. 순찰 설정과 무관하게 활성 얼굴이며, 표식을 누르면 사령관 대화를 연다.
+ * Inbox 칸. 루틴 설정과 무관하게 활성 얼굴이며, 표식을 누르면 사령관 대화를 연다.
  */
 export const commodoreTheaterContribution: TheaterContribution = {
   id: "commodore",
@@ -54,7 +54,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
 };
 
 /**
- * 머리의 사령관 표식 — 순찰과 무관하게 제 색인 몽글 아바타다. 누르면 사령관 대화를 연다.
+ * 머리의 사령관 표식 — 루틴과 무관하게 제 색인 몽글 아바타다. 누르면 사령관 대화를 연다.
  * 얼굴과 몸짓이 지금을 말한다: 오류·재시도면 어지러운 얼굴과 땀방울,
  * 턴을 도는 동안 몽글(이름 물결은 호스트가 함께 흘린다), 사령관이 운영하는 목표가 사람을 기다리면 부름 고리, 그 밖에는 가만히.
  * 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의 목표 표식이 함께 밝아지고, 툴팁이 상태 문장을 말한다.
@@ -71,10 +71,10 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
   // 표식이 사라지면(Theater 잊기 등) 밝힘을 거둔다.
   useEffect(() => () => setCommodorePeek(null), [theater.id]);
   const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
-  const { meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
+  const { meta, routine, errorReason } = commodoreSummary(t, view, board.objectives);
   const warn = (view?.run.phase === "error" || view?.run.phase === "retrying");
   const name = useCommodoreName(commodoreId, t);
-  const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
+  const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, routine, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
   const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
@@ -101,7 +101,7 @@ function CommodoreHeaderMark({ theater, language, theaterInbox }: TheaterContrib
 type CommodoreView = ReturnType<typeof useCommodore>["view"];
 
 /**
- * 사령관의 지금 얼굴 — 사이드바 머리 표식과 대화 중심 화면(머리 pill·오른쪽 패널 머리)이 같은 사실로 고른다. 순찰과 무관하게
+ * 사령관의 지금 얼굴 — 사이드바 머리 표식과 대화 중심 화면(머리 pill·오른쪽 패널 머리)이 같은 사실로 고른다. 루틴과 무관하게
  * 메시지 턴도 작업 중이며, 실패·재시도는 오류 얼굴(얼굴 기준 `mongleStateOf` 에 없는 사령관 몫)이다. 그 밖에는 턴을 도는 동안 작업 중, 사령관이 운영하는
  * 목표가 사람을 기다리면 대기, 아니면 쉼이다.
  */
@@ -115,16 +115,16 @@ export type CommodoreMetaPart = { readonly key: string; readonly text: string; r
 
 /**
  * 사령관의 지금을 말하는 짧은 조각들 — 사이드바 머리 표식의 툴팁과 모바일 바로가기·화면이 같은 말을 쓴다.
- * 자동 운영 여부와 지금 턴의 진행·오류를 구분한다. 다음 순찰과 오류 사유는 따로 돌려준다.
+ * 자동 운영 여부와 지금 턴의 진행·오류를 구분한다. 다음 루틴과 오류 사유는 따로 돌려준다.
  */
-export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly patrol: string | null; readonly errorReason: string | null } {
+export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly routine: string | null; readonly errorReason: string | null } {
   const on = view?.active === true;
   const run = view?.run;
   const running = objectives.filter(isRunningObjective).length;
   // 대기는 사령관이 운영하는 목표의, 사람에게 넘기지 않은 항목만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
   const waiting = objectives.filter((objective) => isCommodoreWaiting(objective)).length;
   const meta: CommodoreMetaPart[] = [
-    { key: "mode", text: t(on ? "commodore.meta.autonomous" : "commodore.meta.patrolOff"), ...(on ? { tone: "on" as const } : {}) },
+    { key: "mode", text: t(on ? "commodore.meta.autonomous" : "commodore.meta.inactive"), ...(on ? { tone: "on" as const } : {}) },
     ...(run?.phase === "turn" ? [{ key: "turn", text: t("commodore.meta.turn") }] : []),
     ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
     ...(run?.phase === "error" ? [{ key: "error", text: t("commodore.meta.error"), tone: "warn" as const }] : []),
@@ -133,7 +133,17 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
       { key: "handled", text: t("commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
     ] : [{ key: "waiting", text: t("commodore.meta.waiting", { n: waiting }) }]),
   ];
-  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
+  const routine = nextRoutineWord(t, view);
   const errorReason = (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
-  return { on, meta, patrol, errorReason };
+  return { on, meta, routine, errorReason };
+}
+
+/** 다음 루틴은 감독자의 시각을 쓴다. 브라우저가 다른 시간대여도 등록한 지역 일정과 같다. */
+export function nextRoutineWord(t: ReturnType<typeof getT>, view: CommodoreView): string | null {
+  if (!view?.active || view.run.phase !== "idle") return null;
+  const times = view.run.routineNextRuns ?? {};
+  const routine = (view.state.routines ?? []).filter((r) => r.enabled && times[r.id] !== undefined).sort((a, b) => times[a.id]! - times[b.id]!)[0];
+  if (!routine) return null;
+  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: view.run.routineTimeZone }).format(times[routine.id]!);
+  return t("commodore.drawer.nextRoutine", { name: routine.name, time });
 }

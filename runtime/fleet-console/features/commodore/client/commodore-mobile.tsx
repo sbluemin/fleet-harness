@@ -1,3 +1,4 @@
+import { CommodoreRoutines } from "./commodore-routines.js";
 import { openOwnedObjectiveOnPhone } from "./board.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -11,21 +12,20 @@ import type { ClientMobileBarCapability, PaneContext } from "../../workspace/sha
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "../../workspace/shared/rail.js";
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { registerCommodoreDeparture } from "./commodore-delete-events.js";
-import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
 
-import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
+import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodorePlugins } from "./commodore-plugins.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
-import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
 import { CommodoreComposer, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
@@ -46,7 +46,6 @@ import {
   saveCommodoreDirective,
   setCommodoreCommander,
   setCommodoreCoordinates,
-  setCommodorePatrol,
   subscribeCommodore,
   useCommodore,
   useCommodoreEnabled,
@@ -67,7 +66,7 @@ import "./commodore-mobile.css";
 /**
  * 모바일 바로가기 목적지 「사령관」(impl-spec S-53·S-54) — 데스크톱의 사이드바 줄 + 「사령관 기록」 시트를 폰 화면 한 장으로.
  * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 데스크톱 시트와 같은 스토어·같은 API다 — 자율 운영·메시지·지시(정보 포함)·
- * 모델·순찰·지휘관 모델·재시도 모두 같은 경로를 탄다. 대상은 지금 Theater 의 사령관이다.
+ * 모델·루틴·지휘관 모델·재시도 모두 같은 경로를 탄다. 대상은 지금 Theater 의 사령관이다.
  */
 
 type T = Translate<CommodoreMessageKey>;
@@ -120,7 +119,7 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
     if (run.phase === "turn") return { text: t("commodore.meta.turn") };
     if (run.phase === "retrying" && run.nextWakeAt) return { text: t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) };
     if (run.phase === "error") return { text: t("commodore.meta.error"), tone: "danger" };
-    return { text: t(view.active ? "commodore.meta.autonomous" : "commodore.meta.patrolOff") };
+    return { text: t(view.active ? "commodore.meta.autonomous" : "commodore.meta.inactive") };
   },
 };
 
@@ -175,15 +174,16 @@ function CommodoreDisabled({ t }: { readonly t: T }) {
   );
 }
 
-/** 순찰 여부와 별개로 메시지 턴의 진행·오류도 그대로 보인다. */
+/** 루틴 유무와 별개로 메시지 턴의 진행·오류도 그대로 보인다. */
 function commodorePillStatus(t: T, view: CommodoreView | null): string {
   if (!view) return "";
   const run = view.run;
-  const mode = t(view.active ? "commodore.meta.autonomous" : "commodore.meta.patrolOff");
+  const mode = t(view.active ? "commodore.meta.autonomous" : "commodore.meta.inactive");
   if (run.phase === "turn") return `${mode} · ${t("commodore.meta.turn")}`;
   if (run.phase === "retrying" && run.nextWakeAt) return `${mode} · ${t("commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })}`;
   if (run.phase === "error") return `${mode} · ${t("commodore.meta.error")}`;
-  return run.nextWakeAt ? `${mode} · ${t("commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) })}` : mode;
+  const routine = nextRoutineWord(t, view);
+  return routine ? `${mode} · ${routine}` : mode;
 }
 
 /** 세부 하위 화면의 막대 제목 — 지금 탭 이름과 같은 말이다. */
@@ -191,6 +191,7 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
   switch (section) {
     case "sessions": return t("commodore.tabs.sessions");
     case "log": return t("commodore.tabs.log");
+    case "routines": return t("commodore.tabs.routines");
     case "goals": return t("commodore.trail.title");
     case "directive": return t("commodore.tabs.directive");
     case "memory": return t("commodore.tabs.memory");
@@ -309,6 +310,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === null && commodoreId ? <CommodoreMobileProfile t={t} commodoreId={commodoreId} view={view} name={title} sessions={sessionsPort} onOpen={openSection} onEdit={editLook} /> : null}
           {section === "sessions" && SessionsList && commodoreId ? <div className="objectives-cm-fill objectives-cm-sessions"><SessionsList commodoreId={commodoreId} leave={leave} /></div> : null}
           {section === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={shownFailure} onFail={fail} onClear={clear} leave={leave} /> : null}
+          {section === "routines" ? <div className="objectives-cm-content"><CommodoreRoutines commodoreId={commodoreId ?? ""} language={commodoreLanguage() ?? "en"} phone onRequest={openLog} /></div> : null}
           {section === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={commodoreId ?? ""} onOpenObjective={(objectiveId) => leave(() => openObjectiveOnPhone(objectiveId, theaterId))} /></div> : null}
           {section === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {section === "memory" ? <CommodoreMobileMemory t={t} theaterId={commodoreId ?? ""} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} leave={leave} /> : null}
@@ -373,8 +375,8 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   const directive = view?.state.directive.text.trim() ?? "";
   const directiveValue: ProfileValue = !view ? null : directive ? { text: t("commodore.mobile.intelCount", { n: view.state.intel.length }) } : { text: t("commodore.mobile.directiveEmpty") };
   const memoryValue: ProfileValue = memory.loaded && memory.entries.length > 0 ? { text: t("commodore.mobile.count", { n: memory.entries.length }) } : null;
-  const patrol = view ? view.state.patrolMinutes ?? DEFAULT_PATROL : null;
-  const settingsValue: ProfileValue = patrol === null ? null : { text: patrol === "off" ? t("commodore.meta.patrolOff") : t("commodore.patrol.title", { interval: patrolWord(t, patrol) }) };
+  const settingsValue: ProfileValue = view ? { text: view.state.model ?? view.defaults.model } : null;
+  const routinesValue: ProfileValue = view ? { text: t("commodore.routines.enabledCount", { n: (view.state.routines ?? []).filter((r) => r.enabled).length }) } : null;
   const usage = run ? [t("commodore.mobile.usage"), t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ") : "";
   return (
     <div className="objectives-cm-profile">
@@ -388,6 +390,7 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
         <div className="objectives-cm-card">
           {sessions ? <ProfileRow section="sessions" icon={<TargetIcon />} label={t("commodore.tabs.sessions")} value={sessionsValue} onOpen={onOpen} /> : null}
           <ProfileRow section="log" icon={<LogIcon />} label={t("commodore.tabs.log")} value={logValue} onOpen={onOpen} />
+          <ProfileRow section="routines" icon={<ClockIcon />} label={t("commodore.tabs.routines")} value={routinesValue} onOpen={onOpen} />
           <ProfileRow section="goals" icon={<PennantIcon />} label={t("commodore.trail.title")} value={goalsValue} onOpen={onOpen} />
         </div>
         <div className="objectives-cm-card">
@@ -763,13 +766,10 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
 function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   const { state, defaults, run } = view;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
-  const host = useMobileSettingsHost();
-  const defaultWord = t("commodore.patrol.default");
   // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 비우면 기본값이다.
   const modelOverridden = state.model !== undefined;
   const commanderOverridden = state.commanderModel !== undefined;
 
-  const patrol = state.patrolMinutes ?? DEFAULT_PATROL;
   const usage = [t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");
 
   return (
@@ -790,29 +790,6 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               {...(modelOverridden ? { reset: { label: t("commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCoordinates(theaterId, null)) } } : {})}
               onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
             />
-          </SettingsRow>
-        </SettingsCard>
-        <SettingsCard description={t("commodore.settings.patrolHint")}>
-          <SettingsRow label={t("commodore.settings.patrol")} icon={<ClockIcon />} disabled={!online}>
-            <button
-              type="button"
-              className="fc-select__trigger fc-select--mobile"
-              aria-haspopup="dialog"
-              disabled={!online || !host}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                host?.openChoice({
-                  title: t("commodore.settings.patrol"),
-                  value: String(patrol),
-                  options: PATROL_STEPS.map((step) => ({ value: String(step), label: patrolWord(t, step), ...(step === DEFAULT_PATROL ? { description: defaultWord } : {}) })),
-                  anchor: { top: rect.top, bottom: rect.bottom },
-                  // 안 함은 숫자로 바꾸지 않고 명시적으로 저장한다.
-                  onSelect: (value) => { const minutes = (value === "off" ? "off" : Number(value)) as CommodorePatrolMinutes; if (minutes !== patrol) act(() => setCommodorePatrol(theaterId, minutes)); },
-                });
-              }}
-            >
-              <span className="fc-select__value">{patrolWord(t, patrol)}</span>
-            </button>
           </SettingsRow>
         </SettingsCard>
         <SettingsCard description={t("commodore.settings.commanderHint")}>

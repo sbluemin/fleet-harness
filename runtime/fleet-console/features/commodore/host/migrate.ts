@@ -6,7 +6,7 @@ import { z } from "zod";
 import { COMMODORE_ID, commodoreEntitySchema } from "./entities.js";
 import { writeFileAtomic } from "./store.js";
 import { commodoreStateSchema, EMPTY_COMMODORE_STATE } from "../shared/contracts/types.js";
-import { migrateCommodorePatrolState } from "./state-migration.js";
+import { migrateCommodoreState } from "./state-migration.js";
 
 const MARKER = ".migration.json";
 const markerSchema = z.object({
@@ -92,7 +92,7 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
       return files;
     };
     const equalInventory = (a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>) => a.size === b.size && [...a].every(([name, size]) => b.get(name) === size);
-    const legacyState = (raw: string) => commodoreStateSchema.safeParse(migrateCommodorePatrolState(JSON.parse(raw)));
+    const legacyState = (raw: string) => commodoreStateSchema.safeParse(migrateCommodoreState(JSON.parse(raw)));
     const finish = (dir: string, marker: Marker): void => {
       directory(dir);
       fs.chmodSync(dir, 0o700);
@@ -108,7 +108,7 @@ export function migrateCommodoreData(dataDir: string): CommodoreMigrationResult 
           if (stat(path.join(dir, MARKER))) fs.unlinkSync(path.join(dir, MARKER));
           return;
         }
-        const old = commodoreStateSchema.safeParse(migrateCommodorePatrolState(parsed));
+        const old = commodoreStateSchema.safeParse(migrateCommodoreState(parsed));
         if (old.success) state = old.data;
         else fs.renameSync(file, `${file}.broken-${Date.now()}-${randomUUID()}`);
       }

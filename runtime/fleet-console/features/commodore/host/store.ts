@@ -9,11 +9,10 @@ import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
 import { commodoreTheatersSchema } from "./entities.js";
 import { CommodoreStoreError } from "./errors.js";
-import { migrateCommodorePatrolState } from "./state-migration.js";
-import { patrolIntervalMs } from "../shared/contracts/types.js";
+import { migrateCommodoreState } from "./state-migration.js";
 import type { CommodoreLastMessage } from "../shared/contracts/theaters.js";
 import { commodoreLastMessage } from "../shared/last-message.js";
-import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodorePatrolMinutes, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
+import { commodoreStateSchema, commodoreTranscriptEntrySchema, EMPTY_COMMODORE_STATE, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_ITEMS, MAX_INTEL_TEXT, MAX_KEPT_ASKS, MAX_OPEN_ASKS, MAX_ASK_REASON, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, type CommodoreAsk, type CommodoreCoordinates, type CommodoreEvent, type CommodoreRoutine, type RoutineInput, type RoutineUpdate, routineInputSchema, MAX_ROUTINES, type CommodoreIntel, type CommodoreRunTotals, type CommodoreSource, type CommodoreState, type CommodoreStateChange, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /**
  * 사령관 상태 저장소 — Console 데이터의 `commodore/<UUID>/` 하나.
@@ -56,8 +55,11 @@ export interface CommodoreStore {
   setTheaters(commodoreId: string, rows: readonly { readonly path: string }[]): CommodoreState;
   announceCreated(commodoreId: string): void;
   setAlias(commodoreId: string, alias: string | null): CommodoreState;
-  /** 종료 예약 — null은 해제. 자율 운영 중에만 받고, 지난 시각은 거절한다. */
-  setStopAt(commodoreId: string, stopAt: number | null): CommodoreState;
+  routineAdd(commodoreId: string, input: RoutineInput): CommodoreRoutine;
+  routineUpdate(commodoreId: string, routineId: string, input: RoutineUpdate, actor: "person" | "commodore"): CommodoreState;
+  routineRemove(commodoreId: string, routineId: string, actor: "person" | "commodore"): CommodoreState;
+  routinesRun(commodoreId: string, routineIds: readonly string[]): CommodoreState;
+  routineNoticesRead(commodoreId: string, noticeIds: readonly string[]): void;
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
   setDirective(commodoreId: string, text: string): CommodoreState;
   addIntel(commodoreId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
@@ -70,8 +72,6 @@ export interface CommodoreStore {
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string } | null): CommodoreState;
   /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). */
   setPlugins(commodoreId: string, plugins: readonly string[]): CommodoreState;
-  /** 순찰 간격 — 안 함은 자동 깨움과 종료 예약을 해제한다. 같으면 아무 일도 없다. */
-  setPatrol(commodoreId: string, minutes: CommodorePatrolMinutes): CommodoreState;
   /** 사람이 이 Theater 를 보는 언어를 남긴다 — 같으면 아무 일도 없다. */
   setLanguage(commodoreId: string, language: "en" | "ko"): CommodoreState;
   /** 누적 셈을 더한다(세션 +1, 비용 +, 행위 +). 감독자가 턴 결과마다 부른다. */
@@ -99,8 +99,8 @@ export interface CommodoreStore {
   askAnswer(commodoreId: string, askId: string, answers: readonly AskAnswerInput[]): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly repeated: boolean };
   /** 사령관이 답을 읽었다 — 답한 질문에 읽은 시각을 남긴다. */
   askRead(commodoreId: string, askIds: readonly string[]): CommodoreState;
-  /** 저장된 상태가 자율 운영을 켠 Theater — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
-  patrollingCommodores(): readonly string[];
+  /** 저장된 상태를 읽을 수 있는 사령관 — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
+  availableCommodores(): readonly string[];
   /** 서버 안 구독 — 감독자가 지시·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
   subscribe(listener: (event: CommodoreEvent) => void): () => void;
 }
@@ -250,15 +250,52 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const { alias: _alias, ...rest } = current;
       return commit(commodoreId, alias === null ? rest : { ...rest, alias }, "alias");
     },
-    setStopAt(commodoreId, stopAt) {
+    routineAdd(commodoreId, input) {
       const current = load(commodoreId);
-      if (patrolIntervalMs(current) === null) throw new CommodoreStoreError("commodore_inactive");
-      const at = now();
-      if (current.stopAt !== undefined && current.stopAt <= at) throw new CommodoreStoreError("commodore_stopping");
-      if (stopAt !== null && (!Number.isSafeInteger(stopAt) || stopAt <= at || stopAt > 8_640_000_000_000_000)) throw new CommodoreStoreError("invalid_request");
-      if ((current.stopAt ?? null) === stopAt) return current;
-      const { stopAt: _stopAt, ...rest } = current;
-      return commit(commodoreId, stopAt === null ? rest : { ...rest, stopAt }, "stopAt");
+      const parsed = routineInputSchema.safeParse(input);
+      if (!parsed.success || (input.schedule.kind === "once" && input.schedule.at <= now())) throw new CommodoreStoreError("invalid_request");
+      const routines = current.routines ?? [];
+      if (routines.length >= MAX_ROUTINES) throw new CommodoreStoreError("routine_limit");
+      if (routines.some((r) => r.name === parsed.data.name)) throw new CommodoreStoreError("routine_name_taken");
+      const routine: CommodoreRoutine = { ...parsed.data, id: `r_${randomUUID()}`, enabled: true, createdAt: now(), updatedAt: now() };
+      commit(commodoreId, { ...current, routines: [...routines, routine] }, "routines");
+      return routine;
+    },
+    routineUpdate(commodoreId, routineId, input, actor) {
+      const current = load(commodoreId);
+      const routines = current.routines ?? [];
+      const routine = routines.find((r) => r.id === routineId);
+      if (!routine) throw new CommodoreStoreError("unknown_routine");
+      if (actor === "commodore" && input.enabled === true && routine.pausedBy === "person") throw new CommodoreStoreError("routine_paused_by_person");
+      const parsed = routineInputSchema.safeParse({ name: input.name ?? routine.name, task: input.task ?? routine.task, schedule: input.schedule ?? routine.schedule });
+      if (!parsed.success || (input.schedule?.kind === "once" && input.schedule.at <= now())) throw new CommodoreStoreError("invalid_request");
+      if (routines.some((r) => r.id !== routineId && r.name === parsed.data.name)) throw new CommodoreStoreError("routine_name_taken");
+      const { pausedBy, ...rest } = routine;
+      const enabled = input.enabled ?? routine.enabled;
+      const pause = actor === "person" && input.enabled !== undefined ? !enabled : pausedBy === "person";
+      const fields = { ...rest, ...parsed.data, enabled, ...(pause ? { pausedBy: "person" as const } : {}) };
+      if (isDeepStrictEqual(routine, fields)) return current;
+      const next = { ...fields, updatedAt: now() };
+      return commit(commodoreId, { ...current, routines: routines.map((r) => r.id === routineId ? next : r) }, "routines");
+    },
+    routineRemove(commodoreId, routineId, actor) {
+      const current = load(commodoreId);
+      const routine = current.routines?.find((r) => r.id === routineId);
+      if (!routine) throw new CommodoreStoreError("unknown_routine");
+      return commit(commodoreId, { ...current, routines: current.routines!.filter((r) => r.id !== routineId),
+        ...(actor === "person" ? { routineNotices: [...(current.routineNotices ?? []), { id: randomUUID(), name: routine.name }] } : {}),
+      }, "routines");
+    },
+    routinesRun(commodoreId, routineIds) {
+      const current = load(commodoreId);
+      const ids = new Set(routineIds);
+      return commit(commodoreId, { ...current, routines: (current.routines ?? []).flatMap((r) => !ids.has(r.id) || !r.enabled ? [r] : r.schedule.kind === "once" ? [] : [{ ...r, lastRunAt: now() }]) }, "routines");
+    },
+    routineNoticesRead(commodoreId, noticeIds) {
+      const current = load(commodoreId);
+      if (!noticeIds.length) return;
+      const ids = new Set(noticeIds);
+      commit(commodoreId, { ...current, routineNotices: (current.routineNotices ?? []).filter((n) => !ids.has(n.id)) }, "routines");
     },
     setDirective(commodoreId, text) {
       if (text.length > MAX_DIRECTIVE) throw new CommodoreStoreError("invalid_request");
@@ -317,12 +354,6 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       if (isDeepStrictEqual(current.plugins ?? [], next)) return current;
       const { plugins: _plugins, ...rest } = current;
       return commit(commodoreId, next.length ? { ...rest, plugins: next } : rest, "plugins");
-    },
-    setPatrol(commodoreId, minutes) {
-      const current = load(commodoreId);
-      if ((current.patrolMinutes ?? "off") === minutes && (minutes !== "off" || current.stopAt === undefined)) return current;
-      const { stopAt: _stopAt, ...withoutSchedule } = current;
-      return commit(commodoreId, { ...(minutes === "off" ? withoutSchedule : current), patrolMinutes: minutes }, "patrol");
     },
     setLanguage(commodoreId, language) {
       const current = load(commodoreId);
@@ -436,11 +467,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const at = now();
       return commit(commodoreId, { ...current, asks: (current.asks ?? []).map((ask) => (unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined ? { ...ask, readAt: at } : ask)) }, "asks");
     },
-    patrollingCommodores() {
+    availableCommodores() {
       const ids = new Set<string>([...states.keys(), ...(options.commodoreIds?.() ?? [])]);
       const result: string[] = [];
       for (const commodoreId of ids) {
-        try { if (patrolIntervalMs(load(commodoreId)) !== null) result.push(commodoreId); }
+        try { load(commodoreId); result.push(commodoreId); }
         catch { /* 읽을 수 없는 Theater 는 복원 대상이 아니다 — 폴더가 돌아오면 다음 읽기가 다시 푼다. */ }
       }
       return result;
@@ -469,7 +500,7 @@ function readStateFile(file: string): CommodoreState {
   }
   try {
     const { theaters: _theaters, ...state } = JSON.parse(raw);
-    const parsed = commodoreStateSchema.safeParse(migrateCommodorePatrolState(state));
+    const parsed = commodoreStateSchema.safeParse(migrateCommodoreState(state));
     if (parsed.success) return foldCommodoreModels(parsed.data);
   } catch { /* 아래에서 치운다 */ }
   console.warn(`[objectives] commodore state unreadable, set aside: ${file}`);

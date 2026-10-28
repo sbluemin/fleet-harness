@@ -9,7 +9,7 @@ import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports
 import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 
 import type { MemoryEntry } from "../shared/contracts/memory.js";
-import { patrolIntervalMs, type CommodorePatrolMinutes, type CommodoreStateView } from "../shared/contracts/types.js";
+import type { CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { post } from "./request.js";
 import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
@@ -26,7 +26,7 @@ export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 export const COMMODORE_CHANNEL = "commodore";
 
-export type CommodoreTab = "log" | "directive" | "memory" | "settings";
+export type CommodoreTab = "log" | "routines" | "directive" | "memory" | "settings";
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. 「지휘관 세션」(`sessions`)은 폰에만 있는 맨 앞 구역이다. */
 export type CommodoreMobileTab = CommodoreTab | "goals" | "sessions";
 
@@ -227,12 +227,11 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
       return;
     }
     if (event.op === "state") {
-      const automatic = patrolIntervalMs(event.state) !== null;
-      setTheater(commodoreId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled && automatic } }, false);
+      setTheater(commodoreId, { view: { ...current.view, state: event.state, active: current.view.boardReady && current.view.enabled } }, false);
       return;
     }
     if (event.op === "run") {
-      setTheater(commodoreId, { view: { ...current.view, run: event.run, active: current.view.boardReady && current.view.enabled && patrolIntervalMs(current.view.state) !== null } }, false);
+      setTheater(commodoreId, { view: { ...current.view, run: event.run, active: current.view.boardReady && current.view.enabled } }, false);
       if ((event.run.phase === "off" && current.view.active) || (event.run.phase !== "off" && !current.view.boardReady)) void loadCommodore(commodoreId, true);
     }
   };
@@ -618,9 +617,8 @@ export const setCommodoreCoordinates = (theaterId: string, coordinates: { readon
 /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
 export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string } | null) =>
   write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null } : { model: null });
-/** 순찰 간격(분) — null 은 기본으로 되돌린다. */
-export const setCommodorePatrol = (theaterId: string, minutes: CommodorePatrolMinutes) => write(theaterId, "/commodore/patrol", { minutes });
-export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => write(theaterId, "/commodore/stop-at", { stopAt });
+export const toggleCommodoreRoutine = (commodoreId: string, routineId: string, enabled: boolean) => write(commodoreId, "/commodore/routine-toggle", { routineId, enabled });
+export const removeCommodoreRoutine = (commodoreId: string, routineId: string) => write(commodoreId, "/commodore/routine-remove", { routineId });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 

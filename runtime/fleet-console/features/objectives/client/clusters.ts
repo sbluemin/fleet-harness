@@ -101,7 +101,7 @@ const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.auton
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
- * 사령관 표식은 순찰과 무관하게 활성이고, `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
+ * 사령관 표식은 루틴과 무관하게 활성이고, `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
  */
 export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled?: boolean; readonly peek?: boolean }
 const NO_COMMODORE: CommodoreBoard = { active: false, stalled: [] };
@@ -144,7 +144,7 @@ function provenanceOf(objective: Objective, board: CommodoreBoard, now: number):
 
 /**
  * 줄 끝 사령관 표식 — 그 자체가 맡김 스위치다. 기준은 서버가 판정해 보낸 운영 주체(`operator`) 하나이고(깨움과 같은 값),
- * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 표식의 활성 잉크는 순찰 설정과 무관하며,
+ * 누르면 사람 전용 라우트로 맡기거나 돌려받는다. 표식의 활성 잉크는 루틴 설정과 무관하며,
  * 꺼진 표식은 외곽선이다. 실험 기능이 꺼져 있으면 서지 않는다.
  */
 function commodoreMarkOf(objective: Objective, board: CommodoreBoard): ObjectiveClusterRowMark | undefined {

@@ -35,20 +35,27 @@ export const MAX_TRANSCRIPT_TEXT = 16_000;
  */
 export const MAX_COMMODORE_REFERENCES = 3;
 
-/**
- * 순찰 간격(분) — 사람이 서랍에서 고르는 사다리. 사령관은 `next_wake` 로 이보다 일찍 깨어날 수 있지만 넘기지 못하고,
- * 예약 없이 턴을 마치면 이 간격 뒤에 깨어난다. 안 함은 재기동·보드 사건·지시·정보를 포함한 모든 자동 깨움을 막는다.
- */
-export const COMMODORE_PATROL_MINUTES = ["off", 15, 30, 60, 120, 240, 480] as const;
-export const DEFAULT_PATROL_MINUTES = "off";
-export type CommodorePatrolMinutes = (typeof COMMODORE_PATROL_MINUTES)[number];
-export const commodorePatrolSchema = z.literal(COMMODORE_PATROL_MINUTES);
-
 const ids = z.string().min(1).max(128);
 /** Theater 별 강도는 Agent SDK 세션이 받는 사다리 전체(low…max)다. ULTRACODE는 하네스 능력이라 받지 않는다. */
 export const COMMODORE_EFFORTS = AGENT_EFFORTS;
 const effort = z.enum(COMMODORE_EFFORTS);
 const modelId = z.string().refine(isExperimentModelId, "invalid_model");
+
+export const MAX_ROUTINES = 20;
+const routineTimestamp = z.number().int().nonnegative().max(8_640_000_000_000_000);
+export const routineScheduleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("daily"), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), days: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine((days) => new Set(days).size === days.length) }).strict(),
+  z.object({ kind: z.literal("every"), minutes: z.number().int().min(30).max(1440) }).strict(),
+  z.object({ kind: z.literal("once"), at: routineTimestamp }).strict(),
+]);
+export const routineInputSchema = z.object({ name: z.string().trim().min(1).max(60), task: z.string().trim().min(1).max(1000), schedule: routineScheduleSchema }).strict();
+export const commodoreRoutineSchema = routineInputSchema.extend({
+  id: ids, enabled: z.boolean(), pausedBy: z.literal("person").optional(),
+  createdAt: routineTimestamp, updatedAt: routineTimestamp, lastRunAt: routineTimestamp.optional(),
+}).strict();
+export type CommodoreRoutine = z.output<typeof commodoreRoutineSchema>;
+export type RoutineInput = z.output<typeof routineInputSchema>;
+export type RoutineUpdate = Partial<RoutineInput> & { enabled?: boolean | undefined };
 
 export const commodoreSourceSchema = z.object({
   id: ids,
@@ -125,10 +132,9 @@ export const commodoreStateSchema = z.object({
   commanderEffort: z.string().trim().min(1).max(32).optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관과 그 목표의 지휘관·구성원 세션이 다음 턴(새 세션)부터 싣는다. */
   plugins: commodorePluginsSchema.optional(),
-  /** 순찰 간격(분) 또는 안 함. 없으면 기본 안 함이다. */
-  patrolMinutes: commodorePatrolSchema.optional(),
-  /** 순찰 종료 예정 시각(epoch ms). Console 재시작 뒤에도 적용하고, 안 함으로 바꾸면 함께 지운다. */
-  stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).optional(),
+  routines: z.array(commodoreRoutineSchema).max(MAX_ROUTINES).optional(),
+  /** 사람이 지운 루틴은 깨우지 않고 다음 성공한 턴에 알린다. */
+  routineNotices: z.array(z.object({ id: ids, name: z.string().max(60) }).strict()).optional(),
   /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
   transcriptClearedThrough: z.number().int().nonnegative().optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
@@ -170,8 +176,11 @@ export function commodoreCompactAt(contextWindow: number): number {
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
   readonly reason?: string;
-  /** 다음 깨움(순찰 또는 재시도)의 예정 시각(ms). */
+  /** 다음 깨움(루틴 또는 재시도)의 예정 시각(ms). */
   readonly nextWakeAt?: number;
+  /** 감독자가 계산한 지역 시간대와 루틴별 다음 실행. 원격 화면은 자기 시간대로 다시 계산하지 않는다. */
+  readonly routineTimeZone?: string;
+  readonly routineNextRuns?: Readonly<Record<string, number>>;
   /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
   readonly stalled?: readonly string[];
   /**
@@ -305,16 +314,10 @@ export type CommodoreEvent =
   /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
   | { readonly op: "memory"; readonly commodoreId: string; readonly theaterIds: readonly string[]; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
-export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
-
-/** 순찰 간격(ms) — 미설정·안 함은 null이며 자동 깨움 타이머를 만들지 않는다. */
-export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number | null {
-  const minutes = state?.patrolMinutes ?? DEFAULT_PATROL_MINUTES;
-  return minutes === "off" ? null : minutes * 60_000;
-}
+export type CommodoreStateChange = "order" | "created" | "theaters" | "alias" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "plugins" | "routines" | "language" | "run" | "clear" | "asks";
 
 export interface CommodoreStateView {
-  /** 보드 어댑터의 실행 가능 여부. 순찰 설정과 별개다. */
+  /** 보드 어댑터의 실행 가능 여부. */
   readonly boardReady: boolean;
   readonly commodoreId: string;
   readonly theaterIds: readonly string[];
@@ -323,7 +326,7 @@ export interface CommodoreStateView {
   readonly enabled: boolean;
   /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
   readonly defaults: ExperimentAideSelection;
-  /** 실험 기능이 켜지고 순찰이 안 함이 아니다 — 자동 운영 여부이며 메시지 턴과는 별개다. */
+  /** 실험 기능이 켜지고 보드가 준비됐다. */
   readonly active: boolean;
   /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
   readonly run: CommodoreRunStatus;

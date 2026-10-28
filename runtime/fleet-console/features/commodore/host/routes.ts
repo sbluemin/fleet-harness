@@ -23,13 +23,13 @@ import { CommodoreStoreError } from "./errors.js";
 import { commodorePluginSetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_EFFORTS, patrolIntervalMs, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
+import { COMMODORE_EFFORTS, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
  * `commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
- * 지시·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 순찰 안 함은 자동 깨움만 막는다. 사람 메시지는
+ * 지시·정보는 실행 여부와 무관하게 읽고 쓸 수 있다. 사람 메시지는
  * 감독자가 한 턴을 받을 수 있을 때만 기록한다 — 받을 실행기가 없는데 문장만 남겨 조용히 잃지 않는다.
  */
 
@@ -56,7 +56,7 @@ export interface CommodoreRouteHooks {
   readonly changeTheater?: (id: string, theaterId: string, add: boolean) => void;
   readonly createForAlias?: (theaterId: string) => string;
   readonly theaterIds?: (commodoreId: string) => readonly string[];
-  /** 순찰이 안 함이어도 사람 메시지 한 턴을 받을 수 있는가. */
+  /** 사람 메시지 한 턴을 받을 수 있는가. */
   readonly acceptsMessage?: (commodoreId: string) => boolean;
   readonly run?: (commodoreId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
@@ -76,7 +76,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   const view = (commodoreId: string, state: CommodoreState): CommodoreStateView => {
     const settings = experiments();
     const boardReady = hooks.boardReady?.() ?? true;
-    const active = settings.commodore && patrolIntervalMs(state) !== null && boardReady;
+    const active = settings.commodore && boardReady;
     const run = hooks.run?.(commodoreId) ?? { phase: active ? "idle" : "off" };
     const asks = state.asks ?? [];
     const objectives = Object.fromEntries([...new Set(asks.flatMap((ask) => (ask.objectiveId ? [ask.objectiveId] : [])))].map((id) => {
@@ -102,7 +102,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof CommodoreStoreError) {
-      const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
+      const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_routine" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -200,12 +200,12 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     }) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
-    { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: patrol, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
+    { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: routines, directive, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
     { name: "commodore/directive", method: "POST", summary: "Set the person's standing directive for a Theater's Commodore; a changed text raises its revision.", handler: json(commodoreRef.extend({ text: z.string().max(MAX_DIRECTIVE) }).strict(), ({ commodoreId, text }) => { read(commodoreId); return view(commodoreId, store.setDirective(commodoreId, text)); }) },
     { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Theater's Commodore.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, text }) => { read(commodoreId); const { state, item } = store.addIntel(commodoreId, { text, source: "person" }); return { ...view(commodoreId, state), item }; }) },
     { name: "commodore/intel/edit", method: "POST", summary: "Edit the text of an intel item in place; its id, source and position stay. Unchanged text is a no-op.", handler: json(commodoreRef.extend({ intelId: ids, text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, intelId, text }) => { read(commodoreId); const { state, item } = store.editIntel(commodoreId, intelId, text); return { ...view(commodoreId, state), item }; }) },
     { name: "commodore/intel/remove", method: "POST", summary: "Remove an intel item from a Theater's Commodore.", handler: json(commodoreRef.extend({ intelId: ids }).strict(), ({ commodoreId, intelId }) => { read(commodoreId); return view(commodoreId, store.removeIntel(commodoreId, intelId)); }) },
-    { name: "commodore/sources", method: "POST", summary: "Replace the list of intel sources the Commodore reads on patrol.", handler: json(commodoreRef.extend({ sources: z.array(commodoreSourceSchema.omit({ id: true })).max(MAX_SOURCES) }).strict(), ({ commodoreId, sources }) => { read(commodoreId); return view(commodoreId, store.setSources(commodoreId, sources)); }) },
+    { name: "commodore/sources", method: "POST", summary: "Replace the list of intel sources the Commodore reads in routines.", handler: json(commodoreRef.extend({ sources: z.array(commodoreSourceSchema.omit({ id: true })).max(MAX_SOURCES) }).strict(), ({ commodoreId, sources }) => { read(commodoreId); return view(commodoreId, store.setSources(commodoreId, sources)); }) },
     { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(commodoreRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable() }).strict(), ({ commodoreId, model, effort }) => {
       read(commodoreId);
       if ((model === null) !== (effort === null)) throw new CommodoreStoreError("invalid_request");
@@ -218,25 +218,19 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       if (model === null && effort) throw new CommodoreStoreError("invalid_request");
       return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}) }));
     }) },
-    { name: "commodore/patrol", method: "POST", summary: "Set the Commodore patrol interval, or off to disable automatic wakes. Off is the default.", handler: json(commodoreRef.extend({ minutes: commodorePatrolSchema }).strict(), ({ commodoreId, minutes }) => {
+    { name: "commodore/routine-toggle", method: "POST", summary: "Enable or pause a routine as the person.", handler: json(commodoreRef.extend({ routineId: ids, enabled: z.boolean() }).strict(), ({ commodoreId, routineId, enabled }) => {
       read(commodoreId);
-      if (minutes !== "off" && !experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
-      if (minutes !== "off" && hooks.boardReady && !hooks.boardReady()) throw new CommodoreStoreError("commodore_inactive");
-      return view(commodoreId, store.setPatrol(commodoreId, minutes));
+      return view(commodoreId, store.routineUpdate(commodoreId, routineId, { enabled }, "person"));
     }) },
-    { name: "commodore/stop-at", method: "POST", summary: "Schedule the end of autonomous objectiveRecord at an epoch-millisecond timestamp, or pass null to cancel it. Requires automatic patrol and a future timestamp.", handler: json(commodoreRef.extend({ stopAt: z.number().int().nonnegative().max(8_640_000_000_000_000).nullable() }).strict(), ({ commodoreId, stopAt }) => {
+    { name: "commodore/routine-remove", method: "POST", summary: "Remove a routine as the person without waking the Commodore; notify its next turn.", handler: json(commodoreRef.extend({ routineId: ids }).strict(), ({ commodoreId, routineId }) => {
       read(commodoreId);
-      if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
-      if (!hooks.run?.(commodoreId)) throw new CommodoreStoreError("commodore_inactive");
-      return view(commodoreId, store.setStopAt(commodoreId, stopAt));
+      return view(commodoreId, store.routineRemove(commodoreId, routineId, "person"));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the board is unavailable; patrol off still allows this message turn.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
-      const state = read(commodoreId);
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the board is unavailable.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ commodoreId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
+      read(commodoreId);
       // 서버가 권위다 — 종료·Clear 중이거나 보드가 없으면 기록에 남기기 전에 거절한다.
       if (!experiments().commodore) throw new CommodoreStoreError("commodore_disabled");
-      // 안 함에서도 사람 메시지 한 턴은 받되 자동 깨움은 열지 않는다.
-      if (!(hooks.acceptsMessage?.(commodoreId) ?? (patrolIntervalMs(state) !== null && !!hooks.run?.(commodoreId)))) throw new CommodoreStoreError("commodore_inactive");
-      if (state.stopAt !== undefined && state.stopAt <= Date.now()) throw new CommodoreStoreError("commodore_stopping");
+      if (!(hooks.acceptsMessage?.(commodoreId) ?? !!hooks.run?.(commodoreId))) throw new CommodoreStoreError("commodore_inactive");
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
       if (objectiveId && !objective) throw new CommodoreStoreError("unknown_objective");
       if (objective && objective.commodoreId !== commodoreId) throw new CommodoreStoreError("objective_owner_mismatch");
@@ -290,7 +284,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       await hooks.retry(commodoreId);
       return view(commodoreId, read(commodoreId));
     }) },
-    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and the stop schedule.", handler: json(commodoreRef.extend({ confirm: z.literal(true) }).strict(), async ({ commodoreId }) => {
+    { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep directives, intel, settings, the board and routines.", handler: json(commodoreRef.extend({ confirm: z.literal(true) }).strict(), async ({ commodoreId }) => {
       read(commodoreId);
       if (!hooks.clear) throw new CommodoreStoreError("commodore_inactive");
       await hooks.clear(commodoreId);
@@ -307,5 +301,5 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
 
 export function commodoreActive(ctx: CommodoreRouteContext, store: CommodoreStore, commodoreId: string): boolean {
   if (!(ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS).commodore) return false;
-  return patrolIntervalMs(store.read(commodoreId)) !== null;
+  return store.read(commodoreId) !== null;
 }

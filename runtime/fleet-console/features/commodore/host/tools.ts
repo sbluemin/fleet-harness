@@ -1,3 +1,4 @@
+import { nextRoutineAt } from "../shared/routines.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -9,7 +10,7 @@ import { refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
-import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
+import { MAX_ASK_REASON, routineInputSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
@@ -19,8 +20,6 @@ import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type Commod
  */
 
 export const COMMODORE_TOOL_GROUP = "commodore";
-/** 순찰 예약이 받는 가장 먼 값 — 순찰 간격 사다리의 끝. 실제 상한은 사람이 고른 간격이고, 넘는 값은 그 간격으로 줄인다. */
-export const MAX_WAKE_MINUTES: number = Math.max(...COMMODORE_PATROL_MINUTES.filter((minutes) => typeof minutes === "number"));
 const MAX_ISSUES = 100;
 const COMMAND_TIMEOUT_MS = 20_000;
 const COMMAND_BUFFER = 1024 * 1024;
@@ -45,8 +44,6 @@ export interface CommodoreToolsOptions {
   readonly store: CommodoreStore;
   /** 이 Theater 의 목표 — 질문이 가리킬 목표를 확인한다. 없으면 목표를 가리키는 질문을 받지 않는다. */
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
-  /** 사령관이 다음 순찰을 예약했다. 상한은 호출 전에 적용돼 있다. */
-  readonly onNextWake: (at: number, reason: string) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
 }
@@ -125,15 +122,10 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), ...(item.editedAt !== undefined ? { editedAt: stamp(item.editedAt) } : {}), source: item.source, text: item.text }));
       return { items, truncated: items.length < scoped.length, ...(since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) };
     }),
-    tool("next_wake", "Schedule your next patrol: when (minutes from now) and a one-line reason. The person sets the patrol interval: you can patrol sooner but not later, and a later time is shortened to the interval (the result gives the time actually set and the interval). Without a schedule you are woken one interval after your turn ends. When patrol is off, this tool refuses with patrol_off and automatic wakes are disabled. The person can still send a message.", z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {
-      const interval = patrolIntervalMs(state());
-      if (interval === null) throw new Error("patrol_off");
-      const intervalMinutes = interval / 60_000;
-      const minutes = Math.min(inMinutes, intervalMinutes);
-      const at = now() + Math.round(minutes * 60_000);
-      options.onNextWake(at, reason);
-      return { at: stamp(at), reason, patrolIntervalMinutes: intervalMinutes, ...(minutes < inMinutes ? { shortened: true } : {}) };
-    }),
+    tool("routines", "List your routines with enabled state and next run time. Times use the Console computer's local timezone and are approximate; missed recurring runs are skipped after downtime.", z.object({}).strict(), () => ({ routines: (state().routines ?? []).map((routine) => ({ ...routine, nextRunAt: nextRoutineAt(routine, now()) })) })),
+    tool("routine_add", "Register an enabled routine (maximum 20, unique name). schedule: daily with local HH:mm and days (0 Sunday..6 Saturday), every 30..1440 minutes, or once at a future epoch-millisecond timestamp. Once routines disappear when run. No fixed wake interval exists; use routines for periodic intel checks.", routineInputSchema, (input) => options.store.routineAdd(options.commodoreId, input)),
+    tool("routine_update", "Update a routine. Enabling a routine paused by the person refuses with routine_paused_by_person; ask_person instead. Never bypass their pause by removing or recreating it.", routineInputSchema.partial().extend({ routineId: z.string().min(1).max(128), enabled: z.boolean().optional() }).strict(), ({ routineId, ...input }) => ({ routines: options.store.routineUpdate(options.commodoreId, routineId, input, "commodore").routines })),
+    tool("routine_remove", "Remove a routine that is no longer needed, stating why.", z.object({ routineId: z.string().min(1).max(128), reason: z.string().trim().min(1).max(200) }).strict(), ({ routineId }) => ({ routines: options.store.routineRemove(options.commodoreId, routineId, "commodore").routines })),
     // 사람에게 묻기 — 보드 항목이 아닌 물음. 질문 모양과 상한은 지휘관의 결정 요청과 같다(멤버·임무 가리킴만 없다).
     tool("ask_person", `Ask the person something that is not a waiting board item (those you hand over with hand_to_person). Ask 1-${MAX_DECISION_QUESTIONS} questions. Each question has a header (a chip label of at most ${MAX_DECISION_HEADER_INPUT} characters), the question text, and either no options, when the person should write the answer, or 2-${MAX_DECISION_OPTIONS} distinct options: a concise label and an optional description; set multiSelect to allow more than one choice. The person can always write an answer of their own of up to ${MAX_DECISION_ANSWER_INPUT} characters, alongside a choice or instead of every option, so do not add an "Other" option. Their answer wakes you; read it with asks.`, z.object({
       questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS),

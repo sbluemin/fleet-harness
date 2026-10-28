@@ -41,7 +41,7 @@ export function createCommodoreDeletion(deps: {
       const usage = directorySize(deps.ownership.entities.dirOf(id)!);
       const legacyWarning = deps.ownership.entities.theatersOf(id).some((theater) => workspaceDirectoryNames(theater.path).some((name) =>
         ["objectives", "knowledge"].some((kind) => fs.existsSync(path.join(deps.consoleDataDir, "workspaces", name, kind)))));
-      return { commodore, confirmationAlias: confirmationAlias(id, language), ...deps.host.preview(id), activeTurn: commodore.run.phase === "turn", patrol: commodore.active,
+      return { commodore, confirmationAlias: confirmationAlias(id, language), ...deps.host.preview(id), activeTurn: commodore.run.phase === "turn",
         memoryEntries: deps.store.memory.list(id).length, diskBytes: usage.bytes, diskBytesTruncated: usage.truncated, legacyWarning };
     },
     async remove(id: string, alias: string, language?: "en" | "ko"): Promise<CommodoreDeleteResult> {

@@ -2327,7 +2327,7 @@ describe("Objectives contract", () => {
     expect(await board(archiveCompleted)).toMatchObject({ ok: true, archived: [completed.id], deleted: [] });
     expect(store.find(completed.id)).toMatchObject({ archived: true, hasSession: true, done: completion });
     hasPersonMessage = false;
-    // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
+    // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 다음 사건까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);
     // 지시를 넣은 steer 는 지휘관 턴을 연다 — 그 턴 동안 개시는 예약되지 않고, 언제 다시 부르면 되는지와 지휘관 상태로 거절된다.
     await board({ action: "steer", objectiveId: id, context: "Adjust before commence" });

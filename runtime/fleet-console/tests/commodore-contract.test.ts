@@ -29,7 +29,7 @@ import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { COALESCE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
-import { patrolIntervalMs, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader } from "../features/objectives/shared/commodore-board.js";
 import type { ConsoleMcpTool } from "../features/console-use/shared/tools.js";
@@ -59,7 +59,7 @@ function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" |
  * 자율 운영은 Theater 별로 켜고 끄며, 기록은 덧붙인 순서대로 쪽을 나눠 읽힌다.
  */
 
-const TEST_PATROL_MS = 60 * 60_000;
+const TEST_HOUR_MS = 60 * 60_000;
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
@@ -176,7 +176,7 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
   expect(result.structuredContent.target).toBe(`commodore:${id}`);
   expect(id).not.toBe(sourceId);
   expect(store.read(id)).toMatchObject({ alias: "Browser", directive: { text: input.directive, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
-  expect(store.read(id)?.patrolMinutes).toBeUndefined();
+  expect(store.read(id)?.routines ?? []).toEqual([]);
   expect(entities.theatersOf(id)).toEqual([{ path: theater }]);
   expect(ownership.additionalDirectories(id)).toEqual([theater]);
   expect(store.memory.read(id, memory.ref)).toEqual({ ...memory, links: [] });
@@ -266,7 +266,7 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
 }
 
 describe("commodore theater state", () => {
-  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated patrol, directive and intel", async () => {
+  it("persists UUID entities with canonical non-exclusive Theater scopes and isolated routines, directive and intel", async () => {
     const h = harness();
     // 엔티티 저장 무결성: id는 폴더에만, 연결은 path 하나만 남기고 색인은 재구성한다.
     const root = path.join(h.objectivesDir, "entities");
@@ -289,7 +289,7 @@ describe("commodore theater state", () => {
     entityStore.setAlias(id, "Flagship");
     const reopenedEntity = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: entities.theaterIds, emit: () => {} });
     expect(reopenedEntity.read(id)?.alias).toBe("Flagship");
-    expect(reopenedEntity.read(id)?.patrolMinutes).toBeUndefined();
+    expect(reopenedEntity.read(id)?.routines).toBeUndefined();
     reopenedEntity.setAlias(id, null);
     expect(JSON.parse(fs.readFileSync(entityFile, "utf8"))).not.toHaveProperty("alias");
     expect(JSON.parse(fs.readFileSync(entityFile, "utf8")).theaters).toEqual([{ path: canonical }]);
@@ -330,14 +330,12 @@ describe("commodore theater state", () => {
     const stateFile = path.join(h.objectivesDir, "state.json");
 
     h.setExperiments({ commodore: false }); // 옛 저장값은 사령관 표면을 숨기지 않는다.
-    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ enabled: true, active: false, run: { phase: "off", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { directive: { text: "", rev: 0 }, intel: [] } });
+    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ enabled: true, active: true, run: { phase: "idle", totals: { session: 0, costUsd: 0, actions: 0 } }, state: { directive: { text: "", rev: 0 }, intel: [] } });
     expect((await h.route("commodore/state", { commodoreId: "unknown" })).status).toBe(404);
     expect(fs.existsSync(stateFile)).toBe(false);
-    expect(patrolIntervalMs(h.store.read("t1"))).toBeNull();
     expect(createCommodoreRoutes(h.ctx, h.store).some((route) => route.name === "commodore/autonomy")).toBe(false);
-    expect((await h.route("commodore/patrol", { commodoreId: "t1", minutes: null })).status).toBe(400);
     // 별칭 쓰기는 실행이 꺼져 있어도 되고, 응답·재시작·사건은 같은 사령관 상태를 읽는다.
-    expect((await h.route("commodore/alias", { commodoreId: "t1", alias: "  Flagship  " })).value).toMatchObject({ active: false, state: { alias: "Flagship" } });
+    expect((await h.route("commodore/alias", { commodoreId: "t1", alias: "  Flagship  " })).value).toMatchObject({ active: true, state: { alias: "Flagship" } });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")?.alias).toBe("Flagship");
     expect(await h.route("commodore/alias", { commodoreId: "t1", alias: "abc\u202Egnp.exe" })).toMatchObject({ status: 400 });
     expect((await h.route("commodore/alias", { commodoreId: "t1", alias: null })).value.state).not.toHaveProperty("alias");
@@ -345,7 +343,7 @@ describe("commodore theater state", () => {
 
     // 옛 Settings 좌표는 무시하지만 Theater 별 선택은 아래 경로에서 유지된다.
     h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
-    expect((await h.route("commodore/patrol", { commodoreId: "t1", minutes: 60 })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
+    expect((await h.route("commodore/state", { commodoreId: "t1" })).value).toMatchObject({ active: true, defaults: { model: "opus[1m]", effort: "high" }, run: { phase: "idle" } });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
     // 서랍의 요청이 사람의 언어를 남긴다 — 사령관 기록의 언어가 된다.
     expect((await h.route("commodore/state", { commodoreId: "t1", language: "ko" })).value.state).toMatchObject({ language: "ko" });
@@ -376,18 +374,16 @@ describe("commodore theater state", () => {
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ patrolMinutes: 60, directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
+    expect(saved).toMatchObject({ directive: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
-    expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).patrollingCommodores()).toEqual(["t1"]);
+    expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).availableCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "patrol", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
 
     // 저장된 스위치와 실행 가능 여부는 별개다. 보드 없는 view는 꺼짐이며 켜기 요청도 거절한다.
-    expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { patrolMinutes: 60 }, run: { phase: "off" } });
-    expect(await h.route("commodore/patrol", { commodoreId: "t1", minutes: 60 }, { boardReady: () => false })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
-    expect(h.store.read("t1")!.patrolMinutes).toBe(60);
+    expect((await h.route("commodore/state", { commodoreId: "t1" }, { boardReady: () => false })).value).toMatchObject({ boardReady: false, active: false, state: { directive: { rev: 1 } }, run: { phase: "off" } });
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
     expect((await h.route("commodore/state", { commodoreId: "t1" })).status).toBe(401);
@@ -395,7 +391,7 @@ describe("commodore theater state", () => {
     expect(h.store.read("t1")).not.toHaveProperty("alias");
   });
 
-  it("refuses unavailable recipients but accepts messages with patrol off, appends the log in order and pages it from the newest end", async () => {
+  it("refuses unavailable recipients but accepts messages without routines, appends the log in order and pages it from the newest end", async () => {
     const h = harness();
     h.store.transcriptAppend("t1", { kind: "session", event: "opened" });
     h.store.transcriptAppend("t1", { kind: "wake", reasons: ["directive changed"] });
@@ -403,7 +399,6 @@ describe("commodore theater state", () => {
     // 그 Theater 의 자율 운영이 꺼져 있으면 메시지는 거절되고 기록에 남지 않는다.
     expect(await h.route("commodore/message", { commodoreId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    h.store.setPatrol("t1", 60);
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
     expect(await h.route("commodore/message", { commodoreId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
@@ -425,14 +420,12 @@ describe("commodore theater state", () => {
     // 참조 없는 본문의 표식 글자(이미지 섞인 서식 글을 붙여 넣으면 브라우저가 만든다)는 지우고 받는다 — 참조는 서지 않는다.
     expect((await h.route("commodore/message", { commodoreId: "t1", text: `pasted ${MARK} note` }, hooks)).value.entry).toEqual(expect.objectContaining({ seq: 4, text: "pasted  note" }));
     expect(h.store.transcriptRead("t1").entries.at(-1)).not.toHaveProperty("references");
-    h.store.setPatrol("t1", "off"); // 메시지는 순찰 안 함에서도 같은 범위 검증 뒤 전달된다.
     const text = `Compare ${MARK} with ${MARK}${MARK}; prefer small objectives.`;
     const sent = await h.route("commodore/message", { commodoreId: "t1", objectiveId: "o1", text, references: ["o2", "o3", "o4"] }, hooks);
     const references = [{ id: "o2", title: "Scope o2" }, { id: "o3", title: "Scope o3" }, { id: "o4", title: "Scope o4" }];
     expect(sent.value.entry).toMatchObject({ seq: 5, kind: "message", text, objective: { id: "o1", title: "Small scope" }, references });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" }, references });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(5);
-    h.store.setPatrol("t1", "off");
     expect(await h.route("commodore/message", { commodoreId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
 
     const page = (await h.route("commodore/transcript", { commodoreId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
@@ -453,7 +446,6 @@ describe("commodore theater state", () => {
     const files = createLaunchAttachmentStore({ dataDir: h.objectivesDir });
     const attachments = files.forPlugin("objectives");
     Object.assign(h.ctx.host, { attachments });
-    h.store.setPatrol("t1", 60);
     const hooks = { run: () => ({ phase: "idle" as const }) };
     const send = async () => {
       const { id } = files.save(png);
@@ -802,7 +794,6 @@ describe("commodore session", () => {
     const newest = h.store.addIntel("t1", { text: "newest" }).item;
     h.store.setSources("t1", [{ kind: "github-issues", label: "feedback", locator: "acme/fleet" }, { kind: "url", label: "forum", locator: "https://example.test/forum" }]);
     const stub = agentStub();
-    const wakes: { at: number; reason: string }[] = [];
     const commands: { file: string; args: readonly string[] }[] = [];
     const session = createCommodoreSession({
       commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "fleet-harness", theaterRoot, agent: stub.agent, store: h.store,
@@ -811,7 +802,7 @@ describe("commodore session", () => {
         defineConsoleTool({ name: "console_objectives", description: "list", actions: { inbox: { kind: "read", input: z.object({}) } } }).plugin({ execute: async () => ({ content: [] }) }),
         defineConsoleTool({ name: "console_objectives_detail", description: "objective", actions: { complete: { kind: "write", input: z.object({ objectiveId: z.string() }) } } })
           .plugin({ execute: async (args) => (args as { action?: unknown }).action === "complete" ? { content: [{ type: "text", text: JSON.stringify({ error: "not_awaiting_review", hint: "secret hint" }) }], isError: true } : { content: [] } }),
-      ], onNextWake: (at, reason) => wakes.push({ at, reason }), now: () => 10_000,
+      ], now: () => 10_000,
       execute: async (file, args) => { commands.push({ file, args }); return { stdout: JSON.stringify([{ number: 7, title: "Pairing drops", state: "OPEN", updatedAt: "2026-10-01T00:00:00Z", labels: [{ name: "bug" }], url: "https://example.test/7" }]), stderr: "" }; },
     });
 
@@ -848,7 +839,7 @@ describe("commodore session", () => {
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "routines", "routine_add", "routine_update", "routine_remove", "ask_person", "withdraw_ask", "asks", "memory_view", "memory_save", "memory_update", "memory_delete", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.\n\nYour fleet-memory is empty\.\n\nCurrent added Theaters: \[\{"theaterId":"th1","label":"fleet-harness","root":".+"\},\{"theaterId":"th2","label":"gone","available":false\}\]\n\nCurrent alias: none\. You have no alias for this turn\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -883,14 +874,23 @@ describe("commodore session", () => {
     const olderId = h.store.read("t1")!.intel[1]!.id;
     h.store.editIntel("t1", olderId, "older, corrected");
     expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([{ id: olderId, at: expect.any(String), editedAt: expect.any(String), source: "person", text: "older, corrected" }]);
-    expect((await call("next_wake", { inMinutes: 30, reason: "no automatic wake" })).structuredContent).toMatchObject({ error: "patrol_off" });
-    expect(wakes).toEqual([]);
-    h.store.setPatrol("t1", 60);
-    expect((await call("next_wake", { inMinutes: 30, reason: "patrol after the merge" })).isError).toBe(false);
-    expect(wakes).toEqual([{ at: 10_000 + 30 * 60_000, reason: "patrol after the merge" }]);
-    // 사람이 고른 순찰 간격(이 시나리오는 60분)을 넘는 예약은 거절하지 않고 간격으로 줄인다.
-    expect((await call("next_wake", { inMinutes: 90, reason: "too far" })).structuredContent).toMatchObject({ patrolIntervalMinutes: 60, shortened: true });
-    expect(wakes.at(-1)).toEqual({ at: 10_000 + 60 * 60_000, reason: "too far" });
+    const routine = (await call("routine_add", { name: "Check merge", task: "Read the review", schedule: { kind: "every", minutes: 60 } })).structuredContent;
+    expect(routine).toMatchObject({ enabled: true, name: "Check merge" });
+    const routineId = routine.id as string;
+    h.setAuthorized(false);
+    expect((await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: false })).status).toBe(401);
+    h.setAuthorized(true);
+    expect((await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: false })).status).toBe(200);
+    expect((await call("routine_update", { routineId, enabled: true })).structuredContent).toMatchObject({ error: "routine_paused_by_person" });
+    await call("routine_update", { routineId, task: "Read the corrected review" });
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => {} }).read("t1")?.routines).toMatchObject([{ enabled: false, pausedBy: "person" }]);
+    await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId, enabled: true });
+    expect((await call("routine_update", { routineId, enabled: false })).isError).toBe(false);
+    expect((await call("routine_update", { routineId, enabled: true })).isError).toBe(false);
+    expect((await call("routine_add", { name: "Check merge", task: "Duplicate", schedule: { kind: "every", minutes: 60 } })).structuredContent).toMatchObject({ error: "routine_name_taken" });
+    expect((await call("routines", {})).structuredContent).toMatchObject({ routines: [{ id: routineId, nextRunAt: expect.any(Number) }] });
+    expect((await call("routine_remove", { routineId, reason: "Finished" })).isError).toBe(false);
+    expect(h.store.read("t1")?.routines).toEqual([]);
     const sources = h.store.read("t1")!.sources;
     expect((await call("issue_list", { sourceId: sources[0]!.id })).structuredContent).toMatchObject({ issues: [{ number: 7, labels: ["bug"] }] });
     expect(commands.at(-1)).toMatchObject({ file: "gh", args: ["issue", "list", "-R", "acme/fleet", "--state", "open", "--limit", "30", "--json", "number,title,state,updatedAt,labels,url"] });
@@ -903,13 +903,13 @@ describe("commodore session", () => {
 
     // 턴 오류는 결말로 돌아오고 기록에 남는다; 폐기는 세션을 닫는다.
     stub.setScript(async () => { throw new Error("rate limit exceeded (429)"); });
-    expect(await session.turn({ reasons: ["patrol"] })).toMatchObject({ outcome: "error", error: "rate_limited" });
+    expect(await session.turn({ reasons: ["routine"] })).toMatchObject({ outcome: "error", error: "rate_limited" });
     expect(stub.sent[1]).toContain("Your fleet-memory index (read an entry with memory_view):");
     expect(stub.sent[1]).toContain("CDP offline leaves an open EventSource alive.");
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "rate_limited" });
     await session.dispose();
     expect(stub.disposedCount()).toBe(1);
-    await expect(session.turn({ reasons: ["patrol"] })).rejects.toThrow("session_disposed");
+    await expect(session.turn({ reasons: ["routine"] })).rejects.toThrow("session_disposed");
   });
 });
 
@@ -951,7 +951,6 @@ describe("commodore supervisor", () => {
       return { id, result, entry: result.value.entry as { messageId: string } };
     };
     try {
-      h.store.setPatrol("t1", 60);
       const accepted = await sendImage();
       expect(accepted.result.status).toBe(200);
       files.discard(accepted.id); // 브라우저의 늦은 제거는 서버가 수락한 메시지를 건드리지 못한다.
@@ -997,7 +996,6 @@ describe("commodore supervisor", () => {
       await supervisor.clear("t1");
       expect(attachments.read("t1", cleared.entry.messageId)).toEqual([]);
       const stopped = await sendImage();
-      h.store.setPatrol("t1", "off");
       await Promise.resolve(); await supervisor.dispose();
       expect(attachments.read("t1", stopped.entry.messageId)).toEqual([]);
       expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "undelivered")).toBe(true);
@@ -1026,8 +1024,7 @@ describe("commodore supervisor", () => {
       h.store.setSources("t1", [{ kind: "url", label: "Reference", locator: "https://example.com" }]);
       h.store.setCoordinates("t1", { model: "sonnet", effort: "high" });
       h.store.setCommander("t1", { model: "opus[1m]", effort: "high" });
-      h.store.setPatrol("t1", 120);
-      h.store.setStopAt("t1", Date.now() + 3 * 60 * 60_000);
+      h.store.routineAdd("t1", { name: "Standing routine", task: "Keep the routine", schedule: { kind: "every", minutes: 120 } });
       h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       h.store.transcriptAppend("t1", { kind: "message", text: "Old queued instruction." });
@@ -1066,123 +1063,110 @@ describe("commodore supervisor", () => {
       hold = true;
       h.store.transcriptAppend("t1", { kind: "message", text: "Stopping while clearing." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      h.store.setPatrol("t1", "off");
       await supervisor.clear("t1");
       await vi.advanceTimersByTimeAsync(1);
       expect(fs.existsSync(file)).toBe(false);
       expect(h.store.transcriptRead("t1").entries).toEqual([]);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
-  it("persists a cancellable stop deadline, cancels pending work, notifies once and restores overdue stops without another patrol", async () => {
+  it("runs only enabled routines, removes one-time schedules, defers person removals and skips missed repeats on restart", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
     const h = harness(Date.now);
-    const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
-    let hold = false;
-    let failNotice = false;
-    let cancel: (() => void) | undefined;
-    const boardWrite = vi.fn(async () => ({ content: [] }));
-    const agent: AgentHost = { createSession: async (options) => {
-      const entry = { options, sent: [] as string[], disposed: false };
-      sessions.push(entry);
-      return {
-        send: async (text) => {
-          if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text);
-          if (failNotice) throw new Error("rate limit exceeded");
-          if (hold) {
-            await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); cancel = undefined; resolve(); }; });
-          } else options.onEvent?.({ kind: "result", isError: false, source: "message" });
-        },
-        steer: () => false, cancel: () => cancel?.(),
-        dispose: async () => { entry.disposed = true; },
-      };
-    } };
-    const makeSupervisor = (store = h.store) => createCommodoreSupervisor({
-      store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }),
-      objectives: () => [], subscribeObjectives: () => () => undefined,
-      boardTools: () => [{ name: "console_objectives_detail", description: "", inputSchema: {}, execute: boardWrite }], emit: () => undefined,
+    h.store.setDirective("t1", "Keep routines scoped.");
+    const sent: string[] = [];
+    let fail = false;
+    let holdTurn = false;
+    let finishTurn: (() => void) | undefined;
+    const agent: AgentHost = { createSession: async (options) => ({
+      send: async (input) => {
+        sent.push(input as string);
+        if (holdTurn) await new Promise<void>((resolve) => { finishTurn = resolve; });
+        options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
+      },
+      steer: () => false, cancel() { finishTurn?.(); }, dispose: async () => {},
+    }) };
+    const make = (store = h.store) => createHostSupervisor({ store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
+      board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
     });
-    let supervisor = makeSupervisor();
-    const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), run: (id: string) => supervisor.status(id) };
-    const schedule = (stopAt: number | null) => h.route("commodore/stop-at", { commodoreId: "t1", stopAt }, hooks);
+    let supervisor = make();
     try {
-      expect((await schedule(Date.now() + 60_000)).status).toBe(409);
-      h.setExperiments({ commodore: true, commodoreModel: "haiku", commodoreEffort: "low" });
-      h.store.setPatrol("t1", 60);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(sessions[0]!.options).toMatchObject({ model: "opus[1m]", effort: "high" });
-      expect((await schedule(Date.now() - 1)).status).toBe(400);
-      expect((await schedule(Date.now() + 31 * 86_400_000)).status).toBe(200);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(h.store.read("t1")!.patrolMinutes).toBe(60);
-      const cancelledAt = Date.now() + 1_000;
-      await schedule(cancelledAt);
-      expect((await schedule(null)).value.state?.stopAt).toBeUndefined();
-      await vi.advanceTimersByTimeAsync(1_001);
-      expect(sessions[0]!.sent).toHaveLength(1);
-      h.store.setDirective("t1", "Keep the board intact.");
-      h.store.addIntel("t1", { text: "Keep this intel." });
-      hold = true;
-      const active = h.store.transcriptAppend("t1", { kind: "message", text: "Interrupt me." });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      const pending = h.store.transcriptAppend("t1", { kind: "message", text: "Return me to the person." });
-      const stopAt = Date.now() + 1_000;
-      expect((await schedule(stopAt)).value.state?.stopAt).toBe(stopAt);
-      expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")!.stopAt).toBe(stopAt);
-      // 종료 알림도 진행 중으로 붙들어 둔다. 그 동안 메시지·보드 쓰기는 받아서는 안 된다.
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(sessions[0]!.sent).toHaveLength(3);
-      expect(sessions[0]!.sent.at(-1)).toContain("The scheduled end time has arrived");
-      expect(sessions[0]!.sent.at(-1)).not.toContain("Return me to the person.");
-      expect((await h.route("commodore/message", { commodoreId: "t1", text: "Too late." }, hooks)).value.error).toBe("commodore_stopping");
-      expect((await schedule(null)).value.error).toBe("commodore_stopping");
-      const tool = sessions[0]!.options.tools!.custom!.flatMap((group) => group.tools).find((tool) => tool.name === "console_objectives_detail")!;
-      expect(await tool.execute({ action: "complete" }, { cwd: h.objectivesDir })).toMatchObject({ isError: true });
-      expect(boardWrite).not.toHaveBeenCalled();
-      h.store.addIntel("t1", { text: "No new wake." });
-      await vi.advanceTimersByTimeAsync(30_001);
-      expect(h.store.read("t1")).toMatchObject({ patrolMinutes: "off", directive: { text: "Keep the board intact." } });
-      expect(h.store.read("t1")!.stopAt).toBeUndefined();
-      expect(h.store.read("t1")!.intel).toHaveLength(2);
-      expect(sessions[0]!.disposed).toBe(true);
-      expect(supervisor.status("t1")).toBeNull();
-      const entries = h.store.transcriptRead("t1").entries;
-      expect(entries.filter((entry) => entry.kind === "undelivered")).toMatchObject([{ seqs: [active.seq, pending.seq] }]);
-      expect(entries.filter((entry) => entry.kind === "wake" && entry.reasons.includes("scheduled-stop"))).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(TEST_PATROL_MS);
-      expect(sessions[0]!.sent).toHaveLength(3);
-
-      // 정상 알림 결말에서도 끄기와 같은 상태가 된다. 껐다 켜면 지난 예약은 되살아나지 않는다.
-      hold = false;
-      h.store.setPatrol("t1", 60);
-      await schedule(Date.now() + COALESCE_MS + 1_000);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1_001);
-      expect(sessions.at(-1)!.sent).toHaveLength(2);
-      expect(sessions.at(-1)!.sent.at(-1)).toContain("The scheduled end time has arrived");
-      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);
-      expect(h.store.read("t1")!.patrolMinutes).toBe("off");
-      expect(sessions.at(-1)!.disposed).toBe(true);
-
-      // 예약을 남긴 채 Console이 종료되고 기한 뒤 재기동하면, 재시작 순찰 대신 종료 알림만 한 번 간다.
-      h.store.setPatrol("t1", 60);
-      await schedule(Date.now() + 60_000);
-      await supervisor.dispose();
-      await vi.advanceTimersByTimeAsync(60_001);
-      const restored = createCommodoreStore({ dirOf: () => h.objectivesDir, commodoreIds: () => ["t1"], emit: () => undefined });
-      failNotice = true;
-      supervisor = makeSupervisor(restored);
       supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(24 * TEST_HOUR_MS);
+      expect(sent).toEqual([]); // 루틴 없는 기본 상태에는 주기적 깨움이 없다.
+      const repeating = h.store.routineAdd("t1", { name: "Read issues", task: "Check the issue source", schedule: { kind: "every", minutes: 60 } });
+      const once = h.store.routineAdd("t1", { name: "Check review", task: "Read the review result", schedule: { kind: "once", at: Date.now() + 60_000 } });
+      await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId: repeating.id, enabled: false });
+      await vi.advanceTimersByTimeAsync(TEST_HOUR_MS + COALESCE_MS);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toContain("Check review: Read the review result");
+      expect(h.store.read("t1")?.routines?.some((r) => r.id === once.id)).toBe(false);
+      await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId: repeating.id, enabled: true });
+      await vi.advanceTimersByTimeAsync(TEST_HOUR_MS + COALESCE_MS);
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toContain("Read issues: Check the issue source");
+      expect(h.store.read("t1")?.routines?.[0]?.lastRunAt).toEqual(expect.any(Number));
+      // 모음 시간 안에 꺼도 이미 예약된 깨움이 실행하지 않는다.
+      const cancelled = h.store.routineAdd("t1", { name: "Cancel me", task: "Must not run", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      await vi.advanceTimersByTimeAsync(1_001);
+      await h.route("commodore/routine-toggle", { commodoreId: "t1", routineId: cancelled.id, enabled: false });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS);
+      expect(sent).toHaveLength(2);
+      await h.route("commodore/routine-remove", { commodoreId: "t1", routineId: cancelled.id });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sent).toHaveLength(2);
+      h.store.transcriptAppend("t1", { kind: "message", text: "What changed?" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sent.at(-1)).toContain('The person removed routine "Cancel me"');
+      expect(h.store.read("t1")?.routineNotices).toEqual([]);
+      const overdue = h.store.routineAdd("t1", { name: "Overdue", task: "Run after restart", schedule: { kind: "once", at: Date.now() + 60_000 } });
+      await supervisor.dispose();
+      await vi.advanceTimersByTimeAsync(48 * TEST_HOUR_MS);
+      const restored = createCommodoreStore({ dirOf: () => h.objectivesDir, commodoreIds: () => ["t1"], emit: () => {}, now: Date.now });
+      supervisor = make(restored); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sent).toHaveLength(4);
+      expect(sent.at(-1)).toContain("Overdue: Run after restart");
+      expect(sent.at(-1)).not.toContain("Read issues: Check the issue source");
+      expect(restored.read("t1")?.routines?.some((r) => r.id === overdue.id)).toBe(false);
+      await vi.advanceTimersByTimeAsync(TEST_HOUR_MS + COALESCE_MS);
+      expect(sent).toHaveLength(5);
+      expect(sent.at(-1)).toContain("Read issues: Check the issue source");
+      // 일회성은 목록에서 사라져도 턴 중 다른 루틴이 깨운 뒤 실패하면 두 할 일을 함께 재시도한다.
+      fail = true;
+      holdTurn = true;
+      const retryOnce = restored.routineAdd("t1", { name: "Retry once", task: "Retry this task", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      await vi.advanceTimersByTimeAsync(1_000 + COALESCE_MS + 1);
+      expect(sent).toHaveLength(6);
+      expect(supervisor.status("t1")?.phase).toBe("turn");
+      expect(restored.read("t1")?.routines?.some((r) => r.id === retryOnce.id)).toBe(false);
+      restored.routineAdd("t1", { name: "Concurrent routine", task: "Keep this new task too", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(sent).toHaveLength(6);
+      expect(supervisor.status("t1")?.phase).toBe("turn");
+      holdTurn = false;
+      finishTurn!();
       await vi.advanceTimersByTimeAsync(1);
-      expect(sessions.at(-1)!.sent).toHaveLength(1);
-      expect(sessions.at(-1)!.sent[0]).toContain("The scheduled end time has arrived");
-      expect(sessions.at(-1)!.sent[0]).toContain("board actions");
-      expect(sessions.at(-1)!.sent[0]).not.toContain("Console restarted;");
-      expect(restored.read("t1")!.patrolMinutes).toBe("off");
-      expect(restored.read("t1")!.stopAt).toBeUndefined();
-      expect(sessions.at(-1)!.disposed).toBe(true);
-      expect(supervisor.status("t1")).toBeNull();
-      await vi.advanceTimersByTimeAsync(TEST_PATROL_MS);
-      expect(sessions.at(-1)!.sent).toHaveLength(1);
+      expect(supervisor.status("t1")?.phase).toBe("retrying");
+      fail = false;
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
+      expect(sent).toHaveLength(7);
+      expect(sent.at(-1)).toContain("Concurrent routine: Keep this new task too");
+      expect(sent.at(-1)).toContain("Retry once: Retry this task");
+      // 요일·지역 시각의 달력 일정도 같은 깨움 경계를 통과한다.
+      const daily = new Date(Date.now() + 2 * 60_000); daily.setSeconds(0, 0);
+      restored.routineAdd("t1", { name: "Daily check", task: "Read the board", schedule: { kind: "daily", time: `${String(daily.getHours()).padStart(2, "0")}:${String(daily.getMinutes()).padStart(2, "0")}`, days: [daily.getDay()] } });
+      await vi.advanceTimersByTimeAsync(daily.getTime() - Date.now() + COALESCE_MS + 1);
+      expect(sent).toHaveLength(8);
+      expect(sent.at(-1)).toContain("Daily check: Read the board");
+      fail = true;
+      const pausedRetry = restored.routineAdd("t1", { name: "Pause retry", task: "Do not retry after pause", schedule: { kind: "every", minutes: 30 } });
+      await vi.advanceTimersByTimeAsync(30 * 60_000 + COALESCE_MS + 1);
+      expect(sent).toHaveLength(9);
+      restored.routineUpdate("t1", pausedRetry.id, { enabled: false }, "person");
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
+      expect(sent).toHaveLength(9);
+      expect(supervisor.status("t1")?.phase).toBe("idle");
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
   it("hands messages to the running turn, returns unread ones to the queue, and opens a fresh conversation with a transcript summary across restarts", async () => {
@@ -1191,7 +1175,6 @@ describe("commodore supervisor", () => {
     try {
       const h = harness(Date.now);
       h.setExperiments({ commodore: true });
-      h.store.setPatrol("t1", 60);
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
       fs.mkdirSync(theaterRoot, { recursive: true });
       // 남는 대화를 흉내 내는 호스트 — key 마다 대화가 남고, 같은 key 로 다시 열면 이어 받는다. 도는 턴은 건넨 말을 받는다.
@@ -1222,7 +1205,8 @@ describe("commodore supervisor", () => {
       const resumeFailures: { objectiveId: string; title: string; error: string }[] = [];
       const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: createCommodore }), emit: () => undefined });
       let supervisor = make();
-      supervisor.sync("patrol-started");
+      h.store.read("t1");
+      supervisor.sync("started");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.sent).toHaveLength(1);
@@ -1273,19 +1257,14 @@ describe("commodore supervisor", () => {
       const cut = h.store.transcriptAppend("t1", { kind: "message", text: "Recheck the roster." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions.at(-1)!.sent.at(-1)).toContain("Recheck the roster.");
-      h.store.setPatrol("t1", "off");
       await supervisor.dispose(); // Console 종료는 진행 턴을 취소하고 미전달 말을 보존한다.
-      supervisor = make();
-      supervisor.sync("restart");
-      await vi.advanceTimersByTimeAsync(TEST_PATROL_MS);
-      expect(sessions).toHaveLength(2);
       const lines = () => h.store.transcriptRead("t1").entries.flatMap((entry) => (entry.kind === "undelivered" || entry.kind === "requeued" ? [`${entry.kind}:${entry.seqs.join(",")}`] : []));
       expect(lines().at(-1)).toBe(`undelivered:${cut.seq}`);
-      // 다시 실었다가 전달 전에 또 끊기면 다시 「전달되지 않음」이고, 다음에 서면 그 말이 또 실린다 — 가장 늦은 행방이 이긴다.
-      h.store.setPatrol("t1", 60); await vi.advanceTimersByTimeAsync(10);
-      h.store.setPatrol("t1", "off"); await vi.advanceTimersByTimeAsync(10);
+      supervisor = make(); supervisor.sync("restart");
+      await supervisor.dispose();
       expect(lines().slice(-2)).toEqual([`requeued:${cut.seq}`, `undelivered:${cut.seq}`]);
-      h.store.setPatrol("t1", 60); await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(lines().at(-1)).toBe(`requeued:${cut.seq}`);
       expect(sessions.at(-1)!.sent.at(-1)).toContain("Recheck the roster.");
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
@@ -1370,104 +1349,34 @@ describe("commodore supervisor", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it("keeps off dormant across restart and automatic events, delivers held input on a message and closes a late-opening session", async () => {
+  it("closes a late-opening session without sending a turn after the board becomes unavailable", async () => {
     vi.useFakeTimers();
     const h = harness(Date.now);
-    const held = h.store.transcriptAppend("t1", { kind: "message", text: "Held before restart." });
-    h.store.transcriptAppend("t1", { kind: "undelivered", seqs: [held.seq] });
-    const { ask } = h.store.askAdd("t1", { questions: [{ text: "Which direction?", options: [] }], reason: "Need direction", objective: null });
-    h.store.askAnswer("t1", ask.id, [{ questionId: ask.questions[0]!.id, selectedOptionIds: [], text: "Keep it small." }]);
+    h.store.setDirective("t1", "Wait for the board.");
+    let available = true;
     let release: (() => void) | undefined;
-    let delayOpen = false;
-    let failMessage = false;
-    const sent: string[] = [];
-    const disposed = vi.fn();
-    const agent: AgentHost = {
-      createSession: async (options) => {
-        if (delayOpen) await new Promise<void>((resolve) => { release = resolve; });
-        return { send: async (input) => { sent.push(input as string); options.onEvent?.({ kind: "result", isError: failMessage, source: "message", ...(failMessage ? { detail: "network" } : {}) }); }, steer: () => false, cancel: () => undefined, dispose: async () => { disposed(); } };
-      },
-    };
-    const objectives: Objective[] = [];
-    const listeners: ((event: ObjectiveEvent) => void)[] = [];
-    const notifyCommanderRest = vi.fn(async () => true);
-    const supervisor = createCommodoreSupervisor({
-      store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }),
-      objectives: () => objectives, subscribeObjectives: (listener) => { listeners.push(listener); return () => undefined; }, boardTools: () => [], emit: () => undefined,
-      observe: restClock(() => ({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never)),
-      notifyCommanderRest,
+    const sent = vi.fn(), disposed = vi.fn();
+    const agent: AgentHost = { createSession: async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { send: async () => { sent(); }, steer: () => false, cancel() {}, dispose: async () => { disposed(); } };
+    } };
+    const supervisor = createHostSupervisor({ store: h.store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
+      board: () => available ? ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }) : null, emit: () => {},
     });
-    const hooks = { acceptsMessage: supervisor.acceptsMessage, run: supervisor.status };
     try {
-      expect(patrolIntervalMs(h.store.read("t1"))).toBeNull();
       supervisor.sync("restart");
-      h.store.setDirective("t1", "Do not wake automatically.");
-      h.store.addIntel("t1", { text: "Wait for a message." });
-      await vi.advanceTimersByTimeAsync(24 * TEST_PATROL_MS);
-      expect(sent).toEqual([]);
-      expect((await h.route("commodore/message", { commodoreId: "t1", text: "Read the waiting input." }, hooks)).status).toBe(200);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(sent).toHaveLength(1);
-      expect(sent[0]).toContain("Held before restart.");
-      expect(sent[0]).toContain("Which direction?");
-      expect((await h.route("commodore/state", { commodoreId: "t1" }, hooks)).value.active).toBe(false);
-      expect((await h.route("commodore/stop-at", { commodoreId: "t1", stopAt: Date.now() + TEST_PATROL_MS }, hooks)).value.error).toBe("commodore_inactive");
-      h.store.setDirective("t1", "Still do not wake automatically.");
-      h.store.addIntel("t1", { text: "Still wait." });
-      objectives.push({ id: "waiting", theaterId: "t1", title: "Waiting", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "Waiting work", done: false }] } as unknown as Objective);
-      for (const listener of listeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "waiting" });
-      supervisor.sync("restart");
-      await vi.advanceTimersByTimeAsync(24 * TEST_PATROL_MS);
-      expect(sent).toHaveLength(1);
-      expect(notifyCommanderRest).not.toHaveBeenCalled();
-      // 안 함의 실패는 자동 재시도하지 않는다. 새 사람 메시지는 다시 시도할 명시적인 이유다.
-      failMessage = true;
-      await h.route("commodore/message", { commodoreId: "t1", text: "A failed message." }, hooks);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "error" });
-      expect(supervisor.status("t1")?.nextWakeAt).toBeUndefined();
-      await vi.advanceTimersByTimeAsync(24 * TEST_PATROL_MS);
-      expect(sent).toHaveLength(2);
-      failMessage = false;
-      await h.route("commodore/message", { commodoreId: "t1", text: "Try with this new message." }, hooks);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(sent).toHaveLength(3);
-      // 메시지 전용 실행기가 오류로 쉰 뒤 순찰을 켜면 즉시 재시도하고 자동 재시도 사다리도 다시 선다.
-      failMessage = true;
-      await h.route("commodore/message", { commodoreId: "t1", text: "Fail before enabling patrol." }, hooks);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(sent).toHaveLength(4);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "error" });
-      expect(supervisor.status("t1")?.nextWakeAt).toBeUndefined();
-      h.store.setPatrol("t1", 15);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
-      expect(sent).toHaveLength(5);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying" });
-      expect(supervisor.status("t1")!.nextWakeAt).toBeGreaterThan(Date.now() + RETRY_DELAYS_MS[0]! - 10);
-      expect(supervisor.status("t1")!.nextWakeAt).toBeLessThanOrEqual(Date.now() + RETRY_DELAYS_MS[0]!);
-      failMessage = false;
-      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
-      expect(sent).toHaveLength(6);
-      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
-      expect(supervisor.status("t1")!.nextWakeAt).toBeGreaterThan(Date.now());
-      h.store.setPatrol("t1", "off");
-      await vi.advanceTimersByTimeAsync(1);
-      expect(disposed).toHaveBeenCalledTimes(1);
-      // 순찰 시작으로 세션이 열리는 도중 안 함으로 바꾸면, 늦게 열린 자식도 턴 없이 닫힌다.
-      delayOpen = true;
-      h.store.setPatrol("t1", 60);
+      h.store.transcriptAppend("t1", { kind: "message", text: "Start a turn." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(release).toBeDefined();
-      h.store.setPatrol("t1", "off");
-      release!();
+      available = false; supervisor.sync(); release!();
       await vi.advanceTimersByTimeAsync(1);
-      expect(disposed).toHaveBeenCalledTimes(2);
-      expect(sent).toHaveLength(6);
+      expect(sent).not.toHaveBeenCalled();
+      expect(disposed).toHaveBeenCalledTimes(1);
       expect(supervisor.status("t1")).toBeNull();
     } finally { release?.(); await supervisor.dispose(); vi.useRealTimers(); }
   });
 
-  it("restores on register, coalesces wake reasons, patrols within the ceiling, retries failures, compacts long sessions in place, replaces sessions on new coordinates and finishes the active turn when patrol is off", async () => {
+  it("restores on register, coalesces events without periodic wakes, retries failures, compacts long sessions and preserves input on shutdown", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
     try {
@@ -1481,7 +1390,6 @@ describe("commodore supervisor", () => {
         resolve: (stored: ModelCoordinate, _target: unknown, fallback?: ModelCoordinate) => ({ ...resolveRosterCoordinate([{ id: "gateway:claude", label: "Claude", rows: [sonnetRow] }], stored, fallback ?? { model: "sonnet" }), wireModel: "sonnet" }),
         pinClaudeVersion: async (model: string) => model === "sonnet" ? "claude-sonnet-installed" : model,
       };
-      h.store.setPatrol("t1", 60);
       h.store.setLanguage("t1", "ko");
       const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
       fs.mkdirSync(theaterRoot, { recursive: true });
@@ -1558,15 +1466,7 @@ describe("commodore supervisor", () => {
       expect(h.store.read("t1")?.model).toBe("codex--gpt-6-luna");
       expect(sessions[0]!.sent[0]).toContain("the board has no open objective you operate");
       expect(sessions[0]!.sent[0]).not.toContain("Console restarted");
-      const patrolAt = supervisor.status("t1")!.nextWakeAt!;
-      expect(supervisor.status("t1")!.phase).toBe("idle");
-      expect(patrolAt).toBeGreaterThan(Date.now() + TEST_PATROL_MS - COALESCE_MS - 100);
-      expect(patrolAt).toBeLessThanOrEqual(Date.now() + TEST_PATROL_MS);
-      // 사람이 순찰 간격을 고치면 잡혀 있던 순찰이 마지막 턴에서 새 간격 뒤로 옮겨지고, 60분으로 되돌리면 원래 시각이다.
-      h.store.setPatrol("t1", 15);
-      expect(supervisor.status("t1")!.nextWakeAt).toBeLessThanOrEqual(Date.now() + 15 * 60_000);
-      h.store.setPatrol("t1", 60);
-      expect(supervisor.status("t1")!.nextWakeAt).toBe(patrolAt);
+      expect(supervisor.status("t1")!.nextWakeAt).toBeUndefined();
       expect(h.store.read("t1")!.run).toMatchObject({ session: 1, costUsd: 0.01 });
 
       // 지시·정보·메시지 — 몇 초 안의 이유는 한 턴으로, 정보는 누적 수로, 메시지는 본문째.
@@ -1753,10 +1653,6 @@ describe("commodore supervisor", () => {
       expect(restNotices).toEqual(["o1"]);
       expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
 
-      // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
-      await vi.advanceTimersByTimeAsync(TEST_PATROL_MS + COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["patrol"]);
-
       // 이미 전달한 항목의 삭제는 수정 이유를 걷고 별도 이유와 본문 발췌로 한 턴 깨운다.
       h.store.editIntel("t1", first.id, "x".repeat(70));
       h.store.removeIntel("t1", first.id);
@@ -1832,48 +1728,17 @@ describe("commodore supervisor", () => {
       expect(await useTool("withdraw_ask", { askId: ask.id })).toMatchObject({ error: "ask_already_answered" });
       expect(h.store.read("t1")!.asks!.find((entry) => entry.id === ask.id)!.settled).toMatchObject({ outcome: "answered", answers: [{ selectedOptionIds: [ask.questions[0]!.options[1]!.id] }] });
 
-      // 안 함 — 진행 턴은 스스로 마치고, 아직 읽지 않은 다음 턴 메시지만 미전달로 남긴다.
+      // Console 종료는 진행 턴을 거두고 읽지 못한 메시지를 보존한다.
       holdTurn = true;
-      h.store.transcriptAppend("t1", { kind: "message", text: "Cancel this instruction." });
+      const activeMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Cancel this instruction." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(supervisor.status("t1")).toMatchObject({ phase: "turn" });
-      expect(sessions[1]!.sent.at(-1)).toContain("Cancel this instruction.");
-      const sentCount = sessions[1]!.sent.length;
       const pendingMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Hold the release." });
-      await vi.advanceTimersByTimeAsync(COALESCE_MS - 500);
-      h.store.setPatrol("t1", "off");
-      await vi.advanceTimersByTimeAsync(10);
-      expect(sessions[1]!.disposed).toBe(false); // 진행 턴은 취소되지 않고 스스로 끝나야 한다.
-      completeOnCancel = true;
-      cancelTurn?.();
-      await vi.advanceTimersByTimeAsync(10);
-      expect(sessions[1]!.sent).toHaveLength(sentCount);
-      expect(h.store.transcriptRead("t1").entries.slice(-3)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "undelivered", seqs: [pendingMessage.seq] }, { kind: "session", event: "stopped" }]);
+      await supervisor.dispose();
       expect(sessions[1]!.disposed).toBe(true);
       expect(supervisor.status("t1")).toBeNull();
-      expect(sessionEvents().at(-1)).toBe("stopped");
-      expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "patrol off" } });
-      h.store.addIntel("t1", { text: "f" });
-      await vi.advanceTimersByTimeAsync(TEST_PATROL_MS);
-      expect(sessions).toHaveLength(2);
-      // 순찰을 재개하면 미전달 메시지만 다시 싣는다 — 이미 성공한 턴의 말은 중복 전달하지 않는다.
-      // stop과 겹쳐도 성공 결말이면 전달 실패로 바꾸지 않는다.
-      completeOnCancel = true;
-      h.store.setPatrol("t1", 60);
-      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "requeued", seqs: [pendingMessage.seq] });
-      const delivered = await h.route("commodore/message", { commodoreId: "t1", text: "Already received." }, { run: (id) => supervisor.status(id) });
-      expect(delivered.status).toBe(200);
-      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions).toHaveLength(3);
-      expect(sessions[2]!.sent[0]).toContain("Already received.");
-      expect(sessions[2]!.sent[0]).toContain("Hold the release.");
-      expect(sessions[2]!.sent[0]).not.toContain("Cancel this instruction.");
-      h.store.setPatrol("t1", "off");
-      cancelTurn?.();
-      await vi.advanceTimersByTimeAsync(10);
-      expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);
-      expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "undelivered")).toHaveLength(1);
-      await supervisor.dispose();
+      expect(h.store.transcriptRead("t1").entries.slice(-3)).toMatchObject([{ kind: "result", outcome: "cancelled" }, { kind: "undelivered", seqs: [activeMessage.seq, pendingMessage.seq] }, { kind: "session", event: "stopped" }]);
+      expect(runs.at(-1)).toMatchObject({ op: "run", run: { phase: "off", reason: "Console stopping" } });
     } finally { vi.useRealTimers(); }
   });
 });

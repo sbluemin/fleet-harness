@@ -155,7 +155,7 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
 
 export function CommodoreDeleteBody({ preview: p, t }: { readonly preview: CommodoreDeletePreview; readonly t: T }) {
   const warning = [p.activeTurn ? t("commodore.delete.warn.turn") : null, p.runningSessions ? t("commodore.delete.warn.sessions", { n: p.runningSessions }) : null,
-    p.patrol ? t("commodore.delete.warn.patrol") : null, p.legacyWarning ? t("commodore.delete.warn.legacy") : null].filter((text): text is string => text !== null);
+    p.legacyWarning ? t("commodore.delete.warn.legacy") : null].filter((text): text is string => text !== null);
   const meta = [p.objectives.active ? t("commodore.delete.row.active", { n: p.objectives.active }) : null, p.objectives.archived ? t("commodore.delete.row.archived", { n: p.objectives.archived }) : null].filter(Boolean).join(" · ");
   const size = p.diskBytes >= 1e9 ? `${(p.diskBytes / 1e9).toFixed(1)} GB` : p.diskBytes >= 1e6 ? `${Math.round(p.diskBytes / 1e6)} MB` : `${Math.max(1, Math.round(p.diskBytes / 1e3))} KB`;
   const theaterNames = p.commodore.theaters.slice(0, 3).map((theater) => theater.label).join(", ");
