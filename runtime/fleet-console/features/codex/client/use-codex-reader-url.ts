@@ -95,23 +95,30 @@ export function useCodexReaderUrlSync(): void {
   useEffect(() => {
     const target = targetRef.current;
     if (!target || (!theaterId && theaters.length === 0)) return;
-    if (target.theaterId && target.theaterId !== theaterId) {
+    const viewedCommodoreId = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
+    // 위키는 사령관마다 따로다. 같은 폴더를 보고 있어도 링크가 다른 사령관을 실었으면 그 사령관으로 옮겨서 연다 — 한 번만 청하고,
+    // 호스트가 그 사령관을 세우지 못하면(그 사령관이 폴더를 더는 갖지 않는 옛 링크) 호스트가 정한 사령관으로 연다.
+    const otherOwner = target.theaterId !== null && target.commodoreId !== null
+      && target.commodoreId !== viewedCommodoreId && viewRequestedRef.current !== target;
+    if ((target.theaterId && target.theaterId !== theaterId) || otherOwner) {
       // 링크가 다른 Theater의 문서를 가리키면 그 Theater로 옮겨서 연다.
       if (theaters.some((entry) => entry.id === target.theaterId)) {
         // 목표 하나에 한 번만 옮겨 달라고 한다. 호스트가 바로 옮기지 못하면(사람이 사령관을 고르는 중) 이 effect가
         // 다시 돌 때마다 같은 요청을 되풀이해 선택 창을 다시 열거나 갱신을 끝없이 일으킨다.
         if (viewRequestedRef.current !== target) {
           viewRequestedRef.current = target;
-          viewTheater(target.theaterId, target.commodoreId);
+          viewTheater(target.theaterId!, target.commodoreId);
         }
+        // 폴더가 그대로면 사령관만 옮겼다 — 보이는 Theater 가 바뀌지 않아 이 effect가 다시 돌 계기가 없으니 여기서 이어서 연다.
+        if (target.theaterId !== theaterId) return;
+      } else {
+        // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한
+        // 문서가 아닌 것을 보여주게 되므로 열지 않는다. 앞서 보던 문서를 그대로 두면
+        // 주소와 화면이 어긋난 채 남으므로 리더도 닫고, 목표는 버려 재시도를 끊는다.
+        targetRef.current = null;
+        if (reader !== null) closeCodexReader();
         return;
       }
-      // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한
-      // 문서가 아닌 것을 보여주게 되므로 열지 않는다. 앞서 보던 문서를 그대로 두면
-      // 주소와 화면이 어긋난 채 남으므로 리더도 닫고, 목표는 버려 재시도를 끊는다.
-      targetRef.current = null;
-      if (reader !== null) closeCodexReader();
-      return;
     }
     if (!theaterId) return;
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
@@ -120,6 +127,11 @@ export function useCodexReaderUrlSync(): void {
     openCodexRailPanel();
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
       if (!workspace || (workspace.theaterId ?? workspace.contextKey) !== theaterId) return;
+      // 링크의 사령관으로 옮겨 왔으면 그 사령관의 위키가 풀릴 때까지 기다린다 — 앞서 보던 사령관의 위키로 문서를 찾으면
+      // 같은 id의 다른 문서를 열거나 없는 문서로 보고 링크를 버린다.
+      // 방금 사령관을 옮겼을 수 있으니 지금 값을 다시 읽는다.
+      const ownerNow = hostCapabilities().consoleState.getViewedCommodoreId?.() ?? null;
+      if (target.commodoreId !== null && target.commodoreId === ownerNow && workspace.contextKey !== target.commodoreId) return;
       const controller = new AbortController();
       const discardTarget = () => {
         clearReaderSession(workspace.contextKey, target.entryId);
