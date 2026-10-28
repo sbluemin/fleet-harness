@@ -382,3 +382,13 @@ html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m
 @media (prefers-reduced-motion: reduce) {
   .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
 }
+
+/* 공유 폴더 — 섹션 제목이 접고 펴는 단추다. 행은 증거 카드 문법을 그대로 쓴다. */
+.objectives-m-fold { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.objectives-m-fold-ic { display: inline-grid; width: 18px; height: 18px; }
+.objectives-m-fold-ic svg { width: 18px; height: 18px; }
+.objectives-m-fold .objectives-section-chev { margin-left: auto; width: 18px; height: 18px; }
+.objectives-m-fold .objectives-section-chev svg { width: 16px; height: 16px; }
+.objectives-m-fold[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
+.objectives-m-shared .objectives-shared-note { padding: 14px 16px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+.objectives-m-shared a.objectives-result-open { color: var(--m-text-muted); font-size: var(--m-fs-caption); }

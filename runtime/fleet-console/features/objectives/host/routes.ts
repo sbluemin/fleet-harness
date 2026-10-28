@@ -1,6 +1,9 @@
 import { inputIssues } from "../../console-use/shared/tools.js";
 import fs from "node:fs";
 import type http from "node:http";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { TextDecoder } from "node:util";
 
 import type { ObjectivesFeatureDeps } from "./deps.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -11,6 +14,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
+import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList } from "../shared/shared-folder.js";
 import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
 import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
@@ -25,6 +29,165 @@ export interface ObjectiveRoute {
   readonly summary: string;
   readonly handler: RouteHandler;
 }
+
+/** shared/ 바깥을 가리키는 읽기는 404 로 — 본문에 바깥 경로나 실제 경로를 넣지 않는다. */
+class UnknownSharedFile extends Error {}
+
+const insideShared = (root: string, file: string) => {
+  const relative = path.relative(root, file);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+};
+
+const sameSharedFile = (a: fs.BigIntStats, b: fs.BigIntStats) =>
+  a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+
+/** shared/ 기준 상대 경로의 어휘 검사 — 비었거나 절대·역참조·역슬래시·제어 문자는 받기 전에 막는다. */
+const isUnsafeSharedPath = (raw: string) => {
+  if (!raw || raw.length > 1024 || raw.includes("\\")) return true;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return true;
+  if (raw.startsWith("/")) return true;
+  return raw.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+};
+
+/** RFC 5987 filename* 값 — 구분자·제어 문자가 없는 basename 이 들어온다. */
+const encodeSharedFilename = (name: string) => encodeURIComponent(name).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+
+/** 엄격한 UTF-8 이고 NUL 바이트가 없으면 텍스트다. */
+const isSharedText = (data: Buffer) => {
+  if (data.includes(0)) return false;
+  try { new TextDecoder("utf-8", { fatal: true }).decode(data); return true; }
+  catch { return false; }
+};
+
+/**
+ * 읽은 바이트로 다시 판정 — 목록의 kind 를 믿지 않는다. imageInfo 가 잡는 머리만 이미지이고,
+ * SVG·HTML 은 텍스트(또는 file)로만 나가 image/svg+xml·text/html 을 절대 내보내지 않는다.
+ */
+const kindOfSharedData = (data: Buffer, size: number): SharedFolderKind => {
+  if (imageInfo(data)) return "image";
+  if (size <= SHARED_FOLDER_LIMITS.textBytes && isSharedText(data)) return "text";
+  return "file";
+};
+
+/** 목록용 겉핥기 판정 — 1 MiB 이하는 전부, 그 위는 머리(64 KiB)만 읽는다. 실패하면 내려받기 전용으로 둔다. */
+const classifySharedEntry = async (file: string, stat: fs.Stats): Promise<SharedFolderKind> => {
+  try {
+    const stop = stat.size <= SHARED_FOLDER_LIMITS.textBytes ? stat.size : 65536;
+    const head = Math.min(stat.size, stop);
+    const handle = await fs.promises.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino) return "file";
+      const data = Buffer.alloc(head);
+      let offset = 0;
+      while (offset < head) {
+        const { bytesRead } = await handle.read(data, offset, head - offset, offset);
+        if (bytesRead === 0) break;
+        offset += bytesRead;
+      }
+      return kindOfSharedData(data.subarray(0, offset), stat.size);
+    } finally { await handle.close(); }
+  } catch { return "file"; }
+};
+
+/** shared/ 재귀 목록 — lstat 기준이라 링크를 따라가지 않고, 링크·특수 파일은 빼고 일반 파일만 담는다. */
+const listSharedFolder = async (root: string): Promise<SharedFolderList> => {
+  const entries: SharedFolderEntry[] = [];
+  let truncated = false;
+  let stopped = false;
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (stopped) return;
+    let names: string[];
+    try { names = await fs.promises.readdir(dir); }
+    catch { return; }
+    names.sort();
+    for (const name of names) {
+      if (stopped) return;
+      const file = path.join(dir, name);
+      let stat: fs.Stats;
+      try { stat = await fs.promises.lstat(file); }
+      catch { continue; }
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isDirectory()) {
+        if (depth + 1 > SHARED_FOLDER_LIMITS.depth) {
+          // 깊이 한도 — 안에 든 것이 있으면 잘라낸 것으로 본다.
+          try { if ((await fs.promises.readdir(file)).length > 0) truncated = true; }
+          catch { /* 읽을 수 없으면 건너뛴다 */ }
+          continue;
+        }
+        await walk(file, depth + 1);
+        continue;
+      }
+      if (!stat.isFile()) continue;
+      if (depth + 1 > SHARED_FOLDER_LIMITS.depth) { truncated = true; continue; }
+      if (entries.length >= SHARED_FOLDER_LIMITS.entries) { truncated = true; stopped = true; return; }
+      entries.push({ path: path.relative(root, file).split(path.sep).join("/"), bytes: stat.size, modifiedAt: Math.floor(stat.mtimeMs), kind: await classifySharedEntry(file, stat) });
+    }
+  };
+  await walk(root, 0);
+  entries.sort((a, b) => b.modifiedAt - a.modifiedAt || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { entries, truncated };
+};
+
+/** shared/ 안의 한 자리 검사 — 어느 단계의 심볼릭 링크도 따라가지 않고 실경로가 shared/ 안인지 확인한다. */
+const inspectShared = async (root: string, segments: readonly string[]) => {
+  try {
+    if ((await fs.promises.lstat(root)).isSymbolicLink()) throw new UnknownSharedFile();
+    let current = root;
+    for (const segment of segments) {
+      current = path.join(current, segment);
+      if ((await fs.promises.lstat(current)).isSymbolicLink()) throw new UnknownSharedFile();
+    }
+    if (!insideShared(root, await fs.promises.realpath(current))) throw new UnknownSharedFile();
+    const stat = await fs.promises.lstat(current, { bigint: true });
+    if (!stat.isFile() || stat.nlink !== 1n) throw new UnknownSharedFile();
+    if (typeof process.getuid === "function" && stat.uid !== BigInt(process.getuid())) throw new UnknownSharedFile();
+    return { current, stat };
+  } catch (error) {
+    if (error instanceof UnknownSharedFile) throw error;
+    throw new UnknownSharedFile();
+  }
+};
+
+/** 텍스트 한도를 넘는 파일은 이만큼의 머리만 읽어 이미지 여부를 가린다 — 나머지는 메모리에 올리지 않고 흘려보낸다. */
+const SHARED_HEAD_BYTES = 64 * 1024;
+
+/**
+ * shared/ 파일 하나를 연다 — 확인-열기 사이 바꿔치기를 막으려고 O_NOFOLLOW 로 열고
+ * fstat(dev/ino)이 lstat 과 같은지, 머리를 읽은 뒤에도 같은지 확인한다(evidence.ts 의 방식).
+ * 텍스트 한도 이하는 통째로(`whole`), 그보다 크면 머리만 읽고 열린 핸들을 돌려준다 — 큰 파일을 버퍼 하나로 잡지 않는다.
+ * 돌려받은 쪽이 핸들을 닫는다.
+ */
+const openSharedFile = async (root: string, raw: string) => {
+  const segments = raw.split("/");
+  const before = await inspectShared(root, segments);
+  const handle = await fs.promises.open(before.current, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0)).catch((error) => {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ELOOP") throw new UnknownSharedFile();
+    throw error;
+  });
+  try {
+    const opened = await handle.stat({ bigint: true });
+    if (!opened.isFile() || opened.nlink !== 1n || !sameSharedFile(before.stat, opened)) throw new UnknownSharedFile();
+    const size = Number(opened.size);
+    const whole = size <= SHARED_FOLDER_LIMITS.textBytes;
+    const head = Buffer.alloc(whole ? size : SHARED_HEAD_BYTES);
+    let offset = 0;
+    while (offset < head.length) {
+      const { bytesRead } = await handle.read(head, offset, head.length - offset, offset);
+      if (bytesRead === 0) throw new UnknownSharedFile();
+      offset += bytesRead;
+    }
+    const after = await handle.stat({ bigint: true });
+    const named = await inspectShared(root, segments);
+    if (!sameSharedFile(opened, after) || !sameSharedFile(after, named.stat)) throw new UnknownSharedFile();
+    return { handle, size, head, whole, name: segments[segments.length - 1]! };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+};
 
 const ids = z.string().min(1).max(128);
 const language = z.enum(["en", "ko"]).optional();
@@ -110,6 +273,70 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
       res.end(data);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") ctx.http.writeJson(res, 404, { error: "unknown_evidence" });
+      else fail(res, error);
+    }
+    return true;
+  };
+
+  // 사람이 브라우저에서 보는 읽기 전용 경로 — 지휘관·구성원이 함께 쓰는 shared/ 폴더를 목록·파일로 연다. 쓰기 경로 없음.
+  const sharedList: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.security.isTerminalAuthorized(req)) { ctx.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    try {
+      const found = store.find(params.get("objectiveId") ?? "");
+      if (!found) { ctx.http.writeJson(res, 404, { error: "unknown_objective" }); return true; }
+      // shared/ 가 아직 없으면 만들지 말고 빈 목록 — 목록 조회가 디렉터리를 만들지 않는다.
+      const root = store.sharedPath(found.commodoreId, found.id);
+      ctx.http.writeJson(res, 200, root ? await listSharedFolder(root) : { entries: [], truncated: false } satisfies SharedFolderList);
+    } catch (error) { fail(res, error); }
+    return true;
+  };
+
+  const sharedFile: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.security.isTerminalAuthorized(req)) { ctx.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    try {
+      const found = store.find(params.get("objectiveId") ?? "");
+      if (!found) { ctx.http.writeJson(res, 404, { error: "unknown_objective" }); return true; }
+      const raw = params.get("path") ?? "";
+      if (isUnsafeSharedPath(raw)) { ctx.http.writeJson(res, 400, { error: "unsafe_path" }); return true; }
+      const root = store.sharedPath(found.commodoreId, found.id);
+      if (!root) { ctx.http.writeJson(res, 404, { error: "unknown_shared_file" }); return true; }
+      const download = params.get("download") === "1";
+      const file = await openSharedFile(root, raw);
+      let streaming = false;
+      try {
+        const headers: Record<string, string | number> = {
+          "Content-Length": file.size,
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+          "Cache-Control": "private, no-store",
+          "Content-Security-Policy": "default-src 'none'",
+        };
+        const image = imageInfo(file.head);
+        // 목록의 kind 를 믿지 말고 읽은 바이트로 다시 판정 — 1 MiB 을 넘는 텍스트도 내려받기로만 나간다.
+        if (image && !download) {
+          headers["Content-Type"] = image.type;
+          headers["Content-Disposition"] = "inline";
+        } else if (!download && file.whole && isSharedText(file.head)) {
+          headers["Content-Type"] = "text/plain; charset=utf-8";
+          headers["Content-Disposition"] = "inline";
+        } else {
+          headers["Content-Type"] = "application/octet-stream";
+          headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeSharedFilename(file.name)}`;
+        }
+        res.writeHead(200, headers);
+        if (file.whole) { res.end(file.head); return true; }
+        // 큰 파일은 같은 열린 핸들에서 조금씩 흘려보낸다 — 경로를 다시 열지 않으므로 확인한 그 파일만 나간다.
+        streaming = true;
+        await pipeline(file.handle.createReadStream({ start: 0, end: file.size - 1, highWaterMark: SHARED_HEAD_BYTES, autoClose: true }), res).catch(() => res.destroy());
+      } finally {
+        if (!streaming) await file.handle.close();
+      }
+    } catch (error) {
+      if (error instanceof UnknownSharedFile) ctx.http.writeJson(res, 404, { error: "unknown_shared_file" });
       else fail(res, error);
     }
     return true;
@@ -228,6 +455,8 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "result/file", method: "GET", summary: "Read preserved evidence by objectiveId and resultId; images are inline and documents are plain UTF-8 text.", handler: resultFile },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
+    { name: "shared/list", method: "GET", summary: "Read an objective's shared folder file list (read-only).", handler: sharedList },
+    { name: "shared/file", method: "GET", summary: "Read one file from an objective's shared folder by relative path (read-only).", handler: sharedFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(objectiveId, ["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },
     { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(objectiveRef.extend({ plan: planSchema.omit({ criteria: true }) }), ({ objectiveId, plan }) => objective(launch.planApplied(objectiveId, plan))) },
   ];
