@@ -83,6 +83,8 @@ export interface CommodoreStore {
   readonly memory: CommodoreMemory;
   transcriptAppend(commodoreId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(commodoreId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
+  /** Clear 경계 뒤 미처리 사령관 연락 — 한 번 읽어 복원하며 화면 페이지 상한을 적용하지 않는다. */
+  pendingReceived(commodoreId: string): readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
   /** 대화의 마지막 말(사람의 메시지나 사령관의 답) — 목록 요약이 싣는다. 처음 한 번만 파일을 읽고 이후는 덧붙임이 갈아 끼운다. */
   transcriptLast(commodoreId: string, from?: "commodore"): CommodoreLastMessage | null;
   /**
@@ -403,6 +405,16 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const before = pageOptions?.before;
       const scoped = before === undefined ? entries : entries.filter((entry) => entry.seq < before);
       return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit, clearedThrough };
+    },
+    pendingReceived(commodoreId) {
+      const clearedThrough = load(commodoreId).transcriptClearedThrough ?? 0;
+      const pending = new Map<number, Extract<CommodoreTranscriptEntry, { kind: "received" }>>();
+      for (const entry of readTranscriptFile(transcriptFile(commodoreId))) {
+        if (entry.seq <= clearedThrough) continue;
+        if (entry.kind === "received") pending.set(entry.seq, entry);
+        else if (entry.kind === "received-read") for (const seq of entry.seqs) pending.delete(seq);
+      }
+      return [...pending.values()];
     },
     askAdd(commodoreId, input) {
       const reason = input.reason.trim();

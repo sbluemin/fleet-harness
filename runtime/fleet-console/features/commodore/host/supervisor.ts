@@ -507,10 +507,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let outcome: CommodoreTurnOutcome;
       try {
         outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(board ? { board } : {}), ...firstTurnSummary(runner), ...(messages.length ? { messages: preparedMessages } : {}), ...(mail.length ? { mail } : {}) });
-      } finally {
-        for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
-        runner.turnMessages = [];
-      }
+        // 실패·취소된 시도는 다시 실릴 수 있다. 전하지 않았다는 판정은 성공한 턴에서만 확정한다.
+        if (outcome.outcome === "ok") for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
+      } finally { runner.turnMessages = []; }
       if (outcome.outcome === "ok") {
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
       } else runner.mail.unshift(...mail);
@@ -637,20 +636,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     (entry.references ?? []).flatMap((ref) => ref.kind === "commodore" ? [{ id: ref.id, alias: ref.title }] : []);
 
   const requeueMail = (runner: Runner) => {
-    const read = new Set<number>();
-    const pending: ReceivedMessage[] = [];
-    let before: number | undefined;
-    // 최근 한 쪽 밖에서 기다리던 연락도 읽는다. Clear 경계는 저장소가 적용한다.
-    for (;;) {
-      const page = deps.store.transcriptRead(runner.commodoreId, { limit: MAX_TRANSCRIPT_PAGE, ...(before === undefined ? {} : { before }) });
-      for (const entry of [...page.entries].reverse()) {
-        if (entry.kind === "received-read") for (const seq of entry.seqs) read.add(seq);
-        else if (entry.kind === "received" && !read.has(entry.seq)) pending.push(entry);
-      }
-      if (!page.hasMore || !page.entries.length) break;
-      before = page.entries[0]!.seq;
-    }
-    runner.mail.push(...pending.reverse());
+    runner.mail.push(...deps.store.pendingReceived(runner.commodoreId));
     if (runner.mail.length) wake(runner, "mail");
   };
 
