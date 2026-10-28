@@ -69,11 +69,11 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
   return {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
       },
       security: { isTerminalAuthorized: () => true },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as RepositoryRouteContext;
 }

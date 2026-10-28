@@ -27,7 +27,7 @@ import { createConsoleServeLifecycle } from "../core/host/bootstrap/serve-lifecy
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
 import type { AgentCliDetector } from "../features/execution/host/agent/agent-cli-detect.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
-import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
+import type { TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 import { isClaudePathTrusted, trustClaudeTheater } from "../features/workspace/host/theaters/claude-trust.js";
 import { WorkspaceRegistry } from "../features/codex/host/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
@@ -206,7 +206,7 @@ describe("console terminal observability", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", objective.id, "objective.json"), "utf8"));
     expect(saved.cwd).toBe(path.join(fs.realpathSync.native(fixture.fleetDataDir), "console", "commodore", commodoreId, "objectives"));
     expect(saved.sessions[0].cwd).toBe(saved.cwd);
-    expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json()).theaters).toEqual([]);
+    expect((await (await fetch(new URL("api/v1/theaters", fixture.endpoint))).json())).toEqual({ error: "theater_registry_retired" });
   });
 
   it("deletes only a confirmed Commodore and never recreates its owner through durable saves or restart", async () => {
@@ -230,7 +230,7 @@ describe("console terminal observability", () => {
         const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
         const storage = createObjectiveStorage({ directory, stateStore, owners: () => [owner, keptOwner].map((id) => ({ commodoreId: id, directory: path.join(entities.dirOf(id)!, "objectives"), legacyCwd: theater, legacyTheaterId: workspaceHash(theater), theaterIdOf: workspaceHash })) });
         storage.load();
-        storage.save({ version: STATE_VERSION, theaters: [{ id: workspaceHash(theater), path: theater, realpath: theater, label: "Kept Theater", registeredAt: "2026-10-26T00:00:00.000Z", lastOpenedAt: "2026-10-26T00:00:00.000Z" }], objectiveRecords: [active, records(keptId, keptOwner)],
+        storage.save({ version: STATE_VERSION, objectiveRecords: [active, records(keptId, keptOwner)],
           groups: [{ id: "owned-group", commodoreId: owner, theaterId: workspaceHash(theater), name: "Owned", color: "blue", order: 0, createdAt: 1 }],
           deletionTombstones: [{ deletionId: "closed-tombstone", kind: "objectiveRecord", targetId: closedId, objectiveRecord: records(closedId), deletedAt: Date.now(), expiresAt: Date.now() + 60_000 }],
         }, [{ archiveId: "archived-entry", archivedAt: 2, objectiveRecord: records(archivedId) }]);
@@ -811,7 +811,7 @@ describe("console static and terminal ticket boundary", () => {
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
   });
 
-  it("does not overwrite a durable state with an unsupported version", async () => {
+  it("preserves unknown registration bytes before retiring the key without guessing from the version", async () => {
     const original = JSON.stringify({
       version: 0,
       theaters: [{ id: "future-theater" }],
@@ -825,9 +825,13 @@ describe("console static and terminal ticket boundary", () => {
         stateFile = path.join(consoleDir, "state.json");
         fs.writeFileSync(stateFile, original);
       },
-    })).rejects.toThrow("archive_recovery_required");
+    })).resolves.toBeDefined();
 
-    expect(fs.readFileSync(stateFile, "utf8")).toBe(original);
+    const current = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    expect(current).not.toHaveProperty("theaters");
+    expect(current.objectiveRecords).toEqual([{ id: "future-objectiveRecord" }]);
+    const backups = path.join(path.dirname(stateFile), ".archive-migration");
+    expect(fs.readdirSync(backups).some((name) => fs.readFileSync(path.join(backups, name), "utf8") === original)).toBe(true);
   });
 
   it("rehydrates durable provider titles as dormant without starting PTYs", async () => {
@@ -865,15 +869,16 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
 
-    const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
+    const retired = await fetch(`${fixture.endpoint}api/v1/theaters`);
+    expect(retired.status).toBe(410);
+    expect(await retired.json()).toEqual({ error: "theater_registry_retired" });
     const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/agent/sessions`);
     const ownerRoot = path.join(fixture.fleetDataDir, "console", "commodore");
     const ownerId = fs.readdirSync(ownerRoot).find((id) => /^[a-f0-9-]{36}$/.test(id))!;
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/session-a/objective.json"), "utf8"));
-    const serialized = JSON.stringify({ theaters, sessions });
+    const serialized = JSON.stringify({ sessions });
 
     expect(startedShells).toEqual([]);
-    expect(theaters.theaters[0]).toMatchObject({ id: theaterId, label: path.basename(dir) });
     expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
     expect(sessions.sessions[0]).toMatchObject({ label: "Durable provider title" });
     expect(saved.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
@@ -948,12 +953,16 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
-    // 명시적인 목표 파일 요청은 등록된 B를 열되 미등록 C·심볼릭 링크 탈출은 닫힌다.
+    // 명시적인 목표 파일 요청은 고정 cwd인 B와 C를 열되 심볼릭 링크로 바뀐 경계는 닫힌다.
     const filesInB = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
       method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId: "fixed-b", relativePath: "" }),
     });
     expect(filesInB.status).toBe(200);
-    for (const objectiveId of ["outside-c", "escaped"]) {
+    const fixedOutside = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
+      method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId: "outside-c", relativePath: "" }),
+    });
+    expect(fixedOutside.status).toBe(200);
+    for (const objectiveId of ["escaped"]) {
       const files = await fetch(`${origin}/api/v1/file-explorer/files/list`, {
         method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ objectiveId, relativePath: "" }),
       });
@@ -1050,14 +1059,14 @@ describe("console static and terminal ticket boundary", () => {
       const origin = new URL(fixture.endpoint).origin;
       const post = (route: string, body: unknown) => fetch(`${fixture.endpoint}api/v1/${route}`, { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) });
       const { commodoreId } = await (await post("commodore/create", { alias: "Folder owner" })).json();
-      const before = await getJson(`${fixture.endpoint}api/v1/theaters`);
+      const before = await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json();
       const grant = await issueTheaterFolderGrant(fixture, second);
       expect((await post("commodore/theaters/add", { commodoreId, path: second })).status).toBe(400);
       const response = await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId, claudeTrustConsent: true });
       expect(response.status).toBe(200);
       const { theaterId } = await response.json();
       expect((await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId })).status).toBe(400);
-      expect(await getJson(`${fixture.endpoint}api/v1/theaters`)).toEqual(before);
+      expect(await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json()).toEqual(before);
       const owner = (await (await post("commodore/list", {})).json()).commodores.find((row: { commodoreId: string }) => row.commodoreId === commodoreId);
       expect(owner.theaters).toEqual([{ theaterId, label: "second", status: "available" }]);
       const created = await post("objectives/records", { commodoreId, theaterId, title: "Unregistered folder" });
@@ -1066,7 +1075,7 @@ describe("console static and terminal ticket boundary", () => {
       const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", record.id, "objective.json"), "utf8"));
       expect(saved.cwd).toBe(fs.realpathSync(second));
       await post("commodore/theaters/remove", { commodoreId, theaterId });
-      expect(await getJson(`${fixture.endpoint}api/v1/theaters`)).toEqual(before);
+      expect(await (await fetch(`${fixture.endpoint}api/v1/theaters`)).json()).toEqual(before);
       expect(fs.existsSync(second)).toBe(true);
       expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({
         custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true }, [fs.realpathSync(second)]: { hasTrustDialogAccepted: true } },
@@ -1075,18 +1084,18 @@ describe("console static and terminal ticket boundary", () => {
       const beforeLockFailure = fs.readFileSync(file, "utf8");
       fs.mkdirSync(`${file}.lock`);
       const lockedGrant = await issueTheaterFolderGrant(fixture, first);
-      const locked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+      const locked = await fetch(`${fixture.endpoint}api/v1/commodore/theaters/add`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderGrantId: lockedGrant.folderGrantId, claudeTrustConsent: true }),
+        body: JSON.stringify({ commodoreId, folderGrantId: lockedGrant.folderGrantId, claudeTrustConsent: true }),
       });
       expect(locked.status).toBe(409);
       expect(fs.readFileSync(file, "utf8")).toBe(beforeLockFailure);
       fs.rmdirSync(`${file}.lock`);
       fs.writeFileSync(file, "{broken");
       const failedGrant = await issueTheaterFolderGrant(fixture, first);
-      const failed = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+      const failed = await fetch(`${fixture.endpoint}api/v1/commodore/theaters/add`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderGrantId: failedGrant.folderGrantId, claudeTrustConsent: true }),
+        body: JSON.stringify({ commodoreId, folderGrantId: failedGrant.folderGrantId, claudeTrustConsent: true }),
       });
       expect(failed.status).toBe(409);
       await expect(failed.json()).resolves.toEqual({ error: "claude_trust_invalid_config" });
@@ -1097,17 +1106,17 @@ describe("console static and terminal ticket boundary", () => {
       fs.symlinkSync(target, file);
       fs.mkdirSync(`${file}.lock`);
       const linkedLockedGrant = await issueTheaterFolderGrant(fixture, first);
-      const linkedLocked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+      const linkedLocked = await fetch(`${fixture.endpoint}api/v1/commodore/theaters/add`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderGrantId: linkedLockedGrant.folderGrantId, claudeTrustConsent: true }),
+        body: JSON.stringify({ commodoreId, folderGrantId: linkedLockedGrant.folderGrantId, claudeTrustConsent: true }),
       });
       expect(linkedLocked.status).toBe(409);
       expect(fs.readFileSync(target, "utf8")).toBe(beforeLockFailure);
       fs.rmdirSync(`${file}.lock`);
       const linkedGrant = await issueTheaterFolderGrant(fixture, first);
-      const linked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+      const linked = await fetch(`${fixture.endpoint}api/v1/commodore/theaters/add`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderGrantId: linkedGrant.folderGrantId, claudeTrustConsent: true }),
+        body: JSON.stringify({ commodoreId, folderGrantId: linkedGrant.folderGrantId, claudeTrustConsent: true }),
       });
       expect(linked.status).toBe(200);
       expect(fs.lstatSync(file).isSymbolicLink()).toBe(true);
@@ -1138,7 +1147,7 @@ describe("console static and terminal ticket boundary", () => {
     }
   });
 
-  it("rejects Theater registration without a valid folder grant", async () => {
+  it("rejects the retired global Theater registration API without consuming a grant", async () => {
     const failed = await startFixture();
 
     const errorResponse = await fetch(`${failed.endpoint}api/v1/theaters`, {
@@ -1146,8 +1155,8 @@ describe("console static and terminal ticket boundary", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folderGrantId: "missing-grant" }),
     });
-    await expect(errorResponse.json()).resolves.toEqual({ error: "invalid_folder_grant" });
-    expect(errorResponse.status).toBe(400);
+    await expect(errorResponse.json()).resolves.toEqual({ error: "theater_registry_retired" });
+    expect(errorResponse.status).toBe(410);
   });
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
@@ -1186,7 +1195,7 @@ describe("console static and terminal ticket boundary", () => {
     const ticketResponse = await fetch(`${fixture.endpoint}api/v1/shell/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: { theaterId: theater.id } }),
+      body: JSON.stringify({ cwd: { commodoreId: theater.commodoreId, theaterId: theater.id } }),
     });
     expect(ticketResponse.status).toBe(200);
     const { ticket } = await ticketResponse.json() as { readonly ticket: string };
@@ -1207,14 +1216,17 @@ describe("console static and terminal ticket boundary", () => {
 });
 
 // 현재 writer로 명부와 owner별 objective/groups/archive를 함께 심는다. 폐기된 위치 이주에 기대지 않는다.
-function seedDurableObjectives(fleetDataDir: string, theater: DurableConsoleState["theaters"][number], objectiveRecords: readonly (Pick<ObjectiveRecord, "id" | "theaterId" | "title" | "ts"> & Record<string, unknown>)[], additionalTheaters: readonly DurableConsoleState["theaters"][number][] = []) {
+function seedDurableObjectives(fleetDataDir: string, theater: TheaterRegistration, objectiveRecords: readonly (Pick<ObjectiveRecord, "id" | "theaterId" | "title" | "ts"> & Record<string, unknown>)[], additionalTheaters: readonly TheaterRegistration[] = []) {
   const directory = path.join(fleetDataDir, "console");
   const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
   const ownerId = entities.create(theater.realpath);
+  const ownerFile = path.join(entities.dirOf(ownerId)!, "state.json");
+  const ownerState = JSON.parse(fs.readFileSync(ownerFile, "utf8"));
+  fs.writeFileSync(ownerFile, JSON.stringify({ ...ownerState, theaters: [theater, ...additionalTheaters].map((row) => ({ path: row.realpath })) }));
   const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
   const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: path.join(entities.dirOf(ownerId)!, "objectives"), commodoreId: ownerId, legacyTheaterId: theater.id, legacyCwd: theater.realpath, theaterIdOf: (cwd: string) => workspaceHash(cwd) }] });
   storage.load();
-  storage.save({ version: STATE_VERSION, theaters: [theater, ...additionalTheaters], objectiveRecords: objectiveRecords.map((node) => ({ ...node, commodoreId: ownerId })) });
+  storage.save({ version: STATE_VERSION, objectiveRecords: objectiveRecords.map((node) => ({ ...node, ...(typeof node.cwd === "string" ? { cwd: fs.realpathSync.native(node.cwd) } : {}), commodoreId: ownerId })) });
   return storage;
 }
 
@@ -1346,15 +1358,16 @@ async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, head
   return response.json() as Promise<{ readonly folderGrantId: string }>;
 }
 
-async function createTheater(fixture: ServerFixture, cwd: string): Promise<{ readonly id: string }> {
+async function createTheater(fixture: ServerFixture, cwd: string): Promise<{ readonly id: string; readonly commodoreId: string }> {
   const grant = await issueTheaterFolderGrant(fixture, cwd);
-  const response = await fetch(`${fixture.endpoint}api/v1/theaters`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+  const created = await fetch(`${fixture.endpoint}api/v1/commodore/create`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ alias: "Fixture" }) });
+  expect(created.status).toBe(200);
+  const { commodoreId } = await created.json();
+  const response = await fetch(`${fixture.endpoint}api/v1/commodore/theaters/add`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commodoreId, folderGrantId: grant.folderGrantId }),
   });
   expect(response.status).toBe(200);
-  return response.json() as Promise<{ readonly id: string }>;
+  return { id: (await response.json()).theaterId, commodoreId };
 }
 
 async function fetchWithBlockedPortRetry(request: (fixture: ServerFixture) => Promise<Response>): Promise<Response> {

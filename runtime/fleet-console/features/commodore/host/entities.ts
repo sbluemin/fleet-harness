@@ -24,9 +24,13 @@ function win32Comparable(value: string): string {
   else if (text.startsWith("\\\\?\\")) text = text.slice(4);
   return text.replace(/[\\/]+/g, "/").replace(/\/+$/, "").toLowerCase();
 }
-export const commodoreTheatersSchema = z.array(z.object({ path: z.string().min(1).max(4096).refine(path.isAbsolute) }).strict());
+export const commodoreTheatersSchema = z.array(z.object({
+  path: z.string().min(1).max(4096).refine((value) => path.isAbsolute(value) && !value.includes("\0") && path.normalize(value) === value),
+  legacyIds: z.array(z.string().min(1).max(128)).optional(),
+  adoptedLegacy: z.literal(true).optional(),
+}).strict());
 export const commodoreEntitySchema = z.preprocess(migrateCommodoreState, commodoreStateSchema.extend({ theaters: commodoreTheatersSchema }));
-export type CommodoreTheaterLink = { readonly path: string };
+export type CommodoreTheaterLink = z.infer<typeof commodoreTheatersSchema>[number];
 /** state.json이 권위이고 이 색인은 기동마다 재구성한다. 잊힌 Theater의 연결도 그대로 보존한다. */
 export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPath: string) => string) {
   const links = new Map<string, readonly CommodoreTheaterLink[]>();
@@ -70,11 +74,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
       const stat = fs.lstatSync(file);
       if (fs.realpathSync.native(dir) !== dir || !stat.isFile() || stat.isSymbolicLink()) throw new Error("invalid_state_file");
       const state = commodoreEntitySchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
-      for (const theater of state.theaters) {
-        if (path.normalize(theater.path) !== theater.path) throw new Error("noncanonical_path");
-        try { if (fs.realpathSync.native(theater.path) !== theater.path) throw new Error("noncanonical_path"); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      }
+      // 저장 좌표는 보존한다. 사라졌거나 symlink로 교체된 폴더는 조회/실행 경계에서 unavailable이며 사령관 자체를 숨기지 않는다.
       replaceTheatersInIndex(entry.name, state.theaters);
     } catch { warn(entry.name, "unreadable_state"); }
   }

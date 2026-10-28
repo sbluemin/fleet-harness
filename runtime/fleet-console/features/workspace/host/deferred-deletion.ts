@@ -4,8 +4,6 @@ import { deletionObjectiveRecords, type DurableDeletionTombstone, type DurableOb
 import type { ArchivedObjective } from "./objective-archive-storage.js";
 import type { ObjectiveRecord, ObjectiveRecordsStore } from "../../objectives/host/records/objective-records-domain.js";
 import { DELETION_GRACE_MS } from "../../objectives/host/records/objective-records-domain.js";
-import type { TheaterRegistration } from "./theaters/theater-domain.js";
-import type { TheaterRegistry } from "./theaters/theater-domain.js";
 
 export interface DeferredDeletionReceipt {
   readonly deletionId: string;
@@ -41,25 +39,19 @@ export interface DeferredDeletionCoordinator {
   readonly list: () => readonly DurableDeletionTombstone[];
   readonly load: (tombstones: readonly DurableDeletionTombstone[]) => void;
   readonly deleteObjective: (objectiveId: string) => DeferredDeletionReceipt | null;
-  readonly deleteTheater: (theaterId: string) => DeferredDeletionReceipt | null;
   readonly restore: (deletionId: string) => Promise<DeferredRestoreResponse>;
   readonly sweepExpired: () => void;
   readonly hasPendingObjective: (objectiveId: string) => boolean;
-  readonly hasPendingTheater: (theaterId: string) => boolean;
   readonly dispose: () => void;
 }
 
 interface DeferredDeletionCoordinatorDeps {
   readonly objectiveRecords: ObjectiveRecordsStore;
-  readonly theaters: TheaterRegistry;
   readonly save: (tombstones: readonly DurableDeletionTombstone[], archives?: readonly ArchivedObjective[]) => void;
   readonly archives?: () => readonly ArchivedObjective[];
   readonly assertMutable?: (id: string) => void;
   readonly assertOwnerMutable?: (commodoreId: string) => void;
   readonly publish: (channel: string, payload: unknown) => void;
-  readonly unregisterTheaterWorkspaces: (theaterId: string) => void;
-  readonly validateTheaterRestore: (theater: TheaterRegistration) => Promise<void>;
-  readonly registerTheaterWorkspace: (theater: TheaterRegistration) => Promise<void>;
   /**
    * 유예가 끝난 Objective 의 흔적을 지우기 **전에** 관련 자원을 정리한다. 던지면 tombstone 을 그대로 남겨
    * 이번 정리를 미루고 다시 시도한다.
@@ -140,50 +132,6 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     return toReceipt(tombstone);
   }
 
-  function deleteTheater(theaterId: string): DeferredDeletionReceipt | null {
-    sweepExpired();
-    const existing = tombstones.find((item) => item.kind === "theater" && item.targetId === theaterId);
-    if (existing) return toReceipt(existing);
-    const theater = deps.theaters.get(theaterId);
-    if (!theater) return null;
-    const previousTheaters = deps.theaters.list();
-    const previousObjectiveRecords = deps.objectiveRecords.list();
-    const previousGroups = deps.objectiveRecords.listAllGroups();
-    const archives = deps.archives?.() ?? [];
-    const archived = Object.fromEntries(archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => [entry.objectiveRecord.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
-    const deletedObjectiveRecords = [...deps.objectiveRecords.listByTheater(theaterId), ...archives.filter((entry) => entry.objectiveRecord.theaterId === theaterId).map((entry) => entry.objectiveRecord)];
-    for (const node of deletedObjectiveRecords) deps.assertMutable?.(node.id);
-    const deletedGroups = deps.objectiveRecords.listGroupsByTheater(theaterId);
-    const deletedAt = now();
-    const tombstone: DurableDeletionTombstone = {
-      deletionId: randomId(),
-      targetId: theater.id,
-      deletedAt,
-      expiresAt: deletedAt + DELETION_GRACE_MS,
-      kind: "theater",
-      theater,
-      objectiveRecords: deletedObjectiveRecords,
-      groups: deletedGroups,
-      ...(Object.keys(archived).length ? { archived } : {}),
-    };
-    const nextTombstones = [...tombstones, tombstone];
-    deps.theaters.remove(theaterId);
-    deps.objectiveRecords.deleteByTheater(theaterId);
-    try {
-      deps.save(nextTombstones, archives.filter((entry) => entry.objectiveRecord.theaterId !== theaterId));
-    } catch (error) {
-      deps.theaters.restore(previousTheaters);
-      deps.objectiveRecords.replace(previousObjectiveRecords);
-      deps.objectiveRecords.replaceGroups(previousGroups);
-      throw error;
-    }
-    tombstones = nextTombstones;
-    deps.unregisterTheaterWorkspaces(theaterId);
-    for (const objectiveRecord of deletedObjectiveRecords) publishObjective(OBJECTIVE_DELETED_EVENT_CHANNEL, objectiveRecord);
-    schedule();
-    return toReceipt(tombstone);
-  }
-
   async function restore(deletionId: string): Promise<DeferredRestoreResponse> {
     const restoredAt = now();
     const tombstone = tombstones.find((item) => item.deletionId === deletionId);
@@ -202,7 +150,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const restoredArchives = restoredNodes.filter((node) => archivedIds.has(node.id)).map((objectiveRecord) => ({ objectiveRecord, ...tombstone.archived![objectiveRecord.id]! }));
     const activeRestores = restoredNodes.filter((node) => !archivedIds.has(node.id));
     if (tombstone.kind === "objectiveRecord") {
-      if (restoredNodes.some((node) => deps.objectiveRecords.get(node.id) || archives.some((entry) => entry.objectiveRecord.id === node.id)) || !deps.theaters.get(tombstone.objectiveRecord.theaterId)) {
+      if (restoredNodes.some((node) => deps.objectiveRecords.get(node.id) || archives.some((entry) => entry.objectiveRecord.id === node.id))) {
         throw new DeferredDeletionError(409, "restore_conflict");
       }
       const previousObjectiveRecords = deps.objectiveRecords.list();
@@ -220,31 +168,25 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
     }
 
-    await deps.validateTheaterRestore(tombstone.theater);
     assertOwners();
     if (!tombstones.includes(tombstone)) throw new DeferredDeletionError(409, "restore_conflict");
-    if (deps.theaters.get(tombstone.targetId)
-      || tombstone.objectiveRecords.some((objectiveRecord) => deps.objectiveRecords.get(objectiveRecord.id) || archives.some((entry) => entry.objectiveRecord.id === objectiveRecord.id))
+    if (tombstone.objectiveRecords.some((objectiveRecord) => deps.objectiveRecords.get(objectiveRecord.id) || archives.some((entry) => entry.objectiveRecord.id === objectiveRecord.id))
       || hasGroupConflict(tombstone.groups, deps.objectiveRecords.listAllGroups())) {
       throw new DeferredDeletionError(409, "restore_conflict");
     }
-    const previousTheaters = deps.theaters.list();
     const previousObjectiveRecords = deps.objectiveRecords.list();
     const previousGroups = deps.objectiveRecords.listAllGroups();
     const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
-    deps.theaters.restore([...previousTheaters, tombstone.theater]);
     deps.objectiveRecords.replace([...previousObjectiveRecords, ...activeRestores]);
     deps.objectiveRecords.replaceGroups([...previousGroups, ...tombstone.groups]);
     try {
       deps.save(nextTombstones, [...archives, ...restoredArchives]);
     } catch (error) {
-      deps.theaters.restore(previousTheaters);
       deps.objectiveRecords.replace(previousObjectiveRecords);
       deps.objectiveRecords.replaceGroups(previousGroups);
       throw error;
     }
     tombstones = nextTombstones;
-    await deps.registerTheaterWorkspace(tombstone.theater);
     for (const objectiveRecord of activeRestores) publishObjective(OBJECTIVE_RESTORED_EVENT_CHANNEL, objectiveRecord);
     schedule();
     return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
@@ -289,11 +231,6 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
   function hasPendingObjective(objectiveId: string): boolean {
     sweepExpired();
     return tombstones.some((item) => deletionObjectiveRecords(item).some((objectiveRecord) => objectiveRecord.id === objectiveId || objectiveRecord.sessions?.some((child) => child.id === objectiveId)));
-  }
-
-  function hasPendingTheater(theaterId: string): boolean {
-    sweepExpired();
-    return tombstones.some((item) => item.kind === "theater" && item.targetId === theaterId);
   }
 
   function schedule(forcedDelay?: number): void {
@@ -348,11 +285,9 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     list,
     load,
     deleteObjective,
-    deleteTheater,
     restore,
     sweepExpired,
     hasPendingObjective,
-    hasPendingTheater,
     dispose,
   };
 }

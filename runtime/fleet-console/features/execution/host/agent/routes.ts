@@ -208,7 +208,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   });
   // "지금 어디" 축 — 세션 생성·재개·턴 경계가 cwd를 알리고, 휴면·삭제가 감시를 거둔다.
   const workspaceContext = createWorkspaceContextTracker({
-    resolveTheaterPath: (theaterId) => ctx.host.paths.resolveTheaterPath(theaterId),
+    resolveSessionTheaterPath: (sessionId, theaterId) => {
+      const owner = ctx.host.paths.resolveObjectiveOwner(sessionId);
+      return owner ? ctx.host.paths.resolveCommodoreTheaterPath(owner, theaterId) : null;
+    },
     onChange: (sessionId, workspace) => {
       const updated = observability.setTerminalSessionWorkspace(sessionId, workspace);
       if (updated) observability.notifySessionUpdated(updated);
@@ -619,7 +622,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const reply = (status: number, value: unknown) => { response = { status, value }; };
       if (input.kind === "launch") {
         const locationId = input.parentObjectiveId ?? input.newObjectiveId;
-        const cwd = locationId ? ctx.host.paths.resolveObjectivePath?.(locationId) : ctx.host.paths.resolveTheaterPath(input.theaterId!);
+        if (!input.commodoreId) throw new ConsoleControlError("commodore_required");
+        if (locationId && ctx.host.paths.resolveObjectiveOwner(locationId) !== input.commodoreId) throw new ConsoleControlError("objective_owner_mismatch");
+        const cwd = locationId ? ctx.host.paths.resolveObjectivePath?.(locationId) : ctx.host.paths.resolveCommodoreTheaterPath(input.commodoreId, input.theaterId!);
         if (!cwd) throw new ConsoleControlError("unknown_theater");
         // 부모는 세션을 만들기 전에 따진다 — 저장소도 거절하지만, 그때는 이미 세운 대기 세션이 남는다.
         if (input.childSessionId) {
@@ -645,7 +650,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
         // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패로 돌려주면 재시도가 같은 Objective 을 하나 더 만든다.
-        if (!input.childSessionId && input.groupId && input.theaterId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
+        if (!input.childSessionId && input.groupId && input.theaterId && deps.organize?.group) { try { deps.organize.group({ commodoreId: input.commodoreId, mode: "assign", theaterId: input.theaterId, groupId: input.groupId, objectiveIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { objectiveId: launchedId, delivery: "queued" };
       }
       const objectiveId = input.objectiveId!;
@@ -943,21 +948,21 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (objectiveContext && body?.commodoreId !== undefined && body.commodoreId !== objectiveContext.commodoreId) {
       ctx.host.http.writeJson(res, 409, { error: "objective_owner_mismatch" }); return true;
     }
+    const commodoreId = objectiveContext?.commodoreId ?? body?.commodoreId;
+    if (typeof commodoreId !== "string" || !commodoreId.trim()) {
+      ctx.host.http.writeJson(res, 400, { error: "commodore_required" });
+      return true;
+    }
     const recordTheaterId = theaterId ?? objectiveContext?.theaterId ?? null;
     const cwd = objectiveId
       ? confirmedObjectiveCwd(objectiveId, objectiveNode)
-      : (theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null);
+      : (theaterId ? ctx.host.paths.resolveCommodoreTheaterPath(commodoreId, theaterId) : null);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: objectiveId ? "unavailable" : "theater_not_found" });
       return true;
     }
     if (!recordTheaterId) {
       ctx.host.http.writeJson(res, 400, { error: "theater_required" });
-      return true;
-    }
-    const commodoreId = objectiveContext?.commodoreId ?? body?.commodoreId;
-    if (typeof commodoreId !== "string" || !commodoreId.trim()) {
-      ctx.host.http.writeJson(res, 400, { error: "commodore_required" });
       return true;
     }
     let composedPrompt: string | undefined;

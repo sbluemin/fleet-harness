@@ -67,7 +67,7 @@ describe("fleet-console-use host", () => {
       expect(await call("console_objective_session", args)).toEqual({ action: "send", objectiveId: "op-a", delivery: "confirmed" });
       expect(await call("console_objective_session", args)).toEqual({ action: "send", objectiveId: "op-a", delivery: "confirmed" });
       expect(executions).toBe(2);
-      control.automation({ kind: "objectiveRecord", objectiveId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
+      control.automation({ kind: "objectiveRecord", objectiveId: "op-a" }, { name: "Briefing", commodoreId: "c1", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       time += 300_001;
       await control.tick();
       expect(control.state().automations[0]).toMatchObject({ runs: 1, briefing: { total: 1, unknown: 0 } });
@@ -219,7 +219,8 @@ describe("fleet-console-use host", () => {
     };
     const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => JSON.parse((await rpc(connection, "tools/call", { name, arguments: args })).content[0].text);
     try {
-      expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
+      expect(await call(aide, "console_context")).toMatchObject({ error: "commodore_required" });
+      expect(await call(aide, "console_context", { commodoreId: "c1" })).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
       const args = { commodoreId: "c1", theaterId: "theater-a", text: "Run the requested check" };
       // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
       const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
@@ -231,12 +232,12 @@ describe("fleet-console-use host", () => {
       expect(await call(aide, "console_launcher", args)).toEqual({ action: "launch", objectiveId: "new-op", delivery: "confirmed" });
       expect(executions).toBe(1);
       // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
-      const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
+      const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", commodoreId: "c1", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
       await aide.dispose();
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
       const nextChat = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
-      expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
+      expect((await call(nextChat, "console_context", { commodoreId: "c1" })).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
       granted = false;
       expect((await call(nextChat, "console_launcher", args)).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
@@ -254,21 +255,24 @@ describe("fleet-console-use host", () => {
     let enabled = true;
     const host = createConsoleUseMcpHost({
       theaters: () => [{ id: "theater-a", name: "Project A" }],
-      objectiveRecords: () => [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", ...({ secret: "/private/transcript" }), ts: { createdAt: 1, updatedAt: 1 } }],
+      objectiveRecords: () => [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", ...({ secret: "/private/transcript" }), ts: { createdAt: 1, updatedAt: 1 } }, { id: "other-owner", title: "Private", commodoreId: "c2", theaterId: "theater-a", ts: { createdAt: 1, updatedAt: 1 } }],
     });
     const a = host.connect({ tools: ["console_sidebar"], enabled: () => enabled, snapshot: () => ({ takenAt: new Date().toISOString(), theaters: [], objectiveRecords: [{ id: "op-a", title: "Build", commodoreId: "c1", theaterId: "theater-a", type: "agent", activity: "running" }] }) });
     const b = host.connect({ tools: ["console_context", "console_sidebar"] });
     try {
       const endpointA = (await a.getEndpoint()).servers[0]!;
       const endpointB = (await b.getEndpoint()).servers[0]!;
-      const tokenA = a.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
-      const tokenB = b.issueSessionToken({ label: "same-label", cwd: process.cwd() })[0]!;
+      const tokenA = a.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!;
+      const tokenB = b.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!;
       async function call(url: string, token: string, name: string, args: unknown = {}) {
         return (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) })).json();
       }
       const first = await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" });
       expect(JSON.parse(first.result.content[0].text)).toMatchObject({ snapshotAt: expect.any(String), objectiveRecords: [{ activity: "running" }] });
       expect(JSON.stringify(first)).not.toContain("/private/transcript");
+      expect(JSON.stringify(first)).not.toContain("other-owner");
+      const foreign = await call(endpointB.url, tokenB.token, "console_context", { commodoreId: "c2" });
+      expect(JSON.parse(foreign.result.content[0].text)).toMatchObject({ error: "commodore_scope_mismatch" });
       const second = await call(endpointB.url, tokenB.token, "console_sidebar", { action: "list" });
       expect(JSON.parse(second.result.content[0].text)).toMatchObject({ snapshotAt: null, objectiveRecords: [{ activity: "unknown" }] });
       const filtered = await call(endpointB.url, tokenB.token, "console_sidebar", { action: "list", activity: "awaiting" });
@@ -277,7 +281,7 @@ describe("fleet-console-use host", () => {
       expect((await call(endpointB.url, tokenA.token, "console_sidebar", { action: "list" })).error).toBeDefined();
       enabled = false;
       expect((await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" })).result.isError).toBe(true);
-      a.releaseSessionToken("same-label");
+      a.releaseSessionToken("op-a");
       expect((await call(endpointA.url, tokenA.token, "console_sidebar", { action: "list" })).error).toBeDefined();
       expect((await call(endpointB.url, tokenB.token, "console_context")).result).toBeDefined();
       await a.dispose();

@@ -22,7 +22,7 @@ async function initGitRepo(dir: string): Promise<void> {
 }
 
 function makeContext(theaterPath: string, body: Record<string, unknown>, writes: JsonWrite[]): RepositoryRouteContext {
-  return { host: { http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }) }, security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath } } } as unknown as RepositoryRouteContext;
+  return { host: { http: { readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body, writeJson: (_res: unknown, status: number, payload: unknown) => writes.push({ status, payload }) }, security: { isTerminalAuthorized: () => true }, paths: { resolveCommodoreTheaterPath: () => theaterPath } } } as unknown as RepositoryRouteContext;
 }
 
 async function listWorktrees(theaterPath: string, body: Record<string, unknown> = { theaterId: "theater" }): Promise<WorktreesResult> {

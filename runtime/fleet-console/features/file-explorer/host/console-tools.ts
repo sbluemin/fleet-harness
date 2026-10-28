@@ -1,5 +1,6 @@
 import type { FileExplorerRouteContext } from "./index.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { consoleToolOwner } from "../../console-use/host/owner-scope.js";
 import { defineConsoleTool } from "../../console-use/shared/actions.js";
 import { z } from "zod";
 
@@ -21,7 +22,7 @@ function text(value: unknown) {
 }
 
 export function createFileExplorerConsoleTools(ctx: FileExplorerRouteContext): readonly ConsoleMcpTool[] {
-  const rootOf = (args: { readonly theaterId?: string; readonly objectiveId?: string }) => {
+  const rootOf = (args: { readonly commodoreId?: string; readonly theaterId?: string; readonly objectiveId?: string }) => {
     const resolved = resolveSurfaceRoot(ctx.host.paths, args);
     if (!resolved.ok) throw new Error(resolved.error === "theater_not_found" ? "unknown_theater" : resolved.error);
     return resolved.root;
@@ -30,15 +31,15 @@ export function createFileExplorerConsoleTools(ctx: FileExplorerRouteContext): r
   type Action = "tree" | "read" | "search";
   const define = <S extends z.ZodObject>(action: Action, schema: S, run: (args: z.output<S>, signal?: AbortSignal) => Promise<unknown>) => ({ action, schema, run: run as (args: unknown, signal?: AbortSignal) => Promise<unknown> });
   const actions = [
-    define("tree", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), path: z.string().max(512).optional().describe("Relative to the selected root; for tree, empty is that root.") }), async (args) => {
+    define("tree", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), path: z.string().max(512).optional().describe("Relative to the selected root; for tree, empty is that root.") }), async (args) => {
       const result = await listTheaterContents(rootOf(args), args.path ?? "");
       return { path: result.relativePath, entries: result.entries, ...(result.truncated ? { truncated: true, cap: result.cap } : {}) };
     }),
-    define("read", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), path: z.string().min(1).max(512), maxLines: z.number().int().min(1).max(READ_LINES_CAP).optional().describe("Only the first lines; binary files are refused.") }), async (args) => {
+    define("read", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), path: z.string().min(1).max(512), maxLines: z.number().int().min(1).max(READ_LINES_CAP).optional().describe("Only the first lines; binary files are refused.") }), async (args) => {
       const result = await readFileForTheater(rootOf(args), args.path, args.maxLines ? { maxLines: args.maxLines } : {});
       return { path: result.relativePath, lang: result.lang, content: result.content, truncated: result.truncated === true };
     }),
-    define("search", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), query: z.string().trim().min(1).max(200), scope: z.enum(["files", "contents"]).optional().describe("files by name (default) or contents; fixed string."), limit: z.number().int().min(1).max(100).optional() }), async (args, signal) => {
+    define("search", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), query: z.string().trim().min(1).max(200), scope: z.enum(["files", "contents"]).optional().describe("files by name (default) or contents; fixed string."), limit: z.number().int().min(1).max(100).optional() }), async (args, signal) => {
       const result = await searchFilesWithRipgrep(rootOf(args), args.query, args.limit ?? 30, { signal, includeHidden: false, scope: args.scope ?? "files", literal: true });
       return { files: result.files, totalMatches: result.totalMatches, complete: result.complete !== false };
     }),
@@ -67,7 +68,10 @@ export function createFileExplorerConsoleTools(ctx: FileExplorerRouteContext): r
       const parsed = tool.parse(args);
       if (!parsed.ok) return { ...text({ error: parsed.error, ...(parsed.issues ? { issues: parsed.issues } : {}) }), isError: true };
       const { action, ...rest } = parsed.call as { action: Action } & Record<string, unknown>;
-      try { return text(await byAction.get(action)!.run(rest, context.signal)); }
+      try {
+        const commodoreId = consoleToolOwner(rest.commodoreId, context, ctx.host.paths.resolveObjectiveOwner);
+        return text(await byAction.get(action)!.run({ ...rest, commodoreId }, context.signal));
+      }
       catch (error) {
         const code = error instanceof FileReadError ? error.code : error instanceof Error && /^[a-z_]+$/.test(error.message) ? error.message : "file_tool_failed";
         return { ...text({ error: code, retryable: false }), isError: true };

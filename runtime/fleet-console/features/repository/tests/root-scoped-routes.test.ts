@@ -131,11 +131,11 @@ function makeContext(theaterPath: string, body: Record<string, unknown>, writes:
   return {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
       },
       security: { isTerminalAuthorized: () => true },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as RepositoryRouteContext;
 }
@@ -281,10 +281,10 @@ describe("Repository Theater-root Git routes", () => {
       const writes: JsonWrite[] = [];
       await handler({ method: "POST" } as never, {} as never, {
         host: {
-          http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); } },
+          http: { readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body, writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); } },
           security: { isTerminalAuthorized: () => true },
           paths: {
-            resolveTheaterPath: (id: string) => { theaterCalls.push(id); return fixture.theaterPath; },
+            resolveCommodoreTheaterPath: (_commodoreId: string, id: string) => { theaterCalls.push(id); return fixture.theaterPath; },
             resolveObjectivePath: (id: string) => id === "obj-1" ? objectiveRoot : null,
           },
         },

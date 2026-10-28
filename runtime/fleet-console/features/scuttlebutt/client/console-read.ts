@@ -4,7 +4,7 @@ import type { ConsoleSnapshotPayload } from "./chat-session.js";
 
 /**
  * 콘솔 사용의 보조 스냅샷. 설치 컨텍스트의 콘솔 상태와 실험 설정을 기억해 두고,
- * 메시지를 보낼 때 스냅샷(Theater 이름·Objective 제목·활동)을 싣는다. 부유 위젯의
+ * 메시지를 보낼 때 스냅샷(Objective 제목·활동)을 싣는다. 부유 위젯의
  * 컨텍스트에는 이 두 능력이 없으므로 설치 시점에 한 번 받아 둔다. Console Use 자체는
  * 전역으로 항상 열려 있고, 부관 자신의 grant가 실제 허용이다.
  */
@@ -36,7 +36,6 @@ export function subscribeConsoleRead(listener: () => void): () => void {
 export function readConsoleSnapshot(): ConsoleSnapshotPayload | null {
   if (!consoleState) return null;
   return {
-    theaters: consoleState.getTheaters().map((theater) => ({ id: theater.id, label: theater.label })),
     objectiveRecords: consoleState.getObjectiveRecords().map((objectiveRecord) => ({
       id: objectiveRecord.id,
       theaterId: objectiveRecord.theaterId,

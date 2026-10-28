@@ -31,7 +31,7 @@ describe("conversation Shell sessions", () => {
     let release!: (exited: boolean) => void;
     const exited = new Promise<boolean>((resolve) => { release = resolve; });
     let blocked = false;
-    const { call, issued, del, terminated, stopForKey } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null,
+    const { call, issued, del, terminated, stopForKey } = mount({ resolveFolder: (id: string) => paths[id] ?? null,
       exitWait: () => exited, canUseKey: (key) => !blocked || key !== "session:commodore:commodore:b" });
 
     await call({ shell: "session:commodore:commodore:a", cwd: { theaterId: "theater-a" } });
@@ -74,7 +74,7 @@ describe("conversation Shell sessions", () => {
 
   it("pins cwd at first launch and keeps it when the active Theater moves", async () => {
     const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
-    const { call, issued } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
+    const { call, issued } = mount({ resolveFolder: (id: string) => paths[id] ?? null });
 
     await call({ theaterId: "theater-a" });
     // 사용자가 다른 Theater로 옮겨 간 뒤 셸을 다시 붙인다.
@@ -84,7 +84,7 @@ describe("conversation Shell sessions", () => {
   });
 
   it("reports an unknown Theater rather than opening a shell somewhere arbitrary", async () => {
-    const { call, responses, issued } = mount({ resolveTheaterPath: () => null });
+    const { call, responses, issued } = mount({ resolveFolder: () => null });
 
     await call({ cwd: { theaterId: "ghost" } });
 
@@ -100,7 +100,7 @@ describe("conversation Shell sessions", () => {
   it("moves the Shell only to real directories inside the Theater", async () => {
     const fixture = makeTheaterFixture();
     try {
-      const { openAt, responses, call, issued } = mount({ resolveTheaterPath: (id) => (id === "theater-a" ? fixture.root : null) });
+      const { openAt, responses, call, issued } = mount({ resolveFolder: (id) => (id === "theater-a" ? fixture.root : null) });
 
       await openAt({ theaterId: "theater-a", path: "../outside" });
       expect(responses.at(-1)).toMatchObject({ status: 403, body: { error: "outside_theater" } });
@@ -123,7 +123,7 @@ describe("conversation Shell sessions", () => {
     process.env.SHELL = "/bin/zsh";
     try {
       const shell = { live: true, foreground: "vim" as string | null, line: { promptSeen: false, promptOpen: false, inputPending: false } };
-      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch, read } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
+      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch, read } = mount({ resolveFolder: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
       const spawned = await launch(fixture.root);
 
       await openAt({ theaterId: "theater-a", path: "src" });
@@ -187,7 +187,7 @@ function makeTheaterFixture() {
   return { root, dataDir: path.join(base, "console"), dispose: () => rmSync(base, { recursive: true, force: true }) };
 }
 
-function mount(options: { exitWait?: () => Promise<boolean>; canUseKey?: (key: string) => boolean; resolveTheaterPath?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; line?: { promptSeen: boolean; promptOpen: boolean; inputPending: boolean } }; consoleDataDir?: string } = {}) {
+function mount(options: { exitWait?: () => Promise<boolean>; canUseKey?: (key: string) => boolean; resolveFolder?: (id: string) => string | null; shell?: { live: boolean; foreground: string | null; line?: { promptSeen: boolean; promptOpen: boolean; inputPending: boolean } }; consoleDataDir?: string } = {}) {
   const issued: TerminalTicketContext[] = [];
   const responses: Array<{ status: number; body: unknown }> = [];
   const terminated: string[] = [];
@@ -229,7 +229,7 @@ function mount(options: { exitWait?: () => Promise<boolean>; canUseKey?: (key: s
     basePath: "/api/v1",
     registerRouter: (routePath: string, handler: RouteHandler) => { routes.set(routePath, handler); },
     host: {
-      paths: { resolveTheaterPath: options.resolveTheaterPath ?? (() => process.cwd()), consoleDataDir: options.consoleDataDir ?? "" },
+      paths: { resolveCommodoreTheaterPath: (_owner: string, id: string) => options.resolveFolder ? options.resolveFolder(id) : process.cwd(), resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "theater-a", label: "Project" }], consoleDataDir: options.consoleDataDir ?? "" },
       events: { publish: () => undefined, registerSseChannel: () => () => undefined },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { responses.push({ status, body }); },
@@ -251,7 +251,7 @@ function mount(options: { exitWait?: () => Promise<boolean>; canUseKey?: (key: s
   const invoke = async (routeKey: string, method: string, body: Record<string, unknown>, query = "") => {
     const handler = routes.get(routeKey);
     if (!handler) throw new Error(`${routeKey} was not registered`);
-    requestBody = body;
+    requestBody = { commodoreId: "c1", ...body, ...(body.cwd && typeof body.cwd === "object" ? { cwd: { commodoreId: "c1", ...body.cwd } } : {}) };
     await handler({
       req: { method, url: `/api/v1/${routeKey}${query}`, headers: {} } as http.IncomingMessage,
       res: {} as http.ServerResponse,

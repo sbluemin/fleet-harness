@@ -1,30 +1,23 @@
 import type * as http from "node:http";
-import { canonicalizeTheaterPathSync, workspaceHash, listTheaterFolders, TheaterFolderListError, type TheaterRegistry, type TheaterRegistration, type createFolderGrantStore } from "./theaters/theater-domain.js";
+import { listTheaterFolders, TheaterFolderListError, type createFolderGrantStore } from "./theaters/theater-domain.js";
 import { DeferredDeletionError, type createDeferredDeletionCoordinator } from "./deferred-deletion.js";
 import { ObjectiveArchiveError } from "./objective-archive-storage.js";
-import { ClaudeTrustError, trustClaudeTheater } from "./theaters/claude-trust.js";
-import type { ConsoleTheaterFolderListResponse, ConsoleTheaterInfo } from "../../../core/host/transport/console-contract-types.js";
+import type { ConsoleTheaterFolderListResponse } from "../../../core/host/transport/console-contract-types.js";
 
 type TheaterFolderListBody = { readonly path?: unknown };
 type TheaterFolderGrantBody = { readonly path?: unknown };
-type CreateTheaterBody = { readonly folderGrantId?: unknown; readonly claudeTrustConsent?: unknown };
-type PatchTheaterBody = { readonly order?: unknown };
 
 interface WorkspaceRouteDeps {
-  readonly theaters: TheaterRegistry;
   readonly folderGrants: ReturnType<typeof createFolderGrantStore>;
-  readonly deletionCoordinator: Pick<ReturnType<typeof createDeferredDeletionCoordinator>, "hasPendingTheater" | "deleteTheater" | "restore">;
+  readonly deletionCoordinator: Pick<ReturnType<typeof createDeferredDeletionCoordinator>, "restore">;
   readonly isTerminalAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
-  readonly listTheaterInfos: () => readonly ConsoleTheaterInfo[];
-  readonly toTheaterInfo: (theater: TheaterRegistration, hasWiki: boolean) => ConsoleTheaterInfo;
-  readonly publishTheaterLifecycle: (event: "registered" | "updated", theaterId: string) => void;
-  readonly persistDurableState: () => void;
+
 }
 
 export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
-  const { theaters, folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson, listTheaterInfos, toTheaterInfo, publishTheaterLifecycle, persistDurableState } = deps;
+  const { folderGrants, deletionCoordinator, isTerminalAuthorized, readJsonBody, writeJson } = deps;
   async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -73,94 +66,13 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
   }
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method === "GET") {
-      writeJson(res, 200, { theaters: listTheaterInfos() });
-      return;
+    if (req.method !== "GET" && !isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" }); return;
     }
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    const body = await readJsonBody<CreateTheaterBody>(req);
-    if (!isPlainObject(body) || typeof body.folderGrantId !== "string") {
-      writeJson(res, 400, { error: "invalid_folder_grant" });
-      return;
-    }
-    const cwd = folderGrants.consume(body.folderGrantId);
-    if (!cwd) {
-      writeJson(res, 400, { error: "invalid_folder_grant" });
-      return;
-    }
-    const canonicalCwd = canonicalizeTheaterPathSync(cwd);
-    if (deletionCoordinator.hasPendingTheater(workspaceHash(canonicalCwd))) {
-      writeJson(res, 409, { error: "pending_deletion" });
-      return;
-    }
-    // 안내된 추가 행위만 동의다. 다른 API 호출자의 자동 등록은 사용자 설정을 건드리지 않는다.
-    if (body.claudeTrustConsent === true) {
-      try {
-        await trustClaudeTheater(canonicalCwd);
-      } catch (error) {
-        writeJson(res, 409, { error: error instanceof ClaudeTrustError ? error.code : "claude_trust_write_failed" });
-        return;
-      }
-    } else if (body.claudeTrustConsent !== undefined && body.claudeTrustConsent !== false) {
-      writeJson(res, 400, { error: "invalid_claude_trust_consent" });
-      return;
-    }
-    const theater = await theaters.register(cwd);
-    publishTheaterLifecycle("registered", theater.id);
-    persistDurableState();
-    writeJson(res, 200, toTheaterInfo(theater, true));
+    writeJson(res, 410, { error: "theater_registry_retired" });
   }
-
-  async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "PATCH" && req.method !== "DELETE") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    if (req.method === "PATCH") {
-      const body = await readJsonBody<PatchTheaterBody>(req);
-      if (!isPlainObject(body) || (body.order === undefined || "alias" in body)) {
-        writeJson(res, 400, { error: "invalid_theater_order" });
-        return;
-      }
-      if (body.order !== undefined && (typeof body.order !== "number" || !Number.isInteger(body.order) || body.order < 0)) {
-        writeJson(res, 400, { error: "invalid_theater_order" });
-        return;
-      }
-      if (!theaters.get(theaterId)) {
-        writeJson(res, 404, { error: "theater_not_found" });
-        return;
-      }
-      let theater = theaters.get(theaterId);
-      if (body.order !== undefined) theater = theaters.setOrder(theaterId, body.order as number);
-      if (!theater) {
-        writeJson(res, 404, { error: "theater_not_found" });
-        return;
-      }
-      persistDurableState();
-      writeJson(res, 200, toTheaterInfo(theater, true));
-      return;
-    }
-    try {
-      const deletion = deletionCoordinator.deleteTheater(theaterId);
-      writeJson(res, 200, { ok: true, deletion });
-    } catch (error) {
-      if (error instanceof ObjectiveArchiveError) {
-        writeJson(res, error.status, { error: error.message });
-        return;
-      }
-      throw error;
-    }
+  async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, _theaterId: string): Promise<void> {
+    return handleObserverTheaters(req, res);
   }
 
   async function handleDeferredDeletionRestore(req: http.IncomingMessage, res: http.ServerResponse, deletionId: string): Promise<void> {

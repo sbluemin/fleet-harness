@@ -16,10 +16,7 @@ const ACTIVITIES = new Set(["idle", "running", "awaiting", "background", "ended"
 export function isConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return Array.isArray(record.theaters) && record.theaters.length <= 200
-    && record.theaters.every((theater) => theater && typeof theater === "object"
-      && typeof (theater as { id?: unknown }).id === "string" && typeof (theater as { label?: unknown }).label === "string")
-    && Array.isArray(record.objectiveRecords) && record.objectiveRecords.length <= 500
+  return Array.isArray(record.objectiveRecords) && record.objectiveRecords.length <= 500
     && record.objectiveRecords.every((objectiveRecord) => objectiveRecord && typeof objectiveRecord === "object"
       && typeof (objectiveRecord as { id?: unknown }).id === "string"
       && typeof (objectiveRecord as { theaterId?: unknown }).theaterId === "string"

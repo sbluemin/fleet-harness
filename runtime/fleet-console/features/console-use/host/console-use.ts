@@ -1,3 +1,4 @@
+import { consoleToolOwner } from "./owner-scope.js";
 import { readObjectiveLaunchSource } from "../../objectives/shared/records/launch-source.js";
 import { createEmbeddedMcpServer, defineTool } from "@fleet-console/agent-runtime/claude";
 import { z } from "zod";
@@ -33,14 +34,14 @@ export interface ConsoleUseActions {
   close?(objectiveId: string, by: ConsoleCaller): Promise<ObjectiveArchiveReceipt | null> | { readonly deletionId: string; readonly undoUntil: string } | null;
   rename?(objectiveId: string, title: string): boolean;
   /** 사이드바의 그룹 — 목록·수정·빈 그룹 삭제. Theater 를 주면 그 Theater 만. */
-  groups?(theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
-  groupPatch?(input: { readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean; readonly position?: SidebarPosition }): { readonly ok: true; readonly name: string; readonly theaterId: string; readonly groupOrder?: readonly string[] } | { readonly ok: false; readonly error: string };
+  groups?(commodoreId: string, theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
+  groupPatch?(input: { readonly commodoreId: string; readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean; readonly position?: SidebarPosition }): { readonly ok: true; readonly name: string; readonly theaterId: string; readonly groupOrder?: readonly string[] } | { readonly ok: false; readonly error: string };
   /** 사람이 지금 그 Objective 의 입력창에 쓰고 있는가 — 에이전트는 그 입력창을 쓰지 못한다. */
   composerBusy?(objectiveId: string): boolean;
   setView?(objectiveId: string, mode: "chat" | "terminal"): Promise<{ readonly ok: true; readonly mode: "chat" | "terminal"; readonly changed: boolean } | { readonly ok: false; readonly error: string }>;
   using?(): { readonly console: readonly string[]; readonly computer: string | null; readonly browser: readonly string[] };
-  group?(input: { readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
-  reorder?(input: { readonly theaterId: string; readonly objectiveIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly objectiveIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
+  group?(input: { readonly commodoreId: string; readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
+  reorder?(input: { readonly commodoreId: string; readonly theaterId: string; readonly objectiveIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly objectiveIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
   accent?(objectiveId: string, accent: string | null): boolean;
   /** 사용자 화면에서 그 Objective을 앞에 세운다. 사유는 캡션 말풍선에 한 줄로 보인다. */
   reveal?(objectiveId: string, reason: string, caller: ConsoleCaller): void;
@@ -60,7 +61,7 @@ export interface ConsoleUseDeps {
   readonly onCall?: (event: ConsoleUseCallEvent) => void;
   readonly transport?: McpHttpTransport;
   readonly onFailure?: (kind: string, error: unknown) => void;
-  readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
+  readonly theaters?: (commodoreId: string) => readonly { readonly id: string; readonly name: string }[];
   readonly objectiveRecords?: () => readonly ObjectiveRecord[];
   /** ID로 대상을 찾을 때는 부모 목록에 없는 자식 세션도 해석한다. */
   readonly resolveObjective?: (id: string) => ObjectiveRecord | null;
@@ -135,6 +136,8 @@ const RESERVED_TOOL_NAMES = new Set<string>([
   "console_objective_session_analyst",
 ]);
 const NEXT_ACTION: Record<string, string> = {
+  commodore_required: "Specify the owning Commodore UUID. A folder shared by multiple Commodores does not select an owner; do not guess.",
+  commodore_scope_mismatch: "Use the calling session's owning Commodore. Arguments cannot switch its scope.",
   nothing_to_interrupt: "No foreground turn is running. Stop does not close or delete the Objective; console_objective_session close does.",
   cursor_expired: "Read a new snapshot and restart without a cursor.",
   permission_required: "Use a host-authorized Console connection; reading never grants control.",
@@ -170,22 +173,22 @@ const groupName = z.string().trim().min(1).max(60);
 
 const CONTEXT_TOOL = defineConsoleTool({
   name: "console_context",
-  description: "Your Console Use session: caller, registered Theaters (id and name), who is using the Console, computer and browser, and capabilities. Caller is not the browser focus.",
+  description: "Your Console Use session: caller, your commodore's project folders (id and name), who is using the Console, computer and browser, and capabilities. Caller is not the browser focus.",
   kind: "read",
-  input: z.object({}),
+  input: z.object({ commodoreId: ids.optional() }),
 });
 
 const SIDEBAR_TOOL = defineConsoleTool({
   name: "console_sidebar",
   description: "The sidebar: Objectives with activity, group, accent, lineage and order in their Theater, and groups in sidebar order. unknown is not idle.",
   actions: {
-    list: { kind: "read", input: z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional().describe("Expires when the list or its order changes."), waitMs: z.number().int().min(0).max(25_000).optional().describe("Waits for a change."), nested: z.boolean().optional().describe("Includes Objectives their parent represents.") }) },
-    rename: { kind: "write", input: z.object({ ...target, title: TITLE }) },
+    list: { kind: "read", input: z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional().describe("Expires when the list or its order changes."), waitMs: z.number().int().min(0).max(25_000).optional().describe("Waits for a change."), nested: z.boolean().optional().describe("Includes Objectives their parent represents.") }) },
+    rename: { kind: "write", input: z.object({ commodoreId: ids.optional(), ...target, title: TITLE }) },
     // 강조색·그룹 색은 정체성 톤 키 SDK 한 벌을 쓴다(목록 밖 색의 그룹은 영속 상태에서 버려진다).
-    accent: { kind: "write", input: z.object({ objectiveIds: z.array(ids).min(1).max(50), accent: z.enum(IDENTITY_TONES).nullable() }) },
-    move: { kind: "write", input: z.object({ objectiveIds: z.array(ids).min(1).max(50), group: z.object({ id: ids.optional(), name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional() }).strict().nullable().optional().describe("Existing group (id), new group (name, color), or null for ungrouped. Objectives move as one block, group first."), position: POSITION.optional() }) },
-    group_edit: { kind: "write", input: z.object({ groupId: ids, name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional(), position: POSITION.optional() }) },
-    group_delete: { kind: "write", input: z.object({ groupId: ids }) },
+    accent: { kind: "write", input: z.object({ commodoreId: ids.optional(), objectiveIds: z.array(ids).min(1).max(50), accent: z.enum(IDENTITY_TONES).nullable() }) },
+    move: { kind: "write", input: z.object({ commodoreId: ids.optional(), objectiveIds: z.array(ids).min(1).max(50), group: z.object({ id: ids.optional(), name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional() }).strict().nullable().optional().describe("Existing group (id), new group (name, color), or null for ungrouped. Objectives move as one block, group first."), position: POSITION.optional() }) },
+    group_edit: { kind: "write", input: z.object({ commodoreId: ids.optional(), groupId: ids, name: groupName.optional(), color: z.enum(IDENTITY_TONES).optional(), position: POSITION.optional() }) },
+    group_delete: { kind: "write", input: z.object({ commodoreId: ids.optional(), groupId: ids }) },
   },
 });
 
@@ -285,7 +288,6 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   const control = deps.control;
   const caller = (ctx: AgentToolCtx): ConsoleCaller | null => {
     // 플러그인 소유자는 호스트가 바인딩한다. 모델 인자·브라우저 초점·토큰 라벨로 가장하지 않는다.
-    if (!allowControl) return null;
     if (pluginId) return { kind: "plugin", pluginId };
     const label = ctx.sessionLabel ?? "";
     const id = label.startsWith("chat:") ? label.slice(5) : label;
@@ -302,13 +304,14 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     if (!by) return;
     deps.onCall?.({ caller: by, tool, summary, gesture: kind, ...(target ? { target } : {}), at: Date.now() });
   };
-  const rows = () => {
+  const owner = (requested: unknown, ctx: AgentToolCtx) => consoleToolOwner(requested, { caller: caller(ctx) ?? undefined }, (id) => resolveObjective(id)?.commodoreId ?? null);
+  const rows = (commodoreId: string) => {
     const current = snapshot();
     const activities = new Map(current?.objectiveRecords.map((op) => [op.id, op.activity]) ?? []);
-    const names = new Map(theaters().map((theater) => [theater.id, theater.name]));
+    const names = new Map(theaters(commodoreId).map((theater) => [theater.id, theater.name]));
     // 사이드바가 그리는 순서와 같게 센다 — 그룹 순서대로 멤버(Objective 순서), 그 뒤 미그룹. 없는 그룹을 가리키면 미그룹이다.
-    const groupRank = new Map((readActions().groups?.() ?? []).map((group, index) => [group.id, { theaterId: group.theaterId, index }]));
-    const listedObjectiveRecords = objectiveRecords();
+    const groupRank = new Map((readActions().groups?.(commodoreId) ?? []).map((group, index) => [group.id, { theaterId: group.theaterId, index }]));
+    const listedObjectiveRecords = objectiveRecords().filter((op) => op.commodoreId === commodoreId);
     const all: ObjectiveRecord[] = [...listedObjectiveRecords];
     for (const parent of listedObjectiveRecords) for (const child of parent.sessions ?? []) {
       const value = child.session;
@@ -394,30 +397,33 @@ ts: child.ts});
 
   };
   const sameCaller = (a: ConsoleCaller | null, b: ConsoleCaller | null) => !!a && !!b && (a.kind === "objectiveRecord" && b.kind === "objectiveRecord" ? a.objectiveId === b.objectiveId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId);
-  const theaterName = (id: string) => theaters().find((t) => t.id === id)?.name ?? id;
+  const theaterName = (commodoreId: string, id: string) => theaters(commodoreId).find((t) => t.id === id)?.name ?? id;
   const opTarget = (id: string): ConsoleUseCallEvent["target"] => ({ kind: "objectiveRecord", objectiveId: id });
   const groupOf = (op: ObjectiveRecord) => (op as ObjectiveRecord & { groupId?: string | null }).groupId ?? null;
-  const sidebarNodes = (objectiveIds: readonly string[]) => {
+  const sidebarNodes = (commodoreId: string, objectiveIds: readonly string[]) => {
     // 사이드바 정리는 부모 목록의 행만 다룬다. 자식 세션은 부모 안에서만 표시된다.
-    const nodes = objectiveIds.map((id) => { const op = objectiveRecords().find((entry) => entry.id === id); if (!op) throw new ConsoleControlError("unknown_objectiveRecord"); return op; });
+    const nodes = objectiveIds.map((id) => { const op = objectiveRecords().find((entry) => entry.commodoreId === commodoreId && entry.id === id); if (!op) throw new ConsoleControlError("unknown_objectiveRecord"); return op; });
     if (nodes.some((op) => op.theaterId !== nodes[0]!.theaterId)) throw new ConsoleControlError("mixed_theaters");
     return nodes;
   };
-  const groupAnchorSummary = (theaterId: string, position: z.output<typeof POSITION>) => typeof position === "string" ? position === "first" ? "맨 앞" : "맨 뒤" : "before" in position ? `「${readActions().groups?.(theaterId).find((g) => g.id === position.before)?.name ?? position.before}」 앞` : `「${readActions().groups?.(theaterId).find((g) => g.id === position.after)?.name ?? position.after}」 뒤`;
+  const groupAnchorSummary = (commodoreId: string, theaterId: string, position: z.output<typeof POSITION>) => typeof position === "string" ? position === "first" ? "맨 앞" : "맨 뒤" : "before" in position ? `「${readActions().groups?.(commodoreId, theaterId).find((g) => g.id === position.before)?.name ?? position.before}」 앞` : `「${readActions().groups?.(commodoreId, theaterId).find((g) => g.id === position.after)?.name ?? position.after}」 뒤`;
 
   // ---------------------------------------------------------------------------------------------
   // 세션·사이드바
   // ---------------------------------------------------------------------------------------------
   const entries: ConsoleUseToolEntry[] = [
-    define(CONTEXT_TOOL, (_call, ctx) => {
-      const all = rows().values.filter((r) => !("parentObjectiveId" in r));
+    define(CONTEXT_TOOL, (call, ctx) => {
+      const commodoreId = owner(call.commodoreId, ctx);
+      const all = rows(commodoreId).values.filter((r) => !("parentObjectiveId" in r));
       const callerId = caller(ctx);
       gesture(ctx, "console_context", "Console 사용 시작", "wait");
+      const using = readActions().using?.() ?? { console: [], computer: null, browser: [] };
+      const inOwner = (id: string) => resolveObjective(id)?.commodoreId === commodoreId;
       return {
         schemaVersion: 3,
         caller: callerId?.kind === "objectiveRecord" ? { ...callerId, theaterId: node(callerId.objectiveId).theaterId } : callerId,
-        theaters: theaters(),
-        using: readActions().using?.() ?? { console: [], computer: null, browser: [] },
+        commodoreId, theaters: theaters(commodoreId),
+        using: { console: using.console.filter(inOwner), computer: using.computer && inOwner(using.computer) ? using.computer : null, browser: using.browser.filter(inOwner) },
         focus: "unavailable",
         capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "For an Objective caller, Console use is allowed when that Objective's own Console use toggle is on, or when the person allowed it for this turn from the request card in the Objective panel. Without either, your call waits up to four minutes for the person's answer on that card; if they decline or do not answer, do not request Console use again in this turn.", enabled: !!control },
         coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length },
@@ -426,6 +432,7 @@ ts: child.ts});
       };
     }),
     define(SIDEBAR_TOOL, async (call, ctx) => {
+      const commodoreId = owner(call.commodoreId, ctx);
       if (call.action === "list") {
         const args = call;
         if (args.waitMs && control) {
@@ -433,28 +440,28 @@ ts: child.ts});
           const head = await control.readEvents(undefined, 0);
           await control.readEvents(head.cursor, args.waitMs, ctx.signal);
         }
-        const { snapshotAt, values } = rows();
+        const { snapshotAt, values } = rows(commodoreId);
         const scope = values.filter((r) => (args.nested === true || !("parentObjectiveId" in r)) && (!args.theaterId || r.theaterId === args.theaterId) && (!args.kind || r.kind === args.kind) && (args.groupId === undefined || r.groupId === args.groupId) && (!args.query || r.title.toLowerCase().includes(args.query.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id));
         const filtered = scope.filter((r) => !args.activity || r.activity === args.activity);
-        const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.groupId, args.query, args.nested === true, filtered.map((r) => [r.id, r.order, r.groupId])])).digest("hex").slice(0, 16);
+        const generation = createHash("sha256").update(JSON.stringify([commodoreId, args.activity, args.theaterId, args.kind, args.groupId, args.query, args.nested === true, filtered.map((r) => [r.id, r.order, r.groupId])])).digest("hex").slice(0, 16);
         let offset = 0;
         if (args.cursor) { const [key, raw] = args.cursor.split(":"); offset = Number(raw); if (key !== generation || !Number.isSafeInteger(offset) || offset < 0 || offset > filtered.length) throw new ConsoleControlError("cursor_expired"); }
         const limit = args.limit ?? 50;
         const unknown = scope.filter((r) => r.activity === "unknown").length;
-        const groups = (readActions().groups?.(args.theaterId) ?? []).map((g) => ({ ...g, members: scope.filter((r) => r.groupId === g.id && r.theaterId === g.theaterId).sort((a, b) => a.order - b.order).map((r) => r.id) }));
-        gesture(ctx, "console_sidebar", `Objective ${scope.length}개 훑음${args.theaterId ? ` · ${theaterName(args.theaterId)}` : ""}`, "gaze", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
+        const groups = (readActions().groups?.(commodoreId, args.theaterId) ?? []).map((g) => ({ ...g, members: scope.filter((r) => r.groupId === g.id && r.theaterId === g.theaterId).sort((a, b) => a.order - b.order).map((r) => r.id) }));
+        gesture(ctx, "console_sidebar", `Objective ${scope.length}개 훑음${args.theaterId ? ` · ${theaterName(commodoreId, args.theaterId)}` : ""}`, "gaze", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
         return { snapshotAt, objectiveRecords: filtered.slice(offset, offset + limit), groups, coverage: { total: scope.length, matching: filtered.length, unknown, complete: unknown === 0 }, nextCursor: offset + limit < filtered.length ? `${generation}:${offset + limit}` : null };
       }
       requireCaller(ctx);
       if (call.action === "rename") {
-        const [op] = sidebarNodes([call.objectiveId]);
+        const [op] = sidebarNodes(commodoreId, [call.objectiveId]);
         const before = op!.title;
         if (!need("rename")(op!.id, call.title)) throw new ConsoleControlError("unknown_objectiveRecord");
         gesture(ctx, "console_sidebar", `${before} → 「${call.title}」 로 이름 바꿈`, "input", opTarget(op!.id));
         return { renamed: { objectiveId: op!.id, title: call.title, previousTitle: before } };
       }
       if (call.action === "accent") {
-        const nodes = sidebarNodes(call.objectiveIds);
+        const nodes = sidebarNodes(commodoreId, call.objectiveIds);
         for (const op of nodes) if (!need("accent")(op.id, call.accent)) throw new ConsoleControlError("unknown_objectiveRecord");
         for (const op of nodes) gesture(ctx, "console_sidebar", `${op.title} 액센트 ${call.accent ?? "지움"}`, "press", opTarget(op.id));
         return { accent: { objectiveIds: nodes.map((op) => op.id), accent: call.accent } };
@@ -464,35 +471,35 @@ ts: child.ts});
         const patchPosition = call.action === "group_edit" ? call.position : undefined;
         if (call.action === "group_edit" && call.name === undefined && call.color === undefined && patchPosition === undefined) throw new ConsoleControlError("invalid_arguments");
         const groupPatch = need("groupPatch");
-        const patchGroup = readActions().groups?.().find((g) => g.id === call.groupId);
+        const patchGroup = readActions().groups?.(commodoreId).find((g) => g.id === call.groupId);
         if (!patchGroup) throw new ConsoleControlError("unknown_group");
         if (patchPosition) {
           const anchor = typeof patchPosition === "string" ? null : "before" in patchPosition ? patchPosition.before : patchPosition.after;
-          if (anchor && (anchor === patchGroup.id || !readActions().groups?.(patchGroup.theaterId).some((g) => g.id === anchor))) throw new ConsoleControlError("unknown_anchor");
+          if (anchor && (anchor === patchGroup.id || !readActions().groups?.(commodoreId, patchGroup.theaterId).some((g) => g.id === anchor))) throw new ConsoleControlError("unknown_anchor");
         }
         const patched = call.action === "group_delete"
-          ? groupPatch({ id: call.groupId, delete: true })
-          : groupPatch({ id: call.groupId, ...(call.name !== undefined ? { name: call.name } : {}), ...(call.color !== undefined ? { color: call.color } : {}), ...(patchPosition !== undefined ? { position: patchPosition } : {}) });
+          ? groupPatch({ commodoreId, id: call.groupId, delete: true })
+          : groupPatch({ commodoreId, id: call.groupId, ...(call.name !== undefined ? { name: call.name } : {}), ...(call.color !== undefined ? { color: call.color } : {}), ...(patchPosition !== undefined ? { position: patchPosition } : {}) });
         if (!patched.ok) throw new ConsoleControlError(patched.error);
-        const positionSummary = patchPosition && groupAnchorSummary(patched.theaterId, patchPosition);
+        const positionSummary = patchPosition && groupAnchorSummary(commodoreId, patched.theaterId, patchPosition);
         gesture(ctx, "console_sidebar", call.action === "group_delete" ? `그룹 「${patched.name}」 지움` : positionSummary ? `그룹 「${patched.name}」 → ${positionSummary}` : `그룹 「${patched.name}」 ${call.name ? "이름" : "색"} 바꿈`, call.action === "group_delete" || positionSummary ? "press" : "input", { kind: "group", groupId: call.groupId, theaterId: patched.theaterId });
         return { groupPatch: patched };
       }
       // move — 그룹 배정이 먼저, 그다음 자리. 모든 앵커·섹션은 쓰기 전에 검증한다. group 이 있으면 배정 후의 섹션을 기준으로 본다.
       if (call.group === undefined && call.position === undefined) throw new ConsoleControlError("invalid_arguments");
       if (call.group && call.group.id === undefined && call.group.name === undefined && Object.keys(call.group).length) throw new ConsoleControlError("invalid_arguments");
-      const nodes = sidebarNodes(call.objectiveIds);
+      const nodes = sidebarNodes(commodoreId, call.objectiveIds);
       const theaterId = nodes[0]!.theaterId;
       if (call.position) need("reorder");
       if (call.position && new Set(call.objectiveIds).size !== call.objectiveIds.length) throw new ConsoleControlError("invalid_arguments");
-      if (call.group?.id && !(readActions().groups?.(theaterId) ?? []).some((g) => g.id === call.group!.id)) throw new ConsoleControlError("unknown_group");
+      if (call.group?.id && !(readActions().groups?.(commodoreId, theaterId) ?? []).some((g) => g.id === call.group!.id)) throw new ConsoleControlError("unknown_group");
       if (call.position) {
         const expectedGroup = call.group === undefined ? groupOf(nodes[0]!) : call.group?.id ?? null;
         if (call.group === undefined && nodes.some((op) => groupOf(op) !== expectedGroup)) throw new ConsoleControlError("mixed_sections");
         const anchor = typeof call.position === "string" ? null : "before" in call.position ? call.position.before : call.position.after;
         if (anchor) {
           const anchored = objectiveRecords().find((op) => op.id === anchor);
-          if (!anchored || anchored.theaterId !== theaterId || call.objectiveIds.includes(anchor) || groupOf(anchored) !== expectedGroup || call.group?.name) throw new ConsoleControlError("unknown_anchor");
+          if (!anchored || anchored.commodoreId !== commodoreId || anchored.theaterId !== theaterId || call.objectiveIds.includes(anchor) || groupOf(anchored) !== expectedGroup || call.group?.name) throw new ConsoleControlError("unknown_anchor");
         }
       }
       const result: Record<string, unknown> = {};
@@ -500,24 +507,24 @@ ts: child.ts});
         const group = need("group");
         // null 도 빈 객체도 "그룹에서 뺌" 이다 — 모델이 둘 중 무엇을 보내도 같은 제스처.
         if (call.group === null || (!call.group.id && !call.group.name)) {
-          result.group = group({ mode: "remove", theaterId, objectiveIds: nodes.map((op) => op.id) });
+          result.group = group({ commodoreId, mode: "remove", theaterId, objectiveIds: nodes.map((op) => op.id) });
           gesture(ctx, "console_sidebar", `${nodes.map((op) => op.title).join(", ")} 그룹에서 뺌`, "press", { kind: "theater", theaterId });
         } else if (call.group.id) {
-          result.group = group({ mode: "assign", theaterId, groupId: call.group.id, objectiveIds: nodes.map((op) => op.id) });
+          result.group = group({ commodoreId, mode: "assign", theaterId, groupId: call.group.id, objectiveIds: nodes.map((op) => op.id) });
           const g = (result.group as { group: { id: string; name: string } | null }).group;
           // 기존 그룹에 넣는 것은 만든 것이 아니다 — create 는 그룹이 실제로 생기는 갈래에만.
           gesture(ctx, "console_sidebar", `${nodes.map((op) => op.title).join(", ")} → 그룹 「${g?.name ?? call.group.id}」`, "press", { kind: "group", groupId: call.group.id, theaterId });
         } else if (call.group.name) {
-          result.group = group({ mode: "create", theaterId, name: call.group.name, color: call.group.color, objectiveIds: nodes.map((op) => op.id) });
+          result.group = group({ commodoreId, mode: "create", theaterId, name: call.group.name, color: call.group.color, objectiveIds: nodes.map((op) => op.id) });
           const g = (result.group as { group: { id: string; name: string } | null }).group;
           gesture(ctx, "console_sidebar", `그룹 「${call.group.name}」 만듦 · ${nodes.length}개 넣음`, "create", g ? { kind: "group", groupId: g.id, theaterId } : { kind: "theater", theaterId });
         }
       }
       if (call.position) {
         const groupId = call.group === undefined ? groupOf(nodes[0]!) : (result.group as { group: { id: string } | null } | undefined)?.group?.id ?? null;
-        result.reordered = need("reorder")({ theaterId, objectiveIds: nodes.map((op) => op.id), position: call.position, groupId });
+        result.reordered = need("reorder")({ commodoreId, theaterId, objectiveIds: nodes.map((op) => op.id), position: call.position, groupId });
         const location = typeof call.position === "string" ? call.position === "first" ? "맨 앞" : "맨 뒤" : "before" in call.position ? `${node(call.position.before).title} 앞` : `${node(call.position.after).title} 뒤`;
-        const groupName = groupId ? readActions().groups?.(theaterId).find((g) => g.id === groupId)?.name ?? groupId : "미그룹";
+        const groupName = groupId ? readActions().groups?.(commodoreId, theaterId).find((g) => g.id === groupId)?.name ?? groupId : "미그룹";
         gesture(ctx, "console_sidebar", `${nodes.map((op) => op.title).join(", ")} → 「${groupName}」 ${location}`, "press", groupId ? { kind: "group", groupId, theaterId } : { kind: "theater", theaterId });
       }
       return result;
@@ -529,7 +536,7 @@ ts: child.ts});
   // ---------------------------------------------------------------------------------------------
   entries.push(define(OBJECTIVE_TOOL, async (call, ctx) => {
     if (call.action === "summary" || call.action === "transcript" || call.action === "jobs" || call.action === "catalog") {
-      const row = rows().values.find((r) => r.id === call.objectiveId);
+      const row = rows(node(call.objectiveId).commodoreId).values.find((r) => r.id === call.objectiveId);
       if (!row) throw new ConsoleControlError("unknown_objectiveRecord");
       const obs = control?.observe(call.objectiveId);
       node(call.objectiveId); // 행 목록과 별개로 Objective 자체가 풀려야 한다 — 없으면 unknown_objectiveRecord.
@@ -635,10 +642,9 @@ ts: child.ts});
   // ---------------------------------------------------------------------------------------------
   entries.push(define(LAUNCHER_TOOL, async (args, ctx) => {
     const me = requireCaller(ctx);
-    if (args.groupId && !(readActions().groups?.(args.theaterId) ?? []).some((g) => g.id === args.groupId)) throw new ConsoleControlError("unknown_group");
-    gesture(ctx, "console_launcher", `${theaterName(args.theaterId)} 에 「${args.title ?? args.text.slice(0, 40)}」 시작`, "create", { kind: "theater", theaterId: args.theaterId });
-    const commodoreId = args.commodoreId ?? (me.kind === "objectiveRecord" ? deps.resolveObjective?.(me.objectiveId)?.commodoreId ?? deps.objectiveRecords?.().find((node) => node.id === me.objectiveId)?.commodoreId : undefined);
-    if (!commodoreId) throw new ConsoleControlError("commodore_required");
+    const commodoreId = owner(args.commodoreId, ctx);
+    if (args.groupId && !(readActions().groups?.(commodoreId, args.theaterId) ?? []).some((g) => g.id === args.groupId)) throw new ConsoleControlError("unknown_group");
+    gesture(ctx, "console_launcher", `${theaterName(commodoreId, args.theaterId)} 에 「${args.title ?? args.text.slice(0, 40)}」 시작`, "create", { kind: "theater", theaterId: args.theaterId });
     return { action: "launch", ...await control!.request(me, { ...args, commodoreId, kind: "launch" }) };
   }));
   return entries;
@@ -664,19 +670,20 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       // 플러그인이 호출자이고, Objective 연결은 세션 라벨로 푼다 — 핵심 도구의 caller() 와 같은 규칙.
       const label = ctx.sessionLabel ?? "";
       const labelId = label.startsWith("chat:") ? label.slice(5) : label;
-      const callerId: ConsoleCaller | null = callerPluginId ? { kind: "plugin", pluginId: callerPluginId } : deps.objectiveRecords?.().some((op) => op.id === labelId) ? { kind: "objectiveRecord", objectiveId: labelId } : null;
+      const callerNode = deps.resolveObjective?.(labelId) ?? deps.objectiveRecords?.().find((op) => op.id === labelId);
+      const callerId: ConsoleCaller | null = callerPluginId ? { kind: "plugin", pluginId: callerPluginId } : callerNode ? { kind: "objectiveRecord", objectiveId: labelId } : null;
       const described = tool.surface ? tool.surface.describe(args as Record<string, unknown>) : null;
       // 기본은 레일 패널을 감싸는 시선. 자기 제품 상태를 쓰는 도구는 describe 로 제스처·자리를 대신 말한다.
       // 자리를 대신 말해도 레일 아이콘 표식은 남는다 — panelId 가 함께 실린다. 묶음 줄 id 는 클라이언트 묶음 목록처럼 `<pluginId>:` 로 맞추고,
       // 인자에 Theater 가 없어 도구가 비워 둔 묶음 자리는 실행과 같은 규칙으로 호출자 Objective 의 Theater 로 채운다.
-      const callerTheaterId = callerId?.kind === "objectiveRecord" ? deps.objectiveRecords?.().find((op) => op.id === callerId.objectiveId)?.theaterId ?? "" : "";
+      const callerTheaterId = callerId?.kind === "objectiveRecord" ? callerNode?.theaterId ?? "" : "";
       const rawTarget = described?.target;
       const target = rawTarget?.kind === "cluster"
         ? { ...rawTarget, clusterId: `${pluginId}:${rawTarget.clusterId}`, theaterId: rawTarget.theaterId || callerTheaterId }
         : rawTarget?.kind === "clusters" ? { ...rawTarget, theaterId: rawTarget.theaterId || callerTheaterId } : rawTarget;
       if (described && callerId) deps.onCall?.({ caller: callerId, tool: tool.name, summary: described.summary, gesture: described.gesture ?? "gaze", target: target ?? { kind: "panel", panelId: tool.surface!.panelId, theaterId: described.theaterId, ...(described.view ? { view: described.view } : {}), ...(described.path ? { path: described.path } : {}) }, panelId: tool.surface!.panelId, at: Date.now() });
       try {
-        const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal, ...(callerId ? { caller: callerId } : {}) });
+        const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal, ...(callerId ? { caller: callerId } : {}), ...(callerId?.kind === "objectiveRecord" && callerNode ? { commodoreId: callerNode.commodoreId } : {}) });
         // 레지스트리는 `isError` 가 boolean 인 결과만 그대로 통과시킨다 — 플러그인 결과에 빠져 있으면 한 번 더 감싸진다.
         if (result && typeof result === "object" && Array.isArray((result as { content?: unknown }).content)) return { ...(result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean }), isError: (result as { isError?: unknown }).isError === true };
         return text(result);

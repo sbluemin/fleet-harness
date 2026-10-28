@@ -16,7 +16,7 @@ import type { AgentSessionWorkspace } from "./types.js";
  */
 
 export interface WorkspaceContextTrackerDeps {
-  readonly resolveTheaterPath: (theaterId: string) => string | null;
+  readonly resolveSessionTheaterPath: (sessionId: string, theaterId: string) => string | null;
   readonly onChange: (sessionId: string, workspace: AgentSessionWorkspace | null) => void;
   /** 테스트 대체용. 기본은 `git` 실행. */
   readonly readGit?: (args: readonly string[], cwd: string) => Promise<string | null>;
@@ -75,7 +75,7 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
   async function refresh(sessionId: string, tracked: TrackedSession): Promise<void> {
     const generation = ++tracked.generation;
     const cwd = tracked.cwd;
-    const root = deps.resolveTheaterPath(tracked.theaterId);
+    const root = deps.resolveSessionTheaterPath(sessionId, tracked.theaterId);
     const [branch, headPath] = await Promise.all([readBranch(cwd), readGit(["rev-parse", "--git-path", "HEAD"], cwd)]);
     // 계산 중에 cwd가 바뀌었거나 세션이 사라졌으면 낡은 결과다.
     if (tracked.generation !== generation || sessions.get(sessionId) !== tracked) return;
@@ -92,7 +92,7 @@ export function createWorkspaceContextTracker(deps: WorkspaceContextTrackerDeps)
           const readGeneration = tracked.generation;
           void readBranch(readCwd).then((next) => {
             if (sessions.get(sessionId) !== tracked || tracked.generation !== readGeneration) return;
-            deps.onChange(sessionId, projectWorkspace({ cwd: readCwd, theaterRoot: deps.resolveTheaterPath(tracked.theaterId), branch: next }));
+            deps.onChange(sessionId, projectWorkspace({ cwd: readCwd, theaterRoot: deps.resolveSessionTheaterPath(sessionId, tracked.theaterId), branch: next }));
           });
         }, HEAD_DEBOUNCE_MS);
       });

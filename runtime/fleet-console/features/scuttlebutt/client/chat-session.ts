@@ -56,7 +56,6 @@ export interface AideGrants {
 }
 
 export interface ConsoleSnapshotPayload {
-  readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly objectiveRecords: readonly { readonly id: string; readonly theaterId: string; readonly type: string; readonly title: string; readonly activity: string }[];
 }
 

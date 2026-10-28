@@ -40,9 +40,9 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
       publishPluginEvent(OBJECTIVE_CLOSING_EVENT_CHANNEL, { receipt, targetTitle, by: caller });
       return receipt;
     },
-    groups: (theaterId) => (theaterId ? objectiveRecords.listGroupsByTheater(theaterId) : objectiveRecords.listAllGroups()).map((group) => ({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order })),
-    groupPatch: ({ id, name, color, delete: remove, position }) => {
-      const existing = objectiveRecords.listAllGroups().find((group) => group.id === id);
+    groups: (commodoreId, theaterId) => objectiveRecords.listGroups(commodoreId).filter((group) => !theaterId || group.theaterId === theaterId).map((group) => ({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order })),
+    groupPatch: ({ commodoreId, id, name, color, delete: remove, position }) => {
+      const existing = objectiveRecords.listGroups(commodoreId).find((group) => group.id === id);
       if (!existing) return { ok: false, error: "unknown_group" };
       if (remove && position) return { ok: false, error: "invalid_arguments" };
       if (remove) {
@@ -51,7 +51,7 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
         objectiveRecords.deleteGroup(id); persistDurableState(); broadcastGroupRemoved(id, existing.theaterId);
         return { ok: true, name: existing.name, theaterId: existing.theaterId };
       }
-      const current = objectiveRecords.listGroupsByTheater(existing.theaterId);
+      const current = objectiveRecords.listGroups(commodoreId).filter((group) => group.theaterId === existing.theaterId);
       const ordered = position ? insertPosition(current.filter((group) => group.id !== id), [existing], position) : current;
       const changed = new Map<string, typeof existing>();
       if (name !== undefined || color !== undefined) {
@@ -68,7 +68,7 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
         persistDurableState();
         for (const group of changed.values()) broadcastGroupChanged(group);
       }
-      const updated = objectiveRecords.listGroupsByTheater(existing.theaterId).find((group) => group.id === id)!;
+      const updated = objectiveRecords.listGroups(commodoreId).filter((group) => group.theaterId === existing.theaterId).find((group) => group.id === id)!;
       return { ok: true, name: updated.name, theaterId: updated.theaterId, ...(position ? { groupOrder: ordered.map((group) => group.id) } : {}) };
     },
     rename: (objectiveId, title) => {
@@ -81,15 +81,13 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
       return true;
     },
     accent: (objectiveId, accent) => !!patchObjective(objectiveId, { accent }),
-    group: ({ mode, theaterId, name, color, groupId, objectiveIds }) => {
+    group: ({ commodoreId, mode, theaterId, name, color, groupId, objectiveIds }) => {
+      if (objectiveIds.some((id) => { const node = objectiveRecords.get(id); return !node || node.commodoreId !== commodoreId || node.theaterId !== theaterId; })) throw new Error("unknown_objectiveRecord");
       let group: ReturnType<typeof objectiveRecords.createGroup> | null = null;
       if (mode === "create") {
-        const owners = new Set(objectiveIds.map((id) => objectiveRecords.get(id)?.commodoreId));
-        const [commodoreId] = owners;
-        if (owners.size !== 1 || !commodoreId) throw new Error("mixed_owners");
         group = objectiveRecords.createGroup({ commodoreId, theaterId, name: name!, color: color ?? "teal" }); broadcastGroupChanged(group); }
       else if (mode === "assign") {
-        const existing = objectiveRecords.listGroupsByTheater(theaterId).find((candidate) => candidate.id === groupId);
+        const existing = objectiveRecords.listGroups(commodoreId).filter((group) => group.theaterId === theaterId).find((candidate) => candidate.id === groupId);
         if (!existing) throw new Error("unknown_group");
         group = existing;
       }
@@ -102,8 +100,8 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
       persistDurableState();
       return { group: group ? { id: group.id, name: group.name, color: group.color } : null, members };
     },
-    reorder: ({ theaterId, objectiveIds, position, groupId }) => {
-      const current = objectiveRecords.listByTheater(theaterId);
+    reorder: ({ commodoreId, theaterId, objectiveIds, position, groupId }) => {
+      const current = objectiveRecords.listByTheater(theaterId).filter((node) => node.commodoreId === commodoreId);
       const moving = objectiveIds.map((id) => current.find((node) => node.id === id));
       if (moving.some((node) => !node)) throw new Error("unknown_objectiveRecord");
       if (new Set(objectiveIds).size !== objectiveIds.length || moving.some((node) => (node!.groupId ?? null) !== groupId)) throw new Error("mixed_sections");
@@ -118,7 +116,7 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
         : remaining.findIndex((node) => node.id === anchor) + ("after" in position ? 1 : 0);
       const ordered = [...remaining];
       ordered.splice(index, 0, ...moving as ObjectiveRecord[]);
-      const changed = objectiveRecords.reorder(theaterId, ordered.map((node) => node.id));
+      const changed = objectiveRecords.reorder(theaterId, ordered.map((node) => node.id), commodoreId);
       if (changed.length) {
         persistDurableState();
         for (const node of changed) broadcastObjectiveChanged(node);

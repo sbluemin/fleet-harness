@@ -52,11 +52,11 @@ function makeContext(
   return {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
       },
       security: { isTerminalAuthorized: () => authorized },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as RepositoryRouteContext;
 }
@@ -130,7 +130,7 @@ describe("Repository fetch route", () => {
           writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
         },
         security: { isTerminalAuthorized: () => false },
-        paths: { resolveTheaterPath: () => fixture.clonePath },
+        paths: { resolveCommodoreTheaterPath: () => fixture.clonePath },
       },
     } as unknown as RepositoryRouteContext;
 

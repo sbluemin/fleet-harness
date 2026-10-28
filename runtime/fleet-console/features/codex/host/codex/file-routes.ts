@@ -11,7 +11,7 @@ const MAX_REFS = 200;
 const PREFIX = "/api/v1/codex/";
 
 interface FileRouteDeps {
-  readonly getTheater: (id: string) => { readonly realpath: string } | null;
+  readonly getTheater: (commodoreId: string, id: string) => { readonly realpath: string } | null;
   readonly isAuthorized: (request: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(request: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (response: http.ServerResponse, status: number, body: unknown) => void;
@@ -30,7 +30,8 @@ export function createCodexFileRouter(deps: FileRouteDeps) {
     try {
       const body = await deps.readJsonBody<Record<string, unknown>>(req);
       if (!body || typeof body !== "object" || typeof body.theaterId !== "string") throw new FileRequestError(400, "invalid_request");
-      const theater = deps.getTheater(body.theaterId);
+      if (typeof body.commodoreId !== "string" || !body.commodoreId) throw new FileRequestError(400, "commodore_required");
+      const theater = deps.getTheater(body.commodoreId, body.theaterId);
       if (!theater) throw new FileRequestError(404, "theater_not_found");
       const root = await realpath(theater.realpath);
       if (pathname.endsWith("file-refs")) {

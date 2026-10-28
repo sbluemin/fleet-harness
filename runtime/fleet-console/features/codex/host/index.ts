@@ -100,8 +100,8 @@ export async function createCodexFeature(deps: CodexFeatureDeps) {
   });
 
   const fileRouter = createCodexFileRouter({
-    getTheater: (id) => {
-      const realpath = ctx.host.paths.resolveTheaterPath(id);
+    getTheater: (commodoreId, id) => {
+      const realpath = ctx.host.paths.resolveCommodoreTheaterPath(commodoreId, id);
       return realpath ? { realpath } : null;
     },
     // 읽기 전용 POST도 파일 내용을 싣는다 — Host와 정확한 리스너 Origin을 요구한다.

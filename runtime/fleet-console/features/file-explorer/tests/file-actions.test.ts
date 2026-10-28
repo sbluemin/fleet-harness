@@ -90,11 +90,11 @@ function makeContext(
   return {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: http.ServerResponse, status: number, payload: unknown) => writes.push({ status, payload }),
       },
       security: { isTerminalAuthorized: () => authorized },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as FileExplorerRouteContext;
 }

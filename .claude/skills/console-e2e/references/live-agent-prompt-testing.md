@@ -168,13 +168,13 @@ not a blocked one. Seed them before the first navigation with the
 ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('[aria-modal=\"true\"]').length"   # expect 0
 ```
 
-## Registering a Theater and launching the agent
+## Adding a Theater and launching the agent
 
-Theater registration is Console's own folder browser (a modal backed by `/api/v1/theaters/folder-listings`), not a native
-dialog. Fill the absolute-path textbox, use its Go action, then add the Theater.
-Use current localized accessible labels. The sidebar's top + opens the new session screen, where *Add Theater…*
-opens that browser, the model chip lists Claude and every exposed gateway model, and the start-view chip
-switches between chat and terminal.
+Add the throwaway folder to the intended Commodore's own Theater list through Console's folder browser
+(a modal backed by `/api/v1/theaters/folder-listings`), not a native dialog or the retired global registry.
+Fill the absolute-path textbox, use its Go action, and confirm the folder. Use current localized accessible labels
+and retain both the owning Commodore UUID and Theater id for launch requests. The session's model chip lists
+Claude and exposed gateway models; the start-view chip switches between chat and terminal.
 
 Verify the launch actually attached to the gateway rather than trusting the banner — the
 header still reads the Claude model name even when every request is being rerouted. Confirm

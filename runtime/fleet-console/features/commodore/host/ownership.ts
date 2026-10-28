@@ -17,88 +17,36 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     if (deleting.has(id)) throw new CommodoreStoreError("commodore_deleting");
     if (!entities.dirOf(id)) throw new CommodoreStoreError("unknown_commodore");
   };
-  const resolveAll = (theaterId: string): readonly string[] => {
-    const root = paths.resolveTheaterPath(theaterId);
-    return [...new Set([...entities.resolveAll(theaterId), ...(root ? entities.locateAll(root) : [])])].sort();
-  };
-  // 등록 Theater 의 realpath 는 레지스트리와 디스크가 그대로인 동안 같은 값을 돌려준다.
-  // registeredFor 는 사령관 수 x 목표 복원 경로를 타고 기동 한 번에 수만 번 불리므로, 캐시가 없으면
-  // 느린 마운트(WSL 의 /mnt 9p 등)에 올린 Theater 하나만으로 realpath 왕복이 이벤트 루프를 수십 초 막는다.
-  // 레지스트리가 바뀌면 즉시 버리고, 그 밖에는 CANONICAL_TTL_MS 안에서 다시 확인한다.
+  // 이주 판정 때만 소유 행을 훑는다. 옛 식별자의 전역 alias 색인은 만들지 않는다.
+  const legacyOwners = (theaterId: string): readonly string[] => entities.ids().filter((id) => entities.theatersOf(id).some((row) => paths.workspaceHash(row.path) === theaterId || row.legacyIds?.includes(theaterId)));
   const CANONICAL_TTL_MS = 5000;
-  let canonicalGeneration = "";
-  const canonicalCache = new Map<string, { readonly at: number; readonly resolved: string | null }>();
-  const canonicalOf = (registered: string): string | null => {
-    const now = Date.now();
-    const hit = canonicalCache.get(registered);
-    if (hit && now - hit.at < CANONICAL_TTL_MS) return hit.resolved;
-    let resolved: string | null;
-    try { resolved = fs.realpathSync.native(registered); } catch { resolved = null; }
-    canonicalCache.set(registered, { at: now, resolved });
-    return resolved;
-  };
-  const registeredFor = (root: string): readonly string[] => {
-    const ids = paths.listTheaterIds?.() ?? [];
-    const generation = [...ids].sort().join("\u0000");
-    if (generation !== canonicalGeneration) { canonicalGeneration = generation; canonicalCache.clear(); }
-    return ids.filter((id) => {
-      const registered = paths.resolveTheaterPath(id);
-      if (registered === root) return true;
-      return registered !== null && canonicalOf(registered) === root;
-    });
-  };
   const theaterIds = entities.theaterIds;
   // 현재 폴더의 해시가 먼저다. 옛 등록부의 별칭 id는 기존 주소·기록을 읽을 때만 호환한다.
   const theaterPath = (id: string, theaterId: string): string | null => {
     const rows = entities.theatersOf(id);
     return rows.find((row) => paths.workspaceHash(row.path) === theaterId)?.path
-      ?? rows.find((row) => registeredFor(row.path).includes(theaterId))?.path ?? null;
+      ?? rows.find((row) => row.legacyIds?.includes(theaterId))?.path ?? null;
   };
-  // objectives()는 기동 중 수천 번 불린다. 복원 루프가 owner마다 전체 목록을 처음부터
-  // 다시 계산하므로(사령관 수 x 목표 수), 같은 스냅샷 안에서는 결과를 재사용한다.
-  // 무효화는 generation 비교로 정확히 한다: 사령관 색인(ids·Theater 행)이나 Theater
-  // 등록(id 집합·id→경로)이 바뀌면 키가 달라져 다시 계산한다. 둘 다 메모리 상태라
-  // 키 계산은 fs를 건드리지 않는다. registeredFor의 내부 의미는 건드리지 않는다 —
-  // canonical realpath 같은 파일시스템 상태는 아래 TTL 안에서만 재사용한다(#2091의
-  // canonical 캐시와 같은 5초 bound). 기동 후 런타임 추가/삭제는 entities API와
-  // Theater 등록을 거치므로 generation이 바뀌어 즉시 반영된다.
-  const entitiesGeneration = (): string =>
-    [...entities.ids()].sort().map((id) => `${id}\u0000${entities.theatersOf(id).map((row) => row.path).join("\u0000")}`).join("\u0001");
-  const registryGeneration = (): string => {
-    const ids = paths.listTheaterIds?.() ?? [];
-    return [...ids].sort().map((id) => `${id}\u0000${paths.resolveTheaterPath(id) ?? ""}`).join("\u0001");
-  };
+  // 소유 색인이 바뀔 때만 다시 계산한다. 실행 경로의 존재 확인은 조회마다 따로 한다.
+  const entitiesGeneration = (): string => JSON.stringify(entities.ids().map((id) => [id, entities.theatersOf(id)]));
   const computeObjectives = () => entities.ids().flatMap((id) => {
     const directory = entities.dirOf(id);
     if (!directory) return [];
     const rows = entities.theatersOf(id);
     const root = rows.length === 1 ? rows[0]!.path : undefined;
     const linkId = root ? paths.workspaceHash(root) : "";
-    return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: root ? [...new Set([linkId, ...registeredFor(root)])] : [], legacyCwd: root ?? "", theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
+    return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: rows.flatMap((row) => [paths.workspaceHash(row.path), ...row.legacyIds ?? []]), legacyFolders: rows.map((row) => ({ path: row.path, ids: [paths.workspaceHash(row.path), ...row.legacyIds ?? []] })), legacyCwd: root ?? "", theaterIdOf: (cwd: string) => paths.workspaceHash(cwd) }];
   });
   let objectivesGeneration = "";
   let objectivesComputedAt = 0;
   let objectivesCache: ReturnType<typeof computeObjectives> | null = null;
   const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
-  const issueIfReady = (theaterId: string): string => {
-    const root = paths.resolveTheaterPath(theaterId);
-    if (!root) throw new CommodoreStoreError("theater_unavailable");
-    const ids = resolveAll(theaterId);
+  const issueForAlias = (theaterId: string): string => {
+    const ids = legacyOwners(theaterId);
     if (ids.length > 1) throw new CommodoreStoreError("commodore_required");
     if (ids.length === 1) return ids[0]!;
-    if (blocked(root)) throw new CommodoreStoreError("commodore_migration_pending");
-    return entities.create(root);
+    throw new CommodoreStoreError("theater_unavailable");
   };
-  // 실제 옛 Wiki가 있는 경우에만 발급한다. 등록이나 읽기로 빈 사령관을 만들지 않는다.
-  const recoverKnowledge = () => {
-    for (const theaterId of paths.listTheaterIds?.() ?? []) {
-      const root = paths.resolveTheaterPath(theaterId);
-      if (!root || resolveAll(theaterId).length || !hasLegacyKnowledge(paths.consoleDataDir, root)) continue;
-      try { issueIfReady(theaterId); }
-      catch { console.warn(`[commodore] registered theater ${theaterId}: knowledge migration held`); }
-    }
-  };
-  recoverKnowledge();
   const knowledge = {
     directory: (id: string) => deleting.has(id) ? null : entities.dirOf(id),
     root: (id: string) => { const dir = deleting.has(id) ? null : entities.dirOf(id); return dir ? path.join(dir, "knowledge") : null; },
@@ -121,7 +69,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return cwd;
   };
   return {
-    entities, resolveAll, theaterIds, theaterPath, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
+    entities, legacyOwners, theaterIds, theaterPath, knowledge, issueForAlias, blocked,
     assertWritable,
     isDeleting: (id: string) => deleting.has(id),
     beginDeletion(id: string) { assertWritable(id); deleting.add(id); },
@@ -157,7 +105,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       return { commodoreId, cwd };
     },
     objectives: () => {
-      const generation = `${entitiesGeneration()}\u0002${registryGeneration()}`;
+      const generation = entitiesGeneration();
       const now = Date.now();
       if (objectivesCache && objectivesGeneration === generation && now - objectivesComputedAt < CANONICAL_TTL_MS) return objectivesCache;
       const computed = computeObjectives();

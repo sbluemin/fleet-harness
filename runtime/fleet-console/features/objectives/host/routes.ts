@@ -350,7 +350,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     // 사람이 옮긴 미완료 목표의 Objective 자리만 명시적으로 되찾는다. 완료 기록의 순서 변경은 깨우지 않는다.
     if (!moved.done && !store.pending(moved.id)) await ctx.objectiveRecords.access?.(moved.id, "ensure-active");
     moved = store.find(moved.id) ?? moved;
-    const members = ctx.objectiveRecords.list().filter((node) => node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
+    const members = ctx.objectiveRecords.list().filter((node) => node.commodoreId === moved.commodoreId && node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
     const memberIds = new Set(members.map((node) => node.id));
     const boardIds = store.list(moved.commodoreId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
     const objectives = new Set(boardIds);
@@ -365,7 +365,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     for (let at = 0; at < desired.length; at += 1) {
       const id = desired[at]!;
       if (!objectives.has(id) || current[at] === id) continue;
-      reorder({ theaterId: moved.theaterId, groupId: moved.groupId, objectiveIds: [id], position: at === 0 ? "first" : { after: desired[at - 1]! } });
+      reorder({ commodoreId: moved.commodoreId, theaterId: moved.theaterId, groupId: moved.groupId, objectiveIds: [id], position: at === 0 ? "first" : { after: desired[at - 1]! } });
       current.splice(current.indexOf(id), 1);
       current.splice(at, 0, id);
     }

@@ -78,7 +78,6 @@ export interface ConsoleUseCallEvent {
 
 export interface ConsoleUseSnapshot {
   readonly takenAt?: string;
-  readonly theaters: readonly { readonly id: string; readonly label: string }[];
   readonly objectiveRecords: readonly {
     readonly id: string;
     readonly theaterId: string;

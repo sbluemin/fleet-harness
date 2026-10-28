@@ -1,7 +1,7 @@
 import { createObjectiveStorage } from "../features/objectives/host/storage.js";
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { sanitizeDurableConsoleState, type DurableConsoleState } from "../features/workspace/host/durable-state.js";
-import { createCommodoreOwnership, migrateCommodoreAliases } from "../features/commodore/host/index.js";
+import { createCommodoreOwnership, prepareTheaterRegistryRetirement, migrateCommodoreAliases } from "../features/commodore/host/index.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -126,11 +126,10 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     // 충돌은 제품이 병합하지 않았다. 이 테스트의 다운그레이드 시드를 안전한 위치로 치워 해결한다.
     fs.renameSync(conflict.dir, path.join(temp, "preserved-conflict"));
     const fresh = theater("newly-registered");
-    const roots = new Map([[workspaceHash(a.root), a.root], [workspaceHash(stopped.root), stopped.root], [workspaceHash(unknown.root), unknown.root], [workspaceHash(fresh), fresh]]);
     let request: unknown;
     let response: { status: number; value: unknown } | undefined;
     const deps = {
-      paths: { consoleDataDir: data, workspaceHash, listTheaterIds: () => [...roots.keys()], resolveTheaterPath: (id: string) => roots.get(id) ?? null },
+      paths: { consoleDataDir: data, workspaceHash },
       events: { registerSseChannel: () => () => undefined, publish: () => undefined },
       http: { readJsonBody: async () => request, writeJson: (_res: unknown, status: number, value: unknown) => { response = { status, value }; } },
       security: { isTerminalAuthorized: () => true },
@@ -145,7 +144,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
       return response!.value as Record<string, unknown>;
     };
     // 이주 결과는 소유 색인으로 읽는다 — 제품에는 Theater 에서 사령관을 찾는 길이 없다.
-    const owners = (theaterId: string): readonly string[] => createCommodoreOwnership(deps.paths).resolveAll(theaterId);
+    const owners = (theaterId: string): readonly string[] => createCommodoreOwnership(deps.paths).legacyOwners(theaterId);
     const ownerOf = (theaterId: string): string | null => { const ids = owners(theaterId); return ids.length === 1 ? ids[0]! : null; };
     const resolved = { commodoreId: ownerOf(workspaceHash(a.root)) };
     const view = await call("commodore/state", { commodoreId: resolved.commodoreId });
@@ -162,7 +161,8 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     };
     const spelled = notationOf(a.root);
     const spelledId = workspaceHash(spelled);
-    roots.set(spelledId, spelled);
+    const registrationSource = { version: 6, theaters: [{ id: spelledId, realpath: a.root }] };
+    prepareTheaterRegistryRetirement({ directory: data, raw: registrationSource, source: Buffer.from(JSON.stringify(registrationSource)), ownership: createCommodoreOwnership(deps.paths), workspaceHash });
     const same = { commodoreId: ownerOf(spelledId) };
     const saved = await call("commodore/alias", { commodoreId: same.commodoreId, alias: "Kept" });
     const created = await call("commodore/create", { alias: "New Commodore" });
@@ -181,12 +181,11 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(ownerOf(workspaceHash(fresh))).toBeNull();
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(owners(workspaceHash(unknown.root))).toEqual([]);
-    expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(unknown.root))).toThrow("commodore_migration_pending");
+    expect(() => createCommodoreOwnership(deps.paths).issueForAlias(workspaceHash(unknown.root))).toThrow("theater_unavailable");
     // 실행 중 등록도 같은 방어를 쓴다. 이 원본은 옛 손실 변환 이름이므로 digest 쪽만 검사하면 놓친다.
-    roots.set(workspaceHash(lateUnknown.root), lateUnknown.root);
     feature.sync();
     expect(owners(workspaceHash(lateUnknown.root))).toEqual([]);
-    expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(lateUnknown.root))).toThrow("commodore_migration_pending");
+    expect(() => createCommodoreOwnership(deps.paths).issueForAlias(workspaceHash(lateUnknown.root))).toThrow("theater_unavailable");
     expect(fs.readFileSync(path.join(unknown.dir, "state.json"), "utf8")).toBe(state(unknown.text));
     expect(fs.readFileSync(path.join(lateUnknown.dir, "state.json"), "utf8")).toBe(state(lateUnknown.text));
     write(path.join(unknown.workspace, "cwd.json"), JSON.stringify({ cwd: unknown.root }));
@@ -234,7 +233,6 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const pending = seed(workspaceDirectoryNames(pendingRoot)[0], pendingRoot, "Keep the pending directive");
     fs.symlinkSync("state.json", path.join(pending.dir, "linked-state"));
     write(path.join(pending.workspace, "knowledge", "wiki", "kept.md"), "kept wiki\n");
-    roots.set(workspaceHash(pendingRoot), pendingRoot);
     expect(migrateCommodoreData(data).blockedPaths.has(pendingRoot)).toBe(true);
     feature = createCommodoreFeature(deps);
     expect(ownerOf(workspaceHash(pendingRoot))).toBeNull();
@@ -244,10 +242,9 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const aliasRoot = theater("pending-with-alias");
     const aliasPending = seed(workspaceDirectoryNames(aliasRoot)[0], aliasRoot, "Keep the alias-pending directive");
     fs.symlinkSync("state.json", path.join(aliasPending.dir, "linked-state"));
-    roots.set(workspaceHash(aliasRoot), aliasRoot);
     await feature.dispose(); feature = createCommodoreFeature(deps);
     expect(owners(workspaceHash(aliasRoot))).toEqual([]);
-    expect(() => createCommodoreOwnership(deps.paths).issueIfReady(workspaceHash(aliasRoot))).toThrow("commodore_migration_pending");
+    expect(() => createCommodoreOwnership(deps.paths).issueForAlias(workspaceHash(aliasRoot))).toThrow("theater_unavailable");
     expect(fs.readFileSync(path.join(aliasPending.dir, "state.json"), "utf8")).toBe(state(aliasPending.text));
     expect(warn).toHaveBeenCalled();
   } finally {
@@ -265,10 +262,15 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     const directory = path.join(temp, "console");
     const project = path.join(temp, "project"); fs.mkdirSync(project);
     const gone = path.join(temp, "forgotten"); fs.mkdirSync(gone);
-    const roots = new Map([[workspaceHash(project), project]]);
-    const paths = { consoleDataDir: directory, workspaceHash, listTheaterIds: () => [...roots.keys()], resolveTheaterPath: (id: string) => roots.get(id) ?? null } as unknown as CommodoreFeatureDeps["paths"];
+    const paths = { consoleDataDir: directory, workspaceHash } as unknown as CommodoreFeatureDeps["paths"];
     const entities = createCommodoreEntities(path.join(directory, "commodore"), workspaceHash);
     const forgottenId = entities.create(gone);
+    const projectId = entities.create(project);
+    for (const [id, root] of [[forgottenId, gone], [projectId, project]]) {
+      const file = path.join(directory, "commodore", id!, "state.json");
+      const value = JSON.parse(fs.readFileSync(file, "utf8"));
+      fs.writeFileSync(file, JSON.stringify({ ...value, theaters: [{ path: root, legacyIds: [workspaceHash(root!)] }] }));
+    }
     const registration = (root: string) => ({ id: workspaceHash(root), path: root, realpath: root, label: path.basename(root), registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z", order: 3 });
     const live = { ...registration(project), alias: "  Flagship  " };
     const tombstone = (root: string, alias: string, deletionId: string) => ({ kind: "theater", deletionId, targetId: workspaceHash(root), deletedAt: 1, expiresAt: 10, theater: { ...registration(root), alias } });
@@ -280,7 +282,10 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     let includeObjectives = false;
     let failOwnerApply = false;
     const open = () => createObjectiveStorage({ directory, stateStore,
-      initializeOwners: () => { ownership = createCommodoreOwnership(paths); },
+      prepareLegacyRegistry: (raw, source) => {
+        ownership = createCommodoreOwnership(paths);
+        return prepareTheaterRegistryRetirement({ directory, raw, source, ownership, workspaceHash });
+      },
       owners: () => includeObjectives ? ownership.objectives() : [],
       migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, ownership),
       createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
@@ -314,12 +319,11 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     const loaded = open().load();
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8"))).toEqual({ ...before, alias: "Current" });
     expect(JSON.parse(fs.readFileSync(path.join(directory, "commodore", forgottenId, "state.json"), "utf8")).alias).toBe("Retired");
-    expect(ownership!.entities.ids()).toHaveLength(2); // 등록된 Theater만 발급, 고아 tombstone은 발급하지 않는다.
-    const cleaned = { ...source, theaters: source.theaters.map(({ alias: _alias, ...row }) => row), deletionTombstones: source.deletionTombstones.map(({ theater: { alias: _alias, ...theater }, ...row }) => ({ ...row, theater })) };
+    expect(ownership!.entities.ids()).toHaveLength(2); // 고아 등록과 tombstone은 빈 사령관을 발급하지 않는다.
+    const { theaters: _legacy, ...withoutRegistry } = source;
+    const cleaned = { ...withoutRegistry, deletionTombstones: source.deletionTombstones.map(({ theater: { alias: _alias, ...theater }, ...row }) => ({ ...row, theater })) };
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).toEqual(cleaned);
-    expect(loaded.theaters).toEqual(cleaned.theaters);
-    expect(warn.mock.calls.some(([message]) => String(message).includes("orphan_tombstone"))).toBe(true);
-    expect(warn.mock.calls.some(([message]) => String(message).includes("invalid_alias"))).toBe(true);
+    expect(loaded).not.toHaveProperty("theaters");
     // 해제한 UUID 이름은 재기동 때 명부에서 되살아나지 않는다.
     fs.writeFileSync(ownerFile, JSON.stringify(before));
     open().load();
@@ -342,7 +346,7 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     try { expect(() => open().load()).not.toThrow(); } finally { failCleanup.mockRestore(); }
     expect(JSON.parse(fs.readFileSync(ownerArchiveFile, "utf8"))).not.toHaveProperty("transaction");
     const restarted = open(); const snapshot = restarted.load();
-    expect(snapshot.theaters).toEqual(cleaned.theaters);
+    expect(snapshot).not.toHaveProperty("theaters");
     expect(JSON.parse(fs.readFileSync(ownerFile, "utf8")).alias).toBe("Flagship");
     restarted.save(snapshot);
     expect(JSON.stringify(JSON.parse(fs.readFileSync(stateFile, "utf8")))).not.toContain('"alias"');
@@ -415,12 +419,12 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     // 경로가 없는 별칭은 기동을 막지 않고 명부에 남는다. 빈 commodore는 만들지 않는다.
     const missingRoot = path.join(temp, "missing-project");
     const missingTheater = workspaceHash(missingRoot);
-    roots.set(missingTheater, missingRoot);
     const idsBefore = new Set(fs.readdirSync(path.join(directory, "commodore")));
     fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ ...registration(project), id: missingTheater, path: missingRoot, realpath: missingRoot, alias: "Away" }] }));
     expect(() => open().load()).not.toThrow();
     expect(new Set(fs.readdirSync(path.join(directory, "commodore")))).toEqual(idsBefore);
-    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).theaters[0].alias).toBe("Away");
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8"))).not.toHaveProperty("theaters");
+    expect(fs.readdirSync(path.join(directory, ".archive-migration")).some((name) => name.startsWith("theaters-unrecognized-"))).toBe(true);
 
     // 보류된 commodore 이동 중 별칭 발급은 빈 엔티티를 만들지 않는다.
     const blockedRoot = fs.realpathSync.native(fs.mkdirSync(path.join(temp, "blocked-project"), { recursive: true }) as string);
@@ -431,10 +435,10 @@ it("moves recovered registration aliases to their UUID owners and resumes cleanu
     fs.writeFileSync(path.join(blockedData, "workspaces", blockedName, "cwd.json"), JSON.stringify({ cwd: blockedRoot }));
     fs.writeFileSync(path.join(blockedSource, "state.json"), JSON.stringify(EMPTY_COMMODORE_STATE));
     fs.symlinkSync(path.join(temp, "absent-link-target"), path.join(blockedSource, "linked"));
-    const blocked = createCommodoreOwnership({ consoleDataDir: blockedData, workspaceHash, listTheaterIds: () => [workspaceHash(blockedRoot)], resolveTheaterPath: () => blockedRoot } as unknown as CommodoreFeatureDeps["paths"]);
+    const blocked = createCommodoreOwnership({ consoleDataDir: blockedData, workspaceHash } as unknown as CommodoreFeatureDeps["paths"]);
     const blockedEntities = path.join(blockedData, "commodore");
     const blockedBefore = fs.existsSync(blockedEntities) ? fs.readdirSync(blockedEntities) : [];
-    expect(() => blocked.issueIfReady(workspaceHash(blockedRoot))).toThrow("commodore_migration_pending");
+    expect(() => blocked.issueForAlias(workspaceHash(blockedRoot))).toThrow("theater_unavailable");
     expect(fs.existsSync(blockedEntities) ? fs.readdirSync(blockedEntities) : []).toEqual(blockedBefore);
   } finally { warn.mockRestore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });

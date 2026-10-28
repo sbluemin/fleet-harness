@@ -139,10 +139,10 @@ function readArchive(value: unknown): Archive {
   return archive;
 }
 function readRegistrations(raw: unknown, recovering = false): DurableConsoleState {
-  if (!object(raw) || raw.version !== STATE_VERSION || !Array.isArray(raw.theaters)) throw failure();
+  if (!object(raw)) throw failure();
   const tombstones = Array.isArray(raw.deletionTombstones) ? raw.deletionTombstones.map((row) => object(row) && row.kind === "theater" ? { ...row, objectiveRecords: row.objectiveRecords ?? [], groups: row.groups ?? [] } : row) : [];
-  const state = sanitizeDurableConsoleState({ ...raw, deletionTombstones: tombstones });
-  if (state.theaters.length !== raw.theaters.length || state.deletionTombstones?.length !== tombstones.length) throw failure();
+  const state = sanitizeDurableConsoleState({ ...raw, version: STATE_VERSION, theaters: [], deletionTombstones: tombstones });
+  if (state.deletionTombstones?.length !== tombstones.length) throw failure();
   return recovering ? retainRegistrationAliases(raw, state as unknown as Record<string, unknown>) as unknown as DurableConsoleState : state;
 }
 function withoutOwner(group: DurableObjectiveGroup): Group { const { commodoreId: _owner, ...rest } = group; return rest; }
@@ -175,7 +175,12 @@ export function createObjectiveStorage(deps: {
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
   assertOwnerMutable?: (commodoreId: string) => void;
-  initializeOwners?: (state: DurableConsoleState) => void;
+  prepareLegacyRegistry?: (raw: Record<string, unknown>, source: Buffer) => {
+    ownerOf(objectiveId: string, theaterId: string, explicit?: string): string | null;
+    foldersFor(owner: string): readonly { readonly path: string; readonly ids: readonly string[] }[];
+    acceptsAlias(theaterId: string): boolean;
+    finish(current: Record<string, unknown>, verified: (owner: string, objectiveId: string) => boolean): Record<string, unknown>;
+  };
   /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 커밋하지 못한 별칭은 명부에 남기고, 기동은 중단하지 않는다. 반환은 명부에서 거둬도 되는 theaterId. */
   migrateRegistrationAliases?: (entries: readonly LegacyTheaterAlias[]) => readonly string[] | void;
   createStore?: typeof createDurableJsonStore;
@@ -190,9 +195,10 @@ export function createObjectiveStorage(deps: {
   }
   const createStore = deps.createStore ?? createDurableJsonStore;
   let ready = false, blocked = false;
-  let state: DurableConsoleState = { version: STATE_VERSION, theaters: [], objectiveRecords: [] };
+  let state: DurableConsoleState = { version: STATE_VERSION, objectiveRecords: [] };
   let baseline: DurableConsoleState = state;
   let previousRaw: Record<string, unknown> = {};
+  let retirement: ReturnType<NonNullable<typeof deps.prepareLegacyRegistry>> | undefined;
   const unavailableOwners = new Set<string>();
   const deferredAliasOwners = new Set<string>();
   const archiveStore = (scope: Scope) => createStore<Archive>({ filePath: path.join(scope.owner.directory, "archive.json"), lockDir: null, sensitivity: "sensitive", sanitize: readArchive });
@@ -240,6 +246,12 @@ export function createObjectiveStorage(deps: {
     if (!object(value) || !Array.isArray(value.documents) || !Array.isArray(value.groups)) throw failure();
     const archive = readArchive(value.archive);
     if (archive.transaction) throw failure();
+    if (object(value.state) && Object.hasOwn(value.state, "theaters") && deps.prepareLegacyRegistry) {
+      // 구 저널의 after-image도 소독 전에 준비한다. 삭제할 저널 bytes는 owner의 원본 보존소에 먼저 둔다.
+      preserveSource(scope.owner, readBytes(journalPath(scope, id)));
+      retirement = deps.prepareLegacyRegistry(value.state, Buffer.from(JSON.stringify(value.state)));
+      scope.owner = deps.owners().find((owner) => owner.commodoreId === scope.owner.commodoreId) ?? scope.owner;
+    }
     const tx: Transaction = { documents: value.documents.map((value) => readDocument(value, scope.owner)), groups: value.groups as Group[], archive,
       state: readRegistrations(value.state, !ready && !!deps.migrateRegistrationAliases), purgeIds: ids(value.purgeIds) };
     const documentIds = new Set(ids(tx.documents.map((doc) => doc.id)));
@@ -479,18 +491,25 @@ export function createObjectiveStorage(deps: {
     const allLoaded = deps.owners().every((owner) => { const scope = scopes.get(owner.commodoreId); return !!scope && !held(scope); });
     const readable = new Set<string>(), known = new Set<string>();
     for (const scope of scopes.values()) {
-      for (const id of scope.documents.keys()) if (!unavailable(scope, id)) readable.add(id);
+      for (const [id, doc] of scope.documents) if (!unavailable(scope, id)) {
+        try {
+          if (isDeepStrictEqual(readDocument(readJson(path.join(objectiveDir(scope, id), "objective.json")), scope.owner), doc)) readable.add(id);
+        } catch { /* 사본을 다시 읽지 못하면 원본을 정리하지 않는다. */ }
+      }
       for (const id of [...scope.documents.keys(), ...inactive(scope), ...scope.unreadable]) known.add(id);
     }
     const root = path.join(deps.directory, "workspaces");
     let workspaces: fs.Dirent[] = [];
-    try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+    try {
+      if (!fs.lstatSync(root).isDirectory() || fs.realpathSync.native(root) !== root) return;
+      workspaces = fs.readdirSync(root, { withFileTypes: true });
+    } catch { return; }
     for (const workspace of workspaces) {
       if (!workspace.isDirectory()) continue;
       const objectives = path.join(root, workspace.name, "objectives");
       let entries: fs.Dirent[];
       try {
-        if (!fs.lstatSync(objectives).isDirectory()) continue;
+        if (!fs.lstatSync(objectives).isDirectory() || fs.realpathSync.native(objectives) !== objectives) continue;
         entries = fs.readdirSync(objectives, { withFileTypes: true });
       } catch { continue; }
       for (const entry of entries) {
@@ -504,9 +523,13 @@ export function createObjectiveStorage(deps: {
   function importLegacy(scope: Scope): { readonly touched: readonly string[]; readonly groupIds: readonly string[] } {
     const known = new Set<string>([...scope.documents.keys(), ...scope.archive.entries.map((row) => row.objectiveId), ...scope.archive.deletions.flatMap((row) => row.objectiveIds),
       ...scope.archive.events.filter((row) => row.channel === "objective:purged").map((row) => row.objectiveId), ...(scope.archive.unavailable ?? []), ...scope.unreadable]);
+    const extraFolders = retirement?.foldersFor(scope.owner.commodoreId) ?? [];
+    const folders = [...scope.owner.legacyFolders ?? [], ...extraFolders];
+    const owner: ObjectiveOwner = extraFolders.length ? { ...scope.owner, legacyFolders: folders,
+      legacyTheaterIds: [...new Set([...scope.owner.legacyTheaterIds ?? [], ...folders.flatMap((folder) => folder.ids)])] } : scope.owner;
     let imported: ReturnType<typeof importMissingObjectives>;
     try {
-      imported = importMissingObjectives({ dataDir: deps.directory, owner: scope.owner, previousRaw, known, claimed: legacyClaims(scope.owner.commodoreId), quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, scope.owner), warn: (message) => console.warn(message) });
+      imported = importMissingObjectives({ dataDir: deps.directory, owner, previousRaw, ownerOf: retirement?.ownerOf, known, claimed: legacyClaims(scope.owner.commodoreId), quarantined: scope.archive.quarantine ?? [], prepareDir: safeDir, writeJson, accept: (value) => readDocument(value, owner), warn: (message) => console.warn(message) });
     } catch (error) {
       console.warn(`[objectives] owner ${scope.owner.commodoreId}: ${error instanceof Error ? error.message : "legacy_import_failed"}; original preserved`);
       return { touched: [], groupIds: [] };
@@ -738,13 +761,17 @@ export function createObjectiveStorage(deps: {
       if (!object(row)) return true;
       const node = row.objectiveRecord ?? row.operation;
       const owner = row.kind === "theater" ? row.targetId : object(node) ? node.theaterId : undefined;
+      if (row.kind === "theater" && typeof owner === "string" && !held.has(owner)) {
+        const attributed = [...scopes.values()].filter((scope) => scope.archive.deletions.some((deletion) => deletion.deletionId === row.deletionId));
+        if (attributed.length && attributed.every((scope) => !scope.indexUnread && !scope.journalDeferred && !scope.unmerged)) return false;
+      }
       return typeof owner !== "string" || !scopes.has(object(node) && typeof node.commodoreId === "string" ? node.commodoreId : ownerOfTheater(owner) ?? "") || held.has(owner);
     }) : [];
     const deletions = [...(next.deletionTombstones ?? []).filter((row) => row.kind === "theater" && !held.has(row.targetId)).map((row) => {
       const { objectiveRecords: _records, groups: _groups, ...registration } = row as Extract<DurableDeletionTombstone, { kind: "theater" }>; return registration;
     }), ...untouched];
     const { deletionTombstones: _deletions, theaters: _theaters, ...original } = previousRaw;
-    return retainHeldAliases(previousRaw, { ...original, version: STATE_VERSION, theaters: next.theaters, ...(deletions.length ? { deletionTombstones: deletions } : {}) }) as unknown as DurableConsoleState;
+    return retainHeldAliases(previousRaw, { ...original, version: STATE_VERSION, ...(Object.hasOwn(previousRaw, "theaters") ? { theaters: previousRaw.theaters } : {}), ...(deletions.length ? { deletionTombstones: deletions } : {}) }) as unknown as DurableConsoleState;
   }
   function snapshot(): DurableConsoleState {
     const objectiveRecords: ObjectiveRecord[] = [], groups: DurableObjectiveGroup[] = [], deletions: DurableDeletionTombstone[] = [];
@@ -765,7 +792,7 @@ export function createObjectiveStorage(deps: {
     }
     const tombstones = [...merged.values()];
     validateLocations(objectiveRecords, entries(), tombstones);
-    return { version: STATE_VERSION, theaters: state.theaters, objectiveRecords, groups, deletionTombstones: tombstones };
+    return { version: STATE_VERSION, objectiveRecords, groups, deletionTombstones: tombstones };
   }
   function entries(): readonly ArchivedObjective[] {
     assertReady();
@@ -787,7 +814,7 @@ export function createObjectiveStorage(deps: {
     for (const theaterId of heldTheaters()) {
       const before = [...new Set([...scopes.values()].flatMap((scope) => scope.archive.deletions.filter((row) => row.kind === "theater" && row.targetId === theaterId && !row.objectiveIds.some((id) => unavailable(scope, id))).map((row) => row.deletionId)))].sort();
       const after = (next.deletionTombstones ?? []).filter((row) => row.kind === "theater" && row.targetId === theaterId).map((row) => row.deletionId).sort();
-      if (state.theaters.some((row) => row.id === theaterId) !== next.theaters.some((row) => row.id === theaterId) || !isDeepStrictEqual(before, after)) {
+      if (!isDeepStrictEqual(before, after)) {
         throw new ObjectiveArchiveError(409, "objective_owner_recovery_required");
       }
     }
@@ -881,13 +908,18 @@ export function createObjectiveStorage(deps: {
   };
   function load(): DurableConsoleState {
     try {
-      const raw = exists(deps.stateStore.path) ? readJson(deps.stateStore.path) : { version: STATE_VERSION, theaters: [] };
+      const source = exists(deps.stateStore.path) ? readBytes(deps.stateStore.path) : Buffer.from(JSON.stringify({ version: STATE_VERSION }));
+      const raw: unknown = JSON.parse(source.toString("utf8"));
       if (!object(raw)) throw failure();
       failedAtLoad.clear();
+      retirement = deps.prepareLegacyRegistry?.(raw, source);
       previousRaw = raw; state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
-      deps.initializeOwners?.(readRegistrations(state));
       const failedOwners = new Set<string>();
-      for (const owner of deps.owners()) {
+      const visitedOwners = new Set<string>();
+      for (;;) {
+        const owner = deps.owners().find((candidate) => !visitedOwners.has(candidate.commodoreId));
+        if (!owner) break;
+        visitedOwners.add(owner.commodoreId);
         try { const scope = readScope(owner); scopes.set(owner.commodoreId, scope); }
         catch (error) {
           failedOwners.add(owner.commodoreId);
@@ -900,7 +932,8 @@ export function createObjectiveStorage(deps: {
       // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
       // 별칭 이주는 별개다. 커밋한 항목만 명부에서 거둔다. 이번 기동에 복구가 끝난 owner만 거둔다.
       if (deps.migrateRegistrationAliases) {
-        const aliases = legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => {
+        const aliases = legacyTheaterAliases(previousRaw).filter((entry) => {
+          if (retirement && !retirement.acceptsAlias(entry.theaterId)) return false;
           const owner = ownerOfTheater(entry.theaterId) ?? "";
           return !failedOwners.has(owner) && !unavailableOwners.has(owner) && !deferredAliasOwners.has(owner);
         });
@@ -919,6 +952,19 @@ export function createObjectiveStorage(deps: {
           previousRaw = stripCommittedAliases(previousRaw, committed);
           state = readRegistrations(state);
         } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_cleanup_failed"}; aliases retained`); }
+      }
+      if (retirement) {
+        const cleaned = retirement.finish(previousRaw, (owner, id) => {
+          const scope = scopes.get(owner);
+          if (!scope || failedOwners.has(owner) || unavailable(scope, id)) return false;
+          const file = path.join(objectiveDir(scope, id), "objective.json");
+          try { return isDeepStrictEqual(readDocument(readJson(file), scope.owner), scope.documents.get(id)); } catch { return false; }
+        });
+        if (!isDeepStrictEqual(cleaned, previousRaw)) {
+          deps.stateStore.save(cleaned as unknown as DurableConsoleState);
+          if (!isDeepStrictEqual(readJson(deps.stateStore.path), cleaned)) throw failure();
+        }
+        previousRaw = cleaned;
       }
       ready = true; blocked = false;
       baseline = snapshot();

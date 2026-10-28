@@ -287,7 +287,7 @@ title: input.title});
         return { ok: true, applied: "now" };
       },
     },
-    paths: { workspaceHash: () => "t1", resolveTheaterPath: () => theaterPath, resolveObjectivePath: () => theaterPath },
+    paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
   const launch = createLaunchService(ctx, store, { now: () => clock, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}) });
   launchServices.push(launch);
@@ -856,7 +856,7 @@ describe("Objectives contract", () => {
     expect(store.list("c1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
     expect(savedObjective(objective.id).id).toBe(objective.id);
     expect(savedObjective(objective.id)).toHaveProperty("title", "Release");
-    expect(savedObjective(objective.id)).toHaveProperty("cwd", ctx.paths.resolveTheaterPath("t1"));
+    expect(savedObjective(objective.id)).toHaveProperty("cwd", ctx.paths.resolveCommodoreTheaterPath("c1", "t1"));
     expect(objective).toMatchObject({ commodoreId: "c1", theaterId: "t1" });
     expect(objective).not.toHaveProperty("cwd");
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
@@ -1599,7 +1599,7 @@ describe("Objectives contract", () => {
     const seal = (source: string, by = member.id) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
     expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
     expect((await call("evidence_dir", { objectiveId: objective.id }, member.id)).structuredContent.root).toBe(root);
-    const foreign = path.join(ctx.paths.resolveTheaterPath(objective.theaterId)!, "handout.md");
+    const foreign = path.join(ctx.paths.resolveCommodoreTheaterPath(objective.commodoreId, objective.theaterId)!, "handout.md");
     fs.mkdirSync(path.dirname(foreign), { recursive: true }); fs.writeFileSync(foreign, "theater evidence");
     expect((await seal(foreign)).structuredContent).toMatchObject({ error: "evidence_outside_dir", reason: expect.any(String) });
     fs.copyFileSync(foreign, ownFile);
@@ -3054,7 +3054,7 @@ describe("Objectives contract", () => {
         },
       },
       paths: {
-        resolveTheaterPath: (theaterId: string) => path.join(dir, "theaters", theaterId),
+        resolveCommodoreTheaterPath: (_commodoreId: string, theaterId: string) => path.join(dir, "theaters", theaterId),
         // 호스트처럼 폴더의 실경로를 풀지 못하면 던진다.
         ensureWorkspaceDirectory: (theaterPath: string) => {
           const theaterId = path.basename(theaterPath);
