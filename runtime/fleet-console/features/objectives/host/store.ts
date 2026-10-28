@@ -121,6 +121,8 @@ export interface ObjectiveStoreOptions {
   readonly documentContext?: (commodoreId: string) => import("./storage-codec.js").ObjectiveDocumentContext;
   readonly dirOf: (commodoreId: string) => string | null;
   readonly commodoreIds?: () => readonly string[];
+  /** owner 집합의 generation — 같은 문자열이면 같은 집합이다. 없으면 스냅샷 없이 매번 fresh로 읽는다. */
+  readonly ownersGeneration?: () => string | undefined;
   readonly objectiveRecords: { get(id: string): ObjectiveRecord | null; list(): readonly ObjectiveRecord[]; describe?(id: string): ObjectiveDescription | null; readonly groups?: { get(id: string): { readonly commodoreId: string } | null } };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
@@ -760,6 +762,34 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return bottom + RANK_STEP;
   };
   const commodoreIds = (): readonly string[] => [...new Set([...options.objectiveRecords.list().map((node) => node.commodoreId), ...cache.keys(), ...(options.commodoreIds?.() ?? [])])];
+  // 복원 패스가 목표마다 owner 집합을 다시 묻는다(locate·recorded·refresh·storedMember).
+  // 같은 스냅샷 안에서는 집합을 한 번만 읽어 재사용한다. all()을 포함한 조회가 fresh로
+  // 읽을 때마다 다시 심고, forgetOwner가 집합을 깨면 버린다. 목록에 없는 owner는
+  // 생성이 뒤에 붙으므로 순서가 바뀌지 않고, 목록에 있는데 빠진 owner는 삭제가
+  // 비우므로, generation·레코드·캐시가 그대로면 warmed 목록은 fresh와 순서까지
+  // 같다. 빗나가면 호출자가 fresh로 똑같이 재현하므로, 소유 판정 결과는 스냅샷이
+  // 없을 때와 완전히 같다.
+  let warmedOwners: { readonly generation: string; readonly records: string; readonly ids: readonly string[] } | null = null;
+  const snapshotKey = (): { readonly generation: string; readonly records: string } | null => {
+    const generation = options.ownersGeneration?.();
+    if (generation === undefined) return null;
+    return { generation, records: options.objectiveRecords.list().map((node) => node.commodoreId).join("\u0000") };
+  };
+  const ownerIds = (): readonly string[] => {
+    const warmed = warmedOwners;
+    if (warmed) {
+      try {
+        const key = snapshotKey();
+        if (key && key.generation === warmed.generation && key.records === warmed.records) return warmed.ids;
+      } catch { /* fresh로 똑같이 재현한다. */ }
+    }
+    const ids = commodoreIds();
+    try {
+      const key = snapshotKey();
+      if (key) warmedOwners = { ...key, ids };
+    } catch { /* 스냅샷 없이 fresh로만 동작한다. */ }
+    return ids;
+  };
   /** 첨부 한 자리 — 목표 디렉터리 안인지까지 확인한다(`attachments` 나 그 안의 파일이 링크로 밖을 가리키면 거절). */
   const fileOf = (commodoreId: string, objectiveId: string, attachment: Pick<ObjectiveAttachment, "id" | "type">) =>
     containedFile(objectiveDir(commodoreId, objectiveId), path.join("attachments", `${dirSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`));
@@ -961,7 +991,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const locate = (objectiveId: string): { commodoreId: string; recorded: boolean; stored: StoredObjective; node: ObjectiveRecord | null } => {
     const found = sessionRecord(objectiveId);
     const node = found ? objectiveNode(found.commodoreId, objectiveId) : null;
-    const commodoreId = commodoreIds().find((id) => load(id).get(objectiveId)?.pending) ?? node?.commodoreId;
+    const commodoreId = ownerIds().find((id) => load(id).get(objectiveId)?.pending) ?? node?.commodoreId;
     if (!commodoreId) throw new ObjectiveStoreError("unknown_objective");
     const stored = load(commodoreId).get(objectiveId);
     return { commodoreId, recorded: !!stored, stored: stored ?? bareRecord(objectiveId), node: node?.commodoreId === commodoreId ? node : null };
@@ -1038,7 +1068,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
   /** 구성원을 담은 저장 목표 — 실패·턴 좌표 같은 구성원 상태를 그 목표 파일에 둔다. 없으면(제거됨) null. */
   const memberOwner = (memberId: string): StoredObjective | null => {
-    for (const commodoreId of commodoreIds()) for (const stored of load(commodoreId).values()) if ((stored.members ?? []).some((member) => member.id === memberId)) return stored;
+    for (const commodoreId of ownerIds()) for (const stored of load(commodoreId).values()) if ((stored.members ?? []).some((member) => member.id === memberId)) return stored;
     return null;
   };
   const locateStored = (objectiveId: string) => locate(objectiveId);
@@ -1219,10 +1249,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
 
   const store: ObjectiveStore = {
-    forgetOwner(commodoreId) { cache.delete(commodoreId); },
+    forgetOwner(commodoreId) { cache.delete(commodoreId); warmedOwners = null; },
     list: (commodoreId) => visible(commodoreId).map(({ stored, node }) => project(stored, node)),
     // 보관된 목표도 관계·복구·purge 소유권은 가진다. 활성 공급은 list만 사용한다.
-    all: () => commodoreIds().flatMap((commodoreId) => visible(commodoreId, true).map(({ stored, node }) => project(stored, node))),
+    all: () => ownerIds().flatMap((commodoreId) => visible(commodoreId, true).map(({ stored, node }) => project(stored, node))),
     find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
     sharedDir(commodoreId, objectiveId) {
       const dir = containedFile(objectiveDir(commodoreId, objectiveId), "shared");
@@ -1290,7 +1320,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     releaseGroups(scope) {
       let released = 0;
-      for (const commodoreId of scope ? [scope.commodoreId] : commodoreIds()) {
+      for (const commodoreId of scope ? [scope.commodoreId] : ownerIds()) {
         const stale = (groupId: string | null | undefined): boolean => !!groupId && (scope ? groupId === scope.groupId : liveGroup(commodoreId, groupId) === null);
         for (const stored of [...load(commodoreId).values()]) {
           const batches = stored.followupBatches ?? [];
@@ -1445,7 +1475,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     refresh(objectiveId) {
       const node = sessionRecord(objectiveId);
       if (!node) {
-        for (const commodoreId of commodoreIds()) {
+        for (const commodoreId of ownerIds()) {
           const stored = load(commodoreId).get(objectiveId);
           if (stored?.pending) announce(commodoreId, stored);
         }
@@ -1465,7 +1495,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     forget(objectiveId) {
-      for (const commodoreId of commodoreIds()) {
+      for (const commodoreId of ownerIds()) {
         const objectives = load(commodoreId);
         if (objectives.has(objectiveId)) {
           // 복원 불가로 확정됐다 — 그 목표의 디렉터리가 통째로 사라진다(붙인 이미지도 함께). 지운 뒤에야 캐시를 갈고
@@ -2124,7 +2154,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
     recorded(objectiveId) {
       const node = sessionRecord(objectiveId);
-      return !!node && hasBoardRecord(load(node.commodoreId).get(objectiveId)) || commodoreIds().some((id) => !!load(id).get(objectiveId)?.pending);
+      return !!node && hasBoardRecord(load(node.commodoreId).get(objectiveId)) || ownerIds().some((id) => !!load(id).get(objectiveId)?.pending);
     },
 
     decisionRequest(objectiveId, input) {

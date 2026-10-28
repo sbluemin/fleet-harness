@@ -568,6 +568,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let ownership: ReturnType<typeof createCommodoreOwnership> | undefined;
   const archiveStorage = createObjectiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore,
     owners: () => ownership?.objectives() ?? [],
+    ownersGeneration: () => ownership?.ownersGeneration() ?? "",
     assertOwnerMutable: (id) => ownership?.assertWritable(id),
     initializeOwners: (state) => { theaters.restore(state.theaters); ownership = createCommodoreOwnership(consoleFeaturePorts.paths); },
     migrateRegistrationAliases: (entries) => migrateCommodoreAliases(entries, { entities: ownership!.entities, issueForAlias: ownership!.issueIfReady }),

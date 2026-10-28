@@ -76,7 +76,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     const linkId = root ? paths.workspaceHash(root) : "";
     return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: root ? [...new Set([linkId, ...registeredFor(root)])] : [], legacyCwd: root ?? "", theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
   });
-  let objectivesGeneration = "";
+  let objectivesCacheGeneration = "";
   let objectivesComputedAt = 0;
   let objectivesCache: ReturnType<typeof computeObjectives> | null = null;
   const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
@@ -156,12 +156,14 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       catch { throw new Error("objective_location_unavailable"); }
       return { commodoreId, cwd };
     },
+    // owners() 스냅샷의 generation — 같은 문자열이면 같은 owner 집합이다. 메모리 상태만 읽는다.
+    ownersGeneration: () => `${entitiesGeneration()}\u0002${registryGeneration()}`,
     objectives: () => {
       const generation = `${entitiesGeneration()}\u0002${registryGeneration()}`;
       const now = Date.now();
-      if (objectivesCache && objectivesGeneration === generation && now - objectivesComputedAt < CANONICAL_TTL_MS) return objectivesCache;
+      if (objectivesCache && objectivesCacheGeneration === generation && now - objectivesComputedAt < CANONICAL_TTL_MS) return objectivesCache;
       const computed = computeObjectives();
-      objectivesGeneration = generation;
+      objectivesCacheGeneration = generation;
       objectivesComputedAt = now;
       objectivesCache = computed;
       return computed;

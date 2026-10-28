@@ -47,7 +47,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
     let watchQuiet: () => void = () => {};
-    const store = createObjectiveStore({ dirOf, storage: deps.storage, commodoreIds: () => deps.storage?.owners().map((owner) => owner.commodoreId) ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
+    const store = createObjectiveStore({ dirOf, storage: deps.storage, commodoreIds: () => deps.storage?.owners().map((owner) => owner.commodoreId) ?? [], ownersGeneration: () => deps.storage?.ownersGeneration?.(), objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event) => {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
