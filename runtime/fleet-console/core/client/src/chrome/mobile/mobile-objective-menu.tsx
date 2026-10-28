@@ -15,9 +15,19 @@ export function mobileObjectiveMenuItems({ objectiveRecord, bodyItems, t, onArch
   readonly t: ReturnType<typeof useT>;
   readonly onArchive: () => void;
 }): readonly MobileBarMenuItem[] {
+  return mobileObjectiveActions({ t, bodyItems, onRename: () => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id }), onArchive });
+}
+
+/** 목록의 길게 누르기와 대화 ⋮가 공유하는 이름·보관 항목. 본문 항목은 대화에서만 끼운다. */
+export function mobileObjectiveActions({ t, bodyItems = [], onRename, onArchive }: {
+  readonly t: ReturnType<typeof useT>;
+  readonly bodyItems?: readonly MobileBarMenuItem[];
+  readonly onRename?: () => void;
+  readonly onArchive?: () => void;
+}): readonly MobileBarMenuItem[] {
   return [
-    { id: "rename", icon: <MobileIcon name="pencil" size={20} />, label: t("mobile.menu.rename"), run: () => pushMobileSheet({ kind: "rename", objectiveId: objectiveRecord.id }) },
+    { id: "rename", icon: <MobileIcon name="pencil" size={20} />, label: t("mobile.menu.rename"), disabled: !onRename, run: () => onRename?.() },
     ...bodyItems,
-    { id: "archive", icon: <MobileIcon name="archive" size={20} />, label: t("mobile.menu.archive"), run: onArchive },
+    { id: "archive", icon: <MobileIcon name="archive" size={20} />, label: t("mobile.menu.archive"), disabled: !onArchive, run: () => onArchive?.() },
   ];
 }

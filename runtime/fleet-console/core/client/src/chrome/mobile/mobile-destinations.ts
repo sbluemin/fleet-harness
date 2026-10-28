@@ -1,5 +1,4 @@
 import { getViewedCommodoreId, getViewedTheaterId } from "../../integration/viewed-theater.js";
-import { readCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
@@ -14,12 +13,11 @@ import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
 /**
- * 폰 홈(사령관 목록·바로가기 시트·「확인 필요」)이 가리키는 사령관 — 화면이 명시한 사령관(`getViewedCommodoreId`), 없으면 「사령관」 칩이
- * 열 사령관(목록의 첫 사령관)이다. 칩을 누르면 열리는 사령관(`openMobilePluginDestination`)과 같아, 칩의 상태 칸·배지가 연 화면과 어긋나지 않는다.
- * 공용 규칙에는 이 대체를 두지 않는다 — 홈만 명시적으로 쓴다.
+ * 폰 홈(사령관 목록·바로가기 시트·「확인 필요」)은 화면이 명시한 사령관, 없으면 기기에 기억한 선택을 쓴다.
+ * 데스크톱처럼 아무도 고르지 않았으면 사령관 없음이다 — 목록 순서로 수신자를 정하지 않는다.
  */
 export function mobileHomeCommodoreId(): string | null {
-  return getViewedCommodoreId() ?? readCommodoreList()[0]?.commodoreId ?? null;
+  return getViewedCommodoreId();
 }
 
 /**

@@ -53,6 +53,7 @@ import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, 
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { subscribeObjectiveActivityTracking } from "../../../../features/workspace/client/sidebar/objective-records-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
+import { MobileArchiveOutcomeContext } from "../chrome/mobile/mobile-commander-actions.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
 import { MobileConnectionBand } from "../chrome/mobile/mobile-connection-band.js";
@@ -585,7 +586,7 @@ function ConnectedApp() {
           );
           // The mobile frame sits outside the routes: the home's shortcut sheet reaches every destination,
           // so a frame that unmounted with the objectiveRecords route would strand the way back.
-          return mobileLayout ? <MobileFrame state={state} bands={shellBars}>{routeContent}</MobileFrame> : routeContent;
+          return mobileLayout ? <MobileArchiveOutcomeContext.Provider value={enqueueArchive}><MobileFrame state={state} bands={shellBars}>{routeContent}</MobileFrame></MobileArchiveOutcomeContext.Provider> : routeContent;
         })()}
         <ObjectiveSearch
           state={state}

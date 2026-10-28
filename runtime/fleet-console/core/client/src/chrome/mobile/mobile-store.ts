@@ -4,7 +4,7 @@ import type { MobileConfirmSpec } from "../../../../../features/workspace/shared
 import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features/workspace/shared/pane.js";
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
-import { readCommodoreList, readMobileCommodoreId } from "../../../../../features/commodore/client/commodore-list.js";
+import { getViewedCommodoreId } from "../../integration/viewed-theater.js";
 
 
 /**
@@ -57,7 +57,7 @@ export type MobileDestination =
 // 새로고침해도 보던 목적지를 잃지 않게 주소(`?dest=`)에 남긴다 — 첫 화면(IA-G2)은 앱을 새로 열 때의 기본이고, 새로고침은 그 자리 유지다.
 const DEST_PARAM = "dest";
 
-function readDestinationFromUrl(): MobileDestination {
+export function readDestinationFromUrl(): MobileDestination {
   if (typeof window === "undefined") return { kind: "home" };
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
@@ -90,10 +90,13 @@ function writeDestinationToUrl(next: MobileDestination): void {
   const url = new URL(window.location.href);
   const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
     : next.kind === "info" && next.tab !== undefined ? `info:${next.tab}` : next.kind;
-  if ((url.searchParams.get(DEST_PARAM)) === value) return;
+  const clearObjective = next.kind === "plugin" && next.entryId === "commodore" && url.searchParams.has("op");
+  if (url.searchParams.get(DEST_PARAM) === value && !clearObjective) return;
   if (value === null) url.searchParams.delete(DEST_PARAM);
   else url.searchParams.set(DEST_PARAM, value);
+  if (clearObjective) url.searchParams.delete("op");
   window.history.replaceState(window.history.state, "", url);
+  if (clearObjective) window.dispatchEvent(new Event("popstate"));
 }
 
 let destination: MobileDestination = readDestinationFromUrl();
@@ -109,7 +112,7 @@ export function getMobileDestination(): MobileDestination { return destination; 
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
-    && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;
+    && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) { writeDestinationToUrl(next); return; }
   destination = next;
   if (next.kind === "plugin" && next.params?.theaterId) mobileListTheaterId = next.params.theaterId;
   writeDestinationToUrl(next);
@@ -118,11 +121,11 @@ export function setMobileDestination(next: MobileDestination): void {
 
 /**
  * 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. 사령관 화면의 주소는 Theater가 아니라 고른 사령관 UUID다 —
- * 칩에서 고른 사령관, 없으면 목록의 첫 사령관. Theater 에서 주인을 찾지 않는다.
+ * 화면이 명시한 사령관, 없으면 기기에 기억한 선택. 아무도 고르지 않았으면 비워 두며 Theater 에서 주인을 찾지 않는다.
  */
 export function openMobilePluginDestination(entryId: string, theaterId: string | null): void {
   if (entryId === "commodore") {
-    const commodoreId = readMobileCommodoreId() ?? readCommodoreList()[0]?.commodoreId ?? null;
+    const commodoreId = getViewedCommodoreId();
     setMobileDestination({ kind: "plugin", entryId, ...(commodoreId ? { params: { commodoreId } } : {}) });
     return;
   }

@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
+import { commodoreListLoaded, subscribeCommodoreList, useMobileCommodoreSelection } from "../../../../../features/commodore/client/commodore-list.js";
 
 import { useConsoleState } from "../../hooks/use-store.js";
 import { forgetReportedMobileChrome } from "../../integration/mobile-appearance-store.js";
@@ -38,6 +40,17 @@ export function MobileFrame({ state, bands, children }: { readonly state: Consol
   const locale = useConsoleLocale();
   const { rows } = useMobileAttention(state);
   const destination = useMobileDestination();
+  const selectedCommodoreId = useMobileCommodoreSelection();
+  const commodoresLoaded = useSyncExternalStore(subscribeCommodoreList, commodoreListLoaded, commodoreListLoaded);
+
+  // 저장된 선택을 확인하기 전에는 기다린다. 고른 사령관이 없으면 빈 화면 대신 홈 목록에서 고르게 한다.
+  useEffect(() => {
+    if (!commodoresLoaded || selectedCommodoreId !== null) return;
+    const current = getMobileDestination();
+    if (current.kind !== "plugin" || current.entryId !== "commodore" || current.params?.commodoreId) return;
+    setMobileDestination({ kind: "home" });
+    closeMobileObjective();
+  }, [commodoresLoaded, destination, selectedCommodoreId]);
 
   // 목적지로 선언된 레일 엔트리를 스토어에 알린다 — 그 id를 연 요청(플러그인의 rail.open 등)은 시트가 아니라 화면이 된다.
   const shownDestinations = useMobileDestinationBindings(bindings, mobileHomeCommodoreId());

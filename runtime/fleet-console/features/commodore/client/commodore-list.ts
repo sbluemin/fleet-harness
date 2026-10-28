@@ -17,7 +17,24 @@ const COMMODORE_CHANNEL = "commodore";
 let commodores: readonly ConsoleCommodoreSummary[] = [];
 let loaded = false;
 let zoneCommodoreId: string | null = null;
-let mobileCommodoreId: string | null = null;
+const MOBILE_COMMODORE_KEY = "fleet.mobile.commodore";
+let mobileCommodoreId: string | null = readSavedMobileCommodore();
+
+function readSavedMobileCommodore(): string | null {
+  try { return window.localStorage.getItem(MOBILE_COMMODORE_KEY); } catch { return null; }
+}
+
+function saveMobileCommodore(commodoreId: string | null): void {
+  mobileCommodoreId = commodoreId;
+  try {
+    if (commodoreId === null) window.localStorage.removeItem(MOBILE_COMMODORE_KEY);
+    else window.localStorage.setItem(MOBILE_COMMODORE_KEY, commodoreId);
+  } catch { /* 저장소를 쓸 수 없어도 이번 화면의 선택은 유지한다. */ }
+}
+
+function forgetMissingMobileCommodore(): void {
+  if (mobileCommodoreId !== null && !commodores.some((row) => row.commodoreId === mobileCommodoreId)) saveMobileCommodore(null);
+}
 const listeners = new Set<() => void>();
 let refreshFlight: Promise<void> | null = null;
 let refreshAgain = false;
@@ -60,12 +77,13 @@ export function useZoneCommodore(): string | null {
 
 export function selectMobileCommodore(commodoreId: string | null): void {
   if (mobileCommodoreId === commodoreId) return;
-  mobileCommodoreId = commodoreId;
+  saveMobileCommodore(commodoreId);
   emit();
 }
 
 export function readMobileCommodoreId(): string | null {
-  return mobileCommodoreId;
+  // 목록 확인 전의 저장값을 목적지 주소로 옮기지 않는다. 삭제된 사령관이 주소로 되살아날 수 있다.
+  return commodores.some((row) => row.commodoreId === mobileCommodoreId) ? mobileCommodoreId : null;
 }
 
 export function useMobileCommodoreSelection(): string | null {
@@ -74,6 +92,7 @@ export function useMobileCommodoreSelection(): string | null {
 
 export function replaceCommodoreList(next: readonly ConsoleCommodoreSummary[]): void {
   commodores = next.filter((row) => !wasCommodoreRemoved(row.commodoreId));
+  forgetMissingMobileCommodore();
   loaded = true;
   emit();
 }
@@ -102,6 +121,7 @@ export function refreshCommodoreList(): Promise<void> {
       try {
         const result = await fetchCommodores();
         commodores = result.commodores.filter((row) => !wasCommodoreRemoved(row.commodoreId));
+        forgetMissingMobileCommodore();
       } catch {
         // 목록이 비어도 기록의 commodoreId 로 섹션은 남는다.
       } finally {
@@ -121,7 +141,7 @@ export function installCommodoreList(events: ClientConsoleEventsCapability): () 
     if (event?.op === "removed") {
       commodores = commodores.filter((row) => row.commodoreId !== event.commodoreId);
       if (zoneCommodoreId === event.commodoreId) zoneCommodoreId = null;
-      if (mobileCommodoreId === event.commodoreId) mobileCommodoreId = null;
+      if (mobileCommodoreId === event.commodoreId) saveMobileCommodore(null);
       emit();
       void refreshCommodoreList();
     }

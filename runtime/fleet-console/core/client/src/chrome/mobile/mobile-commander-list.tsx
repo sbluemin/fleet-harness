@@ -1,5 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
+import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
+import { useMobileCommanderActions } from "./mobile-commander-actions.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "../../../../../features/workspace/client/commander-tab/commander-folds.js";
 import { SORTS, activityOf, setSort, useSortPreference, type SortPreference } from "../../../../../features/workspace/client/commander-tab/commander-sort.js";
 import { ClusterRowAvatar, ClusterRowProgress, clusterRowSummary, type SideBarRowItem } from "../../../../../features/workspace/client/sidebar/side-bar-cluster-row.js";
@@ -56,6 +58,8 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   const language = useConsoleLocale();
   const time = useConversationTime();
   const detailId = useId();
+  const openActions = useMobileCommanderActions();
+  const longPress = useLongPress<HTMLButtonElement>(() => openActions(item));
   const { layout, row } = item;
   const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, language, t);
   const activity = activityOf(item);
@@ -67,7 +71,9 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   });
   return <li className={`mobile-commander-item${selected ? " is-selected" : ""}`} data-cluster-row-id={layout.cluster.id}>
     <MobileMarkedRow mark={row.mark}>
-      <button type="button" data-press="r1" className="mobile-conv-row" aria-expanded={selected} aria-controls={selected ? detailId : undefined} aria-description={decisionNote || undefined} onClick={onSelect}>
+      <button type="button" data-press="r1" className="mobile-conv-row" aria-expanded={selected} aria-controls={selected ? detailId : undefined} aria-description={decisionNote || undefined} onClick={onSelect}
+        onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}
+        onContextMenu={(event) => { event.preventDefault(); if (!longPress.claimContextMenu(event)) openActions(item); }}>
         <span className="mobile-conv-row-av"><ClusterRowAvatar item={item} rowState={state} label={label} size={40} decorative /></span>
         <span className="mobile-conv-row-copy">
           <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{layout.cluster.title}</span>{activity !== undefined ? <time className="mobile-conv-row-aside" dateTime={new Date(activity).toISOString()}>{time(activity)}</time> : null}</span>
