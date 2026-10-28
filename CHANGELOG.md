@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.267.1] - 2026-10-28
+
+### fleet-console
+
+#### Fixed
+- The commander list inside chat now stays expanded when you switch commanders, and remembers its state after a reload.
+
 ## [1.267.0] - 2026-10-28
 
 ### fleet-console
