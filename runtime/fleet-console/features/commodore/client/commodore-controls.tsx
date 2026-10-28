@@ -48,6 +48,8 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         loading: t("commodore.board.launch.loading"),
         empty: t("commodore.board.launch.empty"),
         off: t("commodore.board.launch.off"),
+        providerRemoved: t("commodore.board.launch.providerRemoved"),
+        chooseAnotherModel: t("commodore.board.launch.chooseAnotherModel"),
         fallback: t("commodore.board.launch.fallback"),
       }}
       trigger={{ variant: "field" }}

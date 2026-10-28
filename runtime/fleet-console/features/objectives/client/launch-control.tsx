@@ -233,6 +233,8 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
         loading: t("objectives.launch.loading"),
         empty: t("objectives.launch.empty"),
         off: t("objectives.launch.off"),
+        providerRemoved: t("objectives.launch.providerRemoved"),
+        chooseAnotherModel: t("objectives.launch.chooseAnotherModel"),
         fallback: t("objectives.launch.fallback"),
         locked: t("objectives.commander.locked"),
       }}
@@ -287,14 +289,14 @@ export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t:
   }
   if (member.launch.mode !== "model") return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null };
   const shown = modelCoordinateDisplay(roster, { model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) }, undefined, pickerLabels(t));
-  return { label: shown.words.model, effort: shown.words.effort || null, title: display.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
 }
 
 /** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
 export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
   const { model, effort } = objective.commander;
   const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
-  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
 }
 
 /**
@@ -308,6 +310,7 @@ export interface LaunchShown {
   readonly effort: string | null;
   readonly title: string;
   readonly provider: LaunchProviderGlyphId | null;
+  readonly providerName?: string;
   readonly struck: boolean;
   readonly badge: string | null;
 }
@@ -360,7 +363,7 @@ export function memberNotes(member: ObjectiveMember, launched: boolean, t: Trans
   return notes;
 }
 
-const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), fallback: t("objectives.launch.fallback") });
+const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), providerRemoved: t("objectives.launch.providerRemoved"), fallback: t("objectives.launch.fallback") });
 
 /** 한 로케일 값의 낱말을 로케일마다 다시 푼다 — 대화 명부는 호스트의 로케일로 읽는다. */
 export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): LocalizedText => (locale) => word(getT(locale));

@@ -96,6 +96,8 @@ export interface ConversationMemberProfile {
     readonly effort?: LocalizedText;
     readonly title?: LocalizedText;
     readonly provider?: LaunchProviderGlyphId;
+    /** 제거된 공급자는 글리프 대신 원래 이름을 보인다. */
+    readonly providerName?: string;
     readonly struck?: boolean;
     readonly badge?: LocalizedText;
     readonly via?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly tone?: "warn" };

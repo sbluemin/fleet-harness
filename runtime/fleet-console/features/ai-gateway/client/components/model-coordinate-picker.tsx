@@ -5,7 +5,7 @@ import type { ObjectiveLaunchVariantRow } from "../../../objectives/shared/recor
 import { canonicalModelId, findRosterRow, resolveRosterCoordinate, type ModelRoster } from "../../shared/models.js";
 import { useMobileSettingsHost, MobileSettingsRowLabelContext, type MobileCoordinateChoiceProps } from "../../../settings/client/mobile-host.js";
 import { EffortTrack, resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
-import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, removedLaunchProviderName, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 
 /**
  * 모델·강도 좌표 하나를 고르는 Console의 단일 선택기.
@@ -49,6 +49,9 @@ export interface ModelCoordinatePickerLabels {
   readonly empty?: string;
   /** 로스터 밖 저장값의 표식과 띠 머리(「꺼짐」). */
   readonly off?: string;
+  /** 제거된 공급자의 표식과 띠 머리. 안내는 메뉴 띠 안에서만 보인다. */
+  readonly providerRemoved?: string;
+  readonly chooseAnotherModel?: string;
   /** 로스터가 비어 최후 폴백으로 설 때의 표식(「폴백」). */
   readonly fallback?: string;
   /** 잠긴 트리거의 툴팁 둘째 줄. */
@@ -164,6 +167,8 @@ export interface ModelCoordinateDisplay {
   readonly provider: LaunchProviderGlyphId | null;
   readonly badge: string | null;
   readonly off: boolean;
+  /** 저장값의 제거된 공급자 이름. 폴백을 표시할 때도 메뉴 띠에 남는다. */
+  readonly removedProvider: string | null;
   /** 트리거가 꺼진 저장값 자체를 말하고 있는지(취소선). 로스터가 비어 폴백 좌표를 보일 때는 아니다. */
   readonly struck: boolean;
   /** 트리거의 hover 글 — 낱말과 표식을 「 · 」로 잇는다. */
@@ -178,12 +183,13 @@ export function modelCoordinateDisplay(
   roster: ModelRoster | null,
   value: ModelCoordinateValue,
   fallback: ModelCoordinateValue | undefined,
-  labels: Pick<ModelCoordinatePickerLabels, "auto" | "off" | "fallback">,
+  labels: Pick<ModelCoordinatePickerLabels, "auto" | "off" | "fallback" | "providerRemoved">,
 ): ModelCoordinateDisplay {
   const stored = value.model ? value : null;
   const off = Boolean(stored?.model) && roster !== null && !findRosterRow(roster, stored!.model);
+  const removedProvider = removedLaunchProviderName(stored?.model, off);
   let shown: ModelCoordinateValue = stored ?? { model: fallback?.model, effort: value.effort ?? fallback?.effort };
-  let badge: string | null = off ? labels.off ?? null : null;
+  let badge: string | null = off ? (removedProvider ? labels.providerRemoved : labels.off) ?? null : null;
   if (roster !== null && (!stored || roster.length === 0)) {
     const resolved = resolveRosterCoordinate(roster, stored ? { effort: stored.effort } : {}, { model: fallback?.model, effort: value.effort ?? fallback?.effort });
     shown = { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
@@ -196,8 +202,9 @@ export function modelCoordinateDisplay(
     provider: rosterProviderOf(roster, shown.model),
     badge,
     off,
+    removedProvider,
     struck: off && shown === stored,
-    title: [words.model, words.effort, badge].filter(Boolean).join(" · "),
+    title: [[shown === stored ? removedProvider : null, words.model].filter(Boolean).join(" "), words.effort, badge].filter(Boolean).join(" · "),
   };
 }
 
@@ -209,7 +216,7 @@ function TriggerText({ display, prefix }: { readonly display: ModelCoordinateDis
   return (
     <>
       {prefix}
-      <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />
+      {display.struck && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />}
       <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
       {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
       {display.badge ? <span className={`fc-coord-trigger-badge${display.struck ? " is-off" : ""}`}>{display.badge}</span> : null}
@@ -226,8 +233,8 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
     const listed = roster ?? [];
     if (!display.off || !value.model) return listed;
     // 꺼진 저장값은 「꺼짐」 띠에 그대로 세운다 — 사라지면 첫 행이 골라진 것처럼 읽힌다.
-    return [...listed, { id: OFF_GROUP_ID, label: labels.off ?? value.model, rows: [{ id: value.model, label: prettyModelId(value.model), launch: { model: value.model } }] }];
-  }, [roster, display.off, value.model, labels.off]);
+    return [...listed, { id: OFF_GROUP_ID, label: (display.removedProvider ? labels.providerRemoved : labels.off) ?? value.model, rows: [{ id: value.model, label: prettyModelId(value.model), launch: { model: value.model } }] }];
+  }, [roster, display.off, display.removedProvider, value.model, labels.off, labels.providerRemoved]);
   const rows = React.useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   // 메뉴에서 방금 고른 값 — 저장이 돌아오기 전에도 2단계가 그 모델로 선다. 값이 돌아오거나 메뉴가 닫히면 거둔다.
   const [picked, setPicked] = React.useState<{ readonly model: string; readonly effort?: string } | null>(null);
@@ -443,10 +450,12 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
                       {provider ? <span className="objective-launch-provider-glyph" aria-hidden="true">{launchProviderGlyph(provider)}</span> : null}
                       <span>{provider ? launchProviderCaption(provider) : group.label}</span>
                     </p>
+                    {group.id === OFF_GROUP_ID && display.removedProvider && labels.chooseAnotherModel ? <p className="fc-coord-menu-caption fc-coord-menu-note">{labels.chooseAnotherModel}</p> : null}
                     {group.rows.map((row) => {
                       const active = activeModel !== null && canonicalModelId(row.launch.model ?? row.id) === canonicalModelId(activeModel);
                       return (
                         <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`fc-coord-menu-item${active ? " is-active" : ""}`} onClick={() => pickRow(row)}>
+                          {group.id === OFF_GROUP_ID && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : null}
                           <span className="fc-coord-menu-label">{row.label}</span>
                           {active && effortMode === "track" ? <span className="fc-coord-menu-chev" aria-hidden="true"><Chevron /></span> : null}
                         </button>
@@ -495,7 +504,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
     keepDraft(null);
     notify(last);
   };
-  const text = props.trigger?.text ?? [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
+  const text = props.trigger?.text ?? <TriggerText display={display} />;
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
     <>
@@ -505,7 +514,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
       {open ? (
         <Sheet
           title={rowLabel ?? labels.menu}
-          roster={roster ?? []}
+          roster={roster}
           value={draft ?? (value.model ? value : display.shown)}
           onSelect={(next, meta) => {
             if (meta?.final) { keepDraft(null); notify(next); return; }
@@ -514,6 +523,8 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
           effort={props.effort ?? "track"}
           effortLabel={labels.effort}
           {...(labels.off ? { offLabel: labels.off } : {})}
+          {...(labels.providerRemoved ? { providerRemovedLabel: labels.providerRemoved } : {})}
+          {...(labels.chooseAnotherModel ? { chooseAnotherModelLabel: labels.chooseAnotherModel } : {})}
           // 모델을 고른 초안이 있으면 선택 방식은 선택으로 서지 않는다 — 데스크톱 메뉴처럼 고른 모델과 그 강도 탭이 선다.
           {...(extras ? { extras: extras.map((extra) => ({ ...extra, active: draft ? false : extra.active, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
           {...(reset ? { reset: { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } } : {})}
