@@ -3171,4 +3171,100 @@ describe("Objectives contract", () => {
       vi.useRealTimers();
     }
   });
+
+  // shared/ 읽기 전용 경로 — 목록은 링크를 빼고 시각 내림차순, 파일은 바이트로 다시 판정한다.
+  // 경로 탈출("..", 절대경로, 바깥 링크 경유)은 막고 응답에 바깥 표식을 남기지 않는다.
+  it("serves an objective's shared folder read-only without following links or leaking outside paths", async () => {
+    const h = harness();
+    h.add("shared-reader", { ...({ session: { harness: "claude-code", sessionName: "existing-session" } }) });
+    h.store.adopt("shared-reader", { note: "shared folder api" });
+    h.add("shared-empty", { ...({ session: { harness: "claude-code", sessionName: "existing-session" } }) });
+    h.store.adopt("shared-empty", { note: "no shared dir yet" });
+    const realRoot = fs.realpathSync(h.store.sharedDir("c1", "shared-reader"));
+    const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-shared-outside-")));
+    try {
+      const text = "# 검증\n\n확인했습니다.\n";
+      fs.writeFileSync(path.join(realRoot, "note.txt"), text);
+      fs.writeFileSync(path.join(realRoot, "shot.png"), PNG);
+      fs.writeFileSync(path.join(realRoot, "vector.svg"), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+      fs.mkdirSync(path.join(realRoot, "sub"));
+      fs.writeFileSync(path.join(realRoot, "sub", "deep.txt"), "deep");
+      fs.writeFileSync(path.join(outside, "secret.txt"), "outside secret");
+      fs.symlinkSync(path.join(outside, "secret.txt"), path.join(realRoot, "leak.txt"));
+      fs.symlinkSync(outside, path.join(realRoot, "leakdir"));
+      // 목록 순서가 시각 내림차순으로 고정되게 mtime 을 박는다(초 단위로 겹치지 않게).
+      const at = (name: string, seconds: number) => fs.utimesSync(path.join(realRoot, name), seconds, seconds);
+      at("note.txt", 4); fs.utimesSync(path.join(realRoot, "sub", "deep.txt"), 3, 3); at("shot.png", 2); at("vector.svg", 1);
+      const routes = () => createObjectiveRoutes(h.ctx, h.store, h.launch);
+      const listOf = async (objectiveId: string) => {
+        let captured: { status: number; value: unknown } = { status: 0, value: null };
+        const writeJson = h.ctx.http.writeJson;
+        h.ctx.http.writeJson = ((_res: unknown, status: number, value: unknown) => { captured = { status, value }; }) as typeof writeJson;
+        try {
+          await routes().find((entry) => entry.name === "shared/list")!.handler({ req: { method: "GET", url: `/?objectiveId=${encodeURIComponent(objectiveId)}` } as never, res: {} as never, pathname: "shared/list" });
+        } finally { h.ctx.http.writeJson = writeJson; }
+        return captured;
+      };
+      const fileOf = async (objectiveId: string, filePath: string, download = false) => {
+        let captured: { status: number; value: unknown } = { status: 0, value: null };
+        const writeJson = h.ctx.http.writeJson;
+        h.ctx.http.writeJson = ((_res: unknown, status: number, value: unknown) => { captured = { status, value }; }) as typeof writeJson;
+        const output = { status: 0, headers: {} as Record<string, string | number>, data: Buffer.alloc(0) as Buffer };
+        try {
+          const url = `/?objectiveId=${encodeURIComponent(objectiveId)}&path=${encodeURIComponent(filePath)}${download ? "&download=1" : ""}`;
+          await routes().find((entry) => entry.name === "shared/file")!.handler({ req: { method: "GET", url } as never,
+            res: { writeHead: (status: number, headers: Record<string, string | number>) => { output.status = status; output.headers = headers; }, end: (data: Buffer) => { output.data = data; } } as never, pathname: "shared/file" });
+        } finally { h.ctx.http.writeJson = writeJson; }
+        return { ...output, status: output.status || captured.status, json: captured.value as { error?: string } | null };
+      };
+      // 목록은 링크를 빼고 시각 내림차순이다.
+      const listed = await listOf("shared-reader");
+      expect(listed.status).toBe(200);
+      const body = listed.value as { entries: { path: string; bytes: number; modifiedAt: number; kind: string }[]; truncated: boolean };
+      expect(body.truncated).toBe(false);
+      expect(body.entries.map((entry) => [entry.path, entry.kind])).toEqual([
+        ["note.txt", "text"],
+        ["sub/deep.txt", "text"],
+        ["shot.png", "image"],
+        ["vector.svg", "text"],
+      ]);
+      expect(body.entries[0]).toMatchObject({ bytes: Buffer.byteLength(text), modifiedAt: 4000 });
+      // 알 수 없는 목표는 404, 없는 shared/ 는 만들지 말고 빈 목록이다.
+      expect(await listOf("no-such")).toMatchObject({ status: 404, value: { error: "unknown_objective" } });
+      expect(await listOf("shared-empty")).toMatchObject({ status: 200, value: { entries: [], truncated: false } });
+      expect(fs.existsSync(path.join(h.objectivesDir, "shared-empty", "shared"))).toBe(false);
+      // 정상 읽기 — 텍스트·이미지는 판정한 MIME 으로 inline, 바이트 그대로.
+      const textFile = await fileOf("shared-reader", "note.txt");
+      expect(textFile.status).toBe(200);
+      expect(textFile.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+      expect(textFile.headers["Content-Disposition"]).toBe("inline");
+      expect(textFile.data.toString("utf8")).toBe(text);
+      const image = await fileOf("shared-reader", "shot.png");
+      expect(image.status).toBe(200);
+      expect(image.headers["Content-Type"]).toBe("image/png");
+      expect(image.headers["Content-Disposition"]).toBe("inline");
+      expect(image.data).toEqual(PNG);
+      // SVG 는 image/svg+xml 로 나가지 않고, download=1 은 내려받기로만 나간다.
+      expect((await fileOf("shared-reader", "vector.svg")).headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+      const down = await fileOf("shared-reader", "note.txt", true);
+      expect(down.headers["Content-Type"]).toBe("application/octet-stream");
+      expect(String(down.headers["Content-Disposition"])).toContain("attachment; filename*=UTF-8''note.txt");
+      for (const response of [textFile, image, down]) {
+        expect(response.headers).toMatchObject({ "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'", "Referrer-Policy": "no-referrer", "Cache-Control": "private, no-store" });
+      }
+      // 거부 — "..", 절대경로, 역슬래시, 빈 경로는 400, 파일·디렉터리 링크 경유와 없는 파일·디렉터리는 404. 본문에 바깥 표식이 없다.
+      const denied: [string, number][] = [["../objective.json", 400], ["..", 400], ["/etc/hosts", 400], ["sub\\deep.txt", 400], ["", 400],
+        ["leak.txt", 404], ["leakdir", 404], ["leakdir/secret.txt", 404], ["sub", 404], ["no-such.txt", 404]];
+      for (const [filePath, status] of denied) {
+        const response = await fileOf("shared-reader", filePath);
+        expect(response.status).toBe(status);
+        expect(response.json).toEqual({ error: status === 400 ? "unsafe_path" : "unknown_shared_file" });
+        expect(JSON.stringify(response)).not.toContain(outside);
+        expect(JSON.stringify(response)).not.toContain("outside secret");
+      }
+      expect(await fileOf("no-such", "note.txt")).toMatchObject({ status: 404, json: { error: "unknown_objective" } });
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
 });

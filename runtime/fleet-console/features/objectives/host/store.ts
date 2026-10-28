@@ -192,6 +192,8 @@ export interface ObjectiveStore {
   find(objectiveId: string): Objective | null;
   /** 증거 공유 디렉터리 — 지휘관과 구성원이 같이 쓰고, 봉인은 이 안의 파일만 받는다. */
   sharedDir(commodoreId: string, objectiveId: string): string;
+  /** 증거 공유 디렉터리의 읽기 전용 자리 — 없거나 링크·일반 디렉터리가 아니면 null 을 돌려 만들고 건드리지 않는다. */
+  sharedPath(commodoreId: string, objectiveId: string): string | null;
   /** 지휘관의 담당 Objective 들 — 지휘관 Objective 이 이미 사라진 뒤에도 레코드에서 찾는다. */
   /** 이 Objective 이 맡은 목표와 구성원. */
   findMember(objectiveId: string): { readonly objective: Objective; readonly memberId: string; readonly missionId: string | null } | null;
@@ -1231,6 +1233,15 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       }
       return realOf(dir);
+    },
+    sharedPath(commodoreId, objectiveId) {
+      const shared = path.join(objectiveDir(commodoreId, objectiveId), "shared");
+      let stat: fs.Stats;
+      try { stat = fs.lstatSync(shared); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; return null; }
+      // 링크·일반 디렉터리가 아니면 읽지 않는다 — 목록은 빈 목록, 파일은 404 로 답한다.
+      if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
+      return realOf(shared);
     },
     findMember(objectiveId) {
       for (const objective of store.all()) {
