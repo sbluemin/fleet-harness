@@ -585,7 +585,7 @@ function ConnectedApp() {
           );
           // The mobile frame sits outside the routes: the home's shortcut sheet reaches every destination,
           // so a frame that unmounted with the objectiveRecords route would strand the way back.
-          return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
+          return mobileLayout ? <MobileFrame state={state} bands={shellBars}>{routeContent}</MobileFrame> : routeContent;
         })()}
         <ObjectiveSearch
           state={state}

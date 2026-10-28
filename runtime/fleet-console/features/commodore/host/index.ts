@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import type { FolderGrantStore } from "../../workspace/host/theaters/theater-domain.js";
+import { ClaudeTrustError, trustClaudeTheater } from "../../workspace/host/theaters/claude-trust.js";
 import { createCommodoreDeletion, type CommodoreDeletionHost } from "./deletion.js";
 export type { CommodoreDeletionHost } from "./deletion.js";
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
@@ -31,6 +33,7 @@ import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
 
 export interface CommodoreFeatureDeps {
+  readonly folderGrants?: Pick<FolderGrantStore, "consume">;
   readonly deletion?: CommodoreDeletionHost;
   readonly ownership?: ReturnType<typeof createCommodoreOwnership>;
   readonly created?: (commodoreId: string) => void;
@@ -82,7 +85,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     experiments: () => deps.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
     ...(deps.experiments?.subscribe ? { subscribeExperiments: deps.experiments.subscribe } : {}),
     ...(deps.models ? { models: deps.models } : {}),
-    theater: (theaterId) => { const root = deps.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
+    theater: (theaterId) => {
+      const root = entities.resolveAll(theaterId).flatMap((id) => entities.theatersOf(id)).find((row) => deps.paths.workspaceHash(row.path) === theaterId)?.path;
+      return root ? { label: path.basename(root) || root, root } : null;
+    },
     knowledgeTools: deps.knowledgeTools,
     managementTools: (commodoreId, turn) => createCommodoreManagementTools({
       hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
@@ -123,7 +129,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     return [...new Set([...(deps.order?.read() ?? []).filter((id) => known.has(id)), ...ids])];
   };
   const deletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
-    protectedDirectories: () => [...entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)), ...(deps.paths.listTheaterIds?.() ?? []).flatMap((id) => { const root = deps.paths.resolveTheaterPath(id); return root ? [root] : []; })],
+    protectedDirectories: () => entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)),
     removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
     removed: (commodoreId, ids) => { emit({ op: "removed", commodoreId, theaterIds: ids }); deps.identityChanged?.(ids); },
   }) : undefined;
@@ -143,20 +149,32 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       if (first && state) emit({ op: "state", commodoreId: first, theaterIds: theaterIds(first), state, change: "order" });
     },
     create: (alias) => { const id = ownership.create(); deps.created?.(id); store.setAlias(id, alias); store.announceCreated(id); return id; },
-    changeTheater: (id, theaterId, add) => {
-      try { deps.beforeTheatersChange?.(id); } catch { throw new CommodoreStoreError("objective_owner_recovery_required"); }
-      const before = theaterIds(id);
-      const rows = entities.theatersOf(id);
-      if (add) {
-        const root = deps.paths.resolveTheaterPath(theaterId);
-        if (!root) throw new CommodoreStoreError("theater_unavailable");
-        const canonical = fs.realpathSync.native(root);
-        if (!fs.statSync(canonical).isDirectory()) throw new CommodoreStoreError("theater_unavailable");
-        if (!rows.some((row) => row.path === canonical)) store.setTheaters(id, [...rows, { path: canonical }]);
-      } else {
-        store.setTheaters(id, rows.filter((row, index) => before[index] !== theaterId && deps.paths.workspaceHash(row.path) !== theaterId));
+    addTheater: async (id, folderGrantId, consent) => {
+      const root = deps.folderGrants?.consume(folderGrantId);
+      if (!root) throw new CommodoreStoreError("invalid_folder_grant");
+      let canonical: string;
+      try {
+        canonical = fs.realpathSync.native(root);
+        if (!fs.statSync(canonical).isDirectory()) throw new Error();
+      } catch { throw new CommodoreStoreError("theater_unavailable"); }
+      if (consent) {
+        try { await trustClaudeTheater(canonical); }
+        catch (error) { throw new CommodoreStoreError(error instanceof ClaudeTrustError ? error.code : "claude_trust_write_failed"); }
       }
-      deps.identityChanged?.([...new Set([...before, ...theaterIds(id)])]);
+      // 신뢰 쓰기를 기다리는 동안 삭제·목록 변경이 끝났을 수 있다. 저장 직전 소유자와 실제 폴더를 다시 확인한다.
+      ownership.assertWritable(id);
+      try {
+        if (fs.realpathSync.native(root) !== canonical || fs.realpathSync.native(canonical) !== canonical || !fs.statSync(canonical).isDirectory()) throw new Error();
+      } catch { throw new CommodoreStoreError("theater_unavailable"); }
+      try { deps.beforeTheatersChange?.(id); } catch { throw new CommodoreStoreError("objective_owner_recovery_required"); }
+      const rows = entities.theatersOf(id);
+      if (!rows.some((row) => row.path === canonical)) store.setTheaters(id, [...rows, { path: canonical }]);
+      return deps.paths.workspaceHash(canonical);
+    },
+    removeTheater: (id, theaterId) => {
+      try { deps.beforeTheatersChange?.(id); } catch { throw new CommodoreStoreError("objective_owner_recovery_required"); }
+      const root = ownership.theaterPath(id, theaterId);
+      store.setTheaters(id, entities.theatersOf(id).filter((row) => row.path !== root));
     },
     acceptsMessage: (id) => supervisor.acceptsMessage(id),
     run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),

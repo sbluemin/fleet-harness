@@ -19,7 +19,7 @@ export function resolveNewSessionTheaterId(commodoreId: string | null): string |
   const owned = commodoreId === null
     ? null
     : readCommodoreList().find((commodore) => commodore.commodoreId === commodoreId)?.theaters
-      .filter((theater) => theater.status === "available" && registered.has(theater.theaterId))
+      .filter((theater) => theater.status === "available")
       .map((theater) => theater.theaterId) ?? [];
   const ids = owned ?? [...registered];
   const remembered = readNewSessionSelection().theaterId;

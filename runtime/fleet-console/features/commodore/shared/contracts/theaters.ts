@@ -4,7 +4,7 @@ import type { CommodoreRunStatus } from "./types.js";
 export interface CommodoreTheaterSummary {
   readonly theaterId: string;
   readonly label: string;
-  readonly status: "available" | "missing" | "unregistered";
+  readonly status: "available" | "missing";
 }
 /** The latest conversation line of a commodore — the phone home row shows its time and a one-line preview. */
 export interface CommodoreLastMessage {
@@ -29,6 +29,7 @@ export type CommodoreOrderResponse = CommodoreListResponse;
 export interface CommodoreCreateInput { readonly alias: string }
 export interface CommodoreCreateResponse { readonly commodoreId: string; readonly commodore: ConsoleCommodoreSummary }
 export interface CommodoreTheaterInput { readonly commodoreId: string; readonly theaterId: string }
+export interface CommodoreTheaterAddInput { readonly commodoreId: string; readonly folderGrantId: string; readonly claudeTrustConsent?: boolean }
 export interface CommodoreTheaterResponse { readonly commodore: ConsoleCommodoreSummary }
 export const COMMODORE_ROUTES = {
   list: "/api/v1/commodore/list",

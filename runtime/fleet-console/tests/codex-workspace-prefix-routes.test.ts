@@ -62,9 +62,10 @@ describe("workspace-prefixed routes", () => {
       const ownerB = wsB;
       const listed = await (await fetch("/api/v1/theaters")).json() as { readonly theaters: readonly { readonly id: string; readonly label: string }[] };
       const theaterA = listed.theaters.find((theater) => theater.label === path.basename(workspaceA))!.id;
+      const grant = await (await fetch("/api/v1/theaters/folder-grants", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: workspaceA }) })).json();
       const added = await fetch("/api/v1/commodore/theaters/add", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commodoreId: ownerB, theaterId: theaterA }),
+        body: JSON.stringify({ commodoreId: ownerB, folderGrantId: grant.folderGrantId }),
       });
       expect(added.status).toBe(200);
       // 사령관이 없으면 위키도 없다 — 공유 Theater 에서 임의의 사령관을 고르지 않고, 서버도 Theater 로는 묻지 않는다.

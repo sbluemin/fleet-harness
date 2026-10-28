@@ -1,4 +1,5 @@
 import { getViewedTheaterId } from "./viewed-theater.js";
+import type { ConsoleCommodoreSummary } from "../../../../features/commodore/shared/contracts/theaters.js";
 import type { ReactNode } from "react";
 
 import type { LocalizedText, Translate } from "@fleet-console/i18n";
@@ -55,7 +56,7 @@ export type PaletteGlyphId =
 
 export type PaletteCommandAction =
   | { readonly kind: "undo-close" }
-  | { readonly kind: "switch-theater"; readonly theaterId: string }
+  | { readonly kind: "switch-theater"; readonly theaterId: string; readonly commodoreId: string }
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-objectiveRecord" }
@@ -136,6 +137,7 @@ export function buildPaletteCommands(
     readonly canUndoLastClose?: boolean;
     readonly undoKind?: "archive" | "deletion" | null;
     readonly theaterSections?: readonly PaletteTheaterSectionInfo[];
+    readonly commodore?: ConsoleCommodoreSummary | null;
   },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
@@ -148,7 +150,9 @@ export function buildPaletteCommands(
     const { aliasLabel, extraAliases, ...rest } = entry;
     commands.push({ ...rest, current: entry.current ?? false, aliases: [...(aliasLabel === rest.label ? [] : [aliasLabel]), ...(extraAliases ?? [])] });
   };
-  const activeTheater = current.theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
+  const commodore = options?.commodore;
+  const theaters = (commodore?.theaters ?? []).filter((theater) => theater.status === "available").map((theater) => ({ id: theater.theaterId, label: theater.label }));
+  const activeTheater = theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
   const activeObjective = current.objectiveRecords.find(
     (objectiveRecord) => objectiveRecord.id === current.activeObjectiveId,
   ) ?? null;
@@ -178,7 +182,7 @@ export function buildPaletteCommands(
   const theaterSections = [...(options?.theaterSections ?? [])]
     .sort((left, right) => Number(right.theaterId === viewedTheaterId) - Number(left.theaterId === viewedTheaterId));
   for (const section of theaterSections) {
-    const theater = current.theaters.find((candidate) => candidate.id === section.theaterId);
+    const theater = theaters.find((candidate) => candidate.id === section.theaterId);
     if (!theater) continue;
     const name = theater.label;
     const title = language === "ko" ? section.titles.ko : section.titles.en;
@@ -194,14 +198,15 @@ export function buildPaletteCommands(
       ...(section.theaterId === viewedTheaterId ? {} : { homeHidden: true }),
     });
   }
-  for (const theater of current.theaters) {
+  for (const theater of theaters) {
+    if (!commodore) continue;
     const name = theater.label;
     push({
-      commandId: `switch-theater:${theater.id}`,
+      commandId: `switch-theater:${commodore.commodoreId}:${theater.id}`,
       label: t("palette.switchTheater", { label: name }),
       aliasLabel: alias("palette.switchTheater", { label: name }),
       current: theater.id === viewedTheaterId,
-      action: { kind: "switch-theater", theaterId: theater.id },
+      action: { kind: "switch-theater", theaterId: theater.id, commodoreId: commodore.commodoreId },
       group: "theater",
       glyph: "theater",
     });

@@ -7,7 +7,7 @@ import { useFeatureRegistry } from "./feature-registry.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_MEMBERSHIP_PAGE_ID, THEATER_SETTINGS_SECTION_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
 import { subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
-import { readZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
+import { readZoneCommodore, useCommodoreList, useZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
 import { openCommodoreMobile, useCommodoreEnabled } from "../../../../features/commodore/client/commodore-state.js";
 import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
@@ -42,7 +42,10 @@ export function TheaterInboxHost() {
     ...(commodoreOwnsTheaters ? [] : [SETTINGS_SECTION]),
   ], [commodoreOwnsTheaters, theaterInboxSections]);
   const fallback = commodoreOwnsTheaters ? COMMODORE_SETTINGS_ADDRESS : THEATERS_ADDRESS;
-  const label = useTheaterLabel(open?.theaterId);
+  const registeredLabel = useTheaterLabel(open?.theaterId);
+  const commodoreId = useZoneCommodore();
+  const commodores = useCommodoreList();
+  const label = commodoreId ? commodores.find((row) => row.commodoreId === commodoreId)?.theaters.find((row) => row.theaterId === open?.theaterId)?.label ?? null : registeredLabel;
   // 연 채로 Theater 가 잊혀도 시트는 남는다(프롬프트 칸이 남은 글을 보여 준다) — 마지막 이름을 붙들어 둔다.
   const lastLabel = useRef<{ readonly id: string; readonly label: string } | null>(null);
   if (open && label !== null) lastLabel.current = { id: open.theaterId, label };

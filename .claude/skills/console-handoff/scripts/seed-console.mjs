@@ -6,7 +6,7 @@
  * write routes require:
  *
  *   seed   node seed-console.mjs --dir <console-data-dir> --theater <path>
- *                                [--prompt "..."] [--model <gateway-id>] [--await ask|turn]
+ *                                [--commodore <uuid>] [--prompt "..."] [--model <gateway-id>] [--await ask|turn]
  *   answer node seed-console.mjs --dir <console-data-dir> --answer <sessionId>
  *                                [--pick N | --text "..." | --approve | --dismiss | --revise "..."]
  *
@@ -55,17 +55,6 @@ async function api(method, pathname, body) {
   try { json = text ? JSON.parse(text) : null; } catch { /* not every route answers JSON */ }
   if (!res.ok) fail(`${method} ${pathname} -> ${res.status} ${text.slice(0, 300)}`);
   return json;
-}
-
-/** Register the folder as a Theater, or reuse the registration if it already exists. */
-async function ensureTheater(dirPath) {
-  const listed = await api("GET", "/api/v1/theaters");
-  const rows = Array.isArray(listed) ? listed : listed?.theaters ?? [];
-  const hit = rows.find((row) => row.path === dirPath || row.rootPath === dirPath);
-  if (hit) return hit.id;
-  const grant = await api("POST", "/api/v1/theaters/folder-grants", { path: dirPath });
-  const theater = await api("POST", "/api/v1/theaters", { folderGrantId: grant?.id ?? grant?.folderGrantId });
-  return theater.id;
 }
 
 /** Read the chat journal, calling onEvent for each entry. Returns when onEvent says stop. */
@@ -139,25 +128,21 @@ if (args.has("answer")) {
 
 const theaterPath = args.get("theater");
 if (typeof theaterPath !== "string") fail("--theater <path> is required");
-const theaterId = await ensureTheater(theaterPath);
-console.error(`seed-console: theater=${theaterId} port=${lock.port}`);
+// The caller chooses the owner explicitly; a folder never chooses a Commodore.
+let commodoreId = args.get("commodore");
+if (typeof commodoreId !== "string") {
+  ({ commodoreId } = await api("POST", "/api/v1/commodore/create", { alias: path.basename(theaterPath) || "Fixture" }));
+}
+const grant = await api("POST", "/api/v1/theaters/folder-grants", { path: theaterPath });
+const { theaterId } = await api("POST", "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId });
+console.error(`seed-console: commodore=${commodoreId} theater=${theaterId} port=${lock.port}`);
 
 const prompt = args.get("prompt");
 if (typeof prompt !== "string") {
-  console.log(JSON.stringify({ mode: "seed", port: lock.port, theaterId }, null, 1));
+  console.log(JSON.stringify({ mode: "seed", port: lock.port, commodoreId, theaterId }, null, 1));
   process.exit(0);
 }
 
-// Console has no Theater-to-owner lookup: a Theater is a folder in each Commodore's own list. Pick the fixture
-// Commodore from the Commodore list, the way a person picks it in the sidebar.
-const { commodores = [] } = await api("POST", "/api/v1/commodore/list", {});
-const listing = commodores.filter((row) => (row.theaters ?? []).some((theater) => theater.theaterId === theaterId));
-let commodoreId = listing.length === 1 ? listing[0].commodoreId : null;
-if (!commodoreId) {
-  if (listing.length > 1) fail("Several Commodores list this Theater; choose an unambiguous fixture Theater");
-  ({ commodoreId } = await api("POST", "/api/v1/commodore/create", { alias: path.basename(theaterPath) || "Fixture" }));
-  await api("POST", "/api/v1/commodore/theaters/add", { commodoreId, theaterId });
-}
 const session = await api("POST", "/api/v1/agent/sessions", {
   commodoreId,
   theaterId,
@@ -184,6 +169,7 @@ console.log(JSON.stringify({
   mode: "seed",
   port: lock.port,
   theaterId,
+  commodoreId,
   sessionId,
   url: `${base}/console/`,
   asked: asked

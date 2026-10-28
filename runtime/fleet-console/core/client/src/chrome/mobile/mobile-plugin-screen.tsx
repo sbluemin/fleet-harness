@@ -29,6 +29,8 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const binding = bindings.find((item) => item.entry.id === entryId);
   const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const commodoreId = useViewedCommodoreId();
+  // 사령관 페인의 정체는 UUID다. 첫 폴더 추가로 Theater 문맥이 달라져도 설정의 깊이를 재마운트로 잃지 않는다.
+  const paneTheaterId = entryId === "commodore" ? null : theaterId;
   const activeRail = useRailActivePanelId();
   const title = binding ? resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, language) : "";
   const bar = useMobilePluginBar({ title });
@@ -101,7 +103,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
       <FeatureErrorBoundary>
         <MobileBarContext.Provider value={bar}>
           {activeRail === entryId ? (
-            <RailSurface key={entryId} binding={binding} singlePane theaterId={theaterId} commodoreId={commodoreId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} />
+            <RailSurface key={entryId} binding={binding} singlePane theaterId={paneTheaterId} commodoreId={commodoreId} api={capabilities.api} surfaces={capabilities.surfaces} theme={theme} language={language} />
           ) : null}
         </MobileBarContext.Provider>
       </FeatureErrorBoundary>

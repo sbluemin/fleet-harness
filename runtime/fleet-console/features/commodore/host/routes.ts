@@ -53,7 +53,8 @@ export interface CommodoreRouteHooks {
   readonly list?: () => readonly ConsoleCommodoreSummary[];
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
   readonly summary?: (id: string) => ConsoleCommodoreSummary;
-  readonly changeTheater?: (id: string, theaterId: string, add: boolean) => void;
+  readonly addTheater?: (id: string, folderGrantId: string, claudeTrustConsent: boolean) => Promise<string>;
+  readonly removeTheater?: (id: string, theaterId: string) => void;
   readonly createForAlias?: (theaterId: string) => string;
   readonly theaterIds?: (commodoreId: string) => readonly string[];
   /** 사람 메시지 한 턴을 받을 수 있는가. */
@@ -102,7 +103,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof CommodoreStoreError) {
-      const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_routine" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
+      const status = error.code === "unknown_commodore" || error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_routine" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_folder_grant" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -172,12 +173,18 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       const commodoreId = hooks.create(alias);
       return { commodoreId, commodore: hooks.summary(commodoreId) };
     }) },
-    ...(["add", "remove"] as const).map((action): CommodoreRoute => ({ name: `commodore/theaters/${action}`, method: "POST", summary: `${action} a Theater without changing objectives or registration.`, handler: json(commodoreRef.extend({ theaterId: ids }).strict(), ({ commodoreId, theaterId }) => {
+    { name: "commodore/theaters/add", method: "POST", summary: "Add a granted folder to this Commodore's Theater list.", handler: json(commodoreRef.extend({ folderGrantId: ids, claudeTrustConsent: z.boolean().optional() }).strict(), async ({ commodoreId, folderGrantId, claudeTrustConsent }) => {
       read(commodoreId);
-      if (!hooks.changeTheater || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
-      hooks.changeTheater(commodoreId, theaterId, action === "add");
+      if (!hooks.addTheater || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
+      const theaterId = await hooks.addTheater(commodoreId, folderGrantId, claudeTrustConsent === true);
+      return { commodore: hooks.summary(commodoreId), theaterId };
+    }, false) },
+    { name: "commodore/theaters/remove", method: "POST", summary: "Remove a folder only from this Commodore's Theater list.", handler: json(commodoreRef.extend({ theaterId: ids }).strict(), ({ commodoreId, theaterId }) => {
+      read(commodoreId);
+      if (!hooks.removeTheater || !hooks.summary) throw new CommodoreStoreError("commodore_unavailable");
+      hooks.removeTheater(commodoreId, theaterId);
       return { commodore: hooks.summary(commodoreId) };
-    }) })),
+    }, false) },
     { name: "commodore/marketplaces/list", method: "POST", summary: "List marketplaces and the plugin catalog of enabled ones; registers the Anthropic presets in the background.", handler: json(z.object({}).strict(), () => plugins().catalog()) },
     { name: "commodore/marketplaces/add", method: "POST", summary: "Add a custom marketplace from a GitHub owner/repo, a git https or ssh address, or a marketplace.json URL.", handler: json(marketplaceAddSchema, async ({ source, ref }) => ({ marketplace: await plugins().add(source, ref) })) },
     { name: "commodore/marketplaces/update", method: "POST", summary: "Fetch one marketplace again, or all when no name is given.", handler: json(marketplaceUpdateSchema, ({ name }) => plugins().refresh(name)) },

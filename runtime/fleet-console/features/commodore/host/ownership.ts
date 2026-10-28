@@ -47,7 +47,13 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       return registered !== null && canonicalOf(registered) === root;
     });
   };
-  const theaterIds = (id: string): readonly string[] => entities.theatersOf(id).map((row) => registeredFor(row.path)[0] ?? paths.workspaceHash(row.path));
+  const theaterIds = entities.theaterIds;
+  // 현재 폴더의 해시가 먼저다. 옛 등록부의 별칭 id는 기존 주소·기록을 읽을 때만 호환한다.
+  const theaterPath = (id: string, theaterId: string): string | null => {
+    const rows = entities.theatersOf(id);
+    return rows.find((row) => paths.workspaceHash(row.path) === theaterId)?.path
+      ?? rows.find((row) => registeredFor(row.path).includes(theaterId))?.path ?? null;
+  };
   const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
   const issueIfReady = (theaterId: string): string => {
     const root = paths.resolveTheaterPath(theaterId);
@@ -90,7 +96,7 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return cwd;
   };
   return {
-    entities, resolveAll, theaterIds, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
+    entities, resolveAll, theaterIds, theaterPath, knowledge, recoverKnowledge, issueIfReady, issueForAlias: issueIfReady,
     assertWritable,
     isDeleting: (id: string) => deleting.has(id),
     beginDeletion(id: string) { assertWritable(id); deleting.add(id); },
@@ -99,16 +105,15 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     objectiveDirectory,
     theaterSummaries(id: string): readonly CommodoreTheaterSummary[] {
       return entities.theatersOf(id).map((row) => {
-        const registered = registeredFor(row.path);
         let available = false;
         try { available = fs.realpathSync.native(row.path) === row.path && fs.statSync(row.path).isDirectory(); } catch { /* 사라진 범위도 표시한다. */ }
-        return { theaterId: registered[0] ?? paths.workspaceHash(row.path), label: path.basename(row.path), status: !registered.length ? "unregistered" : available ? "available" : "missing" };
+        return { theaterId: paths.workspaceHash(row.path), label: path.basename(row.path), status: available ? "available" : "missing" };
       });
     },
     additionalDirectories(id: string): readonly string[] {
       return entities.theatersOf(id).map((row) => {
         try {
-          if (!registeredFor(row.path).length || fs.realpathSync.native(row.path) !== row.path || !fs.statSync(row.path).isDirectory()) throw new Error();
+          if (fs.realpathSync.native(row.path) !== row.path || !fs.statSync(row.path).isDirectory()) throw new Error();
           return row.path;
         } catch { throw new CommodoreStoreError("theater_unavailable"); }
       });
@@ -120,8 +125,10 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     sessionCreation(commodoreId: string, theaterId: string) {
       assertWritable(commodoreId);
       if (!entities.dirOf(commodoreId)) throw new Error("objective_owner_unavailable");
-      const cwd = paths.resolveTheaterPath(theaterId);
+      const cwd = theaterPath(commodoreId, theaterId);
       if (!cwd) throw new Error("objective_location_unavailable");
+      try { if (fs.realpathSync.native(cwd) !== cwd || !fs.statSync(cwd).isDirectory()) throw new Error(); }
+      catch { throw new Error("objective_location_unavailable"); }
       return { commodoreId, cwd };
     },
     objectives: () => entities.ids().flatMap((id) => {

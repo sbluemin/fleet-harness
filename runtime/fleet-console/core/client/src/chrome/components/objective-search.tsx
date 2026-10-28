@@ -3,7 +3,8 @@ import { openTheaterInbox } from "../../../../../features/workspace/client/theat
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
-import { getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
+import { useCommodoreList, setZoneCommodore, selectMobileCommodore, useZoneCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/feature-capabilities.js";
@@ -178,6 +179,11 @@ export function ObjectiveSearch({
   );
   // 섹션 상태(실험 기능이 뒤늦게 알려지거나 scope가 바뀌는 일)를 팔레트가 열려 있는 동안 다시 읽는다.
   const [sectionVersion, setSectionVersion] = useState(0);
+  const commodores = useCommodoreList();
+  const viewedCommodoreId = useViewedCommodoreId();
+  const zoneCommodoreId = useZoneCommodore();
+  const commodore = commodores.find((row) => row.commodoreId === (viewedCommodoreId ?? zoneCommodoreId)) ?? null;
+  const ownedTheaters = useMemo(() => (commodore?.theaters ?? []).filter((row) => row.status === "available").map((row) => ({ id: row.theaterId, label: row.label })), [commodore]);
   useEffect(() => {
     if (!state.objectiveRecordSearchOpen || !desktopView) return;
     const bump = () => setSectionVersion((version) => version + 1);
@@ -188,8 +194,8 @@ export function ObjectiveSearch({
   }, [theaterSections, state.objectiveRecordSearchOpen, desktopView]);
   // 섹션 행은 데스크톱 배치에서만 선다 — 폰은 사령관 목적지가 따로 있다.
   const sectionEntries = useMemo(
-    () => state.objectiveRecordSearchOpen && desktopView ? buildTheaterSectionSearchEntries(state.theaters, theaterSections, language) : [],
-    [state.objectiveRecordSearchOpen, state.theaters, theaterSections, language, desktopView, sectionVersion], // eslint-disable-line react-hooks/exhaustive-deps
+    () => state.objectiveRecordSearchOpen && desktopView ? buildTheaterSectionSearchEntries(ownedTheaters, theaterSections, language) : [],
+    [state.objectiveRecordSearchOpen, ownedTheaters, theaterSections, language, desktopView, sectionVersion], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const filteredSections = useMemo(
     () => mode === "objectiveRecords" ? filterTheaterSectionSearchEntries(sectionEntries, text, getViewedTheaterId()) : [],
@@ -213,10 +219,11 @@ export function ObjectiveSearch({
   const commands = useMemo(
     () => buildPaletteCommands(state, railPanels, t, {
       canUndoLastClose: undoAvailable,
+      commodore,
       undoKind,
       theaterSections: sectionEntries.map((section) => ({ theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId, titles: section.titles, icon: section.icon })),
     }),
-    [state, railPanels, t, undoAvailable, undoKind, sectionEntries],
+    [state, railPanels, t, undoAvailable, undoKind, sectionEntries, commodore],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.objectiveRecordSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -391,6 +398,8 @@ export function ObjectiveSearch({
       }
       case "switch-theater": {
         if (current) break;
+        setZoneCommodore(action.commodoreId);
+        selectMobileCommodore(action.commodoreId);
         // Theater 전환은 대화 화면으로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
         closeConversationSurface();
