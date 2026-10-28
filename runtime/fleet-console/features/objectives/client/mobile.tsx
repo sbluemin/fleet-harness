@@ -18,6 +18,7 @@ import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaun
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
+import { NoteAttachments } from "./attachments.js";
 import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readBatches, readHistory, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
@@ -640,7 +641,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
         {showSchedule ? schedule : null}
         {attention}
         {activeTab === "goal" ? <>
-          <BriefCard objective={objective} t={t} />
+          <BriefCard objective={objective} t={t} language={language} api={api} say={say} />
           <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
           <DecisionHistory objective={objective} t={t} />
         </> : activeTab === "crew" ? <>
@@ -1148,8 +1149,12 @@ function SubagentsSection({ objective, t, crew }: { readonly objective: Objectiv
   );
 }
 
-/** 브리핑(3줄 접힘)과 달성 기준 막대. 접힌 글이 넘칠 때만 「더 보기」가 선다. */
-function BriefCard({ objective, t }: { readonly objective: Objective; readonly t: T }) {
+/**
+ * 브리핑(3줄 접힘)과 달성 기준 막대. 접힌 글이 넘칠 때만 「더 보기」가 선다.
+ * 첨부는 데스크톱과 같은 썸네일 띠를 본문 위에 세우고, 누르면 같은 결과물 창의 「브리핑」 모드로 연다.
+ * 지우기도 데스크톱과 같은 뜻이다(끝나지 않은 목표에서만). 폰에는 붙이는 입구를 두지 않는다.
+ */
+function BriefCard({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const textRef = useRef<HTMLParagraphElement>(null);
@@ -1161,12 +1166,15 @@ function BriefCard({ objective, t }: { readonly objective: Objective; readonly t
   }, [brief, open]);
   const total = objective.criteria.length;
   const met = criteriaMet(objective);
-  if (!brief && total === 0) return null;
+  const attached = objective.attachments.length > 0;
+  if (!brief && !attached && total === 0) return null;
   return (
     <section className="objectives-m-card" aria-label={t("objectives.objective.memo")}>
+      {brief || attached ? <h3 className="objectives-m-card-label">{t("objectives.objective.memo")}</h3> : null}
+      <NoteAttachments objective={objective} t={t} touchable={!objective.done} error={null} sending={0}
+        onRemove={(attachment) => { void post(api, "/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); }} />
       {brief ? (
         <>
-          <h3 className="objectives-m-card-label">{t("objectives.objective.memo")}</h3>
           <p ref={textRef} className={`objectives-m-brief${open ? "" : " is-clamped"}`}><LinkText text={brief} /></p>
           {overflows || open ? <button type="button" data-press="r1" className="objectives-m-more" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{t(open ? "objectives.mobile.brief.less" : "objectives.mobile.brief.more")}</button> : null}
         </>
