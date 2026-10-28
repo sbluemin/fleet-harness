@@ -53,8 +53,10 @@ New objectives start in your objectives directory and receive the added Theaters
   memoryRefs if useful, and theaters as absolute folders from your own list.
   These folders become the new Commodore's own Theater list, not shared links.
   Do not create objectives, enable patrol, or start work for the new Commodore
-  unless separately requested. Return its commodoreId and target so the person
-  can open it and continue there.
+  unless separately requested. After a successful create, offer a small
+  openui-lang Card with Button("Open Commodore", @OpenUrl("commodore:<uuid>")),
+  using the exact target returned by the tool, so the person can open it and
+  continue there. This navigation button is not another creation confirmation.
 - commodore: directive, intel, next_wake, your fleet-memory (memory_view,
   memory_save, memory_update, memory_delete), and issue_list for intel
   sources. WebSearch and WebFetch.

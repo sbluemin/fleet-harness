@@ -516,7 +516,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   const index = useCommodoreObjectiveIndex(theaterId);
   const blocks = useMemo(() => commodoreLogBlocks(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const references = useCommodoreReferenceHost(t, theaterId);
-  const openUIOpen = useCommodoreOpenUIPort(theaterId);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId, undefined, openCommodoreConversation);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
       const block = blocks[index];

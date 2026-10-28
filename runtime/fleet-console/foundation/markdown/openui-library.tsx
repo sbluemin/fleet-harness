@@ -312,7 +312,7 @@ function ActionButton({ label, action }: { label: string; action: unknown }) {
     return refused === null ? null : <span className="openui-inert is-inert" title={refused}><span>{label}</span></span>;
   }
   const target = safe.type === "open" ? parseOpenUIOpenTarget(safe.url) : null;
-  const tail = target?.kind === "https" ? target.hostname : target?.kind === "objective" ? `objective:${target.id.slice(0, 8)}` : target?.kind === "mission" ? `mission:${target.number}` : null;
+  const tail = target?.kind === "https" ? target.hostname : target?.kind === "objective" || target?.kind === "commodore" ? `${target.kind}:${target.id.slice(0, 8)}` : target?.kind === "mission" ? `mission:${target.number}` : null;
   const contents = <><span>{label}</span>{tail ? <span className={`openui-button-tail${target?.kind === "https" ? "" : " is-internal"}`}>{tail}</span> : null}</>;
   if (target && !block.open?.accepts(target)) return <span className="openui-inert is-inert" title={safe.type === "open" ? safe.url : undefined}>{contents}</span>;
   return <button type="button" className="openui-button" aria-pressed={block.sent === key ? true : undefined} title={safe.type === "open" ? safe.url : safe.message}

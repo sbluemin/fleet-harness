@@ -309,7 +309,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     applied: () => consumeCommodoreReveal(reveal.nonce),
   } : null), [reveal, target]);
   const references = useCommodoreReferenceHost(t, commodoreId);
-  const openUIOpen = useCommodoreOpenUIPort(commodoreId);
+  const openUIOpen = useCommodoreOpenUIPort(commodoreId, undefined, openCommodoreConversation);
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
