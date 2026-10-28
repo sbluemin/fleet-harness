@@ -92,7 +92,10 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         url.searchParams.set("q", query);
         const response = await fetch(url, { signal: AbortSignal.timeout(1500), redirect: "error" });
         if (!response.ok) return finish(true, "http_error");
-        const data: unknown = await response.json();
+        const text = await response.text();
+        let data: unknown;
+        try { data = JSON.parse(text); }
+        catch { return finish(true, "invalid_response"); }
         if (!Array.isArray(data) || !Array.isArray(data[1]) || !data[1].every((item: unknown) => typeof item === "string")) return finish(true, "invalid_response");
         const suggestions = [...new Set<string>(data[1])].filter((item) => item.trim() && item.length <= 256).slice(0, 5);
         return finish(true, "ok", suggestions);
