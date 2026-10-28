@@ -966,3 +966,9 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-fresh-meta { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
 .objectives-fresh-foot { flex: none; padding: 12px clamp(16px, 4cqi, 48px) 16px; }
 .objectives-fresh-composer { display: flex; align-items: center; min-height: 48px; box-sizing: border-box; padding: 7px var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel-raised); color: var(--text-tertiary); font-size: var(--t-md); opacity: 0.6; cursor: default; }
+
+/* 공유 폴더 — 증거 행 문법을 그대로 쓰고, 하위 폴더 경로만 회색 mono 접두로 더한다. */
+.objectives-shared-note { margin: 0; padding: 7px 20px 7px 22px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-result-sub .objectives-shared-dir { font-family: var(--font-mono, monospace); color: var(--text-tertiary); opacity: 0.8; }
+a.objectives-result-open { text-decoration: none; }
+a.objectives-result-open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; color: var(--brass-ink); }

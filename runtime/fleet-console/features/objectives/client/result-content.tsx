@@ -147,7 +147,8 @@ function fencedJson(text: string): string {
   return `${fence}json\n${text}\n${fence}`;
 }
 
-export function EvidenceTextContent({ t, src, name }: { readonly t: T; readonly src: string; readonly name: string }) {
+/** `plain` 은 확장자와 무관하게 글자 그대로만 보인다 — 사람이 아닌 쪽이 쓴 공유 폴더 파일을 Markdown 으로 해석하지 않는다. */
+export function EvidenceTextContent({ t, src, name, plain = false }: { readonly t: T; readonly src: string; readonly name: string; readonly plain?: boolean }) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [loaded, setLoaded] = useState<{ readonly text: string } | { readonly error: string } | null>(null);
   useEffect(() => {
@@ -165,7 +166,7 @@ export function EvidenceTextContent({ t, src, name }: { readonly t: T; readonly 
       .catch(() => { if (!controller.signal.aborted) setLoaded({ error: "network" }); });
     return () => controller.abort();
   }, [src]);
-  const mode = textMode(name);
+  const mode = plain ? "plain" : textMode(name);
   const html = useMemo(() => {
     if (!loaded || !("text" in loaded) || mode === "plain") return "";
     const rendered = renderMarkdown(mode === "json" ? fencedJson(loaded.text) : loaded.text, { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html;
