@@ -30,7 +30,6 @@ export interface AiGatewaySettingsStore {
   readonly read: () => AiGatewayStoredSettings;
   /** 모델 선별만 교체하고 나머지 설정은 보존한다. */
   readonly write: (value: AiGatewayUpdateValue | undefined) => AiGatewayStoredSettings;
-  /** 모델 선별은 보존하고 진단 opt-in만 갱신한다. */
   /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
   readonly writeDelegationRoutingModel: (model: string | undefined) => AiGatewayStoredSettings;
