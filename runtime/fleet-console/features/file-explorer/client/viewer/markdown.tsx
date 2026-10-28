@@ -58,6 +58,9 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, objectiveId, t });
     return doc.body.innerHTML;
   }, [content, relativePath, resolveWikiLink, theaterId, t]);
+  // React 19는 dangerouslySetInnerHTML을 객체 참조로 비교한다 — 글자가 같으면 같은 객체를 유지해
+  // 그린 다이어그램 SVG가 통째로 갈아끼워지지 않게 한다. 그 밖의 memo화는 하지 않는다.
+  const markup = useMemo(() => ({ __html: html }), [html]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -135,7 +138,7 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     <div className="fexp-md-wrap">
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div ref={rootRef} className="markdown-body" onClick={handleCopyClick}
-        dangerouslySetInnerHTML={{ __html: html }} />
+        dangerouslySetInnerHTML={markup} />
     </div>
   );
 }

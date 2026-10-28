@@ -193,6 +193,9 @@ export function AnswerBubble({
   const now = useNow(working);
   const status = working ? liveStatus(exchange, locale, now) : null;
   const answerHtml = useStreamedHtml(answer?.kind === "assistant" ? answer.text : "", working, locale);
+  // React 19는 dangerouslySetInnerHTML을 객체 참조로 비교한다 — 글자가 같으면 같은 객체를 유지해
+  // 그린 다이어그램 SVG가 통째로 갈아끼워지지 않게 한다(streamed-markdown.tsx·result-content.tsx와 같은 계약).
+  const answerMarkup = React.useMemo(() => ({ __html: answerHtml }), [answerHtml]);
 
   // 답이 정착하면 포커스가 본문으로 온다 — 패널의 CLI에서 물었으면 답을 읽고 Escape 한 번으로
   // 그 CLI로 돌아간다(돌아갈 자리는 이때 기억한다). 도는 동안은 옮기지 않는다: 스트리밍 중 포커스를
@@ -280,7 +283,7 @@ export function AnswerBubble({
                 tabIndex={-1}
                 className={`scuttlebutt-answer-text markdown-body${working ? " is-streaming" : ""}`}
                 onClick={(event) => copyCodeBlock(event, { copy: t("markdown.copy"), copied: t("action.copied"), failed: t("markdown.copyFailed") })}
-                dangerouslySetInnerHTML={{ __html: answerHtml }}
+                dangerouslySetInnerHTML={answerMarkup}
               />
             )}
         {!working && sources.length > 0 ? (

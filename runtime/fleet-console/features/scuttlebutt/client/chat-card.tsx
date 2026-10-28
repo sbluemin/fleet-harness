@@ -563,7 +563,9 @@ function Exchange({ exchange, live, locale, onStop }: {
 
 function AssistantText({ text, streaming, locale }: { readonly text: string; readonly streaming: boolean; readonly locale: ConsoleLocale | undefined }) {
   const html = useStreamedHtml(text, streaming, locale);
-  return <div className={`scuttlebutt-message-sam markdown-body${streaming ? " is-streaming" : ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  // 글자가 같으면 같은 객체를 유지해 그린 다이어그램을 보존한다(말풍선과 같은 계약). 전체 memo화는 하지 않는다.
+  const markup = React.useMemo(() => ({ __html: html }), [html]);
+  return <div className={`scuttlebutt-message-sam markdown-body${streaming ? " is-streaming" : ""}`} dangerouslySetInnerHTML={markup} />;
 }
 
 /** 도는 동안만 1초 시계 — 경과가 Live line의 오른쪽 끝에 선다. 멈추면 시계도 멈춘다. */
