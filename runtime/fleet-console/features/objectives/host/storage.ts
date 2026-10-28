@@ -14,8 +14,6 @@ import { clearPendingIndex, importMissingObjectives, readImportedIds, readPendin
 export interface ObjectiveOwner extends ObjectiveDocumentContext { readonly directory: string }
 export interface ObjectiveBoardStorage {
   owners(): readonly ObjectiveOwner[];
-  /** owners() 스냅샷의 generation — 같은 문자열이면 같은 owner 집합이다. */
-  ownersGeneration?(): string;
   assertMutable?(commodoreId: string): void;
   unavailable(id: string): boolean;
   directory(commodoreId: string): string | null;
@@ -176,7 +174,6 @@ export function createObjectiveStorage(deps: {
   directory: string;
   stateStore: DurableJsonStore<DurableConsoleState>;
   owners: () => readonly ObjectiveOwner[];
-  ownersGeneration?: () => string;
   assertOwnerMutable?: (commodoreId: string) => void;
   initializeOwners?: (state: DurableConsoleState) => void;
   /** 복구한 명부의 별칭을 소유 저장소에 커밋한다. 커밋하지 못한 별칭은 명부에 남기고, 기동은 중단하지 않는다. 반환은 명부에서 거둬도 되는 theaterId. */
@@ -198,11 +195,6 @@ export function createObjectiveStorage(deps: {
   let previousRaw: Record<string, unknown> = {};
   const unavailableOwners = new Set<string>();
   const deferredAliasOwners = new Set<string>();
-  // 기동 복원 패스 안에서는 owners()를 한 번만 읽어 재사용한다. load()가 동기적으로
-  // 도는 동안만 유효한 스냅샷이라, 패스가 끝나면 버려 런타임 변경이 오래된 값을
-  // 보지 않는다. 결과 자체의 재계산 방지는 ownership 쪽 generation 메모가 맡는다.
-  let loadingOwners: readonly ObjectiveOwner[] | null = null;
-  const currentOwners = (): readonly ObjectiveOwner[] => loadingOwners ?? deps.owners();
   const archiveStore = (scope: Scope) => createStore<Archive>({ filePath: path.join(scope.owner.directory, "archive.json"), lockDir: null, sensitivity: "sensitive", sanitize: readArchive });
   const journalPath = (scope: Scope, id: string) => path.join(scope.owner.directory, ".transactions", `${segment(id)}.json`);
   function writeJson(file: string, value: unknown): void {
@@ -443,7 +435,7 @@ export function createObjectiveStorage(deps: {
     const claimed = new Set<string>();
     const add = (dir: string) => { const read = readImportedIds(dir); if (read.ok) for (const id of read.ids) claimed.add(id); };
     add(deps.directory);
-    for (const owner of currentOwners()) {
+    for (const owner of deps.owners()) {
       if (owner.commodoreId === commodoreId) continue;
       add(owner.directory);
       const other = scopes.get(owner.commodoreId);
@@ -454,7 +446,7 @@ export function createObjectiveStorage(deps: {
   /** 옛 버전은 같은 Theater를 둔 commodore마다 같은 옛 목표를 복사해 기동을 막았다. 같은 사본은 첫 commodore만 남기고 나머지는 지우지 않고 보류한다. */
   function setAsideLegacyDuplicates(): void {
     const first = new Map<string, Scope>();
-    for (const owner of currentOwners()) {
+    for (const owner of deps.owners()) {
       const scope = scopes.get(owner.commodoreId);
       if (!scope || held(scope)) continue;
       const imported = readImportedIds(owner.directory);
@@ -484,7 +476,7 @@ export function createObjectiveStorage(deps: {
   function pruneLegacySources(): void {
     const ledger = readImportedIds(deps.directory);
     if (!ledger.ok || !ledger.ids.size) return;
-    const allLoaded = currentOwners().every((owner) => { const scope = scopes.get(owner.commodoreId); return !!scope && !held(scope); });
+    const allLoaded = deps.owners().every((owner) => { const scope = scopes.get(owner.commodoreId); return !!scope && !held(scope); });
     const readable = new Set<string>(), known = new Set<string>();
     for (const scope of scopes.values()) {
       for (const id of scope.documents.keys()) if (!unavailable(scope, id)) readable.add(id);
@@ -656,7 +648,7 @@ export function createObjectiveStorage(deps: {
     assertReady();
     if (unavailableOwners.has(commodoreId)) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
     const existing = scopes.get(commodoreId);
-    const owner = currentOwners().find((entry) => entry.commodoreId === commodoreId);
+    const owner = deps.owners().find((entry) => entry.commodoreId === commodoreId);
     if (!owner) throw new ObjectiveArchiveError(503, "objective_owner_unavailable");
     // 일시적 읽기 실패는 재시작까지 붙잡아 두지 않는다. 간격이 지난 접근에서만 다시 읽고, 실패해도 디스크는 쓰지 않는다.
     if (existing && !(existing.indexUnread && Date.now() >= (retryNotBefore.get(commodoreId) ?? 0))) return existing;
@@ -722,11 +714,11 @@ export function createObjectiveStorage(deps: {
     return [owner.legacyTheaterId, ...(owner.legacyTheaterIds ?? [])];
   }
   function ownerOfTheater(theaterId: string): string | undefined {
-    const owners = currentOwners().filter((owner) => ownerTheaterIds(owner).includes(theaterId));
+    const owners = deps.owners().filter((owner) => ownerTheaterIds(owner).includes(theaterId));
     return owners.length === 1 ? owners[0]!.commodoreId : undefined;
   }
   function heldTheaters(): Set<string> {
-    const held = new Set(currentOwners().filter((owner) => unavailableOwners.has(owner.commodoreId)).flatMap((owner) => ownerTheaterIds(owner)));
+    const held = new Set(deps.owners().filter((owner) => unavailableOwners.has(owner.commodoreId)).flatMap((owner) => ownerTheaterIds(owner)));
     for (const scope of scopes.values()) {
       for (const row of scope.archive.quarantine ?? []) if (row.location.includes("deletions[")) {
         if (row.theaterId) held.add(row.theaterId);
@@ -866,8 +858,7 @@ export function createObjectiveStorage(deps: {
   }
   const board: ObjectiveBoardStorage = {
     assertMutable: (id) => deps.assertOwnerMutable?.(id),
-    owners: () => currentOwners().filter((owner) => !unavailableOwners.has(owner.commodoreId)),
-    ownersGeneration: () => `${deps.ownersGeneration?.() ?? ""}\u0003${[...unavailableOwners].sort().join("\u0000")}`,
+    owners: () => deps.owners().filter((owner) => !unavailableOwners.has(owner.commodoreId)),
     unavailable: (id) => isReserved(id),
     forget(commodoreId, id) {
       const scope = scopeOf(commodoreId);
@@ -895,43 +886,40 @@ export function createObjectiveStorage(deps: {
       failedAtLoad.clear();
       previousRaw = raw; state = readRegistrations(raw, !!deps.migrateRegistrationAliases);
       deps.initializeOwners?.(readRegistrations(state));
-      loadingOwners = deps.owners();
-      try {
-        const failedOwners = new Set<string>();
-        for (const owner of currentOwners()) {
-          try { const scope = readScope(owner); scopes.set(owner.commodoreId, scope); }
-          catch (error) {
-            failedOwners.add(owner.commodoreId);
-            failedAtLoad.add(owner.commodoreId);
-            console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
+      const failedOwners = new Set<string>();
+      for (const owner of deps.owners()) {
+        try { const scope = readScope(owner); scopes.set(owner.commodoreId, scope); }
+        catch (error) {
+          failedOwners.add(owner.commodoreId);
+          failedAtLoad.add(owner.commodoreId);
+          console.warn(`[objectives] owner ${owner.commodoreId}: ${error instanceof Error ? error.message : "archive_recovery_required"}; original preserved`);
+        }
+      }
+      setAsideLegacyDuplicates();
+      pruneLegacySources();
+      // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
+      // 별칭 이주는 별개다. 커밋한 항목만 명부에서 거둔다. 이번 기동에 복구가 끝난 owner만 거둔다.
+      if (deps.migrateRegistrationAliases) {
+        const aliases = legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => {
+          const owner = ownerOfTheater(entry.theaterId) ?? "";
+          return !failedOwners.has(owner) && !unavailableOwners.has(owner) && !deferredAliasOwners.has(owner);
+        });
+        let committed = new Set<string>();
+        try {
+          const result = deps.migrateRegistrationAliases(aliases);
+          committed = new Set(result ?? aliases.map((entry) => entry.theaterId));
+        } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_migration_failed"}; aliases retained`); }
+        try {
+          if (exists(deps.stateStore.path)) {
+            const current = readJson(deps.stateStore.path);
+            if (!object(current)) throw failure();
+            const cleaned = stripCommittedAliases(current, committed);
+            if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
           }
-        }
-        setAsideLegacyDuplicates();
-        pruneLegacySources();
-        // objectives-migration.json은 앞선 위치 이동의 기록이다. 읽거나 고쳐 이주 연쇄를 재개하지 않는다.
-        // 별칭 이주는 별개다. 커밋한 항목만 명부에서 거둔다. 이번 기동에 복구가 끝난 owner만 거둔다.
-        if (deps.migrateRegistrationAliases) {
-          const aliases = legacyTheaterAliases(state as unknown as Record<string, unknown>).filter((entry) => {
-            const owner = ownerOfTheater(entry.theaterId) ?? "";
-            return !failedOwners.has(owner) && !unavailableOwners.has(owner) && !deferredAliasOwners.has(owner);
-          });
-          let committed = new Set<string>();
-          try {
-            const result = deps.migrateRegistrationAliases(aliases);
-            committed = new Set(result ?? aliases.map((entry) => entry.theaterId));
-          } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_migration_failed"}; aliases retained`); }
-          try {
-            if (exists(deps.stateStore.path)) {
-              const current = readJson(deps.stateStore.path);
-              if (!object(current)) throw failure();
-              const cleaned = stripCommittedAliases(current, committed);
-              if (cleaned !== current) deps.stateStore.save(cleaned as unknown as DurableConsoleState);
-            }
-            previousRaw = stripCommittedAliases(previousRaw, committed);
-            state = readRegistrations(state);
-          } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_cleanup_failed"}; aliases retained`); }
-        }
-      } finally { loadingOwners = null; }
+          previousRaw = stripCommittedAliases(previousRaw, committed);
+          state = readRegistrations(state);
+        } catch (error) { console.warn(`[objectives] alias migration: ${error instanceof Error ? error.message : "alias_cleanup_failed"}; aliases retained`); }
+      }
       ready = true; blocked = false;
       baseline = snapshot();
       return baseline;
