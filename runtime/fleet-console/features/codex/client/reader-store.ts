@@ -190,8 +190,8 @@ function closeSurfaceSlots(): void {
   hostCapabilities.bound()?.surfaces.closeSurface(SURFACE_ID);
 }
 
-export function viewTheater(theaterId: string): void {
-  hostCapabilities().consoleState.viewTheater?.(theaterId);
+export function viewTheater(theaterId: string, commodoreId: string | null = null): void {
+  hostCapabilities().consoleState.viewTheater?.(theaterId, commodoreId);
 }
 
 export function useConsoleLocale(): ConsoleLocale {

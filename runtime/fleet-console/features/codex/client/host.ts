@@ -75,10 +75,11 @@ export function openCodexRailPanel(): void {
  * 리더를 한 번 닫으므로, 그 직전에 직접 연 문서는 지워진다. 주소는 그 구간을 넘어 살아남아
  * Theater가 준비된 뒤 적용된다(use-codex-reader-url의 목표 보존).
  */
-export function openCodexReaderByAddress(entryId: string, theaterId: string | null): void {
+export function openCodexReaderByAddress(entryId: string, theaterId: string | null, commodoreId: string | null = null): void {
   capabilities?.navigation.setSearchParams({
     codex: entryId,
     codexTheater: theaterId,
+    codexCommodore: commodoreId,
     codexView: null,
   }, { replace: false });
 }

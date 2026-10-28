@@ -245,11 +245,14 @@ export function CodexReadingSheet({ navigate, commodoreId }: { readonly navigate
     // 항목 id는 Theater 안에서만 뜻이 있다 — 링크를 받은 콘솔이 다른 Theater를 보고
     // 있으면 같은 id로 엉뚱한 문서를 찾게 되므로 사는 곳을 함께 싣는다.
     if (theaterId) url.searchParams.set("codexTheater", theaterId);
+    // 같은 폴더를 여러 사령관이 나눌 수 있다 — 이 위키의 사령관을 실어야 받는 쪽이 주인을 추정하지 않는다.
+    if (commodoreId) url.searchParams.set("codexCommodore", commodoreId);
+    else url.searchParams.delete("codexCommodore");
     void navigator.clipboard?.writeText(url.toString()).then(
       () => setLinkCopied(true),
       () => setLinkCopied(false),
     );
-  }, [document_.entryId, theaterId]);
+  }, [document_.entryId, theaterId, commodoreId]);
 
   const openSwitcher = useCallback(() => {
     setSwitcherTag(null);

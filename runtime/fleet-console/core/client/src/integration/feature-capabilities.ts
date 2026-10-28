@@ -4,13 +4,16 @@ import { requestShellOpenAt, requestShellRestartAt } from "../../../../features/
 import { getActiveShellKey } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { setMobileListTheater } from "../chrome/mobile/mobile-store.js";
-import { readCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { commodoreSectionLabel, readCommodoreList, selectMobileCommodore, setZoneCommodore } from "../../../../features/commodore/client/commodore-list.js";
 import { isKnownTheater, resolveTheaterOwner } from "../../../../features/commodore/client/theater-owner.js";
 import { getViewedCommodoreId, getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "../../../../features/workspace/shared/pane.js";
 import type { ExpandedSurfaceOpenRequest } from "../../../../features/workspace/shared/expanded-surface.js";
 import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
 import { closeMobileObjective, readMobileObjectiveId } from "../chrome/mobile/mobile-objective-url.js";
+import { openMobileChoice } from "../chrome/mobile/mobile-choice-store.js";
+import { getT } from "../i18n/index.js";
+import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
@@ -38,10 +41,48 @@ import { attachComposerQuoteTo, composerQuoteTargets, receiveComposerQuotes, sub
 import { clearObjectiveRuntime, dismissNotificationsForObjective, focusObjective, getState, ownObjectiveRuntime,
   raiseObjectiveNotification, setObjectiveRuntime, setObjectiveRuntimeHydration, subscribe } from "./store.js";
 
-function viewTheaterInbox(theaterId: string): void {
-  const owner = resolveTheaterOwner(theaterId);
-  if (!owner) return;
+/** 그 폴더를 지금 가진 사령관들 — 같은 폴더를 여러 사령관이 나눌 수 있다. */
+function theaterOwners(theaterId: string) {
+  return readCommodoreList().filter((row) => row.theaters.some((theater) => theater.status === "available" && theater.theaterId === theaterId));
+}
+
+/**
+ * 착지의 주인 사령관. 요청이 실은 사령관이 그 폴더를 가지고 있으면 그 사령관이다. 아니면 보고 있는 사령관이 가졌을 때나 가진 사령관이
+ * 하나뿐일 때만 정해진다(`resolveTheaterOwner`). 여럿이 나누는 폴더에서 첫 주인을 고르지 않는다 — 정해지지 않으면 null.
+ */
+function landingOwner(theaterId: string, commodoreId: string | null): string | null {
+  if (commodoreId && theaterOwners(theaterId).some((row) => row.commodoreId === commodoreId)) return commodoreId;
+  return resolveTheaterOwner(theaterId);
+}
+
+/**
+ * 주인을 정하지 못한 폰 착지 — 그 폴더를 가진 사령관들을 보여 주고 사람이 고르게 한다. 고르면 `land` 가 그 사령관으로 착지를 잇는다.
+ * 폰이 아니거나 고를 사령관이 둘 이상이 아니면 열지 않고 false. 데스크톱은 사이드바에서 사령관을 고르면 보류된 착지가 이어진다.
+ */
+function chooseLandingCommodore(theaterId: string, land: (commodoreId: string) => void): boolean {
+  const owners = theaterOwners(theaterId);
+  if (getViewModeSnapshot().effective !== "mobile" || owners.length < 2) return false;
+  const t = getT(resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto"), true);
+  openMobileChoice({
+    title: t("chrome.landing.chooseCommodore"),
+    value: "",
+    options: owners.map((row) => ({ value: row.commodoreId, label: commodoreSectionLabel(row, t("chrome.landing.unnamedCommodore")) })),
+    onSelect: land,
+  });
+  return true;
+}
+
+/**
+ * Theater 의 Inbox 로 착지한다. 주인 사령관을 화면 문맥으로 함께 세운다 — 폰은 고른 사령관, 데스크톱은 작전 구역 사령관.
+ * 데스크톱에서 그 사령관을 세우지 않으면 보이는 Theater 가 비어, 그 Theater 로 옮겨 달라는 쪽(위키 링크)이 같은 요청을 끝없이 되풀이한다.
+ * 주인을 정하지 못하면 폰은 사람에게 고르게 하고, 데스크톱은 그대로 둔다(사이드바에서 고르면 이어진다). 처리했으면 true.
+ */
+function viewTheaterInbox(theaterId: string, commodoreId: string | null = null): boolean {
+  const owner = landingOwner(theaterId, commodoreId);
+  if (!owner) return chooseLandingCommodore(theaterId, (chosen) => { viewTheaterInbox(theaterId, chosen); });
+  setZoneCommodore(owner);
   if (getViewModeSnapshot().effective === "mobile") {
+    selectMobileCommodore(owner);
     setMobileListTheater({ commodoreId: owner, theaterId });
     closeMobileObjective();
     setMobileDestination({ kind: "home" });
@@ -51,6 +92,7 @@ function viewTheaterInbox(theaterId: string): void {
     openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "theaters" });
   }
   navigateConsoleRoute("/objectives");
+  return true;
 }
 
 export interface HostCapabilityDependencies {
@@ -109,11 +151,16 @@ function revealExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
 export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]): PaneTargetPorts {
   return {
     bindings,
-    activateTheater: (theaterId) => {
+    activateTheater: (theaterId, commodoreId, retry) => {
       if (!isKnownTheater(theaterId)) return false;
       if (getViewModeSnapshot().effective === "mobile") {
-        viewTheaterInbox(theaterId);
+        // 폰은 주인 사령관의 목록으로 옮겨야 착지한다. 주인을 정하지 못하면 옮긴 척하지 않고 사람에게 고르게 한다.
+        const owner = landingOwner(theaterId, commodoreId);
+        if (!owner) return chooseLandingCommodore(theaterId, retry) ? "choosing" : false;
+        viewTheaterInbox(theaterId, owner);
       } else if (getViewedTheaterId() !== theaterId) {
+        const owner = landingOwner(theaterId, commodoreId);
+        if (owner) setZoneCommodore(owner);
         // 페인 착지는 Theater 설정을 여는 요청이 아니다. 같은 Theater면 대화를 그대로 두고,
         // 다른 Theater면 문맥만 바꿔 뒤따르는 Inbox 효과가 목표 페인을 덮지 않게 한다.
         closeConversationSurface();

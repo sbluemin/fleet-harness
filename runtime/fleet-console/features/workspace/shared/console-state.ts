@@ -25,8 +25,12 @@ export interface ClientConsoleStateCapability {
   getViewedTheaterId?(): string | null;
   /** 지금 화면이 가리키는 사령관 UUID(새 세션·가운데 표면·대화 대상·활성 Objective, 폰은 고른 사령관). Theater 에서 찾지 않는다. 없으면 null. */
   getViewedCommodoreId?(): string | null;
-  /** 마운트하지 않고 해당 Theater의 Inbox를 연다. */
-  viewTheater?(theaterId: string): void;
+  /**
+   * 마운트하지 않고 해당 Theater의 Inbox를 연다. 같은 폴더를 여러 사령관이 나눌 수 있으므로 요청한 쪽이 아는 사령관을 `commodoreId` 로
+   * 싣는다. 그 사령관이 폴더를 가지고 있지 않거나 없으면 보고 있는 사령관·유일한 주인 순으로 정하고, 그래도 정해지지 않으면 호스트가
+   * 사람에게 고르게 한다(폰). 첫 주인을 고르지 않는다.
+   */
+  viewTheater?(theaterId: string, commodoreId?: string | null): void;
   /** 캔버스에서 활성인 Objective — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
   getActiveObjectiveId(): string | null;
   /**
