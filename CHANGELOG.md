@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.269.0] - 2026-10-28
+
+### fleet-console
+
+#### Added
+- Revisit pages from Fleet Browser history or imported Chrome history through address-bar suggestions with site icons, even when online search suggestions are off.
+- Ask your Commodore to create another Commodore with its own Theaters, a directive, and selected context and memories.
+- Ask your Commodore to contact another by name or @mention, and revisit their exchange and records from the conversation.
+- Close a decision request without deciding: a quiet "No decision" button next to Answer on desktop and Send on the mobile layout closes the whole request, and the decision history keeps it as "No decision".
+- Browse an objective's shared folder, where the Commander and members leave files for each other, from the new Library tab (formerly Results) on desktop, phone and remote access: images and text open in a read-only preview, and other files download.
+
+#### Changed
+- Ask the Commodore to schedule recurring or one-time routines, then toggle or remove them in its Routines tab. Patrol intervals and scheduled stopping are removed: previous settings are discarded, and all Commodores now respond to events without a fixed wake interval.
+
 ## [1.268.0] - 2026-10-28
 
 ### fleet-console
