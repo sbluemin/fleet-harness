@@ -155,7 +155,8 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
 function MobileEmptyHome() {
   const t = useT();
   const state = useConsoleState();
-  const firstRun = state.bootstrapped && useCommodoreList().length === 0;
+  const commodores = useCommodoreList();
+  const firstRun = state.bootstrapped && commodores.length === 0;
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
   if (!firstRun) return null;
   return (
