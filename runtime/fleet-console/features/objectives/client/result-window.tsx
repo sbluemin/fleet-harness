@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as
 import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useSelect, type SelectOption } from "@fleet-console/ui/react";
+import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { missionTitle, type Objective, type ObjectiveResult } from "../shared/types.js";
 import type { SharedFolderEntry } from "../shared/shared-folder.js";
 import { getT } from "./i18n/index.js";
@@ -78,6 +80,18 @@ function saveRect(rect: Rect) { try { localStorage.setItem(RECT_KEY, JSON.string
 export function ResultWindowHost({ language = "en", mobile = false }: { readonly language?: ConsoleLocale; readonly mobile?: boolean }) {
   const opened = useSyncExternalStore(subscribe, snapshot, snapshot);
   const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => opened ? findAnyObjective(opened.objectiveId) : null, () => null);
+  const open = opened !== null;
+  // 폰에서는 전체 화면 시트다 — 하드웨어·브라우저 뒤로가 아래 화면보다 창을 먼저 닫는다(다른 폰 시트와 같은 계약).
+  // 열려 있는 동안 한 번만 올린다: 창 안에서 결과물·첨부를 바꿔도 history 항목은 늘지 않는다.
+  useEffect(() => {
+    if (!mobile || !open) return;
+    let historyId: number | null = pushOverlayHistory(() => { historyId = null; closeWindow(); });
+    const releaseLayer = pushBackLayer(closeWindow);
+    return () => {
+      releaseLayer();
+      if (historyId !== null) releaseOverlayHistory(historyId);
+    };
+  }, [mobile, open]);
   // 목표가 지워져도 명시적 닫기 전까지 창 틀은 남고, 오래된 증거를 다시 보여 주지는 않는다.
   return opened ? createPortal(<ResultWindow opened={opened} objective={objective} language={language} mobile={mobile} />, document.body) : null;
 }
