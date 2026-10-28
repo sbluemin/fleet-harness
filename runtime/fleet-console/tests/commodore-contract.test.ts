@@ -18,6 +18,8 @@ import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from
 import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
+import { createCommodoreCreator } from "../features/commodore/host/creation.js";
+import { createCommodoreManagementTools } from "../features/commodore/host/console-tools.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
 import { MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
@@ -129,6 +131,63 @@ it("persists UUID section order through the public route without rewriting entit
     expect(settings.load().commodoreOrder).toEqual([c, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
   } finally { await feature.dispose(); }
+});
+
+it("creates a Commodore with owned Theaters and selected context atomically, rolling back initialization failures", async () => {
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-create-"))); dirs.push(dir);
+  const theater = path.join(dir, "project"); fs.mkdirSync(theater);
+  const paths = { consoleDataDir: dir, workspaceHash, listTheaterIds: () => ["project"], resolveTheaterPath: (id: string) => id === "project" ? theater : null };
+  const ownership = createCommodoreOwnership(paths as never);
+  const { entities } = ownership;
+  const sourceId = ownership.create();
+  const events: CommodoreEvent[] = [];
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit: (event) => events.push(event), now: () => 1_000 });
+  store.setAlias(sourceId, "Source"); store.setTheaters(sourceId, [{ path: theater }]);
+  const memory = store.memory.save(sourceId, { branch: "lessons", topic: "Browser", slug: "isolation", title: "Isolation", description: "Use disposable state", why: "Protect user data", how: "Use an isolated root", sources: [{ objectiveId: "o1", title: "Browser work" }], links: ["lessons/Browser/unselected"] });
+  const sourceBytes = fs.readFileSync(path.join(entities.dirOf(sourceId)!, "state.json"), "utf8");
+  const created = vi.fn();
+  const create = createCommodoreCreator({ ownership, store, created });
+  const tool = createCommodoreManagementTools({ hasPersonMessage: () => true, stopping: () => false, list: () => entities.ids().map((id) => ({ commodoreId: id, theaters: entities.theatersOf(id) })), create: (input) => create(sourceId, input) })[0]!;
+  const input = { action: "create", alias: "Browser", theaters: [theater], directive: "Own Browser work", intel: ["Keep work isolated"], memoryRefs: [memory.ref] };
+  const call = (args: unknown) => tool.execute(args, { cwd: dir }) as Promise<{ isError: boolean; structuredContent: Record<string, any> }>;
+  events.length = 0;
+  // 소유하지 않은 실제 폴더도 새 세션 경계로 넘기지 않는다.
+  expect(await call({ ...input, theaters: [dir] })).toMatchObject({ isError: true, structuredContent: { error: "theater_not_owned" } });
+  // 기억 항목을 쓴 뒤 인덱스 쓰기를 실패시킨다. 일부 파일·UUID·사건도 남아서는 안 된다.
+  const rename = fs.renameSync;
+  const fault = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+    if (String(to).includes(`${path.sep}.new-`) && String(to).endsWith(`${path.sep}memory${path.sep}MEMORY.md`)) throw new Error("injected_write_failure");
+    return rename(from, to);
+  });
+  try { expect(await call(input)).toMatchObject({ isError: true, structuredContent: { error: "injected_write_failure" } }); }
+  finally { fault.mockRestore(); }
+  expect(entities.ids()).toEqual([sourceId]);
+  expect(fs.readdirSync(path.join(dir, "commodore"))).toEqual([sourceId]);
+  expect(events).toEqual([]); expect(created).not.toHaveBeenCalled();
+  created.mockImplementationOnce(() => { throw new Error("injected_host_failure"); });
+  expect(await call(input)).toMatchObject({ isError: true, structuredContent: { error: "injected_host_failure" } });
+  expect(entities.ids()).toEqual([sourceId]);
+  expect(fs.readdirSync(path.join(dir, "commodore"))).toEqual([sourceId]);
+  expect(events).toEqual([]);
+
+  const result = await call(input);
+  expect(result.isError).toBe(false);
+  const id = result.structuredContent.commodoreId as string;
+  expect(result.structuredContent.target).toBe(`commodore:${id}`);
+  expect(id).not.toBe(sourceId);
+  expect(store.read(id)).toMatchObject({ alias: "Browser", directive: { text: input.directive, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
+  expect(store.read(id)?.patrolMinutes).toBeUndefined();
+  expect(entities.theatersOf(id)).toEqual([{ path: theater }]);
+  expect(ownership.additionalDirectories(id)).toEqual([theater]);
+  expect(store.memory.read(id, memory.ref)).toEqual({ ...memory, links: [] });
+  expect(store.memory.read(sourceId, memory.ref)).toEqual(memory);
+  expect(fs.readFileSync(path.join(entities.dirOf(sourceId)!, "state.json"), "utf8")).toBe(sourceBytes);
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ op: "state", commodoreId: id, change: "created", state: { alias: "Browser", intel: [{ source: `commodore:${sourceId}` }] } });
+  expect((await call({ action: "list" })).structuredContent.commodores).toContainEqual({ commodoreId: id, theaters: [{ path: theater }] });
+  const restored = createCommodoreOwnership(paths as never);
+  expect(restored.entities.ids().sort()).toEqual([sourceId, id].sort());
+  expect(restored.entities.theatersOf(id)).toEqual([{ path: theater }]);
 });
 
 it("holds deletion admission until writers stop and preserves the owner on stop or rename failure", async () => {
@@ -1137,8 +1196,12 @@ describe("commodore supervisor", () => {
       fs.mkdirSync(theaterRoot, { recursive: true });
       // 남는 대화를 흉내 내는 호스트 — key 마다 대화가 남고, 같은 key 로 다시 열면 이어 받는다. 도는 턴은 건넨 말을 받는다.
       const sessions: { sent: string[]; steered: { text: string; id: string }[]; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
+      let managementTool: ConsoleMcpTool | undefined;
+      const createCommodore = vi.fn(() => ({ commodoreId: "new", target: "commodore:new" }));
+      const callCreate = () => managementTool!.execute({ action: "create", alias: "Browser", theaters: [], directive: "Browser work", intel: [] }, { cwd: theaterRoot });
       const agent: AgentHost = {
         createSession: async (options) => {
+          managementTool = options.tools?.custom?.find((group) => group.name === "console")?.tools.find((tool) => tool.name === "console_commodores");
           let finish = () => {};
           const entry = { sent: [] as string[], steered: [] as { text: string; id: string }[], emit: (event: AgentEvent) => options.onEvent?.(event), finish: () => finish() };
           sessions.push(entry);
@@ -1157,19 +1220,25 @@ describe("commodore supervisor", () => {
       let lifecycle: "dormant" | "live" = "dormant";
       let revision = 0;
       const resumeFailures: { objectiveId: string; title: string; error: string }[] = [];
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, emit: () => undefined });
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: createCommodore }), emit: () => undefined });
       let supervisor = make();
       supervisor.sync("patrol-started");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(1);
       expect(sessions[0]!.sent).toHaveLength(1);
       expect(hasPersonMessage!()).toBe(false);
+      expect(managementTool).toBeDefined();
+      expect(await callCreate()).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
+      expect(createCommodore).not.toHaveBeenCalled();
       // 턴 중의 말 — 다음 턴을 기다리지 않고 도는 턴에 건넨다. 그 턴이 집으면 「전달됨」이 남고 다음 턴은 서지 않는다.
       const read = h.store.transcriptAppend("t1", { kind: "message", text: "Use Muse Spark for new commanders." });
       expect(sessions[0]!.steered).toEqual([{ text: expect.stringContaining("Use Muse Spark for new commanders."), id: `m${read.seq}` }]);
       expect(hasPersonMessage!()).toBe(false);
+      expect(await callCreate()).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
       sessions[0]!.emit({ kind: "input-started", id: `m${read.seq}` });
       expect(hasPersonMessage!()).toBe(true);
+      expect(await callCreate()).toMatchObject({ isError: false, structuredContent: { commodoreId: "new" } });
+      expect(createCommodore).toHaveBeenCalledTimes(1);
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
       // 집히지 못한 말은 대기열로 돌아와 다음 턴에 실린다 — 잃지 않는다.
       const unread = h.store.transcriptAppend("t1", { kind: "message", text: "And check the roster." });
@@ -1183,6 +1252,8 @@ describe("commodore supervisor", () => {
       sessions[0]!.finish();
       await vi.advanceTimersByTimeAsync(10);
       expect(hasPersonMessage!()).toBe(false);
+      expect(await callCreate()).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
+      expect(createCommodore).toHaveBeenCalledTimes(1);
 
       // Console 재시작 — 재시작만으로는 깨우지 않는다. 새 대화의 첫 턴은 제품 기록의 최근 결과 요약과 empty 깨움이다.
       await supervisor.dispose();

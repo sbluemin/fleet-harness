@@ -64,6 +64,8 @@ export interface CommodoreMemory {
   read(commodoreId: string, ref: string): MemoryEntry;
   /** 이미 있으면 `memory_exists`, 상한이면 `too_many_memories`, 비밀 값 모양이면(이름·연결 포함) `memory_secret`, 본문에 `## ` 줄이 있으면 `memory_heading`. */
   save(commodoreId: string, input: MemorySaveInput): MemoryEntry;
+  /** 새 사령관으로 선택한 기억을 복사한다. 이관은 재검증이 아니므로 원래 시각을 보존한다. */
+  copy(commodoreId: string, entry: MemoryEntry): MemoryEntry;
   /** 준 필드만 바꾸고 갱신·검증 시각을 지금으로. 필드가 없으면 검증 시각만 지금으로(다시 확인함). */
   update(commodoreId: string, ref: string, patch: MemoryPatch): { readonly entry: MemoryEntry; readonly change: "update" | "verify" };
   remove(commodoreId: string, ref: string): void;
@@ -205,29 +207,32 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     return normalized;
   };
 
+  const save = (commodoreId: string, input: MemorySaveInput, timestamps?: Pick<MemoryEntry, "created" | "updated" | "verified">): MemoryEntry => {
+    const { branch, topic, slug } = parseMemoryRef(refOf(input.branch, input.topic, input.slug));
+    const ref = refOf(branch, topic, slug);
+    checkText([input.title, input.description, input.why, input.how, topic, slug, ...(input.links ?? []), ...(input.sources ?? []).map((source) => source.title)]);
+    checkBody([input.why, input.how]);
+    const existing = list(commodoreId);
+    if (existing.some((entry) => entry.ref === ref)) throw new CommodoreStoreError("memory_exists");
+    if (existing.length >= MAX_MEMORY_ENTRIES) throw new CommodoreStoreError("too_many_memories");
+    const at = options.now();
+    const entry: MemoryEntry = {
+      ref, branch, topic, slug,
+      title: input.title, description: input.description, why: input.why, how: input.how,
+      sources: (input.sources ?? []).slice(0, MAX_MEMORY_SOURCES),
+      links: checkLinks(commodoreId, ref, input.links) ?? [],
+      created: timestamps?.created ?? at, updated: timestamps?.updated ?? at, verified: timestamps?.verified ?? at,
+    };
+    write(commodoreId, entry);
+    options.onChange(commodoreId, "save", ref);
+    return entry;
+  };
+
   return {
     list,
     read: find,
-    save(commodoreId, input) {
-      const { branch, topic, slug } = parseMemoryRef(refOf(input.branch, input.topic, input.slug));
-      const ref = refOf(branch, topic, slug);
-      checkText([input.title, input.description, input.why, input.how, topic, slug, ...(input.links ?? []), ...(input.sources ?? []).map((source) => source.title)]);
-      checkBody([input.why, input.how]);
-      const existing = list(commodoreId);
-      if (existing.some((entry) => entry.ref === ref)) throw new CommodoreStoreError("memory_exists");
-      if (existing.length >= MAX_MEMORY_ENTRIES) throw new CommodoreStoreError("too_many_memories");
-      const at = options.now();
-      const entry: MemoryEntry = {
-        ref, branch, topic, slug,
-        title: input.title, description: input.description, why: input.why, how: input.how,
-        sources: (input.sources ?? []).slice(0, MAX_MEMORY_SOURCES),
-        links: checkLinks(commodoreId, ref, input.links) ?? [],
-        created: at, updated: at, verified: at,
-      };
-      write(commodoreId, entry);
-      options.onChange(commodoreId, "save", ref);
-      return entry;
-    },
+    save,
+    copy: (commodoreId, entry) => save(commodoreId, entry, entry),
     update(commodoreId, ref, patch) {
       const current = find(commodoreId, ref);
       checkText([patch.title, patch.description, patch.why, patch.how, ...(patch.links ?? []), ...(patch.sources ?? []).map((source) => source.title)]);

@@ -22,6 +22,8 @@ import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
+import { createCommodoreCreator } from "./creation.js";
+import { createCommodoreManagementTools } from "./console-tools.js";
 import { createCommodorePlugins } from "./plugins.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
@@ -72,6 +74,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   });
   const store = createCommodoreStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: theaterIds, replaceTheatersInIndex: entities.replaceTheatersInIndex, emit });
   selectedPlugins = () => entities.ids().flatMap((id) => store.read(id)?.plugins ?? []);
+  const createFromCommodore = createCommodoreCreator({ ownership, store, ...(deps.created ? { created: deps.created } : {}) });
   const supervisor = createCommodoreSupervisor({
     store, agent, board: () => board, theaterIds, cwd: entities.dirOf, isDeleting: ownership.isDeleting,
     ...(deps.attachments ? { attachments: deps.attachments } : {}),
@@ -80,6 +83,11 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.models ? { models: deps.models } : {}),
     theater: (theaterId) => { const root = deps.paths.resolveTheaterPath(theaterId); return root ? { label: path.basename(root) || root, root } : null; },
     knowledgeTools: deps.knowledgeTools,
+    managementTools: (commodoreId, turn) => createCommodoreManagementTools({
+      hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
+      list: () => orderedIds().map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),
+      create: (input) => createFromCommodore(commodoreId, input),
+    }),
     plugins: (ids) => plugins.resolve(ids),
     emit,
   });

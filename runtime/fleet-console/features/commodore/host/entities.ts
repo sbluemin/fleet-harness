@@ -110,7 +110,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
     theatersOf: (id: string) => links.get(id) ?? [],
     theaterIds: (id: string) => (links.get(id) ?? []).map((row) => theaterIdOf(row.path)),
     // Theater 인자는 옛 데이터의 발급에만 쓴다. 사람의 새 사령관은 빈 배열로 만든다.
-    create(theater?: string): string {
+    create(theater?: string, initialize?: (id: string, directory: string) => void): string {
       const theaters = theater ? [{ path: canonical(theater) }] : [];
       if (theater) {
         const existing = locateAll(theater);
@@ -122,9 +122,12 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
       fs.mkdirSync(staging, { mode: 0o700 });
       try {
         fs.writeFileSync(path.join(staging, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters }), { flag: "wx", mode: 0o600 });
+        // 초기 상태와 기억을 완성하기 전에는 목록·세션에 노출하지 않는다. 재기동도 .new- 잔재를 거둔다.
+        initialize?.(id, staging);
+        const initialized = commodoreEntitySchema.parse(JSON.parse(fs.readFileSync(path.join(staging, "state.json"), "utf8")));
         fs.renameSync(staging, path.join(base, id));
+        replaceTheatersInIndex(id, initialized.theaters);
       } catch (error) { fs.rmSync(staging, { recursive: true, force: true }); throw error; }
-      replaceTheatersInIndex(id, theaters);
       return id;
     },
   };
