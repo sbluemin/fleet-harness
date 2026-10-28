@@ -350,16 +350,7 @@
  */
 /* 칸을 화면 크기로 못박는다 — 암묵 auto 칸이면 보기의 height: 100% 가 내용 높이로 풀려 긴 문서가 화면 밖으로 늘어나고 본문이 스크롤되지 않는다. */
 :root[data-view-mode="mobile"] .objectives-zoom-backdrop { grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
-:root[data-view-mode="mobile"] .objectives-att-view { box-sizing: border-box; width: 100%; height: 100%; max-width: none; padding: calc(env(safe-area-inset-top, 0px) + 60px) 0 calc(env(safe-area-inset-bottom, 0px) + 12px); align-content: center; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); box-shadow: none; }
-:root[data-view-mode="mobile"] .objectives-att-view-close { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
-:root[data-view-mode="mobile"] .objectives-att-view-close svg { width: 16px; height: 16px; }
-:root[data-view-mode="mobile"] .objectives-att-view img { max-height: calc(100dvh - 90px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - var(--objectives-att-caption, 20px)); border-radius: 0; }
 :root[data-view-mode="mobile"] .objectives-att-view-step { width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
-:root[data-view-mode="mobile"] .objectives-att-view figcaption { padding: 0 16px; }
-:root[data-view-mode="mobile"] .objectives-att-view-title { font-size: var(--m-fs-secondary); color: var(--m-text); }
-:root[data-view-mode="mobile"] .objectives-att-view-note { font-size: var(--m-fs-caption); color: var(--m-text-nav); }
-:root[data-view-mode="mobile"] .objectives-att-view-meta { font-family: var(--m-sans); font-size: var(--m-fs-small); color: var(--m-text-muted); }
-:root[data-view-mode="mobile"] .objectives-att-view-meta b { color: var(--m-text-nav); }
 /* 텍스트 증거 본문 — 전체 화면 창 안에서 스크롤한다. */
 :root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }
 :root[data-view-mode="mobile"] .objectives-result-markdown :is(h1, h2, h3, h4, h5, h6, p, li, td) { color: var(--m-text); }

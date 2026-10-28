@@ -1392,6 +1392,22 @@
 .console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-wide {
   margin-top: 0;
 }
+/* 좁은 열에서는 머리도 아바타와 같은 세로 축이다. 두 단추가 목록 위에 겹치지 않도록 자기 높이를 차지한다. */
+.console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-top-strip {
+  position: relative;
+  height: auto;
+  padding: var(--space-2) 0;
+  justify-content: center;
+  background: none;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar.is-compact .side-bar-top-strip :is(.side-bar-top-strip-spacer, .conversation-side-deputies) {
+  display: none;
+}
+.console-shell.is-objective-records-view .objective-records-side-bar.is-compact .conversation-side-actions {
+  flex-direction: column;
+  margin: 0;
+  gap: var(--space-1);
+}
 .console-shell.is-objective-records-view .objective-records-side-bar-chips {
   padding-top: var(--space-1);
 }
@@ -1513,7 +1529,7 @@ html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.co
 /* macOS 신호등 — 셸이 52px 줄의 가운데(y 19, x 16)에 세운다(window-policy.ts trafficLightPosition, chrome.band).
    신호등 세 개가 차지한 76 DIP 를 비우고 그 오른쪽에서 단추가 시작한다. 신호등은 네이티브라 줌을 타지 않으므로
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바는 접히지 않으므로 신호등은 늘 사이드바 맨 위 줄에 앉는다. */
-html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-objective-records-view .side-bar-top-strip {
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-top-strip {
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
 }
 

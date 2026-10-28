@@ -11,7 +11,7 @@
 .commodore-routines-detail { grid-column: 1 / -1; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 8px 0 0; font-size: var(--t-sm); }
 .commodore-routines-detail dt { color: var(--text-tertiary); }
 .commodore-routines-detail dd { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
-.commodore-routines-empty { padding: 28px 16px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-md); text-align: center; color: var(--text-secondary); }
+.commodore-routines-empty { padding: 28px 16px; text-align: center; color: var(--text-secondary); }
 .commodore-routines-error { color: var(--coral-ink); font-size: var(--t-sm); }
 .commodore-routines-menu { position: fixed; z-index: calc(var(--z-overlay) + 3); width: min(260px, calc(100vw - 32px)); padding: 4px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: 0 8px 28px rgb(0 0 0 / .24); }
 .commodore-routines-menu-title { padding: 6px 10px; color: var(--text-tertiary); font-size: var(--t-xs); overflow-wrap: anywhere; }
