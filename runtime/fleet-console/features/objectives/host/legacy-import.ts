@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { writeAtomicSync } from "@fleet-console/infra/fs-store";
+import { NOFOLLOW_FLAG, writeAtomicSync } from "@fleet-console/infra/fs-store";
+import { isDeepStrictEqual } from "node:util";
 import { workspaceDirectoryNames } from "@fleet-console/infra/workspace-dir";
 import { sanitizeObjectiveRecord, type DurableObjectiveGroup } from "../../workspace/host/durable-state.js";
 import { documentFromBoard, documentFromObjective, object, type ObjectiveDocument, type ObjectiveDocumentContext } from "./storage-codec.js";
@@ -115,6 +116,12 @@ function legacyNames(cwd: string): readonly string[] {
 function hashOf(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
+function readSource(file: string): Buffer {
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("legacy_unreadable");
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
+  try { return fs.readFileSync(fd); } finally { fs.closeSync(fd); }
+}
 /** 직전 보드의 pending 초안은 객체다. 현행 문서는 pending: true와 펼친 제목·시각만 받는다. */
 function expandPendingDraft(raw: Record<string, unknown>): Record<string, unknown> {
   if (!object(raw.pending)) return raw;
@@ -180,11 +187,14 @@ function copyTree(source: string, target: string): void {
 
 interface RecordHit { node: ReturnType<typeof sanitizeObjectiveRecord>; archived?: { archiveId: string; archivedAt: number }; deleted?: { deletionId: string; targetId: string; deletedAt: number; expiresAt: number; kind: "objective" | "theater"; groups?: readonly object[] }; purged?: { eventId: string; sessionIds: readonly string[] } }
 
+export function readLegacyObjectiveRecord(value: unknown): ReturnType<typeof sanitizeObjectiveRecord> {
+  const renamed = renameKeys(value);
+  return sanitizeObjectiveRecord(object(renamed) ? { ...renamed, id: renamed.id ?? renamed.operationId } : renamed);
+}
 function collect(previousRaw: Record<string, unknown>, archive: unknown, theaterIds: ReadonlySet<string>): Map<string, RecordHit> {
   const hits = new Map<string, RecordHit>();
   const take = (value: unknown, extra?: Partial<RecordHit>) => {
-    const renamed = renameKeys(value);
-    const node = sanitizeObjectiveRecord(object(renamed) ? { ...renamed, id: renamed.id ?? renamed.operationId } : renamed);
+    const node = readLegacyObjectiveRecord(value);
     if (!node || !theaterIds.has(node.theaterId) || !segment(node.id)) return;
     const prior = hits.get(node.id);
     hits.set(node.id, { node, ...prior, ...extra });
@@ -193,7 +203,13 @@ function collect(previousRaw: Record<string, unknown>, archive: unknown, theater
     const rows = previousRaw[key];
     if (Array.isArray(rows)) for (const row of rows) take(row);
   }
-  if (!object(archive)) return hits;
+  for (const row of Array.isArray(previousRaw.deletionTombstones) ? previousRaw.deletionTombstones : []) {
+    if (!object(row) || typeof row.deletionId !== "string" || !Number.isFinite(row.deletedAt) || !Number.isFinite(row.expiresAt)) continue;
+    const kind = row.kind === "theater" ? "theater" as const : "objective" as const;
+    for (const body of [row.operation, row.objectiveRecord, ...(Array.isArray(row.operations) ? row.operations : []), ...(Array.isArray(row.objectiveRecords) ? row.objectiveRecords : []), ...(Array.isArray(row.descendants) ? row.descendants : [])]) {
+      take(body, { deleted: { deletionId: row.deletionId, targetId: kind === "theater" && object(row.theater) && typeof row.theater.id === "string" ? row.theater.id : "", deletedAt: row.deletedAt as number, expiresAt: row.expiresAt as number, kind, ...(Array.isArray(row.groups) ? { groups: row.groups } : {}) } });
+    }
+  }
   const visit = (raw: unknown) => {
     if (!object(raw)) return;
     for (const row of Array.isArray(raw.entries) ? raw.entries : []) {
@@ -224,6 +240,7 @@ export function importMissingObjectives(deps: {
   dataDir: string;
   owner: ObjectiveDocumentContext & { readonly directory: string };
   previousRaw: Record<string, unknown>;
+  ownerOf?: (objectiveId: string, theaterId: string, explicit?: string) => string | null;
   known: ReadonlySet<string>;
   /** 다른 commodore가 이미 가져간 옛 목표. 같은 Theater를 둔 commodore가 여럿이어도 한 번만 이주한다. */
   claimed: ReadonlySet<string>;
@@ -263,27 +280,35 @@ export function importMissingObjectives(deps: {
     catch { warnOnce(archiveFile, `[objectives] operations-archive.json: unreadable; original preserved`); }
   }
   const theaterIds = new Set([deps.owner.legacyTheaterId, ...(deps.owner.legacyTheaterIds ?? [])].filter((id) => id.length > 0));
-  const records = collect(deps.previousRaw, archive, theaterIds);
-  const names = new Set<string>(legacyNames(deps.owner.legacyCwd));
-  try { for (const name of workspaceDirectoryNames(deps.owner.legacyCwd)) names.add(name); } catch { /* 경로를 정규화하지 못한 cwd도 옛 이름으로 찾는다. */ }
-  const trees: { dir: string; whole: boolean; name: string }[] = [];
-  for (const name of names) {
-    const root = path.join(deps.dataDir, "workspaces", name);
-    const objectives = path.join(root, "objectives");
-    if (!exists(objectives)) continue;
-    let identity: string | null = null;
-    const identityFile = path.join(root, "cwd.json");
-    if (exists(identityFile)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8")) as { cwd?: unknown };
-        identity = typeof parsed.cwd === "string" ? parsed.cwd : null;
-      } catch { identity = null; }
+  const belongs = (id: string, theaterId: string, explicit?: string) => deps.ownerOf
+    ? deps.ownerOf(id, theaterId, explicit) === deps.owner.commodoreId
+    : !explicit || explicit === deps.owner.commodoreId;
+  const records = new Map([...collect(deps.previousRaw, archive, theaterIds)].filter(([id, hit]) => hit.node && belongs(id, hit.node.theaterId, hit.node.commodoreId)));
+  const folders = deps.owner.legacyFolders ?? [{ path: deps.owner.legacyCwd, ids: [...theaterIds] }];
+  const cwdFor = (theaterId?: string) => folders.find((folder) => theaterId && folder.ids.includes(theaterId))?.path ?? deps.owner.legacyCwd;
+  const trees: { dir: string; whole: boolean; name: string; cwd: string; theaterId: string }[] = [];
+  for (const folder of folders) {
+    if (!folder.path) continue;
+    const names = new Set<string>(legacyNames(folder.path));
+    try { for (const name of workspaceDirectoryNames(folder.path)) names.add(name); } catch { /* 사라진 경로도 옛 이름으로 찾는다. */ }
+    for (const name of names) {
+      const root = path.join(deps.dataDir, "workspaces", name);
+      const objectives = path.join(root, "objectives");
+      if (!exists(objectives) || fs.lstatSync(root).isSymbolicLink() || fs.lstatSync(objectives).isSymbolicLink()) continue;
+      let identity: string | null = null;
+      const identityFile = path.join(root, "cwd.json");
+      if (exists(identityFile) && !fs.lstatSync(identityFile).isSymbolicLink()) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(identityFile, "utf8")) as { cwd?: unknown };
+          identity = typeof parsed.cwd === "string" ? parsed.cwd : null;
+        } catch { identity = null; }
+      }
+      const legacyName = legacyNames(folder.path).includes(name);
+      if (!legacyName && identity !== null && !sameCwd(identity, folder.path)) continue;
+      trees.push({ dir: objectives, name, whole: identity !== null && sameCwd(identity, folder.path), cwd: folder.path, theaterId: folder.ids[0] ?? "" });
     }
-    const legacyName = legacyNames(deps.owner.legacyCwd).includes(name);
-    trees.push({ dir: objectives, name, whole: identity !== null && sameCwd(identity, deps.owner.legacyCwd), });
-    if (!legacyName && identity !== null && !sameCwd(identity, deps.owner.legacyCwd)) trees.pop();
   }
-  const wanted = new Map<string, { source?: string; hit?: RecordHit }>();
+  const wanted = new Map<string, { source?: string; hit?: RecordHit; cwd?: string }>();
   for (const tree of trees) {
     let entriesOnDisk: fs.Dirent[] = [];
     try { entriesOnDisk = fs.readdirSync(tree.dir, { withFileTypes: true }); }
@@ -309,9 +334,11 @@ export function importMissingObjectives(deps: {
       }
       const file = path.join(source, "objective.json");
       let bodyTheater: string | undefined;
+      let bodyOwner: string | undefined;
       if (exists(file) && !fs.lstatSync(file).isSymbolicLink()) {
         try {
           const raw = renameKeys(JSON.parse(fs.readFileSync(file, "utf8")));
+          bodyOwner = object(raw) && typeof raw.commodoreId === "string" ? raw.commodoreId : undefined;
           const draft = object(raw) && object(raw.pending) ? raw.pending : undefined;
           bodyTheater = object(raw) && typeof raw.theaterId === "string" ? raw.theaterId : draft && typeof draft.theaterId === "string" ? draft.theaterId : undefined;
         } catch { /* 본문 판정 실패는 복사 단계에서 격리한다. */ }
@@ -324,7 +351,8 @@ export function importMissingObjectives(deps: {
         deps.warn(`[objectives] ${id}: legacy_unattributed; original preserved`);
         continue;
       }
-      wanted.set(id, { source, hit });
+      if (!belongs(id, hit?.node?.theaterId ?? bodyTheater ?? tree.theaterId, bodyOwner ?? hit?.node?.commodoreId)) continue;
+      wanted.set(id, { source, hit, cwd: tree.cwd });
     }
   }
   for (const [id, hit] of records) {
@@ -340,23 +368,33 @@ export function importMissingObjectives(deps: {
   }
   for (const [id, item] of wanted) {
     const sourceFile = item.source ? path.join(item.source, "objective.json") : "";
-    const sourceBytes = sourceFile && exists(sourceFile) ? fs.readFileSync(sourceFile) : Buffer.from(id);
+    const sourceBytes = sourceFile && exists(sourceFile) ? readSource(sourceFile) : Buffer.from(JSON.stringify(item.hit?.node ?? { id }));
     const sourceHash = hashOf(sourceBytes);
     if (deps.quarantined.some((row) => row.id === id && row.sourceHash === sourceHash && row.reason === "legacy_unreadable")) continue;
     const staging = path.join(deps.owner.directory, `.import-${id}`);
     try {
+      const backupDir = path.join(deps.owner.directory, ".archive-migration");
+      deps.prepareDir(backupDir);
+      const backup = path.join(backupDir, `${sourceHash}.json`);
+      if (!exists(backup)) {
+        const fd = fs.openSync(backup, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | NOFOLLOW_FLAG, 0o600);
+        try { fs.writeFileSync(fd, sourceBytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      }
+      if (!readSource(backup).equals(sourceBytes)) throw new Error("legacy_backup_mismatch");
       if (item.source) copyTree(item.source, staging);
       else fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
       const boardFile = path.join(staging, "objective.json");
       const parsed = exists(boardFile) ? renameKeys(JSON.parse(fs.readFileSync(boardFile, "utf8"))) : { id, rank: 0, note: "", missions: [] };
       if (!object(parsed)) throw new SyntaxError("legacy_unreadable");
       const raw = expandPendingDraft(parsed);
-      const board = { rank: 0, note: "", missions: [], ...raw, id, ...(typeof raw.cwd === "string" ? {} : { cwd: deps.owner.legacyCwd }) } as StoredObjective;
+      const fallbackCwd = item.hit?.node?.cwd ?? item.cwd ?? cwdFor(item.hit?.node?.theaterId);
+      const board = { rank: 0, note: "", missions: [], ...raw, id, ...(typeof raw.cwd === "string" ? {} : { cwd: fallbackCwd }) } as StoredObjective;
       let doc = documentFromBoard(board);
       if (item.hit?.node) doc = documentFromObjective({ ...item.hit.node, commodoreId: deps.owner.commodoreId }, doc);
-      if (!doc.cwd) doc = { ...doc, cwd: deps.owner.legacyCwd };
+      if (!doc.cwd) doc = { ...doc, cwd: fallbackCwd };
       doc = deps.accept(renameKeys(doc));
       deps.writeJson(boardFile, doc);
+      if (!isDeepStrictEqual(JSON.parse(readSource(boardFile).toString("utf8")), doc)) throw new Error("legacy_verification_failed");
       recordPendingIndex(deps.owner.directory, id);
       fs.renameSync(staging, path.join(deps.owner.directory, id));
       documents.push(doc);
@@ -378,6 +416,7 @@ export function importMissingObjectives(deps: {
   }
   const attributedGroups = Array.isArray(deps.previousRaw.groups) ? deps.previousRaw.groups.flatMap((row) => {
     if (!object(row) || typeof row.theaterId !== "string" || !theaterIds.has(row.theaterId) || typeof row.id !== "string" || !segment(row.id)) return [];
+    if (!belongs(row.id, row.theaterId, typeof row.commodoreId === "string" ? row.commodoreId : undefined)) return [];
     const { commodoreId: _owner, ...group } = row;
     return [group as Omit<DurableObjectiveGroup, "commodoreId">];
   }) : [];

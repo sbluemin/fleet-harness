@@ -44,11 +44,11 @@ function searchContext(body: {
   const ctx = {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => writes.push({ status, body }),
       },
       security: { isTerminalAuthorized: () => true },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as FileExplorerRouteContext;
   return { ctx, writes };

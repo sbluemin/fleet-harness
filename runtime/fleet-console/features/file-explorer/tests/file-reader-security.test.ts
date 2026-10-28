@@ -76,8 +76,8 @@ describe("Files bounded reads", () => {
       let status = 0;
       let payload: unknown;
       const ctx = { host: {
-        security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath },
-        http: { readJsonBody: async () => ({ theaterId: "fixture", relativePath: "large.log", window }), writeJson: (_res: unknown, code: number, body: unknown) => { status = code; payload = body; } },
+        security: { isTerminalAuthorized: () => true }, paths: { resolveCommodoreTheaterPath: () => theaterPath },
+        http: { readJsonBody: async () => ({ commodoreId: "c1", theaterId: "fixture", relativePath: "large.log", window }), writeJson: (_res: unknown, code: number, body: unknown) => { status = code; payload = body; } },
       } } as unknown as FileExplorerRouteContext;
       await handleFilesRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(JSON.stringify(payload)).not.toContain(tmpDir);
@@ -111,8 +111,8 @@ describe("Files reference resolution", () => {
       let response: { status: number; body: unknown } | undefined;
       const ctx = { host: {
         security: { isTerminalAuthorized: () => true },
-        paths: { resolveTheaterPath: () => theaterPath },
-        http: { readJsonBody: async () => ({ theaterId: "fixture", path: requestedPath, pathKind }), writeJson: (_res: unknown, status: number, body: unknown) => { response = { status, body }; } },
+        paths: { resolveCommodoreTheaterPath: () => theaterPath },
+        http: { readJsonBody: async () => ({ commodoreId: "c1", theaterId: "fixture", path: requestedPath, pathKind }), writeJson: (_res: unknown, status: number, body: unknown) => { response = { status, body }; } },
       } } as unknown as FileExplorerRouteContext;
       await handleFilesResolve({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(JSON.stringify(response)).not.toContain(tmpDir);
@@ -125,8 +125,8 @@ describe("Files reference resolution", () => {
     expect(await resolve("missing.txt", "theater-relative")).toEqual({ status: 404, body: { error: "not_found" } });
     let diskStatus: unknown;
     const statusContext = { host: {
-      security: { isTerminalAuthorized: () => true }, paths: { resolveTheaterPath: () => theaterPath },
-      http: { readJsonBody: async () => ({ theaterId: "fixture", paths: ["normal.txt", "link-outside.txt", "missing.txt"] }), writeJson: (_res: unknown, _status: number, body: unknown) => { diskStatus = body; } },
+      security: { isTerminalAuthorized: () => true }, paths: { resolveCommodoreTheaterPath: () => theaterPath },
+      http: { readJsonBody: async () => ({ commodoreId: "c1", theaterId: "fixture", paths: ["normal.txt", "link-outside.txt", "missing.txt"] }), writeJson: (_res: unknown, _status: number, body: unknown) => { diskStatus = body; } },
     } } as unknown as FileExplorerRouteContext;
     await handleFilesDiskStatus({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, statusContext);
     expect(diskStatus).toEqual({ statuses: [
@@ -150,10 +150,10 @@ describe("objective selector", () => {
       const ctx = { host: {
         security: { isTerminalAuthorized: () => true },
         paths: {
-          resolveTheaterPath: (id: string) => { theaterCalls.push(id); return theaterPath; },
+          resolveCommodoreTheaterPath: (_commodoreId: string, id: string) => { theaterCalls.push(id); return theaterPath; },
           resolveObjectivePath: (id: string) => id === "obj-1" ? objectiveRoot : null,
         },
-        http: { readJsonBody: async () => body, writeJson: (_res: unknown, code: number, value: unknown) => { status = code; payload = value; } },
+        http: { readJsonBody: async () => body.theaterId ? { commodoreId: "c1", ...body } : body, writeJson: (_res: unknown, code: number, value: unknown) => { status = code; payload = value; } },
       } } as unknown as FileExplorerRouteContext;
       await handleFilesRead({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
       expect(JSON.stringify(payload)).not.toContain(tmpDir);

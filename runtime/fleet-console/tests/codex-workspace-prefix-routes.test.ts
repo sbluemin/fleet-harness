@@ -60,8 +60,8 @@ describe("workspace-prefixed routes", () => {
     try {
       const ownerA = wsA;
       const ownerB = wsB;
-      const listed = await (await fetch("/api/v1/theaters")).json() as { readonly theaters: readonly { readonly id: string; readonly label: string }[] };
-      const theaterA = listed.theaters.find((theater) => theater.label === path.basename(workspaceA))!.id;
+      const listed = await (await fetch("/api/v1/commodore/list", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json() as { readonly commodores: readonly { readonly commodoreId: string; readonly theaters: readonly { readonly theaterId: string }[] }[] };
+      const theaterA = listed.commodores.find((owner) => owner.commodoreId === ownerA)!.theaters[0]!.theaterId;
       const grant = await (await fetch("/api/v1/theaters/folder-grants", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: workspaceA }) })).json();
       const added = await fetch("/api/v1/commodore/theaters/add", {
         method: "POST", headers: { "Content-Type": "application/json" },

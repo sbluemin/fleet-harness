@@ -3,6 +3,8 @@ import path from "node:path";
 
 import type { RepositoryRouteContext } from "./index.js";
 import type { ConsoleMcpTool } from "../../console-use/shared/tools.js";
+import { consoleToolOwner } from "../../console-use/host/owner-scope.js";
+import { ConsoleControlError } from "../../console-use/host/console-control.js";
 import { defineConsoleTool } from "../../console-use/shared/actions.js";
 import { z } from "zod";
 
@@ -40,7 +42,7 @@ function gitError(error: unknown): never {
 }
 
 export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): readonly ConsoleMcpTool[] {
-  const cwdOf = async (args: { readonly theaterId?: string; readonly objectiveId?: string }, worktree: string | undefined) => {
+  const cwdOf = async (args: { readonly commodoreId?: string; readonly theaterId?: string; readonly objectiveId?: string }, worktree: string | undefined) => {
     const resolved = resolveSurfaceRoot(ctx.host.paths, args);
     if (!resolved.ok) throw new ToolError(resolved.error === "theater_not_found" ? "unknown_theater" : resolved.error);
     try { return { theaterPath: resolved.root, gitCwd: (await resolveGitCwd(resolved.root, worktree ?? "")).gitCwd }; }
@@ -49,7 +51,7 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
   // 한 도구, 다섯 동작 — 저장소 패널의 탭이 그렇듯. 호스트는 호출마다 레일의 「저장소」 아이콘에 표식을 그린다.
   type Action = "status" | "diff" | "log" | "search" | "worktrees";
   const define = <S extends z.ZodObject>(action: Action, schema: S, run: (args: z.output<S>, signal?: AbortSignal) => Promise<unknown>) => ({ action, schema, run: run as (args: unknown, signal?: AbortSignal) => Promise<unknown> });
-  const scope = z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel });
+  const scope = z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel });
   const actions = [
     define("status", scope, async (args) => {
       const { gitCwd } = await cwdOf(args, args.worktree);
@@ -65,7 +67,7 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { branch, ...(ahead ? { ahead: Number(ahead[1]), behind: Number(ahead[2]) } : {}), staged: parsed.staged, unstaged: parsed.unstaged, truncated: status.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("diff", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, path: z.string().min(1).max(512).optional().describe("One file's unified diff; omitted, the changed files against HEAD."), ref }), async (args) => {
+    define("diff", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, path: z.string().min(1).max(512).optional().describe("One file's unified diff; omitted, the changed files against HEAD."), ref }), async (args) => {
       const { gitCwd } = await cwdOf(args, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       try {
@@ -112,7 +114,7 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { path: relative, diff: cut ? diff.slice(0, DIFF_TEXT_CAP) : diff, truncated: cut || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("log", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, ref, limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }), async (args) => {
+    define("log", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, ref, limit: z.number().int().min(1).max(100).optional(), skip: z.number().int().min(0).max(10_000).optional() }), async (args) => {
       const { gitCwd } = await cwdOf(args, args.worktree);
       if (args.ref !== undefined && !isCanonicalRepositoryRef(args.ref)) throw new ToolError("invalid_ref");
       const limit = args.limit ?? 30;
@@ -125,7 +127,7 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return gitError(error);
       }
     }),
-    define("search", z.object({ theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, query: z.string().trim().min(1).max(200).describe("Case-insensitive fixed string, git grep over tracked files."), limit: z.number().int().min(1).max(200).optional() }), async (args) => {
+    define("search", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional(), worktree: rel, query: z.string().trim().min(1).max(200).describe("Case-insensitive fixed string, git grep over tracked files."), limit: z.number().int().min(1).max(200).optional() }), async (args) => {
       const { gitCwd } = await cwdOf(args, args.worktree);
       const limit = args.limit ?? 50;
       try {
@@ -138,7 +140,7 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
         return { matches, total: lines.length, truncated: lines.length > limit || result.truncated };
       } catch (error) { return gitError(error); }
     }),
-    define("worktrees", z.object({ theaterId: ids.optional(), objectiveId: ids.optional() }), async (args) => {
+    define("worktrees", z.object({ commodoreId: ids.optional(), theaterId: ids.optional(), objectiveId: ids.optional() }), async (args) => {
       const { theaterPath, gitCwd } = await cwdOf(args, undefined);
       let realTheaterPath: string; let realGitCwd: string;
       try { [realTheaterPath, realGitCwd] = await Promise.all([fs.realpath(theaterPath), fs.realpath(gitCwd)]); }
@@ -185,8 +187,11 @@ export function createRepositoryConsoleTools(ctx: RepositoryRouteContext): reado
       const parsed = tool.parse(args);
       if (!parsed.ok) return { ...text({ error: parsed.error, ...(parsed.issues ? { issues: parsed.issues } : {}) }), isError: true };
       const { action, ...rest } = parsed.call as { action: Action } & Record<string, unknown>;
-      try { return text(await byAction.get(action)!.run(rest, context.signal)); }
-      catch (error) { return { ...text({ error: error instanceof ToolError ? error.code : "git_failed", retryable: false }), isError: true }; }
+      try {
+        const commodoreId = consoleToolOwner(rest.commodoreId, context, ctx.host.paths.resolveObjectiveOwner);
+        return text(await byAction.get(action)!.run({ ...rest, commodoreId }, context.signal));
+      }
+      catch (error) { return { ...text({ error: error instanceof ToolError || error instanceof ConsoleControlError ? error.code : "git_failed", retryable: false }), isError: true }; }
     },
   })];
 }

@@ -5,8 +5,8 @@ import { createDurableJsonStore } from "@fleet-console/infra";
 import { ensureWorkspaceDirectory } from "@fleet-console/infra/workspace-dir";
 import type { DurableConsoleState } from "../features/workspace/host/durable-state.js";
 import { createDeferredDeletionCoordinator } from "../features/workspace/host/deferred-deletion.js";
-import { TheaterRegistry, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
-import { createCommodoreOwnership } from "../features/commodore/host/index.js";
+import { workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
+import { createCommodoreOwnership, prepareTheaterRegistryRetirement } from "../features/commodore/host/index.js";
 import { EMPTY_COMMODORE_STATE } from "../features/commodore/shared/contracts/types.js";
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -39,9 +39,9 @@ function fixture() {
 }
 
 describe("durable console state", () => {
-  it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], objectiveRecords: [] })).toEqual({ version: 6, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], objectiveRecords: [{ id: "" }] })).toEqual({ version: 6, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] });
+  it("reads legacy shapes independently of reused version numbers and drops malformed fields", () => {
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], objectiveRecords: [] })).toEqual({ version: 6, objectiveRecords: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], objectiveRecords: [{ id: "" }] })).toEqual({ version: 6, objectiveRecords: [], groups: [], deletionTombstones: [] });
   });
 
   // 직전 인라인 형식을 실제 저장소·보드·봉인 증거 경계로 올린다. 더 오래된 위치 이동 시험을 대체한다.
@@ -258,32 +258,30 @@ describe("durable console state", () => {
     expect(retry.entries().map((row) => row.objectiveRecord.id)).toEqual(["good", "healthy-archived"]);
     expect(JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8")).quarantine).toEqual(isolationIndex.quarantine);
 
-    // 격리 deletion이 있는 owner의 Theater 삭제는 prepare 전에 거절한다. 호출자의 메모리도 복구된다.
+    // 격리한 목표 본문은 잊을 수 없다. 정상 owner의 목표 삭제는 계속 허용한다.
     const deletionRecords = createObjectiveRecordsStore(); deletionRecords.replace(retryState.objectiveRecords);
-    const theaters = new TheaterRegistry(); theaters.restore(retryState.theaters);
-    const coordinator = createDeferredDeletionCoordinator({ objectiveRecords: deletionRecords, theaters, archives: retry.entries,
-      save: (tombstones, archives) => retry.save({ ...retryState, theaters: theaters.list(), objectiveRecords: deletionRecords.list(), deletionTombstones: tombstones }, archives),
-      publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
+    const coordinator = createDeferredDeletionCoordinator({ objectiveRecords: deletionRecords, archives: retry.entries,
+      save: (tombstones, archives) => retry.save({ ...retryState, objectiveRecords: deletionRecords.list(), deletionTombstones: tombstones }, archives),
+      publish: () => {},
       now: () => 1, setTimer: () => ({ unref() {} }) as never, clearTimer: () => {},
     });
     coordinator.load(retryState.deletionTombstones ?? []);
     const beforeDelete = [damaged.stateFile, damaged.archiveFile].map((file) => fs.readFileSync(file, "utf8"));
-    expect(() => coordinator.deleteTheater("t1")).toThrow("objective_owner_recovery_required");
+    expect(() => retry.board.forget("c1", "bad-deletion")).toThrow("archive_recovery_required");
     expect([damaged.stateFile, damaged.archiveFile].map((file) => fs.readFileSync(file, "utf8"))).toEqual(beforeDelete);
-    expect(theaters.get("t1")).not.toBeNull();
     expect(deletionRecords.get("unrelated-active")).not.toBeNull();
     expect(coordinator.list()).toEqual([]);
     expect(retry.blocked()).toBe(false);
     const afterDenied = openAll();
     expect(afterDenied.load().objectiveRecords.map((node) => node.id)).toEqual(["unrelated-active", "live"]);
     expect(afterDenied.board.directory("c1")).toBe(damaged.destination);
-    // 정상 owner의 삭제는 계속 허용하며 state 등록과 archive tombstone이 함께 재기동된다.
-    const receipt = coordinator.deleteTheater("healthy")!;
+    // 정상 owner의 목표 삭제는 계속 허용하며 archive tombstone이 재기동된다.
+    const receipt = coordinator.deleteObjective("live")!;
     coordinator.dispose();
     const afterAllowed = openAll(); const allowedState = afterAllowed.load();
     expect(afterAllowed.blocked()).toBe(false);
-    expect(allowedState.theaters.some((row) => row.id === "healthy")).toBe(false);
-    expect(allowedState.deletionTombstones?.some((row) => row.deletionId === receipt.deletionId && row.kind === "theater" && row.targetId === "healthy")).toBe(true);
+    expect(allowedState).not.toHaveProperty("theaters");
+    expect(allowedState.deletionTombstones?.some((row) => row.deletionId === receipt.deletionId && row.kind === "objectiveRecord" && row.targetId === "live")).toBe(true);
 
     // 이전 코드로 이미 생긴 불일치도 전역 기동 실패로 번지지 않는다. 연결을 잃은 삭제 행만 격리한다.
     const mismatched = JSON.parse(fs.readFileSync(damaged.archiveFile, "utf8"));
@@ -435,7 +433,7 @@ describe("durable console state", () => {
     const entity = path.join(data, "commodore", commodoreId);
     fs.mkdirSync(entity, { recursive: true });
     fs.writeFileSync(path.join(entity, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters: [{ path: native }] }));
-    const ownership = createCommodoreOwnership({ consoleDataDir: data, workspaceHash, listTheaterIds: () => [oldId], resolveTheaterPath: (id: string) => id === oldId ? spelled : null } as unknown as Parameters<typeof createCommodoreOwnership>[0]);
+    const ownership = createCommodoreOwnership({ consoleDataDir: data, workspaceHash } as unknown as Parameters<typeof createCommodoreOwnership>[0]);
     const owner = ownership.objectives()[0]!;
     fs.mkdirSync(owner.directory, { recursive: true });
     fs.writeFileSync(path.join(owner.directory, "groups.json"), JSON.stringify({ groups: [] }));
@@ -444,20 +442,20 @@ describe("durable console state", () => {
     fs.writeFileSync(stateFile, JSON.stringify({ version: 6, theaters: [{ id: oldId, path: native, realpath: native, label: "Project", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z" }], operations: [freshOperation], groups: [{ id: "g-old", theaterId: oldId, name: "Old", color: "blue", order: 0, createdAt: 1 }] }));
     fs.writeFileSync(path.join(data, "operations-archive.json"), JSON.stringify({ version: 1, revision: 1, entries: [{ archiveId: "arc-old", archivedAt: 4, operation: freshOperation }], deletions: [], events: [] }));
     const stateStore = createDurableJsonStore<DurableConsoleState>({ filePath: stateFile, lockDir: null, sensitivity: "sensitive", sanitize: sanitizeDurableConsoleState });
-    const spelledImport = createObjectiveStorage({ directory: data, stateStore, owners: () => ownership.objectives() });
+    const spelledImport = createObjectiveStorage({ directory: data, stateStore, owners: () => ownership.objectives(), prepareLegacyRegistry: (raw, source) => prepareTheaterRegistryRetirement({ directory: data, raw, source, ownership, workspaceHash }) });
     const spelledState = spelledImport.load();
     expect({
-      oldIdIncluded: owner.legacyTheaterIds?.includes(oldId) && !owner.legacyTheaterIds?.every((id) => id === owner.legacyTheaterId),
+      oldIdIncluded: ownership.objectives()[0]!.legacyTheaterIds.includes(oldId),
       archived: spelledImport.entries().some((entry) => entry.objectiveRecord.id === "fresh"),
       group: spelledState.groups?.some((group) => group.id === "g-old"),
     }).toEqual({ oldIdIncluded: true, archived: true, group: true });
   });
 
-  it("migrates a legacy objective once when commodores share its Theater", () => {
+  it("migrates an explicitly owned legacy objective once when commodores share its Theater", () => {
     const shared = fixture();
     const second = { ...shared.owner, commodoreId: "c2", directory: path.join(shared.directory, "commodore/second/objectives") };
     const third = { ...shared.owner, commodoreId: "c3", directory: path.join(shared.directory, "commodore/third/objectives") };
-    const operation = { id: "old", theaterId: "t1", title: "Old", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
+    const operation = { id: "old", commodoreId: "c1", theaterId: "t1", title: "Old", type: "agent", pluginId: null, ts: { createdAt: 1, updatedAt: 2 }, payload: {} };
     fs.writeFileSync(shared.stateFile, JSON.stringify({ ...shared.source, operations: [operation] }));
     const board = path.join(ensureWorkspaceDirectory(shared.directory, shared.directory).path, "objectives", "old");
     fs.mkdirSync(board, { recursive: true });
@@ -482,7 +480,7 @@ describe("durable console state", () => {
     const state = sanitizeDurableConsoleState({ version: 6, theaters: [{ ...theater, alias: "Flagship" }], deletionTombstones: [
       { deletionId: "d1", kind: "theater", targetId: "t1", deletedAt: 1, expiresAt: 2, theater: { ...theater, alias: "Old name" }, objectiveRecords: [], groups: [] },
     ] });
-    expect(state.theaters).toEqual([theater]);
+    expect(state).not.toHaveProperty("theaters");
     expect(state.deletionTombstones?.[0]).toMatchObject({ theater });
     expect(JSON.stringify(state)).not.toContain('"alias"');
   });

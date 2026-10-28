@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { createObjectiveRecordsStore } from "../features/objectives/host/records/objective-records-domain.js";
-import { MAX_GROUP_NAME_LENGTH } from "../features/objectives/host/records/objective-records-domain.js";
 
 function makeStore() {
   let ts = 1000;
@@ -30,15 +29,4 @@ describe("ObjectiveRecordsStore — 그룹 CRUD", () => {
     expect(store.get(op.id)?.groupId).toBeNull();
   });
 
-  it("deleteByTheater는 해당 Theater의 그룹도 cascade 삭제한다", () => {
-    const store = makeStore();
-    store.createGroup({ commodoreId: "c1", theaterId: "theater-1", name: "A", color: "teal" });
-    store.createGroup({ commodoreId: "c1", theaterId: "theater-1", name: "B", color: "rose" });
-    store.createGroup({ commodoreId: "c1", theaterId: "theater-2", name: "C", color: "amber" });
-    store.create({ ...BASE_OP, title: "Shell" });
-
-    store.deleteByTheater("theater-1");
-    expect(store.listGroupsByTheater("theater-1")).toHaveLength(0);
-    expect(store.listGroupsByTheater("theater-2")).toHaveLength(1);
-  });
 });

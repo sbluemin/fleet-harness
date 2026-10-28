@@ -26,7 +26,7 @@ export function registerTerminalCwdRoute(ctx: ConsoleRuntimeContext): void {
       return true;
     }
     const cwd = typeof objectiveRecord.cwd === "string" ? objectiveRecord.cwd : "";
-    const root = ctx.host.paths.resolveTheaterPath(objectiveRecord.theaterId);
+    const root = ctx.host.paths.resolveCommodoreTheaterPath(objectiveRecord.commodoreId, objectiveRecord.theaterId);
     ctx.host.http.writeJson(res, 200, { theaterId: objectiveRecord.theaterId, relative: root && cwd ? relativeInside(root, cwd) : null });
     return true;
   }, {

@@ -20,11 +20,11 @@ function makeLogContext(theaterPath: string, writes: { status: number; payload: 
   return {
     host: {
       http: {
-        readJsonBody: async () => body,
+        readJsonBody: async () => body && typeof body === "object" && "theaterId" in body ? { commodoreId: "c1", ...body } : body,
         writeJson: (_res: unknown, status: number, payload: unknown) => { writes.push({ status, payload }); },
       },
       security: { isTerminalAuthorized: () => true },
-      paths: { resolveTheaterPath: () => theaterPath },
+      paths: { resolveCommodoreTheaterPath: () => theaterPath },
     },
   } as unknown as RepositoryRouteContext;
 }

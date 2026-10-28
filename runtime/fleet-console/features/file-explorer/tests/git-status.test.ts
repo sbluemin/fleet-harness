@@ -91,10 +91,10 @@ describe("handleFilesGitStatus", () => {
     const ctx = {
       host: {
         http: {
-          readJsonBody: async () => ({ theaterId: "theater-a" }),
+          readJsonBody: async () => ({ commodoreId: "c1", theaterId: "theater-a" }),
           writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { writes.push({ status, body }); },
         },
-        paths: { resolveTheaterPath: () => theaterPath },
+        paths: { resolveCommodoreTheaterPath: () => theaterPath },
         security: { isTerminalAuthorized: () => true },
       },
     } as unknown as FileExplorerRouteContext;

@@ -8,6 +8,7 @@ import { EMPTY_RUN_TOTALS } from "../shared/contracts/types.js";
 import { CommodoreStoreError } from "./errors.js";
 import { createCommodoreOwnership } from "./ownership.js";
 export { createCommodoreOwnership } from "./ownership.js";
+export { prepareTheaterRegistryRetirement } from "./registry-retirement.js";
 export { migrateCommodoreAliases } from "./alias-migration.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
 import type { HttpPort } from "@fleet-console/infra/http/host-ports";
@@ -40,7 +41,6 @@ export interface CommodoreFeatureDeps {
   readonly beforeTheatersChange?: (commodoreId: string) => void;
   /** Console 단위 설정 저장소의 주입 포트. 엔티티의 strict state에는 표시 순서를 쓰지 않는다. */
   readonly order?: { readonly read: () => readonly string[]; readonly write: (commodoreIds: readonly string[]) => void };
-  readonly identityChanged?: (theaterIds: readonly string[]) => void;
   readonly paths: WorkspacePaths;
   readonly events: EventPort;
   readonly experiments: (ExperimentsHost | undefined);
@@ -66,7 +66,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const agent = createConsoleResidentAgentHost(deps.agent);
   const emit = (event: CommodoreEvent) => {
     deps.events.publish(COMMODORE_CHANNEL, event);
-    if (event.op === "state" && event.change === "alias") deps.identityChanged?.(event.theaterIds);
   };
   // 목록을 읽기 전에 연결한다. 등록부가 기본 켜짐을 정할 때 어느 사령관의 state.json `plugins` 든 본다.
   let selectedPlugins = (): readonly string[] => [];
@@ -85,9 +84,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     experiments: () => deps.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
     ...(deps.experiments?.subscribe ? { subscribeExperiments: deps.experiments.subscribe } : {}),
     ...(deps.models ? { models: deps.models } : {}),
-    theater: (theaterId) => {
-      const root = entities.resolveAll(theaterId).flatMap((id) => entities.theatersOf(id)).find((row) => deps.paths.workspaceHash(row.path) === theaterId)?.path;
-      return root ? { label: path.basename(root) || root, root } : null;
+    theater: (commodoreId, theaterId) => {
+      const root = ownership.theaterPath(commodoreId, theaterId);
+      try { return root && fs.realpathSync.native(root) === root && fs.statSync(root).isDirectory() ? { label: path.basename(root) || root, root } : null; }
+      catch { return null; }
     },
     knowledgeTools: deps.knowledgeTools,
     managementTools: (commodoreId, turn) => createCommodoreManagementTools({
@@ -131,7 +131,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const deletion = deps.deletion ? createCommodoreDeletion({ ownership, store, supervisor, host: deps.deletion, consoleDataDir: deps.paths.consoleDataDir, summary,
     protectedDirectories: () => entities.ids().flatMap((id) => entities.theatersOf(id).map((row) => row.path)),
     removing: (commodoreId, ids) => emit({ op: "removing", commodoreId, theaterIds: ids }),
-    removed: (commodoreId, ids) => { emit({ op: "removed", commodoreId, theaterIds: ids }); deps.identityChanged?.(ids); },
+    removed: (commodoreId, ids) => emit({ op: "removed", commodoreId, theaterIds: ids }),
   }) : undefined;
   const routes = createCommodoreRoutes(context, store, {
     plugins, deletion, assertWritable: ownership.assertWritable,
@@ -191,7 +191,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     host,
     knowledge,
     routes,
-    sync: () => { ownership.recoverKnowledge(); restored = true; supervisor.sync("restart"); },
+    sync: () => { restored = true; supervisor.sync("restart"); },
     /** 이 사령관이 고른 플러그인의 로컬 경로 — 그 사령관 목표의 지휘관·구성원 세션이 연다(MCP 는 그 세션들이 플러그인에서 직접 읽는다). */
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(store.read(commodoreId)?.plugins ?? []).map((plugin) => plugin.path),
     async dispose() {

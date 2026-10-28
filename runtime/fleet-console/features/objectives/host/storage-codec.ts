@@ -17,6 +17,7 @@ export interface ObjectiveDocumentContext {
   /** 같은 위치의 옛 등록 해시. 보관·그룹 귀속에만 쓴다. */
   readonly legacyTheaterIds?: readonly string[];
   readonly legacyCwd: string;
+  readonly legacyFolders?: readonly { readonly path: string; readonly ids: readonly string[] }[];
   readonly theaterIdOf: (cwd: string) => string;
 }
 const executionKeys = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"] as const;

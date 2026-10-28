@@ -44,7 +44,6 @@ export type DurableDeletionTombstone =
 export interface DurableConsoleState {
   readonly version: 6;
   readonly revision?: number;
-  readonly theaters: readonly TheaterRegistration[];
   readonly objectiveRecords: readonly ObjectiveRecord[];
   readonly groups?: readonly DurableObjectiveGroup[];
   readonly deletionTombstones?: readonly DurableDeletionTombstone[];
@@ -79,11 +78,9 @@ export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateSt
 export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState {
   if (!isRecord(value)) return emptyDurableConsoleState();
   const upgraded = value;
-  if (upgraded.version !== STATE_VERSION) return emptyDurableConsoleState();
   return {
     version: STATE_VERSION,
     ...(readNonNegativeInteger(upgraded.revision) !== null ? { revision: readNonNegativeInteger(upgraded.revision)! } : {}),
-    theaters: readTheaterRegistrations(upgraded.theaters),
     objectiveRecords: readObjectiveRecords(upgraded.objectiveRecords ?? upgraded.operations),
     groups: readObjectiveGroups(upgraded.groups),
     deletionTombstones: readDeletionTombstones(upgraded.deletionTombstones),
@@ -91,7 +88,7 @@ export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState
 }
 
 export function emptyDurableConsoleState(): DurableConsoleState {
-  return { version: STATE_VERSION, theaters: [], objectiveRecords: [], groups: [], deletionTombstones: [] };
+  return { version: STATE_VERSION, objectiveRecords: [], groups: [], deletionTombstones: [] };
 }
 
 export function readDurableStateVersion(stateFilePath: string): number | null {
@@ -119,16 +116,6 @@ export function backupDurableStateV4(stateFilePath: string): void {
   if (!fs.existsSync(stateFilePath)) return;
   try { fs.copyFileSync(stateFilePath, `${stateFilePath}.v4-backup`, fs.constants.COPYFILE_EXCL); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-}
-
-function readTheaterRegistrations(value: unknown): readonly TheaterRegistration[] {
-  if (!Array.isArray(value)) return [];
-  const registrations: TheaterRegistration[] = [];
-  for (const item of value) {
-    const registration = sanitizeTheaterRegistration(item);
-    if (registration) registrations.push(registration);
-  }
-  return registrations;
 }
 
 function readObjectiveRecords(value: unknown): readonly ObjectiveRecord[] {

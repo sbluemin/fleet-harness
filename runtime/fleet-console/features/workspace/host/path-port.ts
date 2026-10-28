@@ -19,12 +19,12 @@ export interface WorkspacePaths {
    * 같이하는 것이 사는 자리이고, 채널·체크아웃·override마다 다르다.
    */
   readonly consoleDataDir: string;
-  resolveTheaterPath(theaterId: string): string | null;
+  resolveCommodoreTheaterPath(commodoreId: string, theaterId: string): string | null;
+  listCommodoreTheaters(commodoreId: string): readonly { readonly id: string; readonly label: string }[];
+  resolveObjectiveOwner(objectiveId: string): string | null;
   resolveObjectivePath?(objectiveId: string): string | null;
   /** 목표 세션에만 붙는 launch 시점 작업 범위. 일반 세션은 undefined다. */
   resolveObjectiveAdditionalDirectories?(objectiveId: string): readonly string[] | undefined;
-  /** Objective 이 아직 없는 Theater 의 기능 레코드도 다시 찾는다. */
-  listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
   /**

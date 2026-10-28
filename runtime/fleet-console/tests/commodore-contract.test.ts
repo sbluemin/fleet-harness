@@ -45,7 +45,7 @@ function createCommodoreStore(options: Omit<CommodoreStoreOptions, "theatersOf" 
 function createCommodoreSupervisor(deps: Omit<CommodoreSupervisorDeps, "board" | "theaterIds" | "cwd"> & CommodoreBoardWatchDeps & {
   boardTools(theaterId: string, read: CommodoreAttachmentReader, hasMessage: CommodorePersonMessageReader): readonly ConsoleMcpTool[];
 }) {
-  return createHostSupervisor({ ...deps, theaterIds: () => ["t1"], cwd: (id) => deps.store.read(id) ? deps.theater("t1")?.root ?? null : null, board: () => ({
+  return createHostSupervisor({ ...deps, theaterIds: () => ["t1"], cwd: (id) => deps.store.read(id) ? deps.theater(id, "t1")?.root ?? null : null, board: () => ({
     tools: (theaterId, turn) => deps.boardTools(theaterId, turn.readAttachments, turn.hasPersonMessage),
     watch: (theaterId, sink) => createCommodoreBoardWatch(deps, theaterId, sink),
     objective: (theaterId, id) => {
@@ -76,7 +76,7 @@ it("persists UUID section order through the public route without rewriting entit
   const events: CommodoreEvent[] = [];
   const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
   const create = () => createCommodoreFeature({
-    paths: { fleetDataDir: dir, consoleDataDir: dir, resolveTheaterPath: () => null, workspaceHash,
+    paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
       canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
       ensureWorkspaceDirectory: () => { throw new Error("unexpected_workspace_creation"); },
       withDirectoryLock: (_lock, run) => run(),
@@ -206,7 +206,7 @@ it("delivers peer messages to a resting Commodore without person authority and r
 it("creates a Commodore with owned Theaters and selected context atomically, rolling back initialization failures", async () => {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-create-"))); dirs.push(dir);
   const theater = path.join(dir, "project"); fs.mkdirSync(theater);
-  const paths = { consoleDataDir: dir, workspaceHash, listTheaterIds: () => ["project"], resolveTheaterPath: (id: string) => id === "project" ? theater : null };
+  const paths = { consoleDataDir: dir, workspaceHash };
   const ownership = createCommodoreOwnership(paths as never);
   const { entities } = ownership;
   const sourceId = ownership.create();
@@ -262,7 +262,7 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
 
 it("holds deletion admission until writers stop and preserves the owner on stop or rename failure", async () => {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-delete-hold-"))); dirs.push(dir);
-  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash, listTheaterIds: () => [], resolveTheaterPath: () => null } as never);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
   const id = ownership.create();
   const store = createHostStore({ dirOf: ownership.entities.dirOf, commodoreIds: ownership.entities.ids, theatersOf: ownership.entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
   store.setAlias(id, "Owned");

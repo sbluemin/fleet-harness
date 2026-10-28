@@ -67,9 +67,8 @@ export interface ObjectiveRecordsStore {
   create(input: ObjectiveRecordCreateInput): ObjectiveRecord;
   upsert(input: ObjectiveRecordCreateInput): ObjectiveRecord;
   patch(id: string, input: ObjectiveRecordPatchInput): ObjectiveRecord | null;
-  reorder(theaterId: string, orderedIds: readonly string[]): readonly ObjectiveRecord[];
+  reorder(theaterId: string, orderedIds: readonly string[], commodoreId?: string): readonly ObjectiveRecord[];
   delete(id: string): boolean;
-  deleteByTheater(theaterId: string): number;
   replace(nodes: readonly ObjectiveRecord[]): void;
   createGroup(input: ObjectiveGroupCreateInput): ObjectiveGroup;
   updateGroup(id: string, input: ObjectiveGroupPatchInput): ObjectiveGroup | null;
@@ -77,7 +76,6 @@ export interface ObjectiveRecordsStore {
   listGroups(commodoreId: string): readonly ObjectiveGroup[];
   listGroupsByTheater(theaterId: string): readonly ObjectiveGroup[];
   listAllGroups(): readonly ObjectiveGroup[];
-  deleteGroupsByTheater(theaterId: string): number;
   replaceGroups(groups: readonly ObjectiveGroup[]): void;
 }
 
@@ -168,7 +166,7 @@ export interface ObjectiveRecordsStoreDeps {
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
    */
   readonly onGroupChanged?: (event: ObjectiveGroupedEvent) => void;
-  /** 그룹이 지워진 뒤 — 멤버를 그룹 밖으로 옮긴 다음 한 번. Theater 삭제로 함께 사라지는 그룹(deleteGroupsByTheater)은 알리지 않는다. */
+  /** 그룹이 지워진 뒤 — 멤버를 그룹 밖으로 옮긴 다음 한 번. */
   readonly onGroupRemoved?: (event: ObjectiveGroupRemovedEvent) => void;
 }
 
@@ -293,8 +291,8 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     return updated;
   }
 
-  function reorder(theaterId: string, orderedIds: readonly string[]): readonly ObjectiveRecord[] {
-    const inSection = (node: ObjectiveRecord) => node.commodoreId === theaterId || node.theaterId === theaterId;
+  function reorder(theaterId: string, orderedIds: readonly string[], commodoreId?: string): readonly ObjectiveRecord[] {
+    const inSection = (node: ObjectiveRecord) => commodoreId ? node.commodoreId === commodoreId && node.theaterId === theaterId : node.commodoreId === theaterId;
     for (const node of nodes.values()) if (inSection(node)) deps.assertOwnerMutable?.(node.commodoreId);
     const positions = new Map<string, number>();
     for (const id of orderedIds) {
@@ -321,18 +319,6 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     deps.assertOwnerMutable?.(nodes.get(id)!.commodoreId);
     nodes.delete(id);
     return true;
-  }
-
-  function deleteByTheater(theaterId: string): number {
-    for (const node of nodes.values()) if (node.theaterId === theaterId) deps.assertOwnerMutable?.(node.commodoreId);
-    let deleted = 0;
-    for (const node of Array.from(nodes.values())) {
-      if (node.theaterId !== theaterId) continue;
-      nodes.delete(node.id);
-      deleted += 1;
-    }
-    deleteGroupsByTheater(theaterId);
-    return deleted;
   }
 
   function replace(nextNodes: readonly ObjectiveRecord[]): void {
@@ -414,17 +400,6 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     return Array.from(groups.values()).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
   }
 
-  function deleteGroupsByTheater(theaterId: string): number {
-    for (const group of groups.values()) if (group.theaterId === theaterId) deps.assertOwnerMutable?.(group.commodoreId);
-    let deleted = 0;
-    for (const [id, group] of Array.from(groups.entries())) {
-      if (group.theaterId !== theaterId) continue;
-      groups.delete(id);
-      deleted += 1;
-    }
-    return deleted;
-  }
-
   function replaceGroups(nextGroups: readonly ObjectiveGroup[]): void {
     groups.clear();
     for (const group of nextGroups) {
@@ -432,7 +407,7 @@ export function createObjectiveRecordsStore(deps: ObjectiveRecordsStoreDeps = {}
     }
   }
 
-  return { list, listByTheater, get, getChild, listChildren, createChild, deleteChild, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listGroupsByTheater, listAllGroups, deleteGroupsByTheater, replaceGroups };
+  return { list, listByTheater, get, getChild, listChildren, createChild, deleteChild, create, upsert, patch, reorder, delete: deleteNode, replace, createGroup, updateGroup, deleteGroup, listGroups, listGroupsByTheater, listAllGroups, replaceGroups };
 }
 
 function normalizeCreateInput(input: ObjectiveRecordCreateInput, id: string, timestamp: number): ObjectiveRecord {

@@ -16,6 +16,7 @@ import { conflictingSurfaceSelectors, resolveSurfaceRoot } from "../../../worksp
 
 type TicketBody = {
   readonly cwd?: OpenAtBody;
+  readonly commodoreId?: unknown;
   readonly theaterId?: unknown;
   readonly objectiveId?: unknown;
   readonly colorScheme?: unknown;
@@ -25,6 +26,7 @@ type TicketBody = {
 };
 
 type OpenAtBody = {
+  readonly commodoreId?: unknown;
   readonly theaterId?: unknown;
   readonly objectiveId?: unknown;
   readonly path?: unknown;
@@ -89,6 +91,7 @@ interface ShellInstance {
    * 유지한다. 대화의 작업 위치가 바뀌어도 발밑이 바뀌면 반쯤 친 명령이 다른 저장소에서 실행된다 — 셸의 현재 위치는
    * 사용자만 바꿀 수 있어야 한다. (`shell/open-at`은 사용자가 명시적으로 고른 이동이라 이 고정을 함께 옮긴다.)
    */
+  commodoreId: string | null;
   pinnedCwd: string | null;
   generation: number;
   /** 셸이 마지막으로 보고한(또는 spawn한) 절대 cwd. 서버 밖으로 나가지 않는다. */
@@ -121,6 +124,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     const instance: ShellInstance = {
       key,
       sessionId: shellSessionIdFor(key),
+      commodoreId: null,
       pinnedCwd: null,
       generation: generationSeed,
       currentCwd: null,
@@ -204,7 +208,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       key,
       open,
       pinned: instance?.pinnedCwd != null,
-      cwd: open && instance?.currentCwd ? locateInTheaters(ctx, instance.currentCwd) : null,
+      cwd: open && instance?.currentCwd ? locateInTheaters(ctx, instance.commodoreId, instance.currentCwd) : null,
       cwdTracked: open && instance?.cwdTracked === true,
       atPrompt: open && instance !== null && instance.shellName !== null && foreground !== null && isShellProcess(foreground, instance.shellName)
         && (!instance.cwdTracked || isPromptOpen(runtime.getShellLineState(sessionId))),
@@ -245,12 +249,13 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
 
     if (instance.pinnedCwd === null) {
-      const hint = body?.cwd ?? (body?.theaterId !== undefined || body?.objectiveId !== undefined ? { theaterId: body?.theaterId, objectiveId: body?.objectiveId } : undefined);
+      const hint = body?.cwd ?? (body?.theaterId !== undefined || body?.objectiveId !== undefined ? { commodoreId: body?.commodoreId, theaterId: body?.theaterId, objectiveId: body?.objectiveId } : undefined);
       if (hint === undefined || hint === null) {
         instance.pinnedCwd = homedir();
       } else {
         const target = resolveCwdHint(hint, res);
         if (!target) return true;
+        instance.commodoreId = target.commodoreId;
         instance.pinnedCwd = target.directory;
       }
     }
@@ -454,6 +459,11 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return null;
     }
+    if (instance.commodoreId && instance.commodoreId !== resolved.commodoreId) {
+      ctx.host.http.writeJson(res, 409, { error: "commodore_scope_mismatch" });
+      return null;
+    }
+    instance.commodoreId = resolved.commodoreId;
     return { directory: resolved.directory, instance };
   }
 
@@ -462,7 +472,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
    * objectiveId는 목표 파일 링크에서 명시적으로 「Shell에서 열기」를 누르는 경로에 남는다. 대화 도구의 자동 위치는 Theater 루트다.
    * 이미 핀된 Shell은 호출자가 다시 열어도 여기로 오지 않는다 — 살아 있는 Shell을 옮기지 않는다.
    */
-  function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {
+  function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string; commodoreId: string } | null {
     const selected = resolveSurfaceRoot(ctx.host.paths, hint);
     if (!selected.ok) {
       ctx.host.http.writeJson(res, selected.status, { error: selected.error === "invalid_request" ? "theater_id_required" : selected.error });
@@ -479,7 +489,11 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, target.status, { error: target.error });
       return null;
     }
-    return { directory: target.directory };
+    const commodoreId = typeof hint?.objectiveId === "string" ? ctx.host.paths.resolveObjectiveOwner(hint.objectiveId) : hint?.commodoreId;
+    if (typeof commodoreId !== "string" || !commodoreId) {
+      ctx.host.http.writeJson(res, 404, { error: "unavailable" }); return null;
+    }
+    return { directory: target.directory, commodoreId };
   }
 
   return {
@@ -534,7 +548,8 @@ export function resolveTheaterDirectory(theaterRoot: string, relative: string): 
 }
 
 /** 절대 cwd를 품은 가장 깊은 등록 Theater와 그 안의 상대 경로(POSIX). 어디에도 없으면 둘 다 null. */
-function locateInTheaters(ctx: ConsoleRuntimeContext, cwd: string): { theaterId: string | null; relative: string | null } {
+function locateInTheaters(ctx: ConsoleRuntimeContext, commodoreId: string | null, cwd: string): { theaterId: string | null; relative: string | null } {
+  if (!commodoreId) return { theaterId: null, relative: null };
   let real: string;
   try {
     real = realpathSync.native(cwd);
@@ -542,9 +557,9 @@ function locateInTheaters(ctx: ConsoleRuntimeContext, cwd: string): { theaterId:
     real = path.resolve(cwd);
   }
   let best: { theaterId: string; root: string } | null = null;
-  for (const theaterId of ctx.host.paths.listTheaterIds?.() ?? []) {
-    const root = ctx.host.paths.resolveTheaterPath(theaterId);
-    if (!root || !isInside(root, real)) continue;
+  for (const { id: theaterId } of ctx.host.paths.listCommodoreTheaters(commodoreId)) {
+    const root = ctx.host.paths.resolveCommodoreTheaterPath(commodoreId, theaterId);
+    if (!root || !isInside(root, cwd) || !isInside(root, real)) continue;
     if (!best || root.length > best.root.length) best = { theaterId, root };
   }
   if (!best) return { theaterId: null, relative: null };

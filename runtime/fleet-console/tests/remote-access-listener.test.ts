@@ -80,7 +80,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   it("refuses every remote request that carries no session", async () => {
     const fixture = await startFixture({ remote: true });
 
-    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/objectives/records")).resolves.toMatchObject({ status: 401 });
     await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
     await expect(remoteRequest(fixture, "GET", "/api/v1/status")).resolves.toMatchObject({ status: 401 });
   });
@@ -95,7 +95,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(cookie).toContain("Secure");
 
     const session = cookie.split(";")[0]!;
-    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "POST", "/mcp/private", "{}", session)).resolves.toMatchObject({ status: 404 });
   });
@@ -106,11 +106,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const client = http2.connect(`https://${authority}`, { rejectUnauthorized: false, servername: "" });
     try {
       // :authority만 보내도 소켓의 실제 리스너를 찾아야 한다. 로컬로 오인하면 이 요청이 통과한다.
-      expect((await h2Request(client, { ":path": "/api/v1/theaters" })).status).toBe(401);
+      expect((await h2Request(client, { ":path": "/api/v1/objectives/records" })).status).toBe(401);
       const joined = await h2Request(client, { ":method": "POST", ":path": "/api/v1/join", "content-type": "application/json" }, JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
       expect(joined.status).toBe(204);
       const cookie = cookiesOf(joined);
-      const admitted = { ":path": "/api/v1/theaters", cookie };
+      const admitted = { ":path": "/api/v1/objectives/records", cookie };
       expect((await h2Request(client, admitted)).status).toBe(200);
       expect((await h2Request(client, { ...admitted, ":authority": "wrong.invalid", host: authority })).status).toBe(403);
       expect((await h2Request(client, { ...admitted, ":authority": authority, host: "wrong.invalid" })).status).toBe(403);
@@ -170,7 +170,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const fixture = await startFixture({ remote: true });
 
     // 브라우저는 자기서명 인증서의 지문을 대조할 수 없어 페어링을 끝낼 수 없다. 설명 표면조차 두지 않는다.
-    for (const path of ["/", "/join", "/console/", "/api/v1/state", "/api/v1/theaters", "/plugin-runtime/manifest"]) {
+    for (const path of ["/", "/join", "/console/", "/api/v1/state", "/api/v1/objectives/records", "/plugin-runtime/manifest"]) {
       await expect(remoteRequest(fixture, "GET", path)).resolves.toMatchObject({ status: 401 });
     }
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
@@ -203,12 +203,12 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(held.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)).toEqual(["second"]);
 
     // 프레임을 못 받은 기기도 자기 페어링 쿠키로 사유만 받는다. 다른 세션의 정보는 실리지 않는다.
-    const ended = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first);
+    const ended = await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, first);
     expect(ended.status).toBe(401);
     expect(JSON.parse(ended.body)).toEqual({ error: "unauthorized", reason: "superseded" });
     const secondPairing = second.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"))!;
     for (const cookie of [undefined, "unrelated=secret", secondPairing]) {
-      const denied = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookie);
+      const denied = await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, cookie);
       expect(denied.status).toBe(401);
       expect(JSON.parse(denied.body)).toEqual({ error: "unauthorized" });
     }
@@ -221,7 +221,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first);
     expect(resumed.status).toBe(204);
     const current = cookiesOf(resumed);
-    const cleared = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first);
+    const cleared = await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, first);
     expect(JSON.parse(cleared.body)).toEqual({ error: "unauthorized" });
     const resumedStatus = await readRemoteStatus(fixture);
     expect(resumedStatus.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)).toEqual(["first"]);
@@ -232,19 +232,19 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(await revoke(fixture, `access-sessions/${device.sessionHandle}`)).toBe(204);
     await expect(stream.waitFor("control:reclaimed", () => true)).resolves.toEqual({ reason: "reclaimed" });
     await stream.waitForClose();
-    const reclaimed = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, current);
+    const reclaimed = await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, current);
     expect(reclaimed.status).toBe(401);
     expect(JSON.parse(reclaimed.body)).toEqual({ error: "unauthorized", reason: "reclaimed" });
 
     // 재시작은 메모리 사유를 잊어 vanished가 된다. 페어링은 남고 다시 join할 수 있다.
     const restarted = await restartFixture(fixture);
-    const vanished = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, current);
+    const vanished = await remoteRequest(restarted, "GET", "/api/v1/objectives/records", undefined, current);
     expect(vanished.status).toBe(401);
     expect(JSON.parse(vanished.body)).toEqual({ error: "unauthorized" });
     const reopened = await remoteRequest(restarted, "POST", "/api/v1/join", "{}", current);
     expect(reopened.status).toBe(204);
     let reopenedCookie = cookiesOf(reopened);
-    await expect(remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(restarted, "GET", "/api/v1/objectives/records", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
 
     // 유휴 만료는 그 세션의 모든 장수명 채널을 함께 닫는다 — Objective 스트림만이 아니라 다른 SSE도.
     // 루프백 구독은 그대로 남고, 페어링된 기기는 말없이 다시 붙는다.
@@ -281,7 +281,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       await writeLocal("settings/global", "PUT", { theme: "light" });
       await localTheme.waitFor("desktop:theme", (data) => data.theme === "light");
       expect(idleTheme.seen("desktop:theme")).toBe(1);
-      const expired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
+      const expired = await remoteRequest(restarted, "GET", "/api/v1/objectives/records", undefined, reopenedCookie);
       expect(expired.status).toBe(401);
       expect(JSON.parse(expired.body)).toEqual({ error: "unauthorized" });
       const rejoined = await remoteRequest(restarted, "POST", "/api/v1/join", "{}", reopenedCookie);
@@ -305,7 +305,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const reopenedDevice = (await readRemoteStatus(restarted)).devices.find((entry) => entry.device === "first")!;
     expect(await revoke(restarted, `access-sessions/${reopenedDevice.sessionHandle}`)).toBe(204);
     expect(await revoke(restarted, `paired-devices/${device.id}`)).toBe(204);
-    const unpaired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
+    const unpaired = await remoteRequest(restarted, "GET", "/api/v1/objectives/records", undefined, reopenedCookie);
     expect(JSON.parse(unpaired.body)).toEqual({ error: "unauthorized" });
     await expect(remoteRequest(restarted, "POST", "/api/v1/join", "{}", reopenedCookie)).resolves.toMatchObject({ status: 401 });
   });

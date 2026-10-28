@@ -260,7 +260,9 @@ ts: { createdAt, updatedAt: createdAt }};
       paths: {
         fleetDataDir,
         consoleDataDir: fleetDataDir,
-        resolveTheaterPath: (theaterId: string) => (theaterId === "theater-1" ? fleetDataDir : null),
+        resolveObjectiveOwner: () => "owner-1",
+        listCommodoreTheaters: () => [{ id: "theater-1", label: "Project" }],
+        resolveCommodoreTheaterPath: (_commodoreId: string, theaterId: string) => (theaterId === "theater-1" ? fleetDataDir : null),
         canonicalizeTheaterPath: (cwd: string) => cwd,
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),

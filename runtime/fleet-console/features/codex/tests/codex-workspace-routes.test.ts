@@ -55,16 +55,17 @@ describe("Codex commodore workspace resolution", () => {
     let authorized = true;
     const writeJson = vi.fn();
     const router = createCodexFileRouter({
-      getTheater: id => id === "theater" ? { realpath: theaterRoot } : null,
+      getTheater: (owner, id) => owner === "c1" && id === "theater" ? { realpath: theaterRoot } : null,
       isAuthorized: () => authorized,
       readJsonBody: async <T>() => body as T,
       writeJson,
     });
     const call = async (endpoint: string, fields: Record<string, unknown>) => {
-      body = { theaterId: "theater", ...fields };
+      body = { commodoreId: "c1", theaterId: "theater", ...fields };
       await router({ req: { method: "POST" } as IncomingMessage, res: {} as ServerResponse, pathname: `/api/v1/codex/${endpoint}` });
       return writeJson.mock.lastCall!;
     };
+    expect((await call("file-peek", { commodoreId: "c2", path: "source.ts" })).slice(1)).toEqual([404, { error: "theater_not_found" }]);
     const preview = await call("file-peek", { path: "source.ts", line: 130 });
     expect(preview[1]).toBe(200);
     expect(preview[2]).toMatchObject({ path: "source.ts", startLine: 30, truncated: true });

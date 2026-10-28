@@ -203,6 +203,7 @@ export interface ConsoleCoordinates {
 
 export interface ConsoleAutomationInput {
   readonly name: string;
+  readonly commodoreId?: string;
   readonly theaterId: string;
   readonly trigger: { readonly kind: "interval"; readonly minutes: number } | { readonly kind: "activity"; readonly objectiveId: string; readonly activity: ConsoleActivity };
   readonly action: ConsoleActionInput | { readonly kind: "briefing" };

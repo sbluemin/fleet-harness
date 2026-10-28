@@ -15,7 +15,7 @@ import { type ArchivedObjective, type ArchiveLifecycleEvent } from "../features/
 import { createObjectiveArchiveCoordinator } from "../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter } from "../features/workspace/host/objective-archive-routes.js";
 import { createSanitizedOpDto, createObjectiveRecordsStore, type ObjectiveRecord } from "../features/objectives/host/records/objective-records-domain.js";
-import { TheaterRegistry, type TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
+import type { TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 
 const THEATER: TheaterRegistration = {
   id: "theater",
@@ -39,18 +39,18 @@ describe("deferred deletion coordinator", () => {
     expect(harness.events.filter((event) => event.channel === "objective:deleted")).toHaveLength(1);
   });
 
-  it("restores a Theater together with its Objectives and groups", async () => {
+  it("restores legacy Theater tombstones as owner Objectives and groups without a registry", async () => {
     const harness = createHarness();
     harness.objectiveRecords.create(makeObjective("op-a"));
     harness.objectiveRecords.create(makeObjective("op-b"));
     harness.objectiveRecords.createGroup({ id: "group-a", commodoreId: "c1", theaterId: THEATER.id, name: "Alpha", color: "blue" });
-    const deletion = harness.coordinator.deleteTheater(THEATER.id);
-    if (!deletion) throw new Error("expected deletion");
+    const deletion = legacyTheaterTombstone(harness.objectiveRecords.list(), harness.objectiveRecords.listAllGroups());
+    harness.objectiveRecords.replace([]); harness.objectiveRecords.replaceGroups([]);
+    harness.coordinator.load([deletion]);
 
     const restored = await harness.coordinator.restore(deletion.deletionId);
 
     expect(restored).toEqual({ ok: true, kind: "theater", targetId: THEATER.id });
-    expect(harness.theaters.get(THEATER.id)).toEqual(THEATER);
     expect(harness.objectiveRecords.listByTheater(THEATER.id).map((objectiveRecord) => objectiveRecord.id)).toEqual(["op-a", "op-b"]);
     expect(harness.objectiveRecords.listGroupsByTheater(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
     expect(harness.events.filter((event) => event.channel === "objective:restored")).toHaveLength(2);
@@ -62,10 +62,12 @@ describe("deferred deletion coordinator", () => {
     const prompts = createCommodoreSystemPromptService({ load: () => data, update: (mutate) => (data = mutate(data)) }, (id) => id === "c1");
     prompts.migrate([{ commodoreId: "c1", theaterIds: [THEATER.id] }]);
     harness.beforePurge.value = (_nodes, tombstone) => { if (tombstone.kind === "theater") prompts.purge(tombstone.targetId); };
-    const deletion = harness.coordinator.deleteTheater(THEATER.id)!;
+    const deletion = legacyTheaterTombstone();
+    harness.coordinator.load([deletion]);
     expect(prompts.read("c1")).toEqual({ mode: "off", body: "private instructions" });
     await harness.coordinator.restore(deletion.deletionId);
-    const again = harness.coordinator.deleteTheater(THEATER.id)!;
+    const again = legacyTheaterTombstone();
+    harness.coordinator.load([again]);
     harness.clock.value = again.expiresAt;
     harness.coordinator.sweepExpired();
     expect(data.claudeCodeTheaterSystemPrompts).toBeUndefined();
@@ -188,7 +190,7 @@ describe("Objective archive persistence and deletion", () => {
       expect(files.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
       expect(h.archive.listArchived().pendingPurges).toEqual([expect.objectContaining({ objectiveIds: ["a", "b"], purgeId: pending.purgeId })]);
       await expect(h.archive.restore("a")).rejects.toThrow("pending_deletion");
-      expect(() => h.deletion.deleteTheater(THEATER.id)).toThrow("objectiveRecord_busy");
+      expect(() => h.deletion.deleteObjective("a")).toThrow("objectiveRecord_busy");
       await expect(h.archive.purge(stale)).rejects.toThrow("archive_revision_conflict");
       await h.archive.undoPurge(pending.purgeId);
       h.clock.value = pending.purgeAt;
@@ -254,8 +256,9 @@ describe("Objective archive persistence and deletion", () => {
       h.objectiveRecords.create({ ...makeObjective("parent"), cwd: THEATER.path });
       h.objectiveRecords.createChild({ parentObjectiveId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
       await h.archive.archive("parent");
-      const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
-      expect(theaterDeletion.archivedObjectiveCount).toBe(1);
+      const archived = h.storage.entries();
+      const theaterDeletion = { ...legacyTheaterTombstone(archived.map((entry) => entry.objectiveRecord)), archived: Object.fromEntries(archived.map((entry) => [entry.objectiveRecord.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }])) };
+      h.save([theaterDeletion], []); h.deletion.load([theaterDeletion]);
       const objectiveFile = path.join(directory, "commodore/owner/objectives/parent/objective.json");
       expect(fs.existsSync(objectiveFile)).toBe(true);
       h.storage.board.save("c1", { ...h.storage.board.list("c1")[0]!, note: "grace preserved" });
@@ -267,7 +270,7 @@ describe("Objective archive persistence and deletion", () => {
       expect(JSON.parse(fs.readFileSync(objectiveFile, "utf8")).cwd).toBe(THEATER.path);
       expect(() => h.storage.board.forget("c1", "parent")).toThrow("archive_recovery_required");
       h = createArchiveHarness(directory, true);
-      expect(h.theaters.list()).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8"))).not.toHaveProperty("theaters");
       expect(h.deletion.list()).toHaveLength(1);
       await h.deletion.restore(theaterDeletion.deletionId);
       expect(h.storage.board.list("c1")[0]?.note).toBe("grace preserved");
@@ -532,10 +535,8 @@ function createArchiveHarness(directory: string, crossOwner = false) {
     const store = createDurableJsonStore(deps);
     return { ...store, save: (value: unknown) => { if (fault.finalize && deps.filePath.endsWith("archive.json") && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
   }) as typeof createDurableJsonStore });
-  const firstStart = !fs.existsSync(stateStore.path);
   const state = storage.load();
   const objectiveRecords = createObjectiveRecordsStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) });
-  const theaters = new TheaterRegistry(); theaters.restore(firstStart ? [THEATER] : state.theaters);
   objectiveRecords.replace(state.objectiveRecords); objectiveRecords.replaceGroups(state.groups ?? []);
   const events: ArchiveLifecycleEvent[] = [];
   const purged: string[] = [];
@@ -544,17 +545,17 @@ function createArchiveHarness(directory: string, crossOwner = false) {
   const scheduled: Array<{ delay: number; run: () => void; handle: ReturnType<typeof setTimeout> }> = [];
   const cleared = new Set<unknown>();
   const stopGate: { current: Promise<void> | null } = { current: null };
-  const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), objectiveRecords: objectiveRecords.list(), groups: objectiveRecords.listAllGroups(), deletionTombstones: tombstones });
+  const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, objectiveRecords: objectiveRecords.list(), groups: objectiveRecords.listAllGroups(), deletionTombstones: tombstones });
   const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedObjective[]) => storage.save(snapshot(tombstones), entries);
-  const deletion = createDeferredDeletionCoordinator({ objectiveRecords, theaters, archives: storage.entries, save,
+  const deletion = createDeferredDeletionCoordinator({ objectiveRecords, archives: storage.entries, save,
     assertMutable: (id) => archive.assertMutable(id),
     now: () => clock.value, beforePurge: (nodes) => purged.push(...nodes.map((node) => node.id).sort()),
-    publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
+    publish: () => {},
     setTimer: () => ({ unref() {} }) as unknown as ReturnType<typeof setTimeout>, clearTimer: () => {},
   });
   deletion.load(state.deletionTombstones ?? []);
   const archive = createObjectiveArchiveCoordinator({ objectiveRecords, storage, snapshot,
-    canAccessObjective: (root) => !!theaters.get(root.theaterId), pendingDeletion: deletion.hasPendingObjective,
+    canAccessObjective: (root) => root.commodoreId === "c1", pendingDeletion: deletion.hasPendingObjective,
     stop: async (node) => { stopped.push(node.id); if (stopGate.current) await stopGate.current; }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
     readRetentionDays: () => retention.days,
@@ -565,7 +566,7 @@ function createArchiveHarness(directory: string, crossOwner = false) {
     }) as typeof setTimeout,
     clearTimer: ((handle: ReturnType<typeof setTimeout>) => { cleared.add(handle); }) as typeof clearTimeout,
   });
-  return { objectiveRecords, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
+  return { objectiveRecords, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
 }
 
 function createHarness() {
@@ -573,12 +574,9 @@ function createHarness() {
   const failSave = { value: false };
   const beforePurge: { value: ((objectiveRecords: readonly ObjectiveRecord[], tombstone: DurableDeletionTombstone) => void) | null } = { value: null };
   const objectiveRecords = createObjectiveRecordsStore({ now: () => clock.value });
-  const theaters = new TheaterRegistry();
-  theaters.restore([THEATER]);
   const events: Array<{ readonly channel: string; readonly payload: unknown }> = [];
   const coordinator = createDeferredDeletionCoordinator({
     objectiveRecords,
-    theaters,
     now: () => clock.value,
     randomId: () => `deletion-${clock.value}`,
     save: () => {
@@ -586,13 +584,10 @@ function createHarness() {
     },
     beforePurge: (purged, tombstone) => beforePurge.value?.(purged, tombstone),
     publish: (channel, payload) => events.push({ channel, payload }),
-    unregisterTheaterWorkspaces: vi.fn(),
-    validateTheaterRestore: async () => {},
-    registerTheaterWorkspace: async () => {},
     setTimer: () => ({ unref: () => {} }) as unknown as ReturnType<typeof setTimeout>,
     clearTimer: () => {},
   });
-  return { beforePurge, clock, coordinator, events, failSave, objectiveRecords, theaters };
+  return { beforePurge, clock, coordinator, events, failSave, objectiveRecords };
 }
 
 function makeObjective(id: string) {
@@ -620,4 +615,9 @@ function makeExpiredTombstone(): DurableDeletionTombstone {
       ts: { createdAt: 1, updatedAt: 1 },
     },
   };
+}
+
+/** 삭제 writer를 다시 만들지 않고, 이전 호스트가 남긴 미만료 tombstone만 시드한다. */
+function legacyTheaterTombstone(objectiveRecords: readonly ObjectiveRecord[] = [], groups: readonly import("../features/workspace/host/durable-state.js").DurableObjectiveGroup[] = []): Extract<DurableDeletionTombstone, { kind: "theater" }> {
+  return { kind: "theater", deletionId: "legacy-theater", targetId: THEATER.id, deletedAt: 1_000, expiresAt: 10_000, theater: THEATER, objectiveRecords, groups };
 }

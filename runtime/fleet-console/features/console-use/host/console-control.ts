@@ -46,7 +46,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   if (value.text !== undefined && !sanitizeLaunchPrompt(value.text) && !(value.kind === "send" && value.attachmentIds?.length)) ctx.addIssue({ code: "custom", message: "empty_prompt" });
 });
 export const automationSchema = z.object({
-  name: z.string().trim().min(1).max(100), theaterId: z.string().min(1).max(128),
+  name: z.string().trim().min(1).max(100), commodoreId: z.string().min(1).max(128).optional(), theaterId: z.string().min(1).max(128),
   trigger: z.discriminatedUnion("kind", [z.object({ kind: z.literal("interval"), minutes: z.number().int().min(5).max(1440) }).strict(), z.object({ kind: z.literal("activity"), objectiveId: z.string().min(1).max(128), activity }).strict()]),
   action: z.union([actionSchema, z.object({ kind: z.literal("briefing") }).strict()]),
   expiresAt: z.iso.datetime(), maxRuns: z.number().int().min(1).max(100),
@@ -90,7 +90,8 @@ export interface ConsoleControlDeps {
   readonly directory: string;
   readonly objectiveRecords: () => readonly ObjectiveRecord[];
   readonly resolveObjective?: (id: string) => ObjectiveRecord | null;
-  readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
+  readonly theaters: (commodoreId: string) => readonly { readonly id: string; readonly name: string }[];
+  readonly legacyAutomationScope?: (theaterId: string) => { readonly commodoreId: string; readonly theaterId: string } | null;
   readonly pluginAvailable?: (pluginId: string) => boolean;
   readonly now?: () => number;
 }
@@ -155,6 +156,29 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       fs.renameSync(temporary, file);
     } catch { storageError = true; fail("storage_unavailable"); }
   }
+  function migrateLegacyAutomations(): void {
+    if (storageError) return;
+    let changed = false;
+    const next = state.automations.map((item): ConsoleAutomation => {
+      if (item.input.commodoreId || item.lastError === "scope_unavailable") return item;
+      changed = true;
+      const scope = deps.legacyAutomationScope?.(item.input.theaterId);
+      const callerOwner = item.caller.kind === "objectiveRecord" ? node(item.caller.objectiveId)?.commodoreId : undefined;
+      if (!scope || (item.caller.kind === "objectiveRecord" && callerOwner !== scope.commodoreId)
+        || (item.input.trigger.kind === "activity" && node(item.input.trigger.objectiveId)?.commodoreId !== scope.commodoreId)
+        || (item.input.action.kind !== "briefing" && item.input.action.kind !== "launch" && node(item.input.action.objectiveId!)?.commodoreId !== scope.commodoreId)) return { ...item, status: "paused", lastError: "scope_unavailable" };
+      return { ...item, input: { ...item.input, ...scope, action: item.input.action.kind === "launch" ? { ...item.input.action, ...scope } : item.input.action } };
+    });
+    if (!changed) return;
+    const original = fs.readFileSync(file);
+    const backupDir = path.join(deps.directory, ".archive-migration");
+    ensureSafeDirectory(backupDir);
+    const backup = path.join(backupDir, `${createHash("sha256").update(original).digest("hex")}.json`);
+    if (!fs.existsSync(backup)) fs.writeFileSync(backup, original, { flag: "wx", mode: 0o600 });
+    if (fs.lstatSync(backup).isSymbolicLink() || !fs.readFileSync(backup).equals(original)) fail("storage_unavailable");
+    state = { ...state, automations: next };
+    persist();
+  }
   function publish(event: Omit<ControlEvent, "seq" | "at">) {
     events.push({ ...event, seq: ++sequence, at: stamp() });
     if (events.length > 1000) events.splice(0, events.length - 1000);
@@ -178,12 +202,14 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     return !!objectiveRecord && readConsoleUseFlag(objectiveRecord) !== null;
   }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
-  function validTarget(input: ConsoleActionInput, theaterId?: string) {
+  function validTarget(input: ConsoleActionInput, theaterId?: string, commodoreId?: string) {
     if (input.kind === "launch") {
-      if ((!input.newObjectiveId && !input.parentObjectiveId && !deps.theaters().some((t) => t.id === input.theaterId)) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
+      if (!input.commodoreId) fail("commodore_required");
+      if (commodoreId && input.commodoreId !== commodoreId) fail("commodore_scope_mismatch");
+      if ((!input.newObjectiveId && !input.parentObjectiveId && !deps.theaters(input.commodoreId!).some((t) => t.id === input.theaterId)) || (theaterId && theaterId !== input.theaterId)) fail("unknown_theater");
     } else {
       const op = node(input.objectiveId!);
-      if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_objectiveRecord");
+      if (!op || (theaterId && op.theaterId !== theaterId) || (commodoreId && op.commodoreId !== commodoreId)) return fail("unknown_objectiveRecord");
       const observation = observe(op.id);
       if (input.kind === "interrupt" && (observation?.activity === "idle" || observation?.activity === "ended")) fail("nothing_to_interrupt");
       if (input.kind === "resume" && op.chatMode === true) fail("chat_resume_unsupported");
@@ -209,6 +235,12 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = actionSchema.parse(raw);
+    if (input.kind === "launch" && caller.kind === "objectiveRecord") {
+      const owner = node(caller.objectiveId)?.commodoreId;
+      if (!owner) fail("caller_unavailable");
+      if (input.commodoreId && input.commodoreId !== owner) fail("commodore_scope_mismatch");
+      input.commodoreId = owner;
+    }
     validTarget(input);
     if (input.humanInput && caller.kind !== "plugin") fail("invalid_human_origin");
     // 첨부는 사람이 이 브라우저에서 올린 파일이다 — 사람 입력을 대행하는 신뢰된 플러그인 send 만 싣는다.
@@ -278,12 +310,20 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = automationSchema.parse(raw);
+    const owner = caller.kind === "objectiveRecord" ? node(caller.objectiveId)?.commodoreId : input.commodoreId;
+    if (!owner) fail("commodore_required");
+    if (input.commodoreId && input.commodoreId !== owner) fail("commodore_scope_mismatch");
+    input.commodoreId = owner;
+    if (input.action.kind === "launch") {
+      if (input.action.commodoreId && input.action.commodoreId !== owner) fail("commodore_scope_mismatch");
+      input.action.commodoreId = owner;
+    }
     // 예약도 원래 호출자의 권한으로 접수한다. 실행 시에는 accept가 같은 경계를 다시 검사한다.
     const expires = Date.parse(input.expiresAt);
     if (expires <= now() || expires > now() + 30 * 86_400_000) fail("invalid_expiry");
-    if (!deps.theaters().some((t) => t.id === input.theaterId)) fail("unknown_theater");
-    if (input.trigger.kind === "activity" && node(input.trigger.objectiveId)?.theaterId !== input.theaterId) fail("unknown_objectiveRecord");
-    if (input.action.kind !== "briefing") validTarget(input.action, input.theaterId);
+    if (!deps.theaters(input.commodoreId!).some((t) => t.id === input.theaterId)) fail("unknown_theater");
+    if (input.trigger.kind === "activity" && (node(input.trigger.objectiveId)?.theaterId !== input.theaterId || node(input.trigger.objectiveId)?.commodoreId !== input.commodoreId)) fail("unknown_objectiveRecord");
+    if (input.action.kind !== "briefing") validTarget(input.action, input.theaterId, input.commodoreId);
     if (state.automations.length >= 100) {
       // 상한에서만 종료된 정책의 자리를 회수한다. 재개 가능한 paused 정책과 진행 중 동작의 정책은 보존한다.
       state.automations = state.automations.filter((policy) => {
@@ -295,8 +335,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const row: ConsoleAutomation = { id: randomUUID(), caller, input, status: "active", runs: 0, createdAt: stamp(), ...(input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + input.trigger.minutes * 60_000).toISOString() } : {}) };
     state.automations.push(row); persist(); publish({ kind: "automation", automationId: row.id }); return row;
   }
-  function briefing(theaterId: string) {
-    const ops = deps.objectiveRecords().filter((op) => op.theaterId === theaterId);
+  function briefing(commodoreId: string, theaterId: string) {
+    const ops = deps.objectiveRecords().filter((op) => op.commodoreId === commodoreId && op.theaterId === theaterId);
     const counts: Record<string, number> = {};
     for (const op of ops) { const key = observe(op.id)?.activity ?? "unknown"; counts[key] = (counts[key] ?? 0) + 1; }
     return { at: stamp(), total: ops.length, unknown: counts.unknown ?? 0, counts };
@@ -327,7 +367,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       }
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
-        if (!callerAvailable(item.caller) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
+        if (!callerAvailable(item.caller) || !item.input.commodoreId || !deps.theaters(item.input.commodoreId).some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
         // 소유자가 허용을 거둔 정책은 여기서 멈춘다 — 사라진 것이 아니라 권한이 걷힌 것이라 사유를 구분한다.
         if (!callerAuthorized(item.caller)) { updateAutomation(item.id, { status: "paused", lastError: "owner_not_authorized" }); continue; }
         if (policyBusy(item.id)) continue;
@@ -339,9 +379,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         // 예산은 부작용 전에 영속 차감한다. 실패도 시도 횟수를 소비한다.
         updateAutomation(item.id, { runs: item.runs + 1, lastRunAt: stamp(), ...(trigger.kind === "interval" ? { nextRunAt: new Date(now() + trigger.minutes * 60_000).toISOString() } : {}) });
         try {
-          if (item.input.action.kind === "briefing") updateAutomation(item.id, { briefing: briefing(item.input.theaterId), lastError: undefined });
+          if (item.input.action.kind === "briefing") updateAutomation(item.id, { briefing: briefing(item.input.commodoreId!, item.input.theaterId), lastError: undefined });
           else {
-            validTarget(item.input.action, item.input.theaterId);
+            validTarget(item.input.action, item.input.theaterId, item.input.commodoreId);
             // 전달 실패는 dispatch 가 정책을 멈추며 남긴다.
             accept(item.caller, item.input.action, item.id).catch(() => undefined);
           }
@@ -453,6 +493,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!op || !launchedByPlugin(caller, op)) return null;
       return adapter?.advertisedTools?.(objectiveId) ?? null;
     },
+    migrateLegacyAutomations,
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },
     state(): ConsoleControlState { return { paused: disposed || storageError, automations: state.automations }; },
@@ -460,9 +501,10 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) return fail("automation_not_found");
       {
         if (disposed || storageError) fail("control_paused");
+        if (!item.input.commodoreId || !deps.theaters(item.input.commodoreId).some((row) => row.id === item.input.theaterId)) fail("scope_unavailable");
         if (Date.parse(item.input.expiresAt) <= now()) fail("request_expired");
         if (item.runs >= item.input.maxRuns) fail("budget_exhausted");
-        if (item.input.action.kind !== "briefing") validTarget(item.input.action, item.input.theaterId);
+        if (item.input.action.kind !== "briefing") validTarget(item.input.action, item.input.theaterId, item.input.commodoreId);
       }
       return updateAutomation(id, { status: "active", ...(item.input.trigger.kind === "interval" ? { nextRunAt: new Date(now() + item.input.trigger.minutes * 60_000).toISOString() } : {}) });
     },
