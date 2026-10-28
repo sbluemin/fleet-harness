@@ -31,12 +31,9 @@ export * from "./quota/last-good.js";
 export * from "./upstream/anthropic/quota.js";
 export * from "./upstream/anthropic/credentials.js";
 export * from "./upstream/codex/quota.js";
-export * from "./upstream/cursor/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./canonical/index.js";
-export * from "./upstream/cursor/native/index.js";
-export * from "./upstream/cursor/diagnostic-log.js";
 export * from "./router/router.js";
 // 하네스 프로필과 그 계약. 호스트가 `deps.harnesses`에 무엇을 실을지 고르려면 필요하다 —
 // Claude Code는 기본값이라 이름을 부를 일이 없고, 그래서 여기 없다.

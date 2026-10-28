@@ -16,7 +16,7 @@ export type LoginState =
   | {
     readonly phase: "pending";
     readonly loginId: string;
-    /** 입력하거나 확인할 코드. 코드가 없는 흐름(Cursor)은 빈 문자열이다. */
+    /** 입력하거나 확인할 코드. 코드가 없는 흐름은 빈 문자열이다. */
     readonly userCode: string;
     /** 링크에 코드가 이미 실려 있으면 확인만, 아니면 페이지에서 입력한다. */
     readonly codeInUrl: boolean;

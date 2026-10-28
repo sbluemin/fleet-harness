@@ -5,7 +5,6 @@ import type { SystemPromptSettingsState } from "../../features/settings/client/e
 const BASE: SystemPromptSettingsState = {
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
-  cursorDiagnosticsEnabled: false,
   wireLogEnabled: false,
   delegationRoutingEnabled: true,
   delegationRoutingModel: null,

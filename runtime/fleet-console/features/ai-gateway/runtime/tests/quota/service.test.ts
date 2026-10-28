@@ -402,7 +402,7 @@ describe("quota service", () => {
       fs.writeFileSync(filePath, JSON.stringify({
         version: 1,
         providers: {
-          cursor: {
+          xai: {
             status: "ok",
             fetchedAt: now,
             windows: [
@@ -413,7 +413,7 @@ describe("quota service", () => {
         },
       }));
       // 은퇴한 풀의 창이 scope 없이 살아남으면 Auto 모델의 공유 제한으로 읽혀 배정을 그르친다.
-      expect(createQuotaLastGoodStore({ filePath }).read().cursor?.windows).toEqual([
+      expect(createQuotaLastGoodStore({ filePath }).read().xai?.windows).toEqual([
         { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
       ]);
     } finally {

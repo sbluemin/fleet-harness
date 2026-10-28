@@ -40,7 +40,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor xai routing delegation subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex xai routing delegation subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
@@ -68,7 +68,6 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
-  cursor: "terminal.settings.aiGatewayProviderCursor",
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
 } as const;
@@ -602,16 +601,6 @@ function AiGatewayDiagnosticsCard() {
   return (
     <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayDiagnostics")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      <SettingToggleRow
-        title={t("terminal.settings.aiGatewayCursorDiagnostics")}
-        help={t("terminal.settings.aiGatewayCursorDiagnosticsHelp")}
-        value={state.cursorDiagnosticsEnabled}
-        busy={saving.has("cursorDiagnosticsEnabled")}
-        onToggle={() => void setSystemPromptSettingsField(
-          "cursorDiagnosticsEnabled",
-          !state.cursorDiagnosticsEnabled,
-        )}
-      />
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}

@@ -126,7 +126,7 @@ function functionCallFor(input: readonly unknown[], callId: unknown): WireFuncti
   return undefined;
 }
 
-/** Cursor 재요청과 같은 판정. 인자 JSON을 읽지 못하면 턴을 넘기는 호출이 아니다. */
+/** 인자 JSON을 읽지 못하면 턴을 넘기는 호출이 아니다. */
 function isYieldCall(call: WireFunctionCall, rules: readonly MuseYieldToolCall[]): boolean {
   return rules.some((rule) => {
     if (rule.name !== call.name) return false;

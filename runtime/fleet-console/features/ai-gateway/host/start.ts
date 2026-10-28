@@ -17,7 +17,6 @@ import {
   createMuseCodeOAuth,
   createCodexOAuth,
   createXaiOAuth,
-  createCursorOAuth,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -145,12 +144,9 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const xai = createXaiOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
-  const cursor = createCursorOAuth({ authService, onQuota: (value) => quota.record("cursor", value) });
-  ctx.host.lifecycle.registerCleanup(() => cursor.dispose());
-  registerConsoleOAuthRoutes(ctx, "cursor", "Cursor", cursor);
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
-    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai, cursor }),
+    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
     // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
     lastGoodStore: createQuotaLastGoodStore({
       filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "quota-last-good.json"),
@@ -326,7 +322,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     assignRouting: (request, options) => assign(request, options?.signal),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
-    readCursorToken: cursor.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

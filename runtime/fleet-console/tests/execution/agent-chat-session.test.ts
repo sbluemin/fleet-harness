@@ -553,7 +553,7 @@ describe("AgentChatRegistry — background jobs", () => {
       JSON.stringify({
         type: "assistant",
         message: {
-          model: "claude-gateway--cursor--composer-1.5",
+          model: "claude-gateway--xai--grok-4.7",
           content: [{ type: "text", text: "done" }],
         },
       }),
@@ -580,7 +580,7 @@ describe("AgentChatRegistry — background jobs", () => {
             {
               type: "workflow_agent",
               index: 1,
-              label: "composer-run",
+              label: "grok-run",
               phaseTitle: "Measure",
               agentId,
               model: requested,
@@ -624,7 +624,7 @@ describe("AgentChatRegistry — background jobs", () => {
         stages: [{
           title: "Measure",
           agents: [
-            { label: "composer-run", model: "claude-gateway--cursor--composer-1.5", state: "done" },
+            { label: "grok-run", model: "claude-gateway--xai--grok-4.7", state: "done" },
             { label: "pending-run", state: "start" },
           ],
         }],
@@ -647,7 +647,7 @@ describe("AgentChatRegistry — background jobs", () => {
       kind: "job-progress",
       stages: [{
         agents: [
-          { label: "composer-run", model: "claude-gateway--cursor--composer-1.5" },
+          { label: "grok-run", model: "claude-gateway--xai--grok-4.7" },
           { label: "pending-run", state: "start" },
         ],
       }],
@@ -666,7 +666,7 @@ describe("AgentChatRegistry — background jobs", () => {
       status: "completed",
       stages: [{
         agents: [
-          { label: "composer-run", model: "claude-gateway--cursor--composer-1.5" },
+          { label: "grok-run", model: "claude-gateway--xai--grok-4.7" },
           { label: "pending-run", state: "start" },
         ],
       }],
@@ -682,7 +682,7 @@ describe("AgentChatRegistry — background jobs", () => {
     mkdirSync(path.dirname(childFile), { recursive: true });
     writeFileSync(childFile, `${JSON.stringify({
       type: "assistant",
-      message: { model: "claude-gateway--cursor--composer-1.5", content: [{ type: "text", text: "first" }] },
+      message: { model: "claude-gateway--xai--grok-4.7", content: [{ type: "text", text: "first" }] },
     })}\n`);
     const progress = {
       type: "system",
@@ -717,7 +717,7 @@ describe("AgentChatRegistry — background jobs", () => {
       const progressEvent = [...seen].reverse().find((entry) => entry.event.kind === "job-progress");
       expect(progressEvent?.event).toMatchObject({
         kind: "job-progress",
-        stages: [{ agents: [{ model: "claude-gateway--cursor--composer-1.5" }] }],
+        stages: [{ agents: [{ model: "claude-gateway--xai--grok-4.7" }] }],
       });
     });
 
@@ -739,7 +739,7 @@ describe("AgentChatRegistry — background jobs", () => {
       const progressEvent = [...seen].reverse().find((entry) => entry.event.kind === "job-progress");
       expect(progressEvent?.event).toMatchObject({
         kind: "job-progress",
-        stages: [{ agents: [{ label: "fallback-run", model: "claude-gateway--cursor--composer-1.5" }] }],
+        stages: [{ agents: [{ label: "fallback-run", model: "claude-gateway--xai--grok-4.7" }] }],
       });
     });
 
@@ -765,7 +765,7 @@ describe("AgentChatRegistry — background jobs", () => {
     mkdirSync(childDir, { recursive: true });
     writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6a7b1.jsonl"), `${JSON.stringify({
       type: "assistant",
-      message: { model: "claude-gateway--cursor--composer-1.5", content: [{ type: "text", text: "a1" }] },
+      message: { model: "claude-gateway--xai--grok-4.7", content: [{ type: "text", text: "a1" }] },
     })}\n`);
     writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6b7c1.jsonl"), `${JSON.stringify({
       type: "assistant",
@@ -805,7 +805,7 @@ describe("AgentChatRegistry — background jobs", () => {
       expect(progress?.event).toMatchObject({
         kind: "job-progress",
         stages: [
-          { title: "Alpha", agents: [{ label: "A1", model: "claude-gateway--cursor--composer-1.5" }] },
+          { title: "Alpha", agents: [{ label: "A1", model: "claude-gateway--xai--grok-4.7" }] },
           { title: "Bravo", agents: [{ label: "B1", model: "claude-gateway--deepseek--v3.1" }] },
         ],
       });
@@ -826,7 +826,7 @@ describe("AgentChatRegistry — background jobs", () => {
           {
             title: "Alpha",
             agents: [
-              { label: "A1", model: "claude-gateway--cursor--composer-1.5" },
+              { label: "A1", model: "claude-gateway--xai--grok-4.7" },
               { label: "A2", state: "start" },
             ],
           },
@@ -848,7 +848,7 @@ describe("AgentChatRegistry — background jobs", () => {
     writeFileSync(childFile, `${JSON.stringify({
       type: "assistant",
       message: {
-        model: "claude-gateway--cursor--composer-1.5",
+        model: "claude-gateway--xai--grok-4.7",
         content: [{ type: "text", text: "x".repeat(300_000) }],
       },
     })}\n`);
@@ -885,7 +885,7 @@ describe("AgentChatRegistry — background jobs", () => {
       const progress = [...seen].reverse().find((entry) => entry.event.kind === "job-progress");
       expect(progress?.event).toMatchObject({
         kind: "job-progress",
-        stages: [{ agents: [{ model: "claude-gateway--cursor--composer-1.5" }] }],
+        stages: [{ agents: [{ model: "claude-gateway--xai--grok-4.7" }] }],
       });
     });
     let log = initialAgentChatLogState;
@@ -903,7 +903,7 @@ describe("AgentChatRegistry — background jobs", () => {
     const requested = "claude-gateway--xai--grok-4";
     const agents = Array.from({ length: agentCount }, (_, index) => {
       const agentId = `ag${String(index).padStart(3, "0")}`;
-      const model = `claude-gateway--cursor--composer-${index}`;
+      const model = `claude-gateway--xai--observed-${index}`;
       writeFileSync(path.join(childDir, `agent-${agentId}.jsonl`), `${JSON.stringify({
         type: "assistant",
         message: { model, content: [{ type: "text", text: "ok" }] },
@@ -960,8 +960,8 @@ describe("AgentChatRegistry — background jobs", () => {
       if (progress?.event.kind !== "job-progress") return;
       const painted = progress.event.stages?.flatMap((stage) => stage.agents) ?? [];
       expect(painted).toHaveLength(agentCount);
-      expect(painted[0]?.model).toBe("claude-gateway--cursor--composer-0");
-      expect(painted[200]?.model).toBe("claude-gateway--cursor--composer-200");
+      expect(painted[0]?.model).toBe("claude-gateway--xai--observed-0");
+      expect(painted[200]?.model).toBe("claude-gateway--xai--observed-200");
       expect(painted.some((agent) => agent.model === undefined || agent.model === requested)).toBe(false);
     });
     expect(maxInflight).toBeLessThanOrEqual(4);
@@ -981,7 +981,7 @@ describe("AgentChatRegistry — background jobs", () => {
     mkdirSync(childDir, { recursive: true });
     writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6a7b1.jsonl"), `${JSON.stringify({
       type: "assistant",
-      message: { model: "claude-gateway--cursor--composer-1.5", content: [{ type: "text", text: "a1" }] },
+      message: { model: "claude-gateway--xai--grok-4.7", content: [{ type: "text", text: "a1" }] },
     })}\n`);
     writeFileSync(path.join(childDir, "agent-a1b2c3d4e5f6b7c1.jsonl"), `${JSON.stringify({
       type: "assistant",
@@ -1020,7 +1020,7 @@ describe("AgentChatRegistry — background jobs", () => {
           {
             title: "/one/common/stage",
             agents: [
-              { label: "A1", model: "claude-gateway--cursor--composer-1.5" },
+              { label: "A1", model: "claude-gateway--xai--grok-4.7" },
               { label: "A2", state: "start" },
             ],
           },

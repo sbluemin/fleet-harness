@@ -128,10 +128,10 @@ describe("fleet gateway status credentials", () => {
       return Object.fromEntries(report.credentials.map((item) => [item.provider, item.state]));
     }
     try {
-      await expect(states()).resolves.toEqual({ codex: "present", xai: "present", cursor: "absent" });
+      await expect(states()).resolves.toEqual({ codex: "present", xai: "present" });
       await authService.setEntry(CODEX_AUTH_PROVIDER_ID, { ...SUBSCRIPTION_SIGNED_OUT_ENTRY });
       await authService.setEntry(XAI_AUTH_PROVIDER_ID, { ...SUBSCRIPTION_SIGNED_OUT_ENTRY });
-      await expect(states()).resolves.toEqual({ codex: "absent", xai: "absent", cursor: "absent" });
+      await expect(states()).resolves.toEqual({ codex: "absent", xai: "absent" });
       expect(fs.readFileSync(path.join(codexHome, "auth.json"), "utf8")).toContain("cli-access");
       expect(fs.readFileSync(path.join(grokHome, "auth.json"), "utf8")).toContain("grok-access");
     } finally {

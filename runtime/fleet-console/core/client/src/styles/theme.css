@@ -137,7 +137,6 @@
   --provider-claude: oklch(76% 0.09 62);
   --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
-  --provider-cursor: oklch(72% 0.085 238);
   --provider-xai: oklch(76% 0.055 258);
   --provider-antigravity: oklch(73% 0.085 288);
   /* 정체성 톤(--id-*) — Objective accent·그룹색·captain 식별이 공유하는 8톤.
@@ -628,7 +627,6 @@
   --provider-claude: oklch(54% 0.135 62);
   --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
-  --provider-cursor: oklch(50% 0.115 238);
   --provider-xai: oklch(46% 0.06 258);
   --provider-antigravity: oklch(51% 0.1 288);
 
@@ -794,7 +792,6 @@
   --console-use-badge: oklch(76% 0.1 60);
   --provider-claude: oklch(76% 0.085 62);
   --provider-typesafe: oklch(73% 0.085 339);
-  --provider-cursor: oklch(72% 0.08 238);
   --provider-antigravity: oklch(73% 0.08 288);
 
   --quiet-choice-fill: color-mix(in oklab, var(--brass) 6%, transparent);
@@ -1175,7 +1172,6 @@
   --provider-claude: oklch(76% 0.09 62);
   --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
-  --provider-cursor: oklch(72% 0.085 238);
   --provider-xai: oklch(76% 0.055 258);
   --provider-antigravity: oklch(73% 0.085 288);
 }
@@ -1232,7 +1228,6 @@
   --provider-claude: oklch(54% 0.135 62);
   --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
-  --provider-cursor: oklch(50% 0.115 238);
   --provider-xai: oklch(46% 0.06 258);
   --provider-antigravity: oklch(51% 0.1 288);
 }

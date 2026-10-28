@@ -16,7 +16,6 @@ import {
   AI_GATEWAY_MODEL_ENV,
   AI_GATEWAY_ROUTE_SEGMENT,
   createAiGatewayRouter,
-  createCursorDiagnosticLog,
   createFailureJournal,
   createRequestTimingJournal,
   createClaudeCodexCompactionStore,
@@ -28,19 +27,13 @@ export { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth" | "assignRouting">>;
+  "originator" | "readModelOverride" | "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth" | "assignRouting">>;
 
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
 ): { readonly compactHookToken: string; readonly modHookToken: string } {
-  const ownedDiagnostics = deps.cursorDiagnostics
-    ? undefined
-    : createCursorDiagnosticLog(path.join(
-        ctx.dataDir,
-        "ai-gateway",
-      ));
   // Always on, unlike the wire log: a failed turn is the one event that otherwise leaves no
   // trace, and a post-commit failure reaches the user as a single SSE frame nobody can retrieve.
   const ownedFailureJournal = deps.failureJournal
@@ -77,19 +70,16 @@ export function registerAiGatewayRoutes(
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     requestTiming: deps.requestTiming ?? ownedRequestTiming?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
-    // Codex·Cursor·xAI 자격은 Console 로그인(start.ts)이 주입한다. 주입이 없으면 자격도 없다 — 벤더 파일로 물러나지 않는다.
+    // Codex·xAI 자격은 Console 로그인(start.ts)이 주입한다. 주입이 없으면 자격도 없다 — 벤더 파일로 물러나지 않는다.
     readAuth: deps.readAuth ?? (() => null),
-    readCursorToken: deps.readCursorToken ?? (() => null),
     readXaiToken: deps.readXaiToken ?? (() => null),
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
     renewAntigravityToken: deps.renewAntigravityToken
       ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
-    cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });
   ctx.host.lifecycle.registerCleanup(async () => {
     router.dispose();
-    await ownedDiagnostics?.flush();
     await ownedFailureJournal?.flush();
     await ownedRequestTiming?.flush();
   });

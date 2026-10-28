@@ -7,7 +7,6 @@ import {
   xaiCliSubscriptionPresent,
   CODEX_AUTH_PROVIDER_ID,
   XAI_AUTH_PROVIDER_ID,
-  CURSOR_AUTH_PROVIDER_ID,
   type AiGatewaySettingsStore,
   type AuthService,
   type AuthStorageEntry,
@@ -56,7 +55,6 @@ export interface GatewayCommandDeps {
 
 export interface GatewaySubscriptionReaders {
   readonly codex: () => Promise<unknown>;
-  readonly cursor: () => Promise<unknown>;
   readonly xai: () => Promise<unknown>;
 }
 
@@ -142,13 +140,11 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
   const readers = deps.readSubscriptions ?? {
     // 저장 항목이 있으면 그것만 본다. 없을 때만 CLI 파일을 읽고, 어느 쪽도 갱신하지 않는다.
     codex: () => readSubscriptionPresence(deps, CODEX_AUTH_PROVIDER_ID, codexCliPresent),
-    cursor: () => readSubscriptionPresence(deps, CURSOR_AUTH_PROVIDER_ID),
     xai: () => readSubscriptionPresence(deps, XAI_AUTH_PROVIDER_ID, xaiCliPresent),
   };
   return [
     { provider: "codex", source: "subscription", state: await probe(readers.codex) },
     { provider: "xai", source: "subscription", state: await probe(readers.xai) },
-    { provider: "cursor", source: "subscription", state: await probe(readers.cursor) },
   ];
 }
 

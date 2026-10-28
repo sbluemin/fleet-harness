@@ -348,7 +348,7 @@ describe("console terminal observability", () => {
     const quotaSource = path.join(retiredData, "quota", "settings.json");
     const cliSource = path.join(retiredData, "terminal", "agent-cli-paths.json");
     for (const file of [quotaSource, cliSource]) fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(quotaSource, JSON.stringify({ claudeConnected: true, cursorConnected: true, providerOrder: ["cursor"] }));
+    fs.writeFileSync(quotaSource, JSON.stringify({ claudeConnected: true, retiredConnected: true, providerOrder: ["retired-provider"] }));
     const cliPaths = { version: 1, paths: { claude: path.join(dir, "custom-claude") } };
     fs.writeFileSync(cliSource, JSON.stringify(cliPaths));
     fs.writeFileSync(path.join(consoleDir, "settings.json"), JSON.stringify({ version: 1, plugins: {
@@ -1255,8 +1255,8 @@ async function startFixture(options: {
 }
 
 function createStubAgentCliDetector(overrides: Record<string, boolean> = {}): AgentCliDetector {
-  // cliCommand 단위 바이너리(claude/codex/cursor-agent)별 설치 여부를 stub한다. 기본 모두 설치됨.
-  const commands = ["claude", "codex", "cursor-agent"];
+  // cliCommand 단위 바이너리(claude/codex)별 설치 여부를 stub한다. 기본 모두 설치됨.
+  const commands = ["claude", "codex"];
   return {
     detect: async () => commands.map((id) => ({
       id,

@@ -6,10 +6,8 @@ export type WindowId = "session" | "weekly" | "model" | "cycle";
 
 /**
  * Sub-budget a window measures, when a provider bills one subscription through
- * more than one pool. Cursor's exposed models draw from the Auto allowance, so
- * a caller choosing a model must read its scoped window — the pool-less window
- * is the provider's combined usage and can read as healthy while Auto is
- * exhausted.
+ * more than one pool. A model-scoped window must not be confused with the
+ * provider's combined usage, which can be healthy while one pool is exhausted.
  */
 export type QuotaScope = "auto";
 
@@ -32,8 +30,7 @@ export interface QuotaWindowPeriod {
 
 /**
  * Absolute usage as decimal strings, exactly as the provider quantifies them.
- * Emitted only where the upstream unit is a plain count (never money); Cursor's
- * spend figures stay excluded because they track billing amounts.
+ * Emitted only where the upstream unit is a plain count (never money).
  */
 export interface QuotaWindowAmounts {
   readonly used: string;
@@ -87,7 +84,6 @@ export interface QuotaSummaryDto {
     readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
-    readonly cursor: ProviderDto;
     readonly "muse-code": ProviderDto;
     readonly xai: ProviderDto;
   };

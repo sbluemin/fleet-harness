@@ -14,7 +14,7 @@ interface OAuthHostContext {
 }
 
 /** Console이 로그인을 소유하는 공급자. 마운트 경로 조각이자 플러그인 프록시의 경로 조각이다. */
-export type ConsoleOAuthProvider = "muse-code" | "codex" | "xai" | "cursor";
+export type ConsoleOAuthProvider = "muse-code" | "codex" | "xai";
 
 /** 공급자 로그인 모듈이 라우트에 내주는 면. 자격·device code는 이 면을 넘지 않는다. */
 export interface ConsoleOAuthRoutesTarget {

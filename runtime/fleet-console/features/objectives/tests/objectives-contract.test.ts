@@ -2119,12 +2119,11 @@ describe("Objectives contract", () => {
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
       { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
-    ] }, { id: "gateway:cursor", label: "Cursor", rows: [
-      { id: "cursor--grok-4.7-500k", label: "Grok", launch: { model: "cursor--grok-4.7-500k" }, quotaScope: "auto", quotaPool: "cursor:auto" },
+    ] }, { id: "gateway:xai", label: "xAI", rows: [
+      { id: "xai--grok-4.7", label: "Grok", launch: { model: "xai--grok-4.7" }, quotaPool: "xai:shared" },
     ] }] }] }] };
-    const quota = { providers: { cursor: { status: "ok", windows: [
-      { id: "auto", scope: "auto", isAggregate: false, usedPercent: 20 },
-      { id: "total", isAggregate: true, usedPercent: 50 },
+    const quota = { providers: { xai: { status: "ok", windows: [
+      { id: "weekly", usedPercent: 20 },
     ] } } };
     // gateway_models — 라우팅 판단이 보는 후보. 지휘관이 고른 구성원 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
     const gatewayModels = { routing: { enabled: true, mode: "jev" }, quotaPools: {}, models: [{ modelId: "sonnet[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["low"] }] };
@@ -2163,7 +2162,7 @@ describe("Objectives contract", () => {
     expect(loadout.models).toEqual([
       { model: "sonnet[1m]", label: "Sonnet", provider: "claude", efforts: ["low"], available: true },
       { model: "opus[1m]", label: "Opus", provider: "claude", efforts: ["high"], available: true },
-      { model: "cursor--grok-4.7-500k", label: "Grok", provider: "cursor", efforts: [], available: true, quotaScope: "auto", quotaPool: "cursor:auto" },
+      { model: "xai--grok-4.7", label: "Grok", provider: "xai", efforts: [], available: true, quotaPool: "xai:shared" },
     ]);
     expect(loadout.quota).toEqual(quota.providers);
     const actor = { kind: "commodore", commodoreId: "c1" };

@@ -96,19 +96,19 @@ describe("quota route handlers", () => {
     // 프록시는 서버 자신의 Origin으로 Gateway를 부른다 — 브라우저 호출자를 거르는 문은 이 라우트뿐이다.
     const gateway = { call: vi.fn(async () => ({ status: 200, payload: { signedIn: false } })) } satisfies LoginGateway;
     for (const [method, url, action] of [
-      ["POST", "/api/v1/quota/cursor/logout", "logout"],
+      ["POST", "/api/v1/quota/xai/logout", "logout"],
       ["GET", "/api/v1/quota/codex/status?loginId=abc", "status"],
     ] as const) {
       const denied = harness(method, url, {});
       (denied.ctx.host.security as unknown as { isTerminalAuthorized: () => boolean }).isTerminalAuthorized = () => false;
-      await handleProviderLogin(denied.req, denied.res, denied.ctx, "cursor", action, gateway, denied.service);
+      await handleProviderLogin(denied.req, denied.res, denied.ctx, "xai", action, gateway, denied.service);
       expect(denied.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
     }
     expect(gateway.call).not.toHaveBeenCalled();
 
-    const allowed = harness("POST", "/api/v1/quota/cursor/logout", {});
-    await handleProviderLogin(allowed.req, allowed.res, allowed.ctx, "cursor", "logout", gateway, allowed.service);
-    expect(gateway.call).toHaveBeenCalledWith("cursor", "logout", { body: {} });
+    const allowed = harness("POST", "/api/v1/quota/xai/logout", {});
+    await handleProviderLogin(allowed.req, allowed.res, allowed.ctx, "xai", "logout", gateway, allowed.service);
+    expect(gateway.call).toHaveBeenCalledWith("xai", "logout", { body: {} });
     expect(allowed.writes[0]?.status).toBe(200);
   });
 });

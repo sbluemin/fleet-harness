@@ -10,7 +10,7 @@ export interface QuotaSettingsHost {
   write(value: QuotaSettings): Promise<void>;
 }
 
-/** 연결 동의만 보존한다. 공급자 정렬·접힘·옛 Cursor 연결 값은 더 이상 저장하지 않는다. */
+/** 연결 동의만 보존한다. 공급자 정렬·접힘·옛 연결 값은 더 이상 저장하지 않는다. */
 export function normalizeQuotaSettings(value: unknown): QuotaSettings {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
   const connected = (value as Record<string, unknown>).claudeConnected;
