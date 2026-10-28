@@ -1152,7 +1152,12 @@ describe("commodore supervisor", () => {
         },
       };
       let hasPersonMessage: (() => boolean) | undefined;
-      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, emit: () => undefined });
+      const objectives: Objective[] = [];
+      let commanderActivity: "running" | "idle" = "idle";
+      let lifecycle: "dormant" | "live" = "dormant";
+      let revision = 0;
+      const resumeFailures: { objectiveId: string; title: string; error: string }[] = [];
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => objectives, subscribeObjectives: () => () => undefined, observe: restClock(() => ({ lifecycle, activity: commanderActivity, generation: "g1", output: { revision } })), resumeFailures: { take: () => resumeFailures.splice(0), subscribe: () => () => undefined }, boardTools: (_theaterId, _readAttachments, hasMessage) => { hasPersonMessage = hasMessage; return []; }, emit: () => undefined });
       let supervisor = make();
       supervisor.sync("patrol-started");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
@@ -1220,6 +1225,69 @@ describe("commodore supervisor", () => {
       expect(sessions.at(-1)!.sent[0]).not.toContain("board actions");
       sessions.at(-1)!.finish();
       await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+
+      // 재기동 당시 진행·구상·인계 대기만 남은 목표는 스스로 잇는다. 시간이 지나거나 live 로 복원된 것만으로는 깨우지 않는다.
+      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
+      objectives.push(running, { ...running, id: "o2", commenced: false, planning: true, missions: [] }, { ...running, id: "o3", awaitingHandoff: true, missions: [{ ...running.missions[0]!, done: true }] });
+      const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
+      const beforeRestart = sessions.length;
+      const wakes = () => h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "wake");
+      const beforeWakes = wakes().length;
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(settleWait * 2);
+      lifecycle = "live";
+      await vi.advanceTimersByTimeAsync(settleWait * 2);
+      expect(sessions).toHaveLength(beforeRestart);
+      expect(wakes()).toHaveLength(beforeWakes);
+      // 실제 작업 후 다시 멈추면 같은 보드라도 평시 settled 로 깨운다.
+      commanderActivity = "running";
+      await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS);
+      commanderActivity = "idle";
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(beforeRestart + 1);
+      expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:3"] });
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+      // 점검 사이에 끝난 짧은 지휘관 턴도 restClock 의 revision 으로 알아본다.
+      objectives.splice(1);
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(beforeRestart + 1);
+      revision++;
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(beforeRestart + 2);
+      expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:1"] });
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+      // 재기동 전에 보고했어도 미처리 대기는 남아 있다. 같은 보드를 다시 복원해도 깨우되 사람 몫은 제외한다.
+      Object.assign(running, { awaitingReview: true });
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(beforeRestart + 3);
+      expect(sessions.at(-1)!.sent[0]).toContain("waits on you: awaiting review");
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(beforeRestart + 4);
+      expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:1"] });
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      await supervisor.dispose();
+      Object.assign(running, { personHolds: [{ target: "review", requestId: null, reason: "Product call", at: Date.now(), by: { kind: "commodore" }, settled: null }] });
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(settleWait * 2);
+      expect(sessions).toHaveLength(beforeRestart + 4);
+      await supervisor.dispose();
+      // 스스로 잇지 못한 목표는 진행 상태뿐이어도 별도의 resume-failed 경로로 알린다.
+      Object.assign(running, { awaitingReview: false, personHolds: [] });
+      resumeFailures.push({ objectiveId: running.id, title: running.title, error: "resume unavailable" });
+      supervisor = make(); supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(beforeRestart + 5);
+      expect(wakes().at(-1)).toMatchObject({ reasons: ["resume-failed:1"] });
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(settleWait * 2);
+      expect(sessions.at(-1)!.sent).toHaveLength(1);
       await supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });
