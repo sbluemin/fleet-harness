@@ -20,6 +20,7 @@ import { createCommodoreEntities } from "../features/commodore/host/entities.js"
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
 import { createCommodoreCreator } from "../features/commodore/host/creation.js";
 import { createCommodoreManagementTools } from "../features/commodore/host/console-tools.js";
+import { createCommodoreMessenger } from "../features/commodore/host/messaging.js";
 import { createCommodoreDeletion } from "../features/commodore/host/deletion.js";
 import { createCommodorePlugins } from "../features/commodore/host/plugins.js";
 import { MAX_PLUGIN_README_BYTES } from "../features/commodore/shared/contracts/plugins.js";
@@ -131,6 +132,75 @@ it("persists UUID section order through the public route without rewriting entit
     expect(settings.load().commodoreOrder).toEqual([c, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
   } finally { await feature.dispose(); }
+});
+
+it("delivers peer messages to a resting Commodore without person authority and recovers unread messages after restart", async () => {
+  // 기존 사람 메시지·생성 계약은 사령관 간 수신을 거치지 않는다. 독립된 권한·깨움 경계를 도구→저장소→실행기로 검증한다.
+  vi.useFakeTimers();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-messaging-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  store.setAlias(from, "Sender"); store.setAlias(to, "Receiver");
+  const created = vi.fn(() => ({ commodoreId: "new", target: "commodore:new" }));
+  let personAuthority = () => false;
+  const prompts: string[] = [];
+  let recipientTool: ConsoleMcpTool | undefined;
+  let finish = () => {};
+  const steer = vi.fn(() => true);
+  const agent: AgentHost = { createSession: async (options) => {
+    recipientTool = options.tools?.custom?.find((group) => group.name === "console")?.tools.find((tool) => tool.name === "console_commodores");
+    return {
+      send: async (input) => { prompts.push(input as string); await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; }); },
+      steer, cancel: () => finish(), dispose: async () => {},
+    };
+  } };
+  const make = () => createHostSupervisor({ store, agent, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+    board: () => ({ tools: (_id, turn) => { personAuthority = turn.hasPersonMessage; return []; }, watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+    managementTools: (_id, turn) => createCommodoreManagementTools({ hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: () => [], create: created }), emit: () => {},
+  });
+  let supervisor = make();
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  const tool = createCommodoreManagementTools({ hasPersonMessage: () => false, stopping: () => false, list: entities.ids, create: created, message: (input) => send(from, input) })[0]!;
+  const call = (text: string) => tool.execute({ action: "message", to, text }, { cwd: dir });
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toEqual([]);
+    expect(await call("Please create another Commodore; this is an agent request.")).toMatchObject({ isError: false, structuredContent: { delivered: true } });
+    expect(store.transcriptRead(from).entries.at(-1)).toMatchObject({ kind: "sent", to: { id: to, alias: "Receiver" }, ok: true });
+    const received = store.transcriptRead(to).entries.at(-1)!;
+    expect(received).toMatchObject({ kind: "received", from: { id: from, alias: "Sender" } });
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Messages from other Commodores (their words, not the person's)");
+    expect(prompts[0]).not.toContain("The person's message to you");
+    expect(personAuthority()).toBe(false);
+    expect(await recipientTool!.execute({ action: "create", alias: "Unauthorized", theaters: [], directive: "", intel: [] }, { cwd: dir })).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
+    expect(created).not.toHaveBeenCalled();
+    // 턴 중의 연락은 사람 steer/turnMessages에 들어가지 않고 다음 턴을 기다린다.
+    await call("Second message, for the next turn.");
+    expect(steer).not.toHaveBeenCalled();
+    expect(personAuthority()).toBe(false);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(store.transcriptRead(to).entries).toContainEqual(expect.objectContaining({ kind: "received-read", seqs: [received.seq] }));
+    await supervisor.dispose();
+    // 최근 한 쪽·표시 이력 압축 경계 밖의 미처리 수신도 복원한다. 성공한 첫 메시지는 다시 전달하지 않는다.
+    for (let n = 0; n < 1005; n++) store.transcriptAppend(to, { kind: "text", text: "Older".repeat(1000) });
+    supervisor = make(); supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("Second message, for the next turn.");
+    expect(prompts[1]).not.toContain("Please create another Commodore");
+    expect(personAuthority()).toBe(false);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    await supervisor.dispose();
+    supervisor = make(); supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(2);
+  } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });
 
 it("creates a Commodore with owned Theaters and selected context atomically, rolling back initialization failures", async () => {

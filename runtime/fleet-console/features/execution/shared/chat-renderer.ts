@@ -47,6 +47,8 @@ export type AgentChatTranscriptEvent =
   | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
   /** A message a running turn picked up — stays inside that turn. */
   | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
+  /** Another agent's words, rendered as the same received-message row as an execution ledger. */
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
   /** A completed text block — markdown. The last one before `turn-end` becomes the answer. */
   | { readonly kind: "text"; readonly text: string }

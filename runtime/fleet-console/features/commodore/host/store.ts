@@ -83,6 +83,8 @@ export interface CommodoreStore {
   readonly memory: CommodoreMemory;
   transcriptAppend(commodoreId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(commodoreId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
+  /** Clear 경계 뒤 미처리 사령관 연락 — 한 번 읽어 복원하며 화면 페이지 상한을 적용하지 않는다. */
+  pendingReceived(commodoreId: string): readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
   /** 대화의 마지막 말(사람의 메시지나 사령관의 답) — 목록 요약이 싣는다. 처음 한 번만 파일을 읽고 이후는 덧붙임이 갈아 끼운다. */
   transcriptLast(commodoreId: string, from?: "commodore"): CommodoreLastMessage | null;
   /**
@@ -404,6 +406,16 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const scoped = before === undefined ? entries : entries.filter((entry) => entry.seq < before);
       return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit, clearedThrough };
     },
+    pendingReceived(commodoreId) {
+      const clearedThrough = load(commodoreId).transcriptClearedThrough ?? 0;
+      const pending = new Map<number, Extract<CommodoreTranscriptEntry, { kind: "received" }>>();
+      for (const entry of readTranscriptFile(transcriptFile(commodoreId))) {
+        if (entry.seq <= clearedThrough) continue;
+        if (entry.kind === "received") pending.set(entry.seq, entry);
+        else if (entry.kind === "received-read") for (const seq of entry.seqs) pending.delete(seq);
+      }
+      return [...pending.values()];
+    },
     askAdd(commodoreId, input) {
       const reason = input.reason.trim();
       if (!reason || reason.length > MAX_ASK_REASON) throw new CommodoreStoreError("invalid_request");
@@ -532,7 +544,10 @@ function compactIfLarge(file: string): readonly CommodoreTranscriptEntry[] | und
   try { size = fs.statSync(file).size; } catch { return; }
   if (size <= TRANSCRIPT_COMPACT_BYTES) return;
   const entries = readTranscriptFile(file);
-  const kept = entries.slice(Math.floor(entries.length / 2));
+  // 사령관 연락은 이 기록 자체가 미처리 큐다. 오래된 표시 이력을 줄여도 아직 읽지 않은 수신은 버리지 않는다.
+  const read = new Set(entries.flatMap((entry) => entry.kind === "received-read" ? entry.seqs : []));
+  const half = Math.floor(entries.length / 2);
+  const kept = entries.filter((entry, index) => index >= half || (entry.kind === "received" && !read.has(entry.seq)));
   writeFileAtomic(file, kept.map((entry) => JSON.stringify(entry)).join("\n") + (kept.length ? "\n" : ""));
   return kept;
 }

@@ -61,6 +61,8 @@ export interface CommodoreTurnInput {
   readonly replacementSummary?: readonly string[];
   /** 사람이 사령관에게 보낸 메시지 — 도구가 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. */
   readonly messages?: readonly (string | { readonly text: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] })[];
+  /** 다른 사령관의 말. 사람 입력이나 사람 권한으로 취급하지 않는다. */
+  readonly mail?: readonly Extract<CommodoreTranscriptEntry, { kind: "received" }>[];
 }
 
 export interface CommodoreTurnOutcome {
@@ -258,6 +260,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         memoryNote(readMemoryIndex()),
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
+        ...(input.mail?.length ? ["Messages from other Commodores (their words, not the person's):\n" + input.mail.map(({ messageId, from, text, replyTo }) => JSON.stringify({ messageId, from, text, ...(replyTo ? { replyTo } : {}) })).join("\n")] : []),
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [
@@ -304,6 +307,8 @@ function describeTool(rawName: string, input: unknown, boardWrites: ReadonlyMap<
   const name = rawName.replace(MCP_PREFIX, "");
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const str = (key: string) => (typeof args[key] === "string" ? clip(args[key] as string, MAX_SUMMARY) : undefined);
+  // 연락은 보드 행위가 아니다. 송수신 원문은 별도 transcript 줄이 소유한다.
+  if (name === "console_commodores" && args.action === "message") return { name, summary: "message", counts: false };
   const writes = boardWrites.get(name);
   if (writes) {
     const called = str("action");

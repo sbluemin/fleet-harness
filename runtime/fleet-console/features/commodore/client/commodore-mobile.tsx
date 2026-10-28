@@ -1,3 +1,4 @@
+import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { openOwnedObjectiveOnPhone } from "./board.js";
 import { useCommodoreName } from "./commodore-name.js";
@@ -450,16 +451,17 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const name = useCommodoreName(commodoreId, t);
   const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, asks, index.finished, name), [t, commodoreId, entries, board.objectives, asks, index.finished, name]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
-    const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name);
+    const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name, commodoreId);
     if (!pending) return base;
     return [...base, {
       kind: "message", id: `pending-${pending.key}`, at: pending.at, objectiveId: "", speaker: { kind: "human", name: "Human" }, text: pending.text, streaming: false, pending: true,
       ...(pending.images.length > 0 ? { attachments: pending.images.map((image) => ({ preview: { id: image.key, url: image.url } })) } : {}),
     }];
-  }, [t, entries, live, confirmed, pending, name]);
+  }, [t, entries, live, confirmed, pending, name, commodoreId]);
   const turning = view?.run.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
-  const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name, commodoreId }), [name, commodoreId]);
+  const participants = useMemo<readonly ConversationParticipant[]>(() => commodoreParticipants(speaker, turning, confirmed), [speaker, turning, confirmed]);
+  const [peerLedger, setPeerLedger] = useState<ConversationSpeaker | null>(null);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = useCallback(() => {
@@ -476,7 +478,9 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   }), [t, commodoreId]);
   // 원장(기록 탭)에 설 턴이 있을 때만 이름이 눌린다 — 눌리는 척하지 않는다.
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
-  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn ? () => onOpenLog() : null), [hasTurn, onOpenLog]);
+  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn || participants.length > 1 ? (target) => {
+    if (target.commodoreId && target.commodoreId !== commodoreId) setPeerLedger(target); else onOpenLog();
+  } : null), [hasTurn, participants.length, commodoreId, onOpenLog]);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   const composer = (
@@ -486,7 +490,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   );
   return (
     <div className="objectives-cm-fill objectives-cm-conversation">
-      {Conversation ? (
+      {peerLedger ? <CommodorePeerLedger speaker={peerLedger} language={language} onBack={() => setPeerLedger(null)} /> : Conversation ? (
         <Conversation
           entries={items}
           participants={participants}

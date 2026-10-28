@@ -65,11 +65,24 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         }
         break;
       }
+      case "received": {
+        const event: AgentChatTranscriptEvent = { kind: "received", id: entry.messageId, from: entry.from.alias, text: entry.text, inTurn: false, at: entry.at };
+        if (turnAt !== null) heldMessages.push({ event, at: entry.at }); else push(event, entry.at);
+        break;
+      }
       case "text":
         resume(entry.at);
         if (entry.text.trim()) push({ kind: "text", text: entry.text }, entry.at);
         break;
+      case "sent": {
+        resume(entry.at);
+        const id = `c${entry.seq}`;
+        push({ kind: "tool", id, name: "SendMessage", detail: entry.to.alias }, entry.at);
+        push({ kind: "tool-result", id, ok: entry.ok, summary: entry.error ? errorWord(t, entry.error) : "" }, entry.at);
+        break;
+      }
       case "tool": {
+        if (entry.name === "console_commodores" && entry.summary === "message") break;
         resume(entry.at);
         const id = `c${entry.seq}`;
         push({ kind: "tool", id, name: entry.name, ...toolDetail(t, entry, index) }, entry.at);
@@ -132,7 +145,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
  * 맨 앞 표식 하나를 더해도 짝이 맞는다.
  */
 function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>): { readonly text: string; readonly references?: readonly ConversationReference[] } {
-  const references = [...(entry.objective ? [entry.objective] : []), ...(entry.references ?? [])].map(({ id, title }) => ({ id, label: title }));
+  const references = [...(entry.objective ? [entry.objective] : []), ...(entry.references ?? [])].map((ref) => ({ id: "kind" in ref && ref.kind === "commodore" ? `commodore:${ref.id}` : ref.id, label: ref.title }));
   const text = entry.objective ? `${CONVERSATION_REFERENCE_MARK}\n${entry.text}` : entry.text;
   return references.length ? { text, references } : { text };
 }
@@ -159,7 +172,8 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
 export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null, name = t("commodore.name")): readonly AgentConversationEntry[] {
-  const commodore: ConversationSpeaker = { kind: "commodore", name };
+  const commodore: ConversationSpeaker = { kind: "commodore", commodoreId: theaterId, name };
+  const mentionResults = new Map(entries.flatMap((entry) => entry.kind === "mention-result" ? [[entry.messageSeq, entry.unrelayed] as const] : []));
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
@@ -179,9 +193,20 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
+        const unrelayed = mentionResults.get(entry.seq);
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
+          ...(unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
           ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
+        break;
+      }
+      case "sent":
+      case "received": {
+        const peer = entry.kind === "sent" ? entry.to : entry.from;
+        const other: ConversationSpeaker = { kind: "commodore", commodoreId: peer.id, name: peer.alias };
+        out.push({ kind: "delegation", id: `c${entry.seq}`, at: entry.at, sender: entry.kind === "sent" ? commodore : other,
+          recipients: [entry.kind === "sent" ? other : commodore], text: entry.text, result: entry.kind === "sent" && entry.error ? errorWord(t, entry.error) : "",
+          ok: entry.kind === "received" || entry.ok, received: entry.kind === "received" });
         break;
       }
       case "text":
@@ -231,14 +256,14 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  return commodoreConversationLiveEntries(t, entries, live, out, name);
+  return commodoreConversationLiveEntries(t, entries, live, out, name, theaterId);
 }
 
 /** 확정 투영은 그대로 두고 흐르는 말 하나만 붙인다 — 델타마다 지난 말풍선 객체를 다시 만들지 않는다. */
-export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[], name = t("commodore.name")): readonly AgentConversationEntry[] {
+export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[], name = t("commodore.name"), commodoreId?: string): readonly AgentConversationEntry[] {
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, objectiveId: "", speaker: { kind: "commodore", name }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, objectiveId: "", speaker: { kind: "commodore", name, ...(commodoreId ? { commodoreId } : {}) }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */

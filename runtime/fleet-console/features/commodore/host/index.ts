@@ -22,6 +22,7 @@ import type { McpServerTools } from "../../execution/shared/admiral-mcp.js";
 import { createConsoleResidentAgentHost, type ConsoleResidentAgentDeps } from "../../execution/host/agent/console-resident.js";
 import { createCommodoreRoutes, commodoreActive } from "./routes.js";
 import { createCommodoreStore } from "./store.js";
+import { createCommodoreMessenger } from "./messaging.js";
 import { createCommodoreCreator } from "./creation.js";
 import { createCommodoreManagementTools } from "./console-tools.js";
 import { createCommodorePlugins } from "./plugins.js";
@@ -87,10 +88,12 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping,
       list: () => orderedIds().map((id) => ({ commodoreId: id, alias: store.read(id)?.alias, theaters: entities.theatersOf(id) })),
       create: (input) => createFromCommodore(commodoreId, input),
+      message: (input) => messageFromCommodore(commodoreId, input),
     }),
     plugins: (ids) => plugins.resolve(ids),
     emit,
   });
+  const messageFromCommodore = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
   const host: CommodoreBoardHost = {
     registerBoard(adapter) {
       if (disposed) throw new Error("commodore_disposed");

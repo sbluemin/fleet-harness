@@ -11,14 +11,18 @@ import type { CommodoreBoardObjective as Objective } from "../../objectives/shar
 import type { CommodoreObjectiveIndex } from "./commodore-chat.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./board.js";
+import { CommodoreAvatar } from "./commodore-avatar.js";
+import { useCommodoreList, commodoreSectionLabel } from "./commodore-list.js";
+import { openCommodoreConversation } from "./commodore-conversation.js";
+import { openCommodoreMobile } from "./commodore-state.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, useObjectiveTheater, renderObjectiveAvatar } from "./board.js";
 
 type T = Translate<CommodoreMessageKey>;
 
 /**
- * 사령관 입력의 '@' 지휘관 참조(목표 8d9a400b 시안 A · 본문 인라인 토큰).
+ * 사령관 입력의 '@' 참조 — 다른 사령관과 지휘관(목표)을 본문 인라인 토큰으로 고른다.
  *
- * 고른 지휘관(목표)은 본문의 그 자리에 원자 토큰(작은 아바타 + 제목)으로 박힌다. 받는 이는 그대로 사령관이고 지휘관은 맥락이다.
+ * 고른 참조는 본문의 그 자리에 원자 토큰(작은 아바타 + 이름)으로 박힌다. 받는 이는 그대로 현재 사령관이고, 다른 사령관에게는 그가 대신 전한다.
  * 값은 평문 + 참조 목록이다 — 본문은 토큰 자리마다 표식 글자(SDK `CONVERSATION_REFERENCE_MARK`, U+FFFC) 하나를 싣고, 목록은 그 순서다.
  * 사람이 친 글자·붙여넣은 글자에서는 표식 글자를 지우므로 표식은 토큰에서만 나온다. 서버는 표식 수와 참조 수의 짝, 각 목표가 같은
  * Theater 의 실재 목표인지를 다시 검증한다(권위는 서버다).
@@ -45,7 +49,9 @@ const MAX_ROWS = 40;
 export interface CommodoreReference {
   readonly id: string;
   readonly title: string;
+  readonly kind?: "commodore";
 }
+const referenceKey = (ref: CommodoreReference) => ref.kind === "commodore" ? `commodore:${ref.id}` : ref.id;
 export interface CommodoreReferenceValue {
   readonly text: string;
   readonly references: readonly CommodoreReference[];
@@ -94,7 +100,7 @@ export function readReferenceToken(value: string, caret: number): { readonly at:
 }
 
 const sameValue = (a: CommodoreReferenceValue, b: CommodoreReferenceValue) =>
-  a.text === b.text && a.references.length === b.references.length && a.references.every((reference, index) => reference.id === b.references[index]?.id);
+  a.text === b.text && a.references.length === b.references.length && a.references.every((reference, index) => referenceKey(reference) === (b.references[index] ? referenceKey(b.references[index]!) : undefined));
 
 const stripMarks = (text: string) => text.split(CONVERSATION_REFERENCE_MARK).join("");
 
@@ -118,7 +124,7 @@ function serialize(root: HTMLElement): CommodoreReferenceValue {
       const element = child as HTMLElement;
       if (isToken(element)) {
         text += CONVERSATION_REFERENCE_MARK;
-        references.push({ id: element.dataset.refId!, title: element.dataset.refTitle ?? "" });
+        references.push({ id: element.dataset.refId!, title: element.dataset.refTitle ?? "", ...(element.dataset.refKind === "commodore" ? { kind: "commodore" as const } : {}) });
         return;
       }
       if (element.tagName === "BR") { if (!(parent === root && element === root.lastChild)) text += "\n"; return; }
@@ -139,6 +145,7 @@ function tokenSpec(t: T, reference: CommodoreReference): MentionChipMarkup {
       contenteditable: "false",
       "data-ref-id": reference.id,
       "data-ref-title": reference.title,
+      "data-ref-kind": reference.kind ?? "objective",
       "aria-label": t("commodore.reference.token", { title: reference.title }),
     },
   };
@@ -175,7 +182,7 @@ function dropExtraTokens(root: HTMLElement): boolean {
   const seen = new Set<string>();
   let dropped = false;
   for (const node of Array.from(root.querySelectorAll<HTMLElement>("[data-ref-id]"))) {
-    const id = node.dataset.refId ?? "";
+    const id = `${node.dataset.refKind ?? "objective"}:${node.dataset.refId ?? ""}`;
     if (seen.has(id) || seen.size >= MAX_COMMODORE_REFERENCES) { node.remove(); dropped = true; continue; }
     seen.add(id);
   }
@@ -255,9 +262,11 @@ function tokenBesideCaret(root: HTMLElement, forward: boolean): HTMLElement | nu
 
 /* ── 목록 ─────────────────────────────────────────────────────────── */
 
-type RowStatus = "running" | "decision" | "review" | "pending" | "missionsDone" | "done";
+type RowStatus = "running" | "decision" | "review" | "pending" | "missionsDone" | "done" | "commodore";
 interface Candidate {
-  readonly objective: Objective;
+  readonly objective: CommodoreReference;
+  readonly missions?: Objective["missions"];
+  readonly description?: string;
   readonly status: RowStatus;
 }
 
@@ -270,9 +279,10 @@ function rowStatus(objective: Objective): RowStatus {
   return "running";
 }
 
-type CandidateGroup = "active" | "pending" | "done";
-const GROUP_ORDER: readonly CandidateGroup[] = ["active", "pending", "done"];
+type CandidateGroup = "commodore" | "active" | "pending" | "done";
+const GROUP_ORDER: readonly CandidateGroup[] = ["commodore", "active", "pending", "done"];
 const GROUP_LABEL = {
+  commodore: "commodore.name",
   active: "commodore.reference.groupActive",
   pending: "commodore.reference.groupPending",
   done: "commodore.reference.groupDone",
@@ -280,7 +290,7 @@ const GROUP_LABEL = {
 
 /** 묶음 — 시작 전(`pending`)과 완료(`done`)만 따로 서고 나머지(진행·결정·검토·임무 완료)는 「진행 중」이다. 판정 순서는 `rowStatus` 그대로다. */
 function groupOf(status: RowStatus): CandidateGroup {
-  return status === "done" ? "done" : status === "pending" ? "pending" : "active";
+  return status === "commodore" ? "commodore" : status === "done" ? "done" : status === "pending" ? "pending" : "active";
 }
 
 /**
@@ -290,7 +300,7 @@ function groupOf(status: RowStatus): CandidateGroup {
 function candidatesOf(objectives: readonly Objective[], query: string): readonly Candidate[] {
   const needle = query.trim().toLowerCase();
   const matched = objectives.filter((objective) => !objective.removed && (!needle || objective.title.toLowerCase().includes(needle) || objective.id.toLowerCase().startsWith(needle)));
-  const rows = matched.map((objective) => ({ objective, status: rowStatus(objective) }));
+  const rows = matched.map((objective) => ({ objective, missions: objective.missions, status: rowStatus(objective) }));
   return GROUP_ORDER.flatMap((group) => rows.filter((row) => groupOf(row.status) === group)).slice(0, MAX_ROWS);
 }
 
@@ -319,7 +329,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const rootRef = useRef<HTMLDivElement | null>(null);
   const emitted = useRef<CommodoreReferenceValue | null>(null);
   const composing = useRef(false);
-  const pendingPick = useRef<Objective | null>(null);
+  const pendingPick = useRef<CommodoreReference | null>(null);
   /** Esc 로 닫은 '@' 자리 — 질의가 그 자리에 있는 동안은 다시 열지 않는다. */
   const dismissed = useRef<{ node: Text; at: number } | null>(null);
   const [list, setList] = useState<ListState>(CLOSED);
@@ -328,16 +338,27 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const latest = useRef(props);
   latest.current = props;
 
-  // 후보는 보드의 목표뿐이다 — 보관함(완료로 보관된 목표, `/finished`)은 '@'에 서지 않는다.
+  // 목표 후보는 같은 보드의 목표다 — 보관함(`/finished`)은 '@'에 서지 않는다. 받을 준비된 다른 사령관을 그 위에 둔다.
   const { objectives } = useObjectiveTheater(theaterId);
   // 보관된 완료 목표는 후보가 아니라 얼굴의 원천이다 — 기록·초안 토큰의 아바타(`ReferenceMark`)가 그 목표를 찾는다. 목록을 열 때마다
   // 다시 읽어 방금 보관된 목표의 토큰 얼굴도 서게 한다(같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다).
   useEffect(() => { if (list.open) loadFinishedObjectives(theaterId); }, [list.open, theaterId]);
-  const candidates = useMemo(() => (list.open ? candidatesOf(objectives, list.query) : []), [list.open, list.query, objectives]);
-  const taken = useMemo(() => new Set(value.references.map((reference) => reference.id)), [value.references]);
+  const commodores = useCommodoreList();
+  const candidates = useMemo((): readonly Candidate[] => {
+    if (!list.open) return [];
+    const query = list.query.trim().toLowerCase();
+    const peers: Candidate[] = commodores.filter((row) => row.commodoreId !== theaterId && row.active).flatMap((row) => {
+      const title = commodoreSectionLabel(row, t("commodore.name"));
+      const description = row.theaters.map((theater) => theater.label).join(" · ");
+      if (query && !`${title} ${description} ${row.commodoreId}`.toLowerCase().includes(query)) return [];
+      return [{ objective: { kind: "commodore", id: row.commodoreId, title }, description, status: "commodore" }];
+    });
+    return [...peers, ...candidatesOf(objectives, list.query)].slice(0, MAX_ROWS);
+  }, [list.open, list.query, objectives, commodores, theaterId, t]);
+  const taken = useMemo(() => new Set(value.references.map(referenceKey)), [value.references]);
   const full = value.references.length >= MAX_COMMODORE_REFERENCES;
   // 이미 붙었거나 상한에 닿은 행은 흐리게 서고 방향키가 건너뛴다(덱 키 문법).
-  const keyRows = useMemo(() => candidates.map((candidate) => ({ disabled: full || taken.has(candidate.objective.id) })), [candidates, full, taken]);
+  const keyRows = useMemo(() => candidates.map((candidate) => ({ disabled: full || taken.has(referenceKey(candidate.objective)) })), [candidates, full, taken]);
   const index = composerDeckActiveIndex(keyRows, list.index);
 
   /** 토큰 아바타 자리 — DOM 을 다시 읽어 바뀐 경우에만 다시 그린다(실행 취소가 토큰 노드를 되살려도 그 자리에 아바타가 선다). */
@@ -345,7 +366,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const scanTokens = useCallback(() => {
     const root = rootRef.current;
     if (!root) return;
-    const next = Array.from(root.querySelectorAll<HTMLElement>(`.${MENTION_CHIP_MARK_CLASS}`)).map((node) => ({ node, id: (node.parentElement as HTMLElement).dataset.refId ?? "" }));
+    const next = Array.from(root.querySelectorAll<HTMLElement>(`.${MENTION_CHIP_MARK_CLASS}`)).map((node) => ({ node, id: `${node.parentElement?.dataset.refKind === "commodore" ? "commodore:" : ""}${node.parentElement?.dataset.refId ?? ""}` }));
     const current = slotsRef.current;
     if (current.length === next.length && current.every((slot, at) => slot.node === next[at]!.node)) return;
     // 처음 보는 자리에 이미 든 것은 브라우저가 복제한 지난 아바타다(실행 취소) — 비우고 새로 그린다. 아는 자리는 React 가 그리는 중이다.
@@ -410,11 +431,11 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
 
   useEffect(() => { if (disabled) setList(CLOSED); }, [disabled]);
 
-  const pick = useCallback((objective: Objective) => {
+  const pick = useCallback((objective: CommodoreReference) => {
     const root = rootRef.current;
     if (!root) return;
     const current = serialize(root);
-    if (current.references.some((reference) => reference.id === objective.id) || current.references.length >= MAX_COMMODORE_REFERENCES) return;
+    if (current.references.some((reference) => referenceKey(reference) === referenceKey(objective)) || current.references.length >= MAX_COMMODORE_REFERENCES) return;
     const token = caretToken(root);
     if (!token) { setList(CLOSED); return; }
     const range = document.createRange();
@@ -423,7 +444,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    const reference = { id: objective.id, title: objective.title };
+    const reference = objective;
     // '@질의' 를 토큰으로 갈아 끼우고 뒤에 빈칸 하나 — 이어 쓰기 자리이고, 줄 끝 비편집 노드 뒤에서 커서가 사라지는 Chromium 버릇도 피한다.
     // 편집 명령이라 실행 취소 기록에 든다. 명령을 받지 않는 브라우저에서만 DOM 을 직접 고친다.
     if (document.execCommand("insertHTML", false, tokenHtml(latest.current.t, reference))) {
@@ -457,7 +478,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const choose = useCallback((candidate: Candidate | undefined) => {
     if (!candidate) return;
     const { objective } = candidate;
-    if (taken.has(objective.id) || full) return;
+    if (taken.has(referenceKey(objective)) || full) return;
     pick(objective);
   }, [taken, full, pick]);
 
@@ -662,23 +683,23 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
               <ComposerDeckGroup key={group} label={t(GROUP_LABEL[group])}>
                 {rows.map(({ candidate, at }) => {
                   const { objective } = candidate;
-                  const isTaken = taken.has(objective.id);
-                  const missions = objective.missions.length;
-                  const doneMissions = objective.missions.filter((mission) => mission.done).length;
+                  const isTaken = taken.has(referenceKey(objective));
+                  const missions = candidate.missions?.length ?? 0;
+                  const doneMissions = candidate.missions?.filter((mission) => mission.done).length ?? 0;
                   return (
                     <ComposerDeckRow
                       key={objective.id}
                       id={`${listId}-${objective.id}`}
                       active={at === index}
                       disabled={isTaken || full}
-                      lead={<ReferenceMark theaterId={theaterId} objectiveId={objective.id} size={phone ? 24 : 16} />}
+                      lead={<ReferenceMark theaterId={theaterId} objectiveId={referenceKey(objective)} size={phone ? 24 : 16} />}
                       name={objective.title}
                       title={objective.title}
                       // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
                       meta={(
                         <span className="objectives-commodore-ref-sub">
                           {isTaken ? <span>{`✓ ${t("commodore.reference.taken")}`}</span> : <>
-                            {group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
+                            {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
                             {missions ? <span>{t("commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
                           </>}
                         </span>
@@ -704,6 +725,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
  */
 export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
   useObjectiveTheater(theaterId);
+  if (objectiveId.startsWith("commodore:")) return <CommodoreAvatar commodoreId={objectiveId.slice("commodore:".length)} state="idle" size={size} label="" decorative />;
   return renderObjectiveAvatar(theaterId, objectiveId, size);
 }
 
@@ -725,7 +747,14 @@ export function openReferencedObjective(commodoreId: string, objectiveId: string
 export function useCommodoreReferenceHost(t: T, theaterId: string, openOnPhone?: (objectiveId: string) => void): AgentChatReferenceHost {
   useEffect(() => { if (!finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   return useMemo(() => ({
-    open: openOnPhone ?? ((objectiveId: string) => openReferencedObjective(theaterId, objectiveId)),
+    open: (id: string) => {
+      if (id.startsWith("commodore:")) {
+        const peerId = id.slice("commodore:".length);
+        if (openOnPhone) openCommodoreMobile("log", peerId); else openCommodoreConversation(peerId);
+        return;
+      }
+      if (openOnPhone) openOnPhone(id); else openReferencedObjective(theaterId, id);
+    },
     mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={16} />,
     describe: (reference: { readonly label: string }) => t("commodore.reference.open", { title: reference.label }),
   }), [t, theaterId, openOnPhone]);

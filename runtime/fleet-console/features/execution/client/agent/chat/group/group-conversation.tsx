@@ -811,6 +811,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
         </div>
         {entry.pending ? <span className="group-chat-pending">{t("group.pending")}</span> : null}
         {entry.undelivered ? <span className="agent-chat-undelivered" title={t("group.undelivered")}>{t("group.undelivered")}</span> : null}
+        {entry.deliveryNote ? <span className="agent-chat-undelivered">{entry.deliveryNote}</span> : null}
       </div>
     );
   }
