@@ -458,6 +458,32 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const available = desktop && state?.available === true;
   const [urlDraft, setUrlDraft] = React.useState("");
   const [editingUrl, setEditingUrl] = React.useState(false);
+  // 포커스만으로 현재 URL 을 외부에 보내지 않는다. 사람이 고친 입력만 제안에 쓴다.
+  const [suggestQuery, setSuggestQuery] = React.useState<string | null>(null);
+  const [suggestions, setSuggestions] = React.useState<readonly string[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = React.useState(-1);
+  const [composingUrl, setComposingUrl] = React.useState(false);
+  const suggestionsId = React.useId();
+  const suggestionsOpen = available && editingUrl && !composingUrl && suggestions.length > 0;
+  const dismissSuggestions = () => { setSuggestQuery(null); setSuggestions([]); setSelectedSuggestion(-1); };
+  React.useEffect(() => {
+    const query = suggestQuery?.trim() ?? "";
+    if (!available || !editingUrl || composingUrl || query.length < 2 || query.length > 256) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void fetch("/api/v1/browser/suggest", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]),
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json() as { suggestions?: unknown };
+        if (!controller.signal.aborted && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions.filter((item): item is string => typeof item === "string").slice(0, 5));
+        }
+      }).catch(() => undefined);
+    }, 200);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [available, editingUrl, composingUrl, suggestQuery]);
   const [busy, setBusy] = React.useState(false);
   const captionOverlay = useBrowserCaptionOverlay(objectiveId);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -666,7 +692,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
       const intent = getNativeViewResize();
       const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
-      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || held;
+      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || suggestionsOpen || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
@@ -775,7 +801,8 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
+  // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, suggestionsOpen]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
@@ -818,8 +845,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
     finally { setBusy(false); }
   };
 
-  const submitUrl = () => {
-    const value = urlDraft.trim();
+  const submitUrl = (target = urlDraft) => {
+    const value = target.trim();
+    dismissSuggestions();
     setEditingUrl(false);
     if (!value) return;
     void run("navigate", { url: value });
@@ -1074,7 +1102,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
         <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
-        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`} onSubmit={(event) => { event.preventDefault(); submitUrl(); }}>
+        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`} onSubmit={(event) => { event.preventDefault(); if (!composingUrl) submitUrl(); }}>
           {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
           <input
             id={`op-browser-url-${objectiveId}`}
@@ -1087,11 +1115,53 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             aria-label={t("terminal.browser.pageUrl")}
             value={urlDraft}
             disabled={!available}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={suggestionsOpen}
+            aria-controls={suggestionsOpen ? suggestionsId : undefined}
+            aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
             onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
-            onBlur={() => setEditingUrl(false)}
-            onChange={(event) => setUrlDraft(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Escape") { setEditingUrl(false); event.currentTarget.blur(); } }}
+            onBlur={() => { setEditingUrl(false); dismissSuggestions(); }}
+            onChange={(event) => {
+              setEditingUrl(true);
+              setUrlDraft(event.target.value);
+              setSuggestions([]);
+              setSelectedSuggestion(-1);
+              setSuggestQuery(event.target.value);
+            }}
+            onCompositionStart={() => { setComposingUrl(true); setSuggestions([]); setSelectedSuggestion(-1); }}
+            onCompositionEnd={() => setComposingUrl(false)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Escape") {
+                event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
+              } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                event.preventDefault();
+                setSelectedSuggestion((index) => event.key === "ArrowDown"
+                  ? (index + 1) % suggestions.length
+                  : (index <= 0 ? suggestions.length : index) - 1);
+              } else if (event.key === "Enter" && suggestionsOpen && selectedSuggestion >= 0) {
+                event.preventDefault(); submitUrl(suggestions[selectedSuggestion]);
+              }
+            }}
           />
+          {suggestionsOpen ? (
+            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.pageUrl")}>
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion}
+                  id={`${suggestionsId}-${index}`}
+                  type="button"
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={selectedSuggestion === index}
+                  className="op-browser__suggestion"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => submitUrl(suggestion)}
+                >{suggestion}</button>
+              ))}
+            </div>
+          ) : null}
           {activeTab && activeTab.url !== "about:blank" ? <a className="op-browser__url-external" href={activeTab.url} target="_blank" rel="noreferrer noopener" data-fleet-link={FLEET_LINK_NATIVE} aria-label={t("terminal.browser.openExternal")} title={t("terminal.browser.openExternal")}><ExternalGlyph /></a> : null}
         </form>
         {activeTab && activeTab.url !== "about:blank" ? <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.attachScreenshot")} title={t("terminal.browser.attachScreenshot")} disabled={busy || !captureReady} onClick={attachScreenshot}><CameraGlyph /></button> : null}

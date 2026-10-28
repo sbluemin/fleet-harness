@@ -45,6 +45,35 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
       return true;
     }
+    if (pathname === "/api/v1/browser/suggest") {
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!browserService.available()) { writeJson(res, 200, { suggestions: [] }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+      const query = typeof body?.query === "string" ? body.query.trim() : "";
+      const suggestions: string[] = [];
+      if (query.length >= 2 && query.length <= 256) {
+        try {
+          // 검색어는 저장·로그 없이 호스트에서만 보낸다. 임의 URL이나 리다이렉트는 허용하지 않는다.
+          const url = new URL("https://suggestqueries.google.com/complete/search");
+          url.searchParams.set("client", "firefox");
+          url.searchParams.set("q", query);
+          const response = await fetch(url, { signal: AbortSignal.timeout(1500), redirect: "error" });
+          if (response.ok) {
+            const data: unknown = await response.json();
+            if (Array.isArray(data) && Array.isArray(data[1])) {
+              for (const item of data[1]) {
+                if (typeof item === "string" && item.trim() && item.length <= 256 && !suggestions.includes(item)) suggestions.push(item);
+                if (suggestions.length === 5) break;
+              }
+            }
+          }
+        } catch { /* 제안 실패는 탐색 실패가 아니다. 기존 입력 경로를 그대로 둔다. */ }
+      }
+      res.setHeader("Cache-Control", "no-store");
+      writeJson(res, 200, { suggestions });
+      return true;
+    }
     if (pathname === "/api/v1/browser/default-profile") {
       // Console 전체의 설정이라 Objective 아래가 아니다. 엔진이 없어도 정할 수 있다 — 다음 Objective 을 위한 값이다.
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
