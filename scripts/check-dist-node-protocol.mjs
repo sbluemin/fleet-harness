@@ -14,7 +14,8 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.dirname(scriptDir);
-const distRoot = path.join(repoRoot, "runtime", "fleet-console", "dist");
+// Console과 Desktop이 같은 산출물 검사를 쓴다. 인자가 없으면 기존 Console 빌드 경로다.
+const distRoot = path.resolve(repoRoot, process.argv[2] ?? "runtime/fleet-console/dist");
 const sourceRoots = [path.join(repoRoot, "packages"), path.join(repoRoot, "runtime")];
 const skippedDirectories = new Set(["node_modules", "dist", ".fleet", "release", "test-results", ".stage"]);
 
