@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,6 +14,78 @@ import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/hos
 import { createBrowserRouter } from "../features/browser/host/routes.js";
 
 describe("session browser host contract", () => {
+  it("sends suggestions only after consent, never sends addresses, and degrades without leaking input", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    engine.subscriberOpened("local");
+    engine.setHost("local");
+    const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "local" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    let stored = sanitizeConsoleSettingsData({ version: 1, browser: { defaultProfile: "default" } });
+    let body: Record<string, unknown> = { query: "private search terms" };
+    let exactOrigin = true;
+    const logs: unknown[] = [];
+    let result: unknown;
+    let status = 0;
+    const router = createBrowserRouter({
+      browserService: service,
+      browserMcp: { interruptObjective: () => 0, pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      suggestionSettings: {
+        read: () => ({ enabled: stored.browser?.suggestionsEnabled === true, prompted: stored.browser?.suggestionsPrompted === true }),
+        write: (settings) => { stored = sanitizeConsoleSettingsData({ ...stored, browser: { ...stored.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } }); },
+      },
+      logSuggestion: (event) => logs.push(event),
+      isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
+      readJsonBody: async <T>() => body as T,
+      writeJson: (_res, code, data) => { status = code; result = data; },
+      readUrl: () => new URL("http://localhost"), withSecurityHeaders: (headers) => headers,
+    });
+    const request = (pathname = "/api/v1/browser/suggest") => router({ req: { method: "POST" } as IncomingMessage, res: { setHeader: () => {} } as unknown as ServerResponse, pathname });
+    const upstream = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(["private search terms", ["first", "second", "third", "fourth", "fifth", "sixth"]])));
+    try {
+      await request();
+      expect(upstream).not.toHaveBeenCalled();
+      expect(result).toEqual({ suggestions: [] });
+      expect(logs.at(-1)).toMatchObject({ transmitted: false, reason: "disabled" });
+      body = { enabled: true };
+      exactOrigin = false;
+      await request("/api/v1/browser/suggestion-settings");
+      expect(status).toBe(403);
+      expect(stored.browser?.suggestionsEnabled).toBeUndefined();
+      exactOrigin = true;
+      await request("/api/v1/browser/suggestion-settings");
+      expect(stored.browser).toEqual({ defaultProfile: "default", suggestionsEnabled: true, suggestionsPrompted: true });
+      for (const query of ["https://private", "localhost", "127.0.0.1", "2130706433", "[::1]", "intranet:8080", "internal.example", "/private/file", "see private.example", "private。example"]) {
+        body = { query };
+        await request();
+        expect(result).toEqual({ suggestions: [] });
+        expect(logs.at(-1)).toMatchObject({ transmitted: false, reason: "address_like" });
+      }
+      expect(upstream).not.toHaveBeenCalled();
+      body = { query: "private search terms" };
+      await request();
+      expect(upstream).toHaveBeenCalledTimes(1);
+      const [url, options] = upstream.mock.calls[0]!;
+      expect(new URL(String(url)).origin).toBe("https://suggestqueries.google.com");
+      expect(options?.redirect).toBe("error");
+      expect(options?.signal).toBeInstanceOf(AbortSignal);
+      expect(result).toEqual({ suggestions: ["first", "second", "third", "fourth", "fifth"] });
+      upstream.mockResolvedValueOnce(new Response(JSON.stringify(["query", { malformed: true }])));
+      await request();
+      expect(result).toEqual({ suggestions: [] });
+      expect(logs.at(-1)).toMatchObject({ transmitted: true, reason: "invalid_response" });
+      upstream.mockRejectedValueOnce(new Error("private search terms"));
+      await request();
+      expect(result).toEqual({ suggestions: [] });
+      expect(logs.at(-1)).toMatchObject({ transmitted: true, reason: "request_failed" });
+      body = { enabled: false };
+      await request("/api/v1/browser/suggestion-settings");
+      upstream.mockClear();
+      body = { query: "private search terms" };
+      await request();
+      expect(upstream).not.toHaveBeenCalled();
+      expect(JSON.stringify(logs)).not.toContain("private");
+    } finally { upstream.mockRestore(); }
+  });
   it("includes shortcuts (including empty list) and generalizes viewOwner without fake objectives", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });

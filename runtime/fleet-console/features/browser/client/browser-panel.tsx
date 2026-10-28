@@ -4,6 +4,8 @@ import { FLEET_LINK_NATIVE } from "@fleet-console/link/core";
 import { CaptionBrowserUseGlyph } from "../../workspace/client/components/caption-actions.js";
 
 import { getT } from "./i18n.js";
+import { suggestionSkipReason } from "../shared/suggestions.js";
+import { saveSuggestionSettings, useSuggestionSettings } from "./suggestion-settings.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
 import { dropBrowserOpenRequest, getNativeViewResize, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
@@ -463,27 +465,37 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   const [suggestions, setSuggestions] = React.useState<readonly string[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = React.useState(-1);
   const [composingUrl, setComposingUrl] = React.useState(false);
+  const composingUrlRef = React.useRef(false);
+  const suggestionRequest = React.useRef<AbortController | null>(null);
+  const suggestionSettings = useSuggestionSettings();
+  const suggestionsEnabled = suggestionSettings.settings?.enabled === true && !suggestionSettings.saving;
   const suggestionsId = React.useId();
-  const suggestionsOpen = available && editingUrl && !composingUrl && suggestions.length > 0;
-  const dismissSuggestions = () => { setSuggestQuery(null); setSuggestions([]); setSelectedSuggestion(-1); };
+  const suggestionsOpen = available && suggestionsEnabled && editingUrl && !composingUrl && suggestions.length > 0;
+  const suggestionPromptOpen = available && editingUrl && !composingUrl && suggestionSettings.settings?.enabled === false && !suggestionSettings.settings.prompted;
+  const addressOverlayOpen = suggestionsOpen || suggestionPromptOpen;
+  const dismissSuggestions = () => { suggestionRequest.current?.abort(); setSuggestQuery(null); setSuggestions([]); setSelectedSuggestion(-1); };
   React.useEffect(() => {
     const query = suggestQuery?.trim() ?? "";
-    if (!available || !editingUrl || composingUrl || query.length < 2 || query.length > 256) return;
+    setSuggestions([]);
+    setSelectedSuggestion(-1);
+    if (!available || !suggestionsEnabled || !editingUrl || composingUrl || suggestionSkipReason(query)) return;
     const controller = new AbortController();
+    suggestionRequest.current = controller;
     const timer = setTimeout(() => {
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]);
       void fetch("/api/v1/browser/suggest", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }),
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]),
+        signal,
       }).then(async (response) => {
         if (!response.ok) return;
         const data = await response.json() as { suggestions?: unknown };
-        if (!controller.signal.aborted && Array.isArray(data.suggestions)) {
-          setSuggestions(data.suggestions.filter((item): item is string => typeof item === "string").slice(0, 5));
+        if (!signal.aborted && Array.isArray(data?.suggestions)) {
+          setSuggestions([...new Set(data.suggestions.filter((item): item is string => typeof item === "string" && item.trim().length > 0 && item.length <= 256))].slice(0, 5));
         }
       }).catch(() => undefined);
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [available, editingUrl, composingUrl, suggestQuery]);
+  }, [available, suggestionsEnabled, editingUrl, composingUrl, suggestQuery]);
   const [busy, setBusy] = React.useState(false);
   const captionOverlay = useBrowserCaptionOverlay(objectiveId);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -692,7 +704,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
       // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
       const intent = getNativeViewResize();
       const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
-      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || suggestionsOpen || held;
+      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || addressOverlayOpen || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
@@ -802,7 +814,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
   // 주소 제안도 같은 가림 경로에 합친다. 캡션의 단일 발행 상태를 덮어쓰지 않는다.
-  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, suggestionsOpen]);
+  }, [available, objectiveId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay, addressOverlayOpen]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
@@ -1102,7 +1114,9 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.back")} disabled={!activeTab?.canGoBack || busy} onClick={() => void run("navigate", { url: "back" })}>←</button>
         <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.forward")} disabled={!activeTab?.canGoForward || busy} onClick={() => void run("navigate", { url: "forward" })}>→</button>
         <button type="button" className={`op-browser__icon op-browser__reload${activeTab?.loading ? " is-loading" : ""}`} aria-label={t("terminal.browser.reload")} disabled={!activeTab || busy} onClick={() => void run("navigate", { url: "reload" })}><ReloadGlyph /></button>
-        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`} onSubmit={(event) => { event.preventDefault(); if (!composingUrl) submitUrl(); }}>
+        <form className={`op-browser__url${!editingUrl && urlDraft ? " is-display" : ""}`}
+          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setEditingUrl(false); dismissSuggestions(); } }}
+          onSubmit={(event) => { event.preventDefault(); if (!composingUrlRef.current) submitUrl(); }}>
           {!editingUrl && urlDraft ? <span className="op-browser__url-display" aria-hidden="true"><UrlParts url={urlDraft} /></span> : null}
           <input
             id={`op-browser-url-${objectiveId}`}
@@ -1121,18 +1135,22 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
             aria-controls={suggestionsOpen ? suggestionsId : undefined}
             aria-activedescendant={suggestionsOpen && selectedSuggestion >= 0 ? `${suggestionsId}-${selectedSuggestion}` : undefined}
             onFocus={(event) => { setEditingUrl(true); event.currentTarget.select(); }}
-            onBlur={() => { setEditingUrl(false); dismissSuggestions(); }}
+            aria-describedby={suggestionPromptOpen ? `${suggestionsId}-disclosure` : undefined}
             onChange={(event) => {
+              suggestionRequest.current?.abort();
               setEditingUrl(true);
               setUrlDraft(event.target.value);
               setSuggestions([]);
               setSelectedSuggestion(-1);
               setSuggestQuery(event.target.value);
             }}
-            onCompositionStart={() => { setComposingUrl(true); setSuggestions([]); setSelectedSuggestion(-1); }}
-            onCompositionEnd={() => setComposingUrl(false)}
+            onCompositionStart={() => { composingUrlRef.current = true; setComposingUrl(true); dismissSuggestions(); }}
+            onCompositionEnd={(event) => { composingUrlRef.current = false; setComposingUrl(false); setUrlDraft(event.currentTarget.value); setSuggestQuery(event.currentTarget.value); }}
             onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (composingUrlRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
+                if (event.key === "Enter") event.preventDefault();
+                return;
+              }
               if (event.key === "Escape") {
                 event.preventDefault(); dismissSuggestions(); setEditingUrl(false); event.currentTarget.blur();
               } else if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -1145,8 +1163,18 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
               }
             }}
           />
+          {suggestionPromptOpen ? (
+            <div className="op-browser__suggestions op-browser__suggestion-prompt">
+              <span id={`${suggestionsId}-disclosure`}>{t("terminal.browser.suggestions.disclosure")}</span>
+              <div className="op-browser__suggestion-actions">
+                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(true); }}>{t("terminal.browser.suggestions.enable")}</button>
+                <button type="button" className="op-browser__suggestion" disabled={suggestionSettings.saving} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.currentTarget.form?.querySelector("input")?.focus(); void saveSuggestionSettings(false); }}>{t("terminal.browser.suggestions.dismiss")}</button>
+              </div>
+              {suggestionSettings.failed ? <span role="alert">{t("terminal.browser.suggestions.settingsFailed")}</span> : null}
+            </div>
+          ) : null}
           {suggestionsOpen ? (
-            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.pageUrl")}>
+            <div id={suggestionsId} className="op-browser__suggestions" role="listbox" aria-label={t("terminal.browser.suggestions.title")}>
               {suggestions.map((suggestion, index) => (
                 <button
                   key={suggestion}
@@ -1157,7 +1185,7 @@ export function SessionBrowserPanel({ ownerId: objectiveId, language, theme, bod
                   aria-selected={selectedSuggestion === index}
                   className="op-browser__suggestion"
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => submitUrl(suggestion)}
+                  onClick={() => { if (!composingUrlRef.current) submitUrl(suggestion); }}
                 >{suggestion}</button>
               ))}
             </div>

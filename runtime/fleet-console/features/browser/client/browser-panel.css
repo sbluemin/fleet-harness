@@ -55,7 +55,10 @@
 /* 제안은 주소창 아래에 선다. 네이티브 뷰의 가림은 패널의 기존 주차 경로가 맡는다. */
 .op-browser__suggestions { position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 7; display: flex; flex-direction: column; padding: var(--space-1); background: var(--ink-mid); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); box-shadow: 0 12px 28px oklch(0% 0 0 / 40%); }
 .op-browser__suggestion { text-align: start; min-width: 0; padding: var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.op-browser__suggestion:hover, .op-browser__suggestion[aria-selected="true"] { background: var(--ink-veil); color: var(--brass-ink); }
+.op-browser__suggestion:hover, .op-browser__suggestion:focus-visible, .op-browser__suggestion[aria-selected="true"] { background: var(--ink-veil); color: var(--brass-ink); }
+.op-browser__suggestion-prompt { gap: var(--space-1); padding: var(--space-2); color: var(--text-secondary); font-size: var(--t-sm); }
+.op-browser__suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.op-browser__suggestion:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .op-browser__url-input::placeholder { color: var(--text-tertiary); }
 .op-browser__url-display { position: absolute; inset: 0 32px 0 var(--space-3); display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; }
 .op-browser__url-host { color: var(--text-primary); }

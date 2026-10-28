@@ -2,6 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { createTranslator } from "@fleet-console/i18n/translate";
 
 export const browserEn = {
+  "terminal.browser.title": "Fleet Browser",
   "terminal.browser.open": "Open Fleet Browser",
   "terminal.browser.exit": "Close Fleet Browser",
   "terminal.browser.agentUsing": "The agent is using the Fleet Browser — click to open it",
@@ -27,6 +28,11 @@ export const browserEn = {
   "terminal.browser.reload": "Reload",
   "terminal.browser.urlPlaceholder": "Search Google or enter a URL",
   "terminal.browser.pageUrl": "Page URL",
+  "terminal.browser.suggestions.title": "Search suggestions",
+  "terminal.browser.suggestions.disclosure": "Sends search input to Google, but not URLs or local addresses.",
+  "terminal.browser.suggestions.enable": "Turn on suggestions",
+  "terminal.browser.suggestions.dismiss": "Not now",
+  "terminal.browser.suggestions.settingsFailed": "Couldn't save or load search suggestion settings. Try again.",
   "terminal.browser.openExternal": "Open in your browser",
   "terminal.browser.pageFrame": "Browser page",
   "terminal.browser.emptyTitle": "Browse with the agent",
@@ -107,6 +113,7 @@ export const browserEn = {
   "terminal.chooser.sessionNotStarted": "This chat's session hasn't started yet",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
+  "terminal.browser.title": "플릿 브라우저",
   "terminal.browser.open": "플릿 브라우저 열기",
   "terminal.browser.exit": "플릿 브라우저 닫기",
   "terminal.browser.agentUsing": "에이전트가 플릿 브라우저를 쓰는 중이에요. 누르면 열려요",
@@ -132,6 +139,11 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.reload": "새로고침",
   "terminal.browser.urlPlaceholder": "Google 검색 또는 URL 입력",
   "terminal.browser.pageUrl": "페이지 URL",
+  "terminal.browser.suggestions.title": "검색어 제안",
+  "terminal.browser.suggestions.disclosure": "검색 입력을 Google로 보내며, URL·로컬 주소는 보내지 않아요.",
+  "terminal.browser.suggestions.enable": "검색어 제안 켜기",
+  "terminal.browser.suggestions.dismiss": "지금은 안 함",
+  "terminal.browser.suggestions.settingsFailed": "검색어 제안 설정을 저장하거나 불러오지 못했어요. 다시 시도해 주세요.",
   "terminal.browser.openExternal": "내 브라우저에서 열기",
   "terminal.browser.pageFrame": "브라우저 페이지",
   "terminal.browser.emptyTitle": "에이전트와 함께 브라우징",
