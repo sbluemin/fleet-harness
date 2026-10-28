@@ -466,7 +466,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Objective's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/profile", summary: "Choose whether an Objective's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/clear-profile", summary: "Erase the persistent browser profile's cookies, site storage, HTTP and code caches, and browsing history on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/shortcuts", summary: "Update active Console shortcut bindings for Desktop native view forwarding.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
