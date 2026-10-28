@@ -3122,6 +3122,40 @@
   color: var(--text-primary);
 }
 
+/* 사령관 섹션 접기 글리프 — 그 사령관의 지휘관 목록만 접거나 펼친다. 펼침(▾)과 접힘(▸)을 말한다. */
+.side-bar-theater-fold-btn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.side-bar-theater-fold-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.side-bar-theater-fold-btn:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
+
+.side-bar-theater-chevron {
+  width: 14px;
+  height: 14px;
+}
+
+.side-bar-theater-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
 .side-bar-theater-anchor {
   position: relative;
   display: grid;
