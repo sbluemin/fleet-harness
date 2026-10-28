@@ -72,8 +72,9 @@ export function PersonHoldNote({ objective, target, t, phone = false, label, ans
 
 const SHOWN = 3;
 
-/** 결정 한 건의 답 — 고른 선택지(답한 순간의 사본 이름)를 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 내 의견은 칩이 앞에 선다. */
-const answerText = (decision: Decision): string => {
+/** 결정 한 건의 답 — 고른 선택지(답한 순간의 사본 이름)를 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 내 의견은 칩이 앞에 선다. 「결정 안 함」으로 닫힌 건은 그 문구 하나로 선다. */
+const answerText = (decision: Decision, declinedText: string): string => {
+  if (decision.declined === true) return declinedText;
   const picked = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
   return [picked.join(" · "), decision.answer.text].filter((part) => part.trim().length > 0).join("\n");
 };
@@ -104,7 +105,7 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
         return (
           <div key={decision.id} data-decision-id={decision.id} className={`objectives-decision${flash === decision.id ? " is-flash" : ""}`}>
             <p className="objectives-decision-q-copy">{decision.question.header ? <span className="objectives-decision-header">{decision.question.header}</span> : null}<LinkText text={decision.question.text} /></p>
-            <p className="objectives-decision-a">{ownAnswer(decision.question, decision.answer) ? <span className="objectives-decision-chip">{t("objectives.decisions.own")}</span> : null}<LinkText text={answerText(decision)} /></p>
+            <p className="objectives-decision-a">{decision.declined !== true && ownAnswer(decision.question, decision.answer) ? <span className="objectives-decision-chip">{t("objectives.decisions.own")}</span> : null}<LinkText text={answerText(decision, t("objectives.decisions.declined"))} /></p>
             <p className="objectives-decision-meta">
               <span>{stamp(decision.at, language)}</span>
               {missionN > 0 ? <span>{t("objectives.decisions.mission", { n: missionN })}</span> : null}

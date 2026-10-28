@@ -511,7 +511,8 @@ export interface DecisionAnswer {
 
 /**
  * 결정 — 사람이 보드에서 보낸 답 하나(질문마다 한 건). 질문과 선택지는 답한 순간의 사본이라 요청이 사라져도 읽힌다.
- * 사람의 제출만 만들고, 지우거나 고치는 길은 없다.
+ * 사람의 제출만 만들고, 지우거나 고치는 길은 없다. `declined` — 사람이 그 요청 전체를 「결정 안 함」으로 닫은 표시.
+ * 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아니다.
  */
 export interface Decision {
   readonly by?: ObjectiveActor;
@@ -520,17 +521,19 @@ export interface Decision {
   readonly questionId: string;
   readonly question: { readonly header?: string; readonly text: string; readonly options: readonly DecisionOption[]; readonly multiSelect: boolean };
   readonly answer: { readonly selectedOptionIds: readonly string[]; readonly text: string };
+  readonly declined?: true;
   readonly at: number;
   readonly missionId?: string;
   readonly memberId?: string;
 }
 
 
-/** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. */
+/** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. `declined` 는 「결정 안 함」 닫기다. */
 export interface DecisionDelivery {
   readonly by?: ObjectiveActor;
   readonly requestId: string;
   readonly answers: readonly DecisionAnswer[];
+  readonly declined?: true;
   readonly at: number;
 }
 
@@ -1242,8 +1245,8 @@ const storedDecisionAnswer = z.object({ questionId: ids, selectedOptionIds: z.ar
 export const storedDecisionFieldsSchema = z.object({
   decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
   decisionRequestRevision: z.number().int().min(0).optional(),
-  decisionDelivery: z.object({ by: objectiveActorSchema.optional(), requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
-  decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(),
+  decisionDelivery: z.object({ by: objectiveActorSchema.optional(), requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS), declined: z.literal(true).optional() }).strict().optional(),
+  decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(), declined: z.literal(true).optional(),
     question: z.object({ header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });

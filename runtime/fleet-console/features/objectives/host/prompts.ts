@@ -192,6 +192,24 @@ export function decisionTurn(objective: Objective, request: DecisionRequest, ans
 }
 
 /**
+ * 「결정 안 함」 닫기 — 사람이 보드에서 결정 요청 전체를 선택·입력 없이 닫았다. 어떤 선택지도 고르지 않았고, 지휘관 판단에
+ * 맡긴 것도, 나중으로 미룬 것도 아니다. 아래는 닫힌 요청의 질문이다(닫힌 뒤에는 같은 질문을 그대로 다시 올리지 않는다).
+ * 결정 기록은 이 메시지가 닿은 뒤에 확정되므로 기록이 남았다고 말하지 않는다.
+ */
+export function declinedDecisionTurn(objective: Objective, request: DecisionRequest, language: PromptLanguage, by: ObjectiveActor = "human"): string {
+  const ko = language === "ko";
+  const quote = (value: string) => `> ${value.split("\n").join("\n> ")}`;
+  const blocks = request.questions.map((question, index) => {
+    const lines = [`${index + 1}. ${question.header ? `${question.header}\n` : ""}${quote(question.text)}`];
+    return lines.join("\n");
+  });
+  const head = ko
+    ? `${actorName(by, language)}이 목표 \`${objective.id}\` 의 결정 요청 \`${request.id}\` 을 '결정 안 함'으로 닫았습니다. 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아닙니다. 아래는 닫힌 요청의 질문입니다.`
+    : `${actorName(by, language)} closed decision request \`${request.id}\` on objective \`${objective.id}\` without deciding. They chose none of the options, did not hand the judgment to the Commander, and did not defer it. The closed request's questions follow.`;
+  return `${head}\n\n${blocks.join("\n\n")}`;
+}
+
+/**
  * 서브에이전트(Agent 도구) 호출이 받는 거절 사유 — 그 호출의 결과 자리에 서는 사실 한 줄이다. 모든 에이전트 Objective 은 자기 목표의
  * 지휘관이므로 서브에이전트 대신 그 목표의 구성원이 일손이다. 절차는 쓰지 않는다: 도구 설명이 말하고 흐름은 모델이 잡는다.
  * 구성원 세션은 관여하지 않는다(null) — 그 세션의 서브에이전트는 사람이 고른 허용값(subagents)이 정하고, 막힌 세션에는 도구가 없다.

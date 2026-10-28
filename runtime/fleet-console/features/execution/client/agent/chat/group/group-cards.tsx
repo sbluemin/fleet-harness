@@ -30,6 +30,7 @@ import { SpeakerMark } from "./speaker-mark.js";
 /**
  * 결정 요청 카드 — 질문마다 선택지와 직접 답하기. 모든 질문에 답해야 보낸다. 보내는 길은 하나다: 계약의 `decision.answer`
  * 가 있으면 그것만, 없으면 `actions.answerDecision` 만 부른다. 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
+ * `decision.decline` 이 있으면 보내기 곁에 「결정 안 함」 조용한 단추 하나로 서고, 누르면 선택·입력 없이 요청 전체를 닫는다.
  */
 export function DecisionCard({ decision, actions, asker, language, phone = false, onAnswered }: {
   readonly decision: ConversationDecision;
@@ -45,21 +46,40 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
   const [picks, setPicks] = React.useState<Readonly<Record<string, readonly string[]>>>({});
   const [texts, setTexts] = React.useState<Readonly<Record<string, string>>>({});
   const [sending, setSending] = React.useState(false);
+  const [declining, setDeclining] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [declineFailed, setDeclineFailed] = React.useState(false);
   const [givingBack, setGivingBack] = React.useState(false);
   const [giveBackFailed, setGiveBackFailed] = React.useState(false);
   // 새 요청은 새 질문이다 — 앞 요청에 고르던 것을 옮겨 붙이지 않는다.
-  React.useEffect(() => { setPicks({}); setTexts({}); setFailed(false); setGiveBackFailed(false); }, [decision.id]);
+  React.useEffect(() => { setPicks({}); setTexts({}); setFailed(false); setDeclineFailed(false); setGiveBackFailed(false); }, [decision.id]);
   const locale = language ?? "en";
   const text = (value: Parameters<typeof resolveLocalizedText>[0] | undefined) => (value === undefined ? "" : resolveLocalizedText(value, locale));
   const handed = decision.handed;
   const giveBack = handed?.giveBack;
+  const declinePath = decision.decline ?? null;
+  const busy = sending || declining || givingBack;
   // 맡은 이에게 돌려주기 — 성공하면 보드가 넘김을 걷어 카드가 다시 그려진다. 실패는 한 줄로 말하고 카드를 그대로 둔다.
   const returnToHandler = async () => {
-    if (!giveBack || givingBack || sending) return;
+    if (!giveBack || busy) return;
     setGivingBack(true);
     setGiveBackFailed(false);
     try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
+  };
+  // 「결정 안 함」 닫기 — 선택·입력 없이 요청 전체를 닫는다. 성공하면 카드가 내려가고, 실패는 한 줄로 말한다.
+  const decline = async () => {
+    if (!declinePath || busy) return;
+    setDeclining(true);
+    setDeclineFailed(false);
+    setFailed(false);
+    try {
+      await declinePath.run();
+      onAnswered(decision.id);
+    } catch {
+      setDeclineFailed(true);
+    } finally {
+      setDeclining(false);
+    }
   };
 
   const answered = (questionId: string) => (picks[questionId]?.length ?? 0) > 0 || (texts[questionId] ?? "").trim().length > 0;
@@ -73,7 +93,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
   });
 
   const submit = async () => {
-    if (!submitPath || sending || !ready) return;
+    if (!submitPath || busy || !ready) return;
     const answers: GroupDecisionAnswer[] = decision.questions.map((question) => ({
       questionId: question.id,
       selectedOptionIds: picks[question.id] ?? [],
@@ -114,19 +134,19 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
             // 줄 전체가 선택지다 — 단추(이름)의 클릭·Enter·Space 도 여기로 올라와 한 번 고른다. 설명 속 조작 요소(링크·코드 복사
             // 단추·펼침 머리 등)의 클릭은 고르지 않는다: 링크는 그대로 위로 흘려 링크 길이 열고, 나머지는 제 일만 한다.
             const onRow = (event: React.MouseEvent<HTMLDivElement>) => {
-              if (sending) return;
+              if (busy) return;
               const control = (event.target as Element).closest(ROW_CONTROLS);
               if (control && control !== event.currentTarget && event.currentTarget.contains(control) && !control.classList.contains("group-card-choice-pick")) return;
               toggle(question.id, option.id, question.multiSelect);
             };
             return (
-              <div key={option.id} className={`group-card-choice${on ? " is-on" : ""}${sending ? " is-disabled" : ""}`} onClick={onRow}>
+              <div key={option.id} className={`group-card-choice${on ? " is-on" : ""}${busy ? " is-disabled" : ""}`} onClick={onRow}>
                 <button
                   type="button"
                   className="group-card-choice-pick"
                   aria-pressed={on}
                   aria-describedby={option.description ? subId : undefined}
-                  disabled={sending}
+                  disabled={busy}
                 >
                   <span className="group-card-key" aria-hidden="true">{String.fromCharCode(65 + optionAt)}</span>
                   <span className="group-card-choice-text">{option.label}</span>
@@ -140,7 +160,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
             type="text"
             value={texts[question.id] ?? ""}
             maxLength={decision.answerMaxLength}
-            disabled={sending}
+            disabled={busy}
             placeholder={t("group.decision.own")}
             aria-label={t("group.decision.own")}
             onChange={(event) => setTexts((current) => ({ ...current, [question.id]: event.target.value }))}
@@ -154,13 +174,17 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
       ))}
       <div className="group-card-foot">
         {failed ? <span className="group-card-error" role="alert">{t("group.decision.failed")}</span>
+          : declineFailed ? <span className="group-card-error" role="alert">{t("group.decision.declineFailed")}</span>
           : giveBackFailed ? <span className="group-card-error" role="alert">{t("group.decision.giveBackFailed")}</span>
           : decision.route ? <span className="group-card-route">{text(decision.route)}</span>
           : <span />}
         {giveBack ? (
-          <button type="button" className="group-card-send is-quiet" disabled={givingBack || sending} onClick={() => { void returnToHandler(); }}>{text(giveBack.label)}</button>
+          <button type="button" className="group-card-send is-quiet" disabled={busy} onClick={() => { void returnToHandler(); }}>{text(giveBack.label)}</button>
         ) : null}
-        <button type="button" className="group-card-send" disabled={!submitPath || !ready || sending || givingBack} onClick={() => { void submit(); }}>
+        {declinePath ? (
+          <button type="button" className="group-card-send is-quiet" disabled={busy} onClick={() => { void decline(); }}>{text(declinePath.label)}</button>
+        ) : null}
+        <button type="button" className="group-card-send" disabled={!submitPath || !ready || busy} onClick={() => { void submit(); }}>
           {sending ? t("group.decision.sending") : t("group.decision.send")}
         </button>
       </div>

@@ -1785,6 +1785,32 @@ describe("Objectives contract", () => {
     expect(sent.length).toBe(beforeAnswer);
     expect(store.find(commander)).toMatchObject({ decisionRequest: null });
     expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
+    // 「결정 안 함」 닫기 — 기다리던 지휘관에게는 도구 응답으로 닫힘이 돌아가고, 결정에는 질문마다 declined 표시가 남는다.
+    const askDecline = ask(store.find(commander)!.decisionRequestRevision);
+    await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
+    const closing = store.find(commander)!.decisionRequest!;
+    await launch.declineDecision(commander, { requestId: closing.id }, { actor });
+    expect((await askDecline).structuredContent).toMatchObject({ answered: true, declined: true, answers: [] });
+    expect(store.find(commander)).toMatchObject({ decisionRequest: null });
+    expect(store.find(commander)!.decisions.filter((decision) => decision.requestId === closing.id)).toMatchObject(
+      closing.questions.map((question) => ({ declined: true, answer: { selectedOptionIds: [], text: "" } })),
+    );
+    // 닫힌 요청의 닫기 재전송은 그 결과를, 닫힌 요청에 답을 덧씌우거나 답으로 남은 요청을 닫지는 못한다.
+    const sendsAfterDecline = sent.length;
+    expect((await route("decision/decline", { objectiveId: commander, requestId: closing.id })).status).toBe(200);
+    expect(sent.length).toBe(sendsAfterDecline);
+    const declineQuestions = closing.questions.map((question) => ({ questionId: question.id, selectedOptionIds: question.options.slice(0, 1).map((option) => option.id), text: "" }));
+    expect((await route("decision/answer", { objectiveId: commander, requestId: closing.id, answers: declineQuestions })).value.error).toBe("decision_already_submitted");
+    expect((await route("decision/decline", { objectiveId: commander, requestId: placed.id })).value.error).toBe("decision_already_submitted");
+    // 사람이 직접 닫은 요청은 지휘관에게 「결정 안 함」 전달문으로 간다.
+    const reopened = await call("request_decision", { objectiveId: commander, expectedRevision: store.find(commander)!.decisionRequestRevision, questions }, commander);
+    expect(reopened.isError).toBe(false);
+    const reopenedRequest = store.find(commander)!.decisionRequest!;
+    expect((await route("decision/decline", { objectiveId: commander, requestId: reopenedRequest.id, language: "ko" })).status).toBe(200);
+    expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining("결정 안 함") });
+    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: expect.arrayContaining([expect.objectContaining({ requestId: reopenedRequest.id, declined: true })]) });
+    // 보드 읽기는 닫힌 결정을 declined 로 보인다.
+    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: expect.arrayContaining([expect.objectContaining({ declined: true })]) });
     // 입력 한도를 줄여도 이전 버전이 저장한 긴 요청·답·사령관 이유, 머리말이 없던 때의 질문 때문에 목표 전체가 사라지지 않는다.
     const file = path.join(objectivesDir, commander, "objective.json");
     const legacy = JSON.parse(fs.readFileSync(file, "utf8"));

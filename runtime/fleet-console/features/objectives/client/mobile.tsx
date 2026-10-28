@@ -1250,8 +1250,9 @@ const storedDrafts = (objectiveId: string, requestId: string | undefined) => {
 /** 이 탭에서 방금 보낸 요청 — 요청이 걷힌 뒤 「답을 보냈습니다」 카드가 그 답을 보인다. */
 const sentRequests = new Map<string, string>();
 
-/** 보낸 답 — 고른 것은 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. */
-const answerText = (decision: Decision): string => {
+/** 보낸 답 — 고른 것은 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 「결정 안 함」으로 닫힌 건은 그 문구 하나로 선다. */
+const answerText = (decision: Decision, declinedText: string): string => {
+  if (decision.declined === true) return declinedText;
   const picked = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
   return [picked.join(" · "), decision.answer.text.trim()].filter((part) => part.length > 0).join("\n");
 };
@@ -1264,7 +1265,7 @@ function DecisionHistory({ objective, t }: { readonly objective: Objective; read
       <h2 className="objectives-m-glab">{t("objectives.decisions.title")}</h2>
       <section className="objectives-m-ucard">
         {[...objective.decisions].reverse().map((decision) => (
-          <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision)}</span></p>
+          <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision, t("objectives.decisions.declined"))}</span></p>
         ))}
       </section>
     </>
@@ -1275,6 +1276,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
   const request = objective.done ? null : objective.decisionRequest;
   const [draftMap, setDraftMap] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
   const [, setSentTick] = useState(0);
   // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(`decisionTurn`). 폰에는 툴팁이 없어 설명을 줄로 보인다.
@@ -1296,7 +1298,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
         <section className="objectives-m-ucard">
           <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{t("objectives.mobile.decision.sent")}</div>
           {sent.map((decision) => (
-            <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision)}</span></p>
+            <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision, t("objectives.decisions.declined"))}</span></p>
           ))}
         </section>
       </>
@@ -1324,7 +1326,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
   const unconfirmed = !sending && objective.decisionDelivery?.requestId === request.id;
   // 사령관에게 돌려주기 — 성공하면 넘김이 걷혀 「사령관이 답하는 중」으로 돌아간다. 실패는 카드 끝 한 줄로.
   const giveBack = async () => {
-    if (sending || givingBack) return;
+    if (sending || declining || givingBack) return;
     setGivingBack(true);
     setFault(null);
     try { await returnPersonHold(objective.id, "decision"); say(t("objectives.decision.givenBack")); }
@@ -1332,7 +1334,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
     finally { setGivingBack(false); }
   };
   const submit = async () => {
-    if (sending || doneCount !== total) return;
+    if (sending || declining || doneCount !== total) return;
     setSending(true);
     setFault(null);
     // 선택지 답에는 글을 싣지 않는다 — 모바일에는 덧붙이는 칸이 없고, 내 의견이면 고른 것 없이 글만 간다(보드의 내 의견과 같은 모양).
@@ -1351,6 +1353,23 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
       const code = error instanceof Error ? error.message : "";
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
     } finally { setSending(false); }
+  };
+
+  // 「결정 안 함」 닫기 — 선택·입력 없이 요청 전체를 닫는다. 답과 같은 전달·잠금·중복 규칙을 함께 쓴다.
+  const decline = async () => {
+    if (sending || declining || givingBack) return;
+    setDeclining(true);
+    setFault(null);
+    try {
+      await post(api, "/decision/decline", { objectiveId: objective.id, requestId: request.id, language });
+      drafts.delete(objective.id);
+      sentRequests.set(objective.id, request.id);
+      setSentTick((tick) => tick + 1);
+      say(t("objectives.mobile.toast.decision"));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.declineFailed"));
+    } finally { setDeclining(false); }
   };
 
   return (
@@ -1415,8 +1434,11 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
                   {many ? <span className="objectives-m-progress">{t("objectives.decision.progress", { done: doneCount, total })}</span> : null}
                   <span className="objectives-m-fine objectives-m-route">{t(handed ? "objectives.decision.routeHanded" : "objectives.decision.route")}</span>
                   <span className="objectives-m-sp" />
-                  {handed ? <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || givingBack} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button> : null}
-                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || givingBack || doneCount !== total} onClick={() => void submit()}>
+                  {handed ? <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || declining || givingBack} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button> : null}
+                  <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || declining || givingBack} onClick={() => void decline()}>
+                    {t("objectives.decision.decline")}
+                  </button>
+                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || declining || givingBack || doneCount !== total} onClick={() => void submit()}>
                     {t(sending ? "objectives.decision.sending" : "objectives.mobile.decision.send")}
                   </button>
                 </div>
