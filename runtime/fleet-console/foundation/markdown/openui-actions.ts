@@ -3,6 +3,7 @@ export type OpenUISendPort = (text: string) => void;
 export type OpenUIOpenTarget =
   | { readonly kind: "https"; readonly url: string; readonly hostname: string }
   | { readonly kind: "objective"; readonly id: string }
+  | { readonly kind: "commodore"; readonly id: string }
   | { readonly kind: "mission"; readonly number: number };
 export interface OpenUIOpenPort {
   /** 이 표면에서 열 수 있는가. 렌더 중에도 부르므로 부작용이 없어야 한다. */
@@ -17,8 +18,8 @@ export function parseOpenUIOpenTarget(raw: unknown): OpenUIOpenTarget | null {
   if (typeof raw !== "string" || !raw || raw.length > MAX_OPEN_TARGET) return null;
   // eslint-disable-next-line no-control-regex
   if (/[\s\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\\]/u.test(raw)) return null;
-  const objective = /^objective:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(raw);
-  if (objective) return Object.freeze({ kind: "objective", id: objective[1]! });
+  const internal = /^(objective|commodore):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(raw);
+  if (internal) return Object.freeze({ kind: internal[1] as "objective" | "commodore", id: internal[2]! });
   const mission = /^mission:([1-9]\d{0,2})$/.exec(raw);
   if (mission) return Object.freeze({ kind: "mission", number: Number(mission[1]) });
   if (!raw.startsWith("https://")) return null;

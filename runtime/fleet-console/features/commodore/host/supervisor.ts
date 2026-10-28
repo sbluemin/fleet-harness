@@ -52,6 +52,8 @@ export interface CommodoreSupervisorDeps {
   /** Theater 의 이름과 루트 실경로 — 모르면 null(잊힌·떨어진 Theater). */
   readonly theater: (commodoreId: string) => { readonly label: string; readonly root: string } | null;
   readonly board: () => CommodoreBoardAdapter | null;
+  /** 사령관 자신의 생성 도구 — 목표 보드의 권한·귀속 감싸기와 별개로 같은 턴 바인딩을 쓴다. */
+  readonly managementTools?: (commodoreId: string, turn: CommodoreTurnBindings) => readonly ConsoleMcpTool[];
   /** 호스트가 이 사령관에 묶어 준 지식 도구(Codex Wiki) — 세션을 열 때 읽는다. 없으면 사령관은 그 도구 없이 선다. */
   readonly knowledgeTools?: (commodoreId: string) => readonly McpServerTools[];
   /** 사령관이 고른 플러그인을 세션을 여는 순간 푼다. */
@@ -244,7 +246,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       hasPersonMessage: () => !disposed && !runner.stopping && !runner.ending && runner.phase === "turn" && runner.turnMessages.length > 0,
       stopping: () => disposed || runner.stopping || runner.ending || deadlineReached(runner),
     };
-    return (deps.board()?.tools(runner.commodoreId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool);
+    return [
+      ...(deps.board()?.tools(runner.commodoreId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool),
+      ...(deps.managementTools?.(runner.commodoreId, turn) ?? []),
+    ];
   };
 
   const takeUndelivered = (runner: Runner) => {

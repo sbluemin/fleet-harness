@@ -415,23 +415,23 @@ describe("openui hydrator containment", () => {
 
   it("contains single-step open actions and never opens from drawing or synthetic clicks", async () => {
     const open = { accepts: vi.fn(() => true), open: vi.fn() };
-    const source = 'root = Card("열기", [Button("PR", @OpenUrl("https://github.com/o/r/pull/1")), Button("목표", @OpenUrl("objective:01234567-89ab-cdef-0123-456789abcdef")), Button("미션", @OpenUrl("mission:2"))])';
+    const source = 'root = Card("열기", [Button("PR", @OpenUrl("https://github.com/o/r/pull/1")), Button("목표", @OpenUrl("objective:01234567-89ab-cdef-0123-456789abcdef")), Button("미션", @OpenUrl("mission:2")), Button("사령관", @OpenUrl("commodore:01234567-89ab-cdef-0123-456789abcdef"))])';
     const [block] = await hydrated(["```openui-lang", source, "```"].join("\n"), { open });
     expect(block!.dataset.openuiState).toBe("rendered");
     const buttons = [...block!.querySelectorAll<HTMLButtonElement>("button.openui-button")];
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(4);
     expect(buttons[0]!.textContent).toContain("github.com");
     expect(buttons[0]!.title).toBe("https://github.com/o/r/pull/1");
     expect(block!.querySelector("a, [href], form, [target]")).toBeNull();
     buttons.forEach((button) => button.click());
     expect(open.open).not.toHaveBeenCalled();
     const [inert] = await hydrated(["```openui-lang", source, "```"].join("\n"));
-    expect(inert!.querySelectorAll(".openui-inert")).toHaveLength(3);
+    expect(inert!.querySelectorAll(".openui-inert")).toHaveLength(4);
     expect(inert!.querySelector("[data-openui-owned] button")).toBeNull();
     const [streaming] = await hydrated(["```openui-lang", source].join("\n"), { streaming: true, open });
     expect([...streaming!.querySelectorAll<HTMLButtonElement>("[data-openui-owned] button")].every((button) => button.disabled)).toBe(true);
     // 대상만 거부된 단일 @OpenUrl은 카드를 남기고 그 단추만 누를 수 없는 라벨이 된다. 다른 형태의 액션은 블록을 거절한다.
-    const targets = ["javascript:alert(1)", "http://example.com/", "https://github.com@evil.example/x", "https://GitHub.com/", `https://example.com/${"a".repeat(8173)}`];
+    const targets = ["javascript:alert(1)", "http://example.com/", "https://github.com@evil.example/x", "https://GitHub.com/", `https://example.com/${"a".repeat(8173)}`, "commodore:01234567-89AB-CDEF-0123-456789ABCDEF", "commodore:01234567-89ab-cdef-0123-456789abcdef/other"];
     const refused = await hydrated([
       ...targets.map((target) => `root = Card("x", [Callout("남는다"), Button("X", @OpenUrl(${JSON.stringify(target)}))])`),
       'root = Card("x", [Button("X", @Run("anything"))])',
@@ -448,6 +448,35 @@ describe("openui hydrator containment", () => {
     expect(refused.slice(targets.length).every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
     inertTargets.forEach((candidate) => candidate.querySelector<HTMLElement>(".openui-inert")!.click());
     expect(open.open).not.toHaveBeenCalled();
+
+    // 실제 사령관 포트도 현 목록에 있는 UUID만 연다. 렌더 뒤 삭제되면 이전 포트로 눌러도 거절한다.
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { useCommodoreOpenUIPort } = await import("../features/commodore/client/openui-ports.js");
+    const { readCommodoreList, replaceCommodoreList } = await import("../features/commodore/client/commodore-list.js");
+    const { objectiveOpenUIPort } = await import("../features/objectives/client/openui-ports.js");
+    const before = readCommodoreList();
+    const target = { kind: "commodore" as const, id: "01234567-89ab-cdef-0123-456789abcdef" };
+    const navigate = vi.fn();
+    let navigation: OpenUIOpenPort | undefined;
+    function Probe() { navigation = useCommodoreOpenUIPort("source", undefined, navigate); return null; }
+    try {
+      replaceCommodoreList([{ commodoreId: target.id } as never]);
+      renderToStaticMarkup(createElement(Probe));
+      expect(navigation!.accepts(target)).toBe(true);
+      navigation!.open(target, { x: 0, y: 0 });
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(target.id);
+      replaceCommodoreList([]);
+      expect(navigation!.accepts(target)).toBe(false);
+      navigation!.open(target, { x: 0, y: 0 });
+      expect(navigate).toHaveBeenCalledTimes(1);
+      const onlyCommodore = ['```openui-lang', `root = Card("x", [Button("열기", @OpenUrl("commodore:${target.id}"))])`, '```'].join("\n");
+      const [unknown] = await hydrated(onlyCommodore, { open: navigation });
+      expect(unknown!.querySelector("[data-openui-owned] button")).toBeNull();
+      replaceCommodoreList([{ commodoreId: target.id } as never]);
+      const [outside] = await hydrated(onlyCommodore, { open: objectiveOpenUIPort("source") });
+      expect(outside!.querySelector("[data-openui-owned] button")).toBeNull();
+    } finally { replaceCommodoreList(before); }
   });
 
   it("composes form messages as one-pass plain text without implicit or synthetic submission", async () => {

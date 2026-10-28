@@ -38,6 +38,7 @@ import {
   loadCommodore,
   loadTranscript,
   noteCommodoreLanguage,
+  openCommodoreMobile,
   readCommodore,
   transcriptNeeded,
   removeCommodoreIntel,
@@ -464,7 +465,8 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   }, [commodoreId]);
   const openReference = useCallback((objectiveId: string) => openOwnedObjectiveOnPhone(commodoreId, objectiveId), [commodoreId]);
   const references = useCommodoreReferenceHost(t, commodoreId, openReference);
-  const openUIOpen = useCommodoreOpenUIPort(commodoreId, openReference);
+  const openCommodore = useCallback((id: string) => openCommodoreMobile("log", id), []);
+  const openUIOpen = useCommodoreOpenUIPort(commodoreId, openReference, openCommodore);
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
     open: (entry) => { if (entry.objectiveId) openOwnedObjectiveOnPhone(commodoreId, entry.objectiveId); },
@@ -530,7 +532,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const openReference = useCallback((objectiveId: string) => leave(() => openOwnedObjectiveOnPhone(theaterId, objectiveId)), [theaterId, leave]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
-  const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference);
+  const openCommodore = useCallback((id: string) => leave(() => openCommodoreMobile("log", id)), [leave]);
+  const openUIOpen = useCommodoreOpenUIPort(theaterId, openReference, openCommodore);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
   const [loadingOlder, setLoadingOlder] = useState(false);
