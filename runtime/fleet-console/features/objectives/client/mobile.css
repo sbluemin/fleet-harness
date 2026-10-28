@@ -126,9 +126,9 @@
 .objectives-m-card .objectives-att-strip { flex-wrap: nowrap; gap: 10px; overflow-x: auto; padding: 6px 16px 2px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .objectives-m-card .objectives-att-strip::-webkit-scrollbar { display: none; }
 .objectives-m-card .objectives-att-thumb { flex: none; }
-.objectives-m-card .objectives-att-open { width: 80px; height: 60px; border-color: var(--m-hairline-strong); border-radius: 10px; background: var(--m-chip); cursor: pointer; }
+.objectives-m-card .objectives-att-open { width: 80px; height: 60px; border: 1px solid var(--m-hairline-strong); border-radius: 10px; background: var(--m-chip); cursor: pointer; }
 .objectives-m-card .objectives-att-n { border-radius: 5px; background: rgb(0 0 0 / 0.55); color: #fff; font-family: var(--m-sans); font-weight: var(--weight-medium); }
-.objectives-m-card .objectives-att-x { opacity: 1; border-color: var(--m-hairline-strong); background: var(--m-surface); color: var(--m-text-muted); }
+.objectives-m-card .objectives-att-x { opacity: 1; border: 1px solid var(--m-hairline-strong); background: var(--m-surface); color: var(--m-text-muted); }
 .objectives-m-card .objectives-att-x::before { content: ""; position: absolute; inset: -9px; }
 /* 「더 보기」 누름 칸 44 — 글자(18)는 제자리에 두고 상자만 넓힌다. 위는 본문과의 틈(6)까지만 넓혀 본문 링크를 덮지 않고,
    나머지(20)는 아래(누를 것 없는 기준 줄·카드 여백)로 넓힌다. 바깥 여백을 같은 만큼 빼 카드 높이는 그대로다.
