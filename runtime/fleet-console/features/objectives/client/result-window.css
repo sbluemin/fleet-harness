@@ -68,7 +68,7 @@
 .objectives-result-window.is-mobile .objectives-rw-missions { display: flex; flex: none; gap: 6px; padding: 4px 12px 10px; overflow-x: auto; border: 0; }
 .objectives-result-window.is-mobile .objectives-rw-missions button { display: flex; width: auto; max-width: 220px; flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--m-hairline); border-radius: var(--radius-pill); background: var(--m-chip); color: var(--m-text-muted); }
 .objectives-result-window.is-mobile .objectives-rw-missions button[aria-pressed=true] { background: var(--m-text); color: var(--m-bg); }
-.objectives-result-window.is-mobile .objectives-rw-mission-title { color: inherit; }
+.objectives-result-window.is-mobile .objectives-rw-missions .objectives-rw-mission-title { color: inherit; }
 .objectives-result-window.is-mobile .objectives-rw-main { flex: 1; }
 .objectives-result-window.is-mobile .objectives-rw-mission-head { display: none; }
 .objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
