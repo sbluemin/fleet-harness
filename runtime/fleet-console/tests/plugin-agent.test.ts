@@ -93,7 +93,7 @@ describe("Console-owned plugin Agent", () => {
 
   it("owns a nonpersistent resident conversation: steers, resumes only a live instance and removes scratch without deleting cwd", async () => {
     const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-resident-cwd-")); roots.push(dataRoot);
-    const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; const projectRoots: (string | undefined)[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
+    const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; const settingSources: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
     // 자식 하나 — 보낸 말마다 스크립트가 답한다. 트랜스크립트는 Claude Code처럼 홈의 projects 아래에 쌓인다.
     let reply: (text: string, messageId?: string) => void = () => undefined;
     // 실제 SDK처럼 한 인스턴스의 슬롯은 하나이고 `close()`로만 돌아온다 — 스스로 끝난 자식도 닫지 않으면 다음 자식이 막힌다.
@@ -108,15 +108,13 @@ describe("Console-owned plugin Agent", () => {
       return { send: (input: unknown, options?: { messageId?: string }) => reply(typeof input === "string" ? input : JSON.stringify(input), options?.messageId), close: () => closeChild(),
         async *[Symbol.asyncIterator]() { for (;;) { while (queue.length) yield queue.shift()!; if (done) return; await new Promise<void>((r) => { wake = r; }); wake = null; } } };
     }) } as unknown as ClaudeGatewaySdk; };
-    const hostFor = () => createConsoleResidentAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { expect(sdkOptions.executablePath).toBe("/installed/claude"); homes.push(sdkOptions.home); projectRoots.push(sdkOptions.projectConfigRoot); return engine((sdkOptions.home as { configDir: string }).configDir); } });
+    const hostFor = () => createConsoleResidentAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { expect(sdkOptions.executablePath).toBe("/installed/claude"); homes.push(sdkOptions.home); settingSources.push(sdkOptions.settingSources); return engine((sdkOptions.home as { configDir: string }).configDir); } });
     const cwd = dataRoot;
     const events: AgentEvent[] = [];
     const host = hostFor();
-    const session = await host.createSession({ ...options, cwd, workspace: { additionalDirectories: [] }, onEvent: (event) => events.push(event) });
+    const theater = path.join(dataRoot, "Theater A"); await fs.mkdir(path.join(theater, ".claude", "skills"), { recursive: true });
+    const session = await host.createSession({ ...options, cwd, workspace: { additionalDirectories: [theater, path.join(dataRoot, "no-skills")] }, onEvent: (event) => events.push(event) });
     expect(homes[0]).toMatchObject({ kind: "persistent", configDir: expect.stringContaining("fleet-commodore-") });
-    // 프로젝트 층은 cwd가 아니라 scratch의 빈 폴더에서 읽는다 — `.git` 항목이 상위(체크아웃·데이터 루트) 스킬 탐색을 끊는다.
-    expect(path.dirname(projectRoots[0]!)).toBe(path.dirname((homes[0] as { configDir: string }).configDir));
-    expect((await fs.stat(path.join(projectRoots[0]!, ".git"))).isDirectory()).toBe(true);
 
     // 턴 중 건넨 말 — 턴이 그 말을 집기 전에 닫히려 하면 결말을 쥐고, 집힌 뒤의 결말과 합쳐 한 턴으로 낸다.
     let steered: string | undefined;
@@ -138,6 +136,13 @@ describe("Console-owned plugin Agent", () => {
     expect(events.filter((event) => event.kind === "result")).toEqual([expect.objectContaining({ isError: false, usage: expect.objectContaining({ inputTokens: 30, outputTokens: 3, costUsd: 0.25 }) })]);
     expect(events.findIndex((event) => event.kind === "input-started" && event.id === "m1")).toBeLessThan(events.findIndex((event) => event.kind === "text" && event.text === "and that"));
     expect(opened[0]).toMatchObject({ sessionId: expect.any(String) });
+    // 디스크 설정 층은 열지 않는다 — cwd 상위(체크아웃·데이터 루트)의 스킬이 섞이지 않고, 추가 폴더의 스킬만 scratch 플러그인으로 실린다.
+    expect(settingSources[0]).toBeUndefined();
+    const [folderPlugin, ...extra] = opened[0]!.plugins as { path: string; skipMcp: boolean }[];
+    expect(extra).toEqual([]);
+    expect(folderPlugin).toMatchObject({ path: expect.stringContaining(path.dirname((homes[0] as { configDir: string }).configDir)), skipMcp: true });
+    expect(await fs.realpath(path.join(folderPlugin!.path, "skills"))).toBe(await fs.realpath(path.join(theater, ".claude", "skills")));
+    expect(JSON.parse(await fs.readFile(path.join(folderPlugin!.path, ".claude-plugin", "plugin.json"), "utf8"))).toEqual({ name: "theater-a" });
     expect(opened[0]).not.toHaveProperty("resume");
     expect(JSON.stringify(events)).not.toContain(dataRoot);
     expect(JSON.stringify(events)).not.toContain(path.dirname((homes[0] as { configDir: string }).configDir));

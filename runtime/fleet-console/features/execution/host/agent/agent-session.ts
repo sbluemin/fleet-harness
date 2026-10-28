@@ -38,12 +38,10 @@ export type WorkspaceBuiltin = (typeof WORKSPACE_BUILTINS)[number];
 /**
  * 세션이 다룰 폴더들과 그 폴더가 가져오는 능력. `workspace` 정책을 연 호스트만 받는다.
  *
- * 추가 폴더의 `.claude/skills`는 Skill 도구로 발견되고 세션 중 바뀐 것도 반영된다. 그러려면 자식이 `project` 설정 층을
- * 읽어야 하는데, 그 층은 작업 폴더와 상위 폴더(홈 포함)의 CLAUDE.md·규칙까지 싣는다 — 그래서 어느 폴더의 CLAUDE.md·규칙도
- * 싣지 않도록 모두 제외한다. 추가 폴더의 CLAUDE.md·설정 파일은 원래 읽히지 않는다(CLI 2.1.310 실측). 그 층의 설정·스킬
- * 탐색은 작업 폴더가 아니라 세션 scratch의 빈 프로젝트 폴더에서 시작하고 그 자리에서 멈춘다 — 작업 폴더와 그 상위
- * (체크아웃·데이터 루트)의 `.claude/skills`·`.claude/settings.json`은 싣지 않는다. 폴더의 `.mcp.json`은 읽히지 않는다 —
- * MCP 서버는 호출자가 `mcpServers`로 지목한다.
+ * 추가 폴더의 `.claude/skills`는 세션을 여는 순간 폴더마다 하나의 로컬 플러그인(`<폴더 이름>:<스킬>`)으로 실려 Skill
+ * 도구로 쓰인다. 자식은 디스크 설정 층을 하나도 읽지 않는다 — `project` 층은 작업 폴더에서 상위(체크아웃·데이터 루트)로
+ * 올라가며 그곳의 스킬·설정·CLAUDE.md까지 싣기 때문이다. 그래서 작업 폴더와 그 상위, 추가 폴더의 CLAUDE.md·설정 파일은
+ * 실리지 않는다. 폴더의 `.mcp.json`도 읽히지 않는다 — MCP 서버는 호출자가 `mcpServers`로 지목한다.
  */
 export interface AgentWorkspace {
   readonly additionalDirectories: readonly string[];
@@ -93,6 +91,10 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
     const { cwd, scratch } = resources;
     const releaseCwd = () => resources.release();
     if (disposed) { await releaseCwd(); throw new Error("agent_host_disposed"); }
+    let plugins: ClaudeGatewayLocalPlugin[];
+    try {
+      plugins = [...(options.workspace?.plugins ?? []).map((plugin) => ({ ...plugin })), ...(options.workspace ? await folderSkillPlugins(scratch, options.workspace.additionalDirectories) : [])];
+    } catch (error) { await releaseCwd(); throw error; }
     const lifetime = new AbortController();
     let turnController: AbortController | null = null;
     let closed = false;
@@ -136,8 +138,6 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.
         ...(resources.resident ? { home: { kind: "persistent" as const, configDir: path.join(scratch, "claude") } } : { tempRoot: scratch }),
         ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),
-        // 추가 폴더의 스킬만 연다 — CLAUDE.md·규칙은 어느 폴더의 것도 싣지 않고, 프로젝트 층은 빈 scratch 폴더에서 읽는다(AgentWorkspace).
-        ...(options.workspace ? { settingSources: ["project"] as const, claudeMdExcludes: ["**/*"], projectConfigRoot: await isolatedProjectRoot(scratch) } : {}),
       });
     };
     const buildTurn = (): ClaudeExecutionTurn => ({
@@ -151,7 +151,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       allowedTools: allowed,
       mcpServers: servers,
       ...(options.workspace?.mcpServers ? { externalMcpServers: { ...options.workspace.mcpServers } } : {}),
-      ...(options.workspace?.plugins?.length ? { plugins: options.workspace.plugins.map((plugin) => ({ ...plugin })) } : {}),
+      ...(plugins.length ? { plugins: plugins.map((plugin) => ({ ...plugin })) } : {}),
       permissionMode: "dontAsk",
       includePartialMessages: true,
       ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
@@ -371,13 +371,26 @@ function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: Compa
 }
 
 /**
- * `project` 층을 읽을 호스트 소유 빈 폴더. CLI는 이 폴더에서 상위로 스킬을 찾다가 git 루트에서 멈추므로 빈 `.git`
- * 항목으로 탐색을 이 자리에 묶는다(CLI 2.1.312 실측). 없으면 OS 임시 폴더의 상위(`/tmp` 등)까지 올라간다.
+ * 추가 폴더의 `.claude/skills`를 폴더마다 scratch 안의 플러그인으로 싣는다 — 매니페스트는 이름만 갖고 `skills`는 그 폴더를
+ * 가리키는 링크다. 스킬만 연결하므로 그 폴더의 hooks·agents·`.mcp.json`은 실리지 않는다. 스킬 폴더가 없는 추가 폴더는 건너뛴다.
  */
-async function isolatedProjectRoot(scratch: string): Promise<string> {
-  const root = path.join(scratch, "project");
-  await fs.mkdir(path.join(root, ".git"), { recursive: true });
-  return root;
+async function folderSkillPlugins(scratch: string, directories: readonly string[]): Promise<ClaudeGatewayLocalPlugin[]> {
+  const plugins: ClaudeGatewayLocalPlugin[] = [];
+  const names = new Set<string>();
+  for (const directory of directories) {
+    const skills = path.join(directory, ".claude", "skills");
+    if (!(await fs.stat(skills).catch(() => null))?.isDirectory()) continue;
+    const base = path.basename(directory).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "folder";
+    let name = base;
+    for (let n = 2; names.has(name); n++) name = `${base}-${n}`;
+    names.add(name);
+    const root = path.join(scratch, "folder-skills", name);
+    await fs.mkdir(path.join(root, ".claude-plugin"), { recursive: true });
+    await fs.writeFile(path.join(root, ".claude-plugin", "plugin.json"), JSON.stringify({ name }));
+    await fs.symlink(skills, path.join(root, "skills"), process.platform === "win32" ? "junction" : "dir");
+    plugins.push({ path: root, skipMcp: true });
+  }
+  return plugins;
 }
 
 function validateOptions(options: InternalSessionOptions, policy: AgentSessionHostPolicy): void {
