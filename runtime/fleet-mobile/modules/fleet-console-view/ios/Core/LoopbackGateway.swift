@@ -14,6 +14,13 @@ public final class LoopbackGateway {
   public static let cookieName = "fleet_mobile_gateway"
   public static let maxConnections = 16
   public static let socketTimeoutMs = 30_000
+  /// 응답 헤더 대기 예산. ai-gateway/routing-test는 모델 모드에서 판단 에이전트
+  /// (host/routing-model.ts, 30초 예산)가 끝날 때까지 헤더를 보내지 않으므로 연결
+  /// 단계의 8초(RemoteConnection.timeoutMs)로는 정상 판단을 끊는다. 멈춘
+  /// 업스트림에 대한 상한은 유지된다.
+  public static let headerTimeoutMs = 60_000
+  /// 본문 읽기 예산 — 연결 단계와 같은 값으로 복원한다.
+  public static let bodyTimeoutMs = RemoteConnection.timeoutMs
   /// 루프백 bind가 .ready까지 갈 시간. 로컬 소켓이라 정상이면 밀리초 단위로 끝나므로,
   /// 이 시간을 넘겼다는 것은 포트를 뺏겼거나 Network.framework이 응답하지 않는다는 뜻이다.
   public static let bindTimeoutSeconds = 5
@@ -201,6 +208,9 @@ public final class LoopbackGateway {
   }
 
   private func relayResponse(_ request: HttpRequest, _ client: GatewayClientStream, _ upstream: PinnedSocket, websocket: Bool, websocketKey: String?) throws {
+    // 응답 헤더는 판단이 끝날 때까지 오지 않을 수 있다 — 연결 단계의 8초를 그대로 쓰면
+    // 정상 판단을 끊으므로 헤더 대기만 넓히고, 아래에서 본문 읽기는 복원한다.
+    upstream.setReadTimeout(milliseconds: Self.headerTimeoutMs)
     let response = try HttpCodec.readResponse(upstream, requestMethod: request.method)
     if (300...399).contains(response.code) {
       GatewayErrorResponse.write(client, code: 502, reason: "Remote redirect refused"); return
@@ -225,6 +235,7 @@ public final class LoopbackGateway {
       return
     }
     if response.isEventStream { upstream.setReadTimeout(milliseconds: nil) }
+    else { upstream.setReadTimeout(milliseconds: Self.bodyTimeoutMs) }
     switch response.bodyKind {
     case .none:
       break

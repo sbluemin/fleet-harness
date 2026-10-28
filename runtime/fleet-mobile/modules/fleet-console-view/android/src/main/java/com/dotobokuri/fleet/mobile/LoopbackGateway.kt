@@ -200,6 +200,11 @@ internal class LoopbackGateway(
     websocketKey: String?,
   ) {
     val input = BufferedInputStream(upstream.inputStream)
+    // Response headers may legitimately arrive late: ai-gateway/routing-test holds them until
+    // the routing-model agent (host/routing-model.ts, 30s budget) answers. The 8s connect budget
+    // inherited from openPinnedSocket would cut such decisions, so only the header wait is widened;
+    // prepare() below restores the connect budget for body reads.
+    ResponseSocketPolicy.prepareForHeaders(upstream)
     val response = HttpCodec.readResponse(input, requestMethod)
     if (response.code in 300..399) {
       writeError(localOutput, 502, "Remote redirect refused")
@@ -286,8 +291,21 @@ internal class LoopbackGateway(
 }
 
 internal object ResponseSocketPolicy {
+  /** Connect-phase budget (RemoteConnection's 8s). Restored for body reads after headers arrive. */
+  const val BODY_TIMEOUT_MS = 8_000
+  /**
+   * Response-header wait budget. ai-gateway/routing-test holds headers until the routing-model
+   * agent (host/routing-model.ts, 30s budget) answers, so the connect budget would cut legitimate
+   * slow decisions. A stalled upstream is still bounded.
+   */
+  const val HEADER_TIMEOUT_MS = 60_000
+
+  fun prepareForHeaders(upstream: Socket) {
+    upstream.soTimeout = HEADER_TIMEOUT_MS
+  }
+
   fun prepare(upstream: Socket, response: HttpResponse) {
-    if (response.isEventStream) upstream.soTimeout = 0
+    upstream.soTimeout = if (response.isEventStream) 0 else BODY_TIMEOUT_MS
   }
 }
 

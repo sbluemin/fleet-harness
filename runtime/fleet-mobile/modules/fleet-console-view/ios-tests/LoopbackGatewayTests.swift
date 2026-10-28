@@ -59,4 +59,11 @@ final class LoopbackGatewayTests: XCTestCase {
     XCTAssertTrue(cookie.isSecure)
     XCTAssertEqual(cookie.path, "/")
   }
+
+  func testSlowNonStreamingResponsesKeepAHeaderBudgetAndRestoreTheBodyBudget() {
+    // 판단 에이전트(30초 예산)가 헤더를 잡고 있어도 끊기지 않아야 하고,
+    // 헤더가 온 뒤 본문 읽기는 연결 예산으로 돌아가 멈춘 업스트림을 계속 묶어 둔다.
+    XCTAssertGreaterThanOrEqual(LoopbackGateway.headerTimeoutMs, 30_000)
+    XCTAssertEqual(LoopbackGateway.bodyTimeoutMs, RemoteConnection.timeoutMs)
+  }
 }

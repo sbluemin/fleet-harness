@@ -9,8 +9,10 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -80,6 +82,70 @@ class LoopbackGatewayTest {
     HttpCodec.copyChunked(input, output, decode = true, flushEach = true)
     assertEquals("data\n", output.bytes.toString(Charsets.UTF_8))
     assertTrue(output.flushes >= 2)
+  }
+
+  @Test fun slowResponseHeadersTripTheConnectReadTimeout() {
+    // Routing-test holds response headers until the routing-model agent answers. When headers
+    // arrive later than the socket read timeout, readResponse throws SocketTimeoutException and
+    // the gateway answers the client with a text 502 instead of the decision JSON.
+    val server = ServerSocket(0)
+    try {
+      val delayed = Thread {
+        server.accept().use {
+          Thread.sleep(500)
+          it.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+          it.getOutputStream().flush()
+        }
+      }
+      delayed.isDaemon = true
+      delayed.start()
+      val client = Socket()
+      try {
+        client.soTimeout = 100
+        client.connect(InetSocketAddress("127.0.0.1", server.localPort), 2_000)
+        assertThrows(SocketTimeoutException::class.java) {
+          HttpCodec.readResponse(client.getInputStream(), "POST")
+        }
+      } finally {
+        client.close()
+      }
+      delayed.join(2_000)
+    } finally {
+      server.close()
+    }
+  }
+
+  @Test fun slowHeadersSurviveTheHeaderBudgetAndBodyReadsRestoreTheConnectBudget() {
+    // The 60s header wait covers the routing-model agent's 30s budget, while body reads return to
+    // the 8s connect budget; a stalled upstream stays bounded and event streams stay unlimited.
+    val upstream = Socket().apply { soTimeout = 8_000 }
+    try {
+      ResponseSocketPolicy.prepareForHeaders(upstream)
+      assertEquals(60_000, upstream.soTimeout)
+      ResponseSocketPolicy.prepare(
+        upstream,
+        HttpResponse(
+          "HTTP/1.1 200 OK",
+          200,
+          Headers(listOf(Header("Content-Length", "0"))),
+          BodyKind.FIXED(0),
+        ),
+      )
+      assertEquals(8_000, upstream.soTimeout)
+      ResponseSocketPolicy.prepareForHeaders(upstream)
+      ResponseSocketPolicy.prepare(
+        upstream,
+        HttpResponse(
+          "HTTP/1.1 200 OK",
+          200,
+          Headers(listOf(Header("Content-Type", "text/event-stream"))),
+          BodyKind.UNTIL_CLOSE,
+        ),
+      )
+      assertEquals(0, upstream.soTimeout)
+    } finally {
+      upstream.close()
+    }
   }
 
   @Test fun eventStreamOutlivesTheOrdinaryRequestReadTimeout() {

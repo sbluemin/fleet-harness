@@ -538,9 +538,19 @@ function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode;
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ prompt }), signal: controller.signal,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error === "routing_disabled_or_no_candidates" ? t("terminal.settings.aiGatewayRoutingNoCandidates") : data.error ?? `HTTP ${response.status}`);
-      if (!controller.signal.aborted) setResult(data);
+      // 게이트웨이는 장애를 JSON이 아닌 텍스트(예: 502 "Bad gateway")로 돌려줄 수 있다 —
+      // response.json()은 그 본문에서 SyntaxError를 내고 상태·본문을 삼킨다. 텍스트로
+      // 읽어 JSON이면 파싱하고, 아니면 상태와 본문을 그대로 보여 준다.
+      const text = await response.text();
+      let data: unknown;
+      try {
+        data = text ? JSON.parse(text) : undefined;
+      } catch {
+        throw new Error(`HTTP ${response.status}: ${text.trim().slice(0, 200)}`);
+      }
+      const record = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+      if (!response.ok) throw new Error(record.error === "routing_disabled_or_no_candidates" ? t("terminal.settings.aiGatewayRoutingNoCandidates") : typeof record.error === "string" ? record.error : `HTTP ${response.status}`);
+      if (!controller.signal.aborted) setResult(data as { model?: string; label?: string; effort?: string; elapsedMs: number; fallback: boolean; because: string });
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e));
     } finally {
