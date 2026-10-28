@@ -399,7 +399,11 @@ async function boot(): Promise<void> {
         const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
         if (profile === null || !DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
         // 콘솔이 이 프로필의 뷰를 먼저 모두 닫고 부른다 — Windows 는 열려 있는 파일을 지우지 못한다.
-        await browserProfileSession(profile).clearStorageData();
+        const target = browserProfileSession(profile);
+        await target.clearStorageData();
+        // 저장소 비우기는 HTTP 디스크 캐시와 컴파일된 스크립트 캐시를 남긴다 — 방문한 페이지의 본문과 주소가 거기 남는다.
+        await target.clearCache();
+        await target.clearCodeCaches({});
         browserHistoryStorage.clear(profile);
         logger.info(`cleared browser profile ${profile}`);
         return { cleared: true };
