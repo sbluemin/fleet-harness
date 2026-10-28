@@ -9,10 +9,11 @@ import { useT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
+import { setMobileDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { openTheaterInbox } from "../../workspace/client/theater-inbox/store.js";
 import { openCommodoreConversation } from "./commodore-conversation.js";
 import { createCommodore } from "./theaters-api.js";
-import { refreshCommodoreList, setZoneCommodore } from "./commodore-list.js";
+import { refreshCommodoreList, selectMobileCommodore, setZoneCommodore } from "./commodore-list.js";
 
 let open = false;
 const listeners = new Set<() => void>();
@@ -74,6 +75,9 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
       historyRef.current = null;
       runAfterOverlayRelease(id, () => {
         setZoneCommodore(commodoreId);
+        selectMobileCommodore(commodoreId);
+        // 주소(`?dest=`)도 만든 사령관을 가리키게 한다 — 그대로 두면 새로고침·공유·폰 전환이 이전 사령관을 연다.
+        setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId } });
         openCommodoreConversation(commodoreId);
         // 만든 사령관의 「설정」으로 착지한다 — 맨 위가 그 사령관의 Theater 목록이다.
         openTheaterInbox({ theaterId: commodoreId, sectionId: "commodore:commodore", pageId: "settings" });
