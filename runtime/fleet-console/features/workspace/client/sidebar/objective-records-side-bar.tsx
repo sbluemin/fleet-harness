@@ -41,12 +41,14 @@ import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useConversationSurface } from "../conversation/conversation-surface-store.js";
 import { CommodoreCommanderList } from "../commander-tab/commander-list.js";
 import { useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { isCommanderSectionExpanded, toggleCommanderSectionCollapsed, useCommanderSectionFolds } from "./commander-section-folds.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 /*
  * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
- * 지휘관 목록은 기본으로 활성 사령관 아래에 서고, 목록의 위치 글리프로 채팅 안 오버레이로 옮길 수 있다.
+ * 지휘관 목록은 사이드바 배치일 때 사령관 섹션마다 접기 글리프로 접거나 펼친다. 아직 정하지 않은
+ * 사령관은 활성일 때만 펼쳐 보인다. 목록의 위치 글리프로 채팅 안 오버레이로 옮길 수 있다.
  */
 
 interface ObjectiveRecordsSideBarProps {
@@ -99,6 +101,11 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly theater: SideBarHead;
   readonly active: boolean;
   readonly lastResponse: string | undefined;
+  /** 지휘관 목록이 사이드바 배치일 때만 접기 글리프가 선다 — 채팅 배치에서는 머리에 글리프가 없다. */
+  readonly foldable: boolean;
+  readonly expanded: boolean;
+  /** 그 사령관의 지휘관 목록을 접거나 펼친다 — 지금 보이는 대로 뒤집는다. */
+  readonly onToggleFold: () => void;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
@@ -154,6 +161,7 @@ export function ObjectiveRecordsSideBar({
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const surface = useConversationSurface();
   const placement = useEffectiveCommanderPlacement();
+  const sectionFolds = useCommanderSectionFolds();
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
@@ -385,6 +393,9 @@ export function ObjectiveRecordsSideBar({
           const theaterDropBefore = drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id && drag.dropIndex === theaterIndex;
           const theaterDropAfter = drag !== null && drag.dragging && drag.sourceTheaterId !== theater.id
             && theaterIndex === orderedFaces.length - 1 && drag.dropIndex === orderedFaces.length;
+          // 사령관 섹션의 지휘관 목록 펼침 — 저장값을 바꾸지 않는 파생값이다. 접힌 섹션은 마운트하지 않는다.
+          const sectionExpanded = placement.place === "sidebar"
+            && isCommanderSectionExpanded(sectionFolds.folds, sectionFolds.dismissed, theater.id, owningCommodoreId);
           return (
             <li
               key={theater.id}
@@ -400,6 +411,9 @@ export function ObjectiveRecordsSideBar({
                 theater={theater}
                 active={theater.id === owningCommodoreId}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
+                foldable={placement.place === "sidebar"}
+                expanded={sectionExpanded}
+                onToggleFold={() => toggleCommanderSectionCollapsed(theater.id, owningCommodoreId, sectionExpanded)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 dragging={isTheaterDragging}
@@ -410,7 +424,7 @@ export function ObjectiveRecordsSideBar({
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
-              {placement.place === "sidebar" && theater.id === owningCommodoreId ? (
+              {sectionExpanded ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <CommodoreCommanderList
                     sortNameOnly
@@ -506,6 +520,9 @@ function TheaterSectionHeader({
   theater,
   active,
   lastResponse,
+  foldable,
+  expanded,
+  onToggleFold,
   editingAlias,
   clampAlias,
   showStatusLiveTick,
@@ -586,10 +603,10 @@ function TheaterSectionHeader({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // 표식 안의 단추(자율 운영 끄기)와 별칭 입력에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 표식 안의 단추(자율 운영 끄기)와 별칭 입력·접기 글리프에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
     // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".side-bar-theater-fold-btn"))) return;
     longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
@@ -667,6 +684,22 @@ function TheaterSectionHeader({
           </span>
         </button>
       )}
+      {/* 접기 글리프 — 그 사령관의 지휘관 목록만 접거나 펼친다. 머리를 누르는 활성화와는 따로 논다. */}
+      {foldable ? (
+        <button
+          type="button"
+          className="side-bar-theater-fold-btn"
+          aria-expanded={expanded}
+          aria-label={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
+          title={expanded ? t("sidebar.commanderSection.collapse", { theater: displayName }) : t("sidebar.commanderSection.expand", { theater: displayName })}
+          onClick={(event) => { event.stopPropagation(); onToggleFold(); }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <svg className={`side-bar-theater-chevron${expanded ? "" : " is-collapsed"}`} viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      ) : null}
 
     </div>
   );
