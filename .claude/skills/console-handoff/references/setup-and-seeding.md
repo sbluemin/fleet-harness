@@ -37,7 +37,7 @@ Create a small folder with real files the change can act on — an agent that re
 
 ### 4. Seed the state
 
-`scripts/seed-console.mjs` registers the Theater and, when given a prompt, launches a chat-born Objective and waits for the state you want:
+`scripts/seed-console.mjs` adds the folder to one Commodore's Theater list (a new fixture Commodore, or the one named by `--commodore <uuid>`) without a Console-wide registration and, when given a prompt, launches a chat-born Objective and waits for the state you want:
 
 ```bash
 node <worktree>/.claude/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir>/console --theater <theater> \
