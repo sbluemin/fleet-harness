@@ -1454,10 +1454,11 @@ async function openFeatureChildren(run: LifecycleRun, endpoint: string): Promise
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
   const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
-  const theater = await consoleApi<{ id?: string; theater?: { id: string } }>(endpoint, "/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
+  const { commodoreId } = await consoleApi<{ commodoreId: string }>(endpoint, "/api/v1/commodore/create", { alias: "Feature children fixture" });
+  const { theaterId } = await consoleApi<{ theaterId: string }>(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
   // Each request answers only once the CLI does; the requests end with the Console.
   for (let request = 0; request < 4; request += 1) {
-    void consoleApi(endpoint, "/api/v1/repository/fetch", { theaterId: theater.id ?? theater.theater?.id }).catch(() => {});
+    void consoleApi(endpoint, "/api/v1/repository/fetch", { commodoreId, theaterId }).catch(() => {});
   }
   const recorded = () => fs.existsSync(pids)
     ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
