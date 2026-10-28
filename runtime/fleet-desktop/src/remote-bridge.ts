@@ -88,6 +88,11 @@ const JOIN_PATH = "/api/v1/join";
 const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
+/**
+ * 활성 콘솔 화면이 자기 origin으로 거는 "집으로 돌아가기" 신호. 집 origin을 모르는 화면(셸 게시 전에 세션이 끝난 화면)도
+ * 셸이 아는 집으로 돌아간다 — 목적지는 셸이 정하고, 화면은 어디로 갈지 말하지 않는다.
+ */
+const RETURN_HOME_SURFACE = "return-home";
 
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
@@ -290,6 +295,13 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
           else closePicker();
           return;
         }
+        // 활성 콘솔 자신의 신호만 받는다. 셸은 언제나 자기 집으로만 보낸다 — 화면이 고를 수 있는 목적지는 없다.
+        if (isReturnHomeSignal(url, deps.policy()?.currentConsoleOrigin() ?? null)) {
+          event.preventDefault();
+          const home = deps.localOrigin();
+          if (home !== null) void open(home).catch(report);
+          return;
+        }
         const target = consoleTarget(url, deps.localOrigin());
         // 이미 활성인 콘솔 안에서의 이동은 window policy의 몫이다.
         if (target === null || target === deps.policy()?.currentConsoleOrigin()) return;
@@ -371,6 +383,16 @@ export function pickerSurfaceOf(url: string, localOrigin: string | null): "open"
     return surface === PICKER_SURFACE_DISMISS ? "dismiss" : null;
   } catch {
     return null;
+  }
+}
+
+export function isReturnHomeSignal(url: string, activeOrigin: string | null): boolean {
+  if (activeOrigin === null) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === activeOrigin && parsed.pathname.startsWith(CONSOLE_PATH) && parsed.searchParams.get(PICKER_SURFACE_PARAM) === RETURN_HOME_SURFACE;
+  } catch {
+    return false;
   }
 }
 

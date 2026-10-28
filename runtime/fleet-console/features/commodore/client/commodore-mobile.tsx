@@ -474,8 +474,8 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const openUIOpen = useCommodoreOpenUIPort(commodoreId, openReference, openCommodore);
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
-    open: (entry) => { if (entry.objectiveId) openOwnedObjectiveOnPhone(commodoreId, entry.objectiveId); },
-  }), [t, commodoreId]);
+    open: (entry) => { if (entry.objectiveId) references.open?.(entry.objectiveId); },
+  }), [t, references]);
   // 원장(기록 탭)에 설 턴이 있을 때만 이름이 눌린다 — 눌리는 척하지 않는다.
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn || participants.length > 1 ? (target) => {

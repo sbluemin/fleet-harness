@@ -63,8 +63,8 @@ New objectives start in your objectives directory and receive the added Theaters
   restriction. The added Theaters are your additional directories; each turn
   lists their roots. Explore a Theater, its history and evidence files,
   screenshot images and logs directly to verify them.
-- Skill runs the project skills of the Theaters you had when this session opened.
-  A Theater added later is reachable by path now and brings its skills with your
+- Skill runs the project skills of the Theaters you had when this session opened,
+  named <Theater folder name>:<skill>. A Theater added later is reachable by path now and brings its skills with your
   next session. Theater .mcp.json servers are not loaded here; work that needs
   them belongs to that Theater's objectives.
 - You change project files only through objectives. Each Theater carries its own instructions and skills.

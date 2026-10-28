@@ -231,6 +231,17 @@ it("delegates only host-classified Markdown links without trusting source metada
   await Promise.resolve();
 });
 
+// 공유 렌더러는 문서 밖으로 새는 <style> 요소·style 속성을 뺀다 — 래퍼 안에 있어도 전역에 적용되므로
+// 표면별 후처리(a/img 전용)로 막을 수 없다. 자리표시자·하이라이트는 class·data 속성만 쓰므로 남는다.
+it("strips document-escaping <style> elements and style attributes from shared output", () => {
+  const container = document.createElement("div");
+  container.innerHTML = renderMarkdown('<style>body{background:red !important}</style>\n\n<div style="position:fixed;inset:0">overlay</div>\n\n```js\nconst answer = 1;\n```\n\n```mermaid\ngraph TD; A-->B\n```').html;
+  expect(container.innerHTML.toLowerCase()).not.toContain("<style");
+  expect(container.innerHTML).not.toContain("style=");
+  expect(container.querySelector(".diagram-block")?.getAttribute("data-mermaid-source")).toBeTruthy();
+  expect(container.querySelector("pre code.hljs")).not.toBeNull();
+});
+
 // OpenUI — 사령관·지휘관 말풍선의 생성형 UI는 원문을 HTML로 해석하지 않는다. 화이트리스트 컴포넌트만 고정 태그로 그리고,
 // 확정 때 그릴 수 없는 블록(잘림·미등록 컴포넌트)은 정제된 코드 블록으로 남는다. 답·열기 단추는 사람의 클릭으로만 전송·열기 포트에 닿는다.
 describe("openui hydrator containment", () => {

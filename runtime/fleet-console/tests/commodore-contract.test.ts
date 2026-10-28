@@ -1251,7 +1251,8 @@ describe("commodore supervisor", () => {
       const sessions: { sent: string[]; steered: { text: string; id: string }[]; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
       let managementTool: ConsoleMcpTool | undefined;
       const createCommodore = vi.fn(() => ({ commodoreId: "new", target: "commodore:new" }));
-      const callCreate = () => managementTool!.execute({ action: "create", alias: "Browser", theaters: [], directive: "Browser work", intel: [] }, { cwd: theaterRoot });
+      const createInput = { action: "create", alias: "Browser", theaters: [theaterRoot], directive: "Private directive", intel: ["Private intel"] };
+      const callCreate = () => managementTool!.execute(createInput, { cwd: theaterRoot, toolCallId: "create-browser" });
       const agent: AgentHost = {
         createSession: async (options) => {
           managementTool = options.tools?.custom?.find((group) => group.name === "console")?.tools.find((tool) => tool.name === "console_commodores");
@@ -1291,9 +1292,13 @@ describe("commodore supervisor", () => {
       expect(await callCreate()).toMatchObject({ isError: true, structuredContent: { error: "person_message_required" } });
       sessions[0]!.emit({ kind: "input-started", id: `m${read.seq}` });
       expect(hasPersonMessage!()).toBe(true);
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
+      sessions[0]!.emit({ kind: "tool-start", id: "create-browser", name: "mcp__console__console_commodores", input: createInput });
       expect(await callCreate()).toMatchObject({ isError: false, structuredContent: { commodoreId: "new" } });
       expect(createCommodore).toHaveBeenCalledTimes(1);
-      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
+      sessions[0]!.emit({ kind: "tool-end", id: "create-browser", isError: false });
+      const createdEntry = h.store.transcriptRead("t1").entries.at(-1)!;
+      expect(createdEntry).toEqual({ seq: expect.any(Number), at: expect.any(Number), kind: "tool", name: "console_commodores", ok: true, action: "create", commodoreId: "new", alias: "Browser" });
       // 집히지 못한 말은 대기열로 돌아와 다음 턴에 실린다 — 잃지 않는다.
       const unread = h.store.transcriptAppend("t1", { kind: "message", text: "And check the roster." });
       sessions[0]!.emit({ kind: "input-cancelled", id: `m${unread.seq}` });

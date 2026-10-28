@@ -69,7 +69,7 @@ export async function handOffWindowToConsole(deps: ConsoleHandoffDeps, url: stri
  * Console 내부를 import하지 않고 여기서 선언하는 것은 remote-bridge·window-policy와 같은 방식이다.
  */
 const SHELL_SIGNAL_PARAM = "desktop-surface";
-const SHELL_SIGNAL_SURFACES: ReadonlySet<string> = new Set([CONSOLE_SECTION_COMMAND, "host-picker", "host-picker-dismiss", "local-fonts"]);
+const SHELL_SIGNAL_SURFACES: ReadonlySet<string> = new Set([CONSOLE_SECTION_COMMAND, "host-picker", "host-picker-dismiss", "local-fonts", "return-home"]);
 
 function isShellSignal(url: unknown): boolean {
   if (typeof url !== "string") return false;

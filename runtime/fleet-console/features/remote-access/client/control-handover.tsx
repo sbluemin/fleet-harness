@@ -7,7 +7,7 @@ import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { formatRelativeTime, useConsoleLocale, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { resumeConsoleSession } from "../../../core/client/src/integration/api.js";
 import { dismissControlCurtain } from "../../../core/client/src/integration/store.js";
-import { desktopPickerUrl, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
+import { desktopPickerUrl, desktopReturnHomeUrl, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 
 export function ControlBar() {
   const state = useConsoleState();
@@ -199,14 +199,13 @@ export function ControlReclaimedNotice() {
       });
   };
   /**
-   * 돌아갈 origin은 셸이 게시한 집뿐이다. 브라우저와 모바일은 그 게시가 없어 버튼을 두지 않는다.
-   * Desktop은 이 항해를 가로채 `/console/`으로 열고, 호스트 목록 신호는 싣지 않는다.
+   * 돌아갈 곳은 셸이 안다. 브라우저와 모바일에는 셸이 없어 버튼을 두지 않는다. 게시된 집이 있으면 그 `/console/`로
+   * 항해하고(Desktop이 가로채 연다), 게시보다 먼저 세션이 끝나 집을 모르면 자기 origin으로 "집으로" 신호를 걸어
+   * 셸이 목적지를 정하게 한다. 호스트 목록 신호는 싣지 않는다.
    */
-  const localConsole = isDesktopShell() && home.origin !== null ? home.origin : null;
-  const returnToLocalConsole = () => {
-    if (localConsole === null) return;
-    location.assign(new URL("/console/", `${localConsole}/`).toString());
-  };
+  const returnToLocalConsole = isDesktopShell() ? () => {
+    location.assign(home.origin !== null ? new URL("/console/", `${home.origin}/`).toString() : desktopReturnHomeUrl(location.origin));
+  } : null;
 
   return createPortal(
     <div className="control-reclaimed-notice" role="alert" aria-live="assertive">
@@ -223,7 +222,7 @@ export function ControlReclaimedNotice() {
               <button type="button" className="control-curtain-primary" disabled={reclaiming} onClick={takeBackControl}>
                 {reclaiming ? t("chrome.control.reclaiming") : t("chrome.control.takeBack")}
               </button>
-              {localConsole !== null ? (
+              {returnToLocalConsole !== null ? (
                 <button type="button" className="control-curtain-secondary" onClick={returnToLocalConsole}>
                   {t("chrome.control.returnLocal")}
                 </button>

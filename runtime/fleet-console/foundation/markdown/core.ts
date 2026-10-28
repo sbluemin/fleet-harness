@@ -85,9 +85,13 @@ const marked = new Marked({
 const FILE_COORDINATE_HREF = /^(?=[^:]*[./])[^:]+:\d+(?::\d+)?$/;
 // marked가 역슬래시를 %5C로 바꾼 경우도 드라이브 경로다. 다른 스킴의 허용 범위는 늘리지 않는다.
 const WINDOWS_DRIVE_HREF = /^[a-z]:(?:[/\\]|%2f|%5c)/i;
+// `<style>` 요소·`style` 속성은 래퍼 안에 있어도 문서 전역에 적용되므로 공유 출력에서 뺀다.
+// 자리표시자(div+data-*)·하이라이트(span.hljs+class)·하이드레이터 산출물은 class·data 속성만 쓰므로 영향이 없다.
 const sanitizeConfig = {
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[a-z]:(?:[/\\]|%2f|%5c)|[#/]|\.{0,2}\/|[^:]+$|(?=[^:]*[./])[^:]+:\d+(?::\d+)?$)/i,
   ADD_ATTR: ["target", "rel", "data-entry-id"],
+  FORBID_TAGS: ["style"],
+  FORBID_ATTR: ["style"],
 };
 const highlighter = configureHighlighter();
 

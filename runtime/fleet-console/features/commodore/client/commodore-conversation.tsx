@@ -317,8 +317,11 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
-    open: (entry) => { if (entry.objectiveId && screenTheaterId) openReferencedObjective(screenTheaterId, entry.objectiveId); },
-  }), [t, screenTheaterId]);
+    open: (entry) => {
+      if (entry.objectiveId.startsWith("commodore:")) references.open?.(entry.objectiveId);
+      else if (entry.objectiveId && screenTheaterId) openReferencedObjective(screenTheaterId, entry.objectiveId);
+    },
+  }), [t, screenTheaterId, references]);
 
   // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 원장에 설 턴이 없으면
   // 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다). 읽은 창은 아무 줄에서나 시작하므로(쪽·보관 상한) 깨움 줄이 아니라

@@ -214,7 +214,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       case "tool": {
         if (!entry.action) break;
-        const target = objectiveTarget(t, index, entry.objectiveId, entry.title);
+        const target = createdCommodoreTarget(entry) ?? objectiveTarget(t, index, entry.objectiveId, entry.title);
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: target.id ?? "",
           action: actionWord(t, entry.action), target,
           ...(entry.ok === false ? { status: { text: errorWord(t, entry.error ?? "failed"), failed: true as const } } : {}),
@@ -423,6 +423,12 @@ function plainFirstLine(text: string): string {
     .trim();
 }
 
+/** 메인 대화와 원장이 함께 쓰는 생성 결과의 사령관 참조. */
+function createdCommodoreTarget(tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): ConversationReference | undefined {
+  return tool.name === "console_commodores" && tool.action === "create" && tool.ok !== false && tool.commodoreId && tool.alias
+    ? { id: `commodore:${tool.commodoreId}`, label: tool.alias } : undefined;
+}
+
 /**
  * 도구 줄의 한 줄 — 보드 행위면 「행위 · 목표 이름」, 아니면 기록이 남긴 요약. 목표를 찾을 자리(`index`)가 있으면 이름은 보드에서 읽고,
  * 열 목표면 참조로 실어 그 이름을 누르면 목표가 열린다(얼굴은 싣지 않는다 — 한 줄 단계다).
@@ -430,6 +436,8 @@ function plainFirstLine(text: string): string {
 function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>, index: CommodoreObjectiveIndex | undefined): { readonly detail: string; readonly references?: readonly ConversationReference[] } {
   if (!tool.action) return { detail: tool.summary ?? "" };
   const action = actionWord(t, tool.action);
+  const created = createdCommodoreTarget(tool);
+  if (created) return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [created] };
   if (!index) return { detail: [action, tool.title].filter(Boolean).join(" · ") };
   const target = objectiveTarget(t, index, tool.objectiveId, tool.title);
   if (target.id && target.label) return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [{ id: target.id, label: target.label }] };
