@@ -180,6 +180,14 @@ export function ObjectiveRecordsSideBar({
   // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
   const owningCommodoreId = newSession !== null ? newSession.commodoreId ?? null
     : surface ? surfaceOwner ?? subjectOwner : subjectOwner ?? objectiveOwner;
+  // 현재 활성 구간에서 사람이 직접 접어 임시 펼침을 걷은 사령관 하나 — 걷을 수 있는 건 활성인 사령관뿐이라 하나로 충분하다.
+  // 활성 전환 때 비운다(렌더 중 이전 값 비교로 조정 — effect·저장 쓰기·모듈 notify 없이 전환 경로에 얹히지 않는다).
+  const [dismissedCommodoreId, setDismissedCommodoreId] = useState<string | null>(null);
+  const [foldActiveOwner, setFoldActiveOwner] = useState<string | null>(owningCommodoreId);
+  if (foldActiveOwner !== owningCommodoreId) {
+    setFoldActiveOwner(owningCommodoreId);
+    if (dismissedCommodoreId !== null) setDismissedCommodoreId(null);
+  }
   // 몽글 아바타 처음 배정 — 사이드바 한 곳이 사령관·Objective 이 처음 보일 때 묶음째 뽑아 저장한다.
   useAvatarClaims();
   const registry = useFeatureRegistry();
@@ -395,7 +403,18 @@ export function ObjectiveRecordsSideBar({
             && theaterIndex === orderedFaces.length - 1 && drag.dropIndex === orderedFaces.length;
           // 사령관 섹션의 지휘관 목록 펼침 — 저장값을 바꾸지 않는 파생값이다. 접힌 섹션은 마운트하지 않는다.
           const sectionExpanded = placement.place === "sidebar"
-            && isCommanderSectionExpanded(sectionFolds.folds, sectionFolds.dismissed, theater.id, owningCommodoreId);
+            && isCommanderSectionExpanded(sectionFolds.folds, dismissedCommodoreId, theater.id, owningCommodoreId);
+          // 글리프 토글 — 지금 보이는 대로 뒤집는다. 활성인 섹션을 접으면 그 활성 구간 동안만 임시 펼침을 걷고,
+          // 펼치면 걷기를 푼다. 저장은 접힘·펼침만 기억한다.
+          const toggleSectionFold = () => {
+            if (sectionExpanded) {
+              toggleCommanderSectionCollapsed(theater.id, true);
+              if (theater.id === owningCommodoreId) setDismissedCommodoreId(theater.id);
+            } else {
+              toggleCommanderSectionCollapsed(theater.id, false);
+              if (dismissedCommodoreId === theater.id) setDismissedCommodoreId(null);
+            }
+          };
           return (
             <li
               key={theater.id}
@@ -413,7 +432,7 @@ export function ObjectiveRecordsSideBar({
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
                 foldable={placement.place === "sidebar"}
                 expanded={sectionExpanded}
-                onToggleFold={() => toggleCommanderSectionCollapsed(theater.id, owningCommodoreId, sectionExpanded)}
+                onToggleFold={toggleSectionFold}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 dragging={isTheaterDragging}

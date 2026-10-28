@@ -9,8 +9,6 @@ const STORAGE_KEY = "fleet-console.sidebar.commanderSections.collapsed";
 
 export interface CommanderSectionFolds {
   readonly folds: Readonly<Record<string, boolean>>;
-  /** 활성 중 사람이 접어 임시 펼침을 걷은 섹션 — 저장하지 않는 이번 화면 표시다. */
-  readonly dismissed: ReadonlySet<string>;
 }
 
 export function readCommanderSectionFolds(): Readonly<Record<string, boolean>> {
@@ -30,7 +28,7 @@ export function readCommanderSectionFolds(): Readonly<Record<string, boolean>> {
   }
 }
 
-let snapshot: CommanderSectionFolds = { folds: readCommanderSectionFolds(), dismissed: new Set() };
+let snapshot: CommanderSectionFolds = { folds: readCommanderSectionFolds() };
 const listeners = new Set<() => void>();
 
 function persist(folds: Readonly<Record<string, boolean>>): void {
@@ -44,48 +42,35 @@ function persist(folds: Readonly<Record<string, boolean>>): void {
 /**
  * 그 섹션의 지휘관 목록을 그릴지 — 저장값을 바꾸지 않는 파생값이다.
  * - 펼침으로 정한 섹션은 활성이 아니어도 펼친 채로 둔다.
- * - 접힘으로 정한 섹션은 활성일 때만 잠시 펼쳐 보인다. 활성 중 사람이 접으면 그 표시를 걷는다.
+ * - 접힘으로 정한 섹션은 활성일 때만 잠시 펼쳐 보인다. `dismissedCommodoreId`는 현재 활성 구간에서
+ *   사람이 직접 접은 사령관 하나로, 사이드바 로컬 상태가 들고 활성 전환 때 비운다. 활성 중 접기는
+ *   그 활성 구간 동안만 파생 펼침을 걷고, 다시 활성화하면 임시 펼침이 돌아온다.
  * - 아직 정하지 않은 섹션은 활성일 때만 펼쳐 보인다(지금까지 그대로).
  */
 export function isCommanderSectionExpanded(
   folds: Readonly<Record<string, boolean>>,
-  dismissed: ReadonlySet<string>,
+  dismissedCommodoreId: string | null,
   commodoreId: string,
   activeCommodoreId: string | null,
 ): boolean {
   const stored = folds[commodoreId];
   if (stored === false) return true;
-  if (stored === true) return commodoreId === activeCommodoreId && !dismissed.has(commodoreId);
+  if (stored === true) return commodoreId === activeCommodoreId && dismissedCommodoreId !== commodoreId;
   return commodoreId === activeCommodoreId;
 }
 
-export function setCommanderSectionCollapsed(commodoreId: string, collapsed: boolean, activeCommodoreId: string | null): void {
+export function setCommanderSectionCollapsed(commodoreId: string, collapsed: boolean): void {
   const stored = snapshot.folds[commodoreId];
-  let folds = snapshot.folds;
-  let dismissed = snapshot.dismissed;
-  if (stored !== collapsed) {
-    folds = { ...folds, [commodoreId]: collapsed };
-    persist(folds);
-  }
-  if (collapsed) {
-    // 활성 섹션을 접으면 임시 펼침 표시도 함께 걷는다 — 파생 펼침이 같은 활성 동안 다시 열지 못하게.
-    // 저장은 '접힘' 그대로이므로 비활성이 되면 접힌 채로 선다.
-    if (commodoreId === activeCommodoreId && !dismissed.has(commodoreId)) {
-      dismissed = new Set(dismissed).add(commodoreId);
-    }
-  } else if (dismissed.has(commodoreId)) {
-    const next = new Set(dismissed);
-    next.delete(commodoreId);
-    dismissed = next;
-  }
-  if (folds === snapshot.folds && dismissed === snapshot.dismissed) return;
-  snapshot = { folds, dismissed };
+  if (stored === collapsed) return;
+  const folds = { ...snapshot.folds, [commodoreId]: collapsed };
+  persist(folds);
+  snapshot = { folds };
   for (const listener of listeners) listener();
 }
 
 /** 글리프 토글 — 지금 보이는 대로 뒤집는다. 펼쳐 보이면 접힘으로 기억하고, 접혀 보이면 펼침으로 기억한다. */
-export function toggleCommanderSectionCollapsed(commodoreId: string, activeCommodoreId: string | null, expandedNow: boolean): void {
-  setCommanderSectionCollapsed(commodoreId, expandedNow, activeCommodoreId);
+export function toggleCommanderSectionCollapsed(commodoreId: string, expandedNow: boolean): void {
+  setCommanderSectionCollapsed(commodoreId, expandedNow);
 }
 
 export function useCommanderSectionFolds(): CommanderSectionFolds {
