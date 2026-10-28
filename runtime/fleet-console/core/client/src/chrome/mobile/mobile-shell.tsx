@@ -23,6 +23,7 @@ import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileHome } from "./mobile-home.js";
+import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { readMobileObjectiveId, replaceMobileObjectiveId } from "./mobile-objective-url.js";
 import "../../styles/mobile.css";
@@ -47,6 +48,7 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
 }) {
   const destination = useMobileDestination();
   const consoleState = useConsoleState();
+  const commodores = useCommodoreList();
   const [selectedObjectiveId, setSelectedObjectiveId] = useState(() => readMobileObjectiveId());
   const selectedObjective = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === selectedObjectiveId) ?? null;
   // 지휘관 화면은 고른 구성원의 본문을 보인다 — 데스크톱 지휘관 패널과 같은 원천(코어의 부모 관계 + 본문 선택)이다.
@@ -135,7 +137,7 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
       </>
     );
   } else {
-    content = consoleState.theaters.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
+    content = commodores.length > 0 || consoleState.theaters.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
   }
 
   return (

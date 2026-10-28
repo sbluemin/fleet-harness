@@ -304,7 +304,7 @@ export function groupObjectiveSearchEntries(
  * 호출마다 감싼다(Theater 머리 기여와 같은 규칙).
  */
 export function buildTheaterSectionSearchEntries(
-  theaters: readonly TheaterInfo[],
+  theaters: readonly Pick<TheaterInfo, "id" | "label">[],
   sections: readonly TheaterInboxSectionDescriptor[],
   language: ConsoleLocale,
 ): readonly TheaterSectionSearchEntry[] {

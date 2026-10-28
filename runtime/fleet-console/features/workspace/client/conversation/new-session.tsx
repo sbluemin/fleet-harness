@@ -33,7 +33,7 @@ import { TheaterGlyph } from "../components/theater-glyph.js";
 import { KeyedAvatar } from "../avatars.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { commodoreSectionLabel, refreshCommodoreList, useCommodoreList } from "../../../commodore/client/commodore-list.js";
-import { addCommodoreTheater } from "../../../commodore/client/theaters-api.js";
+import { addCommodoreTheaterFromPath } from "../../../commodore/client/theaters-api.js";
 import { registerTheaterFromPath } from "../theater.js";
 import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
@@ -68,14 +68,13 @@ export function NewSessionColumn({ state, target, tools }: {
   const commodoreId = target.commodoreId ?? resolveNewSessionCommodoreId();
   const commodore = commodores.find((candidate) => candidate.commodoreId === commodoreId) ?? null;
   const commodoreName = commodore ? commodoreSectionLabel(commodore, t("sidebar.commodore.fallback")) : t("sidebar.commodore.fallback");
-  // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라졌거나 등록이 풀린 행은 시작할 수 없으므로 세우지 않는다.
+  // Theater 후보는 이 사령관의 목록뿐이다. 폴더가 사라진 행은 시작할 수 없으므로 세우지 않는다.
   // 사령관이 하나도 없을 때만(첫 실행이 새 사령관을 만든다) Console 에 등록된 Theater 를 후보로 둔다.
   const theaters = useMemo(() => {
     if (commodoreId === null) return state.theaters.map((info) => ({ id: info.id, label: info.label }));
     return (commodore?.theaters ?? []).flatMap((row) => {
       if (row.status !== "available") return [];
-      const info = state.theaters.find((candidate) => candidate.id === row.theaterId);
-      return info ? [{ id: info.id, label: info.label }] : [];
+      return [{ id: row.theaterId, label: row.label }];
     });
   }, [commodoreId, commodore, state.theaters]);
   // 고른 Theater 가 이 사령관 목록에 없으면(다른 사령관의 것이거나 빠졌다) 기본 규칙으로 다시 고른다 — 목록이 비면 null.
@@ -201,15 +200,12 @@ export function NewSessionColumn({ state, target, tools }: {
     setFolderDialogOpen(true);
   };
 
-  // 폴더를 Theater 로 등록하고 이 사령관의 목록에 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
+  // 폴더를 이 사령관의 Theater 목록에 직접 더한 뒤 고른다. 사령관이 아직 없으면 등록만 하고 실행이 새 사령관을 만든다.
   const confirmFolder = (path: string) => {
     setFolderDialogOpen(false);
-    void registerTheaterFromPath(path).then(async (theaterId) => {
+    void (commodoreId ? addCommodoreTheaterFromPath(commodoreId, path) : registerTheaterFromPath(path)).then(async (theaterId) => {
       if (theaterId === null) return;
-      if (commodoreId !== null && !theaters.some((candidate) => candidate.id === theaterId)) {
-        await addCommodoreTheater({ commodoreId, theaterId });
-        await refreshCommodoreList();
-      }
+      if (commodoreId) await refreshCommodoreList();
       pickTheater(theaterId);
     }).catch(() => {});
   };

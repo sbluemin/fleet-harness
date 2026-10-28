@@ -1370,10 +1370,8 @@ async function consoleApi<T>(endpoint: string, route: string, body: unknown, con
 /** An open chat turn (agent mid-turn, MCP child running) and optionally a terminal session, through the public API. */
 async function openWorkload(run: LifecycleRun, endpoint: string, options: { readonly terminal: boolean }): Promise<void> {
   const grant = await consoleApi<{ folderGrantId?: string; id?: string; grant?: { id: string } }>(endpoint, "/api/v1/theaters/folder-grants", { path: run.theater });
-  const theater = await consoleApi<{ id?: string; theater?: { id: string } }>(endpoint, "/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
-  const theaterId = theater.id ?? theater.theater?.id;
   const { commodoreId } = await consoleApi<{ commodoreId: string }>(endpoint, "/api/v1/commodore/create", { alias: "Lifecycle fixture" });
-  await consoleApi(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, theaterId });
+  const { theaterId } = await consoleApi<{ theaterId: string }>(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
   const count = (role: string) => agentProcs(run).filter((entry) => entry.role === role).length;
   const turns = count("turn-open");
   await consoleApi(endpoint, "/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });

@@ -4,9 +4,8 @@ import { useT } from "../../../core/client/src/i18n/index.js";
 import { DirectoryBrowserModal } from "../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { MobileFolderSheet } from "../../../core/client/src/chrome/mobile/mobile-folder-sheet.js";
 import { pushMobileSheet } from "../../../core/client/src/chrome/mobile/mobile-store.js";
-import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
-import { registerTheaterFromPath } from "../../workspace/client/theater.js";
-import { addCommodoreTheater, removeCommodoreTheater } from "./theaters-api.js";
+import { describeTheaterRegistrationError } from "../../../core/client/src/integration/failure-notices.js";
+import { addCommodoreTheaterFromPath, removeCommodoreTheater } from "./theaters-api.js";
 import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 
 /**
@@ -17,36 +16,31 @@ import { refreshCommodoreList, useCommodoreList } from "./commodore-list.js";
 export function CommodoreTheaters({ commodoreId, phone = false }: { readonly commodoreId: string; readonly phone?: boolean }) {
   const t = useT(phone);
   const commodore = useCommodoreList().find((item) => item.commodoreId === commodoreId) ?? null;
-  const registrationError = useConsoleState().theaterError;
   const [browserOpen, setBrowserOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failureMessage, setFailureMessage] = useState<string | null>(null);
   const theaters = commodore?.theaters ?? [];
 
-  const run = (work: () => Promise<boolean>) => {
+  const run = (work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
-    setFailed(false);
-    void work().then((ok) => { if (!ok) setFailed(true); }, () => setFailed(true)).finally(() => setBusy(false));
+    setFailureMessage(null);
+    void work().catch((error) => setFailureMessage(describeTheaterRegistrationError(error, t))).finally(() => setBusy(false));
   };
   const remove = (theaterId: string) => run(async () => {
     await removeCommodoreTheater({ commodoreId, theaterId });
     await refreshCommodoreList();
-    return true;
   });
   const addFolder = (path: string) => run(async () => {
-    const theaterId = await registerTheaterFromPath(path, phone);
-    if (!theaterId) return false;
-    await addCommodoreTheater({ commodoreId, theaterId });
+    await addCommodoreTheaterFromPath(commodoreId, path);
     await refreshCommodoreList();
-    return true;
   });
   const pickFolder = () => {
     if (busy) return;
     if (phone) pushMobileSheet({ kind: "custom", render: (dismiss) => <MobileFolderSheet onClose={dismiss} onConfirm={(path) => { dismiss(); addFolder(path); }} /> });
     else setBrowserOpen(true);
   };
-  const failure = failed ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{registrationError ?? t("theaterInbox.theaters.failed")}</p> : null;
+  const failure = failureMessage ? <p className={phone ? "objectives-cm-note" : "objectives-commodore-hint is-error"} role="alert">{failureMessage}</p> : null;
   if (!commodoreId) return null;
   const note = theaters.length === 0 ? t("theaterInbox.theaters.empty") : t("theaterInbox.theaters.applies");
 

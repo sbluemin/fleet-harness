@@ -18,17 +18,17 @@ function isRegisteredTheater(state: ReturnType<typeof getState>, theaterId: unkn
 }
 
 /**
- * 목표의 극장 문맥은 그 사령관의 등록 Theater 목록에서만 고른다. Theater 에서 주인 사령관을 찾지 않는다.
- * 저장된 id가 그 목록에 있으면 그 id다. 미등록 해시이고 등록 Theater가 하나면 그 하나다.
- * 없거나 여럿인데 해시뿐이면 null — 목표 탭은 Theater 없이 열리고, 경로가 필요한 도구는 고르지 않는다.
+ * 목표의 극장 문맥은 그 사령관의 사용 가능한 폴더 목록에서만 고른다. Theater 에서 주인 사령관을 찾지 않는다.
+ * 저장된 id가 그 목록에 있으면 그 id다. 옛 id이고 폴더가 하나면 그 하나다.
+ * 없거나 여럿인데 현재 목록에 없는 id면 null — 경로가 필요한 도구는 임의로 고르지 않는다.
  */
 function theaterOfCommodore(state: ReturnType<typeof getState>, commodoreId: string, hinted: string | null): string | null {
   const owned = readCommodoreList()
     .find((commodore) => commodore.commodoreId === commodoreId)
-    ?.theaters.map((theater) => theater.theaterId)
-    .filter((theaterId, index, ids) => isRegisteredTheater(state, theaterId) && ids.indexOf(theaterId) === index) ?? [];
+    ?.theaters.filter((theater) => theater.status === "available").map((theater) => theater.theaterId) ?? [];
   if (hinted !== null && owned.includes(hinted)) return hinted;
-  if (hinted !== null && isRegisteredTheater(state, hinted)) return owned.length === 0 ? hinted : null;
+  // 다른 사령관의 알려진 폴더나 사라진 폴더를 옛 목표 해시로 오해해 현재 폴더로 바꾸지 않는다.
+  if (hinted !== null && (readCommodoreList().some((row) => row.theaters.some((theater) => theater.theaterId === hinted)) || isRegisteredTheater(state, hinted))) return null;
   if (owned.length === 1) return owned[0] ?? null;
   return null;
 }
@@ -49,12 +49,14 @@ export function getViewedTheaterId(): string | null {
     if (objectiveRecord) return visibleTheaterOf(state, objectiveRecord);
     const destination = getMobileDestination();
     const requested = (destination.kind === "plugin" ? destination.params?.theaterId : undefined) ?? getMobileListTheaterId();
+    const commodoreId = getViewedCommodoreId();
+    if (commodoreId) return theaterOfCommodore(state, commodoreId, requested ?? null);
     return state.theaters.find((theater) => theater.id === requested)?.id ?? state.theaters[0]?.id ?? null;
   }
   // 새 세션은 보던 대화를 걷어도 자체 컨텍스트를 유지한다. Theater 가 없으면 이전 대화로 되돌리지 않는다.
   const newSession = state.newSession;
   if (newSession !== null) {
-    return state.theaters.find((theater) => theater.id === newSession.theaterId)?.id ?? null;
+    return newSession.commodoreId ? theaterOfCommodore(state, newSession.commodoreId, newSession.theaterId) : state.theaters.find((theater) => theater.id === newSession.theaterId)?.id ?? null;
   }
   const surface = getConversationSurface();
   if (surface !== null) {
@@ -64,7 +66,10 @@ export function getViewedTheaterId(): string | null {
     return theaterId !== null && isRegisteredTheater(state, theaterId) ? theaterId : null;
   }
   const inbox = readTheaterInboxState();
-  if (inbox !== null) return state.theaters.some((theater) => theater.id === inbox.theaterId) ? inbox.theaterId : null;
+  if (inbox !== null) {
+    const commodoreId = readZoneCommodore();
+    return commodoreId ? theaterOfCommodore(state, commodoreId, inbox.theaterId) : state.theaters.some((theater) => theater.id === inbox.theaterId) ? inbox.theaterId : null;
+  }
   const subjectId = getConversationSubject()?.id ?? state.activeObjectiveId;
   return visibleTheaterOf(state, state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subjectId));
 }

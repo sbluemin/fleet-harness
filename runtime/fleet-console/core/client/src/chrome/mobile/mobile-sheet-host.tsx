@@ -1,17 +1,15 @@
 import { commodoreAliasEditor } from "../../integration/commodore-identity.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
-import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
-import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
-import { TheaterGlyph } from "../../../../../features/workspace/client/components/theater-glyph.js";
+import { registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
+import { addCommodoreTheaterFromPath } from "../../../../../features/commodore/client/theaters-api.js";
+import { describeTheaterRegistrationError } from "../../integration/failure-notices.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { CommodoreDeleteFlow } from "../../../../../features/commodore/client/commodore-delete-body.js";
 import { announceCommodoreDeletion, subscribeCommodoreLifecycle, wasCommodoreRemoved } from "../../../../../features/commodore/client/commodore-delete-events.js";
-import { commodoreSectionLabel, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
+import { commodoreSectionLabel, readCommodoreList, refreshCommodoreList, setZoneCommodore, useCommodoreList, useMobileCommodoreSelection, selectMobileCommodore } from "../../../../../features/commodore/client/commodore-list.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { IdentityTone } from "../../../../../features/workspace/shared/identity-tones.js";
@@ -19,14 +17,13 @@ import { commodoreAvatarKey, pickMongleBase } from "../../../../../features/work
 import { setMongleLook, useMongleLook } from "../../../../../features/workspace/client/avatar-events.js";
 import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../../../../features/workspace/client/components/mongle-avatar.js";
-import { useFeatureRegistry } from "../../integration/feature-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import { getState, openMobileNewSession } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { mobileHomeCommodoreId, useMobileDestinationBindings } from "./mobile-destinations.js";
-import type { ConsoleState, TheaterInfo } from "../../integration/types.js";
+import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
 import { MobileSettingsPage } from "./mobile-settings-page.js";
@@ -41,7 +38,7 @@ import { getMobileSheetStack, closeMobileSheets, openMobilePluginDestination, po
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
  * 쌓인 시트 전체가 history 항목 하나를 든다.
  */
-export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state: ConsoleState; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void }) {
+export function MobileSheetHost({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const stack = useMobileSheetStack();
   const depth = stack.length;
@@ -77,18 +74,21 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
-  if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
-  if (top.kind === "theater-actions") return <TheaterActionsSheet key={top.theaterId} state={state} theaterId={top.theaterId} />;
-  return <TheaterSheet state={state} />;
+  return <TheaterSheet />;
 }
 
-/** 폴더를 Theater로 등록하고, 성공하면 「{이름}을(를) Theater로 추가했습니다」 토스트를 띄운다. 실패는 스토어의 theaterError가 화면에 말한다. */
+/** 사령관이 있으면 그 목록에만 더한다. 사령관 없는 첫 실행의 폴더 선택만 기존 시작 경로를 쓴다. */
 async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Promise<void> {
-  await registerTheaterFromPath(path, true);
-  const current = getState();
-  if (current.theaterError !== null) return;
-  const label = current.theaters.find((theater) => theater.id === getViewedTheaterId())?.label;
-  if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
+  const commodoreId = mobileHomeCommodoreId();
+  try {
+    const theaterId = commodoreId ? await addCommodoreTheaterFromPath(commodoreId, path) : await registerTheaterFromPath(path, true);
+    if (!theaterId) return;
+    if (commodoreId) await refreshCommodoreList();
+    const label = commodoreId
+      ? readCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.find((row) => row.theaterId === theaterId)?.label
+      : getState().theaters.find((row) => row.id === theaterId)?.label;
+    if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
+  } catch (error) { showMobileToast(describeTheaterRegistrationError(error, t)); }
 }
 
 /** S-13 — 입력칸 하나. 저장하면 닫히고 토스트가 알린다. 빈 문자열은 저장하지 않는다. */
@@ -125,61 +125,34 @@ function RenameSheet({ state, objectiveId }: { readonly state: ConsoleState; rea
   );
 }
 
-/**
- * S-07 — 지금 Theater를 바꾼다. 고르면 시트를 닫고 홈 목록이 그 Theater의 대화로 바뀐다. 행을 길게 누르면 그 Theater의 동작 시트가
- * 위에 쌓인다(데스크톱 머리 메뉴와 같은 항목). 동작은 활성 Theater에 묶이지 않으므로 「지금 Theater」 묶음을 따로 두지 않는다.
- */
-function TheaterSheet({ state }: { readonly state: ConsoleState }) {
+/** 사령관 목록에서 전환한다. 빈 목록을 전역 Theater 등록부로 대체하지 않는다. */
+function TheaterSheet() {
   const t = useT();
   const commodores = useCommodoreList();
   const selected = useMobileCommodoreSelection();
   const cancel = () => popMobileSheet();
-  if (commodores.length > 0) {
-    return (
-      <MobileSheet title={t("sidebar.commodore.fallback")} onClose={cancel}>
-        {commodores.map((commodore) => {
-          const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
-          return (
-            <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
-              <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; if (home) setMobileListTheaterId(home); closeMobileSheets(); }}>
-                <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
-              </button>
-              <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>
-                <MobileIcon name="kebab" />
-              </button>
-            </div>
-          );
-        })}
-        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(requestCommodoreCreate)}>
-          <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
-          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
-        </button>
-        <div className="mobile-sheet-sep" role="separator" />
-        <p className="mobile-sheet-hint">{t("mobile.sheet.commodore.actionsHint")}</p>
-      </MobileSheet>
-    );
-  }
   return (
-    <>
-      <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
-        {state.theaters.map((theater) => {
-          const objectiveRecords = state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === theater.id);
-          const awaiting = objectiveRecords.filter((objectiveRecord) => resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) === "awaiting").length;
-          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === getViewedTheaterId()} count={objectiveRecords.length} awaiting={awaiting} />;
-        })}
-        <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })} disabled={state.addingTheater}>
-          <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
-          <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
-        </button>
-        {state.theaterError !== null ? <p className="mobile-sheet-error" role="alert">{state.theaterError}</p> : null}
-        {state.theaters.length > 0 ? (
-          <>
-            <div className="mobile-sheet-sep" role="separator" />
-            <p className="mobile-sheet-hint">{t("mobile.sheet.theater.actionsHint")}</p>
-          </>
-        ) : null}
-      </MobileSheet>
-    </>
+    <MobileSheet title={t("sidebar.commodore.fallback")} onClose={cancel}>
+      {commodores.map((commodore) => {
+        const label = commodoreSectionLabel(commodore, t("sidebar.commodore.fallback"));
+        return (
+          <div key={commodore.commodoreId} className="mobile-sheet-row is-theater is-split">
+            <button type="button" className="mobile-sheet-row-main" aria-current={selected === commodore.commodoreId ? "true" : undefined} onClick={() => { selectMobileCommodore(commodore.commodoreId); const home = commodore.theaters.find((theater) => theater.theaterId)?.theaterId ?? null; if (home) setMobileListTheaterId(home); closeMobileSheets(); }}>
+              <span className="mobile-sheet-row-copy"><strong>{label}</strong></span>
+            </button>
+            <button type="button" className="mobile-sheet-kebab" aria-label={t("sidebar.theater.actionsMenuAria", { theater: label })} onClick={() => pushMobileSheet({ kind: "custom", render: (dismiss) => <CommodoreRowActions commodoreId={commodore.commodoreId} label={label} alias={commodore.alias ?? ""} onClose={dismiss} /> })}>
+              <MobileIcon name="kebab" />
+            </button>
+          </div>
+        );
+      })}
+      <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(requestCommodoreCreate)}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
+      </button>
+      <div className="mobile-sheet-sep" role="separator" />
+      <p className="mobile-sheet-hint">{t("mobile.sheet.commodore.actionsHint")}</p>
+    </MobileSheet>
   );
 }
 
@@ -310,126 +283,6 @@ function CommodoreAliasSheet({ commodoreId, label, alias, onClose }: { readonly 
         onCancel={onClose}
         onApply={save}
       />
-    </MobileSheet>
-  );
-}
-
-/**
- * S-07의 Theater 한 줄. 누르면 전환하고, 길게 누르면(터치·펜) 그 Theater의 동작 시트를 연다. 우클릭·메뉴 키가 보내는 contextmenu도 같은
- * 시트를 연다 — Android는 길게 누르기에도 contextmenu를 보내므로 훅이 한 번만 열리게 거른다. 이름은 Theater 이름이다 — Theater 는 사령관을 정하지 않는다.
- */
-function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater: TheaterInfo; readonly here: boolean; readonly count: number; readonly awaiting: number }) {
-  const t = useT();
-  const openActions = () => pushMobileSheet({ kind: "theater-actions", theaterId: theater.id });
-  const longPress = useLongPress<HTMLButtonElement>(openActions);
-  const summary = `${t("mobile.sheet.theater.summary", { count })}${awaiting > 0 ? ` · ${t("mobile.sheet.theater.awaiting", { count: awaiting })}` : ""}`;
-  return (
-    <button
-      type="button"
-      className="mobile-sheet-row is-theater"
-      aria-current={here ? "true" : undefined}
-      onPointerDown={longPress.onPointerDown}
-      onPointerMove={longPress.onPointerMove}
-      onPointerUp={longPress.onPointerUp}
-      onPointerCancel={longPress.onPointerCancel}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        if (longPress.claimContextMenu(event)) return;
-        openActions();
-      }}
-      onClick={() => {
-        setMobileListTheaterId(theater.id);
-        closeMobileSheets();
-      }}
-    >
-      <span className="mobile-sheet-row-glyph"><TheaterGlyph size={22} /></span>
-      <span className="mobile-sheet-row-copy">
-        <strong>{theater.label}</strong>
-        <small className={awaiting > 0 ? "is-awaiting" : undefined}>{summary}</small>
-      </span>
-      {here ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
-    </button>
-  );
-}
-
-/**
- * S-07 행을 길게 누르면 서는 그 Theater의 동작 — 플러그인 행 · 목록에서 빼기. 이 시트는 사령관이 하나도 없을 때만 서므로
- * 사령관의 것(별칭·설정·그룹)은 사령관 시트(`CommodoreRowActions`)가 맡는다. Theater 에서 사령관을 찾지 않는다.
- */
-function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
-  const t = useT();
-  const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
-  const pluginRows = useTheaterSheetPluginRows(theater ? theater.id : null);
-  // 빼기·다른 창의 잊기로 Theater가 사라지면 시트도 걷는다.
-  useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
-  if (!theater) return null;
-  return (
-    <MobileSheet title={theater.label} onClose={popMobileSheet}>
-      {pluginRows.map((row) => (
-        <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
-          <span className="mobile-sheet-row-glyph">{row.icon}</span>
-          <span className="mobile-sheet-row-copy"><strong>{row.label}</strong></span>
-        </button>
-      ))}
-      {pluginRows.length > 0 ? <div className="mobile-sheet-sep" role="separator" /> : null}
-      <button type="button" className="mobile-sheet-row is-danger" onClick={() => pushMobileSheet({ kind: "forget", theaterId: theater.id })}>
-        <span className="mobile-sheet-row-glyph"><MobileIcon name="minus" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.forgetTheater")}</strong></span>
-      </button>
-    </MobileSheet>
-  );
-}
-
-interface TheaterSheetPluginRow { readonly id: string; readonly label: string; readonly icon: ReactNode; readonly run: () => void }
-
-/** 플러그인이 `TheaterContribution.mobileRow`로 거는 행 — `subscribe`의 변화에 맞춰 다시 읽고, 글이 같으면 다시 그리지 않는다. */
-function useTheaterSheetPluginRows(theaterId: string | null): readonly TheaterSheetPluginRow[] {
-  const { theaterContributions } = useFeatureRegistry();
-  const locale = useConsoleLocale();
-  const contributions = useMemo(() => theaterContributions.filter((contribution) => contribution.mobileRow !== undefined), [theaterContributions]);
-  const version = () => contributions.map((contribution) => theaterId === null ? "" : contribution.mobileRow?.get(theaterId, locale)?.label ?? "").join("\u0001");
-  const key = useSyncExternalStore(
-    (listener) => {
-      const disposers = contributions.flatMap((contribution) => contribution.mobileRow ? [contribution.mobileRow.subscribe(listener)] : []);
-      return () => { for (const dispose of disposers) dispose(); };
-    },
-    version,
-    version,
-  );
-  return useMemo(() => {
-    if (theaterId === null) return [];
-    return contributions.flatMap((contribution) => {
-      const row = contribution.mobileRow;
-      const value = row?.get(theaterId, locale);
-      return row && value ? [{ id: contribution.id, label: value.label, icon: value.icon, run: () => row.run(theaterId) }] : [];
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- key는 플러그인 행의 글이 바뀌었다는 신호다.
-  }, [contributions, locale, theaterId, key]);
-}
-
-/** S-17 — 목록에서 빼기 확인. 폴더와 파일은 지우지 않는다. 되돌리기는 앱의 삭제 토스트가 맡는다. */
-function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state: ConsoleState; readonly theaterId: string; readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void }) {
-  const t = useT();
-  const theater = state.theaters.find((item) => item.id === theaterId);
-  // 빼는 동안 Theater는 목록에서 먼저 사라진다 — 시트가 닫히기 전에 본문 이름이 비지 않게 마지막으로 본 이름을 붙든다.
-  const labelRef = useRef(theater?.label ?? "");
-  if (theater) labelRef.current = theater.label;
-  const [busy, setBusy] = useState(false);
-  const confirm = () => {
-    if (busy) return;
-    setBusy(true);
-    void forgetTheaterCompletely(theaterId).then((deletion) => { onDeferredDeletion(deletion); closeMobileSheets(); });
-  };
-  return (
-    <MobileSheet
-      title={t("mobile.sheet.forget.title")}
-      onClose={popMobileSheet}
-      footer={<>
-        <button type="button" className="mobile-pill-secondary" onClick={popMobileSheet}>{t("mobile.sheet.cancel")}</button>
-        <button type="button" className="mobile-pill-secondary is-danger" disabled={busy} onClick={confirm}>{t("mobile.sheet.forget.confirm")}</button>
-      </>}
-    >
-      <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: labelRef.current })}</p>
     </MobileSheet>
   );
 }

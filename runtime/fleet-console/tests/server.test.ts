@@ -1002,10 +1002,14 @@ describe("console static and terminal ticket boundary", () => {
     expect(group.group.commodoreId).toBe(freshId);
     const groups = await getJson(`${origin}/api/v1/objectives/records/groups?commodoreId=${freshId}`) as { groups: unknown[] };
     expect(groups.groups).toEqual([group.group]);
-    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
-    const two = await post("commodore/theaters/add", { commodoreId: freshId, theaterId: workspaceHash(registered) });
+    const addFolder = async (cwd: string) => {
+      const { folderGrantId } = await post("theaters/folder-grants", { path: cwd });
+      return post("commodore/theaters/add", { commodoreId: freshId, folderGrantId });
+    };
+    await addFolder(realpath);
+    const two = await addFolder(registered);
     expect(two.commodore.theaters).toHaveLength(2);
-    await post("commodore/theaters/add", { commodoreId: freshId, theaterId });
+    await addFolder(realpath);
     // 같은 폴더를 두 사령관이 특수 처리 없이 함께 쓴다 — 각자 자기 목록에 그 Theater 를 둔다.
     const sharing = ((await post("commodore/list", {})).commodores as readonly { commodoreId: string; theaters: readonly { theaterId: string }[] }[])
       .filter((row) => row.theaters.some((theater) => theater.theaterId === theaterId)).map((row) => row.commodoreId).sort();
@@ -1043,12 +1047,27 @@ describe("console static and terminal ticket boundary", () => {
       const fixture = await startFixture();
       await createTheater(fixture, first);
       expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true } } });
+      const origin = new URL(fixture.endpoint).origin;
+      const post = (route: string, body: unknown) => fetch(`${fixture.endpoint}api/v1/${route}`, { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) });
+      const { commodoreId } = await (await post("commodore/create", { alias: "Folder owner" })).json();
+      const before = await getJson(`${fixture.endpoint}api/v1/theaters`);
       const grant = await issueTheaterFolderGrant(fixture, second);
-      const response = await fetch(`${fixture.endpoint}api/v1/theaters`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderGrantId: grant.folderGrantId, claudeTrustConsent: true }),
-      });
+      expect((await post("commodore/theaters/add", { commodoreId, path: second })).status).toBe(400);
+      const response = await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId, claudeTrustConsent: true });
       expect(response.status).toBe(200);
+      const { theaterId } = await response.json();
+      expect((await post("commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId })).status).toBe(400);
+      expect(await getJson(`${fixture.endpoint}api/v1/theaters`)).toEqual(before);
+      const owner = (await (await post("commodore/list", {})).json()).commodores.find((row: { commodoreId: string }) => row.commodoreId === commodoreId);
+      expect(owner.theaters).toEqual([{ theaterId, label: "second", status: "available" }]);
+      const created = await post("objectives/records", { commodoreId, theaterId, title: "Unregistered folder" });
+      expect(created.status).toBe(201);
+      const record = (await created.json()).objectiveRecord;
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "commodore", commodoreId, "objectives", record.id, "objective.json"), "utf8"));
+      expect(saved.cwd).toBe(fs.realpathSync(second));
+      await post("commodore/theaters/remove", { commodoreId, theaterId });
+      expect(await getJson(`${fixture.endpoint}api/v1/theaters`)).toEqual(before);
+      expect(fs.existsSync(second)).toBe(true);
       expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({
         custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true }, [fs.realpathSync(second)]: { hasTrustDialogAccepted: true } },
       });

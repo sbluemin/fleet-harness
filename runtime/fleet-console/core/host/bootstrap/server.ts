@@ -1034,7 +1034,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const workspacePaths: WorkspacePaths = {
     fleetDataDir,
     consoleDataDir: durablePaths.dir,
-    resolveTheaterPath: (theaterId: string) => theaters.get(theaterId)?.realpath ?? null,
+    resolveTheaterPath: (theaterId: string) => theaters.get(theaterId)?.realpath
+      ?? ownership?.entities.resolveAll(theaterId).flatMap((id) => ownership!.entities.theatersOf(id)).find((row) => workspaceHash(row.path) === theaterId)?.path ?? null,
     resolveObjectivePath: (objectiveId) => {
       try {
         const node = objectiveRecords.get(objectiveId) ?? objectiveRecordArchive.describe(objectiveId)?.objectiveRecord;
@@ -2740,6 +2741,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
       commodore = createCommodoreFeature({
         ownership,
+        folderGrants,
         deletion: {
           claudeProjectsDirectory: path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), ".claude"), "projects"),
           preview: (id) => {

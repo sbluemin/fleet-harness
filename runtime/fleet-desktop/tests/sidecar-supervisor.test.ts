@@ -414,10 +414,8 @@ afterEach(async () => {
       return JSON.parse(text) as T;
     };
     const grant = await api<{ folderGrantId?: string; id?: string; grant?: { id: string } }>("/api/v1/theaters/folder-grants", { path: theater });
-    const created = await api<{ id?: string; theater?: { id: string } }>("/api/v1/theaters", { folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
-    const theaterId = created.id ?? created.theater?.id;
     const { commodoreId } = await api<{ commodoreId: string }>("/api/v1/commodore/create", { alias: "Lifecycle fixture" });
-    await api("/api/v1/commodore/theaters/add", { commodoreId, theaterId });
+    const { theaterId } = await api<{ theaterId: string }>("/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
     await api("/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
     await waitUntil(() => agentProcs().some((entry) => entry.role === "turn-open"), 20_000, "the chat turn did not open");
     const started = descendantsOf(consolePid);

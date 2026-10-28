@@ -256,10 +256,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       return response.json();
     };
     const grant = await writeLocal("theaters/folder-grants", "POST", { path: restarted.dir });
-    const theater = await writeLocal("theaters", "POST", { folderGrantId: grant.folderGrantId });
     const { commodoreId } = await writeLocal("commodore/create", "POST", { alias: "Remote seat fixture" });
-    await writeLocal("commodore/theaters/add", "POST", { commodoreId, theaterId: theater.id });
-    const { objectiveRecord } = await writeLocal("objectives/records", "POST", { commodoreId, theaterId: theater.id, type: "agent", pluginId: null, title: "before-idle", payload: {} });
+    const { theaterId } = await writeLocal("commodore/theaters/add", "POST", { commodoreId, folderGrantId: grant.folderGrantId });
+    const { objectiveRecord } = await writeLocal("objectives/records", "POST", { commodoreId, theaterId, type: "agent", pluginId: null, title: "before-idle", payload: {} });
     const idleStream = await openRemoteEvents(restarted, reopenedCookie);
     const secondIdleStream = await openRemoteEvents(restarted, reopenedCookie);
     const localStream = await openLoopbackEvents(restarted);
