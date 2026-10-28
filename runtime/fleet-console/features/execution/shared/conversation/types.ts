@@ -59,6 +59,11 @@ export interface ConversationDecision {
   readonly open?: () => void;
   /** 기존 보드 결정 제출 경로. 오래된 요청/전달 실패는 reject한다. */
   readonly answer?: (answers: readonly GroupDecisionAnswer[]) => Promise<void>;
+  /**
+   * 요청 전체를 「결정 안 함」으로 닫는 길 — 선택·입력 없이 그 요청을 닫는다. 보드 결정 요청에만 싣고, 사령관 질문 같은
+   * 다른 표면에는 싣지 않는다. 없으면 단추가 서지 않는다. 실패는 reject한다.
+   */
+  readonly decline?: { readonly label: LocalizedText; readonly run: () => Promise<void> };
   /** 지금 이 요청을 사람 대신 다루는 맡은 이의 한마디(예: 「사령관이 답하는 중」). 사람도 답할 수 있다. 머리 끝에 무채색으로 선다. */
   readonly handler?: LocalizedText;
   /**
@@ -144,9 +149,10 @@ export type GroupTimelineEntry = EntryCoordinate & (
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true }; readonly voicedAs?: ConversationMessageVia }
   /**
    * 사람이 결정 요청에 보낸 답 — 요청 하나에 한 줄, 답한 시각(`at`)의 자리에 선다. 질문마다 머리말(있으면)·질문·답(고른 선택지와 쓴 말).
+   * 「결정 안 함」으로 닫힌 요청의 줄은 질문마다 `declined` 가 서고 답은 빈 글이다.
    * 보드가 결정으로 남긴 답만 싣는다. 사람의 말과 같은 오른쪽 말풍선으로, 받는 이는 대화의 지휘관이다.
    */
-  | { readonly kind: "decision-answer"; readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string }[] }
+  | { readonly kind: "decision-answer"; readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string; readonly declined?: true }[] }
 );
 
 /** Objectives 등 플러그인이 기존 ObjectiveCluster 포트로 보내는 보드 사실. */
@@ -194,6 +200,8 @@ export interface GroupConversationActions {
   readonly send: (target: GroupMessageTarget, text: string, attachmentIds?: readonly string[]) => Promise<GroupWriteResult>;
   readonly stopAll: () => Promise<GroupWriteResult>;
   readonly answerDecision: (requestId: string, answers: readonly GroupDecisionAnswer[]) => Promise<void>;
+  /** 결정 요청 전체를 「결정 안 함」으로 닫는다. 오래된 요청/전달 실패는 reject한다. */
+  readonly declineDecision: (requestId: string) => Promise<void>;
   /** 보드 동작 — 입력창 위 제안 줄. 보드가 없는 대화(목표가 아닌 채팅)에는 없다. */
   readonly board?: GroupBoardActions;
 }

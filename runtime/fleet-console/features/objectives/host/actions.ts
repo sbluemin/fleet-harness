@@ -127,6 +127,8 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
       return launch.startCommander(body.objectiveId, { ...options(body), ...(body.routing ? { routing: body.routing } : {}) });
     },
     answer: holding(() => ["decision"], (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective)),
+    // 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 holding 으로 전달·잠금·중복 규칙을 함께 쓴다.
+    decline: holding(() => ["decision"], (body: Ref & { requestId: string }) => launch.declineDecision(body.objectiveId, { requestId: body.requestId }, options(body)).then(objective)),
     // 스티어링은 달성 표시를 거둬 검토 대기를 끝낸다.
     steer: holding(() => ["review"], (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective)),
     message: (body: Ref & { memberId?: string | null; text: string; attachmentIds?: readonly string[] }) => launch.message(body.objectiveId, body.memberId ?? null, body.text, options(body), body.attachmentIds),

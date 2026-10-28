@@ -37,6 +37,9 @@ export function objectiveConversationActions(objective: Objective): GroupConvers
     async answerDecision(requestId, answers) {
       await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
     },
+    async declineDecision(requestId) {
+      await request("/decision/decline", { objectiveId: objective.id, requestId });
+    },
     board: objectiveBoardActions(objective),
   };
 }

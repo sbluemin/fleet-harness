@@ -6,7 +6,7 @@ import { readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPrese
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
-import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -31,6 +31,12 @@ export interface CompactTarget {
   readonly woken: boolean;
   readonly reason?: string;
 }
+
+/**
+ * 기다리던 결정 요청에 사람이 낸 결론 — 보통 답이면 `{ answers }`, 요청 전체를 「결정 안 함」으로 닫았으면
+ * `{ declined: true }`. 닫기는 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아니다.
+ */
+export type DecisionOutcome = { readonly answers: readonly DecisionAnswer[] } | { readonly declined: true };
 
 export interface LaunchService {
   describe(): { readonly available: boolean };
@@ -132,10 +138,16 @@ export interface LaunchService {
    */
   answerDecision(objectiveId: string, input: DecisionAnswersInput, options?: LaunchOptions): Promise<Objective>;
   /**
-   * 지휘관이 방금 올린 요청의 답을 기다린다 — 그 안에 사람이 답하면 답을 돌려주고(프롬프트는 보내지 않고 결정으로 남긴다),
-   * 요청이 그새 정리됐으면 "cleared", 시한이 지나거나 호출이 끊기면 null 이다. null 뒤의 답은 지금처럼 프롬프트로 간다.
+   * 사람의 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 지휘관에게는 닫힌
+   * 사실을 「결정 안 함」 전달문으로 알린다(기다리던 `awaitDecision` 에는 `{ declined: true }` 로 건넨다).
    */
-  awaitDecision(objectiveId: string, requestId: string, waitMs: number, signal?: AbortSignal): Promise<readonly DecisionAnswer[] | "cleared" | null>;
+  declineDecision(objectiveId: string, input: { readonly requestId: string }, options?: LaunchOptions): Promise<Objective>;
+  /**
+   * 지휘관이 방금 올린 요청의 답을 기다린다 — 그 안에 사람이 답하면 답을 돌려주고(프롬프트는 보내지 않고 결정으로 남긴다),
+   * 「결정 안 함」으로 닫히면 `{ declined: true }` 를 돌려주고, 요청이 그새 정리됐으면 "cleared", 시한이 지나거나 호출이
+   * 끊기면 null 이다. null 뒤의 답·닫기는 지금처럼 프롬프트로 간다.
+   */
+  awaitDecision(objectiveId: string, requestId: string, waitMs: number, signal?: AbortSignal): Promise<DecisionOutcome | "cleared" | null>;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   /**
@@ -343,7 +355,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
 
   // 답을 기다리는 지휘관 도구 호출 — 목표·요청마다 하나. 답이 오면 프롬프트 대신 이 호출이 답을 받는다.
-  const decisionWaiters = new Map<string, (answers: readonly DecisionAnswer[] | "cleared" | null) => void>();
+  const decisionWaiters = new Map<string, (outcome: DecisionOutcome | "cleared" | null) => void>();
 
   // 같은 목표에 기동 요청이 겹치면 Objective 이 둘 뜬다 — 기동이 끝날 때까지 자리를 잡아 둔다.
   const pending = new Set<string>();
@@ -1761,7 +1773,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           decisionWaiters.delete(`${objectiveId}:${accepted.request.id}`);
           const settled = store.decisionSettle(objectiveId, accepted.request.id, true);
           store.setStopped(objectiveId, false);
-          waiter(accepted.answers);
+          waiter({ answers: accepted.answers });
           return settled;
         }
         try {
@@ -1779,12 +1791,44 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       } finally { pending.delete(key); }
     },
 
+    async declineDecision(objectiveId, input, options) {
+      // 같은 요청의 닫기가 이미 가는 중이다 — 두 번 닫으면 지휘관이 같은 닫힘을 두 번 받는다.
+      const key = `${objectiveId}:decision`;
+      if (pending.has(key)) throw new ObjectiveStoreError("decision_delivering");
+      pending.add(key);
+      try {
+        const declined = store.decisionDecline(objectiveId, input, options?.actor);
+        if (declined.recorded) return declined.objective;
+        // 지휘관이 이 요청의 답을 기다리는 중이다 — 닫힘을 도구 응답으로 건네고 결정으로 남긴다. 프롬프트는 보내지 않는다.
+        const waiter = decisionWaiters.get(`${objectiveId}:${declined.request.id}`);
+        if (waiter) {
+          decisionWaiters.delete(`${objectiveId}:${declined.request.id}`);
+          const settled = store.decisionSettle(objectiveId, declined.request.id, true);
+          store.setStopped(objectiveId, false);
+          waiter({ declined: true });
+          return settled;
+        }
+        try {
+          await accessObjective(objectiveId);
+          await control().request({ kind: "send", objectiveId: objectiveId, text: declinedDecisionTurn(declined.objective, declined.request, languageOf(options), options?.actor), display: "", displayFormat: "markdown" });
+          store.setStopped(objectiveId, false);
+          touchLive(objectiveId);
+        } catch (error) {
+          // 닿지 않았다 — 요청과 닫힘은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
+          store.decisionSettle(objectiveId, declined.request.id, false);
+          const reason = error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : undefined;
+          throw new ObjectiveStoreError("decision_delivery_failed", undefined, reason ? { reason } : {});
+        }
+        return store.decisionSettle(objectiveId, declined.request.id, true);
+      } finally { pending.delete(key); }
+    },
+
     awaitDecision(objectiveId, requestId, waitMs, signal) {
       if (waitMs <= 0 || signal?.aborted) return Promise.resolve(null);
       const key = `${objectiveId}:${requestId}`;
       return new Promise((resolve) => {
         let finished = false;
-        const finish = (value: readonly DecisionAnswer[] | "cleared" | null) => {
+        const finish = (value: DecisionOutcome | "cleared" | null) => {
           if (finished) return;
           finished = true;
           clearTimeout(timer);

@@ -362,6 +362,11 @@ export interface ObjectiveStore {
    * 사람의 답을 검증해 전달 중으로 둔다. 그 요청의 답이 이미 결정으로 남았으면 같은 답은 recorded, 다른 답은 거절한다.
    */
   decisionAccept(objectiveId: string, input: DecisionAnswersInput, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
+  /**
+   * 사람의 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 결정에는 질문마다
+   * `declined` 표시가 남는다. 이미 답으로 남은 요청은 닫지 않고 거절한다.
+   */
+  decisionDecline(objectiveId: string, input: { readonly requestId: string }, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest };
   /** 전달 결과 — 닿았으면 질문마다 결정을 쌓고 요청을 정리한다. 못 닿았으면 전달 중 표시만 거두고 요청은 남는다. */
   decisionSettle(objectiveId: string, requestId: string, delivered: boolean): Objective;
 }
@@ -2191,6 +2196,25 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { recorded: false, objective, request, answers };
     },
 
+    decisionDecline(objectiveId, input, by = "human") {
+      const { stored, node } = locate(objectiveId);
+      // 이미 결정으로 남은 요청 — 「결정 안 함」으로 닫힌 요청의 닫기 재전송은 그 결과를, 답이 남은 요청의 닫기는 거절한다.
+      const recorded = (stored.decisions ?? []).filter((decision) => decision.requestId === input.requestId);
+      if (recorded.length > 0) {
+        if (!recorded.every((decision) => decision.declined === true)) throw new ObjectiveStoreError("decision_already_submitted");
+        return { recorded: true, objective: project(stored, node) };
+      }
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      const request = stored.decisionRequest;
+      if (!request || request.id !== input.requestId) throw new ObjectiveStoreError("decision_request_changed");
+      if (delivering.has(request.id)) throw new ObjectiveStoreError("decision_delivering");
+      // 답 검증을 거치지 않는다 — 빈 답을 질문마다 실어 보내고, 「결정 안 함」 표식으로 닫힌 것임을 남긴다.
+      const answers: DecisionAnswer[] = request.questions.map((question) => ({ questionId: question.id, selectedOptionIds: [], text: "" }));
+      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, declined: true, at: now(), by } }));
+      delivering.add(request.id);
+      return { recorded: false, objective, request };
+    },
+
     decisionSettle: (objectiveId, requestId, delivered) => {
       // 보내기는 끝났다 — 기록이 실패해도 이 요청을 더는 「보내는 중」으로 붙들지 않는다.
       delivering.delete(requestId);
@@ -2199,13 +2223,15 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!delivery || delivery.requestId !== requestId) return stored;
       const request = stored.decisionRequest?.id === requestId ? stored.decisionRequest : null;
       if (!delivered || !request) return { ...stored, decisionDelivery: undefined };
-      // 지휘관에게 닿았다 — 질문마다 답한 순간의 사본으로 결정 한 건. 요청은 정리된다.
+      // 지휘관에게 닿았다 — 질문마다 답한 순간의 사본으로 결정 한 건. 요청은 정리된다. 「결정 안 함」으로 닫힌 요청은
+      // 질문마다 `declined` 표시가 남고, 답(고른 것·쓴 말)은 비어 있다.
       const decisions: Decision[] = request.questions.map((question) => {
         const answer = delivery.answers.find((entry) => entry.questionId === question.id)!;
         return {
           id: randomUUID(), requestId, questionId: question.id,
           question: { ...(question.header ? { header: question.header } : {}), text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
           answer: { selectedOptionIds: [...answer.selectedOptionIds], text: answer.text },
+          ...(delivery.declined === true ? { declined: true as const } : {}),
           at: delivery.at, by: delivery.by ?? "human",
           ...(question.missionId ? { missionId: question.missionId } : {}),
           ...(question.memberId ? { memberId: question.memberId } : {}),

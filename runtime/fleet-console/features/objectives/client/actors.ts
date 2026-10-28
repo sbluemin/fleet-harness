@@ -77,8 +77,8 @@ export function nonHumanEditors(t: T, actors: readonly ObjectiveActor[] | undefi
   return [...new Set(names)];
 }
 
-/** 출처의 「최근 조작」이 읽는 한 행위 — 보드 행위 기록의 종류이거나 결정 답변, 또는 사람의 맡기기·돌려받기. */
-export type ObjectiveAct = ObjectiveActionKind | "answer" | "delegate" | "take-back";
+/** 출처의 「최근 조작」이 읽는 한 행위 — 보드 행위 기록의 종류이거나 결정 답변·「결정 안 함」 닫기, 또는 사람의 맡기기·돌려받기. */
+export type ObjectiveAct = ObjectiveActionKind | "answer" | "decline" | "delegate" | "take-back";
 
 /**
  * 이 목표를 마지막으로 손댄 행위 — 보드 행위 기록과 결정 답변(행위 기록 밖의 결정 기록) 가운데 가장 늦은 것. 추가는 행위가
@@ -91,7 +91,7 @@ export type ObjectiveAct = ObjectiveActionKind | "answer" | "delegate" | "take-b
 export function lastAct(objective: Objective): { readonly by: ObjectiveActor; readonly act: ObjectiveAct; readonly at: number } | null {
   let latest: { by: ObjectiveActor; act: ObjectiveAct; at: number } | null = null;
   for (const action of objective.actions ?? []) if (!latest || action.at >= latest.at) latest = { by: action.by, act: operatorAct(objective, action) ?? action.kind, at: action.at };
-  for (const decision of objective.decisions) if (!latest || decision.at > latest.at) latest = { by: decision.by ?? "human", act: "answer", at: decision.at };
+  for (const decision of objective.decisions) if (!latest || decision.at > latest.at) latest = { by: decision.by ?? "human", act: decision.declined === true ? "decline" : "answer", at: decision.at };
   return latest;
 }
 

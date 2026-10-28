@@ -57,12 +57,12 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const labels = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
     if (typeof decision.by === "object" && decision.by.kind === "commodore") {
       events.push({
-        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: boardAct("answer"),
+        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: boardAct(decision.declined === true ? "decline" : "answer"),
         text: [decision.question.text, ...labels, decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
       });
       continue;
     }
-    const answer = { ...(decision.question.header ? { header: decision.question.header } : {}), question: decision.question.text, answer: [...labels, ...(decision.answer.text ? [decision.answer.text] : [])].join(", ") };
+    const answer = { ...(decision.question.header ? { header: decision.question.header } : {}), question: decision.question.text, answer: [...labels, ...(decision.answer.text ? [decision.answer.text] : [])].join(", "), ...(decision.declined === true ? { declined: true as const } : {}) };
     const entry = answered.get(decision.requestId);
     answered.set(decision.requestId, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${decision.requestId}`, at: decision.at, answers: [answer] });
   }
@@ -82,6 +82,8 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
     ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
+    // 「결정 안 함」 닫기는 보드 결정 요청에만 단다 — 사령관 질문 카드(같은 DecisionCard를 쓰는 다른 표면)에는 서지 않는다.
+    ...(actions ? { decline: { label: localized((t) => t("objectives.decision.decline")), run: () => actions.declineDecision(request.id) } } : {}),
     ...(handler ? { handler: localized((t) => t("objectives.autonomy.note.answering")) } : {}),
     ...(handedHold ? { handed: {
       label: localized((t) => t("objectives.decision.handed")), reason: handedHold.reason,

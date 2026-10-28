@@ -950,7 +950,7 @@ function DecisionAnswerLine({ entry, asker, language }: {
           <div key={at} className="group-card-settled-item">
             {answer.header ? <span className="group-card-header">{answer.header}</span> : null}
             <span className="group-card-settled-q">{answer.question}</span>
-            <span>{answer.answer}</span>
+            <span>{answer.declined === true ? t("group.decision.declined") : answer.answer}</span>
           </div>
         ))}
       </div>
