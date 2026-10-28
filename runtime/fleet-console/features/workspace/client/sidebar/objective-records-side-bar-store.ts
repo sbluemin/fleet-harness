@@ -17,6 +17,8 @@ interface SideBarState {
    * 창을 넓히면 사람이 정한 폭으로 돌아온다. 사이드바는 접히지 않는다 — 늘 그 자리에 선다.
    */
   readonly compact: boolean;
+  /** 대화 폭 요청을 제외한 창 자체의 compact 판정. 목록 위치의 순환을 끊는 기준이다. */
+  readonly viewportCompact: boolean;
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.objectiveRecords.side-width";
@@ -39,11 +41,13 @@ function readCompact(): boolean {
 const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
+let conversationCompact = false;
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
   compactWidth: readCompactWidth(),
   compact: readCompact(),
+  viewportCompact: readCompact(),
 };
 if (typeof window !== "undefined") {
   subscribeDesktopZoomFactor(() => {
@@ -53,9 +57,9 @@ if (typeof window !== "undefined") {
     notifyListeners();
   });
   window.addEventListener("resize", () => {
-    const compact = readCompact();
-    if (sideBarState.compact === compact) return;
-    sideBarState = { ...sideBarState, compact };
+    const viewportCompact = readCompact();
+    if (sideBarState.viewportCompact === viewportCompact) return;
+    sideBarState = { ...sideBarState, viewportCompact, compact: viewportCompact || conversationCompact };
     notifyListeners();
   });
 }
@@ -77,6 +81,15 @@ export function setSideBarWidth(width: number): void {
   try {
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_WIDTH, String(clamped));
   } catch { /* ignore */ }
+  notifyListeners();
+}
+
+/** 펼친 채팅 목록의 자리 요청. 사람이 정한 폭은 저장소·메모리 어느 쪽에서도 바꾸지 않는다. */
+export function setSideBarConversationCompact(compact: boolean): void {
+  conversationCompact = compact;
+  const next = sideBarState.viewportCompact || compact;
+  if (sideBarState.compact === next) return;
+  sideBarState = { ...sideBarState, compact: next };
   notifyListeners();
 }
 
