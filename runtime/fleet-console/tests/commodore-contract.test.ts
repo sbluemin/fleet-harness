@@ -1076,9 +1076,15 @@ describe("commodore supervisor", () => {
     h.store.setDirective("t1", "Keep routines scoped.");
     const sent: string[] = [];
     let fail = false;
+    let holdTurn = false;
+    let finishTurn: (() => void) | undefined;
     const agent: AgentHost = { createSession: async (options) => ({
-      send: async (input) => { sent.push(input as string); options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) }); },
-      steer: () => false, cancel() {}, dispose: async () => {},
+      send: async (input) => {
+        sent.push(input as string);
+        if (holdTurn) await new Promise<void>((resolve) => { finishTurn = resolve; });
+        options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
+      },
+      steer: () => false, cancel() { finishTurn?.(); }, dispose: async () => {},
     }) };
     const make = (store = h.store) => createHostSupervisor({ store, agent, experiments: h.experiments, theaterIds: () => [], cwd: () => h.objectivesDir, theater: () => null,
       board: () => ({ tools: () => [], watch: () => ({ dispose() {}, recount: () => new Map(), emptyOperated: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }), emit: () => {},
@@ -1126,15 +1132,26 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(TEST_HOUR_MS + COALESCE_MS);
       expect(sent).toHaveLength(5);
       expect(sent.at(-1)).toContain("Read issues: Check the issue source");
-      // 일회성은 목록에서 사라져도 실패한 턴의 이유를 재시도에서 잃지 않는다.
+      // 일회성은 목록에서 사라져도 턴 중 다른 루틴이 깨운 뒤 실패하면 두 할 일을 함께 재시도한다.
       fail = true;
-      restored.routineAdd("t1", { name: "Retry once", task: "Retry this task", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      holdTurn = true;
+      const retryOnce = restored.routineAdd("t1", { name: "Retry once", task: "Retry this task", schedule: { kind: "once", at: Date.now() + 1_000 } });
       await vi.advanceTimersByTimeAsync(1_000 + COALESCE_MS + 1);
       expect(sent).toHaveLength(6);
+      expect(supervisor.status("t1")?.phase).toBe("turn");
+      expect(restored.read("t1")?.routines?.some((r) => r.id === retryOnce.id)).toBe(false);
+      restored.routineAdd("t1", { name: "Concurrent routine", task: "Keep this new task too", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(sent).toHaveLength(6);
+      expect(supervisor.status("t1")?.phase).toBe("turn");
+      holdTurn = false;
+      finishTurn!();
+      await vi.advanceTimersByTimeAsync(1);
       expect(supervisor.status("t1")?.phase).toBe("retrying");
       fail = false;
       await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
       expect(sent).toHaveLength(7);
+      expect(sent.at(-1)).toContain("Concurrent routine: Keep this new task too");
       expect(sent.at(-1)).toContain("Retry once: Retry this task");
       // 요일·지역 시각의 달력 일정도 같은 깨움 경계를 통과한다.
       const daily = new Date(Date.now() + 2 * 60_000); daily.setSeconds(0, 0);

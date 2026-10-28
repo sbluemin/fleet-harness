@@ -505,7 +505,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         return;
       }
       if (outcome.outcome !== "ok") {
-        for (const [code, reason] of pending) if (!runner.pending.has(code)) runner.pending.set(code, reason);
+        for (const [code, reason] of pending) {
+          const existing = runner.pending.get(code);
+          if (!existing) runner.pending.set(code, reason);
+          else if (code === "routine") {
+            // 턴 중 새 루틴이 깨웠어도 이미 소비한 일회성의 실패 시도를 잃지 않는다.
+            existing.routines = [...new Map([...(reason.routines ?? []), ...(existing.routines ?? [])].map((attempt) => [attempt.id, attempt])).values()];
+          }
+        }
         runner.messages.unshift(...messages);
         if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
         // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
