@@ -354,45 +354,42 @@ describe("openui hydrator containment", () => {
 
   // 답 전송은 사람의 클릭으로만 일어나야 한다 — 그리기·스크립트 click·흐르는 중 블록은 포트에 닿지 않는다.
   // jsdom은 사람의 클릭(isTrusted)을 만들 수 없으므로 1회 전송·중복 방지 양성 경로는 실앱 검증이 맡는다.
+  // 은퇴한 선택지(Choices)는 옛 기록에서도 전송 경로가 되지 않는다 — 카드와 형제는 그리되 선택지 단추는 없다.
   it("lets answer buttons reach the reply port only through a person's click on a finished block", async () => {
     const reply = vi.fn();
-    const choices = 'c = Choices([Choice("A · 시안", "A로 가 주세요"), Choice("<b>B</b>", "<img src=x onerror=alert(1)>")])';
-    const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c, Button("요약 요청", @ToAssistant("요약해 주세요"))])', choices, "```"].join("\n"), { reply });
+    const choices = 'c = Choices([Choice("A · 시안", "A로 가 주세요", "이유", "결과"), Choice("<b>B</b>", "<img src=x onerror=alert(1)>")])';
+    const [finished] = await hydrated(["```openui-lang", 'root = Card("다음", [c, Button("요약 요청", @ToAssistant("요약해 주세요")), Button("<b>B</b>", @ToAssistant("<img src=x onerror=alert(1)>"))])', choices, "```"].join("\n"), { reply });
 
     expect(finished!.dataset.openuiState).toBe("rendered");
-    const buttons = [...finished!.querySelectorAll<HTMLButtonElement>("button.openui-button")];
+    expect(finished!.querySelector(".openui-title")?.textContent).toBe("다음");
+    const owned = finished!.querySelector("[data-openui-owned]")!;
+    expect(owned.textContent).not.toContain("A · 시안");
+    const buttons = [...owned.querySelectorAll<HTMLButtonElement>("button")];
     expect(buttons.map((button) => [button.textContent, button.title, button.disabled])).toEqual([
-      ["A · 시안", "A로 가 주세요", false],
-      ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
       ["요약 요청", "요약해 주세요", false],
+      ["<b>B</b>", "<img src=x onerror=alert(1)>", false],
     ]);
     expect(finished!.querySelector("b, img")).toBeNull();
     buttons[0]!.click();
     buttons[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    buttons[2]!.click();
     expect(reply).not.toHaveBeenCalled();
 
     // 입력창이 없는 자리(포트 없음)는 정적 칩, 흐르는 중인 블록은 잠긴다.
-    const [readOnly] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices, "```"].join("\n"));
+    const ask = 'root = Card("다음", [Button("요약 요청", @ToAssistant("요약해 주세요"))])';
+    const [readOnly] = await hydrated(["```openui-lang", ask, "```"].join("\n"));
     expect([...readOnly!.querySelectorAll("button.openui-button")].every((button) => button.getAttribute("aria-disabled") === "true")).toBe(true);
-    const [streaming] = await hydrated(["```openui-lang", 'root = Card("다음", [c])', choices].join("\n"), { streaming: true, reply });
+    const [streaming] = await hydrated(["```openui-lang", ask, 'x = Tag("a")'].join("\n"), { streaming: true, reply });
     expect(streaming!.getAttribute("data-openui-final")).toBe("0");
     expect([...streaming!.querySelectorAll<HTMLButtonElement>("button.openui-button")].every((button) => button.disabled)).toBe(true);
 
-    const decision = 'root = Card("결정", [Choices([Choice("A", "A로 진행", "짧은 이유", "결과"), Choice("B", "B로 진행")])])';
-    const [options] = await hydrated(["```openui-lang", decision, "```"].join("\n"), { reply });
-    expect(options!.querySelectorAll(".openui-option")).toHaveLength(2);
-    expect(options!.querySelector<HTMLButtonElement>(".openui-option")?.title).toBe("A로 진행");
-    options!.querySelector<HTMLButtonElement>(".openui-option")!.click();
     const refused = await hydrated([
-      ["```openui-lang", 'root = Card("x", [Choices([Choice("명령", "/clear"), Choice("B", "B")])])', "```"].join("\n"),
-      ["```openui-lang", 'root = Card("x", [Choices([Choice("멘션", "확인 @누군가"), Choice("B", "B")])])', "```"].join("\n"),
-      ["```openui-lang", `root = Card("x", [Choices([Choice("A", "A", "${"가".repeat(121)}"), Choice("B", "B")])])`, "```"].join("\n"),
-      ["```openui-lang", `root = Card("x", [Choices([Choice("긴 답", "${"가".repeat(201)}"), Choice("B", "B")])])`, "```"].join("\n"),
+      ["```openui-lang", 'root = Card("x", [Button("명령", @ToAssistant("/clear"))])', "```"].join("\n"),
+      ["```openui-lang", 'root = Card("x", [Button("멘션", @ToAssistant("확인 @누군가"))])', "```"].join("\n"),
+      ["```openui-lang", `root = Card("x", [Button("긴 답", @ToAssistant("${"가".repeat(201)}"))])`, "```"].join("\n"),
     ].join("\n\n"));
     const [hidden] = await hydrated(['```openui-lang', 'root = Card("x", [Button("요약", @ToAssistant("요약해 주세요", "숨은 문맥"))])', '```'].join("\n"), { reply });
     expect(hidden!.dataset.openuiState).toBe("fallback");
-    expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback", "fallback", "fallback"]);
+    expect(refused.map((block) => block.dataset.openuiState)).toEqual(["fallback", "fallback", "fallback"]);
     expect(reply).not.toHaveBeenCalled();
 
     // 말 속 원시 HTML의 표식을 정제가 걷는다. 정제를 우회해 소유 칸 안에 들어온 위조 단추도 React 클릭 클로저가 없다.
@@ -514,7 +511,7 @@ describe("openui hydrator containment", () => {
     const refused = await hydrated([
       '/compact {pr}', '@x {pr}', 'PR {missing} 병합', 'PR 병합', 'PR {pr}\\n병합',
     ].map((template) => ["```openui-lang", `root = Card("x", [Form([Input("pr", "PR")], "${template}", "보내기")])`, "```"].join("\n")).concat([
-      ["```openui-lang", 'root = Card("x", [Choices([Choice("A", "A"), Choice("B", "B")]), Form([Input("pr", "PR")], "PR {pr}", "보내기")])', "```"].join("\n"),
+      ["```openui-lang", 'root = Card("x", [Form([Input("a", "A")], "A {a}", "보내기"), Form([Input("pr", "PR")], "PR {pr}", "보내기")])', "```"].join("\n"),
     ]).join("\n\n"));
     expect(refused.every((candidate) => candidate.dataset.openuiState === "fallback")).toBe(true);
   });

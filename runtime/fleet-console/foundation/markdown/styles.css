@@ -1023,41 +1023,21 @@ code.hljs {
 .openui-delta-label, .openui-delta-before { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .openui-delta-after { color: var(--tone, var(--text-primary)); min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .openui-delta-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-/* 단추 — Console .fc-btn 문법(반경 xs). 답·결정·폼 제출은 보낸다, 링크 단추는 연다 */
-.openui-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* 단추 — Console .fc-btn 문법(반경 xs). 답·폼 제출은 보낸다, 링크 단추는 연다 */
 .openui-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: calc(var(--font-content-size) * 0.928571); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background var(--duration-fast), border-color var(--duration-fast); }
 .openui-button:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
 .openui-button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .openui-button:disabled, .openui-button[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .openui-button.is-primary { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
 .openui-button[aria-pressed="true"] { opacity: 1; border-color: var(--brass); background: var(--quiet-choice-fill); color: var(--brass-ink); }
-.openui-button[aria-pressed="true"]::before, .openui-option[aria-pressed="true"] .openui-option-mark::before { content: "✓" / ""; }
+.openui-button[aria-pressed="true"]::before { content: "✓" / ""; }
 .openui-button-tail { font-weight: var(--weight-regular); color: var(--openui-muted); font-size: 0.92em; }
 .openui-button-tail::after { content: " ↗" / ""; }
 .openui-button-tail.is-internal::after { content: none; }
 .openui-inert { overflow-wrap: anywhere; display: inline-flex; gap: 6px; align-items: baseline; color: var(--text-secondary); font-size: calc(var(--font-content-size) * 0.928571); }
 :root[data-view-mode="mobile"] .openui-button, [data-mobile-surface] .openui-button { height: 40px; }
-/* 결정 행 — Lists "Clickable" 문법: 행 사이 헤어라인, 오른쪽 › , 누르면 보낸다 */
-.openui-decision { display: flex; flex-direction: column; }
-.openui-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 0.75em; width: 100%; padding: 0.6em 0.5em; margin: 0 -0.5em; border: 0; border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; text-align: left; color: var(--text-primary); cursor: pointer; }
-.openui-option + .openui-option { border-top: 1px solid var(--hairline); border-radius: 0; }
-.openui-option:hover:not(:disabled, [aria-disabled="true"]) { background: var(--control-rest-hover); }
-.openui-option:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-.openui-option:disabled, .openui-option[aria-disabled="true"] { cursor: default; opacity: var(--control-disabled-opacity); }
-.openui-option[aria-pressed="true"] { opacity: 1; background: var(--quiet-choice-fill); color: var(--brass-ink); }
-.openui-option[aria-pressed="true"] .openui-option-label { color: var(--brass-ink); }
-.openui-option-text { display: flex; flex-direction: column; min-width: 0; }
-.openui-option-label { font-weight: var(--weight-medium); }
-.openui-option-why { color: var(--text-secondary); }
-.openui-option-effect { color: var(--openui-muted); }
-.openui-option-effect::before { content: "→ " / ""; }
-.openui-option-mark { color: var(--openui-muted); }
-.openui-option-mark::before { content: "›" / ""; font-size: 1.2em; }
-.openui-option[aria-pressed="true"] .openui-option-mark { color: var(--brass-ink); }
 /* 호버·선택 면에서는 보조 글자만 더 밝힌다. 주 라벨·선택 표식의 강조 잉크와 라이트 값은 유지한다. */
-.openui-button:hover:not(:disabled, [aria-disabled="true"]), .openui-option:hover:not(:disabled, [aria-disabled="true"]),
-.openui-button[aria-pressed="true"], .openui-option[aria-pressed="true"] { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 40%, var(--text-secondary))); }
-:root[data-view-mode="mobile"] .openui-option, [data-mobile-surface] .openui-option { min-height: 44px; }
+.openui-button:hover:not(:disabled, [aria-disabled="true"]), .openui-button[aria-pressed="true"] { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 40%, var(--text-secondary))); }
 /* 폼 — 데모 입력칸: 1px 테두리 · 반경 xs · 옅은 면 */
 .openui-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(12em, 1fr)); gap: 0.75em 1em; }
 .openui-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
