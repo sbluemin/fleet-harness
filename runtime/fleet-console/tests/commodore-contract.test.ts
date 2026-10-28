@@ -1240,21 +1240,28 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(settleWait * 2);
       expect(sessions).toHaveLength(beforeRestart);
       expect(wakes()).toHaveLength(beforeWakes);
-      // 실제 작업 후 다시 멈추면 같은 보드라도 평시 settled 로 깨운다.
+      // 자동 재개 턴이 돌고 끝나도 보드가 같으면 재기동만의 깨움이다. 보드가 앞으로 간 뒤의 쉼만 평시처럼 깨운다.
       commanderActivity = "running";
       await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS);
       commanderActivity = "idle";
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(beforeRestart);
+      expect(wakes()).toHaveLength(beforeWakes);
+      for (const objective of objectives) Object.assign(objective, { boardUpdatedAt: Date.now() });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions).toHaveLength(beforeRestart + 1);
       expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:3"] });
       sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
       await supervisor.dispose();
-      // 점검 사이에 끝난 짧은 지휘관 턴도 restClock 의 revision 으로 알아본다.
+      // 점검 사이 짧은 재개 턴도 보드 불변이면 깨우지 않는다 — 세션 revision 은 보드의 전진이 아니다.
       objectives.splice(1);
       supervisor = make(); supervisor.sync("restart");
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions).toHaveLength(beforeRestart + 1);
       revision++;
+      await vi.advanceTimersByTimeAsync(settleWait);
+      expect(sessions).toHaveLength(beforeRestart + 1);
+      Object.assign(running, { boardUpdatedAt: Date.now() });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions).toHaveLength(beforeRestart + 2);
       expect(wakes().at(-1)).toMatchObject({ reasons: ["settled:1"] });

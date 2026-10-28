@@ -78,11 +78,14 @@ export interface CommodoreBoardWatchDeps {
 /** 보드와 같은 대기·운영·정체 규칙. 사령관 feature에는 정규화한 깨움만 보낸다. */
 export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodoreId: string, sink: CommodoreWakeSink): CommodoreBoardWatch {
   const now = deps.now ?? Date.now;
-  // 감시 이전의 쉼은 작업 뒤의 쉼이 아니다. 복원된 세션이 실제로 움직이기 전에는 대기 항목만 깨운다.
-  const startupRest = new Map(deps.objectives(commodoreId).map((objective) => [objective.id, deps.observe?.(objective.id)]));
   const cleanups: (() => void)[] = [];
   let disposed = false;
   const runner: Runner = { commodoreId, seen: waitingKeys(deps.objectives(commodoreId), deps.observe), statuses: statusMap(deps.objectives(commodoreId)), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, selfWrites: new Map(), moves: new Map(), idleSince: new Map(), settledAt: new Map(), restSince: new Map(), blockedHeard: new Map() };
+  // 감시 이전부터 멈춘 보드는 이미 들은 자리다. 자동 재개 턴이 돌아도 보드가 그대로면 다시 깨우지 않는다.
+  // 미처리 대기는 이전 보고 여부와 무관하게 다시 깨워야 하므로 서명을 채우지 않는다. 사람 몫 대기는 제외한다.
+  if (deps.observe) for (const objective of deps.objectives(commodoreId)) {
+    if (groupIdle(objective, deps.observe) && !waitingReasons(objective, deps.observe).some((reason) => !heldForPerson(objective, reason))) runner.settledAt.set(objective.id, boardSignature(objective));
+  }
   const wake = (_runner: Runner, code: WakeCode, input?: Parameters<CommodoreWakeSink["wake"]>[1]) => sink.wake(code, input);
   const forgetStatus = (_runner: Runner, objectiveId: string) => sink.forget(objectiveId);
   const publish = (runner: Runner) => sink.stalledChanged([...runner.stalledReported]);
@@ -218,23 +221,12 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       open.add(objective.id);
       forgetBlocked(runner, objective);
       const commander = observe(objective.id);
-      if (startupRest.has(objective.id)) {
-        const previous = startupRest.get(objective.id);
-        // live 복원만으로는 작업을 증명하지 않는다. 실제 작업 관측 또는 live 세션의 쉼 시계 변경은
-        // 재개 뒤의 턴을 증명한다 — restClock 은 점검 사이에 끝난 짧은 턴도 revision 으로 구별한다.
-        const worked = (previous?.lifecycle === "live" && (previous.activity === "running" || previous.activity === "background")) || commanderWorking(observe, objective.id) || objective.members.some((member) => member.sessionName !== null && commanderWorking(observe, member.id));
-        const turned = previous?.lifecycle === "live" && commander?.lifecycle === "live" && previous.restingSince !== undefined && commander.restingSince !== undefined && previous.restingSince !== commander.restingSince;
-        if (worked || turned) { startupRest.delete(objective.id); runner.idleSince.delete(objective.id); }
-        else startupRest.set(objective.id, commander);
-      }
       if (commander && commanderResting(commander)) { if (!runner.restSince.has(objective.id)) runner.restSince.set(objective.id, at); }
       else runner.restSince.delete(objective.id);
       if (!groupIdle(objective, observe)) { runner.idleSince.delete(objective.id); blocked(runner, objective, observe, at); continue; }
       const since = runner.idleSince.get(objective.id) ?? (seeded ? at - SETTLE_MS : at);
       runner.idleSince.set(objective.id, since);
       if (at - since < SETTLE_MS) continue;
-      // 억제한 진행 상태는 들은 보드로 기록하지 않는다 — 나중에 같은 보드로 재개·휴식하거나 대기 항목이 서도 깨워야 한다.
-      if (startupRest.has(objective.id) && !waitingReasons(objective, observe).some((reason) => !heldForPerson(objective, reason))) continue;
       const signature = boardSignature(objective);
       if (runner.settledAt.get(objective.id) === signature) continue;
       runner.settledAt.set(objective.id, signature);
@@ -243,7 +235,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       if ((runner.selfWrites.get(objective.id) ?? 0) >= at) continue;
       if (awaitsCommodore(objective, observe)) wake(runner, "settled", { bump: true, detail: `"${objective.title}"`, objectiveId: objective.id });
     }
-    for (const map of [runner.idleSince, runner.settledAt, runner.restSince, runner.blockedHeard, startupRest]) for (const id of [...map.keys()]) if (!open.has(id)) map.delete(id);
+    for (const map of [runner.idleSince, runner.settledAt, runner.restSince, runner.blockedHeard]) for (const id of [...map.keys()]) if (!open.has(id)) map.delete(id);
   };
   // 막힌 항목 — 구성원이 일해 그룹이 대기 중이 되지 않는데 지휘관이 `BLOCK_MS` 쉬었고, 사령관이 풀어야 나아가는 항목(기준 제안·개시
   // 대기·검토와 그 후속 후보)이 서 있으면 항목마다 한 번 깨운다. 같은 점검에서 선 항목은 한 턴으로 모인다. 그때의 보드 서명을 들은
