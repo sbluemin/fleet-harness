@@ -54,6 +54,31 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
     return rows.find((row) => paths.workspaceHash(row.path) === theaterId)?.path
       ?? rows.find((row) => registeredFor(row.path).includes(theaterId))?.path ?? null;
   };
+  // objectives()는 기동 중 수천 번 불린다. 복원 루프가 owner마다 전체 목록을 처음부터
+  // 다시 계산하므로(사령관 수 x 목표 수), 같은 스냅샷 안에서는 결과를 재사용한다.
+  // 무효화는 generation 비교로 정확히 한다: 사령관 색인(ids·Theater 행)이나 Theater
+  // 등록(id 집합·id→경로)이 바뀌면 키가 달라져 다시 계산한다. 둘 다 메모리 상태라
+  // 키 계산은 fs를 건드리지 않는다. registeredFor의 내부 의미는 건드리지 않는다 —
+  // canonical realpath 같은 파일시스템 상태는 아래 TTL 안에서만 재사용한다(#2091의
+  // canonical 캐시와 같은 5초 bound). 기동 후 런타임 추가/삭제는 entities API와
+  // Theater 등록을 거치므로 generation이 바뀌어 즉시 반영된다.
+  const entitiesGeneration = (): string =>
+    [...entities.ids()].sort().map((id) => `${id}\u0000${entities.theatersOf(id).map((row) => row.path).join("\u0000")}`).join("\u0001");
+  const registryGeneration = (): string => {
+    const ids = paths.listTheaterIds?.() ?? [];
+    return [...ids].sort().map((id) => `${id}\u0000${paths.resolveTheaterPath(id) ?? ""}`).join("\u0001");
+  };
+  const computeObjectives = () => entities.ids().flatMap((id) => {
+    const directory = entities.dirOf(id);
+    if (!directory) return [];
+    const rows = entities.theatersOf(id);
+    const root = rows.length === 1 ? rows[0]!.path : undefined;
+    const linkId = root ? paths.workspaceHash(root) : "";
+    return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: root ? [...new Set([linkId, ...registeredFor(root)])] : [], legacyCwd: root ?? "", theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
+  });
+  let objectivesGeneration = "";
+  let objectivesComputedAt = 0;
+  let objectivesCache: ReturnType<typeof computeObjectives> | null = null;
   const blocked = (root: string) => migration.blockedPaths.has(root) || workspaceDirectoryNames(root).some((name) => migration.blockedWorkspaceNames.has(name));
   const issueIfReady = (theaterId: string): string => {
     const root = paths.resolveTheaterPath(theaterId);
@@ -131,13 +156,15 @@ export function createCommodoreOwnership(paths: WorkspacePaths) {
       catch { throw new Error("objective_location_unavailable"); }
       return { commodoreId, cwd };
     },
-    objectives: () => entities.ids().flatMap((id) => {
-      const directory = entities.dirOf(id);
-      if (!directory) return [];
-      const rows = entities.theatersOf(id);
-      const root = rows.length === 1 ? rows[0]!.path : undefined;
-      const linkId = root ? paths.workspaceHash(root) : "";
-      return [{ commodoreId: id, directory: path.join(directory, "objectives"), legacyTheaterId: linkId, legacyTheaterIds: root ? [...new Set([linkId, ...registeredFor(root)])] : [], legacyCwd: root ?? "", theaterIdOf: (cwd: string) => { try { return paths.workspaceHash(paths.canonicalizeTheaterPath(cwd)); } catch { return paths.workspaceHash(cwd); } } }];
-    }),
+    objectives: () => {
+      const generation = `${entitiesGeneration()}\u0002${registryGeneration()}`;
+      const now = Date.now();
+      if (objectivesCache && objectivesGeneration === generation && now - objectivesComputedAt < CANONICAL_TTL_MS) return objectivesCache;
+      const computed = computeObjectives();
+      objectivesGeneration = generation;
+      objectivesComputedAt = now;
+      objectivesCache = computed;
+      return computed;
+    },
   };
 }
