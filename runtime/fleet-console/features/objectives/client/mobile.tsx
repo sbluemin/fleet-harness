@@ -22,6 +22,7 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readBatches, readHistory, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
+import { MobileSharedFolder } from "./shared-folder.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
@@ -920,15 +921,17 @@ function ResultsSection({ objective, t, language, openLink }: { readonly objecti
     if (!next.delete(key)) next.add(key);
     return next;
   }), []);
-  if (objective.results.length === 0) return null;
   return (
     <>
-      <h2 className="objectives-m-glab">{t("objectives.results.title")}</h2>
-      <ObjectiveLinkOpenProvider value={openLink}>
-        <div className="objectives-m-results">
-          <ObjectiveResults objective={objective} t={t} language={language} highlightMission={null} groupOpen={(key) => !closed.has(key)} onToggleGroup={toggle} />
-        </div>
-      </ObjectiveLinkOpenProvider>
+      {objective.results.length === 0 ? null : <>
+        <h2 className="objectives-m-glab">{t("objectives.results.title")}</h2>
+        <ObjectiveLinkOpenProvider value={openLink}>
+          <div className="objectives-m-results">
+            <ObjectiveResults objective={objective} t={t} language={language} highlightMission={null} groupOpen={(key) => !closed.has(key)} onToggleGroup={toggle} />
+          </div>
+        </ObjectiveLinkOpenProvider>
+      </>}
+      <MobileSharedFolder objective={objective} t={t} language={language} />
     </>
   );
 }

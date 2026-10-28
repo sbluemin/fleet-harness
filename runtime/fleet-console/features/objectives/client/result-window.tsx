@@ -3,15 +3,18 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useSelect, type SelectOption } from "@fleet-console/ui/react";
 import { missionTitle, type Objective, type ObjectiveResult } from "../shared/types.js";
+import type { SharedFolderEntry } from "../shared/shared-folder.js";
 import { getT } from "./i18n/index.js";
 import { findAnyObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 import { absolute, bytesLabel, EvidenceTextContent, PrRow, resultFileUrl, useNow } from "./result-content.js";
 import { usePointerDrag } from "./pointer-drag.js";
 import { LinkText } from "./link-text.js";
+import { sharedFileUrl } from "./shared-folder-url.js";
 import "./result-window.css";
 
 // 레일·탭의 수명 밖에 둔다. 선택한 목표가 아니라 창을 연 목표의 현재 보드를 계속 읽는다.
-type Selection = { readonly objectiveId: string; readonly resultId: string | null; readonly opener: HTMLElement | null };
+// `shared` 가 있으면 증거 대신 그 목표 공유 폴더의 파일 하나를 같은 창에 읽기 전용으로 보인다.
+type Selection = { readonly objectiveId: string; readonly resultId: string | null; readonly opener: HTMLElement | null; readonly shared?: SharedFolderEntry };
 let selection: Selection | null = null;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -21,6 +24,9 @@ const RECT_KEY = "fleet.objectives.result-window.rect";
 
 export function openResultWindow(objectiveId: string, resultId: string, opener: HTMLElement | null = null): void {
   updateSelection({ objectiveId, resultId, opener });
+}
+export function openSharedFolderWindow(objectiveId: string, shared: SharedFolderEntry, opener: HTMLElement | null = null): void {
+  updateSelection({ objectiveId, resultId: null, opener, shared });
 }
 export function resetResultWindow(): void { updateSelection(null); }
 
@@ -92,7 +98,10 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
     updateSelection({ ...opened, resultId: id });
   };
   const chooseGroup = (id: string) => { const first = groups.find((item) => item.id === id)?.results[0]; if (first) choose(first.id); };
-  const title = result ? result.kind === "evidence" ? result.label ?? result.name : result.kind === "pr" ? result.label ?? result.observation.title ?? `${result.owner}/${result.repo} #${result.number}` : result.label ?? t("objectives.results.artifact.untitled") : t("objectives.results.title");
+  const shared = opened.shared ?? null;
+  const sharedName = shared?.path.split("/").at(-1) ?? "";
+  const heading = t(shared ? "objectives.shared.title" : "objectives.results.title");
+  const title = shared ? sharedName : result ? result.kind === "evidence" ? result.label ?? result.name : result.kind === "pr" ? result.label ?? result.observation.title ?? `${result.owner}/${result.repo} #${result.number}` : result.label ?? t("objectives.results.artifact.untitled") : t("objectives.results.title");
   useEffect(() => { rootRef.current?.focus({ preventScroll: true }); }, [opened.opener, opened.objectiveId]);
   useEffect(() => {
     rootRef.current?.querySelector(".objectives-rw-strip [aria-current=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -161,10 +170,10 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   };
   const label = (item: typeof groups[number]) => `${item.n || "—"} · ${item.title}`;
   const narrow = !mobile && (rect.w < 520 || railCollapsed);
-  return <div ref={rootRef} className={`objectives-result-window${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${t("objectives.results.title")} · ${objective?.title ?? ""}`} tabIndex={-1} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+  return <div ref={rootRef} className={`objectives-result-window${shared ? " is-shared" : ""}${mobile ? " is-mobile" : ""}${narrow ? " is-narrow" : ""}${dragging ? " is-dragging" : ""}`} role="dialog" aria-modal={mobile} aria-label={`${heading} · ${objective?.title ?? ""}`} tabIndex={-1} style={mobile ? undefined : { left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
     <header className="objectives-rw-head" onPointerDown={(event) => start(event)}>
       {!mobile && rect.w >= 520 ? <button type="button" aria-label={t("objectives.results.window.missions")} title={t("objectives.results.window.missions")} aria-pressed={!railCollapsed} onClick={() => setRailCollapsed((current) => !current)}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></svg></button> : null}
-      <span className="objectives-rw-heading">{t("objectives.results.title")}</span>
+      <span className="objectives-rw-heading">{heading}</span>
       <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span>
       {narrow ? <span className="objectives-rw-grip" aria-hidden="true" title={objective?.title}>⠿</span> : null}
       {narrow && group ? <MissionSwitcher label={t("objectives.missions.title")} value={group.id} options={groups.map((item) => ({ value: item.id, label: `${label(item)} (${item.results.length})` }))} onChange={chooseGroup} /> : null}
@@ -172,13 +181,16 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
       <button type="button" className="objectives-rw-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={closeWindow}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
     </header>
     <div className="objectives-rw-body">
-      <nav className="objectives-rw-missions" aria-label={t("objectives.missions.title")}>
+      {shared ? null : <nav className="objectives-rw-missions" aria-label={t("objectives.missions.title")}>
         {groups.map((item) => <button key={item.id} type="button" aria-pressed={item.id === group?.id} title={label(item)} onClick={() => chooseGroup(item.id)}><span>{item.n || "—"}</span><span className="objectives-rw-mission-title">{item.title}</span><span>{item.results.length}</span></button>)}
-      </nav>
+      </nav>}
       <div className="objectives-rw-main">
-        {group ? <div className="objectives-rw-mission-head"><b>{label(group)}</b>{group.record ? <span title={group.record.lines[0]}><LinkText text={group.record.lines[0] ?? ""} /></span> : null}</div> : null}
+        {group && !shared ? <div className="objectives-rw-mission-head"><b>{label(group)}</b>{group.record ? <span title={group.record.lines[0]}><LinkText text={group.record.lines[0] ?? ""} /></span> : null}</div> : null}
         <div className="objectives-rw-stage">
-          {!result || !objective ? <p className="objectives-result-textstate" role="status">{t("objectives.results.window.empty")}</p>
+          {shared ? shared.kind === "image"
+              ? <img className="objectives-rw-image" key={shared.path} src={sharedFileUrl(opened.objectiveId, shared.path)} alt={sharedName} draggable={false} />
+              : <EvidenceTextContent key={shared.path} t={t} plain src={sharedFileUrl(opened.objectiveId, shared.path)} name={sharedName} />
+            : !result || !objective ? <p className="objectives-result-textstate" role="status">{t("objectives.results.window.empty")}</p>
             : result.kind === "evidence" ? result.mediaType === "text/plain"
               ? <EvidenceTextContent key={`${result.id}:${result.evidenceId}`} t={t} src={resultFileUrl(objective.id, result)} name={result.name} />
               : <img className="objectives-rw-image" key={`${result.id}:${result.evidenceId}`} src={resultFileUrl(objective.id, result)} alt={title} draggable={false} />
@@ -188,10 +200,11 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
             <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.results.window.next")} disabled={index >= ordered.length - 1} onClick={() => { const next = ordered[index + 1]; if (next) choose(next.id); }}>›</button>
           </> : null}
         </div>
-        {result ? <div className="objectives-rw-caption" aria-live="polite"><b>{title}</b>{result.note && result.kind === "evidence" ? <span><LinkText text={result.note} /></span> : null}<span>{t("objectives.att.position", { n: index + 1, count: ordered.length })}{result.kind === "evidence" ? ` · ${result.name} · ${bytesLabel(result.bytes)}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${absolute(result.capturedAt, language)}` : ""}</span></div> : null}
-        <nav className="objectives-rw-strip" aria-label={t("objectives.results.title")}>
+        {shared ? <div className="objectives-rw-caption"><b>{sharedName}</b><span className="is-mono">{shared.path}</span><span>{bytesLabel(shared.bytes)} · {absolute(shared.modifiedAt, language)}</span><a className="objectives-rw-download" href={sharedFileUrl(opened.objectiveId, shared.path, true)} download>{t("objectives.shared.download")}</a></div>
+        : result ? <div className="objectives-rw-caption" aria-live="polite"><b>{title}</b>{result.note && result.kind === "evidence" ? <span><LinkText text={result.note} /></span> : null}<span>{t("objectives.att.position", { n: index + 1, count: ordered.length })}{result.kind === "evidence" ? ` · ${result.name} · ${bytesLabel(result.bytes)}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${absolute(result.capturedAt, language)}` : ""}</span></div> : null}
+        {shared ? null : <nav className="objectives-rw-strip" aria-label={t("objectives.results.title")}>
           {groups.map((item) => <div key={item.id} className="objectives-rw-strip-group"><span className="objectives-rw-strip-n" title={label(item)}>{item.n || "—"}</span>{item.results.map((entry) => <button key={entry.id} type="button" aria-current={entry.id === result?.id} aria-label={`${label(item)} · ${resultLabel(entry, t("objectives.results.artifact.untitled"))}`} title={resultLabel(entry, t("objectives.results.artifact.untitled"))} onClick={() => choose(entry.id)}>{entry.kind === "evidence" && entry.mediaType !== "text/plain" ? <img src={resultFileUrl(opened.objectiveId, entry)} alt="" loading="lazy" draggable={false} /> : <span>{entry.kind === "evidence" ? entry.name.split(".").at(-1)?.toUpperCase().slice(0, 5) ?? "TXT" : entry.kind === "pr" ? "PR" : "↗"}</span>}</button>)}</div>)}
-        </nav>
+        </nav>}
       </div>
     </div>
     {!mobile ? DIRECTIONS.map((direction) => <span key={direction} className={`objectives-result-resize is-${direction}`} aria-hidden="true" onPointerDown={(event) => start(event, direction)} />) : null}

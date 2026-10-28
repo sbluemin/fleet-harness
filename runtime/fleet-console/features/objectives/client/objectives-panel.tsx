@@ -13,6 +13,7 @@ import { DecisionGlyph, DecisionList } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
+import { FolderGlyph, SharedFolderRows, useSharedFolder } from "./shared-folder.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrientation, useGraphOrientation, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -755,7 +756,7 @@ function NewMemberAssign({ t, onCreate }: { t: T; onCreate: (role: string) => Pr
   }} /><span>{t("objectives.members.newHint")}</span></div>;
 }
 
-type DetailSection = "detail:decisions" | "detail:retro" | "detail:followupResults" | "detail:extensions";
+type DetailSection = "detail:decisions" | "detail:retro" | "detail:followupResults" | "detail:extensions" | "detail:shared";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -967,6 +968,14 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
  * 섹션 머리 — 글리프 열·라벨·오른쪽 셈과 도구. 접히는 섹션은 행 전체가 버튼이고 셰브런이 맨 끝에 선다(접힘 0°, 펼침 90°).
  * 항목이 없으면 접지 않는다 — 추가 행이 늘 보이게 셰브런 없는 정적 머리로 둔다.
  */
+function SharedFolderSection({ objective, t, language, open, onToggle }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly open: boolean; readonly onToggle: () => void }) {
+  const state = useSharedFolder(objective, open);
+  return <>
+    <SectionHead glyph={<FolderGlyph />} label={t("objectives.shared.title")} controls="objectives-sec-shared" expanded={open} onToggle={onToggle} />
+    <div id="objectives-sec-shared" hidden={!open}><SharedFolderRows objective={objective} t={t} language={language} state={state} /></div>
+  </>;
+}
+
 function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggle }: {
   readonly glyph: ReactNode;
   readonly label: string;
@@ -1540,6 +1549,8 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       <div className="objectives-group objectives-results-group">
         <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.results.title")} {objective.results.length > 0 ? objective.results.length : t("objectives.results.none")}</span></div>
         {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
+        {/* 공유 폴더 — 증거 바로 아래. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
+        <SharedFolderSection objective={objective} t={t} language={language} open={sectionOpen("detail:shared")} onToggle={() => onToggleSection("detail:shared")} />
       </div>
   </>);
   const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {
