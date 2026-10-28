@@ -46,7 +46,7 @@ export const commodoreEn = {
   "commodore.board.launch.loading": "Loading the catalog…",
   "commodore.board.launch.backToModels": "Back to models",
   "commodore.board.launch.off": "Off",
-  "commodore.board.launch.providerRemoved": "Provider removed",
+  "commodore.board.launch.providerRemoved": "Removed",
   "commodore.board.launch.chooseAnotherModel": "Choose another model",
   "commodore.board.launch.fallback": "Fallback",
   "commodore.board.launch.empty": "Turn models on in Settings › AI Gateway",

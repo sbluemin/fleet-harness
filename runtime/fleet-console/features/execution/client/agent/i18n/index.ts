@@ -566,7 +566,7 @@ export const terminalEn = {
   "terminal.settings.models.loading": "Loading models…",
   "terminal.settings.models.empty": "No models are on yet — add some to the roster above.",
   "terminal.settings.models.off": "Off",
-  "terminal.settings.models.providerRemoved": "Provider removed",
+  "terminal.settings.models.providerRemoved": "Removed",
   "terminal.settings.models.chooseAnotherModel": "Choose another model",
   "terminal.settings.models.fallback": "Fallback",
   "terminal.settings.routingTest": "Routing test",

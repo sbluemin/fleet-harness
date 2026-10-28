@@ -195,7 +195,11 @@ export function modelCoordinateDisplay(
     shown = { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
     if (resolved.reason === "roster_empty") badge = labels.fallback ?? null;
   }
-  const words = rosterCoordinateWords(roster, shown, labels.auto);
+  const struck = off && shown === stored;
+  // 제거된 공급자의 저장값은 그 강도로 다시 설 길이 없다 — 강도는 말하지 않고, 공급자 이름이 글리프 자리를 맡는다.
+  const named = struck && removedProvider !== null;
+  const plain = rosterCoordinateWords(roster, shown, labels.auto);
+  const words = named ? { model: plain.model, effort: "" } : plain;
   return {
     shown,
     words,
@@ -203,8 +207,8 @@ export function modelCoordinateDisplay(
     badge,
     off,
     removedProvider,
-    struck: off && shown === stored,
-    title: [[shown === stored ? removedProvider : null, words.model].filter(Boolean).join(" "), words.effort, badge].filter(Boolean).join(" · "),
+    struck,
+    title: [named ? `${removedProvider} ${words.model}` : words.model, words.effort, badge].filter(Boolean).join(" · "),
   };
 }
 
@@ -217,7 +221,7 @@ function TriggerText({ display, prefix }: { readonly display: ModelCoordinateDis
     <>
       {prefix}
       {display.struck && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : <ProviderMark provider={display.provider} className="fc-coord-trigger-provider" />}
-      <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
+      <span className={`fc-coord-trigger-model${display.struck ? " is-off" : ""}${display.struck && display.removedProvider ? " is-removed" : ""}`}>{display.words.model}</span>
       {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
       {display.badge ? <span className={`fc-coord-trigger-badge${display.struck ? " is-off" : ""}`}>{display.badge}</span> : null}
     </>
@@ -504,7 +508,8 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
     keepDraft(null);
     notify(last);
   };
-  const text = props.trigger?.text ?? <TriggerText display={display} />;
+  // 모바일 트리거는 글자 한 줄이다. 제거된 공급자는 좁은 구성원 행처럼 공급자 이름과 표식만 말한다 — 모델 이름은 시트가 보인다.
+  const text = props.trigger?.text ?? [display.struck && display.removedProvider ? display.removedProvider : display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · ");
   if (locked) return <span className="fc-select__trigger fc-select--mobile fc-coord-trigger is-locked"><span className="fc-select__value">{text}</span></span>;
   return (
     <>

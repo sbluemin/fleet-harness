@@ -105,7 +105,7 @@ const scuttlebuttEn = {
   "settings.section.modelLoading": "Loading models…",
   "settings.section.modelEmpty": "No models are on. Turn some on in AI Gateway — aides use Sonnet meanwhile.",
   "settings.section.modelOff": "Off",
-  "settings.section.providerRemoved": "Provider removed",
+  "settings.section.providerRemoved": "Removed",
   "settings.section.chooseAnotherModel": "Choose another model",
   "settings.section.modelFallback": "Fallback",
   "bird.keyboardHint": "Arrow keys move {name}; Space toggles Stay put.",

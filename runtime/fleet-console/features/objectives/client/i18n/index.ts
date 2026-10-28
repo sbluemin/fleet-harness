@@ -288,7 +288,7 @@ export const objectivesEn = {
   "objectives.launch.default": "Default",
   "objectives.launch.backToModels": "Back to models",
   "objectives.launch.off": "Off",
-  "objectives.launch.providerRemoved": "Provider removed",
+  "objectives.launch.providerRemoved": "Removed",
   "objectives.launch.chooseAnotherModel": "Choose another model",
   "objectives.launch.fallback": "Fallback",
   "objectives.launch.empty": "Turn models on in Settings › AI Gateway",
