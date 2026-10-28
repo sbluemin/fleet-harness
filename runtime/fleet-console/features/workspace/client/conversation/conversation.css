@@ -1536,7 +1536,8 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
 /* 신호등이 열 안에 들어와도 같은 줄에 원격 칩을 함께 놓지는 않는다. 폭 전이 첫 프레임부터 내용은 맨 위 줄 아래에 둔다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .objective-records-side-bar.is-compact {
   box-sizing: border-box;
-  width: var(--desktop-macos-compact-width, 72px);
+  /* 인셋과 같은 스토어 폭을 쓴다. Desktop 마커가 늦어도 첫 compact가 브라우저 폭으로 굳지 않는다. */
+  width: var(--side-bar-width);
   --compact-layout-zoom: var(--desktop-zoom, 1);
   padding-top: calc(var(--desktop-traffic-bottom, 33px) + 16px / var(--compact-layout-zoom));
 }

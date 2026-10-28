@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
+import { getSideBarState, subscribeSideBarState, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
 
 /** 지휘관 목록이 서는 곳. 채팅 안일 때만 side 를 쓴다. 기본은 사이드바다. */
 export type CommanderPlace = "sidebar" | "chat";
@@ -40,6 +40,7 @@ const listeners = new Set<() => void>();
 export function setCommanderPlacement(next: CommanderPlacement): void {
   if (placement.place === next.place && placement.side === next.side) return;
   placement = { place: next.place, side: next.side };
+  updateTemporaryChatPlacement();
   try { window.localStorage.setItem(KEY, JSON.stringify(placement)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
   for (const listener of listeners) listener();
 }
@@ -66,19 +67,43 @@ export function readCommanderRailExpanded(): boolean {
 
 let railExpanded = readCommanderRailExpanded();
 const railExpandedListeners = new Set<() => void>();
+// 패널 때문에 잠깐 옮겨 온 목록은 얼굴 열로 시작한다. 그동안의 펼침도 저장된 채팅 선호와 별개다.
+let temporaryChatPlacement = isTemporaryChatPlacement();
+let temporaryRailExpanded = false;
+
+function isTemporaryChatPlacement(): boolean {
+  const sideBar = getSideBarState();
+  return placement.place === "sidebar" && sideBar.compact && !sideBar.viewportCompact;
+}
+
+function updateTemporaryChatPlacement(): void {
+  const next = isTemporaryChatPlacement();
+  if (temporaryChatPlacement === next) return;
+  temporaryChatPlacement = next;
+  temporaryRailExpanded = false;
+  for (const listener of railExpandedListeners) listener();
+}
+subscribeSideBarState(updateTemporaryChatPlacement);
+
+function effectiveRailExpanded(): boolean {
+  return temporaryChatPlacement ? temporaryRailExpanded : railExpanded;
+}
 
 export function setCommanderRailExpanded(next: boolean): void {
-  if (railExpanded === next) return;
-  railExpanded = next;
-  try { window.localStorage.setItem(RAIL_EXPANDED_KEY, String(next)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
+  if (effectiveRailExpanded() === next) return;
+  if (temporaryChatPlacement) temporaryRailExpanded = next;
+  else {
+    railExpanded = next;
+    try { window.localStorage.setItem(RAIL_EXPANDED_KEY, String(next)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
+  }
   for (const listener of railExpandedListeners) listener();
 }
 
 export function useCommanderRailExpanded(): boolean {
   return useSyncExternalStore(
     (listener) => { railExpandedListeners.add(listener); return () => { railExpandedListeners.delete(listener); }; },
-    () => railExpanded,
-    () => railExpanded,
+    effectiveRailExpanded,
+    effectiveRailExpanded,
   );
 }
 

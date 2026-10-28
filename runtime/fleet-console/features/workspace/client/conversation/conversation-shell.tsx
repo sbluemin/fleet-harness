@@ -18,7 +18,7 @@ import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, useFea
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { ObjectiveBodySlot, type ObjectiveBodyConfig } from "../../../../core/client/src/chrome/mobile/objective-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
-import { openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
+import { MIN_PANEL_WIDTH, openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, presentRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mayAutoOpenConversationRail, useConversationRailMemory } from "./conversation-rail-memory.js";
@@ -904,7 +904,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   );
 }
 
-/** 펼친 채팅 목록과 오른쪽 패널은 나중에 연 쪽을 남긴다. 그래도 좁으면 사이드바만 잠깐 물러난다. */
+/** 펼친 채팅 목록과 오른쪽 패널은 나중에 연 쪽을 남긴다. 패널만 있어도 대화가 좁으면 사이드바가 잠깐 물러난다. */
 function useCommanderConversationWidth(
   stage: HTMLElement | null,
   hasCommander: boolean,
@@ -916,9 +916,9 @@ function useCommanderConversationWidth(
   const expanded = useCommanderRailExpanded();
   const panelId = useRailActivePanelId();
   const sideBar = useSideBarState();
-  // 임시 compact가 만든 채팅 배치를 판정에 다시 넣지 않는다. sidebar 선호는 창 자체가 좁을 때만 채팅으로 온다.
-  const chatList = hasCommander && effectiveCommanderPlacement(placement, sideBar.viewportCompact).place === "chat";
-  const listOpen = chatList && expanded;
+  const listOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.compact).place === "chat" && expanded;
+  // 복귀 판정은 임시 compact가 옮긴 목록을 제외한다. 그렇지 않으면 sidebar 선호도 채팅에 붙잡힌다.
+  const savedListOpen = hasCommander && effectiveCommanderPlacement(placement, sideBar.viewportCompact).place === "chat" && expanded;
   const previous = useRef({ listOpen: false, panelOpen: false });
   const lastOpened = useRef<"list" | "panel">("list");
   useLayoutEffect(() => {
@@ -926,8 +926,16 @@ function useCommanderConversationWidth(
     if (panelOpen && !previous.current.panelOpen) lastOpened.current = "panel";
     if (listOpen && !previous.current.listOpen) lastOpened.current = "list";
     previous.current = { listOpen, panelOpen };
-    if (!stage || !listOpen) {
+    if (!stage || (!listOpen && !panelOpen)) {
       setSideBarConversationCompact(false);
+      return;
+    }
+    // RightRail은 대화 최소 폭을 예약하되 패널 하한(240px) 아래로는 줄지 않는다. 그 하한이 예약을 침범할 때만 물러난다.
+    // compact 뒤 넓어진 패널 실측을 복귀 판정에 쓰지 않는다. 저장 사이드바 폭과 같은 패널 하한으로 왕복을 막는다.
+    const panelNeedsCompact = !sideBar.viewportCompact && panelOpen && railWidth > 0
+      && viewport.width - sideBar.width - MIN_PANEL_WIDTH < CONVERSATION_MIN_WIDTH;
+    if (!listOpen) {
+      setSideBarConversationCompact(panelNeedsCompact);
       return;
     }
     // 전이 중인 DOM 폭 대신 도착할 폭을 쓴다. 228px 목록은 CSS 토큰 그대로이며 작업대의 물러남도 같은 함수로 셈한다.
@@ -941,7 +949,7 @@ function useCommanderConversationWidth(
     if (panelId !== null && rightWidth > 0 && conversationWidth(sideBarOccupiedWidth(sideBar), rightWidth) < CONVERSATION_MIN_WIDTH) {
       if (lastOpened.current === "panel") {
         setCommanderRailExpanded(false);
-        setSideBarConversationCompact(false);
+        setSideBarConversationCompact(panelNeedsCompact);
         return;
       }
       // 닫기 단추와 같은 경로라 이 대화의 닫힘 기억도 남는다. 패널 폭의 저장값은 건드리지 않는다.
@@ -949,8 +957,10 @@ function useCommanderConversationWidth(
       rightWidth = 0;
     }
     // 복귀도 사람이 정한 폭으로 판정한다. compact의 늘어난 여유로 바로 복귀하면 두 폭 사이를 왕복하게 된다.
-    setSideBarConversationCompact(!sideBar.viewportCompact && conversationWidth(sideBar.width, rightWidth) < CONVERSATION_MIN_WIDTH);
-  }, [stage, listOpen, panelId, sideBar, viewport.width, viewport.height, railWidth, layout]);
+    setSideBarConversationCompact(savedListOpen
+      ? !sideBar.viewportCompact && conversationWidth(sideBar.width, rightWidth) < CONVERSATION_MIN_WIDTH
+      : rightWidth > 0 && panelNeedsCompact);
+  }, [stage, listOpen, savedListOpen, panelId, sideBar, viewport.width, viewport.height, railWidth, layout]);
   useLayoutEffect(() => () => setSideBarConversationCompact(false), []);
 }
 
