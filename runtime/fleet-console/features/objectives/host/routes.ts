@@ -2,6 +2,7 @@ import { inputIssues } from "../../console-use/shared/tools.js";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { TextDecoder } from "node:util";
 
 import type { ObjectivesFeatureDeps } from "./deps.js";
@@ -149,11 +150,16 @@ const inspectShared = async (root: string, segments: readonly string[]) => {
   }
 };
 
+/** 텍스트 한도를 넘는 파일은 이만큼의 머리만 읽어 이미지 여부를 가린다 — 나머지는 메모리에 올리지 않고 흘려보낸다. */
+const SHARED_HEAD_BYTES = 64 * 1024;
+
 /**
- * shared/ 파일 하나를 읽는다 — 확인-열기 사이 바꿔치기를 막으려고 O_NOFOLLOW 로 열고
- * fstat(dev/ino)이 lstat 과 같은지, 읽은 뒤에도 같은지 확인한다(evidence.ts 의 방식).
+ * shared/ 파일 하나를 연다 — 확인-열기 사이 바꿔치기를 막으려고 O_NOFOLLOW 로 열고
+ * fstat(dev/ino)이 lstat 과 같은지, 머리를 읽은 뒤에도 같은지 확인한다(evidence.ts 의 방식).
+ * 텍스트 한도 이하는 통째로(`whole`), 그보다 크면 머리만 읽고 열린 핸들을 돌려준다 — 큰 파일을 버퍼 하나로 잡지 않는다.
+ * 돌려받은 쪽이 핸들을 닫는다.
  */
-const readSharedFile = async (root: string, raw: string) => {
+const openSharedFile = async (root: string, raw: string) => {
   const segments = raw.split("/");
   const before = await inspectShared(root, segments);
   const handle = await fs.promises.open(before.current, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0)).catch((error) => {
@@ -164,18 +170,23 @@ const readSharedFile = async (root: string, raw: string) => {
   try {
     const opened = await handle.stat({ bigint: true });
     if (!opened.isFile() || opened.nlink !== 1n || !sameSharedFile(before.stat, opened)) throw new UnknownSharedFile();
-    const data = Buffer.alloc(Number(opened.size));
+    const size = Number(opened.size);
+    const whole = size <= SHARED_FOLDER_LIMITS.textBytes;
+    const head = Buffer.alloc(whole ? size : SHARED_HEAD_BYTES);
     let offset = 0;
-    while (offset < data.length) {
-      const { bytesRead } = await handle.read(data, offset, data.length - offset, offset);
+    while (offset < head.length) {
+      const { bytesRead } = await handle.read(head, offset, head.length - offset, offset);
       if (bytesRead === 0) throw new UnknownSharedFile();
       offset += bytesRead;
     }
     const after = await handle.stat({ bigint: true });
     const named = await inspectShared(root, segments);
     if (!sameSharedFile(opened, after) || !sameSharedFile(after, named.stat)) throw new UnknownSharedFile();
-    return { data, name: segments[segments.length - 1]! };
-  } finally { await handle.close(); }
+    return { handle, size, head, whole, name: segments[segments.length - 1]! };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
 };
 
 const ids = z.string().min(1).max(128);
@@ -294,28 +305,36 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
       const root = store.sharedPath(found.commodoreId, found.id);
       if (!root) { ctx.http.writeJson(res, 404, { error: "unknown_shared_file" }); return true; }
       const download = params.get("download") === "1";
-      const { data, name } = await readSharedFile(root, raw);
-      const headers: Record<string, string | number> = {
-        "Content-Length": data.length,
-        "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "no-referrer",
-        "Cache-Control": "private, no-store",
-        "Content-Security-Policy": "default-src 'none'",
-      };
-      const image = imageInfo(data);
-      // 목록의 kind 를 믿지 말고 읽은 바이트로 다시 판정 — 1 MiB 을 넘는 텍스트도 내려받기로만 나간다.
-      if (image && !download) {
-        headers["Content-Type"] = image.type;
-        headers["Content-Disposition"] = "inline";
-      } else if (!download && data.length <= SHARED_FOLDER_LIMITS.textBytes && isSharedText(data)) {
-        headers["Content-Type"] = "text/plain; charset=utf-8";
-        headers["Content-Disposition"] = "inline";
-      } else {
-        headers["Content-Type"] = "application/octet-stream";
-        headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeSharedFilename(name)}`;
+      const file = await openSharedFile(root, raw);
+      let streaming = false;
+      try {
+        const headers: Record<string, string | number> = {
+          "Content-Length": file.size,
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+          "Cache-Control": "private, no-store",
+          "Content-Security-Policy": "default-src 'none'",
+        };
+        const image = imageInfo(file.head);
+        // 목록의 kind 를 믿지 말고 읽은 바이트로 다시 판정 — 1 MiB 을 넘는 텍스트도 내려받기로만 나간다.
+        if (image && !download) {
+          headers["Content-Type"] = image.type;
+          headers["Content-Disposition"] = "inline";
+        } else if (!download && file.whole && isSharedText(file.head)) {
+          headers["Content-Type"] = "text/plain; charset=utf-8";
+          headers["Content-Disposition"] = "inline";
+        } else {
+          headers["Content-Type"] = "application/octet-stream";
+          headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeSharedFilename(file.name)}`;
+        }
+        res.writeHead(200, headers);
+        if (file.whole) { res.end(file.head); return true; }
+        // 큰 파일은 같은 열린 핸들에서 조금씩 흘려보낸다 — 경로를 다시 열지 않으므로 확인한 그 파일만 나간다.
+        streaming = true;
+        await pipeline(file.handle.createReadStream({ start: 0, end: file.size - 1, highWaterMark: SHARED_HEAD_BYTES, autoClose: true }), res).catch(() => res.destroy());
+      } finally {
+        if (!streaming) await file.handle.close();
       }
-      res.writeHead(200, headers);
-      res.end(data);
     } catch (error) {
       if (error instanceof UnknownSharedFile) ctx.http.writeJson(res, 404, { error: "unknown_shared_file" });
       else fail(res, error);
