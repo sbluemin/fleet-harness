@@ -52,6 +52,36 @@ export function useCommanderPlacement(): CommanderPlacement {
   );
 }
 
+/** 고스팅 레일 펼침 상태. 사령관을 옮겨도(재마운트) 유지되도록 컴포넌트 밖에서 기억한다. 기본은 접힘. */
+const RAIL_EXPANDED_KEY = "fleet-console.commanderList.expanded";
+
+export function readCommanderRailExpanded(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(RAIL_EXPANDED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+let railExpanded = readCommanderRailExpanded();
+const railExpandedListeners = new Set<() => void>();
+
+export function setCommanderRailExpanded(next: boolean): void {
+  if (railExpanded === next) return;
+  railExpanded = next;
+  try { window.localStorage.setItem(RAIL_EXPANDED_KEY, String(next)); } catch { /* 저장하지 못하면 이번 화면에서만 기억한다. */ }
+  for (const listener of railExpandedListeners) listener();
+}
+
+export function useCommanderRailExpanded(): boolean {
+  return useSyncExternalStore(
+    (listener) => { railExpandedListeners.add(listener); return () => { railExpandedListeners.delete(listener); }; },
+    () => railExpanded,
+    () => railExpanded,
+  );
+}
+
 /** 좁은 창에서는 사이드바 목록이 사라지므로, 저장값은 그대로 두고 채팅 레일로 보여 준다. */
 export function effectiveCommanderPlacement(stored: CommanderPlacement, compact: boolean): CommanderPlacement {
   if (compact && stored.place === "sidebar") return { place: "chat", side: stored.side };

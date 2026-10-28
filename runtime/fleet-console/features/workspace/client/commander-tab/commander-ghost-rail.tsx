@@ -10,7 +10,7 @@ import { useLongPress } from "../long-press.js";
 import { CommanderListOwner, CommodoreCommanderList, useCommanderOwner } from "./commander-list.js";
 import { useCommanderRows } from "./commander-rows.js";
 import { openCommanderConversation } from "./commander-navigation.js";
-import { useEffectiveCommanderPlacement } from "./commander-placement.js";
+import { setCommanderRailExpanded, useCommanderRailExpanded, useEffectiveCommanderPlacement } from "./commander-placement.js";
 import "./commander-ghost-rail.css";
 
 /** 접히면 거터의 얼굴 열, 펼치면 채팅을 밀어내는 목록 칸. 소유 사령관은 대화가 바뀌어도 같다. */
@@ -22,7 +22,7 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   const rows = sections.flatMap((section) => section.rows);
   const selected = selectedId === null ? 0 : rows.findIndex((item) => commanderObjectiveId(item.layout.cluster) === selectedId) + 1;
   const [cursor, setCursor] = useState(selected);
-  const [expanded, setExpanded] = useState(false);
+  const expanded = useCommanderRailExpanded();
   const [tip, setTip] = useState<{ index: number; top: number } | null>(null);
   const side = useEffectiveCommanderPlacement().side;
   const nav = useRef<HTMLElement>(null);
@@ -40,13 +40,13 @@ export function CommanderGhostRail({ commodoreId, selectedId }: { readonly commo
   // 펼친 칸은 사이드바처럼 남는다. 바깥 클릭·포인터 이탈로는 닫지 않고, 버튼·Escape·키보드만 닫는다.
   const reveal = (focusList = false) => {
     restoreFocus.current = null;
-    resetFaces(); setTip(null); setExpanded(true);
+    resetFaces(); setTip(null); setCommanderRailExpanded(true);
     if (focusList) requestAnimationFrame(() => panel.current?.querySelector<HTMLElement>("button")?.focus());
   };
   const collapse = (restore = true) => {
     // 펼친 동안 얼굴은 display:none이다. setState 직후 focus는 아직 숨은 대상을 놓친다.
     restoreFocus.current = restore ? Math.min(cursor, rows.length) : null;
-    setTip(null); setExpanded(false);
+    setTip(null); setCommanderRailExpanded(false);
   };
   useLayoutEffect(() => {
     if (expanded || restoreFocus.current === null) return;
