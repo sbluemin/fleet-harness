@@ -56,7 +56,9 @@ import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
 import { CommanderGhostRail } from "../commander-tab/commander-ghost-rail.js";
-import { useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { effectiveCommanderPlacement, setCommanderRailExpanded, useCommanderPlacement, useCommanderRailExpanded, useEffectiveCommanderPlacement } from "../commander-tab/commander-placement.js";
+import { setSideBarConversationCompact, sideBarOccupiedWidth, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
+import type { WorkbenchLayout } from "../../shared/conversation-workbench.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -829,6 +831,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
+  useCommanderConversationWidth(stageElement, toolCommodoreId !== null && !newSession, viewport, insets.right, shownLayout);
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} band={band} />;
 
   return (
@@ -899,6 +902,56 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     />
     </>
   );
+}
+
+/** 펼친 채팅 목록과 오른쪽 패널은 나중에 연 쪽을 남긴다. 그래도 좁으면 사이드바만 잠깐 물러난다. */
+function useCommanderConversationWidth(
+  stage: HTMLElement | null,
+  hasCommander: boolean,
+  viewport: { readonly width: number; readonly height: number },
+  railWidth: number,
+  layout: WorkbenchLayout,
+): void {
+  const placement = useCommanderPlacement();
+  const expanded = useCommanderRailExpanded();
+  const panelId = useRailActivePanelId();
+  const sideBar = useSideBarState();
+  // 임시 compact가 만든 채팅 배치를 판정에 다시 넣지 않는다. sidebar 선호는 창 자체가 좁을 때만 채팅으로 온다.
+  const chatList = hasCommander && effectiveCommanderPlacement(placement, sideBar.viewportCompact).place === "chat";
+  const listOpen = chatList && expanded;
+  const previous = useRef({ listOpen: false, panelOpen: false });
+  const lastOpened = useRef<"list" | "panel">("list");
+  useLayoutEffect(() => {
+    const panelOpen = panelId !== null;
+    if (panelOpen && !previous.current.panelOpen) lastOpened.current = "panel";
+    if (listOpen && !previous.current.listOpen) lastOpened.current = "list";
+    previous.current = { listOpen, panelOpen };
+    if (!stage || !listOpen) {
+      setSideBarConversationCompact(false);
+      return;
+    }
+    // 전이 중인 DOM 폭 대신 도착할 폭을 쓴다. 228px 목록은 CSS 토큰 그대로이며 작업대의 물러남도 같은 함수로 셈한다.
+    const listWidth = Number.parseFloat(getComputedStyle(stage).getPropertyValue("--commander-list-span"));
+    if (!Number.isFinite(listWidth)) return;
+    const conversationWidth = (sideWidth: number, rightWidth: number) => {
+      const region = Math.max(0, viewport.width - sideWidth - rightWidth);
+      return region - computeWorkbenchGeometry(layout, region, viewport.height).conversationRight - listWidth;
+    };
+    let rightWidth = panelOpen ? railWidth : 0;
+    if (panelId !== null && rightWidth > 0 && conversationWidth(sideBarOccupiedWidth(sideBar), rightWidth) < CONVERSATION_MIN_WIDTH) {
+      if (lastOpened.current === "panel") {
+        setCommanderRailExpanded(false);
+        setSideBarConversationCompact(false);
+        return;
+      }
+      // 닫기 단추와 같은 경로라 이 대화의 닫힘 기억도 남는다. 패널 폭의 저장값은 건드리지 않는다.
+      dismissRailPanel(panelId);
+      rightWidth = 0;
+    }
+    // 복귀도 사람이 정한 폭으로 판정한다. compact의 늘어난 여유로 바로 복귀하면 두 폭 사이를 왕복하게 된다.
+    setSideBarConversationCompact(!sideBar.viewportCompact && conversationWidth(sideBar.width, rightWidth) < CONVERSATION_MIN_WIDTH);
+  }, [stage, listOpen, panelId, sideBar, viewport.width, viewport.height, railWidth, layout]);
+  useLayoutEffect(() => () => setSideBarConversationCompact(false), []);
 }
 
 /** 플러그인 대화의 params 를 대화 키로 — 키 순서와 무관하게 같은 값이면 같은 키다. 너무 길면 해시로 줄인다. */
