@@ -52,7 +52,10 @@ export function theaterOwnerParam(commodoreId?: string | null): { readonly commo
   return commodoreId ? { commodoreId } : {};
 }
 
-/** 어느 사령관이든 지금 그 폴더를 가지고 있는가. 같은 폴더를 여러 사령관이 나눠도 참이다 — 주인 하나를 고르지 않는다. */
+/**
+ * 어느 사령관이든 지금 그 폴더를 가지고 있는가. 같은 폴더를 여러 사령관이 나눠도 참이다 — 주인 하나를 고르지 않는다.
+ * 사령관 UUID 자체가 들어와도(사령관 세션 목록이 여는 목적지 등) 그 사령관의 문맥이므로 참이다.
+ */
 export function isKnownTheater(theaterId: string): boolean {
-  return readCommodoreList().some((row) => row.theaters.some((theater) => theater.status === "available" && theater.theaterId === theaterId));
+  return readCommodoreList().some((row) => row.commodoreId === theaterId || row.theaters.some((theater) => theater.status === "available" && theater.theaterId === theaterId));
 }
