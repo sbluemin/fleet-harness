@@ -72,6 +72,8 @@ export interface MountReadingOptions {
   readonly kind: "entry" | "schema";
   readonly subId?: string;
   readonly theaterId: string | null;
+  /** 읽는 위키를 소유한 사령관. 알면 파일 조회에 싣는다. */
+  readonly commodoreId?: string | null;
   readonly fileTheaterId?: string | null;
   readonly navigate?: ClientNavigateCapability;
   readonly onRelatedClick: (id: string) => void;
@@ -108,6 +110,7 @@ export function mountReadingInto(
   const fileLinks = mountCodexFileLinks({
     container: readContainer,
     getTheaterId: () => liveOpts.fileTheaterId ?? liveOpts.theaterId,
+    getCommodoreId: () => liveOpts.commodoreId ?? null,
     getNavigate: () => liveOpts.navigate,
   });
   let currentEntryId = opts.kind === "entry" ? opts.initialEntryId : "";
@@ -127,7 +130,7 @@ export function mountReadingInto(
 
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
-  const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
+  const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId, () => liveOpts.commodoreId ?? null);
 
   function handleClick(event: MouseEvent): void {
     const target = event.target;
@@ -381,7 +384,7 @@ export function mountReadingInto(
   async function noticeForOpenEntry(entryId: string): Promise<void> {
     const epoch = entryRequestEpoch, theaterId = liveOpts.theaterId;
     try {
-      const entry = await fetchEntry(theaterId, entryId);
+      const entry = await fetchEntry(theaterId, entryId, { commodoreId: liveOpts.commodoreId ?? null });
       if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
       if (renderedEntryStamp !== null && entryStampOf(entry) !== renderedEntryStamp) showStaleNotice("updated");
     } catch (error) {
@@ -441,7 +444,7 @@ export function mountReadingInto(
     cleanupReader();
 
     try {
-      const entry = await fetchEntry(liveOpts.theaterId, entryId);
+      const entry = await fetchEntry(liveOpts.theaterId, entryId, { commodoreId: liveOpts.commodoreId ?? null });
       if (destroyed || requestEpoch !== entryRequestEpoch || entryId !== currentEntryId) return;
 
       const { index } = getState();

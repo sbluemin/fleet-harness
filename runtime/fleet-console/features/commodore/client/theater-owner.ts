@@ -43,10 +43,10 @@ export function theaterLabelOrNull(commodoreId: string | null | undefined, theat
 }
 
 /**
- * HTTP 요청에 붙이는 소유자 표식. 주인이 하나로 정해질 때만 싣고, 모호하거나
- * 없으면 싣지 않는다 — 현행 호스트와 그대로 양립한다.
+ * HTTP 요청에 붙이는 소유자 표식. 호출 문맥이 아는 사령관만 싣는다 — 모르면
+ * 생략하고, 목록을 뒤져 추론하지 않는다. 같은 폴더를 여러 사령관이 나누면
+ * 주인은 문맥이 정한다.
  */
-export function theaterOwnerParam(theaterId: string, preferredCommodoreId?: string | null): { readonly commodoreId: string } | Record<string, never> {
-  const owner = resolveTheaterOwner(theaterId, preferredCommodoreId);
-  return owner ? { commodoreId: owner } : {};
+export function theaterOwnerParam(commodoreId?: string | null): { readonly commodoreId: string } | Record<string, never> {
+  return commodoreId ? { commodoreId } : {};
 }

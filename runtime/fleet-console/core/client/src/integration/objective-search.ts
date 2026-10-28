@@ -132,12 +132,13 @@ export async function searchRailPanels(
   query: string,
   theaterId: string,
   signal: AbortSignal,
+  commodoreId?: string | null,
 ): Promise<readonly RailSearchGroup[]> {
   const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
     if (!panel.search) return null;
     const reference = panel.fileReferences ? parseFileRef(query) : null;
-    const found = await searchRailPanel(panel, reference?.path ?? query, theaterId, signal, language);
+    const found = await searchRailPanel(panel, reference?.path ?? query, theaterId, signal, language, commodoreId ?? null);
     const results = found?.map((result): PaneSearchResult => !reference?.line ? result : {
       ...result,
       activate: async () => {
@@ -166,6 +167,7 @@ async function searchRailPanel(
   theaterId: string,
   parentSignal: AbortSignal,
   language: ConsoleLocale,
+  commodoreId?: string | null,
 ): Promise<readonly PaneSearchResult[] | null> {
   if (!panel.search || parentSignal.aborted) return null;
   const controller = new AbortController();
@@ -187,6 +189,7 @@ async function searchRailPanel(
         limit: RAIL_SEARCH_PROVIDER_LIMIT,
         signal: controller.signal,
         language,
+        ...(commodoreId ? { commodoreId } : {}),
       }))
       .then((results) => results, () => null);
     return await Promise.race([request, stopped]);

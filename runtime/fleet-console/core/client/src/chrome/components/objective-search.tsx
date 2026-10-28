@@ -282,7 +282,7 @@ export function ObjectiveSearch({
 
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchRailPanels(railPanels, text, theaterId, abort.signal).then((nextGroups) => {
+      void searchRailPanels(railPanels, text, theaterId, abort.signal, viewedCommodoreId).then((nextGroups) => {
         // provider가 abort를 무시해도 이전 세대 결과는 현재 팔레트에 반영하지 않는다.
         if (abort.signal.aborted || generation !== searchGenerationRef.current) return;
         setRailSearchGroups(nextGroups);

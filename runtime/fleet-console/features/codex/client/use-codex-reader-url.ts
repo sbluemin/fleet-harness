@@ -118,7 +118,7 @@ export function useCodexReaderUrlSync(): void {
         discardTarget();
         return;
       }
-      void validateReaderEntry(workspace.contextKey, workspace.id, target.entryId, controller.signal).then((exists) => {
+      void validateReaderEntry(workspace.contextKey, workspace.id, target.entryId, controller.signal, workspace.contextKey || null).then((exists) => {
         if (controller.signal.aborted || targetRef.current !== target) return;
         if (!exists) {
           discardTarget();

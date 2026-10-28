@@ -160,6 +160,7 @@ export function CodexReadingSheet({ navigate, commodoreId }: { readonly navigate
       kind,
       subId,
       theaterId: workspaceId,
+      commodoreId: commodoreId ?? null,
       sessionTheaterId: commodoreId ?? theaterId,
       fileTheaterId: theaterId,
       navigate,

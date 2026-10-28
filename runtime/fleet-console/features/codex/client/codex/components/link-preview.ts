@@ -33,6 +33,7 @@ function consoleT() {
 export function installEntryLinkPreview(
   container: HTMLElement,
   getTheaterId: () => string | null,
+  getCommodoreId?: () => string | null,
 ): EntryLinkPreview {
   const cache = new Map<string, PreviewData | null>();
   let card: HTMLElement | null = null;
@@ -87,7 +88,7 @@ export function installEntryLinkPreview(
   async function loadPreview(id: string): Promise<PreviewData | null> {
     if (cache.has(id)) return cache.get(id) ?? null;
     try {
-      const entry = await fetchEntry(getTheaterId(), id);
+      const entry = await fetchEntry(getTheaterId(), id, { commodoreId: getCommodoreId?.() ?? null });
       const metaParts = [
         entryStatusLabel(entry.frontmatter.status ?? "current"),
         `v${entry.frontmatter.version}`,

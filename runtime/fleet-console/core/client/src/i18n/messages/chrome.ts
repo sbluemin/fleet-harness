@@ -159,8 +159,6 @@ export const chromeEn = {
   // commissioning
   "chrome.commissioning.closeAria": "Close setup guide",
   "chrome.commissioning.eyebrow": "Getting started",
-  "chrome.commissioning.title": "Start with a project folder",
-  "chrome.commissioning.lead": "Register a folder as a Theater, then open Objectives where agents work inside it.",
   "chrome.commissioning.goToObjectiveRecordsArrow": "Go to Objectives",
   "chrome.commissioning.step2Title": "Open an Objective",
   "chrome.commissioning.step2Body": "Start an agent session in your Theater.",
@@ -698,8 +696,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
 
   "chrome.commissioning.closeAria": "설정 가이드 닫기",
   "chrome.commissioning.eyebrow": "시작하기",
-  "chrome.commissioning.title": "프로젝트 폴더 하나로 시작해 보세요",
-  "chrome.commissioning.lead": "폴더를 Theater로 등록하면, 그 안에서 에이전트가 일하는 목표를 열 수 있어요.",
   "chrome.commissioning.goToObjectiveRecordsArrow": "목표로 이동",
   "chrome.commissioning.step2Title": "목표 열기",
   "chrome.commissioning.step2Body": "Theater에서 에이전트 세션을 시작해요.",

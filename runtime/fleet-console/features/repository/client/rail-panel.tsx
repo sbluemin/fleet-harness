@@ -1,5 +1,4 @@
 import { surfaceSelector } from "../../workspace/shared/surface-selector.js";
-import { theaterOwnerParam } from "../../commodore/client/theater-owner.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { GlyphSlot, Icon, remoteHostIcon, type RepositoryIconName } from "./icons.js";
@@ -1599,12 +1598,12 @@ export const repositoryEntry: RailEntryDescriptor = {
     if (surfaces.isOpen(REPOSITORY_SURFACE_ID)) surfaces.closeSurface(REPOSITORY_SURFACE_ID);
     else surfaces.open({ surfaceId: REPOSITORY_SURFACE_ID });
   },
-  search: async ({ query, theaterId, limit, signal }) => {
+  search: async ({ query, theaterId, limit, signal, commodoreId }) => {
     const repoRel = readStoredRepositoryRel(theaterId);
     const response = await fetch("/api/v1/repository/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, repoRel, query, limit, ...theaterOwnerParam(theaterId) }),
+      body: JSON.stringify({ theaterId, repoRel, query, limit, ...(commodoreId ? { commodoreId } : {}) }),
       signal,
     });
     if (!response.ok) throw new Error("repository_search_failed");

@@ -71,9 +71,9 @@ export const codexPane: PaneDescriptor = {
   render: (ctx) => (ctx.mobileBar ? <MobileWikiList ctx={ctx} /> : <CodexRailPanel ctx={ctx} />),
   defaultWidth: 420,
   minWidth: 248,
-  search: async ({ query, theaterId, limit, signal, language }) => {
+  search: async ({ query, theaterId, limit, signal, language, commodoreId }) => {
     if (!theaterId) return [];
-    const response = await fetchSearch(theaterId, { q: query, limit, signal });
+    const response = await fetchSearch(theaterId, { q: query, limit, signal, commodoreId: commodoreId ?? null });
     const t = getT(language);
     return response.entries.map((entry) => ({
       id: entry.id,
@@ -187,7 +187,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
       if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
         const session = readReaderSession(contextKey);
         if (session) {
-          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal).then((exists) => {
+          void validateReaderEntry(contextKey, workspaceId, session.entryId, controller.signal, contextKey || null).then((exists) => {
             if (!exists || controller.signal.aborted || latestContextKeyRef.current !== contextKey
               || getReaderState().codexReader || hasCodexEntryInUrl()) return;
             const entryId = restoreCodexReaderSession(contextKey);

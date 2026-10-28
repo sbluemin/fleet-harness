@@ -67,8 +67,8 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
         <header className="commissioning-header">
           <FleetMark />
           <span className="commissioning-eyebrow">{t("chrome.commissioning.eyebrow")}</span>
-          <h2 id="commissioning-title">{t("chrome.commissioning.title")}</h2>
-          <p>{t("chrome.commissioning.lead")}</p>
+          <h2 id="commissioning-title">{t("sidebar.starter.title")}</h2>
+          <p>{t("sidebar.starter.body")}</p>
         </header>
 
         <ol className="commissioning-steps">

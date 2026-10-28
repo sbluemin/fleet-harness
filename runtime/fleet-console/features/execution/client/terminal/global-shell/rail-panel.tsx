@@ -28,7 +28,7 @@ export const globalShellEntry: RailEntryDescriptor = {
     const surfaces = ctx.surfaces;
     if (!surfaces) return;
     if (surfaces.isOpen(SHELL_SURFACE_ID)) surfaces.closeSurface(SHELL_SURFACE_ID);
-    else surfaces.open({ surfaceId: SHELL_SURFACE_ID, ...(ctx.theaterId ? { params: { cwdTheaterId: ctx.theaterId } } : {}) });
+    else surfaces.open({ surfaceId: SHELL_SURFACE_ID, ...(ctx.theaterId ? { params: { cwdTheaterId: ctx.theaterId, ...(ctx.commodoreId ? { commodoreId: ctx.commodoreId } : {}) } } : {}) });
   },
 };
 

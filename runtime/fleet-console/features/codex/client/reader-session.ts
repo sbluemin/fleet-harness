@@ -19,8 +19,8 @@ export function reconcileReaderSession(theaterId: string | null, entries: readon
 }
 
 /** 복원은 필터 없는 서버 index로 확인한다. 통신 실패를 문서 삭제로 해석하지 않는다. */
-export async function validateReaderEntry(theaterId: string, workspaceId: string, entryId: string, signal: AbortSignal): Promise<boolean> {
-  const result = await fetchSearch(workspaceId, { signal });
+export async function validateReaderEntry(theaterId: string, workspaceId: string, entryId: string, signal: AbortSignal, commodoreId?: string | null): Promise<boolean> {
+  const result = await fetchSearch(workspaceId, { signal, commodoreId: commodoreId ?? null });
   if (signal.aborted) return false;
   const exists = result.entries.some((entry) => entry.id === entryId);
   if (!exists) clearReaderSession(theaterId, entryId);
