@@ -8,6 +8,7 @@ import { composerAttachmentNoticeText, composerT } from "../../../composer-primi
 import { composeQuotedPrompt, composerQuoteValues } from "../../../composer-primitives/quotes.js";
 import { createComposerAttachments } from "../../../composer-primitives/attachment-store.js";
 import { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "../../../composer-primitives/attachment-input.js";
+import { SyncedTextarea } from "../../../composer-primitives/input.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
@@ -652,7 +653,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
             onRemove={() => { setTarget(null); inputRef.current?.focus(); }}
           />
         ) : null}
-        <textarea
+        <SyncedTextarea
           ref={inputRef}
           className="fc-composer-input group-composer-input"
           rows={1}
