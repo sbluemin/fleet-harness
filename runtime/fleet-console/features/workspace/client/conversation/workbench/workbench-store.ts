@@ -255,6 +255,24 @@ function freeze(layout: MutableLayout): WorkbenchLayout {
   };
 }
 
+/**
+ * keep 이 고른 칸만 남긴 배치 — 화면에 세울 모양만 만들고 저장 배치는 건드리지 않는다. 빈 열은 걷히고, 걷힌 칸을 펼쳐 두었으면 펼침도 풀린다.
+ * 모두 남으면 같은 배치를 그대로 돌려준다.
+ */
+export function workbenchLayoutKeeping(layout: WorkbenchLayout, keep: (tile: WorkbenchTile) => boolean): WorkbenchLayout {
+  if (workbenchTiles(layout).every(keep)) return layout;
+  const draft = thaw(layout);
+  for (const stack of [...draft.columns, draft.below]) {
+    for (let index = stack.tiles.length - 1; index >= 0; index -= 1) {
+      if (keep(stack.tiles[index]!)) continue;
+      stack.tiles.splice(index, 1);
+      stack.weights.splice(index, 1);
+    }
+  }
+  const next = freeze(draft);
+  return isWorkbenchEmpty(next) ? EMPTY_WORKBENCH_LAYOUT : next;
+}
+
 function averageWeight(weights: readonly number[]): number {
   return weights.length === 0 ? 1 : weights.reduce((sum, weight) => sum + weight, 0) / weights.length;
 }
