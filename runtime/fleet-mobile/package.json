@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-mobile",
-  "version": "1.266.0",
+  "version": "1.267.0",
   "description": "Fleet Console mobile shell.",
   "private": true,
   "main": "index.ts",

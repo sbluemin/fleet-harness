@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.267.0] - 2026-10-28
+
+### fleet-console
+
+#### Added
+- Collapse or expand each commodore's commander list in the sidebar. Your choice is remembered per commodore, even across restarts.
+
+#### Removed
+- Removed the Cursor provider. Choose another provider for sessions that used Cursor; xAI remains available separately.
+
+### fleet-mobile
+
+#### Fixed
+- Routing tests and other slow requests no longer fail with a "Bad gateway" error when the decision takes longer than a few seconds.
+
 ## [1.266.0] - 2026-10-27
 
 ### fleet-console

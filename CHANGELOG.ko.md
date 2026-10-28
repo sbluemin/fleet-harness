@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.267.0] - 2026-10-28
+
+### fleet-console
+
+#### Added
+- 사이드바에서 사령관마다 지휘관 목록을 접거나 펼칠 수 있습니다. 선택은 사령관마다 기억되며 다시 시작해도 유지됩니다.
+
+#### Removed
+- Cursor 공급자 지원을 제거했습니다. Cursor를 사용하던 세션은 다른 공급자를 선택해 주세요. 별도 공급자인 xAI는 계속 사용할 수 있습니다.
+
+### fleet-mobile
+
+#### Fixed
+- 라우팅 테스트처럼 판단에 몇 초 이상 걸리는 요청이 더 이상 "Bad gateway" 오류로 실패하지 않습니다.
+
 ## [1.266.0] - 2026-10-27
 
 ### fleet-console
