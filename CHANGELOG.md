@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.268.0] - 2026-10-28
+
+### fleet-console
+
+#### Added
+- Show Google search suggestions as you type in the Fleet Browser address bar once you turn them on; URLs and local addresses are never sent.
+
 ## [1.267.1] - 2026-10-28
 
 ### fleet-console

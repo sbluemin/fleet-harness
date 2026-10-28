@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.268.0] - 2026-10-28
+
+### fleet-console
+
+#### Added
+- 검색어 제안을 켜면 Fleet Browser 주소창에 입력하는 동안 Google 검색어 제안이 나타나며, URL과 로컬 주소는 보내지 않습니다.
+
 ## [1.267.1] - 2026-10-28
 
 ### fleet-console
