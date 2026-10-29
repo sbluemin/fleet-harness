@@ -509,7 +509,7 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.group-chat-link:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.group-chat-link:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
@@ -618,8 +618,9 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
 .group-chat-working-hit.is-mark { position: relative; display: inline-flex; border-radius: var(--radius-md); }
 .group-chat-working-hit.is-mark:hover { box-shadow: 0 0 0 2px var(--control-wash-hover); }
 .group-chat-working-hit.is-text { text-align: start; }
-/* 밑줄은 hover 에만 긋는다 — 물결 클립은 글자 장식도 마스크에 넣으므로 투명 밑줄을 늘 두면 물결 색으로 비친다. */
-.group-chat-working-hit.is-text:hover { text-decoration: underline var(--brass); text-underline-offset: 2px; }
+/* 밑줄은 hover 에만 긋는다 — 물결 클립은 글자 장식도 마스크에 넣으므로 투명 밑줄을 늘 두면 물결 색으로 비친다.
+   물결 글자는 color 가 투명이라 currentColor 를 쓸 수 없다 — 채팅 밑줄 한 벌(1px·3px, 중성)의 hover 잉크를 직접 준다. */
+.group-chat-working-hit.is-text:hover { text-decoration: underline 1px var(--text-secondary); text-underline-offset: 3px; }
 .group-chat-working-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
 /* 32px 표식도 손가락에는 조금 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 44px 로 넓힌다. */
 @media (pointer: coarse) {
@@ -882,12 +883,13 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   border: 0;
   background: none;
   font: inherit;
-  color: var(--brass-ink);
+  color: var(--text-secondary);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  text-decoration-color: var(--hairline-strong);
   cursor: pointer;
 }
+.group-composer-suggest-link:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .group-composer-suggest-note.is-awaiting .group-composer-suggest-link { color: var(--aurora-ink); text-decoration-color: color-mix(in oklch, var(--aurora) 50%, transparent); }
 .group-composer-suggest-hint { font-size: var(--t-xs); color: var(--text-tertiary); }
 .group-composer-action {

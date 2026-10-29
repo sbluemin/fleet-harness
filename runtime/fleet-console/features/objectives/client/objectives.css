@@ -422,10 +422,12 @@ span.objectives-row-main { cursor: default; }
 .objectives-detail .objectives-note.is-read.is-clamped { overflow: hidden; padding-bottom: 0; margin-bottom: 8px; }
 .objectives-read-placeholder { color: var(--text-tertiary); opacity: 0.7; }
 .objectives-read-edit { margin-left: 8px; padding: 0; border: 0; background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: inherit; cursor: pointer; vertical-align: baseline; }
-.objectives-read-edit:hover, .objectives-read-edit:focus-visible { color: var(--brass-ink); outline: none; text-decoration: underline; text-underline-offset: 3px; }
+.objectives-read-edit:hover, .objectives-read-edit:focus-visible { color: var(--text-primary); outline: none; text-decoration: underline; text-underline-offset: 3px; }
+.objectives-read-edit:focus-visible { color: var(--brass-ink); }
 .objectives-member-brief.is-read, .objectives-criterion-text.is-read { cursor: text; white-space: pre-wrap; }
 a.objectives-link { color: inherit; text-decoration: underline; text-decoration-color: var(--text-tertiary); text-underline-offset: 3px; overflow-wrap: anywhere; }
-a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-ink); text-decoration-color: var(--brass); outline: none; }
+a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--text-primary); text-decoration-color: currentColor; outline: none; }
+a.objectives-link:focus-visible { color: var(--brass-ink); text-decoration-color: var(--brass); }
 
 /* 연결 선택 */
 
@@ -763,7 +765,8 @@ button.objectives-result-group-head:hover .objectives-result-group-count { color
 .objectives-result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .objectives-result-title { color: var(--text-primary); line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
 .objectives-result-title.is-mono { font-family: var(--font-ui); font-size: var(--t-xs); }
-a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outline: none; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; }
+a.objectives-result-title:focus-visible { text-decoration-color: var(--brass); }
 .objectives-result-num { margin-right: 6px; font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-secondary); }
 .objectives-result-sub { font-size: var(--t-2xs); line-height: 1.5; color: var(--text-tertiary); word-break: keep-all; overflow-wrap: anywhere; }
 .objectives-result-sub .is-mono { font-family: var(--font-ui); }
